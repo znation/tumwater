@@ -46,8 +46,11 @@ export function extractRefusal(text: string): string | null {
  * explanation (`(none — no entry refused this run)`), with trailing sentence punctuation
  * (`None.`, `N/A!`) still negating (BUGS.md 2026-09-28), and under markdown decoration
  * (`**none**`, `` `n/a` ``, `(**None**) — nothing refused`) still negating (BUGS.md
- * 2026-09-28), and with a trailing parenthesized explanation (`none (no entry refused this
- * run)`, `n/a (nothing to do).`) still negating (BUGS.md 2026-09-28). A refusal is a
+ * 2026-09-28), with a trailing parenthesized explanation (`none (no entry refused this
+ * run)`, `n/a (nothing to do).`) still negating (BUGS.md 2026-09-28), and with an explanation
+ * in any punctuation dress — the hyphen and en/em dashes, an opening parenthesis, or a
+ * sentence mark starting the note (`None; nothing to refuse.`, `None. Nothing worth doing.`)
+ * — still negating (BUGS.md 2026-09-28). A refusal is a
  * deliberate, affirmative
  * declaration; classifying a reply as one must not depend on the model never naming the
  * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
@@ -68,10 +71,16 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const normalized = unbracket(bare(unbold(raw)));
   for (const candidate of [raw, unwrapped, normalized]) {
     if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
-    // The appended-explanation form: a dash (`none — bug filed normally`) or a parenthesized
-    // note (`none (no entry refused this run)`) riding after the token. Anchored right after
-    // the token, so `none of the …` — a reason that begins with the word — stays a refusal.
-    if (/^(none|n\/a)\b([ \t]*[—–-].*|[ \t]*\(.*)?$/.test(candidate)) return true;
+    // The appended-explanation family: after the token, any character that cannot begin a
+    // reason word — the ASCII hyphen and en/em dashes, an opening parenthesis, or sentence
+    // punctuation (`;`, `:`, `,`, `.`, `!`, `?`) — starts a note that rides the token rather
+    // than continuing it (`none - no entry refused`, `none (no entry refused this run)`,
+    // `None; nothing to refuse.`, `None. Nothing worth doing.`). The hyphen stays in the class
+    // beside the en/em dashes: `none - …` is the same appended-note dress as `none — …` and
+    // dropping it would regress `n/a - …` replies to genuine refusals. Anchored right after
+    // the token, so a reason that continues with a word (`none of the attempted fixes work`)
+    // stays a refusal: punctuation is formatting, a letter is the reason itself.
+    if (/^(none|n\/a)\b([ \t]*[—–\-;:,.!?(].*)?$/.test(candidate)) return true;
   }
   return false;
 }

@@ -86,6 +86,33 @@ test("isNegatedRefusal negates none and n/a with a trailing parenthesized explan
   assert.ok(!isNegatedRefusal("(no)ne"), "a bracket inside the token cannot collapse into a negation");
 });
 
+// BUGS.md 2026-09-28: a sentence mark *starting* an appended explanation (`None; nothing to
+// refuse.`, `None. Nothing worth doing.`) left isNegatedRefusal false — the dash and
+// parenthesized dresses were tolerated but the semicolon, colon, comma, and period separators
+// were not, so a work-completed reply ending that way was a "genuine" refusal whose tested work
+// the harness hard-reset, the same destruction the previous fixes in this guard closed. The
+// rule generalized here: after the token, punctuation cannot begin a reason word — only a
+// letter can. The ASCII hyphen stays in the separator class beside the en/em dashes (`none -
+// …` was accepted before this change and must not regress), pinned here because a class edit
+// that drops it is exactly the mistake a green suite cannot otherwise catch.
+test("isNegatedRefusal negates none and n/a with a punctuation-separated explanation", () => {
+  for (const reason of [
+    "none - nothing to do",
+    "n/a - no open bugs",
+    "none — bug filed normally",
+    "none; nothing to refuse",
+    "None; nothing worth doing",
+    "n/a; no open bugs",
+    "none: nothing to do",
+    "None, nothing refused",
+    "none. Nothing worth doing.",
+    "none! really nothing",
+    "none? nothing at all",
+  ])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("none of the attempted fixes work; repro attached"), "a word after the token starts the reason, punctuation or not");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",
