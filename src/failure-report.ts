@@ -151,7 +151,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     }
   }
 
-  renderClusters(lines, "Top error clusters", data.errors, "tick errors");
+  // The title restates the section's contract: its total now covers the Outcome table's error
+  // column AND its main_red cells (the baseline gate's own cause rides the tick, BUGS.md
+  // 2026-09-28), so an operator cross-checking counts against the tables above is not misled
+  // by a title that reads as the error column alone.
+  renderClusters(lines, "Top error clusters (red-main causes included)", data.errors, "tick errors");
   renderClusters(lines, "Top warning clusters", data.warnings, "warnings");
   renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
   renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");

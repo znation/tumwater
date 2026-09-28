@@ -105,8 +105,18 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
     return null;
   }
   if (baseline.baseline?.status === "red") {
-    warnMainRedOnce(root, baseline.baseline);
-    return { result: "main_red", summary: "code merges blocked until main is green" };
+    const red = baseline.baseline;
+    warnMainRedOnce(root, red);
+    const firstLine = failureHeadline(red.outputTail);
+    return {
+      result: "main_red",
+      summary: "code merges blocked until main is green",
+      // The cause rides the outcome so the tick's `tick_end` carries it (loop.ts folds it into
+      // state.lastError before logging): the digest itemizes the outcome that blocks every
+      // merge, instead of leaving it a bare count behind a once-per-SHA warning (BUGS.md
+      // 2026-09-28). Same vocabulary as warnMainRedOnce above.
+      error: `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — authoring skipped until main is green`,
+    };
   }
   return null;
 }

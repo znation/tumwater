@@ -44,6 +44,29 @@ test("collectFailureReport tallies tick_end results per role", () => {
   assert.deepEqual(unnamed?.counts, { queued: 1 });
 });
 
+test("a main_red tick's cause is clustered with the tick errors, not left a bare count", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "organize", type: "tick_end", result: "main_red",
+      error: "main abc1234 is red (test: boom) — authoring skipped until main is green" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    // A main_red tick with no cause stays out: the filter counts only error text that exists.
+    { ts: at(0), loop: "improve", type: "tick_end", result: "main_red" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.errors.total, 2, "the error column plus the caused main_red cell");
+  assert.equal(data.errors.clusters.length, 2);
+  const red = data.errors.clusters.find((c) => c.key.includes("red"));
+  assert.ok(red, `the red-main cause is itemized: ${JSON.stringify(data.errors.clusters)}`);
+  assert.equal(red?.count, 1);
+  assert.deepEqual(red?.roles, ["organize"]);
+  // The render restates the section's widened contract, so the cross-check against the
+  // Outcome tables above stays honest (BUGS.md 2026-09-28).
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /Top error clusters \(red-main causes included\)/);
+  assert.match(md, /is red \(test: boom\)/);
+});
+
 test("error strings differing only in volatile parts cluster; exit codes stay distinct", () => {
   const root = tmpdir();
   writeEvents(root, [

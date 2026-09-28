@@ -70,7 +70,14 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
   const restore = fakeNpm(`echo baseline-failure; echo run >> ${counter}; exit 1`);
   try {
     const blocked = await mainRedGate(root, ROLE, wt);
-    assert.deepEqual(blocked, { result: "main_red", summary: "code merges blocked until main is green" });
+    // The cause rides the outcome (BUGS.md 2026-09-28): the tick's tick_end must be able to
+    // name what broke, not leave the digest's main_red cells a bare count.
+    const sha = sh(root, "git", "rev-parse", "main");
+    assert.deepEqual(blocked, {
+      result: "main_red",
+      summary: "code merges blocked until main is green",
+      error: `main ${shortSha(sha)} is red (test: baseline-failure) — authoring skipped until main is green`,
+    });
 
     const events = readEvents(root);
     const checks = events.filter((e) => e.type === "build_check");
@@ -86,7 +93,6 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     const warning = warnings[0];
     assert.ok(warning);
     assert.equal(warning.loop, "harness", "fleet-wide, not per role");
-    const sha = sh(root, "git", "rev-parse", "main");
     const message = warning as { message?: string };
     assert.ok(message.message?.includes(shortSha(sha)), `warning names the red SHA: ${message.message}`);
     assert.ok(message.message?.includes("test"), "warning names the failing script");

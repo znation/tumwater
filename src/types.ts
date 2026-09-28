@@ -44,6 +44,12 @@ export interface TickOutcome {
    * Carries the failure detail for the warning: `lastError` is deliberately cleared off the tick
    * so the failure never rides its `tick_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
+  /** The outcome's own cause, written deliberately for this result — never a leftover landing
+   * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
+   * red-main baseline gate (src/main-red.ts) so the tick's `tick_end` names what broke: the
+   * failure digest's error clusters include main_red ticks, and without a cause on the event
+   * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
+  error?: string;
   /** The tick ended on leftover recovery (src/leftover.ts) — the leftover went on the land queue
    * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
    * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */

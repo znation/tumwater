@@ -381,6 +381,12 @@ export class LoopRunner {
     // below names it — even though runTick cleared `lastError` so it never latched onto
     // `tick_end` (BUGS.md 2026-09-21).
     if (this.recoveryFailure !== undefined) outcome.recoveryFailure = this.recoveryFailure;
+    // A main_red tick's cause is written for that result (src/main-red.ts), not a leftover
+    // landing failure: fold it onto the state here so `tick_end` logs it like every other
+    // failure's and the digest can itemize what the Outcome table's main_red cells mean
+    // (BUGS.md 2026-09-28). runTick cleared `lastError` at its start, so nothing foreign
+    // can precede this.
+    if (outcome.error !== undefined) s.lastError = outcome.error;
 
     // Read main's current head while this tick is still reserved (running=true): the
     // applyTickOutcome below clears running, and a poll landing between that clear and a later

@@ -327,11 +327,16 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.match(message, /is red \(test: baseline-failure-line\)/);
     assert.match(message, /code merges blocked until main is green/);
 
-    // The tick_end lines carry the result + summary for the dashboards' last-result column.
+    // The tick_end lines carry the result + summary for the dashboards' last-result column,
+    // and the error field names what broke (BUGS.md 2026-09-28): the failure digest's error
+    // clusters include main_red ticks, so the event itself must carry the cause.
     const ends = eventsOfType(repo, "tick_end");
     assert.equal(ends.length, 2);
     assert.equal(String(ends[1]?.result), "main_red");
     assert.match(String(ends[1]?.summary ?? ""), /code merges blocked/);
+    const redError = String(ends[1]?.error ?? "");
+    assert.match(redError, /is red \(test: baseline-failure-line\)/);
+    assert.match(redError, /authoring skipped until main is green/);
   } finally {
     restore();
   }
