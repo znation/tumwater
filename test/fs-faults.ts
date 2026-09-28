@@ -44,6 +44,26 @@ export function recreateSmallerOnOpen(file: string, content: string): () => void
   };
 }
 
+/** Make the first fs.renameSync whose source path starts with `target` + ".tmp-" throw instead
+ * of renaming — simulating the write failure a tmp+rename writer (writeTextAtomic,
+ * writeJsonAtomic) must survive without leaving its tmp remnant behind. `target` is the final
+ * file path; the tmp name is derived from it, so the wrapper matches the right write without
+ * knowing the pid-suffixed tmp name it will pick. Returns an undo function. */
+export function failRenameSyncOn(target: string, message: string): () => void {
+  const orig = fs.renameSync.bind(fs);
+  let hit = false;
+  (fs as Record<string, unknown>).renameSync = (a: unknown, b: unknown) => {
+    if (!hit && typeof a === "string" && a.startsWith(`${target}.tmp-`)) {
+      hit = true;
+      throw new Error(message);
+    }
+    return (orig as (x: unknown, y: unknown) => void)(a, b);
+  };
+  return () => {
+    (fs as Record<string, unknown>).renameSync = orig;
+  };
+}
+
 /** The readFileSync twin of vanishOnOpen — for readers that stat and then read a small file
  * whole. Returns an undo function. */
 export function vanishOnReadFile(file: string): () => void {

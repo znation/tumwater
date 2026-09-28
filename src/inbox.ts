@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, readTextOrNull } from "./files.js";
+import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
@@ -32,14 +32,16 @@ let seq = 0;
  * and return its path. The filename orders prompts across processes by wall-clock time; the
  * per-process counter and pid break ties within one process. No event is logged — submitPrompt
  * and submitRolePrompt are the user-facing wrappers that add the prompt_enqueued line, and
- * loop.ts's re-queue of an unfulfilled prompt calls this directly. */
+ * loop.ts's re-queue of an unfulfilled prompt calls this directly. The write is atomic
+ * (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll, `tumwater prompt
+ * --list`, and the dequeuing loop — run in other processes, and a read that raced a plain
+ * writeFileSync could see a truncated prompt and run a tick on a half user request. */
 export function enqueueRolePrompt(root: string, role: string, prompt: string): string {
   const dir = roleInboxDir(root, role);
-  ensureDir(dir);
   // Timestamp orders across processes; the counter orders within one; pid breaks ties.
   const name = queueFileName(Date.now(), seq++, ".md");
   const file = path.join(dir, name);
-  fs.writeFileSync(file, prompt);
+  writeTextAtomic(file, prompt);
   return file;
 }
 

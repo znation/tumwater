@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import {
   cancelPrompt,
   cancelRolePrompt,
@@ -8,6 +9,7 @@ import {
   dequeueRolePrompt,
   DIRECTOR_PROMPT_MAX_CHARS,
   enqueuePrompt,
+  enqueueRolePrompt,
   inboxSize,
   queuedPrompts,
   queuedRolePrompts,
@@ -27,6 +29,26 @@ test("inbox is FIFO and dequeues to empty", () => {
   assert.equal(dequeuePrompt(dir), "first");
   assert.equal(dequeuePrompt(dir), "second");
   assert.equal(dequeuePrompt(dir), null);
+});
+
+test("enqueueRolePrompt writes the queue file atomically — exact content, no tmp remnant", () => {
+  const dir = tmpdir();
+  enqueueRolePrompt(dir, "feature", "hello");
+  enqueuePrompt(dir, "second");
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), ["hello"]);
+  assert.deepEqual(queuedPrompts(dir), ["second"]);
+  // The tmp+rename write must never leave a *.tmp-* stray behind: a dashboard polling the
+  // queue would otherwise list or read one (queuedPrompts reads every .md file in the dir).
+  const strays: string[] = [];
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = fs.realpathSync(path.join(d, e.name));
+      if (e.isDirectory()) walk(p);
+      else if (e.name.includes(".tmp-")) strays.push(p);
+    }
+  };
+  walk(dir);
+  assert.deepEqual(strays, []);
 });
 
 test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {

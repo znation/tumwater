@@ -160,6 +160,27 @@ export function ensureParentDir(file: string): void {
   ensureDir(path.dirname(file));
 }
 
+/** Write `text` to `file` as UTF-8 via a tmp file + rename, so a concurrent reader of the same
+ * path sees either the old (absent) or the new content, never a partial write: the prompt-inbox
+ * queue files (inbox.ts's enqueueRolePrompt) are written by one process while dashboards poll,
+ * `--list` reads, and the loops dequeue in others, and a read that races the write could run a
+ * tick on a truncated user request or flash one on the dashboard. The tmp name carries the pid
+ * because several processes can enqueue at once (CLI, TUI, GUI, a loop's re-queue); on failure
+ * the tmp is removed and the error rethrown, leaving the target untouched. The JSON twin of
+ * this shape — writeJsonAtomic, with the same pid-tmp contract spelled out — lives in
+ * json-files.ts. */
+export function writeTextAtomic(file: string, text: string): void {
+  ensureParentDir(file);
+  const tmp = `${file}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(tmp, text, "utf8");
+    fs.renameSync(tmp, file); // atomic on POSIX — readers never see a partial file
+  } catch (err) {
+    removeQuiet(tmp); // a failed write leaves no tmp remnant behind
+    throw err;
+  }
+}
+
 /** Delete a file, swallowing every error — the one place for cleanup deletes that must never
  * throw. Marker/info files removed after being consumed may already be gone (a concurrent
  * process or an earlier pass took them), and a failed removal is not worth failing the poll

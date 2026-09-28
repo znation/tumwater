@@ -9,9 +9,10 @@ import {
   removeQuiet,
   rotateIfLarge,
   statOrNull,
+  writeTextAtomic,
 } from "../src/files.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
+import { failRenameSyncOn, vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
   const dir = tmpdir();
@@ -214,3 +215,23 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   }
 });
 
+test("writeTextAtomic writes the exact text and leaves no tmp remnant", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "deep", "queue", "p.md");
+  writeTextAtomic(file, "hello world");
+  assert.equal(fs.readFileSync(file, "utf8"), "hello world");
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((f) => f.includes(".tmp-")), []);
+});
+
+test("writeTextAtomic rethrows a failed rename and leaves no tmp remnant", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "p.md");
+  const undo = failRenameSyncOn(file, "boom");
+  try {
+    assert.throws(() => writeTextAtomic(file, "x"), /boom/);
+    assert.ok(!fs.existsSync(file), "the target must stay absent on failure");
+    assert.deepEqual(fs.readdirSync(dir).filter((f) => f.includes(".tmp-")), []);
+  } finally {
+    undo();
+  }
+});
