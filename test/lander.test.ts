@@ -42,8 +42,8 @@ import {
 //
 // Split in three so node --test runs them in parallel processes: this file holds the vet and
 // single-change landings, the batch basics, aborts and the per-change status hook;
-// lander-2.test.ts the re-stack on a moved main; lander-3.test.ts the red-stack bisect and
-// the one-at-a-time fallback. Shared fixtures live in test/lander-fixtures.ts. Keep the three
+// lander-restack.test.ts the re-stack on a moved main; lander-bisect.test.ts the red-stack
+// bisect and the one-at-a-time fallback. Shared fixtures live in test/lander-fixtures.ts. Keep the three
 // roughly equal in measured duration when moving tests between them.
 
 test("an approved landing lands on main and deletes the ref", async () => {

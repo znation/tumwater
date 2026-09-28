@@ -22,7 +22,7 @@ import {
   advanceMain,
 } from "./lander-fixtures.js";
 
-// Third slice of the landing tests (see lander.test.ts for the split and what each file
+// The bisect slice of the landing tests (see lander.test.ts for the split and what each file
 // holds): landVetted's red-stack bisect and its one-at-a-time fallback. The reviewer runs are
 // real pi subprocesses behind the fake shim; the fallback's conflict resolver is the wiring's
 // stub.

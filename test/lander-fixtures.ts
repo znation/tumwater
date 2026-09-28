@@ -15,7 +15,8 @@ import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 
-/** Shared fixtures for the landing tests — lander.test.ts, lander-2.test.ts and lander-3.test.ts,
+/** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
+ * lander-bisect.test.ts,
  * split from one file so node --test runs the three in parallel processes (top-level tests
  * within a file run one after another; each file gets its own process, and its own PATH for
  * fakePi's global swap). Contexts and wiring built the way loop.ts and the landing drain build

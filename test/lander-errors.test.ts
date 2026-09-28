@@ -4,7 +4,7 @@
  * merge slot. The wiring's runPi is the one stubbed call that can throw its way out
  * (merge.ts's conflict resolver awaits it unwrapped), so each test makes main conflict with a
  * pinned change and the resolver blow up. The batch and single-change flows are pinned
- * end-to-end in lander.test.ts / lander-2.test.ts with a resolver that always succeeds; these
+ * end-to-end in lander.test.ts / lander-restack.test.ts with a resolver that always succeeds; these
  * pin what happens when it cannot run at all. */
 import test from "node:test";
 import assert from "node:assert/strict";

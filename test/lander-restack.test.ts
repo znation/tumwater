@@ -25,9 +25,9 @@ import {
   batchChecks,
 } from "./lander-fixtures.js";
 
-// Second slice of the landing tests (see lander.test.ts for the split and what each file
-// holds): landVetted's merge over N vetted changes — stacked into one worktree, one shared
-// build check, one fast-forward — when main moves under it. The reviewer runs are real pi
+// The re-stack slice of the landing tests (see lander.test.ts for the split and what each
+// file holds): landVetted's merge over N vetted changes — stacked into one worktree, one
+// shared build check, one fast-forward — when main moves under it. The reviewer runs are real pi
 // subprocesses behind the fake shim; the fallback's conflict resolver is the wiring's stub.
 
 // ── A fast-forward lost to a moved main: re-stack, not merge_blocked (BUGS.md 2026-09-23) ──
