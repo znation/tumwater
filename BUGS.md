@@ -9,6 +9,23 @@ _None yet._
 
 ## Fixed
 
+### A negated refusal with trailing sentence punctuation reads as a genuine refusal: `TUMWATER_REFUSED: None.` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** a work-completed reply whose sentinel line carries a sentence mark after the
+  negation — `None.`, `N/A.`, `(none).` — is classified as a deliberate refusal; the tick's
+  committed, tested change is discarded exactly like the bare-`none` destruction of 2026-09-23.
+- **Reproduce:** `isNegatedRefusal("None.")` returned `false` (scratch node run against
+  `src/reply-contract.ts` before the fix); the negation test listed unpunctuated shapes only.
+- **Cause:** the negation guard compared exact tokens (`none`, `n/a`, parenthesized, dash-appended)
+  without stripping trailing sentence punctuation, so a period left the token unequal and the
+  negation regex unmatched.
+- **Fix:** strip trailing punctuation (`.,!;:?!*`) from both the raw and unwrapped reason before
+  the token comparison; a real reason with a period (`Nothing here was refused.`) still refuses.
+- **Fixed:** 2026-09-28, regression tests in `test/reply-contract.test.ts`.
+- **Validation gap:** unclear-invariant — the suite pinned the negation shapes by example, but
+  whether sentence punctuation after `none` still negates was unspecified, so the invariant had to
+  be reconstructed (punctuation is not an objection) before the gap was confirmable.
+
 ### A rejection note rides every later prompt undated: a `reject` in `lastReview` is injected verbatim until some future landing overwrites it, so an objection main has since satisfied keeps telling the author to address a verdict that no longer holds (found by telemetry loop 2026-09-25, fixed 2026-09-28)
 
 **Symptom:** This tick's telemetry prompt carries "Your previous change was rejected in review: 1. md-only BUGS.md edit moves … to Fixed, but none of the symbols its Fix paragraph names exist on this tree: setLandingStage — land the fix in the same commit, or keep the bug Open until the code exists". That verdict was true when issued — `setLandingStage` entered main with 127157a4 (2026-09-24 01:32), after the rejected edit was gated — and became false half an hour later. The note carries no date, so telling stale from live took archaeology: the symbol's introduction commit from `git log -S`, plus the digest's outcome table (5 telemetry ticks today, none of them the editing tick) to establish the rejection predates the digest's window. The digest correctly reports telemetry rejections 0 today — the event is out of its 1-day window — so the undated note is the only trace of the stale verdict, and nothing else names it.

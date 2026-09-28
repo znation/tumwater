@@ -51,6 +51,16 @@ test("isNegatedRefusal negates empty, none, and n/a in every recorded shape", ()
     assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
 });
 
+// BUGS.md 2026-09-28: a sentence mark after the negation (`None.`) left isNegatedRefusal false,
+// so a work-completed reply ending `TUMWATER_REFUSED: None.` was a "genuine" refusal whose
+// finished, tested work the harness hard-reset — the same destruction the negation guard exists
+// to prevent. Punctuation after the token is not an objection.
+test("isNegatedRefusal negates none and n/a with trailing sentence punctuation", () => {
+  for (const reason of ["None.", "NONE.", "none.", "N/A.", "n/a!", "(none).", "None!", "none;"])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("Nothing here was refused."), "a real reason with a period stays a refusal");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",
