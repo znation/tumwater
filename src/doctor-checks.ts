@@ -1,5 +1,5 @@
 /** The doctor report contract, split out of doctor.ts so the sibling check modules
- * (doctor-orphans.ts, launchservices.ts) can depend on the shared CheckOutcome shape
+ * (doctor-orphans.ts, launch-services.ts) can depend on the shared CheckOutcome shape
  * directly instead of type-importing it from the aggregator that runs them. doctor.ts
  * composes the checks into a DoctorReport; this module owns only the shape of that
  * report — its terminal rendering lives in the observer layer at ui/doctor-report.ts,

@@ -8,12 +8,12 @@ import {
   LaunchServicesWatch,
   launchServicesWarning,
   nextLaunchServicesWarning,
-} from "../src/launchservices.js";
+} from "../src/launch-services.js";
 import type { ProcessProbe } from "../src/process.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { harnessWarnings } from "./util.js";
 
-// launchservicesd's Mach-port watch (src/launchservices.ts, BUGS.md 2026-09-28): doctor's line and
+// launchservicesd's Mach-port watch (src/launch-services.ts, BUGS.md 2026-09-28): doctor's line and
 // a running fleet's warning, both driven by a fake probe — no test reads the real Mac's daemon
 // (process.test.ts pins the real probe).
 

@@ -53,7 +53,7 @@ function readyRepo(): string {
 
 /** An empty process table and a healthy launchservicesd: runDoctor's report tests pin every
  * other check without reading the host's real table or daemon (the orphan check's own tests
- * below drive it with fakeProbe; the port check's live in launchservices.test.ts). */
+ * below drive it with fakeProbe; the port check's live in launch-services.test.ts). */
 const noProcesses: ProcessProbe = {
   list: async () => [],
   cwds: async () => new Map(),

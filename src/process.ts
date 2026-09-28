@@ -72,7 +72,7 @@ export interface ProcessProbe {
    * that exited meanwhile, or that this user may not inspect, are simply absent; rejects only
    * when no lookup could run at all. */
   cwds(pids: number[]): Promise<Map<number, string>>;
-  /** How many Mach ports macOS's launchservicesd holds (see src/launchservices.ts). Null off
+  /** How many Mach ports macOS's launchservicesd holds (see src/launch-services.ts). Null off
    * macOS, and when the count cannot be read; never rejects. */
   launchServicesPorts(): Promise<number | null>;
 }

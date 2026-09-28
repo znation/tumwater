@@ -6,7 +6,7 @@
  * unified log mentioned (BUGS.md 2026-09-28). The harness's own process trees no longer check in
  * (process.ts's NO_LAUNCH_SERVICES_CHECK_IN), but anything else on the Mac can: an npm run by
  * hand, an older build, another tool. This module says so where an operator looks, days ahead.
- * Dependency direction: doctor and orchestrator → launchservices → process (the probe). */
+ * Dependency direction: doctor and orchestrator → launch-services → process (the probe). */
 
 import type { CheckOutcome } from "./doctor-checks.js";
 import { warnEvent } from "./events.js";

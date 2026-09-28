@@ -1,4 +1,4 @@
-/** The orchestrator's launchservicesd watch wiring (src/launchservices.ts, BUGS.md 2026-09-28): a
+/** The orchestrator's launchservicesd watch wiring (src/launch-services.ts, BUGS.md 2026-09-28): a
  * daemon fleet steps the watch from its poll — sampling at once, then at most once per interval
  * however many polls run — and warns through the event feed; a once round never samples. A fake
  * probe stands in for the Mac's daemon. Like the rest of the orchestrator e2e tier this runs via
@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { loadConfig } from "../src/config.js";
-import { LaunchServicesWatch, launchServicesWarning } from "../src/launchservices.js";
+import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-services.js";
 import type { ProcessProbe } from "../src/process.js";
 import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";

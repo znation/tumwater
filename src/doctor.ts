@@ -38,7 +38,7 @@ import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { type ProcessProbe, systemProcessProbe } from "./process.js";
 import { checkOrphans } from "./doctor-orphans.js";
-import { checkLaunchServicesPorts } from "./launchservices.js";
+import { checkLaunchServicesPorts } from "./launch-services.js";
 import { errorMessage, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
 import { type CheckOutcome, type DoctorReport } from "./doctor-checks.js";
