@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { budgetGate, dailyCost, fleetDailyCost, budgetReached } from "../budget.js";
+import { dailyCost, fleetDailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
@@ -9,6 +9,7 @@ import {
   buildBadge,
   budgetBadge,
   displayTokenMetrics,
+  fleetBudgetGate,
   humanSeconds,
   isActivePhase,
   landingBadge,
@@ -127,7 +128,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // stops the loops, so only it turns an idle role row into `budget paused`. Under `fallback`
   // the loops keep ticking (on the free model, which the header badge names), so their rows
   // read their normal state. The operator pause is fleet-wide too and outranks both.
-  const budgetPausedNow = budgetGate(budgetReached(snap.budget), snap.budget.fallback !== null) === "paused";
+  const budgetPausedNow = fleetBudgetGate(snap.budget) === "paused";
   const userPausedNow = snap.paused;
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on

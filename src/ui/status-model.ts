@@ -2,7 +2,7 @@ import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
-import { budgetGate, budgetReached } from "../budget.js";
+import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
 import { compactTokens, shortSha, usd, usdCap } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
@@ -293,6 +293,15 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
+/** The fleet's current budget-gate state, derived from a snapshot's budget block — the one
+ * home for the budgetReached + fallback-readiness wiring both observer surfaces share: the
+ * TUI/status table needs the `paused` verdict for loopPhase, the JSON/GUI payload ships the
+ * same one, and budgetBadge needs `fallback` — so the three-valued display rule cannot
+ * drift between the surfaces. */
+export function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
+  return budgetGate(budgetReached(budget), budget.fallback !== null);
+}
+
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
  * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
  * for a fleet whose models are all free (spend can never accumulate against a cap that
@@ -310,7 +319,7 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   // construction (the gate engages nothing else), so no second figure is shown. Off-gate the
   // badge is byte-identical to before.
   const fallback =
-    budgetGate(budgetReached(budget), budget.fallback !== null) === "fallback"
+    fleetBudgetGate(budget) === "fallback"
       ? ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
       : "";
   if (budget.capUsd > 0)

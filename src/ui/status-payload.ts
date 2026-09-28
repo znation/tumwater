@@ -2,9 +2,9 @@ import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { readLiveProgress } from "./progress.js";
-import { budgetGate, budgetReached, dailyCost } from "../budget.js";
+import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, fleetBudgetGate, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -19,8 +19,8 @@ export function statusPayload(root: string): object {
   // plans/fallback-model.md: only `paused` (the cap reached with no usable free fallback)
   // stops the loops, so only it makes an idle role loop's phase read `budget paused` — under
   // `fallback` they keep ticking on the free model. One flag covers both dashboards through
-  // loopPhase, derived exactly as renderStatus derives it.
-  const budgetPausedNow = budgetGate(budgetReached(snap.budget), snap.budget.fallback !== null) === "paused";
+  // loopPhase, derived through status-model's shared fleetBudgetGate like renderStatus does.
+  const budgetPausedNow = fleetBudgetGate(snap.budget) === "paused";
   return {
     running: snap.running,
     pid: snap.pid,
