@@ -59,6 +59,23 @@ test("a role tick prompt embeds the brief, principles, and the role's task — w
   assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
 });
 
+test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
+  // The degraded-but-running state: an operator edit (or a docs loop rewrite) can strip the
+  // markers, leaving no file that owns the brief. The fleet must keep ticking — readInitialPrompt
+  // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(result);
+  assert.doesNotMatch(result.prompt, /<project-prompt>/, "no brief content to embed");
+  assert.match(result.prompt, /read the project brief \(README\.md\) in full/);
+});
+
 test("the brief resolves to TUMWATER.md when it owns the sections, and the prompt says so", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "TUMWATER.md"), briefTemplate("proj", "Build a tiny thing.\n"));

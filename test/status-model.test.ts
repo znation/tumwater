@@ -439,6 +439,20 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   assert.equal(bare, "landing 1m30s · reviewing");
 });
 
+test("a landing cell with no recorded start renders the bare `landing` head", () => {
+  // A change record from an older writer can carry no startedAt (the marker shape allows it):
+  // no honest elapsed exists, so the head degrades to the bare label — staged or not.
+  const s = freshLoopState("feature");
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined, stage: "merging" }),
+    "landing · merging",
+  );
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined }),
+    "landing",
+  );
+});
+
 test("a new landing's reviewing cell starts at its run's label line, not at the previous review's counts", () => {
   const root = tmpdir();
   // A previous review ran to completion; the next landing's reviewer has only written its
