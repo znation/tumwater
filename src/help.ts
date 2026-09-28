@@ -33,6 +33,10 @@ Usage:
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
+  tumwater history [--role <id>] [-n N]
+                                   One row per completed tick, newest first — time, loop,
+                                   tick number, result, duration, tokens/cost, and the
+                                   summary (or error), each row one line
   tumwater backlog                 Show planned features, open bugs, and open questions (the dashboards' backlog view)
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)

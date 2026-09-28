@@ -25,6 +25,7 @@ import {
 } from "./inbox.js";
 import { renderDoctor, runDoctor } from "./doctor.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
+import { cmdHistory } from "./ui/history.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, renderReportMarkdown } from "./ui/report.js";
 import { collectReport } from "./report-data.js";
 import { collectFailureReport } from "./failure-data.js";
@@ -215,6 +216,14 @@ async function main(): Promise<void> {
       ]);
       await requireReadyRepo(root);
       await cmdLogs(root, args);
+      break;
+    case "history":
+      rejectUnknownArgs("history", args, [
+        { names: ["-n"], value: true, valueName: "<count>" },
+        ROLE_FLAG,
+      ]);
+      await requireReadyRepo(root);
+      await cmdHistory(root, args);
       break;
     case "backlog": {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
