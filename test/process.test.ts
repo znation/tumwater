@@ -8,7 +8,9 @@ import {
   parsePsOutput,
   parseTopPorts,
   pidAlive,
+  signalTree,
   systemProcessProbe,
+  terminateChild,
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
 
@@ -252,4 +254,80 @@ test("without the preload a title assignment reaches the process table, so the c
   } finally {
     child.kill("SIGKILL");
   }
+});
+
+// signalTree/terminateChild are the teardown guarantee behind pi runs and build checks: a
+// detached child leads its own process group, and the kill must reach every tool-call
+// grandchild, not just the direct child. runScriptGroup's timeout/grace logic is pinned with
+// logical time in build-check.test.ts through a faked runner, and pi runs only happen in real
+// orchestrators — so the tree-kill itself is pinned here, against real groups.
+
+test("signalTree kills the child's whole process group, grandchild included, via the negative-pid kill", async () => {
+  // A detached sh leads a fresh group; its backgrounded sleep is the grandchild the kill must
+  // also reach. The child's own kill() is stubbed to throw, so a true return proves the
+  // negative-pid group kill ran and the per-child fallback was never needed.
+  const child = spawn("sh", ["-c", "sleep 30 & echo $!; wait"], { detached: true, stdio: ["ignore", "pipe", "ignore"] });
+  const grand = await new Promise<number>((resolve, reject) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
+      const pid = Number(chunk.toString().split("\n")[0]);
+      if (Number.isInteger(pid) && pid > 0) resolve(pid);
+    });
+    child.once("exit", () => reject(new Error("the leader exited before naming its grandchild")));
+  });
+  child.kill = () => {
+    throw new Error("the child.kill fallback must not run when the group is alive");
+  };
+  try {
+    assert.equal(signalTree(child, "SIGTERM"), true, "the group kill reached a live process");
+    await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    // The grandchild must not outlive its group: a single-PID kill would orphan it.
+    const deadline = Date.now() + 2_000;
+    while (pidAlive(grand) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(pidAlive(grand), false, "the grandchild died with its group");
+  } finally {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+});
+
+test("signalTree falls back to child.kill when the group kill fails, and reports the result", (t) => {
+  // A pid beyond any pid space makes the negative-pid kill fail (ESRCH/EINVAL) without touching
+  // any real process; the fallback then signals the child object itself.
+  const kill = t.mock.fn((_signal: NodeJS.Signals) => true);
+  const child = { pid: 2_000_000_000, kill } as unknown as ChildProcess;
+  assert.equal(signalTree(child, "SIGTERM"), true);
+  assert.deepEqual(kill.mock.calls.map((c) => c.arguments[0]), ["SIGTERM"]);
+});
+
+test("signalTree returns false, never throwing, when nothing can be signalled", () => {
+  // No pid (a spawn that never started): nothing to signal, and no fallback either.
+  assert.equal(signalTree({ pid: undefined, kill: () => true } as unknown as ChildProcess, "SIGTERM"), false);
+  // A group kill that fails AND a child.kill that throws: already gone — still no throw.
+  const child = {
+    pid: 2_000_000_000,
+    kill: () => {
+      throw new Error("already gone");
+    },
+  } as unknown as ChildProcess;
+  assert.equal(signalTree(child, "SIGKILL"), false);
+});
+
+test("terminateChild takes a live process group down promptly with the SIGTERM leg", async () => {
+  // The full SIGTERM → SIGKILL escalation (10 s grace) is covered by build-check.test.ts with
+  // logical time; here the real entry point must at least deliver the SIGTERM leg: a detached
+  // child exits by signal, fast, without the test waiting out any grace.
+  const child = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
+  terminateChild(child);
+  const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
+    child.once("exit", (code, signal) => resolve({ code, signal })),
+  );
+  const outcome = await Promise.race([
+    exit,
+    new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 5_000)),
+  ]);
+  if (outcome === "timeout") assert.fail("the child was left running after terminateChild");
+  assert.equal(outcome.signal, "SIGTERM", "the SIGTERM leg did the killing");
 });
