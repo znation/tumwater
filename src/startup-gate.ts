@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig } from "./config.js";
+import { loadConfigSafe } from "./config.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, branchExists, currentBranch, hasCommits, isGitRepo, listBranches } from "./git.js";
@@ -13,7 +13,6 @@ import {
   findAgentBinary,
   piMissingMessage,
 } from "./readiness.js";
-import { errorMessage } from "./text.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -63,12 +62,8 @@ export async function runStartupCheck(
 ): Promise<RunStartupReady | { problem: string }> {
   const notReady = await repoNotReady(root);
   if (notReady !== null) return { problem: notReady };
-  let config: TumwaterConfig;
-  try {
-    config = loadConfig(root);
-  } catch (err) {
-    return { problem: errorMessage(err) };
-  }
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) return { problem: error };
   // Fail fast instead of starting loops whose every tick dies with "spawn pi ENOENT". The agent
   // binary (TUMWATER_PI_BIN → agentBin → "pi", plans/portability.md §5/7) is resolved from the
   // config; resolveAgentBin normalizes path-shaped values against THIS process's cwd, which

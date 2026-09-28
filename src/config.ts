@@ -196,10 +196,16 @@ function loadPresentConfig(file: string): TumwaterConfig {
   return overlayDefaults(defaultConfig(), raw as Partial<TumwaterConfig>);
 }
 
-/** Load tumwater.json without throwing: either the validated config or the error message.
- * Used by the orchestrator's live-reload poll, where a broken file must not stop the fleet —
- * callers keep their last-known-good config and surface `error` as a warning. */
-export function loadConfigSafe(root: string): { config?: TumwaterConfig; error?: string } {
+/** Load tumwater.json without throwing: either the validated config or the error message
+ * that replaced it — never both, never neither. The `error?: undefined` discriminants let a
+ * destructured `config`/`error` pair narrow each other, so a caller that checks
+ * `config === undefined` sees `error` as a plain string. Used by every caller that must
+ * degrade on a broken tumwater.json instead of throwing (the orchestrator's live-reload
+ * poll, the doctor checks, the startup gate, `tumwater config`), where a broken file must
+ * not stop the caller — callers keep their last-known-good config and surface `error`. */
+export function loadConfigSafe(
+  root: string,
+): { config: TumwaterConfig; error?: undefined } | { config?: undefined; error: string } {
   try {
     return { config: loadConfig(root) };
   } catch (err) {

@@ -192,13 +192,9 @@ export function checkFallbackModel(
   modelsPath: string = piModelsPath(),
   demoted: FallbackDemotion | null = null,
 ): CheckOutcome {
-  let config: TumwaterConfig;
-  try {
-    config = loadConfig(root);
-  } catch (err) {
-    // checkInit already fails on a broken tumwater.json; this check only says it could not run.
-    return { level: "warn", detail: `cannot check — ${errorMessage(err)}` };
-  }
+  // checkInit already fails on a broken tumwater.json; this check only says it could not run.
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) return { level: "warn", detail: `cannot check — ${error}` };
   const pair = fallbackPair(config);
   if (!pair) return { level: "ok", detail: "none configured — role loops pause at the cap" };
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
@@ -417,13 +413,8 @@ export async function runDoctor(
   probe: ProcessProbe = systemProcessProbe,
 ): Promise<DoctorReport> {
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
-  // null — checkInit reports it verbatim — so doctor still runs every other check.
-  let config: TumwaterConfig | null = null;
-  try {
-    config = loadConfig(root);
-  } catch {
-    // checkInit reports the config problem.
-  }
+  // undefined — checkInit reports it verbatim — so doctor still runs every other check.
+  const { config } = loadConfigSafe(root);
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
@@ -432,7 +423,7 @@ export async function runDoctor(
   const checks: DoctorReport["checks"] = [
     { name: "node", ...checkNodeVersion() },
     { name: "git binary", ...checkGitBinary(pathEnv) },
-    { name: "repo", ...(await checkRepo(root, config ?? undefined)) },
+    { name: "repo", ...(await checkRepo(root, config)) },
     { name: "init", ...checkInit(root) },
     { name: "brief", ...checkBrief(root) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },

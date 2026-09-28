@@ -1,4 +1,4 @@
-import { knownRoleIds, loadConfig } from "./config.js";
+import { knownRoleIds, loadConfig, loadConfigSafe } from "./config.js";
 import { durationLabel, fail, failOverDurationCap, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
 import {
   type CancelOutcome,
@@ -333,12 +333,8 @@ export async function cmdStop(root: string): Promise<void> {
  * merge into. A malformed or invalid tumwater.json fails with validateConfig's actionable
  * message and prints no JSON — the same surfacing doctor's config check produces. */
 export async function cmdConfig(root: string): Promise<void> {
-  let config;
-  try {
-    config = loadConfig(root);
-  } catch (err) {
-    fail(errorMessage(err));
-  }
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
   say(JSON.stringify(config, null, 2));
 }
 
