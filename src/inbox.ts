@@ -95,9 +95,11 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
  * race as "the prompt is gone": null when the file has already vanished before the read
  * (ENOENT — a cancel or a prior dequeue won) or when the removal itself finds it gone (a
  * concurrent cancel won after our read). Any other read error propagates — it is not a race.
- * Shared by cancelPrompt (position-addressed) and dequeuePrompt (oldest-first pop) so the
- * race policy lives once. */
-function takeQueuedFile(file: string): string | null {
+ * Shared by cancelRolePrompt (position-addressed), dequeueRolePrompt (oldest-first pop), and
+ * loop.ts's resume reclaim — which calls this for one exact queue file instead of popping
+ * oldest-first, so the prompt recorded at requeue time is the one reclaimed, whatever else
+ * was enqueued or cancelled meanwhile — so the race policy lives once. */
+export function takeQueuedFile(file: string): string | null {
   let text: string;
   try {
     text = fs.readFileSync(file, "utf8");
@@ -109,13 +111,6 @@ function takeQueuedFile(file: string): string | null {
   return text;
 }
 
-/** Remove and return the prompt stored at one exact queue file, or null when it has vanished
- * (a cancel or an earlier dequeue won the race) — the same race policy as takeQueuedFile. The
- * resume reclaim uses this instead of the oldest-first pop so the prompt recorded at requeue
- * time is the one reclaimed, whatever else was enqueued or cancelled meanwhile. */
-export function takeQueuedPromptFile(file: string): string | null {
-  return takeQueuedFile(file);
-}
 
 /** Remove the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
  * and log one prompt_cancelled event under that loop (preview via promptPreview, exactly like

@@ -14,7 +14,7 @@ import { LoopPi } from "./loop-pi.js";
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { enqueueRolePrompt, takeQueuedPromptFile } from "./inbox.js";
+import { enqueueRolePrompt, takeQueuedFile } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, loadLoopState, restoreMidTickWake, saveLoopState, zeroCounters } from "./state.js";
 import { TickUsage } from "./tick-usage.js";
@@ -475,7 +475,7 @@ export class LoopRunner {
     const reclaimFile = s.resumePromptFile;
     s.resumePromptFile = undefined;
     if (resuming && reclaimFile) {
-      const reclaimed = takeQueuedPromptFile(reclaimFile);
+      const reclaimed = takeQueuedFile(reclaimFile);
       if (reclaimed !== null) this.pendingUserPrompt = reclaimed;
     }
 
