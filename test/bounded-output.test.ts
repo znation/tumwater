@@ -13,8 +13,6 @@ import {
   writeFullOutput,
   default as boundedOutput,
 } from "../src/pi-extension/bounded-output.js";
-import { piArgs } from "../src/pi.js";
-import { defaultConfig } from "../src/config.js";
 
 const cps = (text: string): number => Array.from(text).length;
 const MARKER_RE = /\.\.\.(\d+) chars/;
@@ -398,36 +396,7 @@ test("adapter leaves a non-array content payload untouched", () => {
   assert.equal(handler({ toolName: "read", toolCallId: "t6", input: { path: "f.ts" }, content: "plain text" }), undefined);
   assert.equal(handler({ toolName: "bash", toolCallId: "t7", content: { type: "text", text: "big" } }), undefined);
 });
-
-// ---- piArgs wiring ---------------------------------------------------------
-
-test("piArgs loads the bundled bounded-output extension before user piArgs", () => {
-  const config = defaultConfig();
-  config.piArgs = ["--no-skills"];
-  const args = piArgs({ config, sessionDir: "/tmp/s", sessionName: "n" });
-  const eIndex = args.indexOf("-e");
-  assert.ok(eIndex !== -1, "-e flag present");
-  const extPath = args[eIndex + 1]!;
-  assert.ok(path.isAbsolute(extPath), `extension path is absolute: ${extPath}`);
-  assert.ok(fs.existsSync(extPath), `extension exists in dist: ${extPath}`);
-  assert.ok(extPath.endsWith("pi-extension" + path.sep + "bounded-output.js"));
-  // The extension is offered before user flags, so a user flag still wins.
-  assert.ok(eIndex < args.indexOf("--no-skills"));
-});
-
-test("piArgs skips the extension flag for non-pi agent binaries", () => {
-  const args = piArgs({
-    config: defaultConfig(),
-    sessionDir: "/tmp/s",
-    sessionName: "n",
-    agentBin: "/usr/local/bin/other-agent",
-  });
-  assert.ok(!args.includes("-e"), "no -e for a non-pi agent");
-  const piShaped = piArgs({
-    config: defaultConfig(),
-    sessionDir: "/tmp/s",
-    sessionName: "n",
-    agentBin: "/opt/tools/pi",
-  });
-  assert.ok(piShaped.includes("-e"), "a configured pi path still gets the extension");
-});
+// The piArgs wiring tests (extension flag placement, non-pi agent skip) live in
+// test/pi.test.ts beside the rest of the piArgs suite — they were duplicated here
+// and in pi.test.ts since the feature landed (2026-09-23), and pi.test.ts's copies
+// carry the stronger exact-dist-path assertion.
