@@ -20,7 +20,7 @@ import { tmpdir } from "./repo-fixtures.js";
 // src/cli-args.ts is the only module with no direct unit tests: until now every branch was
 // reached (slowly) through a spawned CLI child in test/cli.test.ts. These tests drive the
 // parsers in-process, which also covers branches the e2e path never exercises — duplicate
-// flags ("first occurrence wins"), a trailing valued flag claiming only itself, whitespace-
+// flags (rejected with "may only be given once"), a trailing valued flag claiming only itself, whitespace-
 // only prompt text, and the bare `--` token.
 
 /** Sentinel thrown by the process.exit stub so fail() paths are catchable in-process. */
@@ -215,7 +215,7 @@ test("rejectUnknownArgs rejects unknown tokens with the command's valid flags li
   assert.match(logs.stderr, /-f\/--follow, -n <count>, --role <id>/);
 });
 
-test("rejectUnknownArgs: valued flags claim their value token; duplicates and trailing flags pass through", () => {
+test("rejectUnknownArgs: valued flags claim their value token; duplicates fail, trailing flags pass through", () => {
   // A valued flag claims the following token even when it looks like a known flag — so this
   // is NOT an unknown-argument error (the command's own parser reports "unknown role: -f").
   expectOk(() => rejectUnknownArgs("logs", ["--role", "-f"], LOGS_SPECS));
@@ -226,10 +226,19 @@ test("rejectUnknownArgs: valued flags claim their value token; duplicates and tr
   const then = expectFail(() => parseCountFlag("-n", undefined));
   assert.match(then.stderr, /-n needs a value/);
 
-  // Duplicates keep their existing behavior: the first occurrence wins, so a repeated known
-  // flag is not an unknown argument. (cmdLogs' indexOf takes the first -n.)
-  expectOk(() => rejectUnknownArgs("logs", ["-f", "-f"], LOGS_SPECS));
-  expectOk(() => rejectUnknownArgs("logs", ["-n", "3", "-n", "5"], LOGS_SPECS));
+  // A repeated flag fails instead of silently keeping the first occurrence — the same
+  // "may only be given once" rule parseInitArgs and parsePromptArgs apply, keyed by spec
+  // so -f and --follow count as one flag. (The command parsers read flags with indexOf,
+  // so the first occurrence used to win and the operator's later value never took effect.)
+  const dup = expectFail(() => rejectUnknownArgs("logs", ["-n", "3", "-n", "5"], LOGS_SPECS));
+  assert.match(dup.stderr, /-n may only be given once/);
+  const alias = expectFail(() => rejectUnknownArgs("logs", ["-f", "--follow"], LOGS_SPECS));
+  assert.match(alias.stderr, /-f may only be given once/);
+  const guiDup = expectFail(() => rejectUnknownArgs("gui", ["--port", "8000", "--port", "9000"], GUI_SPECS));
+  assert.match(guiDup.stderr, /--port may only be given once/);
+  // A flag-shaped VALUE is not a repeat: the first --role claims "-f" as its value token,
+  // so the --follow after it is this line's first --follow occurrence.
+  expectOk(() => rejectUnknownArgs("logs", ["--role", "-f", "--follow"], LOGS_SPECS));
 });
 
 // --- parseInitArgs ---

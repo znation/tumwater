@@ -169,18 +169,23 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
  * with default behavior, which is worse than an error: `reset-counters --rol x` zeroed every
  * loop instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim
  * one token; valued flags claim two (a trailing flag with no value claims only itself — the
- * command's own parser reports the missing value first). Duplicates keep their existing
- * behavior: the first occurrence wins. */
+ * command's own parser reports the missing value first). A repeated flag fails: the parsers
+ * below read flags with indexOf, so a second occurrence used to be silently dropped and the
+ * operator's later value (gui --port 8000 --port 9000, logs -n 5 -n 10) never took effect —
+ * the same "may only be given once" rule parseInitArgs and parsePromptArgs apply to their
+ * own flags. The check is keyed by spec, so alias spellings (-f and --follow) count as one
+ * flag, while a flag-shaped VALUE claimed by an earlier flag is not a repeat. */
 export function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {
   if (args.length === 0) return;
-  const claim = new Map<string, number>();
-  for (const spec of specs) for (const name of spec.names) claim.set(name, spec.value ? 2 : 1);
+  const claim = new Map<string, FlagSpec>();
+  for (const spec of specs) for (const name of spec.names) claim.set(name, spec);
+  const seen = new Set<FlagSpec>();
   const consumed = new Array<boolean>(args.length).fill(false);
   for (let i = 0; i < args.length; i++) {
     if (consumed[i]) continue;
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
-    const n = claim.get(arg);
-    if (n === undefined) {
+    const spec = claim.get(arg);
+    if (spec === undefined) {
       const valid = specs
         .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
         .join(", ");
@@ -190,6 +195,9 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
           : `unknown argument: ${arg} (valid flags for tumwater ${command}: ${valid})`,
       );
     }
+    if (seen.has(spec)) fail(`${spec.names[0]} may only be given once`);
+    seen.add(spec);
+    const n = spec.value ? 2 : 1;
     for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
   }
 }
