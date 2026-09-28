@@ -7,7 +7,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
-import { terminateChild } from "./process.js";
+import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { PiStreamParser } from "./pi-stream.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
@@ -167,7 +167,9 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     const child = spawn(resolved.bin, [...piArgs({ ...opts, agentBin: resolved.bin }), opts.prompt], {
       cwd: opts.cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      // pi sets its process title at startup, and so does every npm its tool calls run: on
+      // macOS each would register with LaunchServices and leak a launchservicesd port.
+      env: withoutLaunchServicesCheckIn(process.env),
       // Detached so pi leads its own process group: terminateChild signals the group, so a
       // run's tool-call grandchildren — killed or finished — die with it instead of leaking
       // to launchd.

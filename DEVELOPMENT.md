@@ -30,6 +30,17 @@ and starts files longest-first by the durations it records in `dist/test/.durati
 - Split a test file that grows past ~10 s run alone (`npm test <name>`); files run in parallel,
   tests inside a file do not.
 
+## Keeping Node children out of LaunchServices (macOS)
+
+On macOS, a Node process that sets `process.title` registers with LaunchServices, and
+launchservicesd keeps a Mach port for it after it exits. npm sets a title on every run and pi at
+startup. The kernel kills launchservicesd near 268K ports, and the GUI session wedges until a
+forced power-off (BUGS.md 2026-09-28). The harness starts pi and every build check with
+`withoutLaunchServicesCheckIn` (src/process.ts), which covers every process below them. Give any
+new spawn site that starts npm, pi or other title-setting Node programs in bulk the same
+`env: withoutLaunchServicesCheckIn(process.env)`. `tumwater doctor` reports the count on its
+`mach ports` line, and a running fleet warns from 100K.
+
 ## Layout
 
 - `src/loop.ts`: the tick lifecycle. `src/loop-pi.ts` holds its pi-run plumbing.

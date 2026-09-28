@@ -1,8 +1,17 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseLsofCwds, parsePsOutput, pidAlive, systemProcessProbe } from "../src/process.js";
+import {
+  NO_LAUNCH_SERVICES_CHECK_IN,
+  parseLsofCwds,
+  parsePsOutput,
+  parseTopPorts,
+  pidAlive,
+  runScriptGroup,
+  systemProcessProbe,
+  withoutLaunchServicesCheckIn,
+} from "../src/process.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and state.ts's orchestrator-alive status. Its
@@ -151,4 +160,109 @@ test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and ski
   } finally {
     if (original) Object.defineProperty(process, "platform", original);
   }
+});
+
+test("systemProcessProbe reads launchservicesd's port count on macOS, and none elsewhere", async () => {
+  const ports = await systemProcessProbe.launchServicesPorts();
+  if (process.platform === "darwin") assert.ok(Number.isInteger(ports) && (ports ?? 0) > 0, `a live count: ${ports}`);
+  else assert.equal(ports, null);
+});
+
+test("parseTopPorts reads the named process's #PORTS from a top sample, the largest of several", () => {
+  const sample = [
+    "Processes: 812 total, 3 running, 809 sleeping, 4521 threads",
+    "2026/09/28 01:09:39",
+    "Load Avg: 2.37, 2.29, 2.64",
+    "",
+    "PID    COMMAND          #PORTS",
+    "65942  node             31",
+    "574    launchservicesd  698",
+    "575    launchservicesd  104211+",
+    "1      launchd          4410",
+    "",
+  ].join("\n");
+  assert.equal(parseTopPorts(sample, "launchservicesd"), 104211, "a trend mark after the count is ignored");
+  assert.equal(parseTopPorts(sample, "launchd"), 4410, "the name must match exactly, not as a prefix");
+  assert.equal(parseTopPorts(sample, "WindowServer"), null);
+  assert.equal(parseTopPorts("", "launchservicesd"), null);
+});
+
+// The LaunchServices leak (BUGS.md 2026-09-28): on macOS every Node process that sets
+// process.title registers with LaunchServices, and launchservicesd keeps a Mach port per process
+// forever. The preload must take effect on every platform it is handed to (the checks below
+// force it on), change nothing a program can observe from inside, and ride NODE_OPTIONS intact.
+
+test("withoutLaunchServicesCheckIn appends the preload to NODE_OPTIONS once on macOS and leaves other platforms alone", () => {
+  assert.doesNotMatch(NO_LAUNCH_SERVICES_CHECK_IN, /[\s"]/, "NODE_OPTIONS splits on whitespace and strips double quotes");
+  const base = { PATH: "/bin", NODE_OPTIONS: "--max-old-space-size=4096" };
+  const mac = withoutLaunchServicesCheckIn(base, "darwin");
+  assert.equal(mac.NODE_OPTIONS, `--max-old-space-size=4096 ${NO_LAUNCH_SERVICES_CHECK_IN}`);
+  assert.equal(mac.PATH, "/bin");
+  assert.equal(base.NODE_OPTIONS, "--max-old-space-size=4096", "the caller's env is not mutated");
+  // Already carried — a build check started from inside a pi run: nothing doubles up.
+  assert.equal(withoutLaunchServicesCheckIn(mac, "darwin"), mac);
+  assert.equal(withoutLaunchServicesCheckIn({}, "darwin").NODE_OPTIONS, NO_LAUNCH_SERVICES_CHECK_IN);
+  assert.equal(withoutLaunchServicesCheckIn({ NODE_OPTIONS: "  " }, "darwin").NODE_OPTIONS, NO_LAUNCH_SERVICES_CHECK_IN);
+  // Anywhere else a title registers nothing, so the env passes through untouched.
+  assert.equal(withoutLaunchServicesCheckIn(base, "linux"), base);
+});
+
+/** A `node -e` child that sets its title, prints process.title as read back from inside, and then
+ * idles until killed; resolves with the child and that line once the assignment has run. */
+async function titledChild(env: NodeJS.ProcessEnv): Promise<{ child: ChildProcess; line: string }> {
+  const code = 'process.title="tumwater-title-probe";console.log(process.title);setInterval(()=>{},1000)';
+  const child = spawn(process.execPath, ["-e", code], { env, stdio: ["ignore", "pipe", "inherit"] });
+  const line = await new Promise<string>((resolve, reject) => {
+    let out = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      out += chunk;
+      if (out.includes("\n")) resolve(out.split("\n")[0] ?? "");
+    });
+    child.once("exit", (code) => reject(new Error(`the probe exited (${code}) before printing: ${out}`)));
+  });
+  return { child, line };
+}
+
+function psCommand(pid: number | undefined): string {
+  return execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" }).trim();
+}
+
+test("the preload keeps a title assignment out of the process table, while process.title still reads it back", async () => {
+  // The regression this pins: a `value` descriptor instead of an accessor goes through Node's
+  // native setter, so the title still reaches the OS (and LaunchServices) — ps would show it.
+  const { child, line } = await titledChild(withoutLaunchServicesCheckIn(process.env, "darwin"));
+  try {
+    assert.equal(line, "tumwater-title-probe", "the program sees the title it set");
+    const shown = psCommand(child.pid);
+    assert.match(shown, /process\.title=/, `ps shows the real argv, not the title: ${shown}`);
+  } finally {
+    child.kill("SIGKILL");
+  }
+});
+
+test("without the preload a title assignment reaches the process table, so the check above is not vacuous", async (t) => {
+  if (process.platform === "darwin") {
+    t.skip("here the bare assignment would check the suite in with LaunchServices and leak a launchservicesd port");
+    return;
+  }
+  const env = { ...process.env };
+  delete env.NODE_OPTIONS;
+  const { child } = await titledChild(env);
+  try {
+    assert.equal(psCommand(child.pid), "tumwater-title-probe");
+  } finally {
+    child.kill("SIGKILL");
+  }
+});
+
+test("runScriptGroup starts its tree with the LaunchServices preload on macOS, and the env unchanged elsewhere", async () => {
+  const r = await runScriptGroup("sh", ["-c", 'printf %s "$NODE_OPTIONS"'], {
+    cwd: process.cwd(),
+    timeoutMs: 30_000,
+    killGraceMs: 1_000,
+    maxBuffer: 1024 * 1024,
+  });
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, withoutLaunchServicesCheckIn(process.env).NODE_OPTIONS ?? "");
+  if (process.platform === "darwin") assert.ok(r.stdout.includes(NO_LAUNCH_SERVICES_CHECK_IN), r.stdout);
 });

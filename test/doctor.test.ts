@@ -51,9 +51,14 @@ function readyRepo(): string {
   return root;
 }
 
-/** An empty process table: runDoctor's report tests pin every other check without reading the
- * host's real table (the orphan check's own tests below drive it with fakeProbe). */
-const noProcesses: ProcessProbe = { list: async () => [], cwds: async () => new Map() };
+/** An empty process table and a healthy launchservicesd: runDoctor's report tests pin every
+ * other check without reading the host's real table or daemon (the orphan check's own tests
+ * below drive it with fakeProbe; the port check's live in launchservices.test.ts). */
+const noProcesses: ProcessProbe = {
+  list: async () => [],
+  cwds: async () => new Map(),
+  launchServicesPorts: async () => 1_000,
+};
 
 /** A fake process table for checkOrphans: each row defaults to a parentless (PPID 1) process
  * of this user, and `cwds` answers from the given map. `asked` records every cwd lookup, so a
@@ -70,6 +75,7 @@ function fakeProbe(
       asked.push(pids);
       return new Map(pids.flatMap((p): Array<[number, string]> => (cwds[p] !== undefined ? [[p, cwds[p]]] : [])));
     },
+    launchServicesPorts: async () => null,
   };
   return { probe, asked };
 }
@@ -457,7 +463,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "build", "orphans"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "build", "orphans", "mach ports"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -787,6 +793,7 @@ test("checkOrphans degrades instead of crashing doctor: no table warns, unreadab
       throw new Error("spawn ps ENOENT");
     },
     cwds: async () => new Map(),
+    launchServicesPorts: async () => null,
   };
   assert.deepEqual(await checkOrphans(root, noPs), {
     level: "warn",

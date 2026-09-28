@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi, type PiRunOptions } from "../src/pi.js";
-import { signalTree } from "../src/process.js";
+import { NO_LAUNCH_SERVICES_CHECK_IN, signalTree, withoutLaunchServicesCheckIn } from "../src/process.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
 import type { PiRunResult } from "../src/types.js";
@@ -463,6 +463,17 @@ test("runPi spawns the configured agentBin — a wrapper script behaves like the
   } finally {
     process.env.PATH = oldPath;
   }
+});
+
+test("runPi starts pi with the LaunchServices preload in NODE_OPTIONS on macOS, so neither pi nor its tool calls check in", async () => {
+  // BUGS.md 2026-09-28: pi sets its process title at startup and every npm a tool call runs sets
+  // one too; on macOS each would leak a launchservicesd port. The fake renders its NODE_OPTIONS
+  // into the reply text — the preload has no double quotes or backslashes, so the JSON holds.
+  const template = assistantLine("opts:RANVAL").replace("RANVAL", "%s");
+  const result = await runFakePi(`printf '${template}\\n' "$NODE_OPTIONS"`);
+  assert.equal(result.ok, true, `expected the fake pi to succeed: ${result.errorMessage}`);
+  assert.equal(result.finalText, `opts:${withoutLaunchServicesCheckIn(process.env).NODE_OPTIONS ?? ""}`);
+  if (process.platform === "darwin") assert.ok(result.finalText.includes(NO_LAUNCH_SERVICES_CHECK_IN), result.finalText);
 });
 
 test("runPi's spawn-error message names the resolved binary and its source", async () => {

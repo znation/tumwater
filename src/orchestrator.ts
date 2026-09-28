@@ -53,6 +53,7 @@ import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeploy.js";
+import type { LaunchServicesWatch } from "./launchservices.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
 import {
@@ -77,6 +78,9 @@ interface RunOptions {
   /** Self-redeploy policy (src/redeploy.ts) for a self-hosting fleet; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
+  /** launchservicesd's port watch (src/launchservices.ts), stepped every poll; null/absent runs
+   * without one — a `--once` round, and every in-process test, so none reads the real Mac. */
+  launchServicesWatch?: LaunchServicesWatch | null;
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
    * configured fallback model is actually cost-free — a test seam, like status.ts's. */
   modelsPath?: string;
@@ -144,6 +148,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // machinery stays daemon-only. Forcing null here keeps the whole poll loop's redeploy
   // branches inert no matter what a caller passes.
   const redeploy = opts.once ? null : (opts.redeploy ?? null);
+  const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
   let restart = false;
 
   let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
@@ -262,6 +267,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // src/retention.ts. The live config (last-known-good while the file is broken or
       // missing) drives the check, like the budget gate.
       retentionPruner.poll(root, liveConfig.sessionRetentionDays);
+
+      // launchservicesd's Mach-port budget (src/launchservices.ts owns it): a background sample
+      // at most every 15 minutes, and a warning days before the kernel kills the daemon and
+      // wedges the Mac's GUI session. Never awaited — a poll does not wait on `top`.
+      void launchServicesWatch?.poll();
 
       // Consume CLI request markers: a reset-counters request, a wake request, and per-role
       // abort requests.

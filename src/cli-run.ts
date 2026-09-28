@@ -8,6 +8,7 @@ import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js"
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
 import { logEvent, subscribeEvents } from "./events.js";
+import { LaunchServicesWatch } from "./launchservices.js";
 import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
@@ -99,6 +100,9 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     ? null
     : await createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
+  // A long-running fleet watches launchservicesd's port count (a no-op off macOS); a once round
+  // is over long before a leak could matter.
+  const launchServicesWatch = once ? null : new LaunchServicesWatch(root);
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
@@ -115,7 +119,16 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
   let exit;
   try {
-    exit = await runOrchestrator({ root, config, mainBranch, signal: controller.signal, redeploy, once, roleFilter: roleFilter ?? undefined });
+    exit = await runOrchestrator({
+      root,
+      config,
+      mainBranch,
+      signal: controller.signal,
+      redeploy,
+      launchServicesWatch,
+      once,
+      roleFilter: roleFilter ?? undefined,
+    });
   } finally {
     unsubscribe();
   }

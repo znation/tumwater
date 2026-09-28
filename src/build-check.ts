@@ -243,7 +243,7 @@ function checkScriptName(check: BuildCheck): string {
  * (`sh -c`, cwd = check.cwd) for the configured-command kind — capturing combined output
  * with a hard timeout enforced GROUP-WIDE — the process tree, not just the top process —
  * and classified per BuildCheckOutcome. Never throws: every outcome is classified. Running
- * a local script needs no network. No env manipulation is needed even though the worktree
+ * a local script needs no network. No PATH setup is needed even though the worktree
  * has no node_modules of its own (gitignored): npm's run-script walks UP from the project
  * path, adding EVERY level's `node_modules/.bin` to the script's PATH (@npmcli/run-script
  * setPATH), so the toolchain at check.rootDir — an ancestor of wt by detectBuildCheck

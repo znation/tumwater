@@ -10,7 +10,8 @@ import type { BuildCheckRun } from "./build-check.js";
 /** Process-liveness probe shared by every place that decides whether a recorded pid still
  * belongs to a live process: the merge lock's stale-holder check (lock.ts) and the
  * orchestrator-alive status (state.ts). Also the host process-table reader behind doctor's
- * orphaned-worktree-process check (ProcessProbe, below). */
+ * orphaned-worktree-process and launchservicesd checks (ProcessProbe, below), and the child
+ * environment that keeps the harness's Node processes out of LaunchServices on macOS. */
 
 const execFileRaw = promisify(execFile);
 
@@ -66,8 +67,9 @@ export interface ProcessRow {
   command: string;
 }
 
-/** Reads the process table and processes' working directories — an interface so doctor's
- * orphan check runs against a fake table in tests, never against real spawned orphans. */
+/** Reads the process table, processes' working directories and launchservicesd's port count —
+ * an interface so doctor's orphan and port checks (and the fleet's port watch) run against a
+ * fake host in tests, never against real spawned orphans or the real Mac's daemon. */
 export interface ProcessProbe {
   /** Every process on the host. Rejects when the table cannot be read at all. */
   list(): Promise<ProcessRow[]>;
@@ -75,9 +77,12 @@ export interface ProcessProbe {
    * that exited meanwhile, or that this user may not inspect, are simply absent; rejects only
    * when no lookup could run at all. */
   cwds(pids: number[]): Promise<Map<number, string>>;
+  /** How many Mach ports macOS's launchservicesd holds (see src/launchservices.ts). Null off
+   * macOS, and when the count cannot be read; never rejects. */
+  launchServicesPorts(): Promise<number | null>;
 }
 
-/** Both lookups normally finish in well under a second; a wedged one must not hang doctor. */
+/** Every lookup normally finishes in well under a second; a wedged one must not hang doctor. */
 const PROBE_TIMEOUT_MS = 10_000;
 
 /** A header-less `ps -o pid=,ppid=,uid=,etime=,time=,command=` line: five fields, then the
@@ -116,10 +121,25 @@ export function parseLsofCwds(stdout: string): Map<number, string> {
   return cwds;
 }
 
+/** The #PORTS of the process named `command` in macOS `top -l 1 -stats pid,command,ports`
+ * output — the largest, should several share the name — or null when no row has it. top
+ * appends a `+`/`-` trend mark to a count only between samples of one run; it is ignored. */
+export function parseTopPorts(stdout: string, command: string): number | null {
+  let ports: number | null = null;
+  for (const line of stdout.split("\n")) {
+    const [pid, name, count] = line.trim().split(/\s+/);
+    if (name !== command || !/^\d+$/.test(pid ?? "")) continue;
+    const n = Number.parseInt(count ?? "", 10);
+    if (Number.isInteger(n) && (ports === null || n > ports)) ports = n;
+  }
+  return ports;
+}
+
 /** The host's real probe: one `ps` for the table, and for cwds one `lsof` call over every
  * asked pid (macOS and other non-Linux Unixes) or a readlink of `/proc/<pid>/cwd` each
  * (Linux, where the kernel suffixes a removed directory with " (deleted)"). `-A` and `-ww`
- * mean the same to BSD and procps ps: every process, argv never truncated to a width. */
+ * mean the same to BSD and procps ps: every process, argv never truncated to a width. The port
+ * count is one `top` sample (~0.3 s of CPU, no root needed); nothing else reports it. */
 export const systemProcessProbe: ProcessProbe = {
   async list() {
     const { stdout } = await execFileAsync(
@@ -155,6 +175,17 @@ export const systemProcessProbe: ProcessProbe = {
       const e = err as { code?: unknown; stdout?: unknown };
       if (typeof e.code === "number" && typeof e.stdout === "string") return parseLsofCwds(e.stdout);
       throw err;
+    }
+  },
+  async launchServicesPorts() {
+    if (process.platform !== "darwin") return null;
+    try {
+      const { stdout } = await execFileAsync("top", ["-l", "1", "-stats", "pid,command,ports"], {
+        timeout: PROBE_TIMEOUT_MS,
+      });
+      return parseTopPorts(stdout, "launchservicesd");
+    } catch {
+      return null;
     }
   },
 };
@@ -198,6 +229,46 @@ export function signalTree(child: ChildProcess, signal: NodeJS.Signals): boolean
       return false; // Already gone.
     }
   }
+}
+
+// ── LaunchServices check-ins (macOS) ──────────────────────────────────────────────────────
+
+/** The NODE_OPTIONS entry that keeps a Node process from checking in with LaunchServices. On
+ * macOS, assigning `process.title` runs libuv's uv_set_process_title, which registers the
+ * process as an application (`_LSApplicationCheckIn`) so Activity Monitor and Force Quit can
+ * show the title. launchservicesd keeps a Mach port for every process that ever checked in and
+ * never releases it when the process exits (one port per process, measured on macOS 27.0 and
+ * seen in 26.6.2's logs), and the kernel kills the daemon near 268K ports — which wedged the GUI session of
+ * the Mac running the fleet on 2026-09-25 (BUGS.md 2026-09-28). npm sets its title on every run
+ * and pi at startup; one `npm test` leaked ~140 ports through the npm processes of its
+ * build-check tests alone.
+ *
+ * The preload swaps the property for a plain getter/setter before any program code runs, so an
+ * assignment only stores the string: nothing registers, and ps shows the real argv instead of
+ * the title. It has to be an ACCESSOR — `process.title` is a V8 native data property, and
+ * redefining it with a `value` descriptor goes through the native setter, checking the process
+ * in by itself. It is inline (a data: URL with no spaces or double quotes, which NODE_OPTIONS
+ * would split on or strip) rather than a file, so no rebuild or swap of dist/ can leave the
+ * flag naming a missing module — that would fail every Node process started under it. Node
+ * accepts `--import` in NODE_OPTIONS from 18.18; tumwater itself needs 20.3. */
+export const NO_LAUNCH_SERVICES_CHECK_IN =
+  "--import=data:text/javascript,(t=>Object.defineProperty(process,'title',{get:()=>t,set:v=>{t=String(v)},enumerable:true,configurable:true}))(process.title)";
+
+/** `base` for a child whose Node processes must not check in with LaunchServices (see
+ * NO_LAUNCH_SERVICES_CHECK_IN): on macOS, the preload appended to NODE_OPTIONS after whatever
+ * the caller set there — once, since a check started from inside a pi run inherits it already;
+ * anywhere else `base` itself, since a title registers nothing there. The harness applies it to
+ * the process trees that start Node in bulk: every pi run (so every tool call) and every build
+ * check. */
+export function withoutLaunchServicesCheckIn(
+  base: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  if (platform !== "darwin") return base;
+  const current = base.NODE_OPTIONS ?? "";
+  if (current.includes(NO_LAUNCH_SERVICES_CHECK_IN)) return base;
+  const nodeOptions = current.trim() === "" ? NO_LAUNCH_SERVICES_CHECK_IN : `${current} ${NO_LAUNCH_SERVICES_CHECK_IN}`;
+  return { ...base, NODE_OPTIONS: nodeOptions };
 }
 
 // ── Detached process-group runner ─────────────────────────────────────────────────────────
@@ -279,6 +350,9 @@ export function runScriptGroup(
       cwd: opts.cwd,
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
+      // The check's own npm, and every npm a suite's build-check tests start under it, would
+      // otherwise each leak a launchservicesd port on macOS.
+      env: withoutLaunchServicesCheckIn(process.env),
     });
     let settled = false;
     // Set when the deadline fires — its presence IS "timed out".

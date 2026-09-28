@@ -37,6 +37,7 @@ import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { type ProcessProbe, systemProcessProbe } from "./process.js";
 import { checkOrphans } from "./doctor-orphans.js";
+import { checkLaunchServicesPorts } from "./launchservices.js";
 import { errorMessage, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
 import type { FallbackDemotion } from "./budget.js";
@@ -438,8 +439,8 @@ async function currentHead(root: string): Promise<string | null> {
 /** Run every check in order and compose the report. Read-only against .tumwater/ by
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
  * and deletes it again; the orphan check reports processes, never signals them) — so doctor
- * works identically with or without a running harness. `probe` feeds the orphan check, so
- * tests can pin the report without reading the host's process table. */
+ * works identically with or without a running harness. `probe` feeds the orphan and port
+ * checks, so tests can pin the report without reading the host's process table. */
 export async function runDoctor(
   root: string,
   pathEnv: string = process.env.PATH ?? "",
@@ -474,6 +475,7 @@ export async function runDoctor(
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
     { name: "orphans", ...(await checkOrphans(root, probe)) },
+    { name: "mach ports", ...(await checkLaunchServicesPorts(probe)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
   return { header, checks, verdict: problems === 0 ? "ready to run" : `${problems} problem${problems > 1 ? "s" : ""}` };
