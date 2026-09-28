@@ -5,20 +5,30 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The gate's flake re-run verified a tree whose memory-bound assertion had just failed: `server retained ~1.1MB of a rejected body` in test/gui-server.test.ts measures whole-process heap, so a real transient retention and ordinary host noise are indistinguishable and both pass (found by telemetry loop 2026-09-28)
-
-**Symptom:** Digest warning cluster, 1× role feature 2026-09-28: `gate check failed then passed on retry — flaky: AssertionError [ERR_ASSERTION]: server retained ~1.1MB of a rejected body`. The gate's pre-check failed on the "oversized prompt bodies stop buffering at the cap (no unbounded growth)" test (test/gui-server.test.ts:230), the one immediate re-run passed, and the tree was verified with no fix run — the change under review proceeded while an intermittent memory-invariant violation was waved through as weather.
-
-**Why the response is wrong:** The re-run-as-flake path (src/review.ts, "A failure that does not reproduce on one immediate re-run is a flake") is designed for load weather, and its warning deliberately hands the headline to telemetry and bugfix — but this particular flake is an assertion about memory retention, where a pass one minute after a failure proves the check cannot discriminate. The assertion measures `process.memoryUsage().heapUsed` growth across `globalThis.gc?.()` calls and a single 300 ms settle window (test/gui-server.test.ts:212–230): GC phase and concurrent fleet load on the shared host can push whole-process heap past the 1 MB cap with no rejected body retained at all, and equally a real transient retention — a late chunk still referenced when the window closes — can clear by the re-run. The gate cannot tell a defective tree from a noisy host, and it verifies both.
-
-**Reproduce:** Run `npm test gui-server` repeatedly (or under concurrent fleet load) until "oversized prompt bodies stop buffering at the cap" fails; the next run passes. The flake capability shipped with the cap itself in ceb60197 ("Stop GUI body buffering at the 64KB cap to bound memory") and survived the split into test/gui-server.test.ts in a0c3d5e6 (2026-09-22) unchanged.
-
-**Expected:** The test should measure what it claims: account for the rejected request's own buffered bytes (e.g. assert the server's accumulated body length is capped, or that the request object's chunk references are dropped) instead of a process-wide heap delta — or take the minimum growth over several gc'd samples so host noise cannot flip the verdict. Until then, every post-failure pass this test produces is untrustworthy in both directions, and the gate's flake heuristic keeps laundering whatever it swallows into a verified verdict.
-
-**Suspected cause:** The heap-delta-plus-single-settle-window measurement was written as a one-shot regression pin for the 64KB cap and never made robust to the shared host the fleet actually runs it on; the gate then treats its nondeterminism as test weather rather than as a check that says nothing.
-
 
 ## Fixed
+
+### The gate's flake re-run verified a tree whose memory-bound assertion had just failed: `server retained ~1.1MB of a rejected body` in test/gui-server.test.ts measures whole-process heap, so a real transient retention and ordinary host noise are indistinguishable and both pass (found by telemetry loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** the gate's pre-check failed the "oversized prompt bodies stop buffering at the cap
+  (no unbounded growth)" test, the one immediate re-run passed, and the tree was verified with no
+  fix run — an intermittent memory-invariant violation was waved through as weather, untrustworthy
+  in both directions: host noise can fail a clean tree, and a re-run can pass a retaining one.
+- **Cause:** the assertion measured a whole-process `heapUsed` delta across one gc'd 300 ms
+  settle window — and `globalThis.gc` is a no-op without `--expose-gc`, so the delta counted
+  garbage and every unrelated allocation on the shared host too; it said nothing about the rejected
+  body's own bytes, which is the invariant it claimed to pin.
+- **Fix:** made the invariant directly observable — `readBody` in src/ui/gui-endpoints.ts now
+  tracks the wire bytes it holds (new exported `bufferedBodyBytes()`, zeroed at every settle;
+  `MAX_BODY_BYTES` exported too), and the test asserts during the full 4MB upload that the
+  counter never exceeds the cap plus one chunk and is 0 once the upload drains, instead of a
+  process-wide heap delta. Simulating the retention regression fails the rewritten test in ~50 ms,
+  so a retained buffer is distinguishable from host noise by construction.
+- **Fixed:** 2026-09-28, regression tests in `test/gui-server.test.ts`.
+- **Validation gap:** no-observability — the invariant (buffered bytes capped, then released at
+  rejection) had no observable: the only check measured whole-process heap, so real retention and
+  host noise were indistinguishable and a pass confirmed nothing; the fix had to add a
+  buffered-bytes counter before the gap was confirmable at all.
 
 ### A negated refusal with trailing sentence punctuation reads as a genuine refusal: `TUMWATER_REFUSED: None.` fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-28, fixed 2026-09-28)
 

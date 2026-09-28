@@ -158,7 +158,20 @@ export function handleFailures(req: http.IncomingMessage, res: http.ServerRespon
  * that keeps uploading after the cap cannot grow the buffer past ~one chunk over the limit.
  * Without the stop, every late chunk was still appended to the body long after the rejection:
  * an unbounded allocation on a network-facing endpoint. */
-const MAX_BODY_BYTES = 64 * 1024;
+export const MAX_BODY_BYTES = 64 * 1024;
+
+/** Wire bytes readBody is holding right now, across all in-flight requests. Deliberately
+ * observable: the oversized-body guarantee ("buffering stops at the cap, the buffer is
+ * released at rejection") is a statement about exactly these bytes, so the regression test
+ * reads this instead of a whole-process heap delta — heap counts garbage and unrelated
+ * allocations too, so host noise can flip such a measurement either way. The counter rises
+ * only while a request is still under the cap, is zeroed the moment a request settles, and
+ * can therefore never exceed the cap plus one chunk. */
+let inFlightBufferedBytes = 0;
+
+export function bufferedBodyBytes(): number {
+  return inFlightBufferedBytes;
+}
 
 function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -169,6 +182,11 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     const chunks: Buffer[] = [];
     let bytes = 0;
     let settled = false;
+    let bufferedNow = 0; // this request's contribution to inFlightBufferedBytes
+    const releaseBuffer = (): void => {
+      inFlightBufferedBytes -= bufferedNow;
+      bufferedNow = 0;
+    };
     const cleanup = () => {
       req.off("data", onData);
       req.off("end", onEnd);
@@ -180,24 +198,29 @@ function readBody(req: http.IncomingMessage): Promise<string> {
       if (bytes > MAX_BODY_BYTES) {
         settled = true;
         chunks.length = 0; // release what we kept before rejecting
+        releaseBuffer();
         cleanup();
         req.resume(); // keep draining so the upload can finish and the socket closes cleanly
         reject(new Error("body too large"));
         return;
       }
       chunks.push(chunk);
+      bufferedNow += chunk.length;
+      inFlightBufferedBytes += chunk.length;
     }
     function onEnd(): void {
       if (settled) return;
       settled = true;
       const body = Buffer.concat(chunks).toString("utf8");
       cleanup();
+      releaseBuffer();
       resolve(body);
     }
     function onError(err: Error): void {
       if (settled) return;
       settled = true;
       cleanup();
+      releaseBuffer();
       reject(err);
     }
     req.on("data", onData);

@@ -6,6 +6,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
+import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/gui-endpoints.js";
 import { startLocalGui } from "./util.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -193,10 +194,15 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
   try {
     // A raw chunked upload of ~4MB in 16KB frames. The 413 lands after the first ~64KB, but
     // this client keeps sending every frame to completion (a well-behaved HTTP client would
-    // stop). The server must reject at the cap and then DRAIN without buffering — before the
-    // fix each late chunk was still appended to the body string, growing it to the full upload
-    // size. Keep-alive (no Connection: close) keeps the server-side request alive so a buggy
-    // buffer would still be retained when we measure.
+    // stop). The server must reject at the cap, release what it kept, and DRAIN without
+    // buffering — before the fix each late chunk was still appended to the body string,
+    // growing it to the full upload size. Keep-alive (no Connection: close) keeps the
+    // server-side request alive so a buggy buffer would still be held while we measure.
+    //
+    // The measurement is readBody's own buffered-byte counter, not a whole-process heap
+    // delta: heap counts garbage and unrelated allocations too, so on a loaded host the old
+    // heap assertion flipped between pass and fail with no code change — and the gate then
+    // waved a failed-then-passed tree through as flake weather.
     const socket = net.connect(port, "127.0.0.1");
     let response = "";
     socket.on("data", (d: Buffer) => {
@@ -211,24 +217,39 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
     });
     const frame = Buffer.alloc(16 * 1024, 0x78); // 'x'
     const framed = Buffer.concat([Buffer.from(`${frame.length.toString(16)}\r\n`, "ascii"), frame, Buffer.from("\r\n", "ascii")]);
-    (globalThis as { gc?: () => void }).gc?.();
-    const before = process.memoryUsage().heapUsed;
+    // The counter rises by at most one chunk per data event and is zeroed the moment the cap
+    // rejects, so it can never exceed this bound between samples either — sampling at every
+    // write callback covers the whole upload deterministically. Track the max and assert
+    // AFTER the upload: throwing inside the write-callback chain would stall the upload and
+    // hang the test instead of failing it.
+    const maxBuffered = MAX_BODY_BYTES + frame.length;
+    let maxSeen = 0;
     await new Promise<void>((resolve, reject) => {
       let i = 0;
       socket.once("error", reject);
       const next = (): void => {
+        maxSeen = Math.max(maxSeen, bufferedBodyBytes());
         if (i >= 256) return resolve();
         i++;
         socket.write(framed, next);
       };
       next();
     });
+    assert.ok(
+      maxSeen <= maxBuffered,
+      `server kept up to ${maxSeen} bytes buffered of a rejected body (bound ${maxBuffered})`,
+    );
     // Give the server a moment to finish draining what is still in flight.
-    await new Promise((r) => setTimeout(r, 300));
-    (globalThis as { gc?: () => void }).gc?.();
-    const growth = process.memoryUsage().heapUsed - before;
-    assert.ok(growth < 1_048_576, `server retained ~${(growth / 1024 / 1024).toFixed(1)}MB of a rejected body`);
+    for (let waited = 0; waited < 2000 && !/^HTTP\/1\.1 413/.test(response); waited += 50) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
     assert.match(response, /^HTTP\/1\.1 413/, "the oversized upload still gets the 413");
+    // Once the upload is in and the server has drained it, readBody holds nothing: the cap
+    // rejection must have RELEASED what it kept, not merely stopped growing it.
+    for (let waited = 0; waited < 2000 && bufferedBodyBytes() > 0; waited += 50) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(bufferedBodyBytes(), 0, "a rejected body's buffer is released, not retained");
     socket.destroy();
   } finally {
     server.close();
