@@ -9,7 +9,8 @@ import {
   type BuildCheckScope,
 } from "./build-check-events.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
-import { EXEC_MAX_BUFFER, execFileAsync, KILL_GRACE_MS, runScriptGroup } from "./process.js";
+import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
+import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { truncate } from "./text.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
@@ -25,9 +26,10 @@ import { truncate } from "./text.js";
  * in-lock re-check (merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
  * authoring run is spent on top of it. The detached process-group runner runBuildCheck uses
- * (runScriptGroup) is generic subprocess machinery, not check logic, and lives in process.ts
- * beside signalTree — its run record (BuildCheckRun, below) stays here beside the outcome it
- * rides on. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
+ * (runScriptGroup) is this module's only runtime concern in process-group.ts — its run record
+ * (BuildCheckRun, below) stays here beside the outcome it rides on; process-group.ts imports
+ * the type back (no runtime cycle), and the signals it escalates with come from signalTree in
+ * process.ts. clipReason/MAX_REASON_CHARS live here too — they bound one line of machine text, shared
  * by clipBuildTail here and parseVerdict in review-verdict.ts — so that helper has a single home. The build_check
  * event's shape and the skip-warning wording are presentation, not execution, and live in
  * build-check-events.ts (type-only back-reference here — no runtime cycle). */
