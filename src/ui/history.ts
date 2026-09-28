@@ -35,7 +35,7 @@ const HISTORY_SCAN_MAX_EVENTS = 20_000;
  * numbers `usage` folds into one string (0 when the event carries none, the same
  * omit-when-zero convention): the three fields `tumwater history --json` and the GUI's
  * /api/history serve so a script gets the numbers, not the table's rendering of them. */
-export interface TickRow {
+interface TickRow {
   ts: number;
   time: string;
   loop: string;
