@@ -335,3 +335,20 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
 export function landingBadge(landQueue: { depth: number }): string {
   return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
 }
+
+/** The header's fleet timed-pause fragment: `· paused — auto-resumes in <duration>` while a
+ * timed pause stands, empty otherwise — so an operator can tell at a glance whether a paused
+ * fleet will come back on its own or needs a manual `resume` (the Timed pause plan left the
+ * display out on purpose). The snapshot's `pausedUntil` is the FLEET marker's deadline (ms
+ * epoch, plans/daily-cost-budget.md item 5), so the badge stands exactly when the fleet
+ * itself is timed-paused: a role-only timed pause leaves the header unchanged, and an absent
+ * or already-expired deadline renders nothing — the read side treats an expired marker as
+ * unpaused, so the badge never claims a countdown that is over. The duration goes through
+ * the shared humanSeconds so one helper owns duration phrasing. renderStatus renders it in
+ * the TUI/status header after the budget badge; the GUI recomputes the ticking number
+ * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
+ * humanSeconds copy, pinned against this one by test. */
+export function pauseBadge(pausedUntil: number | undefined, now: number): string {
+  if (pausedUntil === undefined || pausedUntil <= now) return "";
+  return ` · paused — auto-resumes in ${humanSeconds(Math.round((pausedUntil - now) / 1000))}`;
+}

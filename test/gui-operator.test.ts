@@ -462,14 +462,18 @@ test("the pause badge reflects the payload and its click POSTs the opposite stat
     posts.push(payload);
     return { ok: true };
   };
+  // The countdown goes through the page's shared humanSeconds helper (gui-client.ts), so the
+  // eval'd scope gets the real human-seconds-fmt region — the same bucketing the last-tick
+  // and next-run cells use — rather than a second copy of the phrasing in the test.
+  const humanSecondsBlock = GUI_PAGE.split("// human-seconds-fmt:start")[1]!.split("// human-seconds-fmt:end")[0]!;
   const { renderPauseBadge, togglePause } = new Function(
     "document",
     "postJson",
     "showFlash",
     "lastStatus",
-    block + "\nreturn { renderPauseBadge, togglePause };",
+    humanSecondsBlock + "\n" + block + "\nreturn { renderPauseBadge, togglePause };",
   )(document, postJson, () => {}, lastStatus) as {
-    renderPauseBadge: (d: { paused: boolean }) => void;
+    renderPauseBadge: (d: { paused: boolean; pausedUntil?: number }) => void;
     togglePause: () => Promise<void>;
   };
 
@@ -480,7 +484,12 @@ test("the pause badge reflects the payload and its click POSTs the opposite stat
 
   lastStatus.paused = true; // the next poll's payload
   renderPauseBadge({ paused: true });
-  assert.match(wrap.innerHTML, /paused — resume/, "paused: the resume affordance");
+  assert.match(wrap.innerHTML, / · paused — resume</, "paused: the resume affordance");
+  // The payload's pausedUntil rides only while the marker stands unexpired, so a standing
+  // timed pause names its countdown — recomputed from Date.now(), through humanSeconds —
+  // while the link keeps its resume behavior.
+  renderPauseBadge({ paused: true, pausedUntil: Date.now() + 12 * 60_000 });
+  assert.match(wrap.innerHTML, / · paused — auto-resumes in 12m — resume</, "timed pause: the countdown rides the resume link");
   await togglePause();
   assert.deepEqual(posts, [{ paused: true }, { paused: false }], "clicking resume asks the server to resume");
 });

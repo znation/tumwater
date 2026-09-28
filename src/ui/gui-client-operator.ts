@@ -87,8 +87,20 @@ export const GUI_CLIENT_OPERATOR_JS = `  // budget-edit:start
   // pausing before startup starts an already-paused fleet), and a failed POST flashes the
   // server's error so the operator knows the marker did not change.
   function renderPauseBadge(d) {
+    // A timed pause names its countdown so the operator can see the fleet comes back on its
+    // own (or lift it early — the link stays the resume control either way). The countdown is
+    // recomputed from Date.now() on every poll so the number ticks between the 1 s frames;
+    // it goes through the page's shared humanSeconds helper (gui-client.ts, the same
+    // bucketing the last-tick/next-run cells use) so no second copy of the phrasing exists.
+    // The payload's pausedUntil is present only while the fleet marker stands unexpired, so
+    // the countdown can never appear beside an indefinite pause — which keeps today's
+    // wording — and an expired deadline just drops back to plain "paused" until the next
+    // poll clears the marker for good.
+    const countdown = d.pausedUntil
+      ? " — auto-resumes in " + humanSeconds(Math.round((d.pausedUntil - Date.now()) / 1000))
+      : "";
     document.getElementById("pausewrap").innerHTML = d.paused
-      ? "<a href='#' id='pausebadge'> · paused — resume</a>"
+      ? "<a href='#' id='pausebadge'> · paused" + countdown + " — resume</a>"
       : "<a href='#' id='pausebadge'> · pause</a>";
   }
   async function togglePause() {

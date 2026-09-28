@@ -5,62 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25, refined 2026-09-28)
-
-**Depends on** the "Timed pause" entry — now under `## Done`, landed 2026-09-28: `pause --for`
-exists and `pausedUntil` is on the snapshot (src/ui/status.ts) and the payload
-(src/ui/status-payload.ts), so the dependency is satisfied and this lands against the current
-build.
-
-**Goal.** The Timed pause plan deliberately leaves the display out: every surface shows a timed
-pause as plain `paused`, indistinguishable from an indefinite one, so an operator cannot see at
-a glance whether the fleet will come back on its own or needs a manual `resume`. Show the
-countdown where the pause is already visible.
-
-**Approach.**
-
-1. **src/ui/status-model.ts** — `pauseBadge(pausedUntil: number | undefined, now: number): string`,
-   shaped like the neighboring `budgetBadge`/`landingBadge`: empty when `pausedUntil` is absent
-   or in the past (the parent plan's read side already treats an expired marker as unpaused, so
-   the badge never lies); otherwise ` · paused — auto-resumes in <humanSeconds(until - now)>`,
-   reusing the exported `humanSeconds` so one helper owns duration phrasing. The badge is
-   fleet-scoped: the snapshot's `pausedUntil` is the fleet marker's deadline (see the parent
-   plan's item 5), so the header badge stands exactly when the fleet itself is timed-paused —
-   a role-only timed pause leaves the header unchanged (its loop row already reads `paused`),
-   and no badge can ever claim the fleet will auto-resume while an indefinite fleet pause
-   stands beside a timed one.
-2. **src/ui/status-render.ts** — append `${pauseBadge(snap.pausedUntil, now)}` to the header
-   line (the `tumwater · …` push, after `budgetBadge`), reusing the render's existing one-clock
-   `now`. `tumwater status` and the TUI's status pane both go through `renderStatus`
-   (src/ui/tui.ts imports it), so they pick the badge up unchanged.
-3. **src/ui/gui-client-operator.ts** — `renderPauseBadge`, the header's fleet pause/resume
-   control (it renders into the `#pausewrap` element the `d.paused ? " · paused — resume" :
-   " · pause"` branch; gui-client.ts only calls the function, the client JS template lives in
-   gui-client-operator.ts — edit there): the badge keeps its existing `d.paused` gate and, when
-   the payload's `pausedUntil` stands on top of it, renders ` · paused — auto-resumes in 12m —
-   resume` as the link text (recomputed on each 1 s poll, like the rest of the badge — that is
-   why the countdown is client-side rather than a preformatted payload badge: the ticking
-   number must re-render between polls); a pause without a deadline keeps today's wording. The
-   link keeps its resume behavior either way — lifting early stays one click. No endpoint or
-   payload change: `pausedUntil` is already on the payload (src/ui/status-payload.ts, dropped
-   from the JSON when undefined, with a comment reserving it for exactly this consumer), and
-   `pausedUntil` standing implies `d.paused` (the snapshot omits the field unless the fleet
-   marker stands unexpired).
-
-**Files touched:** src/ui/status-model.ts, src/ui/status-render.ts, src/ui/gui-client-operator.ts;
-tests in test/status-model.test.ts, test/status-render.test.ts, test/gui-operator.test.ts (the
-pause badge and its POST toggle are already covered there — extend those cases; the badge is
-client-side rendering over the payload the parent plan already pins).
-
-**Acceptance criteria.** (a) `pauseBadge` reads empty for an absent or past `pausedUntil` and
-` · paused — auto-resumes in <duration>` for a future one, with the duration exactly
-`humanSeconds(until - now)` at the passed `now`. (b) The `tumwater status`/TUI header shows the
-badge only while a fleet timed pause stands — a `pause` without `--for` and a role-only timed
-pause (`pause --role <id> --for 2h`) both render today's header unchanged — and an expired
-deadline renders nothing, matching the unpaused read. (c) The GUI's pause badge shows the
-countdown while a fleet timed pause stands (its `pausedUntil`) and today's ` · paused — resume`
-otherwise, and remains a working resume link in both states. (d) Full suite passes.
-
 ### `logs --since <duration>` — show the events of a time window, not a guess at a count (planned 2026-09-28)
 
 **Goal.** An operator reconstructing "what happened in the hour around that 429 storm" has only
@@ -170,6 +114,66 @@ and no `-f` prints `no events matching "<pattern>"` and exits 0. (e) `tumwater h
 shows the new flag and the scan-window note. (f) Full suite passes.
 
 ## Done
+
+### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25, refined 2026-09-28, done 2026-09-28)
+
+**Depends on** the "Timed pause" entry — now under `## Done`, landed 2026-09-28: `pause --for`
+exists and `pausedUntil` is on the snapshot (src/ui/status.ts) and the payload
+(src/ui/status-payload.ts), so the dependency is satisfied and this lands against the current
+build.
+
+**Goal.** The Timed pause plan deliberately leaves the display out: every surface shows a timed
+pause as plain `paused`, indistinguishable from an indefinite one, so an operator cannot see at
+a glance whether the fleet will come back on its own or needs a manual `resume`. Show the
+countdown where the pause is already visible.
+
+**Approach.**
+
+1. **src/ui/status-model.ts** — `pauseBadge(pausedUntil: number | undefined, now: number): string`,
+   shaped like the neighboring `budgetBadge`/`landingBadge`: empty when `pausedUntil` is absent
+   or in the past (the parent plan's read side already treats an expired marker as unpaused, so
+   the badge never lies); otherwise ` · paused — auto-resumes in <humanSeconds(until - now)>`,
+   reusing the exported `humanSeconds` so one helper owns duration phrasing. The badge is
+   fleet-scoped: the snapshot's `pausedUntil` is the fleet marker's deadline (see the parent
+   plan's item 5), so the header badge stands exactly when the fleet itself is timed-paused —
+   a role-only timed pause leaves the header unchanged (its loop row already reads `paused`),
+   and no badge can ever claim the fleet will auto-resume while an indefinite fleet pause
+   stands beside a timed one.
+2. **src/ui/status-render.ts** — append `${pauseBadge(snap.pausedUntil, now)}` to the header
+   line (the `tumwater · …` push, after `budgetBadge`), reusing the render's existing one-clock
+   `now`. `tumwater status` and the TUI's status pane both go through `renderStatus`
+   (src/ui/tui.ts imports it), so they pick the badge up unchanged.
+3. **src/ui/gui-client-operator.ts** — `renderPauseBadge`, the header's fleet pause/resume
+   control (it renders into the `#pausewrap` element the `d.paused ? " · paused — resume" :
+   " · pause"` branch; gui-client.ts only calls the function, the client JS template lives in
+   gui-client-operator.ts — edit there): the badge keeps its existing `d.paused` gate and, when
+   the payload's `pausedUntil` stands on top of it, renders ` · paused — auto-resumes in 12m —
+   resume` as the link text (recomputed on each 1 s poll, like the rest of the badge — that is
+   why the countdown is client-side rather than a preformatted payload badge: the ticking
+   number must re-render between polls); a pause without a deadline keeps today's wording. The
+   link keeps its resume behavior either way — lifting early stays one click. No endpoint or
+   payload change: `pausedUntil` is already on the payload (src/ui/status-payload.ts, dropped
+   from the JSON when undefined, with a comment reserving it for exactly this consumer), and
+   `pausedUntil` standing implies `d.paused` (the snapshot omits the field unless the fleet
+   marker stands unexpired).
+
+**Files touched:** src/ui/status-model.ts, src/ui/status-render.ts, src/ui/gui-client-operator.ts;
+tests in test/status-model.test.ts, test/status-render.test.ts, test/gui-operator.test.ts (the
+pause badge and its POST toggle are already covered there — extend those cases; the badge is
+client-side rendering over the payload the parent plan already pins).
+
+**Acceptance criteria.** (a) `pauseBadge` reads empty for an absent or past `pausedUntil` and
+` · paused — auto-resumes in <duration>` for a future one, with the duration exactly
+`humanSeconds(until - now)` at the passed `now`. (b) The `tumwater status`/TUI header shows the
+badge only while a fleet timed pause stands — a `pause` without `--for` and a role-only timed
+pause (`pause --role <id> --for 2h`) both render today's header unchanged — and an expired
+deadline renders nothing, matching the unpaused read. (c) The GUI's pause badge shows the
+countdown while a fleet timed pause stands (its `pausedUntil`) and today's ` · paused — resume`
+otherwise, and remains a working resume link in both states. (d) Full suite passes.
+
+Landed 2026-09-28 (feature): re-land after review — the GUI countdown calls the page's shared
+humanSeconds helper (gui-client.ts, in scope at the splice point) instead of adding a client copy
+of the bucketing; the TS badge and its tests are unchanged in shape from the plan.
 
 ### `tumwater history [--role <id>] [-n N]` — one row per completed tick, newest first (planned 2026-09-28, done 2026-09-28)
 
@@ -289,7 +293,6 @@ wording; pausing with `--for` over an existing marker overwrites the deadline an
 the standard `fail()` shape, and `pause` alone (no `--for`) behaves exactly as today. (e)
 `status --json` carries `pausedUntil` only while a fleet timed pause stands (absent for an
 indefinite fleet pause, a role-only pause, and an expired `until`). (f) Full suite passes.
-
 
 **Done 2026-09-28 by feature.** Landed as specified, with two shape notes: the pause confirmations phrase the duration through a `durationLabel` helper beside `parseDurationFlag` (src/cli-args.ts) fed from the parsed value rather than `until - now`, so a few ms of clock skew between the two reads cannot turn "30m" into "1799999ms"; and src/help.ts's pause line now names `--for <dur>` so the flag is discoverable. Also touched beyond the list: test/cli-operators.test.ts — the pause gate's flag-list rejection message gained `--for <duration>`, `resume` is pinned to still reject it, and a CLI-level timed pause test covers the marker end to end.
 
@@ -643,8 +646,6 @@ the invalid-file failure, and the flags/gate/help contract. Full suite 1622/1622
 - With a live pid recorded (test: spawn a `sleep 30` child, write its pid into orchestrator.json via the real `orchestratorStatePath` layout), `cmdStop` SIGTERMs it — asserted by the child's exit signal being SIGTERM — and prints the confirmation.
 - `tumwater stop --anything` fails via `rejectUnknownArgs`; the help table lists `stop`.
 - The existing cli-operators and fleet-state suites pass unmodified; the full `npm run test` is green.
-
-
 
 ### Land-queue speed 2c — Split landing into a parallel vetting stage and a serial merge stage (planned 2026-09-23, split from 2/3 into its own entry 2026-09-26, done 2026-09-24)
 

@@ -111,6 +111,24 @@ test("the status header carries an inbox badge only while prompts are queued", (
   assert.match(header, /· inbox: 3 · budget: \$0\.00\/\$50 today$/);
 });
 
+// The timed-pause countdown rides the header last (PLANS.md "Pause countdown"): only a
+// FUTURE fleet-marker deadline makes it appear — a role-only pause, an indefinite pause, and
+// an expired marker all keep the header byte-identical, because the badge must never claim
+// a countdown that is over (the read side already treats an expired marker as unpaused).
+test("the status header shows the timed-pause countdown only while the fleet deadline stands", () => {
+  const quiet = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(quiet, /auto-resumes/);
+
+  const snap = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
+  snap.pausedUntil = Date.now() + 3 * 3_600_000;
+  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  // The budget badge precedes it, like the questions and inbox badges' ordering.
+  assert.match(header, /· budget: \$0\.00\/\$50 today · paused — auto-resumes in 3h$/);
+
+  snap.pausedUntil = Date.now() - 1_000; // expired: the read side already treats it as unpaused
+  assert.doesNotMatch(renderStatus(tmpdir(), snap).split("\n")[0] ?? "", /auto-resumes/);
+});
+
 test("renderStatus with maxWidth clips every line and truncates wide cells", () => {
   const snap = snapshotWith([
     {

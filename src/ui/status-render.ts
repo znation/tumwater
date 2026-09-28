@@ -15,6 +15,7 @@ import {
   landingBadge,
   landingForRole,
   loopPhase,
+  pauseBadge,
   progressKind,
   sortLoopsByState,
 } from "./status-model.js";
@@ -101,16 +102,23 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   const name = path.basename(path.resolve(root));
   const lines: string[] = [];
   const header = snap.running ? `running (pid ${snap.pid}${buildBadge(snap.build)})` : "not running — start with `tumwater run`";
+  // One clock read per render, shared by the timed-pause badge's countdown and every row's
+  // next-run cell — a per-site Date.now() could tick over between them and disagree with
+  // itself.
+  const now = Date.now();
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system in EVERY cap state
   // (disabled reads `· no cap` — and it is the affordance for editing the cap); on narrow
   // terminals the header's existing last-resort whole-line clipping applies. A fleet whose
   // models are all free reads n/a — spend can never accumulate against a cap that cannot be
-  // reached, so a dollar figure would mislead.
+  // reached, so a dollar figure would mislead. The timed-pause badge (plans/pause-countdown
+  // wording) rides last so a fleet under a timed pause reads how long until it comes back —
+  // empty unless the fleet marker's deadline stands in the future, so a role-only or
+  // indefinite pause keeps today's header byte-identical.
   lines.push(
     `tumwater · ${name} · ${header}${landingBadge(snap.landQueue)}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${budgetBadge(snap.budget)}`,
+    }${budgetBadge(snap.budget)}${pauseBadge(snap.pausedUntil, now)}`,
   );
   lines.push("");
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
@@ -120,9 +128,6 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
   // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result", "next run"];
-  // One clock read per render, shared by every row's next-run cell — a per-row Date.now()
-  // could tick over between rows and disagree with itself.
-  const now = Date.now();
   // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
   // plans/fallback-model.md: only `paused` — the cap reached with no usable free fallback —
   // stops the loops, so only it turns an idle role row into `budget paused`. Under `fallback`

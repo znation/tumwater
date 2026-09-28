@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
-import { budgetBadge, landingBadge, loopPhase, workingDetail } from "../src/ui/status-model.js";
+import { budgetBadge, landingBadge, loopPhase, pauseBadge, workingDetail } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/state.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
@@ -350,6 +350,19 @@ test("landingBadge shows the land queue depth and stays empty when idle", () => 
   assert.equal(landingBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
   assert.equal(landingBadge({ depth: 1 }), " · land queue: 1");
   assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
+});
+
+// The timed-pause countdown (PLANS.md "Pause countdown"): the badge stands only while a
+// FUTURE fleet deadline stands, so a role-only or indefinite pause and an expired marker
+// leave the header unchanged — the read side treats an expired marker as unpaused, and the
+// badge must never claim a countdown that is over.
+test("pauseBadge counts down a standing fleet timed pause and stays empty otherwise", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(pauseBadge(undefined, now), "", "no timed pause: no badge");
+  assert.equal(pauseBadge(now - 1, now), "", "an expired deadline renders nothing, matching the unpaused read");
+  assert.equal(pauseBadge(now + 45_000, now), " · paused — auto-resumes in 45s", "sub-minute reads seconds");
+  assert.equal(pauseBadge(now + 12 * 60_000, now), " · paused — auto-resumes in 12m", "sub-hour reads minutes");
+  assert.equal(pauseBadge(now + 3 * 3_600_000, now), " · paused — auto-resumes in 3h", "hours read hours");
 });
 
 // The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
