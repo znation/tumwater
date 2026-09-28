@@ -392,7 +392,11 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   // sortLoops. fmtLastTick is pure (no DOM), so nothing is injected.
   const m = GUI_PAGE.match(/\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/);
   assert.ok(m, "last-tick-fmt region found in the page");
-  const fmtLastTick = new Function(`${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
+  // fmtLastTick now formats its age through the page's shared humanSeconds helper, so the
+  // helper's marked region is spliced into the sandbox too (same extraction pattern).
+  const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
+  assert.ok(hs, "human-seconds-fmt region found in the page");
+  const fmtLastTick = new Function(`${hs[1]}\n${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
 
   // The cell renders client-side from the payload's existing lastTickEndedAt field.
   assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
@@ -1117,7 +1121,11 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   // and fmtLastTick tests. fmtNextRun is pure (no DOM), so nothing is injected.
   const m = GUI_PAGE.match(/\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/);
   assert.ok(m, "next-run-fmt region found in the page");
-  const fmtNextRun = new Function(`${m[1]}\nreturn fmtNextRun;`)() as
+  // fmtNextRun's countdown goes through the page's shared humanSeconds helper too, so its
+  // marked region is spliced in alongside (same extraction pattern as the fmtLastTick test).
+  const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
+  assert.ok(hs, "human-seconds-fmt region found in the page");
+  const fmtNextRun = new Function(`${hs[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
     (l: { phase: string; nextRunAt: number; backoffSeconds: number }, fleetRunning: boolean) => string;
 
   const now = Date.now();

@@ -63,12 +63,19 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // (the page cannot import TS, per the fmtTokens precedent). One home shared by the status
   // table's cost/today cells and the report tab's stat blocks and cost-chart tooltips.
   const fmtUsd = (n) => "$" + n.toFixed(2);
+  // human-seconds-fmt:start
+  // Whole-second s/m/h label shared by fmtLastTick's age and fmtNextRun's countdown: <60 →
+  // Ns, <3600 → rounded Nm, else rounded Nh. The client copy of status-model.ts's
+  // humanSeconds (the page cannot import TS, per the fmtTokens precedent) — one bucketing
+  // for both cells, so their thresholds and rounding cannot drift.
+  const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h");
+  // human-seconds-fmt:end
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
   // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded
   // HH:MM:SS, prefixed MM-DD once older than a day; "-" when never ticked. The age bucketing
-  // is a JS copy of humanSeconds there (whole seconds since ts; <60 → Ns, <3600 → rounded Nm,
-  // else rounded Nh) — the page cannot import TS, per the fmtTokens precedent. Computed from
+  // is the shared humanSeconds helper above — the client copy of status-model.ts's
+  // humanSeconds (the page cannot import TS, per the fmtTokens precedent). Computed from
   // Date.now() at render time, so labels stay fresh on the existing 1-second poll.
   const fmtLastTick = (ts) => {
     if (!ts) return "-";
@@ -77,7 +84,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     let s = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
     if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
     const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
-    const age = (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h") + " ago";
+    const age = humanSeconds(sec) + " ago";
     return s + " · " + age;
   };
   // last-tick-fmt:end
@@ -88,8 +95,9 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // a slot (an inactive phase prefix, but a reserved loop with no next run to speak of — the
   // TUI twin catches it via s.running, which the payload does not carry, so the prefix is
   // this copy's equivalent check), or a stopped fleet; "now" when due;
-  // otherwise the remaining time through the same s/m/h bucketing as fmtLastTick's age,
-  // prefixed "backoff " while backoffSeconds > 0 (the wake row-action clears exactly that).
+  // otherwise the remaining time through the shared humanSeconds bucketing (the
+  // human-seconds-fmt region above), prefixed "backoff " while backoffSeconds > 0 (the wake
+  // row-action clears exactly that).
   // Raw nextRunAt/backoffSeconds come from the payload; Date.now() at render time keeps the
   // countdown fresh on the existing 1-second poll. The page cannot import TS (the fmtTokens
   // precedent), so the two copies stay in lockstep by test.
@@ -98,8 +106,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     if (sec <= 0) return "now";
-    const label = sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h";
-    return (l.backoffSeconds > 0 ? "backoff " : "") + label;
+    return (l.backoffSeconds > 0 ? "backoff " : "") + humanSeconds(sec);
   };
   // next-run-fmt:end
   // loop-sort:start
