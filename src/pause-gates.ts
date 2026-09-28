@@ -1,24 +1,24 @@
 /** The operator pause (`tumwater pause`) and the per-role pause (`tumwater pause --role <id>`),
- *  as the orchestrator polls them each cycle. Extracted from orchestrator.ts's poll loop: the
- *  marker reads, the edge-triggered pause/resume events, and the cross-poll bookkeeping are one
- *  concern beside the other fleet gates (src/budget.ts's budget gate, src/rate-limit-hold.ts's
- *  429 hold) — the orchestrator owns only the wiring. */
+ * as the orchestrator polls them each cycle. Extracted from orchestrator.ts's poll loop: the
+ * marker reads, the edge-triggered pause/resume events, and the cross-poll bookkeeping are one
+ * concern beside the other fleet gates (src/budget.ts's budget gate, src/rate-limit-hold.ts's
+ * 429 hold) — the orchestrator owns only the wiring. */
 
 import { isFleetPaused, pausedRoles } from "./fleet-state.js";
 import { logEvent } from "./events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
- *  instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the
- *  first poll after it, and the marker keeps gating regardless. */
-export interface PauseGateState {
+ * instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the
+ * first poll after it, and the marker keeps gating regardless. */
+interface PauseGateState {
   prevUserPaused: boolean;
   prevPausedRoles: Set<string>;
 }
 
 /** A fresh poll's pause state: the operator pause (presence of the marker file — pausing
- *  before startup starts an already-paused fleet, removing the marker mid-run unblocks roles
- *  on their next eligibility without a restart) and the per-role pause's set. */
-export interface PauseGates {
+ * before startup starts an already-paused fleet, removing the marker mid-run unblocks roles
+ * on their next eligibility without a restart) and the per-role pause's set. */
+interface PauseGates {
   userPaused: boolean;
   pausedRoles: Set<string>;
 }
@@ -28,11 +28,11 @@ export function newPauseGateState(): PauseGateState {
 }
 
 /** Operator pause (`tumwater pause`): the budget gate's sibling with a different trigger —
- *  human intent instead of spend. The marker is persistent state (presence means paused until
- *  `resume` removes it), so one existsSync per cycle reads it fresh. The director is exempt for
- *  the same reason as under the budget gate — a human typing prompts outranks an operator gate
- *  (queued prompts simply wait in the inbox if full silence is wanted). In-flight ticks finish;
- *  only NEW ticks are blocked, because the gate sits before isEligible.
+ * human intent instead of spend. The marker is persistent state (presence means paused until
+ * `resume` removes it), so one existsSync per cycle reads it fresh. The director is exempt for
+ * the same reason as under the budget gate — a human typing prompts outranks an operator gate
+ * (queued prompts simply wait in the inbox if full silence is wanted). In-flight ticks finish;
+ * only NEW ticks are blocked, because the gate sits before isEligible.
  *
  * Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling — the
  * same persistent marker read fresh per cycle, but one named loop instead of the fleet. Unlike
