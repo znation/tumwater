@@ -9,6 +9,7 @@ import { expectedTimestamp } from "./oracles.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live
@@ -66,7 +67,7 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   const TS1 = 1787222691956;
   const TS2 = TS1 + 3_600_000;
   const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [
@@ -118,7 +119,7 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
   const TS1 = 1787222691956;
   const TS2 = TS1 + 3_600_000;
   const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [
@@ -162,7 +163,7 @@ test("logs --role still reads a transcript when tumwater.json is broken", async 
   await initProject(repo, "broken config transcript test");
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
   const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")].join("\n") + "\n");
 
   const r = await cli(repo, "logs", "--role", "clean");
@@ -202,7 +203,7 @@ test("logs --role -f prints each turn exactly once across the initial window and
 
   // One completed run on disk; a second is appended while following.
   const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")].join("\n") + "\n",

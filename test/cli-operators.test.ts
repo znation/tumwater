@@ -13,6 +13,7 @@ import { initProject } from "../src/init.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
+import { ensureParentDir } from "../src/files.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
@@ -69,7 +70,7 @@ test("abort refuses when no harness is running — missing or stale info file al
   // A stale info file (dead pid) must read the same way: a crash leaves the file behind,
   // and a marker dropped now would sit in .tumwater until the NEXT fleet start — where its
   // first poll would abort a tick that was never running when the user asked. Refuse.
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: 2_000_000_000, startedAt: Date.now(), roles: [] }), // beyond any pid space
@@ -87,7 +88,7 @@ test("abort drops a per-role marker for a live harness and reports it", async ()
   await initProject(repo, "cli abort live");
 
   // Record this test process as the running orchestrator (it is alive).
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
@@ -124,7 +125,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
   await initProject(repo, "cli abort director clause");
 
   // Record this test process as the running orchestrator (it is alive).
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["director"] }),
@@ -263,7 +264,7 @@ test("pause and resume name the live effect when a harness is running", async ()
   await initProject(repo, "cli pause live");
 
   // Record this test process as the running orchestrator (it is alive).
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),

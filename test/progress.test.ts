@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import {
   findSeedOffset,
   parseProgress,
@@ -12,6 +11,7 @@ import {
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
@@ -147,7 +147,7 @@ test("parseProgress skips empty text blocks when capturing the work item", () =>
 test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, [SESSION, assistantLine("working", { tokens: 500 }), toolStart("read", { path: "x.ts" })].join("\n") + "\n");
   const p = readLiveProgress(root, "clean");
   assert.ok(p);
@@ -160,7 +160,7 @@ test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
 test("readLiveProgress accumulates appended lines across polls", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n");
   assert.equal(readLiveProgress(root, "clean")?.turns, 0);
   fs.appendFileSync(file, assistantLine("one", { tokens: 100 }) + "\n");
@@ -180,7 +180,7 @@ test("readLiveProgress accumulates appended lines across polls", () => {
 test("a lander (gate) session mid-log does not reset the author run's counts", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const gateSession = JSON.stringify({
     type: "session",
     version: 3,
@@ -209,7 +209,7 @@ test("a lander (gate) session mid-log does not reset the author run's counts", (
 test("the next author session resets only the author accumulator, and gate lines fold into gate", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const gateSession = JSON.stringify({
     type: "session",
     version: 3,
@@ -244,7 +244,7 @@ test("the next author session resets only the author accumulator, and gate lines
 test("the harness's review label line routes following lines to the gate accumulator", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [
@@ -264,7 +264,7 @@ test("the harness's review label line routes following lines to the gate accumul
 test("a review label line starts the gate accumulator fresh — the previous gate run's counts cannot bleed into the next review", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const gateSession = JSON.stringify({ type: "session", version: 3, id: "g", cwd: landWorktreePath(root, "clean") });
   fs.writeFileSync(
     file,
@@ -297,7 +297,7 @@ test("a review label line starts the gate accumulator fresh — the previous gat
 test("readLiveProgress does not count a torn trailing line until it is complete", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n");
   fs.appendFileSync(file, '{"type":"message_end","mess'); // torn write, no newline
   assert.equal(readLiveProgress(root, "clean")?.turns, 0);
@@ -311,7 +311,7 @@ test("readLiveProgress does not count a torn trailing line until it is complete"
 test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n" + assistantLine("old tick", { tokens: 999 }) + "\n");
   assert.equal(readLiveProgress(root, "clean")?.turns, 1);
   // rotateIfLarge renames the log and a fresh file starts for the next run.
@@ -394,7 +394,7 @@ test("a content-bearing tool_execution_update moves the open call's activity clo
   // so the feed forwards content-bearing updates to the open call's clock.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined, "the bash call is open after start");
@@ -415,7 +415,7 @@ test("content-free tool_execution_updates leave the activity clock alone (no kee
   // stamp's epoch value through the later read, no wall-clock tolerance needed.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined);
@@ -448,7 +448,7 @@ test("a tool_execution_update for an unknown id leaves open calls untouched", as
   // credited to our call — entries are matched by id, never by position.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined);
@@ -540,7 +540,7 @@ test("toolCallStallMs resolves the configured threshold, defaulting to five minu
 test("findSeedOffset grows its window until it contains the log's last session", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const first = assistantLine("before", { tokens: 1 });
   const lines = [first, SESSION, assistantLine("after", { tokens: 2 })];
   fs.writeFileSync(file, lines.join("\n") + "\n");
@@ -556,7 +556,7 @@ test("findSeedOffset grows its window until it contains the log's last session",
 test("findSeedOffset returns 0 for a log with no session event", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, [assistantLine("a"), assistantLine("b")].join("\n") + "\n");
   assert.equal(findSeedOffset(file, fs.statSync(file).size, 40), 0);
 });
@@ -564,7 +564,7 @@ test("findSeedOffset returns 0 for a log with no session event", () => {
 test("readLiveProgress counts a run past the default tail window from its session, not from the window edge", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   // Two turns, a session (the current run's anchor), one turn, then >4 MB of streaming
   // deltas: the last 4 MB hold no session and no turns, so the old seed reported 0 turns
   // for a run whose real count is 1.
@@ -581,7 +581,7 @@ test("readLiveProgress counts a run past the default tail window from its sessio
 test("readLiveProgress counts every turn of a run larger than the tail window", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   // One session, then more than 4 MB of assistant turns: the old seed counted only the
   // turns inside the last 4 MB — a fraction of the run — on first observation.
   const lines = [SESSION];

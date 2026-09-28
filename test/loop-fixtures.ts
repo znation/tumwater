@@ -11,6 +11,7 @@ import { freshLoopState, saveLoopState } from "../src/state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { writeScript } from "./fake-commands.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a
@@ -70,7 +71,7 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "seed");
   const wt = path.join(root, ".tumwater", "worktrees", role);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
+  ensureParentDir(wt);
   sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
   return { root, wt };
 }

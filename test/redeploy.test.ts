@@ -24,6 +24,7 @@ import { NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
 import { runStartupProblem } from "../src/startup-gate.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The self-redeploy policy (src/redeploy.ts): drive the state machine with scripted effects so
 // every decision branch — stale detection, red main, compile failure, drain, swap — is pinned
@@ -917,7 +918,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
 
   // A role worktree without the marker judges main red and caches that verdict.
   const role = path.join(root, ".tumwater", "worktrees", "role");
-  fs.mkdirSync(path.dirname(role), { recursive: true });
+  ensureParentDir(role);
   sh(root, "git", "worktree", "add", "-q", "--detach", role, head);
   assert.equal((await checkMainBaseline(role, CFG)).baseline?.status, "red");
 

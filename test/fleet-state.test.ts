@@ -18,6 +18,7 @@ import {
 } from "../src/fleet-state.js";
 import { pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();
@@ -53,7 +54,7 @@ test("readOrchestratorInfo returns null for missing, torn, and non-object files"
   const file = path.join(root, ".tumwater", "state", "orchestrator.json");
   assert.equal(readOrchestratorInfo(root), null, "no file reads null");
 
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, '{"pid": 1, "start'); // torn write
   assert.equal(readOrchestratorInfo(root), null, "torn JSON reads null, never throws");
 
@@ -67,7 +68,7 @@ test("readOrchestratorInfo returns null for missing, torn, and non-object files"
 test("readOrchestratorInfo parses a valid info file", () => {
   const root = tmpdir();
   const file = path.join(root, ".tumwater", "state", "orchestrator.json");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const info: OrchestratorInfo = { pid: 42, startedAt: 1234, roles: ["feature", "qa"] };
   fs.writeFileSync(file, JSON.stringify(info));
   assert.deepEqual(readOrchestratorInfo(root), info);
@@ -87,7 +88,7 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
 
   // Callers that already loaded the info may persist it; the disk path then agrees with it.
   const file = path.join(root, ".tumwater", "state", "orchestrator.json");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify({ ...live, pid: dead.pid }));
   assert.equal(orchestratorAlive(root), false, "disk-loaded dead pid reads dead");
   fs.writeFileSync(file, JSON.stringify(live));

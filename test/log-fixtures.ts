@@ -10,13 +10,14 @@ import { readEvents } from "../src/events.js";
 import { piLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** Stamp a marker/request file the way tests simulate CLI/operator side effects: create the
  * parent directories, then write `value` as compact JSON directly to `file` with a plain
  * writeFileSync (not the CLI's tmp+rename pretty-printed writeJsonFile path). The only
  * contract that matters is that the orchestrator's readers can parse the bytes. */
 export function writeMarker(file: string, value: unknown): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify(value));
 }
 
@@ -24,7 +25,7 @@ export function writeMarker(file: string, value: unknown): void {
  * for malformed lines; objects are JSON-encoded like logEvent writes them). */
 export function writeEvents(root: string, lines: unknown[]): void {
   const file = path.join(root, ".tumwater", "log", "events.jsonl");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
@@ -40,7 +41,7 @@ export function writeEvents(root: string, lines: unknown[]): void {
 export function writeTurnLog(turns: number): { root: string; file: string } {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= turns; i++) {
     lines.push(agentStart());

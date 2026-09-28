@@ -11,13 +11,14 @@ import {
   stampBuild,
 } from "../src/build-info.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 // Build provenance (src/build-info.ts): the stamp `npm run build` writes into dist/, and the
 // comparison against main that tells a self-hosting fleet whether it is running the code main
 // describes. Pinned against real git repos — the whole point is agreement with git's view.
 
 function commitFile(repo: string, rel: string, content: string, message: string): string {
-  fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true });
+  ensureParentDir(path.join(repo, rel));
   fs.writeFileSync(path.join(repo, rel), content);
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-q", "-m", message);

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { initProject } from "../src/init.js";
 import { eventsLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The second half of the `logs` command's CLI tests — --since, --grep, and the docs pin —
 // split from cli-logs.test.ts so node --test runs them in parallel processes. That file
@@ -16,7 +16,7 @@ import { cli, spawnCli } from "./cli-harness.js";
 // by its tick number in the rendered line.
 function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
   const file = eventsLogPath(repo);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     agesMs.map((age, i) => JSON.stringify({ ts: now - age, loop: "clean", type: "tick_start", tick: i + 1 })).join("\n") + "\n",
@@ -159,7 +159,7 @@ const COMMIT_B = "def4567890abcdef";
 function seedMixedLog(repo: string): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   const events = [
     { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
     { ts: now - 5000, loop: "feature", type: "tick_start", tick: 1 },

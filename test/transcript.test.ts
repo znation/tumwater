@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeTurnLog } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {
   const lines = [
@@ -250,7 +250,7 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
   const root = tmpdir();
   assert.deepEqual(readTranscript(root, "feature"), []);
   const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, ""); // log exists but is empty (pi created it, wrote nothing yet)
   assert.deepEqual(readTranscript(root, "feature"), []);
   const lines: string[] = [];
@@ -277,7 +277,7 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
 test("readTranscript polls incrementally: appends only, live separator, no duplicates", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [agentStart(), userLine("prompt 1"), assistantBlocks([{ type: "text", text: "turn 1" }])].join("\n") + "\n",
@@ -339,7 +339,7 @@ test("readTranscript honors limit=1 while a pending separator is live: slice(-0)
 test("readTranscript reseeds when rotation replaces the file", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "old turn" }])].join("\n") + "\n",

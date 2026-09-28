@@ -14,6 +14,7 @@ import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
  * lander-bisect.test.ts,
@@ -135,7 +136,7 @@ async function batchPinnedFixture(
  * worktree resolves the toolchain from the installed root, as in the dogfood layout. */
 export function declareCheck(root: string, toolBody: string): void {
   const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
-  fs.mkdirSync(path.dirname(tool), { recursive: true });
+  ensureParentDir(tool);
   writeScript(tool, toolBody);
   fs.writeFileSync(
     path.join(root, "package.json"),

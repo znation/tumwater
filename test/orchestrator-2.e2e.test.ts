@@ -27,6 +27,7 @@ import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 const FAST_POLL_MS = 100;
 
@@ -79,7 +80,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     // runner resets (a documented superset — skipping it would let the next tick's save
     // resurrect the pre-reset values).
     const markerFile = resetRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    ensureParentDir(markerFile);
     fs.writeFileSync(markerFile, "{not json");
 
     await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");
@@ -281,7 +282,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
       saveLoopState(repo, clearBackoff(loadLoopState(repo, role), Date.now()));
     }
     const markerFile = wakeRequestPath(repo);
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    ensureParentDir(markerFile);
     fs.writeFileSync(markerFile, "{not json");
 
     await waitFor(() => !fs.existsSync(markerFile), "the corrupt marker to be consumed");

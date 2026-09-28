@@ -5,6 +5,7 @@ import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
 import { atLocalTs as tsDaysAgo } from "./oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 // `readWindowEvents` scans the append-only event log BACKWARDS in 8 KB chunks and early-stops
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by
@@ -25,7 +26,7 @@ function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
  * test can plant a malformed or blank line. */
 function writeLog(root: string, lines: string[]): void {
   const file = path.join(root, ".tumwater", "log", "events.jsonl");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, lines.map((l) => l + "\n").join(""));
 }
 

@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { spawn } from "node:child_process";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
@@ -11,6 +10,7 @@ import { signalOrchestrator } from "../src/ui/operator-commands.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The second half of the operator-command CLI tests (reset-counters, wake, stop, config),
 // split from cli-operators.test.ts so node --test runs them in parallel processes — each
@@ -130,7 +130,7 @@ test("reset-counters and wake name the live effect when a harness is running", a
   await initProject(repo, "cli reset wake live");
 
   // Record this test process as the running orchestrator (it is alive).
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
@@ -226,7 +226,7 @@ test("stop refuses when no harness is running — missing or stale info file ali
   assert.match(r.stderr, /no harness is running/);
 
   // A stale info file (dead pid) reads the same way: nothing alive to signal.
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: 2_000_000_000, startedAt: Date.now(), roles: [] }),
@@ -244,7 +244,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   // SIGTERM handler, so the default behaviour applies and it dies with signal SIGTERM —
   // letting the test assert the actual signal it dies from.
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: child.pid, startedAt: Date.now(), roles: [] }),

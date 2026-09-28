@@ -19,6 +19,7 @@ import { makeRepo, sh } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
  * does not exit on its own — a once round that hangs is the bug this feature exists to avoid.
@@ -203,7 +204,7 @@ test("once: a once round refuses to start while a daemon holds the orchestrator"
   await initProject(repo, "once daemon guard");
   // Record a live pid (this test process) as the running orchestrator — two writers to main
   // is exactly what the guard exists to prevent, once mode included.
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),

@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { cmdLogs } from "../src/ui/log-commands.js";
 import { logEvent } from "../src/events.js";
 import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
@@ -162,7 +162,7 @@ test("logs --role prints a one-shot transcript and reports a missing log", async
     assert.equal(cap.out(), "no transcript yet for clean\n");
 
     const file = piLogPath(repo, "clean");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    ensureParentDir(file);
     fs.appendFileSync(file, userLine("fix the leak") + "\n");
     fs.appendFileSync(file, assistantLine("on it") + "\n");
     cap.restore();
@@ -185,7 +185,7 @@ test("logs --role prints a one-shot transcript and reports a missing log", async
 test("logs --prompt with --role shows the exact prompt text in the transcript view", async () => {
   const repo = makeRepo();
   const file = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.appendFileSync(file, userLine("fix the leak") + "\n");
   const cap = captureStdout();
   try {

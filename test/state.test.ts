@@ -20,6 +20,7 @@ import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState } from "../src/types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** The persisted-state file's own tests (src/state.ts): fresh defaults, the tolerant load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
@@ -129,7 +130,7 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
 test("loadLoopState fills fields missing from an older or partial file", () => {
   const dir = tmpdir();
   const file = statePath(dir, "clean");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   // A state file written before generatedTokens/lastMainHead existed.
   fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 }));
   const s = loadLoopState(dir, "clean");
@@ -149,7 +150,7 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
 test("loadLoopState recovers from torn or non-object JSON", () => {
   const dir = tmpdir();
   const file = statePath(dir, "dry");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   for (const junk of ['{"ticks": 2', '"just a string"', "[1, 2]", "null"]) {
     fs.writeFileSync(file, junk);
     assertFreshFields(loadLoopState(dir, "dry"), "dry"); // must not throw or lose defaults
@@ -206,7 +207,7 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
   assert.equal(orchestratorAlive(dir), false);
 
   const file = orchestratorStatePath(dir);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   // Our own pid is alive; a huge one is not.
   for (const [pid, alive] of [
     [process.pid, true],

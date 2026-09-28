@@ -15,6 +15,7 @@ import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
+import { ensureParentDir } from "../src/files.js";
 
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are
@@ -270,7 +271,7 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
   // Seed the event log with explicit ts values (logEvent always stamps Date.now(), so direct
   // append is the controllable path): ticks across two roles on two days plus one merge.
   const eventsFile = path.join(repo, ".tumwater", "log", "events.jsonl");
-  fs.mkdirSync(path.dirname(eventsFile), { recursive: true });
+  ensureParentDir(eventsFile);
   fs.writeFileSync(
     eventsFile,
     [
@@ -937,7 +938,7 @@ test("Ctrl+A flashes the abort confirmation with a live harness and the liveness
     // A live harness (the test process itself stands in for the orchestrator's pid) lets the
     // same keypress drop the per-role abort marker and flash the confirmation.
     const infoPath = path.join(repo, ".tumwater", "state", "orchestrator.json");
-    fs.mkdirSync(path.dirname(infoPath), { recursive: true });
+    ensureParentDir(infoPath);
     fs.writeFileSync(
       infoPath,
       JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),

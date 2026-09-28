@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { cmdLogs } from "../src/ui/log-commands.js";
 import { logEvent } from "../src/events.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The follow half of `tumwater logs` (`-f`) never returns — it polls until Ctrl+C — so the
 // end-to-end tests run it in a spawned child. That leaves the in-process coverage of both
@@ -42,7 +42,7 @@ test("logs -f follows a missing event log without creating it, then picks up app
     // Blank lines and unparseable JSON are dropped by the follow callback, not printed or thrown.
     // The test plays the log writer here, so it makes the file appear the way logEvent does
     // (parent dir included); cmdLogs itself still created nothing.
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    ensureParentDir(file);
     fs.appendFileSync(file, "\n");
     fs.appendFileSync(file, "not json\n");
     t.mock.timers.tick(500);
@@ -72,7 +72,7 @@ test("logs --role -f follows a transcript created after startup and skips non-re
     assert.equal(cap.out(), "no transcript yet for clean\n");
 
     const file = piLogPath(repo, "clean");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    ensureParentDir(file);
     // A streaming delta renders no entry; printEntry's empty guard must print nothing.
     fs.appendFileSync(file, JSON.stringify({ type: "message_update" }) + "\n");
     t.mock.timers.tick(500);

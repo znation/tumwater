@@ -3,13 +3,13 @@
  * their StatusSnapshots and logs from. Split out of status-render.test.ts when the status-model
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import fs from "node:fs";
-import path from "node:path";
 import assert from "node:assert/strict";
 import type { StatusSnapshot } from "../src/ui/status.js";
 import { freshLoopState } from "../src/state.js";
 import { applyTickOutcome } from "../src/tick-outcome.js";
 import { defaultConfig } from "../src/config.js";
 import { landWorktreePath, piLogPath } from "../src/paths.js";
+import { ensureParentDir } from "../src/files.js";
 
 export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -22,7 +22,7 @@ export const GATE_SESSION = (root: string, role: string) =>
 /** Write a raw pi log for `role` under `root`; returns the file path. */
 export function writePiLog(root: string, role: string, lines: string[]): string {
   const file = piLogPath(root, role);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(file, lines.join("\n") + "\n");
   return file;
 }

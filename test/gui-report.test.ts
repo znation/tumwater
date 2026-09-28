@@ -11,6 +11,7 @@ import { initProject } from "../src/init.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -31,7 +32,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   // collectReport reads it — a line using `role` would bucket under "?") plus one merged;
   // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
   const evFile = eventsLogPath(repo);
-  fs.mkdirSync(path.dirname(evFile), { recursive: true });
+  ensureParentDir(evFile);
   fs.writeFileSync(
     evFile,
     [
@@ -100,7 +101,7 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   // Seed events with explicit ts values across roles, including one error so the digest has a
   // cluster to render — the endpoint's whole job is to hand back renderFailureMarkdown's text.
   const evFile = eventsLogPath(repo);
-  fs.mkdirSync(path.dirname(evFile), { recursive: true });
+  ensureParentDir(evFile);
   fs.writeFileSync(
     evFile,
     [

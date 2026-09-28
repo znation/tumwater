@@ -15,6 +15,7 @@ import { startLocalGui } from "./gui-fixtures.js";
 import { writeMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
+import { ensureParentDir } from "../src/files.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -189,7 +190,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
 
     // With a log: same rendered lines as the CLI transcript.
     const file = piLogPath(repo, "feature");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    ensureParentDir(file);
     fs.writeFileSync(
       file,
       [
@@ -244,7 +245,7 @@ test("gui /api/transcript accepts user-defined loop roles listed in tumwater.jso
   cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // A log for the custom loop — same shape as a built-in's.
-  fs.mkdirSync(path.dirname(piLogPath(repo, "nightly")), { recursive: true });
+  ensureParentDir(piLogPath(repo, "nightly"));
   fs.writeFileSync(
     piLogPath(repo, "nightly"),
     [
@@ -327,7 +328,7 @@ test("status payload combines persisted + live token metrics for running loops o
   saveLoopState(repo, s);
   // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })].join("\n") + "\n",
@@ -349,7 +350,7 @@ test("status payload carries the current work item for running loops only", asyn
   s.running = true;
   saveLoopState(repo, s);
   const file = piLogPath(repo, "feature");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  ensureParentDir(file);
   fs.writeFileSync(
     file,
     [SESSION, assistantLine('implement plan "Linear history on main"')].join("\n") + "\n",
@@ -357,7 +358,7 @@ test("status payload carries the current work item for running loops only", asyn
   // ...and an idle loop whose log tail is a finished tick (must not leak its item).
   saveLoopState(repo, freshLoopState("clean"));
   const file2 = piLogPath(repo, "clean");
-  fs.mkdirSync(path.dirname(file2), { recursive: true });
+  ensureParentDir(file2);
   fs.writeFileSync(file2, [SESSION, assistantLine("old finished work")].join("\n") + "\n");
 
   const payload = statusPayload(repo) as {

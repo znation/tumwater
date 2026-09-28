@@ -21,6 +21,7 @@ import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
+import { ensureParentDir } from "../src/files.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
@@ -243,7 +244,7 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   cfg.fallbackModel = { provider: "local", model: "local-free" };
   saveConfig(repo, cfg);
   const demoted = { pair: "local/local-free", failures: 3, probeAt: Date.now() + 300_000 };
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   writeJsonFile(orchestratorStatePath(repo), {
     pid: process.pid,
     startedAt: Date.now(),
@@ -350,7 +351,7 @@ test("a rendered fleet shows active rows equal to permit holders: parked waiters
   const repo = makeRepo();
   await initProject(repo, "test project");
   // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
+  ensureParentDir(orchestratorStatePath(repo));
   fs.writeFileSync(
     orchestratorStatePath(repo),
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
@@ -404,7 +405,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   // marker's identity (the dashboard's `landing <elapsed>` label reads startedAt from it).
   const startedAt = Date.now();
   const infoFile = path.join(repo, ".tumwater", "state", "orchestrator.json");
-  fs.mkdirSync(path.dirname(infoFile), { recursive: true });
+  ensureParentDir(infoFile);
   fs.writeFileSync(
     infoFile,
     JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),

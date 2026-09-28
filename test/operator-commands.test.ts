@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import {
   cmdAbort,
   cmdPause,
@@ -27,6 +26,7 @@ import {
   wakeRequestPath,
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** Producer-side tests for the operator-intent protocol (src/ui/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
@@ -385,7 +385,7 @@ test("cmdPause --for over a standing pause overwrites the deadline and reports i
 
 test("cmdPause after an expired deadline reports a fresh pause", async () => {
   const root = tmpdir();
-  fs.mkdirSync(path.dirname(pausedPath(root)), { recursive: true });
+  ensureParentDir(pausedPath(root));
   fs.writeFileSync(pausedPath(root), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
   const { stdout } = await expectOk(() => cmdPause(root));
   assert.match(stdout, /fleet paused/);

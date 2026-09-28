@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initProject } from "../src/init.js";
+import { ensureParentDir } from "../src/files.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
  * process exit. A full suite run (one worker process per test file) therefore abandons at most
@@ -84,7 +85,7 @@ export function writeConfig(dir: string, value: unknown): void {
  * no-check-declared baseline tests need. `dir` is the repo path, created if missing. */
 export function worktreeAt(root: string, role: string): string {
   const wt = path.join(root, ".tumwater", "worktrees", role);
-  fs.mkdirSync(path.dirname(wt), { recursive: true });
+  ensureParentDir(wt);
   sh(root, "git", "worktree", "add", "-b", `tumwater/${role}`, wt, "main");
   return wt;
 }
