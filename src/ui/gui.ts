@@ -1,6 +1,7 @@
 /** The dashboard HTTP server: routing, the shared-token gate, the static page, /api/status,
  * and the self-reload watch. Every /api endpoint's handler lives in gui-endpoints.ts — this
- * module owns the socket, not the data. */
+ * module owns the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives here too,
+ * so the server and everything that boots and announces it stay in one place. */
 import crypto from "node:crypto";
 import http from "node:http";
 import os from "node:os";
@@ -23,6 +24,7 @@ import {
   handleWake,
 } from "./gui-endpoints.js";
 import { sendJson } from "./http-body.js";
+import { fail, parsePortFlag, say } from "../cli-args.js";
 
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare
@@ -53,6 +55,55 @@ export function lanAddresses(
     }
   }
   return out;
+}
+
+/** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
+ * server, print the banner, and serve until Ctrl+C. Lives beside startGui so the CLI's
+ * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
+ * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
+ * cases; everything gui-specific after that gate is this function's job. */
+export async function cmdGui(root: string, args: string[]): Promise<void> {
+  const portFlag = args.indexOf("--port");
+  const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
+  const allInterfaces = args.includes("--all-interfaces");
+  // A valueless or empty --token is a CLI error, not an open server: an operator who
+  // asked for protection must never silently get none. A flag-looking value is the
+  // same mistake in disguise — a valued flag claims the next token even when it is a
+  // known flag, so `--token --all-interfaces` would serve with the literal secret
+  // "--all-interfaces" (--all-interfaces still takes effect, since it is read straight
+  // from args) while the real secret sits unreached after another flag.
+  const tokenFlag = args.indexOf("--token");
+  const token = tokenFlag >= 0 ? (args[tokenFlag + 1] ?? "") : "";
+  if (tokenFlag >= 0 && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
+  if (tokenFlag >= 0 && token.startsWith("--"))
+    fail(
+      `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
+    );
+  try {
+    await startGui(root, port, allInterfaces, token);
+  } catch (err) {
+    // A taken port is the common listen failure; Node's raw EADDRINUSE does not
+    // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
+    if ((err as NodeJS.ErrnoException).code === "EADDRINUSE")
+      fail(
+        `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
+      );
+    throw err;
+  }
+  const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
+  say(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
+  if (allInterfaces) {
+    // Name the concrete URLs teammates can open (token included, so they are openable
+    // as printed), and say what exposure means: without a token the dashboard has no
+    // auth and its prompt box steers the fleet; with one, the token is the gate.
+    for (const addr of lanAddresses()) say(`             also at http://${addr}:${port}${tokenSuffix}`);
+    say(
+      token
+        ? "listening on ALL interfaces — token-protected; prompting the director requires the token"
+        : "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
+    );
+  }
+  await new Promise(() => {}); // Serve until Ctrl+C.
 }
 
 /** The request target parsed once (path, query, and the token gate all read the same

@@ -3,7 +3,6 @@ import fs from "node:fs";
 import {
   fail,
   say,
-  parsePortFlag,
   DURATION_FLAG,
   rejectUnknownArgs,
   ROLE_FLAG,
@@ -22,7 +21,7 @@ import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
-import { lanAddresses, startGui } from "./ui/gui.js";
+import { cmdGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic } from "./help.js";
@@ -84,57 +83,15 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await runTui(root);
       break;
-    case "gui": {
+    case "gui":
       rejectUnknownArgs("gui", args, [
         { names: ["--port"], value: true, valueName: "<n>" },
         { names: ["--all-interfaces"] },
         { names: ["--token"], value: true, valueName: "<secret>" },
       ]);
       await requireReadyRepo(root);
-      const portFlag = args.indexOf("--port");
-      const port = portFlag >= 0 ? parsePortFlag(args[portFlag + 1]) : 7180;
-      const allInterfaces = args.includes("--all-interfaces");
-      // A valueless or empty --token is a CLI error, not an open server: an operator who
-      // asked for protection must never silently get none. A flag-looking value is the
-      // same mistake in disguise — a valued flag claims the next token even when it is a
-      // known flag, so `--token --all-interfaces` would serve with the literal secret
-      // "--all-interfaces" (--all-interfaces still takes effect, since it is read straight
-      // from args) while the real secret sits unreached after another flag.
-      const tokenFlag = args.indexOf("--token");
-      const token = tokenFlag >= 0 ? (args[tokenFlag + 1] ?? "") : "";
-      if (tokenFlag >= 0 && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
-      if (tokenFlag >= 0 && token.startsWith("--"))
-        fail(
-          `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
-        );
-      try {
-        await startGui(root, port, allInterfaces, token);
-      } catch (err) {
-        // A taken port is the common listen failure; Node's raw EADDRINUSE does not
-        // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
-        if ((err as NodeJS.ErrnoException).code === "EADDRINUSE")
-          fail(
-            `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
-          );
-        throw err;
-      }
-      const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
-      say(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
-      if (allInterfaces) {
-        // Name the concrete URLs teammates can open (token included, so they are openable
-        // as printed), and say what exposure means: without a token the dashboard has no
-        // auth and its prompt box steers the fleet; with one, the token is the gate.
-        for (const addr of lanAddresses())
-          say(`             also at http://${addr}:${port}${tokenSuffix}`);
-        say(
-          token
-            ? "listening on ALL interfaces — token-protected; prompting the director requires the token"
-            : "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
-        );
-      }
-      await new Promise(() => {}); // Serve until Ctrl+C.
+      await cmdGui(root, args);
       break;
-    }
     case "status":
       rejectUnknownArgs("status", args, [{ names: ["--json"] }]);
       await requireReadyRepo(root);
