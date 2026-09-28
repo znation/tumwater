@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater history --json` — the per-tick history as machine-readable data, completing the `--json` pattern (planned 2026-09-28)
+_None right now._
+
+## Done
+
+### `tumwater history --json` — the per-tick history as machine-readable data, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** `status --json` and `report --json` exist (both landed 2026-09-28) so scripts can watch
 fleet state and spend without a GUI server or screen-scraping — but the third observability
@@ -57,8 +61,6 @@ almost are the JSON payload; three fields are lost to rendering and must be kept
   `no ticks yet`.
 - Plain `tumwater history` output is byte-identical to before (table tests unchanged);
   `tumwater help history` names `--json`; `npm run test` passes.
-
-## Done
 
 ### `tumwater report --json` — the usage report as machine-readable data, beside `status --json` (planned 2026-09-28, done 2026-09-28)
 

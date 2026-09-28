@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initProject } from "../src/init.js";
-import { tickRows, HISTORY_MAX_TICKS } from "../src/ui/history.js";
+import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/ui/history.js";
 import { displayWidth } from "../src/text.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
@@ -250,13 +250,68 @@ test("history keeps the loop column aligned when a loop name holds a wide charac
   assert.equal(new Set(cols).size, 1, `loop columns align across rows: ${lines.join(" | ")}`);
 });
 
+test("history --json prints the tick rows as machine-readable data", async () => {
+  const repo = await seededHistoryRepo();
+
+  const r = await cli(repo, "history", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { rows: unknown[] };
+  // The payload is the collector's own output: identical to what the GUI's /api/history
+  // serves for the same log, and to what the table renders.
+  assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readTickRows(repo, HISTORY_MAX_TICKS, null) })));
+  const rows = payload.rows as Array<Record<string, unknown>>;
+  assert.equal(rows.length, 3); // The tick_start contributes no row.
+  // Newest first, with the raw fields the table's renderings are derived from.
+  assert.equal(rows[0]!["loop"], "bugfix");
+  assert.equal(rows[0]!["ts"], 1787222760000);
+  assert.equal(rows[0]!["tokens"], 0); // Omit-when-zero: absent usage fields read as 0.
+  assert.equal(rows[0]!["costUsd"], 0);
+  assert.equal(rows[1]!["loop"], "clean");
+  assert.equal(rows[1]!["result"], "no_change");
+  assert.equal(rows[1]!["usage"], "");
+  assert.equal(rows[2]!["loop"], "feature");
+  assert.equal(rows[2]!["ts"], 1787222695956);
+  assert.equal(rows[2]!["tokens"], 2400);
+  assert.equal(rows[2]!["costUsd"], 0.02);
+  assert.equal(rows[2]!["detail"], "added a widget");
+  assert.match(rows[2]!["usage"] as string, /2400 tok · \$0\.02/);
+});
+
+test("history --json prints an empty document on an empty log, never the prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history json empty");
+
+  const r = await cli(repo, "history", "--json");
+  assert.equal(r.code, 0);
+  // A JSON document always, so a parsing caller never sees `no ticks yet` on stdout.
+  assert.deepEqual(JSON.parse(r.stdout), { rows: [] });
+  assert.ok(!r.stdout.includes("no ticks yet"));
+});
+
+test("history --json combines with --role and -n and still rejects unknown flags", async () => {
+  const repo = await seededHistoryRepo();
+
+  const scoped = await cli(repo, "history", "--json", "--role", "feature", "-n", "5");
+  assert.equal(scoped.code, 0);
+  const payload = JSON.parse(scoped.stdout) as { rows: Array<{ loop: string; tick: number }> };
+  assert.deepEqual(payload.rows.map((r) => [r.loop, r.tick]), [["feature", 7]]);
+  // The same scope through the table path renders the same single row's detail.
+  const table = await cli(repo, "history", "--role", "feature", "-n", "5");
+  assert.match(table.stdout, /added a widget/);
+  assert.equal(table.stdout.trim().split("\n").length, 1);
+
+  const unknown = await cli(repo, "history", "--json", "--days");
+  assert.equal(unknown.code, 1);
+  assert.match(unknown.stderr, /unknown argument: --days/);
+});
+
 test("history rejects unknown flags, prints no ticks yet on an empty log, and has a help stanza", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history edges");
 
-  const unknown = await cli(repo, "history", "--json");
+  const unknown = await cli(repo, "history", "--days");
   assert.equal(unknown.code, 1);
-  assert.match(unknown.stderr, /unknown argument: --json/);
+  assert.match(unknown.stderr, /unknown argument: --days/);
 
   const empty = await cli(repo, "history");
   assert.equal(empty.code, 0);
@@ -264,5 +319,6 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\]/);
+  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--json\]/);
+  assert.match(help.stdout, /machine-readable history data/);
 });

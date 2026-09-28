@@ -30,13 +30,20 @@ const HISTORY_SCAN_MAX_EVENTS = 20_000;
 /** One completed tick, rendered. `durationMs` is null when the tick's `tick_start` is not in
  * the scanned window (log rotation, or a skipped tick that never started) — the row shows a
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
- * nor cost, matching the payload's omit-when-zero convention. */
-interface TickRow {
+ * nor cost, matching the payload's omit-when-zero convention. `ts` is the raw tick_end instant
+ * (epoch ms) the rendered `time` string is derived from, and `tokens`/`costUsd` the raw usage
+ * numbers `usage` folds into one string (0 when the event carries none, the same
+ * omit-when-zero convention): the three fields `tumwater history --json` and the GUI's
+ * /api/history serve so a script gets the numbers, not the table's rendering of them. */
+export interface TickRow {
+  ts: number;
   time: string;
   loop: string;
   tick: number;
   result: string;
   durationMs: number | null;
+  tokens: number;
+  costUsd: number;
   usage: string;
   detail: string;
 }
@@ -56,7 +63,10 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
     if (!e || e.type !== "tick_end") continue;
     const startTs = starts.get(`${e.loop}#${e.tick}`);
     rows.push({
+      ts: e.ts,
       time: formatTimestamp(e.ts),
+      tokens: Number(e.tokens ?? 0),
+      costUsd: Number(e.costUsd ?? 0),
       loop: String(e.loop),
       tick: Number(e.tick),
       result: String(e.result),
@@ -136,6 +146,14 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // a read-only view must not refuse a transiently broken tumwater.json.
   const role = parseRoleScope(root, args);
   const rows = readTickRows(root, limit, role);
+  // --json swaps the renderer for the collector's own payload, exactly as status --json and
+  // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
+  // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
+  // the report --json precedent: the flag's output must be parseable in every exit-0 case).
+  if (args.includes("--json")) {
+    say(JSON.stringify({ rows }, null, 2));
+    return;
+  }
   if (rows.length === 0) {
     say("no ticks yet");
     return;

@@ -153,6 +153,7 @@ async function main(): Promise<void> {
     case "history":
       rejectUnknownArgs("history", args, [
         { names: ["-n"], value: true, valueName: "<count>" },
+        { names: ["--json"] },
         ROLE_FLAG,
       ]);
       await requireReadyRepo(root);
