@@ -26,6 +26,7 @@ import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { vanishOnReadFile } from "./fs-faults.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
@@ -911,6 +912,23 @@ test("checkFixClaims reads ok with no BUGS.md and for a record naming no symbols
   // Pure-documentation fixes are legitimate: spans with whitespace are not symbols either.
   const r = checkFixClaims(fixClaimsRepo(["documented the behavior; `npm test` covers it."]));
   assert.equal(r.level, "ok", r.detail);
+});
+
+test("checkFixClaims warns instead of throwing when BUGS.md vanishes between the stat and the read", () => {
+  // existsSync passes, then the file is gone when readFileSync lands — the rotation/race
+  // tail the catch exists for (fs-faults.ts's vanishOnReadFile is that race, made
+  // deterministic). Without the catch the check throws and takes the whole doctor run down.
+  const root = fixClaimsRepo(["`liveSymbol` fixed it."]);
+  const bugsPath = path.join(root, "BUGS.md");
+  const undo = vanishOnReadFile(bugsPath);
+  try {
+    const r = checkFixClaims(root);
+    assert.equal(r.level, "warn");
+    assert.match(r.detail, /cannot read BUGS\.md — ENOENT/);
+    assert.ok(!fs.existsSync(bugsPath), "the fault consumed the file");
+  } finally {
+    undo();
+  }
 });
 
 test("runDoctor reports a phantom fix record as a warn that never fails the verdict", async () => {
