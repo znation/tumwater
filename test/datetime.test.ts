@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dayAt, dayLabel, dayWindow, formatDate, reportWindow } from "../src/datetime.js";
+import { dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, pad2, reportWindow } from "../src/datetime.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
@@ -49,6 +49,59 @@ test("reportWindow renders one shared header line, singular at one day", () => {
     reportWindow("2026-09-11", "2026-09-11", 1, "rotated at 16 MB"),
     "Window: 2026-09-11 → 2026-09-11 (1 day) · source: events.jsonl (rotated at 16 MB)",
   );
+});
+
+test("pad2 zero-pads to two digits and leaves longer numbers alone", () => {
+  assert.equal(pad2(0), "00");
+  assert.equal(pad2(5), "05");
+  assert.equal(pad2(9), "09");
+  assert.equal(pad2(10), "10");
+  assert.equal(pad2(59), "59");
+  assert.equal(pad2(100), "100", "already two digits wide is not truncated");
+});
+
+test("formatTime renders the zero-padded local wall clock from date parts alone", () => {
+  assert.equal(formatTime(new Date(2026, 2, 1, 14, 30, 5)), "14:30:05");
+  assert.equal(formatTime(new Date(2026, 2, 1, 3, 7, 9)), "03:07:09", "single-digit parts pad");
+  // Direct pin against local date parts (never a UTC-derived readback) so a drift to UTC
+  // rendering fails here rather than matching the constructor's own timezone.
+  const d = new Date(2026, 2, 1, 23, 59, 59);
+  assert.equal(
+    formatTime(d),
+    `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`,
+  );
+});
+
+test("dayKey is the LOCAL calendar day of the instant, never the UTC date", () => {
+  // Pin the local-day rule at both edges of the local day, where a UTC-based implementation
+  // disagrees in every non-UTC timezone: late evening reads as the next UTC date west of
+  // UTC, just after midnight reads as the previous UTC date east of it. Whichever side the
+  // runner's timezone is on, at least one of the two pins a UTC drift.
+  const oracle = (ms: number) => formatDate(new Date(ms));
+  const evening = new Date(2026, 2, 1, 23, 30, 0).getTime();
+  const justAfterMidnight = new Date(2026, 2, 1, 0, 30, 0).getTime();
+  assert.equal(dayKey(evening), "2026-03-01");
+  assert.equal(dayKey(evening), oracle(evening), "evening edge stays the local date");
+  assert.equal(dayKey(justAfterMidnight), "2026-03-01");
+  assert.equal(dayKey(justAfterMidnight), oracle(justAfterMidnight), "post-midnight edge stays the local date");
+});
+
+test("formatTimestamp renders date and clock from ONE Date, so its halves cannot disagree", () => {
+  // The documented invariant: the date half and the time half come from the same instant.
+  // Both edges here sit either side of local midnight, where a timestamp assembled from two
+  // Date reads (or a UTC-based date half) would show a date/time pair no clock ever displayed.
+  const justBeforeMidnight = new Date(2026, 2, 1, 23, 59, 59).getTime();
+  const justAfterMidnight = new Date(2026, 2, 2, 0, 0, 1).getTime();
+  assert.equal(formatTimestamp(justBeforeMidnight), "2026-03-01 23:59:59");
+  assert.equal(formatTimestamp(justAfterMidnight), "2026-03-02 00:00:01");
+  // One-instant consistency: the halves always join into the parts' own date and time.
+  const at = (h: number, m: number, s: number) => new Date(2026, 4, 15, h, m, s).getTime();
+  for (const ms of [at(0, 0, 0), at(9, 5, 3), at(23, 59, 59)]) {
+    const d = new Date(ms);
+    const dateHalf = formatDate(d);
+    const timeHalf = formatTime(d);
+    assert.equal(formatTimestamp(ms), `${dateHalf} ${timeHalf}`);
+  }
 });
 
 /** Local `YYYY-MM-DD` of a Date — test-local so the assertion is independent of datetime's
