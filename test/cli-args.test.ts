@@ -440,7 +440,15 @@ test("parsePromptArgs --cancel: position validation and exclusivity", () => {
 
   // A missing value is its own error (distinct from a bad number).
   const bare = expectFail(() => parsePromptArgs(["--cancel"]));
-  assert.match(bare.stderr, /--cancel needs a position number/);
+  assert.match(bare.stderr, /--cancel needs a position number \(e\.g\. `--cancel 2`\)/);
+
+  // A flag-looking value is named in the got-value message like every sibling count flag,
+  // not swallowed into the bare text — the reachable case is a scoped cancel whose position
+  // was forgotten (`--cancel --role feature`); bare `--cancel --role` trips --role's own
+  // missing-value check first.
+  const flagValue = expectFail(() => parsePromptArgs(["--cancel", "--role", "feature"]));
+  assert.equal(flagValue.code, 1);
+  assert.match(flagValue.stderr, /--cancel needs a positive integer \(got "--role"\)/);
 
   // Non-numeric or non-positive values are rejected by the parser before any file is touched.
   for (const bad of ["0", "abc", "1.5"]) {

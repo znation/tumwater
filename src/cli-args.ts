@@ -311,7 +311,11 @@ export function parsePromptArgs(args: string[]): PromptArgs {
 
   if (cancelFlag >= 0) {
     const raw = args[cancelFlag + 1];
-    if (!raw || raw.startsWith("--")) fail(`--cancel needs a position number`);
+    // A missing value is its own error, carrying an example like --role's message; a
+    // flag-looking value falls through to parsePositiveInt and is named in the got-value
+    // message like every other count/duration flag — a bare-text error that swallowed the
+    // offending token left `tumwater prompt --cancel --role feature` guessing what arrived.
+    if (raw === undefined) fail(`--cancel needs a position number (e.g. \`--cancel 2\`)`);
     const n = parsePositiveInt(raw);
     if (n === null) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
     // The position is the only token --cancel may carry; anything else alongside it would be
