@@ -21,10 +21,13 @@ export const INITIAL_PROMPT_MAX_CHARS = 4096;
 export const STATUS_START = "<!-- tumwater:status:start -->";
 export const STATUS_END = "<!-- tumwater:status:end -->";
 
-/** The README.md a fresh repo starts with: the initial prompt and an empty status,
- * each in its managed section. */
-export function readmeTemplate(projectName: string, initialPrompt: string): string {
-  return `# ${projectName}
+/** The two managed sections a fresh brief carries — the initial prompt in its prompt
+ * markers, an empty status in its status markers — under the given H1. Both homes render
+ * the identical body (README.md for a fresh repo, TUMWATER.md for an adopted one), so the
+ * body lives here once and the two templates cannot drift on section wording or marker
+ * placement; the H1 is the only difference between them. */
+function managedSections(heading: string, initialPrompt: string): string {
+  return `# ${heading}
 
 ## Initial prompt
 
@@ -40,24 +43,17 @@ ${STATUS_END}
 `;
 }
 
+/** The README.md a fresh repo starts with: the initial prompt and an empty status,
+ * each in its managed section. */
+export function readmeTemplate(projectName: string, initialPrompt: string): string {
+  return managedSections(projectName, initialPrompt);
+}
+
 /** The TUMWATER.md an adopted repo gets (plans/portability.md §7a/7, written by 7b's adopt
  * path): the same two managed sections as the README template, under a brief heading —
  * so the resolution logic in this module is the only difference between the two homes. */
 export function briefTemplate(projectName: string, initialPrompt: string): string {
-  return `# ${projectName} — project brief
-
-## Initial prompt
-
-${PROMPT_START}
-${initialPrompt.trim()}
-${PROMPT_END}
-
-## Status
-
-${STATUS_START}
-_No status yet. The readme loop keeps this section up to date._
-${STATUS_END}
-`;
+  return managedSections(`${projectName} — project brief`, initialPrompt);
 }
 
 /** True when `text` carries a well-formed managed prompt block: opening marker, then a
