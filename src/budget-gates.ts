@@ -24,7 +24,7 @@ import type { LoopState } from "./types.js";
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
  * the fallback breaker, and the fallback view last derived from a live config. In memory
  * only — a restart re-trusts the fallback and re-trips it within failureLimit ticks. */
-export interface BudgetGateState {
+interface BudgetGateState {
   /** The previous poll's gate, for one-shot transition events. Three-valued since
    * plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
    * between two of them is worth exactly one event. */
@@ -49,7 +49,7 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
 /** One poll's gate decision, handed back for the orchestrator's wiring: which gate holds this
  * poll, whether the fallback is engaged, and the config role loops run under (the fallback
  * view, or the live config unchanged). */
-export interface BudgetGatePoll {
+interface BudgetGatePoll {
   gate: BudgetGate;
   onFallback: boolean;
   roleConfig: TumwaterConfig;

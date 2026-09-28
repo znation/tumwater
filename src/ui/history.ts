@@ -30,7 +30,7 @@ const HISTORY_SCAN_MAX_EVENTS = 20_000;
  * the scanned window (log rotation, or a skipped tick that never started) — the row shows a
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
  * nor cost, matching the payload's omit-when-zero convention. */
-export interface TickRow {
+interface TickRow {
   time: string;
   loop: string;
   tick: number;
