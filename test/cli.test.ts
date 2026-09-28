@@ -139,6 +139,18 @@ test("init --branch names the branch a new repo is seeded on", async () => {
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
 });
 
+test("init --branch with a name git rejects fails before creating anything", async () => {
+  const dir = tmpdir();
+  const r = await cli(dir, "init", "Build a thing.", "--branch", "bad name");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /not a valid git branch name/);
+  assert.match(r.stderr, /--branch "bad name"/);
+  // Nothing half-initialized: the failure precedes both git init and the harness files,
+  // so a re-run with a good name starts clean instead of tripping the existing-repo refusal.
+  assert.ok(!fs.existsSync(path.join(dir, ".git")));
+  assert.ok(!fs.existsSync(path.join(dir, "README.md")));
+});
+
 test("init --branch in an existing repo fails instead of silently ignoring the flag", async () => {
   const repo = makeRepo();
   const r = await cli(repo, "init", "Build a thing.", "--branch", "trunk");

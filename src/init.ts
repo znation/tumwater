@@ -207,6 +207,21 @@ export async function initProject(
     // expects `git init`-compatible behavior, and the fleet then targets that branch.
     const preferred =
       branch ?? ((await gitTry(root, "config", "--get", "init.defaultBranch")) || "main");
+    // A branch name git rejects (a space, a leading dash, "@{…}" history syntax, …) would
+    // abort `git init -b` AFTER it has created .git — a half-initialized directory whose
+    // re-run then trips the existing-repo refusal above, because .git exists. Validate the
+    // name with git's own rule first and refuse before anything is written; the check runs
+    // in --dry-run too, so the rehearsal rehearses the failure instead of reporting a
+    // branch the real run would die on.
+    if ((await gitTry(root, "check-ref-format", "--branch", preferred)) === null) {
+      const namedBy =
+        branch !== undefined
+          ? `--branch ${JSON.stringify(preferred)}`
+          : `git config init.defaultBranch ${JSON.stringify(preferred)}`;
+      throw new Error(
+        `${namedBy} is not a valid git branch name — pick a name like main, trunk, or release/2.0 (git's rules: no spaces, colons, or ~^?*[ characters; no leading/trailing slash or double slash; not a dotted or .lock-suffixed component)`,
+      );
+    }
     if (!dryRun) await git(root, "init", "-b", preferred);
     repoInitialized = true;
     createdBranch = preferred;
