@@ -5,6 +5,7 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { CONFIG_BASENAME, configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { isJsonObject } from "./json-object.js";
+import { writeJsonAtomic } from "./json-files.js";
 import { validateConfig } from "./config-validation.js";
 
 /** Read and parse one of the config JSON files, phrasing a parse failure as
@@ -259,10 +260,13 @@ export function loadConfigCached(root: string): { config?: TumwaterConfig; error
   }
 }
 
-/** Persist a config after validating it, so an invalid tumwater.json can never be written. */
+/** Persist a config after validating it, so an invalid tumwater.json can never be written.
+ * Written atomically (writeJsonAtomic, trailing newline — the POSIX-newline convention here
+ * and at config-write.ts, the file's other writers): the config-live poller re-reads the file
+ * every ~2 s, so a plain overwrite could hand it a torn read mid-write. */
 export function saveConfig(root: string, config: TumwaterConfig): void {
   validateConfig(config);
-  fs.writeFileSync(configPath(root), JSON.stringify(config, null, 2) + "\n");
+  writeJsonAtomic(configPath(root), config, true);
 }
 
 /** Canonical serialization for config comparison: object keys are sorted recursively so a mere
