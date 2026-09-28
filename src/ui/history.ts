@@ -19,6 +19,13 @@ export const HISTORY_MAX_TICKS = 200;
  * enough that the row stays one terminal line next to its other columns. */
 const DETAIL_MAX = 72;
 
+/** The hard ceiling on one ask's scan window (events, not rows): the growth loop below
+ * re-reads with a larger window only while the filtered rows fall short and the log may hold
+ * more, and this bounds the worst case — readTailText reads bytes proportional to the limit's
+ * line count, so the cap is also the largest byte read one command can cost. Comfortably
+ * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. */
+const HISTORY_SCAN_MAX_EVENTS = 20_000;
+
 /** One completed tick, rendered. `durationMs` is null when the tick's `tick_start` is not in
  * the scanned window (log rotation, or a skipped tick that never started) — the row shows a
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
@@ -95,8 +102,21 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   const role = parseRoleScope(root, args);
   // A window twice the ask plus slack: tick_start lines and unrelated events interleave with
   // the tick_end rows scanned for, and a skipped tick's end rides a start that may sit outside
-  // any smaller window.
-  const rows = tickRows(readEvents(root, limit * 2 + 50), limit, role);
+  // any smaller window. A --role filter dilutes that window (every other loop's events occupy
+  // it too), so while the filtered rows fall short AND the scan filled its window — meaning the
+  // log may hold older events — grow the window and re-read: a quiet role in a busy fleet must
+  // still get its last `limit` ticks whenever the retained log holds them — never a bare
+  // "no ticks yet" for a role whose ticks sit just past the first window. `events.length < window` means
+  // the scan reached the log's start, so the shortfall is real and the loop stops; the cap
+  // above bounds the growth so one ask cannot scan without end.
+  let window = limit * 2 + 50;
+  let events = readEvents(root, window);
+  let rows = tickRows(events, limit, role);
+  while (rows.length < limit && events.length >= window && window < HISTORY_SCAN_MAX_EVENTS) {
+    window = Math.min(window * 4, HISTORY_SCAN_MAX_EVENTS);
+    events = readEvents(root, window);
+    rows = tickRows(events, limit, role);
+  }
   if (rows.length === 0) {
     say("no ticks yet");
     return;

@@ -135,6 +135,30 @@ test("history --role restricts rows to that loop, including user-defined ids", a
   assert.match(bogus.stderr, /unknown role: bogus/);
 });
 
+test("history --role grows its scan window until it reaches the role's ticks", async () => {
+  // The dilution case: the first window (limit*2+50 events) fills with a busy sibling loop's
+  // tick_ends, so the filtered rows fall short while older qa ticks sit just past it. The
+  // command must re-read with a larger window instead of printing fewer rows (or, at the
+  // extreme, "no ticks yet" for a role that had ticks).
+  const repo = makeRepo();
+  await initProject(repo, "history dilution");
+  const events: HarnessEvent[] = [];
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "tick_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "tick_end", tick: i + 1, result: "no_change" });
+  writeEvents(repo, events);
+  const r = await cli(repo, "history", "--role", "qa", "-n", "5");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 5);
+  assert.match(lines[0]!, /qa\s+#5\s+changed\s+—\s+qa fix 4/); // no tick_start seeded: — duration
+
+  // The honest-shortfall case: the log holds fewer qa ticks than asked and the scan reached
+  // its start — the growth loop must stop and print what exists, not spin.
+  const short = await cli(repo, "history", "--role", "qa", "-n", "10");
+  assert.equal(short.code, 0);
+  assert.equal(short.stdout.trim().split("\n").length, 5);
+});
+
 test("history -n accepts 1..200 and fails zero, negative, non-numeric, and over-large values", async () => {
   const repo = await seededHistoryRepo();
   for (const bad of ["abc", "0", "-5", "2.5"]) {
