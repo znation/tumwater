@@ -163,6 +163,60 @@ events in <duration>` and exits 0; a window whose start predates the retained lo
 rotation note after the rows. (d) `tumwater help logs` shows the new flag. (e) Full suite
 passes.
 
+Sibling: `logs --grep` (next entry) composes with this one — when both flags stand, the window
+is read first and the pattern filters its events; this entry's mutual-exclusion list is
+unchanged.
+
+### `logs --grep <text>` — show only the events whose type or rendered line matches (planned 2026-09-28)
+
+**Goal.** The event feed has count- and window-shaped tools (`-n`, the planned `--since`) but
+no filter: an operator chasing `land_failed` or `review_rejected` lines must pipe `logs` through
+an external grep, and `logs -f | grep` is a worse deal than it looks — the pipe dies when the
+terminal's grep exits, while `logs -f` itself keeps following across log rotation (followFile
+re-stats). Filtering belongs in the command that already owns reading and rendering the log.
+
+**Approach.** One flag on the existing event view of `cmdLogs`, reusing its plumbing.
+
+1. **src/ui/log-commands.ts** — in `cmdLogs`, before the `--role` branch: when `--grep` is
+   present, `fail()` if it is combined with `--role` (`--prompt` already requires `--role`, so
+   it is excluded too — the transcript view is pi's transcript, not the event log, and filtering
+   rendered transcript entries is a different shape; the failure names both flags). Read the
+   value directly (`args[args.indexOf("--grep") + 1]`), failing with
+   `fail("logs --grep needs a pattern")` when it is missing — the same explicit-read shape the
+   `--role` branch uses, since `--grep` is free-text, not an enum like `--role`. The match
+   rule, fixed here so the implementer has no fork: case-insensitive substring against the
+   haystack `` `${e.type} ${formatEvent(e)}` `` — the rendered line is what the operator would
+   otherwise read (WYSIWYG), and prefixing the raw event type lets stable type ids
+   (`review_rejected`, `land_failed`) be filtered even where the rendering paraphrases them.
+   One local helper `matchesGrep(e, pattern)`. Apply it to both outputs: the initial
+   `readEvents(root, limit)` window (note in the help text: `-n` is the number of events
+   *scanned*, not printed — matches are the filtered subset, so `-n 200 --grep land_failed`
+   may print 3 rows) and, when following, each event fed to the `followFile` callback, so the
+   filter holds across rotation. When not following and the seeded window yields no matches,
+   print `no events matching "<pattern>"` and exit 0 — the same gentle-empty convention the
+   `--since` plan fixes for windows. Read-only, stdout only.
+2. **src/cli.ts** — the `logs` case's `rejectUnknownArgs` list gains
+   `{ names: ["--grep"], value: true, valueName: "<text>" }`.
+3. **src/help.ts** — the logs stanza's event-view usage line becomes
+   `tumwater logs [-f] [-n N] [--grep <text>]`, and its description notes that `-n` bounds the
+   scan and matching is case-insensitive over the event type and rendered line (the
+   per-command view derives from the full text, so one edit covers `tumwater help logs`).
+4. **README.md** — extend the "Check state" table row with `tumwater logs --grep <text>`.
+
+**Files touched:** src/ui/log-commands.ts, src/cli.ts, src/help.ts, README.md; tests in
+test/cli-logs.test.ts (seed an events.jsonl directly, the pattern the file already uses: a
+mixed log of several event types, then exercise the CLI — type-id matching, rendered-text
+matching, case-insensitivity, the `--role` exclusion failure, the missing-value failure, the
+empty-result line, and that `-n` bounds the scan window).
+
+**Acceptance criteria.** (a) `tumwater logs --grep review_rejected` prints only events whose
+type or rendered line contains the pattern, case-insensitively, oldest-first in the normal
+line format, over the last `-n` (default 50) events scanned. (b) `--grep` with `--role` fails
+naming both flags; a missing value fails with `logs --grep needs a pattern`. (c) With `-f`, the
+filter applies to the seeded window and to every subsequently followed event. (d) No matches
+and no `-f` prints `no events matching "<pattern>"` and exits 0. (e) `tumwater help logs`
+shows the new flag and the scan-window note. (f) Full suite passes.
+
 ## Done
 ### Timed pause — `tumwater pause [--role <id>] --for <duration>` auto-resumes (planned 2026-09-25, refined 2026-09-28, done 2026-09-28)
 
