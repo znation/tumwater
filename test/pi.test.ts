@@ -5,7 +5,14 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { TRANSIENT_PI_CRASH, piArgs, resolveAgentBin, runPi, type PiRunOptions } from "../src/pi.js";
+import {
+  TRANSIENT_PI_CRASH,
+  commandBuffersOutput,
+  piArgs,
+  resolveAgentBin,
+  runPi,
+  type PiRunOptions,
+} from "../src/pi.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, signalTree, withoutLaunchServicesCheckIn } from "../src/process.js";
 import { PiStreamParser } from "../src/pi-stream.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
@@ -666,6 +673,60 @@ test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
     const result = await run;
     assert.equal(result.quietKilled, true);
     assert.deepEqual(warnings, []);
+  } finally {
+    restore();
+  }
+});
+
+// The stall warning must not fire on a command whose stdout is piped or redirected — the
+// tick prompt prescribes exactly that shape for verification runs, so their silence is the
+// prescribed shape, not a hang (BUGS.md 2026-09-28).
+
+test("commandBuffersOutput classifies the redirect shapes", () => {
+  const buffered = [
+    "npm run test 2>&1 | tail -8", // the prescribed shape: the pipe holds every byte
+    "npm run test > /tmp/out.log",
+    "npm run test >> /tmp/out.log",
+    "npm run test &> /tmp/out.log", // both streams leave
+    "npm run test 2> /tmp/err.log > /dev/null", // the > redirects stdout
+    'grep "a > b" file', // errs toward buffered on unparseable shapes
+  ];
+  const live = [
+    "sleep 999", // bare: pi's pipe stays open, silence means something
+    "npm run test 2>&1", // stderr dups onto stdout's destination — pi's pipe
+    "npm run test 2> /tmp/err.log", // only stderr leaves; stdout still streams
+    "npm run test 2>> /tmp/err.log", // stderr appends; the >> pair is one operator
+    "npm run test >&1", // stdout dups onto itself
+  ];
+  for (const c of buffered) assert.equal(commandBuffersOutput(c), true, `buffered: ${c}`);
+  for (const c of live) assert.equal(commandBuffersOutput(c), false, `live: ${c}`);
+});
+
+test("a stalled piped-stdout call warns nothing; the redirect is found in the full command, not the truncated label", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 5;
+  config.toolCallStallSeconds = 2;
+  const warnings: string[] = [];
+  const clock = watchdogClock(t);
+  // One command piped through tail (the prescribed shape) and one whose redirect operator
+  // sits past char 32 — describeToolCall truncates the label there, so only the call's full
+  // raw command can reveal the `>`; both must stay unwarned while they stall.
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "npm run test 2>&1 | tail -8" } })}'`,
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", toolName: "bash", args: { command: "npm run test -- --runInBand --detectOpenHandles > /tmp/quiet.log" } })}'`,
+      `exec sleep 30`,
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(30_000); // well past the stall threshold, then past the quiet window
+    const result = await run;
+    assert.equal(result.quietKilled, true, "the quiet watchdog still owns the kill");
+    assert.deepEqual(warnings, [], "piped or redirected stdout makes silence meaningless");
   } finally {
     restore();
   }

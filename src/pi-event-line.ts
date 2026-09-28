@@ -78,6 +78,11 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
 export interface OpenToolCall {
   id: string;
   label: string;
+  /** The call's full raw command text (bash-like args only; unset for other tools). The
+   * label is surface text truncated for display, so anything that inspects the command's
+   * shape — the stall warning's buffered-output check (src/pi.ts) — reads this instead:
+   * a redirect beyond the label's truncation point would otherwise be invisible. */
+  command?: string;
   /** Epoch ms when the call started or last received a content-bearing update. */
   lastActivityAt: number;
 }
@@ -95,10 +100,11 @@ export function applyToolExecutionEvent(
   toolCallId: unknown,
   partialResult: unknown,
   label = "",
+  command = "",
 ): void {
   const id = String(toolCallId ?? "");
   if (type === "tool_execution_start") {
-    calls.push({ id, label, lastActivityAt: Date.now() });
+    calls.push({ id, label, command, lastActivityAt: Date.now() });
   } else if (type === "tool_execution_update" && toolUpdateHasContent(partialResult)) {
     const call = calls.find((c) => c.id === id);
     if (call) call.lastActivityAt = Date.now();

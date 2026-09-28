@@ -210,6 +210,18 @@ export class PiStreamParser {
       event.type === "tool_execution_update" ||
       event.type === "tool_execution_end"
     ) {
+      // The full raw command rides the call beside its display label: the stall warning
+      // classifies the command's shape (piped or redirected output cannot reach pi live),
+      // and describeToolCall's label truncates at 32 chars — an operator past that point
+      // would be invisible there.
+      const a =
+        event.args && typeof event.args === "object" ? (event.args as Record<string, unknown>) : undefined;
+      const command =
+        typeof a?.command === "string"
+          ? a.command
+          : typeof a?.cmd === "string"
+            ? a.cmd
+            : "";
       applyToolExecutionEvent(
         this.openToolCalls,
         event.type,
@@ -218,6 +230,7 @@ export class PiStreamParser {
         // A nameless call with no recognizable arg still names something — the same "tool"
         // fallback progress.ts uses for its stall flag.
         describeToolCall(event.toolName ?? "", event.args) || "tool",
+        command,
       );
       if (event.type === "tool_execution_start") this.onToolCallStart?.(event.toolName ?? "", event.args);
     }

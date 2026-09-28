@@ -14,6 +14,38 @@ import { PiStreamParser } from "./pi-stream.js";
  * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
  * prompt), each traced to a torn chunk from the model server rather than to the session. Matched
  * against the child's stderr at exit; exported for tests. */
+/** True when the command's stdout cannot reach pi live while the command runs, so a stretch of
+ * silence carries no hang signal and the stall warning would be a false alarm. Two shapes do
+ * this: a pipe (`npm test 2>&1 | tail -8`) holds every byte in the pipeline until the upstream
+ * command exits, and a stdout redirect (`npm test > /tmp/out`) sends the bytes to a file
+ * instead of pi's pipe. Both are shapes the tick prompt itself prescribes for verification
+ * runs, so the stall detector must not read their silence as a stall. A bare `2>&1` is NOT
+ * such a shape: it points stderr at stdout's destination — pi's live pipe — so output still
+ * streams and a hang stays detectable. `2>` and `2>>` likewise leave or append only stderr.
+ * The classifier scans the command text and errs toward "buffered" on shapes it cannot
+ * parse — a skipped warning for `echo "a > b"` costs far less than the cry-wolf the false
+ * alarms cause. Exported for tests. */
+export function commandBuffersOutput(command: string): boolean {
+  if (command.includes("|")) return true; // a pipeline stage buffers until its upstream exits
+  for (let i = 0; i < command.length; i++) {
+    if (command[i] !== ">") continue;
+    const prev = i > 0 ? command[i - 1] : "";
+    if (command[i + 1] === ">") {
+      // `>>` appends to a file: stdout leaves the pipe unless an fd names stderr (`2>>`).
+      // The pair is one operator — when `2>>` leaves stdout live, skip past its second `>`
+      // so the scan does not re-read it as a fresh stdout redirect.
+      if (prev !== "2") return true;
+      i += 1;
+      continue;
+    }
+    if (prev === "2") continue; // `2>` / `2>&1`: stderr leaves or dups, stdout still streams
+    if (prev === "&") return true; // `&>`: both streams leave the pipe
+    if (command.slice(i + 1, i + 3) === "&1") continue; // `>&1` dups stdout onto itself
+    return true; // `>` / `>&` / `<>`: stdout's destination is no longer pi's pipe
+  }
+  return false;
+}
+
 export const TRANSIENT_PI_CRASH =
   /Unexpected end of JSON input|is not valid JSON|(Unterminated string|Unexpected non-whitespace|Expected ('|")|Bad (control|escaped) character)[^\n]* in JSON/;
 
@@ -245,6 +277,15 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               if (stallMs > 0) {
                 for (const call of parser.openToolCalls) {
                   if (warnedStalledCalls.has(call.id)) continue;
+                  // A command whose stdout is piped or redirected holds its bytes away from
+                  // pi until it exits, so "no output" there is the prescribed shape, not
+                  // evidence of a hang — warn only when silence could mean something
+                  // (BUGS.md 2026-09-28: the tick prompt tells every loop to pipe its
+                  // verification through `tail`, and the resulting false alarms were the
+                  // digest's top warning cluster, drowning real hangs). The call's full raw
+                  // command is classified, never its display label: the label truncates at
+                  // 32 chars, so an operator past that point would be invisible there.
+                  if (commandBuffersOutput(call.command || call.label)) continue;
                   const silentMs = Date.now() - call.lastActivityAt;
                   if (silentMs >= stallMs) {
                     warnedStalledCalls.add(call.id);
