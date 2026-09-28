@@ -35,6 +35,14 @@ export function dayAt(offsetFromToday: number, now: Date): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() - offsetFromToday);
 }
 
+/** The inclusive day-key bounds of a trailing window of `days` local calendar days ending
+ * today, derived from one captured `now` instant — the window rule both report collectors
+ * (the usage report's collectReport and the failure digest's collectFailureReport) share, so
+ * their windows select the same calendar days from the same instant. */
+export function dayWindow(days: number, now: Date): { from: string; to: string } {
+  return { from: formatDate(dayAt(days - 1, now)), to: formatDate(dayAt(0, now)) };
+}
+
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window
  * reads the same on either surface. */
 export function dayLabel(days: number): string {

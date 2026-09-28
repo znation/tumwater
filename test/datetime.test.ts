@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dayAt, dayLabel, formatDate, reportWindow } from "../src/datetime.js";
+import { dayAt, dayLabel, dayWindow, formatDate, reportWindow } from "../src/datetime.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
@@ -25,6 +25,13 @@ test("formatDate renders the local calendar date, zero-padded, from date parts a
   assert.equal(formatDate(new Date(2026, 2, 1, 14, 30, 5)), "2026-03-01"); // time of day ignored
   assert.equal(formatDate(new Date(2026, 0, 5)), "2026-01-05"); // single-digit month and day pad
   assert.equal(formatDate(new Date(2026, 11, 31)), "2026-12-31");
+});
+
+test("dayWindow bounds a trailing window of `days` local calendar days ending today", () => {
+  const now = new Date(2026, 2, 1, 14, 30, 5); // 2026-03-01 14:30 local
+  assert.deepEqual(dayWindow(1, now), { from: "2026-03-01", to: "2026-03-01" });
+  // The far edge crosses the month/year edge through dayAt's midnight arithmetic.
+  assert.deepEqual(dayWindow(3, now), { from: "2026-02-27", to: "2026-03-01" });
 });
 
 test("dayLabel is singular at one day and plural otherwise", () => {

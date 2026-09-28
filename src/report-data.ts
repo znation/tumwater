@@ -11,7 +11,7 @@ import { readTextOrNull } from "./files.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
-import { dayAt, formatDate } from "./datetime.js";
+import { dayAt, dayWindow, formatDate } from "./datetime.js";
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
@@ -111,8 +111,7 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
 export function collectReport(root: string, days: number): ReportData {
   const now = new Date();
   // One captured instant for the whole window, so every day key derives from the same day.
-  const from = formatDate(dayAt(days - 1, now));
-  const to = formatDate(dayAt(0, now));
+  const { from, to } = dayWindow(days, now);
 
   const series: ReportDay[] = [];
   for (let i = days - 1; i >= 0; i--) {

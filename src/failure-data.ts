@@ -8,7 +8,7 @@
 import type { HarnessEvent, TickResult } from "./types.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
-import { dayAt, formatDate } from "./datetime.js";
+import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
@@ -217,8 +217,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
  * second tail read. */
 export function collectFailureReport(root: string, days: number): FailureReportData {
   const now = new Date();
-  const from = formatDate(dayAt(days - 1, now));
-  const to = formatDate(dayAt(0, now));
+  const { from, to } = dayWindow(days, now);
   const priorFrom = formatDate(dayAt(days * 2 - 1, now));
 
   const { events, coversFullWindow } = readWindowEvents(root, priorFrom);
