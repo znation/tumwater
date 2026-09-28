@@ -1,6 +1,4 @@
-import { knownRoleIds, loadConfigCached } from "../config.js";
-import { allRoleIds } from "../roles.js";
-import { fail, parseCountFlag, parseRoleFlag } from "../cli-args.js";
+import { fail, parseCountFlag, parseRoleScope } from "../cli-args.js";
 import { readEvents } from "../events.js";
 import { formatDate, formatTime } from "../datetime.js";
 import { collapseWhitespace, compactTokens, shortSpanPhrase, truncate, usd } from "../text.js";
@@ -92,14 +90,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : HISTORY_DEFAULT_TICKS;
   if (limit > HISTORY_MAX_TICKS)
     fail(`-n must be between 1 and ${HISTORY_MAX_TICKS} (got ${JSON.stringify(args[nFlag + 1])})`);
-  // The config is needed only to validate --role against built-ins PLUS user-defined loops,
-  // read through loadConfigCached (which never throws) exactly as cmdLogs does: a transiently
-  // broken tumwater.json must not take down a read-only view. Without --role no config is read.
-  let role: string | null = null;
-  if (args.includes("--role")) {
-    const { config } = loadConfigCached(root);
-    role = parseRoleFlag(args, config ? knownRoleIds(config) : allRoleIds());
-  }
+  // The config is read (through loadConfigCached, never throwing) only when --role is present:
+  // a read-only view must not refuse a transiently broken tumwater.json.
+  const role = parseRoleScope(root, args);
   // A window twice the ask plus slack: tick_start lines and unrelated events interleave with
   // the tick_end rows scanned for, and a skipped tick's end rides a start that may sit outside
   // any smaller window.

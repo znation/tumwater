@@ -1,6 +1,4 @@
-import { knownRoleIds, loadConfigCached } from "../config.js";
-import { allRoleIds } from "../roles.js";
-import { fail, parseCountFlag, parseRoleFlag } from "../cli-args.js";
+import { fail, parseCountFlag, parseRoleScope } from "../cli-args.js";
 import { parseEventLine, readEvents } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { statOrNull } from "../files.js";
@@ -22,16 +20,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const follow = args.includes("-f") || args.includes("--follow");
   const nFlag = args.indexOf("-n");
   const limit = nFlag >= 0 ? parseCountFlag("-n", args[nFlag + 1]) : 50;
-  // The config is needed only to validate --role against built-ins PLUS user-defined loops.
-  // Read it through loadConfigCached (which never throws) so a transiently broken
-  // tumwater.json cannot take down the read-only transcript view — the same fallback the GUI's
-  // transcript handler uses: a broken file falls back to the built-in catalog rather than
-  // refusing every id. The event feed (no --role) never needs the config at all.
-  let role: string | null = null;
-  if (args.includes("--role")) {
-    const { config } = loadConfigCached(root);
-    role = parseRoleFlag(args, config ? knownRoleIds(config) : allRoleIds());
-  }
+  // The event feed (no --role) never needs the config at all: parseRoleScope reads it only
+  // when the flag is present.
+  const role = parseRoleScope(root, args);
   const showPrompts = args.includes("--prompt");
   if (showPrompts && role === null) fail("logs --prompt needs --role <id>");
   if (role !== null) {

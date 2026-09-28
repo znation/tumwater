@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { knownRoleIds, loadConfigCached } from "./config.js";
 import { allRoleIds } from "./roles.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
@@ -25,6 +26,19 @@ export function parseCountFlag(flag: string, raw: string | undefined): number {
   const n = parsePositiveInt(raw);
   if (n === null) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
   return n;
+}
+
+/** Resolve a read-only command's `--role <id>` scope: the role id, or null when the flag is
+ * absent. The id is validated against built-ins PLUS user-defined loops, read through
+ * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a
+ * read-only view down — a broken file falls back to the built-in catalog rather than refusing
+ * every id. Without --role no config is read. (State-changing commands instead resolve --role
+ * against loadConfig and fail loudly on a broken file, as operator-commands.ts does.) Shared
+ * by the tail views that scope their output to one loop (cmdLogs, cmdHistory). */
+export function parseRoleScope(root: string, args: string[]): string | null {
+  if (!args.includes("--role")) return null;
+  const { config } = loadConfigCached(root);
+  return parseRoleFlag(args, config ? knownRoleIds(config) : allRoleIds());
 }
 
 /** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.
