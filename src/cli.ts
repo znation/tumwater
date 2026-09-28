@@ -8,7 +8,7 @@ import {
   ROLE_FLAG,
   RUN_FLAG_SPECS,
 } from "./cli-args.js";
-import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
+import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./ui/operator-commands.js";
 import { cmdLogs } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";

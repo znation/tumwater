@@ -14,7 +14,7 @@ import { promptLengthProblem, submitPrompt, submitRolePrompt } from "../inbox.js
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { requestAbort, requestWake } from "../operator-commands.js";
+import { requestAbort, requestWake } from "./operator-commands.js";
 import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./report.js";
 import { collectReport } from "../report-data.js";

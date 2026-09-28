@@ -8,7 +8,7 @@ import {
   cmdResetCounters,
   cmdResume,
   cmdWake,
-} from "../src/operator-commands.js";
+} from "../src/ui/operator-commands.js";
 import { defaultConfig } from "../src/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
@@ -28,7 +28,7 @@ import {
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-/** Producer-side tests for the operator-intent protocol (src/operator-commands.ts). Its
+/** Producer-side tests for the operator-intent protocol (src/ui/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */

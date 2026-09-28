@@ -19,7 +19,7 @@ import {
   requestWake,
   rolePauseMessage,
   roleResumeMessage,
-} from "../operator-commands.js";
+} from "./operator-commands.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { clipToWidth, errorMessage, usdCap } from "../text.js";
