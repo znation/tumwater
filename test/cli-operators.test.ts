@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/state.js";
-import { abortRequestPath, orchestratorStatePath, pausedPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/operator-commands.js";
 import { seedCounters } from "./util.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
@@ -193,6 +193,34 @@ test("pause and resume are idempotent with no harness running", async () => {
   r = await cli(repo, "resume");
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "not paused");
+});
+
+test("pause --for is capped at 90d and accepts the boundary value", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli pause for cap");
+  const marker = pausedPath(repo);
+
+  // An over-cap --for is refused with the standing-pause alternative named, and no marker is
+  // written: the refusal must not leave a deadline the operator has to learn about from
+  // `tumwater status` instead of the command that created it.
+  let r = await cli(repo, "pause", "--for", "91d");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /pause --for is capped at 90d \(got 91d\)/);
+  assert.match(r.stderr, /bare `tumwater pause`/);
+  assert.ok(!fs.existsSync(marker), "no marker on a refused --for");
+
+  // The same refusal on the per-role form (one check guards both pause shapes).
+  r = await cli(repo, "pause", "--role", "qa", "--for", "100000000d");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /capped at 90d \(got 100000000d\)/);
+  assert.ok(!fs.existsSync(pausedRolesPath(repo)), "no role marker on a refused --for");
+
+  // The boundary value passes and writes the timed marker's { at, until } shape.
+  r = await cli(repo, "pause", "--for", "90d");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /fleet paused for 90d/);
+  const m = JSON.parse(fs.readFileSync(marker, "utf8")) as { at: number; until: number };
+  assert.ok(m.until > Date.now() + 89 * 24 * 60 * 60 * 1000, "the deadline is 90 days out");
 });
 
 test("pause and resume reject stray arguments without touching the marker", async () => {

@@ -216,6 +216,16 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
   return `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}`;
 }
 
+/** The `tumwater pause --for <duration>` cap: 90 days. A timed pause is meant to answer "step
+ * away for a while and come back to a resumed fleet" — the same bound the report's day windows
+ * enforce (REPORT_MAX_DAYS in event-window.ts), and comfortably past any absence a deadline
+ * should encode. Beyond it the deadline stops being a timed pause and becomes a standing one:
+ * bare `pause` (lifted with `resume`) is that, and it says so instead of silently accepting a
+ * value whose wall-clock resume time no `Date` can even hold (a `--for 100000000d` once printed
+ * "resumes automatically at NaN:NaN:NaN"). Lives beside the parse it guards so the CLI's one
+ * `--for` surface cannot outgrow it unnoticed. */
+export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
+
 /** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from starting new ticks —
  * in-flight ones finish, every other role (the director included) keeps running; without one,
  * stop every role loop from starting NEW ticks while in-flight ones finish and the director
@@ -231,6 +241,11 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
   // writers it feeds.
   const forIndex = args.indexOf("--for");
   const forMs = forIndex >= 0 ? parseDurationFlag("--for", args[forIndex + 1]) : undefined;
+  // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
+  // standing pause in disguise, and the message names the command that is one (the same
+  // capped-flag idiom the --since windows in cli.ts use).
+  if (forMs !== undefined && forMs > PAUSE_FOR_MAX_MS)
+    fail(`pause --for is capped at ${durationLabel(PAUSE_FOR_MAX_MS)} (got ${durationLabel(forMs)}) — for a longer or standing pause run bare \`tumwater pause\` (lift it with \`tumwater resume\`)`);
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: Date.now() + forMs };
   const untilMs = timed?.untilMs;
   // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
