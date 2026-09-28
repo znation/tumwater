@@ -31,7 +31,7 @@ interface MainBaseline {
   sha: string;
   /** Red only: the script that failed. */
   script?: string;
-  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build-check.ts) picks the
+  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build-check-report.ts) picks the
    * line that goes into the warning event so an operator sees what broke without opening a
    * transcript. */
   outputTail?: string[];

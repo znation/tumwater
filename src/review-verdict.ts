@@ -1,12 +1,12 @@
 /** Parsing of the reviewer's reply into a verdict — split out of review.ts so the review gate
  * (reviewAheadOfMain) and the reply-shape contract it reads (reply-contract.ts's verdictLines)
  * each have a single responsibility: this module knows how a reviewer reply is shaped, the
- * gate knows what to do about one. It depends only on the reply contract and build-check's
+ * gate knows what to do about one. It depends only on the reply contract and build-check-report's
  * clipReason (the shared per-line cap for persisted machine text). */
 
 import type { VerdictMatch } from "./reply-contract.js";
 import { verdictLines } from "./reply-contract.js";
-import { clipReason } from "./build-check.js";
+import { clipReason } from "./build-check-report.js";
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
  * other non-empty prose as a fallback). */

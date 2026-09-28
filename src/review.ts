@@ -12,13 +12,8 @@ import { buildReviewPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
 import { saveLoopState } from "./state.js";
 import { shortSha } from "./text.js";
-import {
-  BUILD_CHECK_TIMEOUT_MS,
-  checkFailureReasons,
-  describeCheck,
-  failureHeadline,
-  runScopedBuildCheck,
-} from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS, runScopedBuildCheck } from "./build-check.js";
+import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
