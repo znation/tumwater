@@ -16,7 +16,7 @@ import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDuration
 // module — moving them must not churn those import sites; cmdReport binds the same constants
 // directly so it can enforce the bounds.
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
-export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS };
+export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS }; // REPORT_SINCE_MAX_MS has no caller through this module — only cmdReport uses it, locally
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
