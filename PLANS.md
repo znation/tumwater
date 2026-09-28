@@ -55,9 +55,10 @@ log prints `no ticks yet` and exits 0. (d) `tumwater help history` shows the com
 
 ### Pause countdown — show when a timed pause auto-resumes (`status`/TUI header badge, GUI pause badge) (planned 2026-09-25, refined 2026-09-28)
 
-**Depends on** the "Timed pause" entry under `## Planned` in this file (it adds `pause --for`
-and exposes `pausedUntil` on the snapshot and payload); land this only once that one is in the
-running build.
+**Depends on** the "Timed pause" entry — now under `## Done`, landed 2026-09-28: `pause --for`
+exists and `pausedUntil` is on the snapshot (src/ui/status.ts) and the payload
+(src/ui/status-payload.ts), so the dependency is satisfied and this lands against the current
+build.
 
 **Goal.** The Timed pause plan deliberately leaves the display out: every surface shows a timed
 pause as plain `paused`, indistinguishable from an indefinite one, so an operator cannot see at
@@ -101,6 +102,60 @@ pause (`pause --role <id> --for 2h`) both render today's header unchanged — an
 deadline renders nothing, matching the unpaused read. (c) The GUI's pause badge shows the
 countdown while a fleet timed pause stands (its `pausedUntil`) and today's ` · paused — resume`
 otherwise, and remains a working resume link in both states. (d) Full suite passes.
+
+### `logs --since <duration>` — show the events of a time window, not a guess at a count (planned 2026-09-28)
+
+**Goal.** An operator reconstructing "what happened in the hour around that 429 storm" has only
+count-shaped tools: `logs -n N` dumps the last N events and the operator guesses N until the
+window appears, while `tumwater report --days` aggregates whole days and the planned
+`history` command (sibling entry above) renders tick-shaped rows over `tick_end` only — neither
+shows the raw interleaved event stream of a bounded time window. Every event already carries
+`ts`, and src/event-window.ts's `readWindowEvents` already reads a window with bounded backwards
+I/O (day-keyed), so a `--since` flag is thin rendering over existing plumbing, not a new reader.
+
+**Approach.**
+
+1. **src/event-window.ts** — one constant beside `REPORT_MAX_DAYS`: `LOGS_SINCE_MAX_MS = 7 ×
+   24 × 60 × 60 × 1000`. Same rationale as the report bound: a longer window only re-reads more
+   log and renders more lines without adding signal, and the log rotates at 16 MB
+   (`EVENTS_MAX_BYTES` in src/events.ts) anyway, so a huge window mostly reads rotated-away
+   nothing. No change to `readWindowEvents` itself — it already returns exactly what this
+   consumer needs (oldest-first events plus `coversFullWindow`).
+2. **src/ui/log-commands.ts** — in `cmdLogs`, before the existing flag reads: when `--since` is
+   present, `fail()` if it is combined with `-f`, `-n`, or `--role` (`--prompt` already requires
+   `--role`, so it is excluded too — follow means "from now", a count and a window are rival
+   shapes, and the `--role` view is a pi transcript, not the event log; each failure names both
+   flags). Parse the value with the existing `parseDurationFlag("--since", …)`
+   (src/cli-args.ts, added by the timed-pause plan — `45s`/`90m`/`2h`/`1d`), and fail when it
+   exceeds `LOGS_SINCE_MAX_MS`, naming the bound. Then: `cutoff = Date.now() - ms`; read
+   `readWindowEvents(root, formatDate(new Date(cutoff)))` (`formatDate` from src/datetime.ts,
+   the same helper `eventDayKey` uses, so the window key and the event keys cannot disagree);
+   filter to `typeof ev.ts === "number" && ev.ts >= cutoff` (the day-keyed read may include
+   earlier hours of the cutoff's own local day — over-read is at most one day's events); print
+   the survivors oldest-first through `formatEvent`, the same loop the `-n` path uses. When
+   `coversFullWindow` is false, append one note line (`note: older events rotated out of the
+   log`) so a sparse window is never mistaken for a quiet fleet. An empty window prints `no
+   events in <durationLabel(ms)>` and exits 0 — `durationLabel` (beside the parser) phrases the
+   window back the way the operator typed it. Read-only, stdout only.
+3. **src/cli.ts** — the `logs` case's `rejectUnknownArgs` list gains
+   `{ names: ["--since"], value: true, valueName: "<duration>" }`.
+4. **src/help.ts** — extend the logs stanza's first usage line to
+   `tumwater logs [-f] [-n N] [--since <duration>]` (the per-command view derives from the full
+   text; the `--role` line is unchanged since `--since` excludes it).
+5. **README.md** — extend the "Check state" table row with `tumwater logs --since <duration>`.
+
+**Files touched:** src/event-window.ts, src/ui/log-commands.ts, src/cli.ts, src/help.ts,
+README.md; tests in test/cli-logs.test.ts (seed an events.jsonl with events minutes and days
+old by writing the file directly, the pattern the file already uses, then exercise the CLI —
+window filtering, the mutual-exclusion failures, the empty window, and the rotation note).
+
+**Acceptance criteria.** (a) `tumwater logs --since 30m` prints only events from the last 30
+minutes, oldest-first, in the same line format as plain `logs`. (b) `--since` with `-f`, `-n`,
+or `--role` fails naming both flags; a duration over 7 days fails naming the bound; a missing
+or malformed value fails with `parseDurationFlag`'s message. (c) An empty window prints `no
+events in <duration>` and exits 0; a window whose start predates the retained log prints the
+rotation note after the rows. (d) `tumwater help logs` shows the new flag. (e) Full suite
+passes.
 
 ## Done
 ### Timed pause — `tumwater pause [--role <id>] --for <duration>` auto-resumes (planned 2026-09-25, refined 2026-09-28, done 2026-09-28)
