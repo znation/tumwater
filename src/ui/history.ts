@@ -96,7 +96,10 @@ export function readTickRows(root: string, limit: number, role: string | null): 
 }
 
 /** One aligned table line: fixed-width columns over the row set (the widths derive from the
- * rows actually shown, so a single-row table has no padding gap), then the free-text detail. */
+ * rows actually shown, so a single-row table has no padding gap), then the free-text detail.
+ * Every cell is padded to its column's width even when empty — usage is the one cell that can
+ * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
+ * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
 function renderRow(row: TickRow, widths: { loop: number; tick: number; result: number; duration: number; usage: number }): string {
   const duration = row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs);
   return [
@@ -108,7 +111,6 @@ function renderRow(row: TickRow, widths: { loop: number; tick: number; result: n
     row.usage.padEnd(widths.usage),
     row.detail,
   ]
-    .filter((cell) => cell !== "")
     .join("  ")
     .trimEnd();
 }

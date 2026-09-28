@@ -111,6 +111,27 @@ async function seededHistoryRepo(): Promise<string> {
   return repo;
 }
 
+test("history CLI keeps the detail column aligned across usage and usage-less rows", async () => {
+  // CLI-level pin of the alignment: the usage-less clean row pads its empty usage column, so
+  // both detail cells start at the same character index.
+  const repo = makeRepo();
+  await initProject(repo, "cli history alignment");
+  writeEvents(repo, [
+    { ts: 1787222691956, loop: "feature", type: "tick_start", tick: 7 },
+    { ts: 1787222695956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 },
+    { ts: 1787222700000, loop: "clean", type: "tick_end", tick: 3, result: "no_change", summary: "tidied" },
+  ]);
+  const r = await cli(repo, "history");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 2);
+  // Newest first: the clean (usage-less) row leads, the feature row follows.
+  const detail0 = lines[0]!.indexOf("tidied");
+  const detail1 = lines[1]!.indexOf("added a widget");
+  assert.ok(detail0 > 0 && detail1 > 0, "both rows show their detail");
+  assert.equal(detail0, detail1, "detail columns align across a row with no usage");
+});
+
 test("history prints one row per completed tick, newest first", async () => {
   const repo = await seededHistoryRepo();
   const r = await cli(repo, "history");

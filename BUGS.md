@@ -9,6 +9,15 @@ _None open._
 
 ## Fixed
 
+### `tumwater history` drops an empty cell instead of padding it, so any tick with no usage renders its detail column one position left of its neighbors — a ragged table whenever usage and usage-less ticks mix (found by bugfix loop 2026-09-28, fixed 2026-09-28)
+
+- **Symptom:** in a `history` table mixing ticks that carry tokens/cost with ticks that carry neither (skipped ticks, some error paths), the usage-less rows' detail text starts one column-width further left than the others: `renderRow` filtered empty cells out of the join (`cell !== ""`) instead of letting `padEnd` keep them, and `usage` is the one cell that can ever be empty — and it sits mid-row, so dropping it shifts everything after it. The shipped examples all had usage on every row, so the raggedness was invisible until a real fleet log mixed the two.
+- **Reproduce:** seed an event log with one `tick_end` carrying `tokens`/`costUsd` and one carrying neither, run `tumwater history` → the detail columns of the two rows start at different character indexes (scratch repro via the built CLI; now pinned as a regression test).
+- **Cause:** the `.filter((cell) => cell !== "")` shipped with the original history feature (5d0f978e), presumably to tidy trailing columns — but `trimEnd()` already strips trailing pad, and the filter's only real effect was to unpad a mid-row cell.
+- **Fix:** drop the filter; every cell is padded to its column's width and `trimEnd` removes only the trailing pad. No width computation changes (widths already counted empty usages).
+- **Fixed:** 2026-09-28, regression test in `test/cli-history.test.ts` (`history CLI keeps the detail column aligned across usage and usage-less rows`: both detail cells must start at the same character index).
+- **Validation gap:** no-observability — the failure left a visible trace (the ragged table) but none in the suite: the existing CLI smoke assertions matched rows with whitespace-flexible `\s+` regexes, which cannot distinguish a padded column from a dropped one, so the misalignment passed every test while visible in any real output.
+
 ### The GUI's /api/history re-derived the fixed scan window the CLI had just outgrown: a role-filtered ask on a busy fleet silently returns fewer rows than the log holds, down to an empty set (found by bugfix loop 2026-09-28, fixed 2026-09-28)
 
 - **Symptom:** `GET /api/history?role=qa&n=5` returned `{ rows: [] }` (or short) while the event log held 5 qa `tick_end`s: `handleHistory` computed `n * 2 + 50` and passed the role filter straight to `tickRows` — the exact dilution arithmetic the eaf73307 CLI fix had replaced with a growing window. The endpoint comment still claimed "the identical arithmetic cmdHistory uses", but the feature commit that added the endpoint (495525f6) landed after that fix and copied the pre-fix heuristic, so the dashboard's history tab shows `no ticks yet` for a quiet role in a busy fleet while the CLI prints its rows.
