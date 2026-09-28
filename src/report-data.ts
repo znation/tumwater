@@ -12,6 +12,40 @@ import { readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
 import { eventDayKey, eventRole } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
+import type { HarnessEvent } from "./types.js";
+
+/** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
+ * and the totals each render prints. `ticks` is counted only where a consumer needs a window
+ * total (the trailing-window report); the per-day series derives it later by summing
+ * ticksByRole, so a day carries no redundant counter. */
+interface UsageFold {
+  ticks?: number;
+  ticksByRole: Record<string, number>;
+  costByRole: Record<string, number>;
+  tokensOut: number;
+  commits: number;
+  costUsd: number;
+}
+
+/** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
+ * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
+ * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
+ * omitted" rule true on the aggregation itself, not just at display time; merged events add
+ * a commit. Both collectors fold through this one place, so the two windows' aggregation
+ * rules cannot drift apart. */
+function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
+  if (ev.type === "tick_end") {
+    const role = eventRole(ev);
+    target.ticksByRole[role] = (target.ticksByRole[role] ?? 0) + 1;
+    if (target.ticks !== undefined) target.ticks++;
+    target.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
+    const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
+    target.costUsd += cost;
+    if (cost !== 0) target.costByRole[role] = (target.costByRole[role] ?? 0) + cost;
+  } else if (ev.type === "merged") {
+    target.commits++;
+  }
+}
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
@@ -88,24 +122,10 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   // here too, matching collectReport (its day map only holds the window's days).
   const fromKey = formatDate(new Date(cutoff));
   const raw = readWindowEvents(root, fromKey);
-  const totals = { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 };
-  const ticksByRole: Record<string, number> = {};
-  const costByRole: Record<string, number> = {};
+  const acc: UsageFold = { ticks: 0, ticksByRole: {}, costByRole: {}, tokensOut: 0, commits: 0, costUsd: 0 };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
-    if (ev.type === "tick_end") {
-      const role = eventRole(ev);
-      ticksByRole[role] = (ticksByRole[role] ?? 0) + 1;
-      totals.ticks++;
-      totals.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
-      const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
-      totals.costUsd += cost;
-      // Zero-cost ticks contribute nothing, so they leave no key — the render's "$0 roles are
-      // omitted" rule then holds on the aggregation itself, not just at display time.
-      if (cost !== 0) costByRole[role] = (costByRole[role] ?? 0) + cost;
-    } else if (ev.type === "merged") {
-      totals.commits++;
-    }
+    foldUsageEvent(acc, ev);
   }
   // The retained log provably covers the window when either proof holds: the day-keyed reader
   // saw a complete line older than the cutoff's day (coversFullWindow), or — the same-day case
@@ -119,7 +139,14 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
     raw.coversFullWindow ||
     raw.events.length === 0 ||
     (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
-  return { sinceMs, fromIso: new Date(cutoff).toISOString(), totals, ticksByRole, costByRole, coversFullWindow };
+  return {
+    sinceMs,
+    fromIso: new Date(cutoff).toISOString(),
+    totals: { tokensOut: acc.tokensOut, ticks: acc.ticks ?? 0, commits: acc.commits, costUsd: acc.costUsd },
+    ticksByRole: acc.ticksByRole,
+    costByRole: acc.costByRole,
+    coversFullWindow,
+  };
 }
 
 /** A file's text, or "" when missing/unreadable — a report degrades to zeros, never throws. */
@@ -210,18 +237,7 @@ export function collectReport(root: string, days: number): ReportData {
     const dayKey = eventDayKey(ev);
     const day = dayKey === null ? undefined : byDate.get(dayKey);
     if (!day) continue; // Outside [from, to] — also guards future-dated events.
-    if (ev.type === "tick_end") {
-      const role = eventRole(ev);
-      day.ticksByRole[role] = (day.ticksByRole[role] ?? 0) + 1;
-      day.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
-      const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
-      day.costUsd += cost;
-      // Zero-cost ticks contribute nothing, so they leave no key — the render's "$0 roles are
-      // omitted" rule then holds on the aggregation itself, not just at display time.
-      if (cost !== 0) day.costByRole[role] = (day.costByRole[role] ?? 0) + cost;
-    } else if (ev.type === "merged") {
-      day.commits++;
-    }
+    foldUsageEvent(day, ev);
   }
 
   const countOn = (date: string, field: "featuresDone" | "bugsFixed"): void => {
