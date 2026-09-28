@@ -23,8 +23,16 @@ export function subscribeEvents(listener: EventListener): () => void {
 }
 
 /** events.jsonl rotation threshold. Role pi logs use the configurable logMaxBytes; the
- * harness event log is small per event, so a fixed cap keeps logEvent config-free. */
-const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
+ * harness event log is small per event, so a fixed cap keeps logEvent config-free. Exported
+ * because the report headers name the threshold — a fact only this module owns. */
+export const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
+
+/** The rotation phrase the report headers render — `eventsRotationLabel()` rather than a
+ * hardcoded "rotated at 16 MB" copy, so changing EVENTS_MAX_BYTES updates the header with it
+ * instead of leaving every report claiming a size the log no longer rotates at. */
+export function eventsRotationLabel(): string {
+  return `rotated at ${EVENTS_MAX_BYTES / (1024 * 1024)} MB`;
+}
 
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
  * are allowed via the index signature. Exported for modules that hand events to an injected

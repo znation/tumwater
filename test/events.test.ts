@@ -1,9 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { logEvent, parseEventLine, readEvents, subscribeEvents } from "../src/events.js";
+import {
+  EVENTS_MAX_BYTES,
+  eventsRotationLabel,
+  logEvent,
+  parseEventLine,
+  readEvents,
+  subscribeEvents,
+} from "../src/events.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+
+test("eventsRotationLabel derives the report header's rotation phrase from EVENTS_MAX_BYTES", () => {
+  // Pinned to the literal, not recomputed from the constant: a recomputation would pass even
+  // if the function stopped deriving (the drift this pins) or the phrase changed shape.
+  assert.equal(eventsRotationLabel(), "rotated at 16 MB");
+  assert.equal(EVENTS_MAX_BYTES, 16 * 1024 * 1024);
+});
 
 test("logEvent appends and readEvents tails in order", () => {
   const dir = tmpdir();

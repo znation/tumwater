@@ -6,6 +6,7 @@ import type { TickResult } from "./types.js";
 import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { shortSha } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
+import { eventsRotationLabel } from "./events.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
@@ -98,7 +99,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   lines.push("# tumwater failure digest");
   lines.push("");
   lines.push(
-    `${reportWindow(data.from, data.to, data.days)} · ${data.ticks} ticks`,
+    `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
   );
   if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) lines.push(`no events in the last ${dayLabel(data.days)}`);

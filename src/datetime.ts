@@ -69,7 +69,9 @@ export function dayLabel(days: number): string {
 
 /** The report header both renderers print: the window's day-key bounds, its length in days
  * (singular at 1), and the event log it was read from. The failure digest appends its own tick
- * count. */
-export function reportWindow(from: string, to: string, days: number): string {
-  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: events.jsonl (rotated at 16 MB)`;
+ * count. The rotation phrase is a required argument — eventsRotationLabel() supplies it from
+ * events.ts's EVENTS_MAX_BYTES, so this header cannot keep claiming "16 MB" after the actual
+ * threshold moves (this module stays presentation-only, owning no log facts of its own). */
+export function reportWindow(from: string, to: string, days: number, rotation: string): string {
+  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: events.jsonl (${rotation})`;
 }

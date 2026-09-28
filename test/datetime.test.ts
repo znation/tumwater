@@ -42,11 +42,11 @@ test("dayLabel is singular at one day and plural otherwise", () => {
 
 test("reportWindow renders one shared header line, singular at one day", () => {
   assert.equal(
-    reportWindow("2026-08-29", "2026-09-11", 14),
+    reportWindow("2026-08-29", "2026-09-11", 14, "rotated at 16 MB"),
     "Window: 2026-08-29 → 2026-09-11 (14 days) · source: events.jsonl (rotated at 16 MB)",
   );
   assert.equal(
-    reportWindow("2026-09-11", "2026-09-11", 1),
+    reportWindow("2026-09-11", "2026-09-11", 1, "rotated at 16 MB"),
     "Window: 2026-09-11 → 2026-09-11 (1 day) · source: events.jsonl (rotated at 16 MB)",
   );
 });

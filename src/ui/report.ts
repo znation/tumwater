@@ -7,6 +7,7 @@ import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
+import { eventsRotationLabel } from "../events.js";
 import { durationLabel, fail, failOverDurationCap, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
 
 // The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
@@ -86,7 +87,7 @@ export function renderReportMarkdown(data: ReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(reportWindow(data.from, data.to, data.days));
+  lines.push(reportWindow(data.from, data.to, data.days, eventsRotationLabel()));
   lines.push("");
   const t = data.totals;
   lines.push(
