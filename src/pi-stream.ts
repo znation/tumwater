@@ -1,5 +1,11 @@
 import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "./reply-contract.js";
-import { applyToolExecutionEvent, piEventType, toolCallCommand, type OpenToolCall } from "./pi-event-line.js";
+import {
+  applyToolExecutionEvent,
+  piEventType,
+  toolCallCommand,
+  toolUpdateHasContent,
+  type OpenToolCall,
+} from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
 import { isJsonObject } from "./json-object.js";
 
@@ -125,8 +131,9 @@ export class PiStreamParser {
   /** Incremented for every parsed event that represents real forward progress — message,
    * turn, and tool boundaries, retries, session events. Streaming deltas (message_update)
    * never count: pi's JSON protocol strips the cumulative snapshot from them, so they carry
-   * nothing this parser acts on, and a zombie stream's content-free keepalives must not
-   * reset the harness's hang watchdog. */
+   * nothing this parser acts on, and a zombie stream's content-free keepalives (message
+   * deltas and content-free tool_execution_updates alike) must not reset the harness's hang
+   * watchdog. */
   progressCount = 0;
   /** Tool calls started but not yet ended — pi runs one message's tool calls concurrently by
    * default, so several can be open at once and end in completion order (keyed by pi's
@@ -197,8 +204,13 @@ export class PiStreamParser {
       }
     }
     // Every structured event (turn/tool/message boundaries, retries, session) is real
-    // progress — streaming deltas never are (they are skipped above, before parsing).
-    this.progressCount += 1;
+    // progress — streaming deltas never are (message_update is skipped above, before
+    // parsing), and neither is a content-free tool_execution_update: bash emits one right
+    // after start, and a zombie stream's keepalive updates must not reset the hang
+    // watchdog any more than a content-free message delta would (the same rule
+    // toolUpdateHasContent applies to the stall clock).
+    if (!(event.type === "tool_execution_update" && !toolUpdateHasContent(event.partialResult)))
+      this.progressCount += 1;
     if (event.type === "compaction_start") this.compacted = true;
     // Open-tool-call tracking for the stall warning: a call that sits open and silent is
     // surfaced by name while the quiet watchdog still counts down. The start/update/end state

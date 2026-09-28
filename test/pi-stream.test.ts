@@ -23,6 +23,26 @@ test("feed skips blank and whitespace-only lines without delivering them to onLi
   assert.equal(parser.progressCount, 1);
 });
 
+test("content-free tool_execution_updates do not count as progress (no keepalive reset of the hang watchdog)", () => {
+  // progressCount drives runPi's quiet watchdog (src/pi.ts allowedSilenceMs): a zombie stream
+  // that emits periodic content-free tool_execution_update keepalives must not reset it, the
+  // same rule message_update deltas already obey. Only a content-bearing update counts.
+  const parser = new PiStreamParser();
+  const line = (event: Record<string, unknown>) => JSON.stringify(event) + "\n";
+  parser.feed(
+    line({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 600" } }) +
+      line({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "" }] } }) +
+      line({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [] } }) +
+      line({ type: "tool_execution_update", toolCallId: "c1", partialResult: {} }),
+  );
+  assert.equal(parser.progressCount, 1, "only the start counts — keepalive updates do not reset the watchdog");
+  assert.equal(parser.openToolCalls.length, 1, "the call stays tracked");
+  parser.feed(
+    line({ type: "tool_execution_update", toolCallId: "c1", partialResult: { content: [{ type: "text", text: "alive" }] } }),
+  );
+  assert.equal(parser.progressCount, 2, "a content-bearing update is real progress");
+});
+
 test("an assistant message_end with no content array is handled as an empty, contentless turn", () => {
   const parser = new PiStreamParser();
   // No `content` field at all: messageText's `?? []` fallback and finalMessageContentless'
