@@ -36,7 +36,9 @@ interface BashDetails {
 }
 
 /** Split a string into whole code points, so multi-byte UTF-8 is never cut mid-character. */
-const chars = (text: string): string[] => Array.from(text);
+function chars(text: string): string[] {
+  return Array.from(text);
+}
 
 /** Core bounding: keep head+tail around a marker naming the omitted character count and,
  * when known, where the complete output lives. Under the limit the text is returned
@@ -81,18 +83,18 @@ export function boundText(
 /** Snap a head cut index forward so the head ends at a line boundary (the kept head ends
  * with a newline). Gives up and returns the raw cut if no newline is found within
  * `maxDrift` code points — a minified one-liner should not swallow the whole budget. */
-const snapHeadForward = (cps: string[], cut: number, maxDrift: number): number => {
+function snapHeadForward(cps: string[], cut: number, maxDrift: number): number {
   const target = Math.min(cut + maxDrift, cps.length);
   while (cut < target && cps[cut - 1] !== "\n") cut += 1;
   return cut;
-};
+}
 
 /** Snap a tail start index forward so the tail begins at a line boundary. */
-const snapTailStartForward = (cps: string[], start: number, maxDrift: number): number => {
+function snapTailStartForward(cps: string[], start: number, maxDrift: number): number {
   const target = Math.min(start + maxDrift, cps.length);
   while (start < target && start > 0 && cps[start - 1] !== "\n") start += 1;
   return start;
-};
+}
 
 /** Bound a `read` result: head+tail around a marker that tells the model to re-read the
  * file with offset/limit for the missing middle — the file itself is the complete output,

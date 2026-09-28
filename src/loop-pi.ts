@@ -22,7 +22,9 @@ const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(RATE_LIMIT_HOLD_BASE_MS / 1000);
 
 /** The retry's pause on the real clock; tests inject host.sleep and never reach this. */
-const sleepFor = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+function sleepFor(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /** What the extracted pi-run plumbing needs from its owning loop. The loop supplies live
  * accessors, not copies: `config()` and `tickNumber()` are read at every call so the
