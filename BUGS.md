@@ -745,3 +745,4 @@ Two resets in 2 min 18 s. The counter is only half of it: between 00:27:20 and 0
 ## Verified
 
 - 2026-09-22 run (real): first-time-user flow in a scratch repo — init + doctor green, then a bounded real run (one enabled role `organize`, maxConcurrent 1, fake pi shim on PATH) ticked three times; no_change backoff, tick_deferred, and wake-on-main-move all matched the docs; status/logs/`logs --role --prompt` (exact tick prompt under its run separator) confirm; process tree killed, no survivors, scratch deleted.
+- 2026-09-28 run (real): fresh build (`npm run build`, worktree clean after), scratch repo via the README's literal usage — init green, bounded real `tumwater run` (one enabled role `organize`, maxConcurrent 1, review off, fake pi shim on PATH) ticked once to no_change and deferred; `status` table (ticks/last result/next run) and `logs` event stream both match the docs; `tumwater stop` drains and exits ("orchestrator stopped"); no survivors, scratch deleted.
