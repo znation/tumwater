@@ -17,7 +17,7 @@ import { consumeAbortRequests } from "../src/operator-requests.js";
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, orchestratorStatePath } from "../src/paths.js";
-import { isMergedInto, refSha, setRef } from "../src/git.js";
+import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import { landingChanges, readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
@@ -754,6 +754,49 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
   }
 });
 
+// ── An abort whose pin is already gone ──────────────────────────────────────────────────
+// discardPinnedRefs's documented edge: a pin that is already gone is not an error. The ref
+// can vanish between the operator's abort and the settle — the gate itself deletes a pin at
+// its rejection verdict (lander.ts), and an outside cleanup can drop tumwater refs — so the
+// settle that discards an aborted vetted change must tolerate a missing ref end to end:
+// deleteRef's gitTry swallows the absent-ref failure, and the drain's own catch stands
+// behind it for any other plumbing failure. No test pinned the settle against a vanished
+// pin before this one.
+
+test("abort --role settles a vetted change whose pin is already gone without throwing", async () => {
+  const root = makeRepo();
+  const shas = await queueChanges(root, ["alpha", "beta"]);
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"]));
+  pipeline.merge = busySlot(); // both changes vet and then wait for the merge slot
+  const bg = pump(ctx, pipeline);
+  try {
+    await waitFor(() => pipeline.vetted.has("alpha") && pipeline.vetted.has("beta"), "both changes to be vetted", 30_000);
+
+    // The pin vanishes before the abort lands: the race the catch exists for.
+    await deleteRef(root, landingRefName("alpha"));
+    writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
+    consumeAbortRequests(root, [], abortableLandings(pipeline));
+    await settleAbortedVetted(root, pipeline); // must resolve: the missing ref is not an error
+
+    assert.ok(!pipeline.vetted.has("alpha"), "the aborted entry left the pipeline");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "land_failed" && e.loop === "alpha").map((e) => e.result),
+      ["aborted"],
+      "the outcome was still written and reported",
+    );
+    assert.deepEqual(
+      queuedLandingFiles(root).map((q) => q.entry.role),
+      ["beta"],
+      "alpha's queue entry dropped with its outcome; beta still waits, vetted",
+    );
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta, "beta's pin was untouched");
+  } finally {
+    await bg.stop();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
 test("a vetted change merges while an earlier queue entry is still in review", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta"];
