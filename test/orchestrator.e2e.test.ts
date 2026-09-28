@@ -20,10 +20,10 @@ import { readEvents } from "../src/events.js";
 import {
   freshLoopState,
   loadLoopState,
-  nextBackoffSeconds,
   saveLoopState,
   zeroCounters,
 } from "../src/state.js";
+import { nextBackoffSeconds } from "../src/tick-outcome.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";

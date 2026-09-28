@@ -1,7 +1,7 @@
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../types.js";
 import type { StatusSnapshot } from "./status.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../state.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-outcome.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
 import { compactTokens, shortSha, usd, usdCap } from "../text.js";
@@ -191,7 +191,7 @@ export function loopPhase(
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
   if (s.lastResult === "main_red" && s.queuedSummary === undefined) return "main red";
-  // An error streak at or past the warning threshold (state.ts's ERROR_STREAK_WARN): the
+  // An error streak at or past the warning threshold (tick-outcome.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
   // alone is the tell, not `lastResult`: a tick whose leftover recovery failed keeps the

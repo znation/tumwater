@@ -68,7 +68,7 @@ export interface LoopState {
   /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
   lastMainHead: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
-   * renders. A `queued` tick never writes it (state.ts's applyTickOutcome): its change is still
+   * renders. A `queued` tick never writes it (tick-outcome.ts's applyTickOutcome): its change is still
    * in flight, which the state column already shows, so the pair keeps the prior outcome until
    * the landing resolves and applyLandingOutcome records the landing's own. */
   lastResult?: TickResult;
@@ -128,7 +128,7 @@ export interface LoopState {
   quietKillStreak?: number;
   /** Consecutive failed ticks: an `error`-result tick OR one whose leftover recovery left a
    * landing pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
-   * (state.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
+   * (tick-outcome.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
    * identical tick failures looked like a quiet fleet; BUGS.md 2026-09-21: a dead reviewer
    * backend left every recovery landing failing silently and reset this streak each tick).

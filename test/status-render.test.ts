@@ -7,7 +7,8 @@ import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render
 import { displayWidth } from "../src/text.js";
 import { buildBadge, loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/ui/status.js";
-import { applyLandingOutcome, applyTickOutcome, freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/state.js";
+import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
 import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
 import { tmpdir } from "./repo-fixtures.js";

@@ -6,7 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
 import type { StatusSnapshot } from "../src/ui/status.js";
-import { applyTickOutcome, freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/state.js";
+import { applyTickOutcome } from "../src/tick-outcome.js";
 import { defaultConfig } from "../src/config.js";
 import { landWorktreePath, piLogPath } from "../src/paths.js";
 

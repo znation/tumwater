@@ -4,7 +4,8 @@ import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../s
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState, clearBackoff } from "../src/state.js";
+import { freshLoopState } from "../src/state.js";
+import { clearBackoff } from "../src/tick-outcome.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
