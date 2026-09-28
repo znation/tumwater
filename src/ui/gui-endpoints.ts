@@ -1,6 +1,6 @@
 /**
  * The dashboard's /api endpoint handlers (src/ui/gui.ts routes to them): the GET data
- * endpoints — transcript, backlog, report, failures — and the POST operator endpoints —
+ * endpoints — transcript, backlog, report, failures, history — and the POST operator endpoints —
  * prompt, budget, pause, wake, abort, pause-role — plus the role validation they share. The
  * response/body plumbing lives below them (http-body.ts: sendJson, the body cap, readJsonObject).
  * Each handler answers its request and touches no socket beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
@@ -21,6 +21,8 @@ import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { readTranscript } from "./transcript.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, tickRows } from "./history.js";
+import { readEvents } from "../events.js";
 import { parseNonNegativeInt, parsePositiveInt } from "../text.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import type http from "node:http";
@@ -144,6 +146,31 @@ export function handleReport(q: URLSearchParams, res: http.ServerResponse, root:
  * drift from /api/report's). Reads files directly, so it works with no fleet running. */
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q))) });
+}
+
+/** Handle GET /api/history?role=<id>&n=N: the per-tick rows tickRows derives from the event
+ * log ({ rows }) — the same rows `tumwater history` prints, the dashboard's history tab
+ * renders them. n is optional: absent → HISTORY_DEFAULT_TICKS; present but not a plain
+ * non-negative integer → 400 (the handleBacklog index discipline — an explicit count that
+ * does not parse is a client error, unlike the report's degrade-to-default typo rule); then
+ * clamped to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails fast, its
+ * established convention. role is optional: absent or empty → all loops; present → passed
+ * straight through as tickRows' role filter with no config validation (a filter is not a
+ * target — an id with no ticks legitimately yields zero rows), so the endpoint reads nothing
+ * but files, like /api/report and /api/failures. Reads files directly, so it works whether
+ * or not the fleet is running. */
+export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
+  const nRaw = q.get("n");
+  const parsed = nRaw === null ? HISTORY_DEFAULT_TICKS : parseNonNegativeInt(nRaw);
+  if (parsed === null) {
+    sendJson(res, 400, { error: `n must be a non-negative integer (got ${JSON.stringify(nRaw)})` });
+    return;
+  }
+  const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
+  const role = q.get("role") || null; // "" and absent both read all loops
+  // A window twice the ask plus slack: tick_start lines and unrelated events interleave with
+  // the tick_end rows scanned for (the identical arithmetic cmdHistory uses).
+  sendJson(res, 200, { rows: tickRows(readEvents(root, n * 2 + 50), n, role) });
 }
 
 /** Pull the prompt text out of a prompt endpoint's body — the shared validator for

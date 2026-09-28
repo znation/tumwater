@@ -6,10 +6,12 @@
  * the harness modules; it keeps its own copies of the small display formatters (see
  * text.ts). Two cohesive slices live in their own modules, interpolated into this template
  * as byte-exact splices so the served script is byte-identical to the pre-split single
- * blob: the report tab's chart builders in gui-client-report.ts, and the header's operator
- * controls (budget editor, fleet pause) in gui-client-operator.ts; edit here when the fleet
- * view, badges, transcript, or prompt form change. */
+ * blob: the report tab's chart builders in gui-client-report.ts, the header's operator
+ * controls (budget editor, fleet pause) in gui-client-operator.ts, and the history tab's
+ * row table in gui-client-history.ts; edit here when the fleet view, badges, transcript,
+ * or prompt form change. */
 import { GUI_CLIENT_REPORT_JS } from "./gui-client-report.js";
+import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
 import { GUI_CLIENT_OPERATOR_JS } from "./gui-client-operator.js";
 export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   // A failed API call, named for the operator: endpoint, HTTP status, and the server's
@@ -133,20 +135,23 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // Top-level views inside one page: "fleet" (today's dashboard, default), "report" (usage
   // charts) and "failures" (the bounded Markdown digest). The director prompt form sits
   // outside all of them — an operator control, visible on every tab. The 1s status poll keeps
-  // running on every tab; report/failures data is fetched only on tab activation (both move at
-  // tick granularity, not per second).
+  // running on every tab; report/failures/history data is fetched only on tab activation (all
+  // move at tick granularity, not per second).
   let activeView = "fleet";
   function switchView(v) {
-    if (v !== "fleet" && v !== "report" && v !== "failures") return;
+    if (v !== "fleet" && v !== "report" && v !== "failures" && v !== "history") return;
     activeView = v;
     document.getElementById("fleet-view").hidden = v !== "fleet";
     document.getElementById("report").hidden = v !== "report";
     document.getElementById("failures").hidden = v !== "failures";
+    document.getElementById("history").hidden = v !== "history";
     document.getElementById("tab-fleet").classList.toggle("active", v === "fleet");
     document.getElementById("tab-report").classList.toggle("active", v === "report");
     document.getElementById("tab-failures").classList.toggle("active", v === "failures");
+    document.getElementById("tab-history").classList.toggle("active", v === "history");
     if (v === "report") fetchReport(); // on every activation — re-clicking refetches
     if (v === "failures") fetchFailures(); // likewise
+    if (v === "history") fetchHistory(); // likewise
   }
 
   ${GUI_CLIENT_REPORT_JS}
@@ -165,6 +170,8 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   }
 
 ${GUI_CLIENT_OPERATOR_JS}
+
+${GUI_CLIENT_HISTORY_JS}
 
   let transcriptRole = null; // loop whose transcript panel is open (null = closed)
   let backlogKey = null; // "file:index" of the open backlog entry (null = closed) — mutually
@@ -420,7 +427,7 @@ ${GUI_CLIENT_OPERATOR_JS}
     const a = ev.target.closest("a");
     if (!a || !a.id.startsWith("tab-")) return;
     ev.preventDefault();
-    switchView(a.id.slice(4)); // "fleet" | "report" | "failures" — re-clicking the active tab refetches
+    switchView(a.id.slice(4)); // "fleet" | "report" | "failures" | "history" — re-clicking the active tab refetches
   });
   document.getElementById("promptform").addEventListener("submit", async (ev) => {
     ev.preventDefault();

@@ -18,6 +18,7 @@ import {
   handlePrompt,
   handlePromptRole,
   handleReport,
+  handleHistory,
   handleTranscript,
   handleWake,
 } from "./gui-endpoints.js";
@@ -117,6 +118,8 @@ export function startGui(
         handleReport(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/failures") {
         handleFailures(target!.searchParams, res, root);
+      } else if (req.method === "GET" && pathname === "/api/history") {
+        handleHistory(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
         handleTranscript(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {

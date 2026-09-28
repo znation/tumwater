@@ -4,6 +4,9 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init.js";
+import type { HarnessEvent } from "../src/types.js";
+import { tickRows } from "../src/ui/history.js";
+import { writeEvents } from "./util.js";
 import { freshLoopState, saveLoopState } from "../src/state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
@@ -401,6 +404,81 @@ test("gui rejects oversized prompt-role bodies with 413 and stays healthy", asyn
     });
     assert.equal(ok.status, 200);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["still alive"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/history serves tickRows' JSON with role filtering and n clamped, not errored", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history api test");
+  // Seed interleaved tick_start/tick_end/unrelated events (the same shape the history CLI
+  // tests seed): one tick with a paired start (durations come from the pair), one without
+  // (a skipped tick's end rides no start — no fabricated duration), and a merged event that
+  // tickRows must ignore.
+  const events: HarnessEvent[] = [
+    { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent,
+    { ts: 46_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
+    { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
+    { ts: 48_000, loop: "clean", type: "tick_end", tick: 7, result: "no_change" } as HarnessEvent,
+    { ts: 49_000, loop: "feature", type: "tick_end", tick: 2, result: "skipped" } as HarnessEvent,
+    { ts: 50_000, loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
+    { ts: 96_000, loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+  ];
+  writeEvents(repo, events);
+
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // Default window: the JSON equals what `tumwater history` derives for the same window —
+    // tickRows over the same seed, newest first, durations from tick_start pairs, null when
+    // the start is outside the window.
+    const res = await fetch(base + "/api/history");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { rows: ReturnType<typeof tickRows> };
+    assert.deepEqual(d, { rows: tickRows(events, 20, null) });
+    assert.deepEqual(d.rows.map((r) => [r.loop, r.tick]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
+    assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own tick_start");
+    assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
+
+    // role filters to that loop's rows (a filter is not a target: an id with no ticks is a
+    // legitimate empty result, not an error — no config validation).
+    const scoped = await (await fetch(base + "/api/history?role=clean")).json();
+    assert.deepEqual(scoped, { rows: tickRows(events, 20, "clean") });
+    const none = await fetch(base + "/api/history?role=nosuchloop");
+    assert.equal(none.status, 200);
+    assert.deepEqual(await none.json(), { rows: [] });
+
+    // n: absent → 20; present but not a plain non-negative integer → 400 (the handleBacklog
+    // index discipline); present and parseable → clamped to [1, 200], never errored.
+    assert.deepEqual(await (await fetch(base + "/api/history?n=500")).json(), { rows: tickRows(events, 200, null) });
+    const one = await (await fetch(base + "/api/history?n=0")).json();
+    assert.deepEqual(one, { rows: tickRows(events, 1, null) }, "n=0 clamps up to 1");
+    for (const bad of ["abc", "-5", "1e3", "0x10", "%207", ""]) {
+      const r = await fetch(base + "/api/history?n=" + bad);
+      assert.equal(r.status, 400, `n=${bad} → 400 (a non-count is a client error, unlike days)`);
+      const body = (await r.json()) as { error: string };
+      assert.match(body.error, /n must be a non-negative integer/);
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/history serves an empty row set when the event log is missing, and the page carries the history tab", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history empty test");
+  // No events.jsonl seeded — the endpoint reads files directly, so it serves with no fleet
+  // running and no log at all: an empty row set, never a 500.
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const res = await fetch(base + "/api/history");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { rows: [] });
+
+    // The page carries the fourth tab's nav anchor and its hidden view container.
+    const page = await (await fetch(base + "/")).text();
+    assert.match(page, /id="tab-history"/);
+    assert.match(page, /id="history" hidden/);
   } finally {
     server.close();
   }

@@ -147,10 +147,10 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
 test("the dashboard page carries the report tab nav and its view containers", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
-  // Nav row under the h1 with all three tabs; fleet is active by default.
+  // Nav row under the h1 with all four tabs; fleet is active by default.
   assert.match(
     GUI_PAGE,
-    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a>[\s\S]*?<a href="#" id="tab-failures">failures<\/a><\/nav>/,
+    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a>[\s\S]*?<a href="#" id="tab-failures">failures<\/a>[\s\S]*?<a href="#" id="tab-history">history<\/a><\/nav>/,
   );
 
   // The fleet view wraps exactly the four fleet elements; #report and #failures are hidden
@@ -159,7 +159,10 @@ test("the dashboard page carries the report tab nav and its view containers", as
     GUI_PAGE,
     /<div id="fleet-view">\n<table>[\s\S]*?<\/table>\n<div id="transcript" hidden><\/div>\n<div id="backlog"><\/div>\n<div id="feed"><\/div>\n<\/div>/,
   );
-  assert.match(GUI_PAGE, /<\/div>\n<div id="report" hidden><\/div>\n<div id="failures" hidden><\/div>\n<script>/);
+  assert.match(
+    GUI_PAGE,
+    /<\/div>\n<div id="report" hidden><\/div>\n<div id="failures" hidden><\/div>\n<div id="history" hidden><\/div>\n<script>/,
+  );
   // #failures reuses #transcript's box, so the digest keeps its newlines and scrolls.
   assert.match(GUI_PAGE, /#transcript, #failures \{[\s\S]*?white-space:pre-wrap/);
 

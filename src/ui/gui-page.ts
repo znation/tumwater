@@ -45,7 +45,7 @@ export const GUI_PAGE = `<!doctype html>
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
 </style>
 <h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span><span id="pausewrap"></span></h1>
-<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a><span class="muted"> | </span><a href="#" id="tab-failures">failures</a></nav>
+<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a><span class="muted"> | </span><a href="#" id="tab-failures">failures</a><span class="muted"> | </span><a href="#" id="tab-history">history</a></nav>
 <form id="promptform">
   <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
   <button>send</button><span id="flash"></span>
@@ -68,6 +68,7 @@ export const GUI_PAGE = `<!doctype html>
 </div>
 <div id="report" hidden></div>
 <div id="failures" hidden></div>
+<div id="history" hidden></div>
 <script>
 ${GUI_CLIENT_JS}
 </script>

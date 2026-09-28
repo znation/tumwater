@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### GUI history tab — the dashboard shows the per-tick history `tumwater history` prints (planned 2026-09-28)
+_None yet._
+
+## Done
+
+### GUI history tab — the dashboard shows the per-tick history `tumwater history` prints (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** The browser dashboard renders fleet state, transcripts, backlog, the event feed, the
 usage report, and the failure digest — but not the per-tick history an operator reaches for
@@ -81,7 +85,15 @@ endpoint tests pass and the full suite passes. (d) No fleet needs to be running 
 tab or the endpoint to serve data.
 
 
-## Done
+**Done 2026-09-28 by feature.** Landed as specified: handleHistory beside handleReport
+(same comment style, the handleBacklog 400 discipline for a non-count `n`, clamped to
+[1, HISTORY_MAX_TICKS], the role filter passed through unvalidated), the /api/history
+route before the POST handlers, the fourth nav anchor + #history container, switchView
+wired to fetchHistory with re-click refetch, and gui-client-history.ts interpolated into
+GUI_CLIENT_JS beside gui-client-report.ts. All five endpoint tests live in
+test/gui-server.test.ts as planned; one file the plan did not name was touched:
+test/gui-report.test.ts — its two page-markup regexes (the nav row and the hidden view
+containers) named three tabs and had to widen to four.
 
 ### `logs --grep <text>` — show only the events whose type or rendered line matches (planned 2026-09-28, done 2026-09-28)
 
