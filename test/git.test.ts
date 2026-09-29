@@ -45,7 +45,7 @@ import {
 } from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -458,7 +458,7 @@ test("conflictedFiles decodes C-quoted quote/tab/newline/CR/backslash filenames"
 test("readBranchHead matches git rev-parse across loose and packed refs", () => {
   const repo = makeRepo();
   // Fresh init keeps the branch as a loose ref.
-  let head = sh(repo, "git", "rev-parse", "main");
+  let head = mainSha(repo);
   assert.equal(readBranchHead(repo, "main"), head);
 
   // pack-refs moves main into packed-refs and deletes the loose file.
@@ -470,7 +470,7 @@ test("readBranchHead matches git rev-parse across loose and packed refs", () => 
   fs.writeFileSync(path.join(repo, "b.txt"), "b\n");
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "second");
-  head = sh(repo, "git", "rev-parse", "main");
+  head = mainSha(repo);
   assert.equal(readBranchHead(repo, "nope"), null); // unknown branch: null, not the stale sha
   assert.equal(readBranchHead(repo, "main"), head);
 });
@@ -1088,7 +1088,7 @@ test("concurrent ensureDetachedWorktree calls serialize and both resolve to the 
   // one reports "not created by me" (false) and still falls through to the shared
   // checkout/reset tail, so both end on the exact ref with a clean tree.
   const repo = makeRepo();
-  const head = sh(repo, "git", "rev-parse", "main");
+  const head = mainSha(repo);
   const dir = mirrorWorktreePath(repo);
   const first = ensureDetachedWorktree(repo, dir, head);
   const second = ensureDetachedWorktree(repo, dir, head);

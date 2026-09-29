@@ -9,7 +9,7 @@ import { freshLoopState } from "../src/loop-state.js";
 import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */
@@ -86,7 +86,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const broken = true;\n");
 
   const state: LoopState = freshLoopState("improve");
-  const before = sh(root, "git", "rev-parse", "main");
+  const before = mainSha(root);
   const { ctx, merges } = makeCtx();
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "half-baked" }));
 
@@ -94,7 +94,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
   assert.equal(outcome.summary, "half-baked");
   assert.equal(outcome.commit, undefined, "no commit without a note");
   assert.equal(merges.length, 0, "nothing to merge");
-  assert.equal(sh(root, "git", "rev-parse", "main"), before, "main is untouched");
+  assert.equal(mainSha(root), before, "main is untouched");
   assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
   assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean after the reset");
 });

@@ -21,7 +21,7 @@ import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, reviewerPi } from "./pi-events.js";
@@ -64,7 +64,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
     assert.equal(outcome.commit, sha);
     assert.equal(outcome.summary, "recovered leftover work from improve: interrupted tick's commit");
     assert.ok(!fs.existsSync(authored), "the recovery tick ran no authoring pass");
-    assert.notEqual(sh(repo, "git", "rev-parse", "main").trim(), sha, "nothing landed inside the tick");
+    assert.notEqual(mainSha(repo), sha, "nothing landed inside the tick");
     const tickEvents = readEvents(repo);
     assert.deepEqual(
       tickEvents.filter((e) => e.type === "land_queued").map((e) => e.commit),
@@ -79,7 +79,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
 
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The interrupted work landed on main via recovery — reviewed, not smuggled in.
-    assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+    assert.equal(mainSha(repo), sha);
     assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
     const merged = eventsOfType(repo, "merged");
     assert.ok(
@@ -191,7 +191,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
     const prompt = fs.readFileSync(reviewArgs, "utf8");
     assert.match(prompt, /HIGH-FRICTION/, "the recovered commit is flagged for extra scrutiny");
     assert.match(prompt, /WHY: the fix was fiddly/, "the recovered body rides into the gate");
-    assert.equal(sh(repo, "git", "rev-parse", "main"), sha, "the recovered commit landed");
+    assert.equal(mainSha(repo), sha, "the recovered commit landed");
   } finally {
     restore();
   }
@@ -254,7 +254,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
 
     // The unpinned work landed on main via recovery — reviewed, not smuggled in.
-    assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+    assert.equal(mainSha(repo), sha);
     assert.ok(fs.existsSync(path.join(repo, "unpinned.txt")), "the recovered file is on main");
     const merged = eventsOfType(repo, "merged");
     assert.ok(

@@ -16,7 +16,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
@@ -122,7 +122,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
     const clock = watchdogClock(t);
     const runner = makeLoopRunner(repo, "improve", config);
-    const before = sh(repo, "git", "rev-parse", "main");
+    const before = mainSha(repo);
     const tick = runner.tick();
     // The kill must come only once the shim has spoken and reached `echo partial` — the
     // "partial edit survives" assertion below is about the kill, not about shell startup.
@@ -132,7 +132,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed");
     assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing landed on main");
+    assert.equal(mainSha(repo), before, "nothing landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
     // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
     // worktree and the next tick resumes the session instead of resetting it away.

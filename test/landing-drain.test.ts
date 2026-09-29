@@ -28,7 +28,7 @@ import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor, waitForFile } from "./wait.js";
 import { assistantLine, reviewerPi } from "./pi-events.js";
@@ -211,7 +211,7 @@ test("an empty queue drains nothing", async () => {
 
 test("a queued entry whose sha main already holds is dropped without a vet", async () => {
   const root = makeRepo();
-  const sha = sh(root, "git", "rev-parse", "main").trim();
+  const sha = mainSha(root);
   enqueueLanding(root, entry("improve", sha));
   // A crash between the fast-forward and the entry drop leaves a marker naming a change main
   // already holds; the dedupe clears its record alongside the entry.
@@ -234,7 +234,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
   // log say so. Each phase's entries come from a commit-tree chain built in one spawn —
   // 500 spawns one-by-one would dwarf the drain itself.
   const root = makeRepo();
-  const initialTip = sh(root, "git", "rev-parse", "main");
+  const initialTip = mainSha(root);
   // 300 already-merged commits at one constant head: every sha the drain's dedupe reads as
   // merged, every verdict cached against the same head.
   sh(
@@ -312,7 +312,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
   const sha = pinnedCommit(root, "improve");
   await setRef(root, landingRefName("improve"), sha);
   enqueueLanding(root, entry("improve", sha));
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const restore = fakePi(APPROVE());
   try {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
@@ -335,7 +335,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
 test("changes vetted while the merge slot is busy merge as one stack: one shared check, one fast-forward", async () => {
   const root = makeRepo();
   await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const config = { ...defaultConfig(), check: { command: "true" } };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
@@ -407,7 +407,7 @@ test("landBatchMax caps each merge's stack, read from the live config at each dr
 test("a vetted change whose queue entry is gone is forgotten while its neighbor still lands", async () => {
   const root = makeRepo();
   await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const config = { ...defaultConfig(), check: { command: "true" } };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
@@ -513,7 +513,7 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   const shas = await queueChanges(root, roles);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const config = {
     ...defaultConfig(),
     check: { command: `if [ -f alpha.txt ] && [ -f beta.txt ]; then echo "planted failure: beta breaks the suite"; exit 1; fi` },
@@ -696,7 +696,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
   const T = 2;
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   await queueChanges(root, roles);
   const runDir = tmpdir();
   const restore = fakePi(
@@ -1049,7 +1049,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
 test("a plumbing throw in the merge keeps every entry queued and un-vetted, records the error, and recovers on the next poll", async () => {
   const root = makeRepo();
   await queueChanges(root, ["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const config = { ...defaultConfig(), check: { command: "true" } };
   const restore = fakePi(APPROVE());
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["alpha", "beta"], undefined, config), { config });
@@ -1077,7 +1077,7 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
     assert.ok(loadLoopState(root, "alpha").lastError, "the head author's persisted state names the failure");
     assert.equal(readLandingMarker(root), null, "the merge's marker records were removed with its task");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported landed");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
 
     // Repair the plumbing and let the next poll re-vet from the surviving pins: the queue
     // still drains, which is the recovery the catch exists to preserve. Git may have

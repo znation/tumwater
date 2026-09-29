@@ -6,7 +6,7 @@ import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import {
   request,
@@ -34,7 +34,7 @@ import {
 test("a stack of three whose second change breaks the check lands the first, rejects the second, re-queues the third", async () => {
   const roles = ["alpha", "beta", "gamma"];
   const { root, shas, states, wiringFor, folded } = await batchFixture(roles);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   // beta breaks the suite — but only on the stacked tree (its own gate passed: an
   // interaction the stack check exists to catch).
   checkAfterGates(root, 3, `[ -f "$INIT_CWD/beta.txt" ] && { echo "planted failure: beta breaks the suite"; exit 1; }`);
@@ -111,7 +111,7 @@ for (const baseline of ["red", "unavailable"] as const) {
       assert.deepEqual(batchChecks(root).map((e) => e.status), ["failed", "failed"]);
       const baselineChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "baseline");
       assert.deepEqual(baselineChecks.map((e) => e.status), [baseline === "red" ? "failed" : "skipped"]);
-      assert.equal(sh(root, "git", "rev-parse", "main"), tip, "nothing landed");
+      assert.equal(mainSha(root), tip, "nothing landed");
       assert.equal(results[1]!.result, undefined, "beta is unattempted: entry and ref kept");
       assert.ok(await refSha(root, landingRefName("beta")));
       if (baseline === "red") {
@@ -278,7 +278,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
   try {
     const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta", "gamma"]);
     sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const lost = "0".repeat(40); // a sha git cannot check out
 
     const results = await vetThenMerge(
@@ -318,7 +318,7 @@ test("an unlandable first bisect step after a red stack check degrades to error 
   );
   const restore = fakePi(APPROVE_PI);
   try {
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
@@ -327,7 +327,7 @@ test("an unlandable first bisect step after a red stack check degrades to error 
     assert.equal(results[1]!.result, undefined, "the rest stay unattempted for the next drain");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an error keeps its ref for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and so does the unattempted one");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
   } finally {
     restore();
   }

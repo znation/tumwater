@@ -11,7 +11,7 @@ import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import {
   ROLE,
@@ -57,7 +57,7 @@ test("an approved landing lands on main and deletes the ref", async () => {
 
     assert.equal(await vetAndLand(ctx, request(sha)), "changed");
 
-    assert.equal(sh(root, "git", "rev-parse", "main"), sha, "the pinned commit is main's head");
+    assert.equal(mainSha(root), sha, "the pinned commit is main's head");
     assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
     assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
     assert.equal(folded.length, 1, "the reviewer run's usage folds into the tick counters");
@@ -109,12 +109,12 @@ test("a rejected landing lands nothing: role worktree clean at main, ref deleted
   try {
     const { root, sha, wt } = await pinnedFixture();
     const state = freshLoopState(ROLE);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const { ctx } = makeCtx(root, state);
 
     assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
 
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed on main");
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
     assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree is clean at main");
     assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no stray edits in the role worktree");
     assert.equal(await refSha(root, REF), null, "a rejection is terminal: the pin goes too");
@@ -131,12 +131,12 @@ test("a verdict-less failure under the strike cap returns review_error and keeps
   try {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const { ctx } = makeCtx(root, state);
 
     assert.equal(await vetAndLand(ctx, request(sha)), "review_error");
 
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed on main");
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
     assert.ok(state.lastError?.startsWith("review failed:"), `lastError names the failure: ${state.lastError}`);
     assert.equal(await refSha(root, REF), sha, "under the cap the pin stays for next-tick recovery");
   } finally {
@@ -151,7 +151,7 @@ test("three verdict-less failures discard the landing and delete the ref", async
   try {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE); // one state object across all three attempts
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       const { ctx } = makeCtx(root, state);
@@ -161,7 +161,7 @@ test("three verdict-less failures discard the landing and delete the ref", async
 
     const { ctx } = makeCtx(root, state);
     assert.equal(await vetAndLand(ctx, request(sha)), "review_error", "the discard reports like a failure");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed on main");
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
     assert.equal(await refSha(root, REF), null, "past the strike cap the pin is deleted with it");
   } finally {
     restore();
@@ -173,13 +173,13 @@ test("an abort mid-review returns aborted and keeps the ref", async () => {
   try {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const { ctx, controller } = makeCtx(root, state);
     controller.abort(); // a shutdown that lands before the reviewer starts
 
     assert.equal(await vetAndLand(ctx, request(sha)), "aborted");
 
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed on main");
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
     assert.equal(await refSha(root, REF), sha, "an aborted landing keeps its pin for recovery");
   } finally {
     restore();
@@ -236,7 +236,7 @@ test("a landing pinned behind main's advance is rebased onto main BEFORE the gat
     assert.equal(await vetAndLand(ctx, request(sha)), "changed");
 
     // main holds both: main's fix underneath, the rebased change on top (linear, no merge).
-    const mainHead = sh(root, "git", "rev-parse", "main").trim();
+    const mainHead = mainSha(root);
     assert.notEqual(mainHead, sha, "main moved past the pin: the change was rebased onto the fix");
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
     assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
@@ -318,7 +318,7 @@ test("the lander worktree is per-role and detached at the pinned sha", async () 
 test("a failing pre-check on a green main rejects the landing and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
   declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
-  noteGreenBaseline(sh(root, "git", "rev-parse", "main")); // what the last landing left behind
+  noteGreenBaseline(mainSha(root)); // what the last landing left behind
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`);
   try {
@@ -369,7 +369,7 @@ for (const main of ["green", "red"] as const) {
     }
     assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
     assert.equal(calls.length, 0, "no model run");
-    assert.equal(sh(root, "git", "rev-parse", "main"), tip, "nothing landed");
+    assert.equal(mainSha(root), tip, "nothing landed");
   });
 }
 
@@ -380,7 +380,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
   fs.writeFileSync(path.join(root, unique), "main moved\n");
   sh(root, "git", "add", unique);
   sh(root, "git", "commit", "-m", "main moves on its own");
-  const mainSha = sh(root, "git", "rev-parse", "main");
+  const newMainSha = mainSha(root);
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`);
   try {
@@ -390,7 +390,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
     const pinned = await refSha(root, REF);
     assert.ok(pinned, "the pin survives a red main");
     // The pre-gate sync rebased the pin onto the moved main; the gate left it exactly there.
-    assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), mainSha);
+    assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), newMainSha);
     assert.ok(sh(root, "git", "show", `${pinned}:seed.txt`).includes("the work"), "the pin still names the work");
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.equal(folded.length, 0);
@@ -417,12 +417,12 @@ test("an all-rejected batch returns a defined result for every request without t
   );
   try {
     const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), null, "a rejection deletes its ref");
     assert.equal(await refSha(root, landingRefName("beta")), null, "and the next request's too — the batch lands nothing");
   } finally {
@@ -434,7 +434,7 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
   const restore = fakePi(APPROVE_PI);
   try {
     const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
@@ -444,7 +444,7 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
     assert.equal(merged.length, 2, "one merged event per change, in queue order");
     assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main~1"), "the head is the first new commit on main");
     assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
-    assert.equal(merged[1]!.commit, sh(root, "git", "rev-parse", "main"), "the stacked tip is main's head");
+    assert.equal(merged[1]!.commit, mainSha(root), "the stacked tip is main's head");
     assert.notEqual(merged[1]!.commit, shas.beta!, "the second change re-committed on top of the first");
     assert.equal(await refSha(root, landingRefName("alpha")), null, "the ff deleted the head's ref");
     assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked one's");
@@ -468,7 +468,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   shas.alpha = sh(root, "git", "rev-parse", "HEAD");
   await setRef(root, landingRefName("alpha"), shas.alpha);
   sh(root, "git", "checkout", "main");
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const restore = fakePi(APPROVE_PI);
   try {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
@@ -492,7 +492,7 @@ test("an abort mid-batch routes every request without a terminal outcome to abor
   try {
     const roles = ["alpha", "beta", "gamma"];
     const { root, shas, wiringFor, folded } = await batchFixture(roles);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const controller = new AbortController();
     controller.abort(); // a shutdown (or a user stop for any batched role) before the batch starts
 
@@ -502,7 +502,7 @@ test("an abort mid-batch routes every request without a terminal outcome to abor
     for (const role of roles) {
       assert.equal(await refSha(root, landingRefName(role)), shas[role]!, `an abort keeps ${role}'s ref for recovery`);
     }
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
     // Every vet sees the stop before its gate starts: no reviewer spend on any of them.
     assert.equal(folded.size, 0, "no reviewer ran");
   } finally {
@@ -523,14 +523,14 @@ test("an aborted batch lands nothing even when every gate would short-circuit on
     // no pi run, so only the between-steps check can see the abort.
     states.alpha.lastApprovedHead = shas.alpha!;
     states.beta.lastApprovedHead = shas.beta!;
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const controller = new AbortController();
     controller.abort();
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
     assert.equal(folded.size, 0, "no gate ran a pi");
@@ -548,7 +548,7 @@ test("an abort after the last gate approved stops the batch before its shared ch
   );
   try {
     declareCheck(root, "#!/bin/sh\necho ok\n");
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const controller = new AbortController();
     // The stop lands the moment beta's gate hands back its approval — after every gate, before
     // the stack is assembled and checked.
@@ -568,7 +568,7 @@ test("an abort after the last gate approved stops the batch before its shared ch
     const results = await runBatch(root, shas, ["alpha", "beta"], stopAfterBeta, controller);
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both approved changes read aborted");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
     const checks = eventsOfType(root, "build_check");
@@ -585,7 +585,7 @@ test("an abort after the gate stops a one-change merge before it lands", async (
   const restore = fakePi(APPROVE_PI);
   try {
     const { root, shas, wiringFor } = await batchFixture(["alpha"]);
-    const mainBefore = sh(root, "git", "rev-parse", "main");
+    const mainBefore = mainSha(root);
     const controller = new AbortController();
     const stopAfterGate = (role: string): BatchRoleWiring => {
       const w = wiringFor(role);
@@ -601,7 +601,7 @@ test("an abort after the gate stops a one-change merge before it lands", async (
     const results = await runBatch(root, shas, ["alpha"], stopAfterGate, controller);
 
     assert.deepEqual(results.map((r) => r.result), ["aborted"]);
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing landed");
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
   } finally {
     restore();

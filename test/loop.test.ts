@@ -16,7 +16,7 @@ import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
@@ -164,10 +164,10 @@ test("a nothing-to-do tick backs off without committing", async () => {
   try {
     const config = defaultConfig();
     const runner = makeLoopRunner(repo, "clean", config);
-    const before = sh(repo, "git", "rev-parse", "main");
+    const before = mainSha(repo);
     const first = await runner.tick();
     assert.equal(first.result, "no_change");
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before);
+    assert.equal(mainSha(repo), before);
     assert.equal(runner.state.backoffSeconds, config.idleBackoff.initialSeconds);
     const second = await runner.tick();
     assert.equal(second.result, "no_change");
@@ -662,11 +662,11 @@ test("an aborted tick lands nothing, does not back off, and marks itself resumab
   try {
     const controller = new AbortController();
     const runner = makeLoopRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const before = sh(repo, "git", "rev-parse", "main");
+    const before = mainSha(repo);
     setTimeout(() => controller.abort(), 300);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "aborted");
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing lands on main");
+    assert.equal(mainSha(repo), before, "nothing lands on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
     assert.equal(runner.state.backoffSeconds, 0);
     assert.ok(runner.state.nextRunAt <= Date.now(), "resumes promptly on restart");

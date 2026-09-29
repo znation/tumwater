@@ -18,7 +18,7 @@ import { headLanding, queueDepth } from "../src/landing-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
@@ -133,7 +133,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
   try {
     const config = defaultConfig();
     const runner = makeLoopRunner(repo, "improve", config);
-    const before = sh(repo, "git", "rev-parse", "main");
+    const before = mainSha(repo);
     const tick = runner.tick();
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
     // fake pi even starts under parallel load.
@@ -150,7 +150,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     // The work is discarded: nothing lands on main and the planted dirty file is gone from
     // the worktree (reset --hard + clean -fd), so the next tick's leftover recovery finds
     // nothing to salvage.
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before, "nothing lands on main");
+    assert.equal(mainSha(repo), before, "nothing lands on main");
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
     assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
@@ -316,11 +316,11 @@ test("a timed-out tick reports an error and never commits partial work", async (
     const config = defaultConfig();
     config.tickTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "improve", config);
-    const before = sh(repo, "git", "rev-parse", "main");
+    const before = mainSha(repo);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
-    assert.equal(sh(repo, "git", "rev-parse", "main"), before);
+    assert.equal(mainSha(repo), before);
     assert.ok(runner.state.backoffSeconds > 0);
   } finally {
     restore();

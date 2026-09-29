@@ -15,7 +15,7 @@ import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -640,7 +640,7 @@ async function gateBuildFixture(
 /** Seed main's baseline green at `root`'s tip — what every landing leaves behind for the SHA it
  * moved main to (noteGreenBaseline), so the gate's attribution is a cache hit, no run. */
 function seedGreenMain(root: string): void {
-  noteGreenBaseline(sh(root, "git", "rev-parse", "main"));
+  noteGreenBaseline(mainSha(root));
 }
 
 /** Give `root`'s main a commit no other test shares and return its sha: the baseline cache then
@@ -650,7 +650,7 @@ function uniqueMain(root: string): string {
   fs.writeFileSync(path.join(root, file), "main moved\n");
   sh(root, "git", "add", file);
   sh(root, "git", "commit", "-m", "main moves on its own");
-  return sh(root, "git", "rev-parse", "main");
+  return mainSha(root);
 }
 
 const buildCheckEvents = (root: string): string[] =>
@@ -771,7 +771,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
-  const mainSha = uniqueMain(root);
+  const movedMainSha = uniqueMain(root);
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
@@ -780,7 +780,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     const head = await headOf(wt, "HEAD");
     const result = await reviewAheadOfMain(gateCtx(root, wt), state);
     assert.equal(result.decision, "failed");
-    assert.equal(result.detail, `main ${shortSha(mainSha)} is red — not this change's failure`);
+    assert.equal(result.detail, `main ${shortSha(movedMainSha)} is red — not this change's failure`);
     assert.equal(result.aborted, undefined);
     assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
     assert.equal(result.mainRed, true, "the landing reports main_red, not a reviewer failure");
@@ -795,11 +795,11 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:failed"]);
     const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
     assert.ok(
-      warnings.some((m) => m.startsWith(`main ${shortSha(mainSha)} is red (build: error TS2345: boom)`)),
+      warnings.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
       `the fleet-wide red-main warning fires; got: ${JSON.stringify(warnings)}`,
     );
     assert.ok(
-      warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(mainSha)} is red — not this change's failure; landing kept`),
+      warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; landing kept`),
       `the role's warning names both heads; got: ${JSON.stringify(warnings)}`,
     );
   } finally {

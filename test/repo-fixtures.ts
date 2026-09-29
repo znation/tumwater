@@ -44,6 +44,13 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
 
+/** main's current commit sha — the head every "did this landing move main" assertion captures
+ * before acting and re-reads after (lander, drain, merge, baseline, review, loop tests), so the
+ * pinned-ref spelling cannot drift between them and a typo'd ref fails in one place. */
+export function mainSha(dir: string): string {
+  return sh(dir, "git", "rev-parse", "main");
+}
+
 /** A scratch bin dir whose only entry is a symlink to the real git: a restricted PATH that
  * keeps git working (repo checks, landing, the worktree helpers) while dropping every other
  * binary — pi, npm — so a test can isolate exactly one missing tool. Tests that need the dir

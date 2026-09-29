@@ -13,7 +13,7 @@ import path from "node:path";
 import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing-batch.js";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
-import { sh } from "./repo-fixtures.js";
+import { mainSha } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { APPROVE_PI } from "./pi-events.js";
 import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./lander-fixtures.js";
@@ -47,7 +47,7 @@ test("a single vetted change whose conflict resolver throws degrades to 'error' 
     assert.match(states.alpha!.lastError ?? "", /resolver exploded/);
     // Nothing half-landed: main sits at the moved tip, and the pin survives so the next
     // drain (or leftover recovery) can re-land the change.
-    assert.equal(sh(root, "git", "rev-parse", "main").trim(), mainAtMerge);
+    assert.equal(mainSha(root), mainAtMerge);
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!);
   } finally {
     restore();

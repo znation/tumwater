@@ -9,7 +9,7 @@ import { shortSha } from "../src/text.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -73,7 +73,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     const blocked = await mainRedGate(root, ROLE, wt);
     // The cause rides the outcome (BUGS.md 2026-09-28): the tick's tick_end must be able to
     // name what broke, not leave the digest's main_red cells a bare count.
-    const sha = sh(root, "git", "rev-parse", "main");
+    const sha = mainSha(root);
     assert.deepEqual(blocked, {
       result: "main_red",
       summary: "code merges blocked until main is green",

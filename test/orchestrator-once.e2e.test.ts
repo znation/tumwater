@@ -16,7 +16,7 @@ import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
 import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./orchestrator-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
@@ -56,7 +56,7 @@ test("once: a fleet where every role finds nothing to do exits on its own, one t
 
 test("once: a round that produces a change merges it before exiting", async () => {
   const repo = await makeFastRepo("once landing test", ["clean"]);
-  const before = sh(repo, "git", "rev-parse", "main").trim();
+  const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
   const restore = fakePi(
     [
@@ -69,7 +69,7 @@ test("once: a round that produces a change merges it before exiting", async () =
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
-    assert.notEqual(sh(repo, "git", "rev-parse", "main").trim(), before, "main's head moved");
+    assert.notEqual(mainSha(repo), before, "main's head moved");
     assert.ok(
       readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
       "the round's landed event is in events.jsonl",
@@ -137,7 +137,7 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
   // An open backlog (PLANS.md ## Planned) plus a no_change history defers clean's due tick —
   // in once mode that deferral is the role's round answer, not something to wait out.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
-  const head = sh(repo, "git", "rev-parse", "main").trim();
+  const head = mainSha(repo);
   saveLoopState(repo, {
     ...freshLoopState("clean"),
     ticks: 1,
@@ -180,7 +180,7 @@ test("once: the summary reports a deferred role as deferred, not idle", async ()
   // it must carry the orchestrator's own settle reason — "deferred" (the tick WAS due and was
   // set aside) — not the re-derived "idle" (nothing was due), which misreads the round.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
-  const head = sh(repo, "git", "rev-parse", "main").trim();
+  const head = mainSha(repo);
   saveLoopState(repo, {
     ...freshLoopState("clean"),
     ticks: 1,
@@ -247,7 +247,7 @@ test("once --role: a scoped round ticks only the named role", async () => {
 
 test("once --role: a scoped round that produces a change merges it before exiting", async () => {
   const repo = await makeFastRepo("once scoped landing test", ["clean", "dry"]);
-  const before = sh(repo, "git", "rev-parse", "main").trim();
+  const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
   const restore = fakePi(
     [
@@ -260,7 +260,7 @@ test("once --role: a scoped round that produces a change merges it before exitin
     const exit = await onceRound(repo, "clean");
     assert.equal(exit.restart, false);
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
-    assert.notEqual(sh(repo, "git", "rev-parse", "main").trim(), before, "main's head moved");
+    assert.notEqual(mainSha(repo), before, "main's head moved");
     assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
   } finally {
     restore();

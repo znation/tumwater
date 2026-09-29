@@ -7,7 +7,7 @@ import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { sh } from "./repo-fixtures.js";
+import { mainSha, sh } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import {
@@ -41,7 +41,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
   // a third role's own vet and landing). The ff loses, the batch re-stacks on the new tip,
   // re-checks it (the racer is code, not docs), and lands both changes on top of the racer.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const started = path.join(root, ".batch-started");
   const release = path.join(root, ".batch-release");
   countingCheck(root, `if [ "$n" = "3" ]; then ${parkUntil(started, release)}; fi`);
@@ -63,7 +63,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
     );
     const merged = eventsOfType(root, "merged");
     assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
-    assert.equal(merged[2]!.commit, sh(root, "git", "rev-parse", "main"), "the re-stacked tip is main's head");
+    assert.equal(merged[2]!.commit, mainSha(root), "the re-stacked tip is main's head");
     assert.deepEqual(
       batchChecks(root).map((e) => e.status),
       ["passed", "passed"],
@@ -81,7 +81,7 @@ test("a fast-forward lost to a doc-only commit re-stacks without a second batch 
   // The exempt case: the tree the re-stack builds is the checked tree plus doc-only bytes —
   // the gate's own exemption test says that cannot break the build, so no second check runs.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   countingCheck(root, `if [ "$n" = "3" ]; then ${commitOnMain(root, "NOTES.md", "a doc edit")}; fi`);
   const restore = fakePi(APPROVE_PI);
   try {
@@ -104,7 +104,7 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
   // Past BATCH_RESTACK_ATTEMPTS the batch gives up to leftover recovery: every approved change
   // keeps its ref and nothing merges.
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   countingCheck(root, `if [ "$n" -ge 3 ]; then ${commitOnMain(root, "race.txt", "main moved")}; fi`);
   const restore = fakePi(APPROVE_PI);
   try {
@@ -163,7 +163,7 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
     const controller = new AbortController();
     const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
     await waitForFile(started);
-    const mainMid = sh(root, "git", "rev-parse", "main");
+    const mainMid = mainSha(root);
     controller.abort();
     fs.writeFileSync(release, "");
 
@@ -171,7 +171,7 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
     assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
-    assert.equal(sh(root, "git", "rev-parse", "main"), mainMid, "nothing landed after the racer");
+    assert.equal(mainSha(root), mainMid, "nothing landed after the racer");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
   } finally {
@@ -188,7 +188,7 @@ test("a one-change merge lands on its own: one ff, one merged event", async () =
     const results = await runBatch(root, shas, ["alpha"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed"]);
-    assert.equal(sh(root, "git", "rev-parse", "main"), shas.alpha!, "landed through landApprovedChange: the pin itself on an unmoved main");
+    assert.equal(mainSha(root), shas.alpha!, "landed through landApprovedChange: the pin itself on an unmoved main");
     assert.equal(eventsOfType(root, "merged").length, 1);
   } finally {
     restore();

@@ -14,7 +14,7 @@ import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
-import { gitOnlyBinDir, makeRepo, sh } from "./repo-fixtures.js";
+import { gitOnlyBinDir, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
@@ -89,12 +89,12 @@ test("a clean rebase lands as changed with a merged event and linear history", a
 
   assert.equal(result, "changed");
   assert.equal(calls.length, 0, "no conflict — pi is never invoked");
-  assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(mainSha(root), sh(wt, "git", "rev-parse", "HEAD"));
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
   assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "history stays linear");
   const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 1);
-  assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main"));
+  assert.equal(merged[0]!.commit, mainSha(root));
   assert.equal(merged[0]!.summary, "branch work");
 });
 
@@ -126,7 +126,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
   commitIn(wt, "branch edit");
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
   commitIn(root, "main edit");
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root); // runPi does nothing: markers stay
 
   const result = await mergeToMain(ctx, wt, "branch edit");
@@ -134,7 +134,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
   assert.equal(result, "merge_conflict");
   assertWorktreeSettled(wt);
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch\n", "branch state restored");
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "main is untouched");
+  assert.equal(mainSha(root), mainBefore, "main is untouched");
   assert.equal(await aheadOfMain(wt, "main"), 1, "the tick's commit survives for the next attempt");
   assert.equal(eventsOfType(root, "merged").length, 0);
 });
@@ -145,7 +145,7 @@ test("a failed pi run aborts even when it resolved every marker", async () => {
   commitIn(wt, "branch edit");
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
   commitIn(root, "main edit");
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   // The run resolves the file but reports failure (e.g. it timed out): merge must not
   // conclude a rebase on work pi did not stand behind.
   const { ctx } = makeCtx(root, async (w) => {
@@ -157,7 +157,7 @@ test("a failed pi run aborts even when it resolved every marker", async () => {
 
   assert.equal(result, "merge_conflict");
   assertWorktreeSettled(wt);
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "the rebase was never continued");
+  assert.equal(mainSha(root), mainBefore, "the rebase was never continued");
 });
 
 test("a second conflict on replay aborts after one resolution attempt", async () => {
@@ -171,7 +171,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
   const branchHead = sh(wt, "git", "rev-parse", "HEAD");
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
   commitIn(root, "main edit");
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "resolved\n"); // resolves only the first stop
     return piResult();
@@ -183,7 +183,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
   assertWorktreeSettled(wt);
   assert.equal(sh(wt, "git", "rev-parse", "HEAD"), branchHead, "abort restored the branch");
   assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "two\n");
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore);
+  assert.equal(mainSha(root), mainBefore);
   assert.equal(await aheadOfMain(wt, "main"), 2, "both commits survive for the next attempt");
 });
 
@@ -194,13 +194,13 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
   // The primary checkout sits on main with a local edit to the same file: the working-tree
   // ff-merge would overwrite it, so git refuses.
   fs.writeFileSync(path.join(root, "seed.txt"), "local\n");
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root);
 
   const result = await mergeToMain(ctx, wt, "branch edit");
 
   assert.equal(result, "merge_blocked");
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "main never moved");
+  assert.equal(mainSha(root), mainBefore, "main never moved");
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "local\n", "the local edit survives");
   assert.equal(await aheadOfMain(wt, "main"), 1, "the branch keeps its commit for a later landing");
   assert.equal(eventsOfType(root, "merged").length, 0);
@@ -230,7 +230,7 @@ test("the landing-flow git helpers are exported from landing-git.js (regression)
   commitIn(root, "main edit");
   assert.equal(await landingGit.rebaseOntoMain(wt, "main"), true);
   assert.equal(await landingGit.ffMainTo(root, branchName("improve"), "main"), true);
-  assert.equal(sh(root, "git", "rev-parse", "main"), sh(wt, "git", "rev-parse", "HEAD"));
+  assert.equal(mainSha(root), sh(wt, "git", "rev-parse", "HEAD"));
 });
 
 /** A detached worktree (no branch) with one commit ahead of main; returns its head sha.
@@ -265,7 +265,7 @@ test("a detached worktree's pinned sha lands when main moved after the commit (f
   const result = await mergeToMain(ctx, wt, "detached work");
 
   assert.equal(result, "changed", "the ff targets the post-rebase tip, not the stale pinned sha");
-  const mainHead = sh(root, "git", "rev-parse", "main").trim();
+  const mainHead = mainSha(root);
   assert.notEqual(mainHead, pinnedSha, "the rebase rewrote the commit — main is NOT at the pin");
   assert.equal(sh(wt, "git", "rev-parse", "HEAD"), mainHead);
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
@@ -276,7 +276,7 @@ test("ffMainTo lands a bare sha from a detached worktree while root is on main",
   const sha = detachedAheadOfMain(repo);
 
   assert.ok(await ffMainTo(repo, sha, "main"));
-  assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+  assert.equal(mainSha(repo), sha);
   // The working-tree merge updated the primary checkout's files too.
   assert.ok(fs.existsSync(path.join(repo, "new.txt")));
 });
@@ -289,7 +289,7 @@ test("ffMainTo lands a bare sha via ref push when root is on another branch", as
   const sha = detachedAheadOfMain(repo);
 
   assert.ok(await ffMainTo(repo, sha, "main"));
-  assert.equal(sh(repo, "git", "rev-parse", "main"), sha);
+  assert.equal(mainSha(repo), sha);
 });
 
 // ── Config preserve across an untracking landing (plans/portability.md §4b/7): the working-tree
@@ -476,12 +476,12 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
   commitIn(wt, "branch work");
   advanceMain(root, "mainfile.txt", "from main\n");
   const { ctx } = makeCtx(root);
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
   assert.equal(result, "merge_blocked");
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore, "nothing lands on a red tree");
+  assert.equal(mainSha(root), mainBefore, "nothing lands on a red tree");
   assert.ok(
     readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
     "the failed re-check is priced in the feed",
@@ -562,13 +562,13 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   const head = sh(wt, "git", "rev-parse", "HEAD");
   const { ctx } = makeCtx(root);
   ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
-  const mainBefore = sh(root, "git", "rev-parse", "main");
+  const mainBefore = mainSha(root);
 
   // The gate's pre-check (the gateCommand) ran green on exactly this head.
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
   assert.equal(result, "merge_blocked", "the red full check blocks the landing");
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainBefore);
+  assert.equal(mainSha(root), mainBefore);
   const checks = eventsOfType(root, "build_check");
   assert.deepEqual(
     checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
@@ -651,7 +651,7 @@ test("ffStackToMain fast-forwards main through the whole stack in one ff with pe
   ];
 
   assert.equal(await ffStackToMain(root, "main", stack), "changed");
-  assert.equal(sh(root, "git", "rev-parse", "main"), shaB, "main fast-forwarded to the stacked tip");
+  assert.equal(mainSha(root), shaB, "main fast-forwarded to the stacked tip");
   const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 2, "one merged event per change, in queue order");
   assert.equal(merged[0]!.loop, "alpha");
@@ -671,7 +671,7 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
   fs.writeFileSync(path.join(root, "c.txt"), "c\n");
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "human work");
-  const mainAfter = sh(root, "git", "rev-parse", "main");
+  const mainAfter = mainSha(root);
 
   assert.equal(
     await ffStackToMain(root, "main", [
@@ -680,7 +680,7 @@ test("ffStackToMain returns merge_blocked when main diverged under the stack, wi
     ]),
     "merge_blocked",
   );
-  assert.equal(sh(root, "git", "rev-parse", "main"), mainAfter, "main is untouched");
+  assert.equal(mainSha(root), mainAfter, "main is untouched");
   assert.equal(eventsOfType(root, "merged").length, 0, "no events on a blocked ff");
 });
 

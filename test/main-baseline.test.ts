@@ -9,7 +9,7 @@ import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -73,7 +73,7 @@ test("checkMainBaseline reports a red main with the failing script and clipped t
   const { root, wt } = baselineFixture(ROLE, `echo baseline-failure; echo run >> ${counter}; exit 1`);
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "red");
-  assert.equal(result.baseline?.sha, sh(root, "git", "rev-parse", "main"));
+  assert.equal(result.baseline?.sha, mainSha(root));
   assert.equal(result.baseline?.script, "test");
   assert.ok((result.baseline?.outputTail ?? []).some((l) => l.includes("baseline-failure")));
 });
@@ -103,7 +103,7 @@ test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
   sh(wt, "git", "reset", "--hard", "main");
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "red");
-  assert.equal(result.baseline?.sha, sh(root, "git", "rev-parse", "main"));
+  assert.equal(result.baseline?.sha, mainSha(root));
   assert.equal(runsOf(counter), 2, "the new SHA re-ran the check");
 });
 

@@ -13,7 +13,7 @@ import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
 import { writeScript } from "./fake-commands.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
@@ -300,7 +300,7 @@ export function advanceMain(root: string, file: string, content: string): string
   fs.writeFileSync(path.join(root, file), content);
   sh(root, "git", "add", file);
   sh(root, "git", "commit", "-m", `main moves: ${file}`);
-  return sh(root, "git", "rev-parse", "main").trim();
+  return mainSha(root);
 }
 
 /** A reviewer shim that answers per lander worktree: `replies[role]` for the review running
