@@ -5,6 +5,41 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater backlog --json` — the project backlog as machine-readable data, completing the `--json` pattern (planned 2026-09-28)
+
+**Goal.** `status --json`, `report --json`, `logs --json`, and `history --json` all exist so
+scripts can read fleet state, spend, events, and per-tick results without screen-scraping — but
+`backlog`, the fifth observability surface (the planned features, open bugs, and open questions
+a loop is about to work from), still prints Markdown only, and its CLI test explicitly pins
+`--json` as an unknown flag (test/backlog-report.test.ts asserts `backlog --json` fails with
+`takes no arguments`). A script that wants to watch the backlog — e.g. "wake the feature loop
+when a plan is unclaimed again" or feed the open entries to another agent — has no
+machine-readable answer.
+This plan gives `tumwater backlog` the same `--json` flag; the payload is exactly the three entry
+arrays the Markdown renderer and the GUI's on-demand `/api/backlog` endpoint serve, so all
+surfaces stay in sync by construction (siblings: the `logs --json`, `history --json`, and
+`report --json` Done entries, all 2026-09-28).
+
+**Approach.**
+
+- src/backlog.ts (172 lines): add one exported function `backlogPayload(root): { plans: BacklogEntry[]; bugs: BacklogEntry[]; questions: BacklogEntry[] }` that calls the existing `plannedPlanEntries`, `openBugEntries`, and `openQuestionEntries` readers (lines 160-172) and returns their results in file order — entries keep `{title, body}` verbatim, and a missing/unreadable file degrades to `[]` exactly like today's readers, so the flag prints the pretty-printed all-empty object in a bare directory, never an error. Key names match the GUI endpoint's `file=` vocabulary (`plans`/`bugs`/`questions`).
+- src/cli.ts, the `backlog` case (lines 163-169): change `rejectUnknownArgs("backlog", args, [])` to `rejectUnknownArgs("backlog", args, [{ names: ["--json"] }])` (the `status`/`history` cases' pattern), then branch on `args.includes("--json")`: print `JSON.stringify(backlogPayload(root), null, 2)` via `say` and skip the Markdown render. The command keeps its no-`requireReadyRepo` gate in both forms.
+- src/ui/backlog-report.ts: no change — `renderBacklogMarkdown` keeps calling the three readers directly, so the plain form's output is byte-identical and its tests hold untouched.
+- src/help.ts, the `backlog` stanza (line 54): `tumwater backlog` becomes `tumwater backlog [--json]` with the description re-aligned to the shared description column (drop 8 spaces from the gap to keep `One-shot status table`-style column alignment with the `status [--json]` line above) and a trailing phrase in the sibling wording style, e.g. `--json prints machine-readable backlog data — the three entry arrays as {title, body}, the same data the Markdown view renders`. `helpStanzas`/`helpTopic` derive the topic from this text, so no other help machinery changes.
+- README.md, the usage-table row (line 40): extend the `tumwater backlog` mention from `(planned features, open bugs, open questions as Markdown)` to also name `--json` (the machine-readable form), matching how the same row already describes `logs --json`.
+- Tests:
+  - test/backlog-report.test.ts: the existing `tumwater backlog` test asserts `backlog --json` fails with `takes no arguments` — update that assertion to the new behavior and add: `--json` output parses with `JSON.parse`; its `plans`/`bugs`/`questions` arrays carry the fixtures' verbatim titles and bodies (matching what the Markdown render of the same fixtures shows, so the two forms cannot drift); `Done`/`Fixed`/`Answered` entries never leak in; a bare `tmpdir()` root prints the all-empty object and exits 0; an unknown extra flag beside `--json` still fails `rejectUnknownArgs`.
+  - test/backlog-report.test.ts, the `tumwater help` test (the `tumwater backlog {17}Show planned features` regex): update the spacing to the new stanza.
+  - Every other backlog test (renderer, GUI `/api/backlog`, TUI browse) passes unchanged.
+
+**Files touched:** src/backlog.ts, src/cli.ts, src/help.ts, README.md, test/backlog-report.test.ts.
+
+**Acceptance criteria.**
+
+- `tumwater backlog --json` prints one JSON document parseable by `JSON.parse` with keys `plans`, `bugs`, `questions`, each an array of `{title, body}` objects identical to what the plain `tumwater backlog` Markdown render lists (same order, same verbatim text) and to what the GUI's `/api/backlog` serves per entry.
+- In a directory with no backlog files, `tumwater backlog --json` prints the pretty-printed all-empty object and exits 0 — a JSON document in every exit-0 case, never prose.
+- Plain `tumwater backlog` output is byte-identical to before; `tumwater help backlog` names `--json`; `npm run test` passes.
+
 ## Done
 
 ### `tumwater logs --json` — the event feed as machine-readable NDJSON, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
