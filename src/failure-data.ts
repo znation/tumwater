@@ -7,7 +7,7 @@
  * reasons. */
 import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
-import { eventDayKey, eventRole, tickStartMap, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, eventUsage, tickStartMap, type HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 
@@ -317,10 +317,6 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"landed" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
-  const usage = (ev: HarnessEvent): number => {
-    const cost = typeof ev.costUsd === "number" && Number.isFinite(ev.costUsd) ? ev.costUsd : 0;
-    return cost;
-  };
   for (const ev of tickEvents) {
     const cls = OUTCOME_CLASS[ev.result as TickResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
@@ -330,7 +326,7 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
     const cell = row[cls];
     cell.ticks++;
     cell.ms += tickDurationMs(ev, starts);
-    cell.costUsd += usage(ev);
+    cell.costUsd += eventUsage(ev).costUsd;
 
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does.
     let key: string | null = null;
@@ -353,7 +349,7 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
     draft.roles.add(role);
     draft.ticks++;
     draft.ms += tickDurationMs(ev, starts);
-    draft.costUsd += usage(ev);
+    draft.costUsd += eventUsage(ev).costUsd;
     losses.set(key, draft);
   }
   const timeSpend: TimeSpendRow[] = [...byRole.entries()]
