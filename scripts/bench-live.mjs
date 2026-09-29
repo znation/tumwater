@@ -1,5 +1,8 @@
-// Throwaway benchmark: steady-state cost of one dashboard frame (snapshot + renderStatus)
-// with every loop running. Measures the redundant readLiveProgress reads per frame.
+// Benchmark: steady-state cost of one dashboard frame (snapshot + renderStatus) with
+// every loop running. Not a pass/fail gate — run it by hand before and after a change to
+// status.ts/status-render.ts/progress.ts and compare the us/frame numbers. A jump usually
+// means a helper stopped receiving the threaded readLiveProgress tail and re-reads the log
+// per cell; renderStatus reads once per running loop and passes `live` down on purpose.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
