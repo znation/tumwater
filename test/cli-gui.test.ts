@@ -10,6 +10,7 @@ import { saveConfig, seedConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { lanAddresses } from "../src/ui/gui.js";
 import { makeRepo } from "./repo-fixtures.js";
+import { waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { CLI, cli, spawnCli } from "./cli-harness.js";
 
@@ -219,16 +220,6 @@ test("gui --all-interfaces prints the reachable LAN URLs and serves until killed
  * Derived from the compiled dist's own stamp module (dist/src → dist → the checkout), so it
  * is right whether the test file runs from test/ or dist/test/. */
 const THIS_CHECKOUT = path.resolve(distDir(), "..");
-
-/** Poll `pred` until it holds, failing with `what` after `ms` (the same contract as
- * cli-harness's spawnCli.waitFor, for a test that captures a child's output itself). */
-async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<void> {
-  const started = Date.now();
-  while (!pred()) {
-    if (Date.now() - started > ms) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
 
 test("the gui reloads onto a newer build: closes, re-execs, and re-binds the same port", async (t) => {
   // startGui's reload glue (`server.close(); reexecSelf();`) is the one part of the
