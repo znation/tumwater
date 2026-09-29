@@ -5,7 +5,59 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None right now._
+### `tumwater logs --json` — the event feed as machine-readable NDJSON, completing the `--json` pattern (planned 2026-09-28)
+
+**Goal.** `status --json`, `report --json`, `history --json` and `config` already emit
+machine-readable data so scripts can watch fleet state, spend and history without screen-scraping
+— but the most granular observability surface, the event feed (`tumwater logs`), still only
+prints human-rendered lines. A monitoring script that wants structured events (e.g. "alert me
+when `land_failed` appears") must parse the formatted text, which changes shape whenever the
+renderer evolves. `--json` closes the gap: the same events, one JSON object per line (NDJSON),
+streamable both as a one-shot dump and live in follow mode.
+
+**Approach.** Add a `--json` flag to `logs` that switches the event feed from `formatEvent`
+rendering to `JSON.stringify(e)` per line — the raw `HarnessEvent` objects exactly as stored in
+the event log (`src/events.ts`), so scripts read the canonical schema, not a paraphrase.
+- **One-shot views:** the `-n` dump and the `--since` window print each event as one JSON line,
+  in the same order the text view uses (newest-first for `-n`, oldest-first for `--since`).
+- **Filtering composes:** `--grep` filters before serialization (same `matchesGrep` rule), so
+  `logs --json -n 200 --grep land_failed` returns only matching JSON lines.
+- **Follow mode streams:** with `-f --json`, each event parsed from the tail prints its JSON
+  line as it lands — a script can pipe the feed into `jq` continuously.
+- **Exclusions stay exclusive:** `--role` (the pi transcript view) is human-oriented by nature
+  and does NOT gain `--json`; `logs --role x --json` fails with a message naming both flags,
+  consistent with the existing rival-shape rejections in `cmdLogs`.
+- **Empty results stay silent in JSON mode:** the text-mode `no events matching "x"` /
+  `no events in 1h` messages and the sparse-window note are skipped when `--json` is set —
+  an empty output IS the machine-readable answer, and scripts shouldn't choke on prose.
+- Keep the flag out of the `--role`/`--prompt`/`--since` rivalry checks except for the new
+  `--role` exclusion; `--json` composes with everything else.
+
+**Files touched.**
+- `src/cli.ts`: add `{ names: ["--json"] }` to `logs`' `rejectUnknownArgs` list (line ~141).
+- `src/ui/log-commands.ts`: `cmdLogs` reads `args.includes("--json")`; in the `-n` path, the
+  `--since` path and the `followFile` callback, branch between `say(formatEvent(e))` and
+  `say(JSON.stringify(e))`; gate the empty-result/sparse-note messages on `!json`; add the
+  `--role + --json` rejection next to the existing `--grep`/`--since` rivalry fails.
+- `src/help.ts`: update the `logs` usage line to `tumwater logs [-f] [-n N] [--since <duration>]
+  [--grep <text>] [--json] [--role <id> [--prompt]]` with a note that `--json` prints the raw
+  event objects as NDJSON.
+- Tests: extend `test/cli-logs.test.ts` (basic `--json` dump parses as one JSON object per line
+  with a `type` and numeric `ts`) and `test/cli-logs-filtering.test.ts` (`--grep` composes;
+  `--role --json` fails; empty match prints nothing in JSON mode; `--since --json` is
+  oldest-first NDJSON).
+
+**Acceptance criteria.**
+1. `tumwater logs -n 20 --json` prints exactly 20 lines, each a valid JSON object with `type`
+   and numeric `ts`, matching the events in the log (verified in a fake-pi test).
+2. `--json` composes with `-n`, `--grep`, `--since` and `-f`; the grep filter applies before
+   serialization and follow streams JSON lines as events land.
+3. `logs --role <id> --json` fails with a message naming both flags.
+4. In JSON mode, empty results print nothing (no prose lines), and the sparse-window note is
+   suppressed.
+5. Text mode (without `--json`) renders exactly as today — no regression in the existing
+   `cli-logs*` tests.
+6. `npm run test` passes with the new assertions added.
 
 ## Done
 
