@@ -5,14 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `tumwater help reset-counters` promises to "Zero ticks/commits/tokens/cost", but a role's `today` spend and the fleet budget header survive the reset, so the help overpromises what the command deliberately does (found by qa 2026-09-29)
+_None yet._
+
+## Fixed
+
+### `tumwater help reset-counters` promises to "Zero ticks/commits/tokens/cost", but a role's `today` spend and the fleet budget header survive the reset, so the help overpromises what the command deliberately does (found by qa 2026-09-29, fixed 2026-09-29)
 
 - **Symptom:** After `tumwater reset-counters`, `tumwater status` shows every role's `cost` at $0.00 but keeps the per-role `today` column and the `budget: $X/$Y today` header at the day's spend. A first-time user reading the help line expects the whole cost picture to zero; the kept `today` figures look like the reset failed.
 - **Reproduce:** In a scratch dir: `tumwater init "..."`, then give the state nonzero day costs (seed each `.tumwater/state/<role>.json` with `dayCostUsd: 0.5`, `totalCostUsd: 1.25`, `ticks: 7`; or run real ticks), then `tumwater status` (shows `$0.50` today per role, header `budget: $7.00/$50 today`), then `tumwater reset-counters`, then `tumwater status` again: `cost` and `total` drop to $0.00 while `today` stays `$0.50` and the header stays `$7.00/$50`.
 - **Cause:** This is deliberate, not lost state: src/loop-state.ts documents that `dayCostUsd` is "deliberately NOT zeroed: the budget is a safety valve, not an observation window" — zeroing it would let an operator reset their way past the daily spend cap. Only the help line is wrong.
-- **Fix direction:** Reword `tumwater help reset-counters` (src/help.ts) to say what is zeroed and what is not, e.g. "Zero lifetime ticks/commits/tokens/cost (fresh observation window); today's budget spend is kept". Do not change the behavior.
-
-## Fixed
+- **Fixed 2026-09-29 by bugfix loop:** Reworded the usage line in src/help.ts to "Zero lifetime ticks/commits/tokens/cost (fresh observation window; today's budget spend is kept — the daily cap cannot be reset past)", matching `zeroCounters`' documented contract in src/loop-state.ts. Behavior untouched. Regression test in test/help.test.ts pins both halves of the honest wording and forbids the old overpromise from returning.
+- **Validation gap:** no-observability — the overpromise left no trace any automated check would catch: help copy is prose, and nothing tied the documented promise to `zeroCounters`' actual behavior until a human cross-read them; the new regression test now supplies that pin.
 
 ### A fleet-wide timeout storm raises no alarm: three or more roles timing out consecutively means `tickTimeoutSeconds` does not fit the serving model, but only each role's own `consecutive tick failures` warning fires (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day, fixed 2026-09-29)
 

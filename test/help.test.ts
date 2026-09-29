@@ -64,3 +64,13 @@ test("topics end with the pointer back to the full list", () => {
 test("HELP still lists the per-command help form itself", () => {
   assert.match(HELP, /tumwater help \[<command>\]/);
 });
+
+// reset-counters deliberately keeps the daily budget window (dayStamp/dayCostUsd) so the
+// daily spend cap cannot be reset past — the help must not promise it zeroes today's spend.
+test("reset-counters help says what is zeroed and that today's budget spend is kept", () => {
+  const topic = helpTopic("reset-counters")!;
+  assert.match(topic, /Zero lifetime ticks\/commits\/tokens\/cost/);
+  assert.match(topic, /today's budget spend is kept/);
+  // The old overpromise must not come back.
+  assert.doesNotMatch(topic, /Zero ticks\/commits\/tokens\/cost/);
+});
