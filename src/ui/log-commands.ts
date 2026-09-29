@@ -16,6 +16,17 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * the event formatter, the transcript renderer, and the file-following helpers, so placing it
  * here keeps the documented rule that src/ui/ is imported only by itself and cli.ts. */
 
+/** The shared rival-shape guard for logs flags that only apply to the event-log feed:
+ * `--role` swaps in a pi transcript rather than the event log (--prompt requires --role, so
+ * it is excluded with it), so each such flag fails naming both. One wording for all of them —
+ * the --json, --grep, and --since checks cannot drift apart in what they say or why. `active`
+ * is the flag's own presence — --json alone composes with nothing here but --role, while
+ * --grep and --since call from inside their own presence guards. */
+function rejectRoleViewRival(rest: string[], flag: string, active: boolean): void {
+  if (active && (rest.includes("--role") || rest.includes("--prompt")))
+    fail(`logs ${flag} cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)`);
+}
+
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
  * loop's pi transcript (see cmdLogsTranscript). */
@@ -49,11 +60,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // transcript of human-oriented prose, not the event log (--prompt requires --role, so it is
   // excluded with it).
   const json = rest.includes("--json");
-  if (json && (rest.includes("--role") || rest.includes("--prompt")))
-    fail("logs --json cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
+  rejectRoleViewRival(rest, "--json", json);
   if (grepRaw !== null) {
-    if (rest.includes("--role") || rest.includes("--prompt"))
-      fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
+    rejectRoleViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
     if (grepRaw === undefined || grepRaw === "") fail("logs --grep needs a pattern");
@@ -71,8 +80,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     if (follow)
       fail('logs --since cannot be combined with -f/--follow (follow means "from now on"; --since shows a bounded past window)');
     if (rest.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
-    if (rest.includes("--role") || rest.includes("--prompt"))
-      fail("logs --since cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
+    rejectRoleViewRival(rest, "--since", true);
     const ms = parseDurationFlag("--since", sinceRaw);
     failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
     // The window key is the cutoff's local calendar day, from the shared dayKey helper
