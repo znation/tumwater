@@ -211,12 +211,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
   const pauseGateState = newPauseGateState();
-  // The fleet-wide 429 hold's state across polls (src/rate-limit-hold.ts) — unlike the
-  // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
-  // last value for edge-triggered events. In memory only: a restart starts open.
-  let rateHold: FleetHold = FLEET_OPEN;
+  // The fleet-wide failure hold's state across polls (src/rate-limit-hold.ts) — unlike the
+  // budget gate's prevGate it is the gate's own memory (deadline, kind, relapse count), not
+  // just the last value for edge-triggered events. In memory only: a restart starts open.
+  let fleetHold: FleetHold = FLEET_OPEN;
   // The fleet-wide error-storm warning's state across polls (src/error-storm.ts) — the active
-  // storm's shared cause and roles, like the 429 hold's own memory. In memory only: a restart
+  // storm's shared cause and roles, like the failure hold's own memory. In memory only: a restart
   // mid-storm can re-log at most one warning.
   let errorStormState: ErrorStorm = ERROR_STORM_QUIET;
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
@@ -320,27 +320,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // pause's set, both read fresh per cycle so a marker change lands on the next poll.
       const { userPaused, pausedRoles: pausedRolesSet } = pollPauseGates(root, pauseGateState);
 
-      // Fleet-wide 429 hold (src/rate-limit-hold.ts): once several roles' runs have ended on a
-      // provider 429 within a short window, role loops start no new ticks — and the land queue
-      // starts no new vet (the director's included), whose reviewer run has no retry
+      // Fleet-wide failure hold (src/rate-limit-hold.ts): once two roles' runs have ended on
+      // the SAME provider failure kind within a short window — 429s, or a connection, timeout,
+      // 5xx, or model-load backend failure — role loops start no new ticks — and the land
+      // queue starts no new vet (the director's included), whose reviewer run has no retry
       // and would spend a review strike on the storm — until the hold re-opens at its own
-      // deadline (Retry-After honoured, doubling on a relapse, capped). The director's ticks
-      // are exempt, as under the budget gate and the operator pause: an explicit human prompt
-      // outranks an autonomous gate, one director run is not the concurrency that sustains a
-      // storm, its runs keep the per-run 429 retry, and a prompt its tick fails to fulfil goes
-      // back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like both
-      // siblings, and a role tick already parked in the semaphore meets the same hold at its
-      // permit (the start gate below) and hands its reservation back instead of starting into
-      // the storm.
-      rateHold = pollRateLimitHold(root, rateHold, runners, now);
-      const rateHeld = rateHold.until !== null;
+      // deadline (Retry-After honoured on the rate-limit kind, doubling on a relapse, capped).
+      // The director's ticks are exempt, as under the budget gate and the operator pause: an
+      // explicit human prompt outranks an autonomous gate, one director run is not the
+      // concurrency that sustains a storm, its 429 runs keep the per-run transient retry
+      // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfil
+      // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
+      // both siblings, and a role tick already parked in the semaphore meets the same hold at
+      // its permit (the start gate below) and hands its reservation back instead of starting
+      // into the storm.
+      fleetHold = pollRateLimitHold(root, fleetHold, runners, now);
+      const held = fleetHold.until !== null;
 
       // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks
       // fail consecutively on one shared cause, each role's own "consecutive tick failures"
       // warning still fires alone — this adds the one fleet-level warning that names the
       // cause (and the config knob, when the cause has one) instead of leaving the operator
-      // to diff 14 streak lines. Observational only: it gates nothing, so unlike the 429 hold
-      // above there is no re-open event — the members' own recoveries tell that story.
+      // to diff 14 streak lines. Observational only: it gates nothing, so unlike the failure
+      // hold above there is no re-open event — the members' own recoveries tell that story.
       errorStormState = pollErrorStorm(root, errorStormState, runners);
 
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
@@ -384,12 +386,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart = action === "hold";
       }
 
-      // Merge queue 3/5 — drain the durable land queue while neither a restart nor a 429 hold
-      // is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the vetting stage, its
+      // Merge queue 3/5 — drain the durable land queue while neither a restart nor a failure
+      // hold is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the vetting stage, its
       // merge slot, and the dedupe against main). A held poll starts no vet and no merge,
       // exactly as it starts no tick; what is already in flight runs on, and a vet parked for
       // its permit meets the same start gate as a parked tick when the permit comes.
-      if (!holdForRestart && !rateHeld) {
+      if (!holdForRestart && !held) {
         await drainLandings(
           {
             root,
@@ -399,7 +401,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             runners,
             liveConfig,
             roleConfig,
-            startHeld: () => tickStartHeld() || rateHold.until !== null,
+            startHeld: () => tickStartHeld() || fleetHold.until !== null,
           },
           landings,
         );
@@ -453,7 +455,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         if (pausedRolesSet.has(runner.role)) continue;
         if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
           continue; // no new role ticks while either gate holds
-        if (rateHeld && runner.role !== DIRECTOR_ROLE) continue; // nor while a 429 storm holds
+        if (held && runner.role !== DIRECTOR_ROLE) continue; // nor while a failure storm holds
         // The loop's OWN queue decides inbox due-ness: the director counts its historical
         // inbox, every other loop its per-role queue (tumwater prompt --role <id>) — so a
         // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
@@ -591,9 +593,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               return outcome;
             },
             Date.now,
-            // The restart start gate, plus the 429 hold for role ticks (the director is exempt,
-            // as at scheduling): a waiter granted its permit mid-storm must not start into it.
-            () => tickStartHeld() || (usesSlot && rateHold.until !== null),
+            // The restart start gate, plus the failure hold for role ticks (the director is
+            // exempt, as at scheduling): a waiter granted its permit mid-storm must not start
+            // into it.
+            () => tickStartHeld() || (usesSlot && fleetHold.until !== null),
           );
           // A reservation whose tick never started hands itself back, so the role re-schedules
           // once the hold lifts (or on the new build) instead of sitting `running` forever with
