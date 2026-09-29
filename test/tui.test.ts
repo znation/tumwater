@@ -147,6 +147,42 @@ test("runTui skips the terminal write when a re-render composes an identical fra
   }
 });
 
+// NO_COLOR: a set, non-empty variable suppresses the bold and dim attributes (the
+// no-color.org convention — dim body text is unreadable on some terminals and invisible to
+// color-blind operators and screen readers) while the frame's layout and the screen-clear
+// escape (cursor motion, not styling) stay exactly as styled runs render them. An empty
+// NO_COLOR is not a set variable: styling stays on. Resolved per run, so the same process
+// exercises both settings back to back.
+test("runTui honors NO_COLOR: no bold or dim escapes, layout and clear unchanged", async () => {
+  const repo = await makeTuiRepo();
+  const origNoColor = process.env.NO_COLOR;
+  try {
+    process.env.NO_COLOR = "1";
+    const plain = startTui(repo);
+    try {
+      const frame = plain.lastFrame();
+      assert.doesNotMatch(frame, /\x1b\[1m/); // no bold
+      assert.doesNotMatch(frame, /\x1b\[2m/); // no dim
+      assert.match(frame, /\x1b\[2J\x1b\[H/); // screen clear still ships
+      assert.match(frame, /recent activity/); // layout intact
+      assert.match(frame, /\(no events yet\)/);
+    } finally {
+      await plain.quit();
+    }
+    process.env.NO_COLOR = ""; // empty: not a set variable — styling stays on
+    const styled = startTui(repo);
+    try {
+      assert.match(styled.lastFrame(), /\x1b\[2m/); // dim body/empty-note wraps return
+      assert.match(styled.lastFrame(), /\x1b\[1m/); // bold header returns
+    } finally {
+      await styled.quit();
+    }
+  } finally {
+    if (origNoColor === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = origNoColor;
+  }
+});
+
 // Merge queue 4/5 — the TUI header shows the land queue badge while anything is queued or
 // landing, and nothing when idle (the badge is empty at depth 0, so every existing
 // header byte stays intact). The frame carries renderStatus's full output, header line

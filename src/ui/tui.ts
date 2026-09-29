@@ -50,20 +50,39 @@ import {
 const FLASH_MS = 3000;
 
 const CLEAR = "\x1b[2J\x1b[H";
-const DIM = "\x1b[2m";
-const BOLD = "\x1b[1m";
-const RESET = "\x1b[0m";
+
+/** The TUI's text styling: bold for headers, flash, and the questions nudge; dim for body
+ * lines, empty notes, and hints. The two attribute escapes ride every styled span, so they
+ * travel as one set instead of loose constants. */
+interface TuiStyles {
+  bold: string;
+  dim: string;
+  reset: string;
+}
+
+const STYLED: TuiStyles = { bold: "\x1b[1m", dim: "\x1b[2m", reset: "\x1b[0m" };
+const PLAIN: TuiStyles = { bold: "", dim: "", reset: "" };
+
+/** Resolve a run's styles from the NO_COLOR convention (no-color.org): a set, non-empty
+ * variable suppresses the bold and dim attributes — dim body text is unreadable on some
+ * terminals and invisible to color-blind operators and screen readers. CLEAR stays either
+ * way: erasing the screen is cursor motion, not styling. Resolved per run (not at module
+ * load) so a test can flip the environment between runs. */
+function resolveStyles(noColor: string | undefined): TuiStyles {
+  return noColor !== undefined && noColor !== "" ? PLAIN : STYLED;
+}
 
 // TUI rendering repeats one shape: wrap text in an escape pair, clipping it to the pane
 // width. These helpers centralize that for the bold/dim headers and prompts and the clipped
-// body lists; short unclipped styles (the "recent activity" header, the DIM body/empty-note
-// wraps further down) stay styled inline.
-function boldLine(text: string, width: number): string {
-  return `${BOLD}${clipToWidth(text, width)}${RESET}`;
+// body lists; short unclipped styles (the "recent activity" header, the dim body/empty-note
+// wraps further down) stay styled inline. All take the run's styles so a NO_COLOR run
+// renders the same layout with the attributes dropped.
+function boldLine(s: TuiStyles, text: string, width: number): string {
+  return `${s.bold}${clipToWidth(text, width)}${s.reset}`;
 }
 
-function dimLine(text: string, width: number): string {
-  return `${DIM}${clipToWidth(text, width)}${RESET}`;
+function dimLine(s: TuiStyles, text: string, width: number): string {
+  return `${s.dim}${clipToWidth(text, width)}${s.reset}`;
 }
 
 /** Clip each body line to the pane width, keeping at most `budget` of them — "head" keeps
@@ -110,6 +129,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   if (!stdin.isTTY || !stdout.isTTY) {
     throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
   }
+  const styles = resolveStyles(process.env.NO_COLOR);
 
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
   // or a manual build). The watch's trigger takes the same teardown path Ctrl+C does, then
@@ -232,6 +252,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
     if (role) {
       header = boldLine(
+        styles,
         `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+R prompt · Ctrl+T to cycle`,
         width,
       );
@@ -245,7 +266,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       const bugEntries = openBugEntries(root);
       const questionEntries = openQuestionEntries(root);
       if (selectedEntry === null) {
-        header = boldLine("project status — Ctrl+T to cycle", width);
+        header = boldLine(styles, "project status — Ctrl+T to cycle", width);
         body = clipLines(
           backlogLines(
             planEntries.map((e) => e.title),
@@ -263,7 +284,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
         const flat = flatEntries();
         const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
         if (sel === null) {
-          header = boldLine("project status — Ctrl+T to cycle", width);
+          header = boldLine(styles, "project status — Ctrl+T to cycle", width);
           body = clipLines(["(no planned features, open bugs, or open questions)"], width, eventBudget, "head");
         } else {
           const e = flat[sel]!;
@@ -271,7 +292,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           // The scroll affordance appears only while the body overflows the pane — short
           // entries keep today's exact header.
           const browse = win.total > eventBudget ? "↑↓ browse · PgUp/PgDn scroll" : "↑↓ browse";
-          header = boldLine(`${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width);
+          header = boldLine(styles, `${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width);
           body = win.lines;
         }
       }
@@ -284,30 +305,34 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       // The scroll affordance appears only while the body overflows the pane — a fitting
       // report keeps the plain header (the browse-hint pattern entry mode already uses).
       const scroll = win.total > eventBudget ? "PgUp/PgDn scroll · " : "";
-      header = boldLine(`${label} — ${scroll}Ctrl+T to cycle`, width);
+      header = boldLine(styles, `${label} — ${scroll}Ctrl+T to cycle`, width);
       body = win.lines;
     } else {
-      header = `${BOLD}recent activity${RESET}`;
+      header = `${styles.bold}recent activity${styles.reset}`;
       body = clipLines(readEvents(root, eventBudget).map((e) => formatEvent(e)), width, eventBudget, "tail");
     }
 
     const parts = [status, ""];
     if (hasQuestions) {
       parts.push(
-        boldLine(`questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width),
+        boldLine(styles, `questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width),
       );
     }
     for (const [i, preview] of queued.entries()) {
       parts.push(clipToWidth(`${i + 1}. ${preview}`, width));
     }
     parts.push(header);
-    parts.push(body.length ? body.map((l) => `${DIM}${l}${RESET}`).join("\n") : `${DIM}${emptyNote}${RESET}`);
+    parts.push(
+      body.length
+        ? body.map((l) => `${styles.dim}${l}${styles.reset}`).join("\n")
+        : `${styles.dim}${emptyNote}${styles.reset}`,
+    );
     parts.push("");
-    if (flash && Date.now() < flashUntil) parts.push(boldLine(flash, width));
+    if (flash && Date.now() < flashUntil) parts.push(boldLine(styles, flash, width));
     parts.push(
       rolePromptFor
-        ? dimLine(`prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)
-        : dimLine("type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width),
+        ? dimLine(styles, `prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)
+        : dimLine(styles, "type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width),
     );
     // Window long prompts around the cursor so its position stays visible.
     parts.push(`> ${renderInputView(input, cursor, width)}`);
