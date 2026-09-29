@@ -22,7 +22,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, reviewerPi } from "./pi-events.js";
 
@@ -333,13 +333,10 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       `  [ -f "${strayOnce}" ] || touch "${strayOnce}" stray.txt`,
       `  printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
       `  exit 0;; esac; done`,
-      `if [ ! -f "${m1}" ]; then`,
-      `  touch "${m1}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `else`,
-      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(m1, [
+        `printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+        `echo branch change > seed.txt`,
+      ]),
     ].join("\n"),
   );
   try {
@@ -394,13 +391,10 @@ test("a persistent recovery review failure feeds the error streak and reads fail
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) echo "reviewer backend down" >&2; exit 1;; esac; done`,
-      `if [ ! -f "${m1}" ]; then`,
-      `  touch "${m1}"`,
-      `  printf '%s\n' '${assistantLine("ok\\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `else`,
-      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(m1, [
+        `printf '%s\n' '${assistantLine("ok\\nSUMMARY: branch edit of seed")}'`,
+        `echo branch change > seed.txt`,
+      ]),
     ].join("\n"),
   );
   try {
@@ -505,13 +499,10 @@ test("a rejected change rides along on the role's next tick prompt with its reas
       `  printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule\n2. no regression test")}'`,
       `  exit 0;; esac; done`,
       `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
-      `  echo bad > rejected.txt`,
-      `else`,
-      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(marker, [
+        `printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
+        `echo bad > rejected.txt`,
+      ]),
     ].join("\n"),
   );
   try {
@@ -622,13 +613,10 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   // succeeds within seconds of the wake.
   const restore = fakePi(
     [
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
-      `  exit 1`,
-      `else`,
-      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(marker, [
+        `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+        `exit 1`,
+      ]),
     ].join("\n"),
   );
   try {
@@ -657,13 +645,10 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
   // detected by the phase file): the limit has passed and the request succeeds.
   const restore = fakePi(
     [
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
-      `  exit 1`,
-      `else`,
-      `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(marker, [
+        `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
+        `exit 1`,
+      ]),
     ].join("\n"),
   );
   try {
@@ -710,6 +695,8 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
   const restore = fakePi(
     [
       APPROVE_PI,
+      // The retry branch finishes the work rather than idling — this is not the
+      // firstRunThenIdle shape (its else must emit nothing-to-do), so it stays hand-rolled.
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  printf '%s\\n' '${assistantLine("first turn of work")}'`,

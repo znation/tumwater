@@ -48,6 +48,24 @@ export function fakePiIdle(opts: { cost?: number } = {}): () => void {
   return fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`);
 }
 
+/** A shell fragment list for fake-pi scripts: the phase gate the loop tests use to make a
+ * fake pi do real work on its first run and idle on every later one — create `marker`, run
+ * the `firstRun` lines, and on every later invocation emit the standard
+ * TUMWATER_NOTHING_TO_DO line. Eight loop tests hand-rolled this if/then/else skeleton (with
+ * two drifting spellings of the printf newline); shared here so the gate's shape — and the
+ * idle line it re-emits — cannot drift between the copies. Pass `firstRun` lines unindented;
+ * they are indented two spaces to sit inside the if-branch. */
+export function firstRunThenIdle(marker: string, firstRun: readonly string[]): string[] {
+  return [
+    `if [ ! -f "${marker}" ]; then`,
+    `  touch "${marker}"`,
+    ...firstRun.map((line) => (line === "" ? line : `  ${line}`)),
+    `else`,
+    `  printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    `fi`,
+  ];
+}
+
 /** A fake pi that records each run's --provider/--model flags — and its session name, which
  * carries the role — to argsFile and declares nothing-to-do (so no commit happens). `cost`
  * makes each run report that many dollars of spend, for tests that drive the daily budget

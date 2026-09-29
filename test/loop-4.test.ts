@@ -17,7 +17,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
 
@@ -325,13 +325,10 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     [
       APPROVE_PI,
       `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\n' '${assistantLine("did it\nSUMMARY: add broken code")}'`,
-      `  echo bad > broken.ts`,
-      `else`,
-      `  printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-      `fi`,
+      ...firstRunThenIdle(marker, [
+        `printf '%s\n' '${assistantLine("did it\nSUMMARY: add broken code")}'`,
+        `echo bad > broken.ts`,
+      ]),
     ].join("\n"),
   );
   try {
