@@ -246,7 +246,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
   try {
     // Wait for clean's startup tick to finish (its state save records the current main
     // head): from then on it sleeps ~60s, so only a main move can schedule it again.
-    awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
 
     // The world changed: advance main with a real commit. The next poll must wake clean
     // early and log why — the TUI/GUI/logs surface this as `woke (main moved)`.
@@ -259,7 +259,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
       "a wake event for the main move",
     );
     // The wake actually ran a tick, not just logged one.
-    awaitSettledTick(repo, "clean", 2, "the woken tick to finish");
+    await awaitSettledTick(repo, "clean", 2, "the woken tick to finish");
 
     // A queued prompt wakes the idle director the same way (reason: inbox).
     enqueuePrompt(repo, "wake me up");
@@ -267,7 +267,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
       () => readEvents(repo).some((e) => e.type === "wake" && e.reason === "inbox"),
       "a wake event for the queued prompt",
     );
-    awaitSettledTick(repo, "director", 1, "the director's woken tick to finish");
+    await awaitSettledTick(repo, "director", 1, "the director's woken tick to finish");
 
     // Exactly one wake per cause: the running-flag reservation must prevent a re-wake on
     // every poll while the prompt is pending or the tick is in flight.
@@ -294,7 +294,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
 
     // A non-work landing (a readme commit) moves main but must not wake the deferred role.
     fs.writeFileSync(path.join(repo, "readme-note.txt"), "x\n");
@@ -311,7 +311,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
-    awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
+    await awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
 
     // Exactly one deferral episode so far: one event on the transition in, none while merely
     // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
@@ -340,7 +340,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
   sh(repo, "git", "commit", "-m", "seed the backlog");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
 
     // Work lands while the backlog is open: the due maintenance tick must stay deferred —
     // before the fix this poll started a new run (workLandedSinceLast broke deferral).
@@ -359,7 +359,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     );
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(bugfix): fix the open bug");
-    awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
+    await awaitSettledTick(repo, "organize", 2, "the woken tick to finish");
 
     // One deferral episode: one event on the transition in, none while merely not-due and
     // none on exit.
@@ -396,7 +396,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    awaitSettledTick(repo, "organize", 2, "the cap-forced tick to run");
+    await awaitSettledTick(repo, "organize", 2, "the cap-forced tick to run");
   } finally {
     restore();
     await orch.stop();
@@ -610,9 +610,9 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   try {
     // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
     // (need-based prioritization), so the second tick needs a work landing to wake it.
-    awaitSettledTick(repo, "clean", 1, "the first tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the first tick to finish");
     landWork(repo);
-    awaitSettledTick(repo, "clean", 2, "two finished ticks");
+    await awaitSettledTick(repo, "clean", 2, "two finished ticks");
 
     // Reproduce what `tumwater reset-counters` does from the CLI side: zero the state file
     // and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
@@ -682,7 +682,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
     );
 
     // And the loop keeps ticking: a post-reset tick runs to completion.
-    awaitSettledTick(repo, "clean", 1, "a post-reset tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "a post-reset tick to finish");
 
     // The reset is still visible as one plain event, filed under the role.
     const resets = eventsOfType(repo, "counters_reset");

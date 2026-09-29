@@ -567,7 +567,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
   try {
     // clean's startup tick lands the first spend; the transition is logged exactly once,
     // harness-level, with the spend and cap that triggered it.
-    awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1, "one transition event per pause");
@@ -585,7 +585,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
 
     // The director is exempt: a queued human prompt still runs while the fleet is paused.
     enqueuePrompt(repo, "steer me while the fleet is paused");
-    awaitSettledTick(repo, "director", 1, "the director to tick while budget-paused");
+    await awaitSettledTick(repo, "director", 1, "the director to tick while budget-paused");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "still paused after the director's run");
 
     // Raising the cap live resumes within a poll cycle: one transition event, then the role
@@ -602,7 +602,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     // clean is deferrable and no work has landed since its first tick — a work commit supplies
     // the wake for the post-resume tick.
     landWork(repo);
-    awaitSettledTick(repo, "clean", 2, "the paused role to tick again after the cap raise");
+    await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after the cap raise");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
     assert.equal(eventsOfType(repo, "budget_paused").length, 1);
@@ -659,7 +659,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
 
     // The world changed: advance main. An ungated fleet would wake clean early ("main moved")…
@@ -742,7 +742,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     // role override dropped. (clean is deferrable and did nothing last tick, so work supplies
     // the wake — the same as every other budget test.)
     landWork(repo);
-    awaitSettledTick(repo, "clean", 2, "a role tick after the cap was reached");
+    await awaitSettledTick(repo, "clean", 2, "a role tick after the cap was reached");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
@@ -752,7 +752,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     // The director is outside the gate in both directions: an explicit human prompt outranks
     // the autonomous-spend cap, so it keeps the budgeted model.
     enqueuePrompt(repo, "steer me after the budget is spent");
-    awaitSettledTick(repo, "director", 1, "the director to tick after the switch");
+    await awaitSettledTick(repo, "director", 1, "the director to tick after the switch");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-director-1")) ?? "",
       /model=big-paid provider=paid/,
@@ -794,7 +794,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
   try {
-    awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     // The event names the refused pair: why the fleet stopped instead of switching is the one
     // thing the operator can act on.
@@ -917,7 +917,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // Baseline: clean's startup tick lands while unpaused.
-    awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
+    await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
 
     // The operator pauses the running fleet (what `tumwater pause` does: drop the marker).
     const marker = pausedPath(repo);
@@ -942,14 +942,14 @@ test("a pause marker blocks new role ticks for any reason while the director run
 
     // The director is exempt: a queued human prompt still runs while the fleet is paused.
     enqueuePrompt(repo, "steer me while the fleet is paused");
-    awaitSettledTick(repo, "director", 1, "the director to tick while user-paused");
+    await awaitSettledTick(repo, "director", 1, "the director to tick while user-paused");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "still paused after the director's run");
 
     // Removing the marker mid-run (what `tumwater resume` does) lifts the pause on the next
     // poll: one transition event, then the blocked role ticks again without a restart.
     fs.rmSync(marker);
     await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_resumed"), "a fleet_resumed event");
-    awaitSettledTick(repo, "clean", 2, "the paused role to tick again after resume");
+    await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after resume");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
     assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
@@ -978,7 +978,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    awaitSettledTick(repo, "director", 1, "the director to tick while the fleet starts paused");
+    await awaitSettledTick(repo, "director", 1, "the director to tick while the fleet starts paused");
 
     // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
     // other, and the gate sits before eligibility. The marker survives: persistent state.
@@ -988,7 +988,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
     // Resume without a restart: the blocked role ticks on its next eligibility.
     fs.rmSync(marker);
-    awaitSettledTick(repo, "clean", 1, "the paused role to tick after resume");
+    await awaitSettledTick(repo, "clean", 1, "the paused role to tick after resume");
 
     // One transition event per direction for the whole run — including the startup read.
     assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
@@ -1059,7 +1059,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     // The unpaused role ticks normally while the paused one never starts.
-    awaitSettledTick(repo, "dry", 1, "the unpaused role to tick");
+    await awaitSettledTick(repo, "dry", 1, "the unpaused role to tick");
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a paused role starts no new ticks");
 
@@ -1084,7 +1084,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
 
     // Resume re-enables the role within one poll, with its one resumed event.
     resumeRole(repo, "clean");
-    awaitSettledTick(repo, "clean", 1, "the resumed role to tick");
+    await awaitSettledTick(repo, "clean", 1, "the resumed role to tick");
     const resumed = eventsOfType(repo, "role_resumed");
     assert.equal(resumed.length, 1);
     assert.equal(resumed[0]?.loop, "harness");
