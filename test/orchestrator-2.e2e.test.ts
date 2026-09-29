@@ -22,7 +22,7 @@ import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { awaitSettledTick, fastConfig, makeFastRepo, startLiveOrchestrator } from "./orchestrator-fixtures.js";
+import { awaitSettledTick, fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -43,8 +43,7 @@ function seedCounters(repo: string, ...roles: string[]): void {
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
   const repo = await makeFastRepo("multi role reset test", ["clean", "dry"]);
   seedCounters(repo, "clean", "dry");
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // What `tumwater reset-counters` without --role writes: a marker naming every role.
     const markerFile = resetRequestPath(repo);
@@ -73,8 +72,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
 test("a corrupt reset marker resets every runner and is still consumed", async () => {
   const repo = await makeFastRepo("corrupt reset marker test", ["clean", "dry"]);
   seedCounters(repo, "clean", "dry");
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Garbage where the marker should be: JSON.parse throws → requested stays null → every
     // runner resets (a documented superset — skipping it would let the next tick's save
@@ -110,8 +108,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
   seeded.nextRunAt = Date.now() + 2 * 3600 * 1000;
   seeded.lastTickEndedAt = Date.now() - 3600 * 1000;
   saveLoopState(repo, seeded);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The backed-off loop must stay asleep on its own (nextRunAt two hours out).
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -157,8 +154,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
   seeded.nextRunAt = Date.now() + 3600 * 1000;
   seeded.lastMainHead = "";
   saveLoopState(repo, seeded);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The slow clock alone must keep the loop asleep.
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -200,8 +196,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
   seeded.lastMainHead = "";
   saveLoopState(repo, seeded);
   submitRolePrompt(repo, "clean", "check the queue-due path");
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The tick runs within a poll or two — a schedule-gated loop would sit for the hour.
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 2, "the queued prompt's tick");
@@ -272,8 +267,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     s.lastTickEndedAt = Date.now() - 3600 * 1000;
     saveLoopState(repo, s);
   }
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // What the CLI side of `tumwater wake` already did: both state files cleared. Then
     // garbage where the marker should be: the parse fails → every runner wakes (a
@@ -357,8 +351,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
 
 test("a live config edit logs one config_changed naming the keys, and an identical rewrite logs none", async () => {
   const repo = await makeFastRepo("config change event test", ["clean"]);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     const changeds = () => eventsOfType(repo, "config_changed");
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "a startup tick");
@@ -470,8 +463,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
 
 test("custom loops can be added, removed, and reordered mid-run without a restart", async () => {
   const repo = await makeFastRepo("custom loop e2e test", ["clean"]);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     const finished = (role: string) => {
       const s = loadLoopState(repo, role);
@@ -919,8 +911,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
 
 test("a pause marker blocks new role ticks for any reason while the director runs; resume unblocks", async () => {
   const repo = await makeFastRepo("operator pause e2e test", ["clean", "director"]);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Baseline: clean's startup tick lands while unpaused.
     await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
@@ -1061,8 +1052,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
   const repo = await makeFastRepo("per-role pause test", ["clean", "dry"]);
   // Pause clean before startup: the marker survives into the run.
   pauseRole(repo, "clean");
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The unpaused role ticks normally while the paused one never starts.
     await awaitSettledTick(repo, "dry", 1, "the unpaused role to tick");

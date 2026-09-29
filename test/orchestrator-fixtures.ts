@@ -10,6 +10,7 @@ import { headLanding } from "../src/landing-queue.js";
 import { Semaphore } from "../src/semaphore.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { LoopRunner } from "../src/loop.js";
+import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { TickResult } from "../src/tick-outcome.js";
@@ -90,6 +91,21 @@ export function startLiveOrchestrator(
       }
     },
   };
+}
+
+/** The idle-pi orchestrator prelude the e2e tests shared as a copy-pasted pair: install the
+ * fake pi that prints TUMWATER_NOTHING_TO_DO forever and start a live orchestrator over it at
+ * FAST_POLL_MS, returning both halves so the `restore()` in the test's finally and the `orch`
+ * it drives cannot be wired to different runs. Tests whose pi must say something else use
+ * fakePi/recordingFakePi plus startLiveOrchestrator directly, and tests that drive
+ * runOrchestrator inline keep their own AbortController. */
+export function startIdleOrchestrator(repo: string): {
+  restore: () => void;
+  orch: ReturnType<typeof startLiveOrchestrator>;
+} {
+  const restore = fakePiIdle();
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  return { restore, orch };
 }
 
 /** Poll until `role`'s persisted loop state has completed at least `n` ticks and is idle

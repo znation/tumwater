@@ -32,6 +32,7 @@ import {
   awaitSettledTick,
   fastConfig,
   makeFastRepo,
+  startIdleOrchestrator,
   startLiveOrchestrator,
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
@@ -241,8 +242,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
   const config = fastConfig(["clean", "director"]);
   config.idleBackoff = { initialSeconds: 60, factor: 1, maxSeconds: 60 };
   saveConfig(repo, config);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Wait for clean's startup tick to finish (its state save records the current main
     // head): from then on it sleeps ~60s, so only a main move can schedule it again.
@@ -441,8 +441,7 @@ test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator
   config.sessionRetentionDays = 0;
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30); // older than any positive retention
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be up
     // plus a few fast poll cycles so the assertion is not racing the startup code.
@@ -464,8 +463,7 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
   saveConfig(repo, config);
   const session = seedOldSession(repo, "clean", 30);
   const toolOutput = seedOldToolOutput(repo, 30);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     await waitFor(() => !fs.existsSync(session), "the old session to be pruned");
     assert.ok(!fs.existsSync(toolOutput), "the old full-tool-output file is pruned too");
@@ -486,8 +484,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
   base.sessionRetentionDays = 30;
   saveConfig(repo, base);
   const recent = seedOldSession(repo, "clean", 2); // older than the new window of 1, younger than 30
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
     // Startup pruning runs synchronously before the first poll; a few fast poll cycles keep the
@@ -611,8 +608,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
 
 test("a reset request zeroes in-memory counters, survives tick boundaries, and logs an event", async () => {
   const repo = await makeFastRepo("reset counters e2e test", ["clean"]);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
     // (need-based prioritization), so the second tick needs a work landing to wake it.
@@ -703,8 +699,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
 
 test("the primary checkout moving branches mid-run logs exactly one warning (portability 2/7)", async () => {
   const repo = await makeFastRepo("branch divergence test", ["clean"]);
-  const restore = fakePiIdle();
-  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let one poll pass so the divergence watch is seeded against the startup branch.
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "the startup tick to run");
