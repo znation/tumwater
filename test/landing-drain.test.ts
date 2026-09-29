@@ -16,7 +16,7 @@ import {
 import { consumeAbortRequests } from "../src/operator-requests.js";
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
-import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, orchestratorStatePath } from "../src/paths.js";
+import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/events.js";
 import { landingChanges, readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
@@ -26,7 +26,7 @@ import { freshLoopState, loadLoopState } from "../src/loop-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -178,7 +178,7 @@ function busySlot(): InFlightLanding {
  * observers show a landing only for a live orchestrator, so this stands the test process in
  * for one. */
 function rowReader(root: string, roles: string[]): (role: string) => string {
-  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles });
+  writeOrchestratorMarker(root, roles);
   const noModels = path.join(tmpdir(), "no-models.json");
   return (role) => {
     const snap = snapshot(root, noModels);

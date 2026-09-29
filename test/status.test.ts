@@ -21,6 +21,7 @@ import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
@@ -112,11 +113,7 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   await initProject(repo, "test project");
   // A live orchestrator's info file: both consumers (the pid column and the running flag)
   // have data to work with.
-  fs.mkdirSync(path.join(repo, ".tumwater", "state"), { recursive: true });
-  fs.writeFileSync(
-    path.join(repo, ".tumwater", "state", "orchestrator.json"),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
-  );
+  writeOrchestratorMarker(repo, ["feature"]);
   assert.equal(snapshot(repo).running, true); // first read
 
   const reads = withCountedReads(
@@ -351,11 +348,7 @@ test("a rendered fleet shows active rows equal to permit holders: parked waiters
   const repo = makeRepo();
   await initProject(repo, "test project");
   // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
-  ensureParentDir(orchestratorStatePath(repo));
-  fs.writeFileSync(
-    orchestratorStatePath(repo),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
-  );
+  writeOrchestratorMarker(repo, []);
   // One permit-holding tick (running, no parkedSince) and two parked waiters.
   const holder = freshLoopState("feature");
   holder.running = true;
@@ -404,12 +397,8 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   // The 4/5 marker plus a live orchestrator plus the matching entry → in flight, with the
   // marker's identity (the dashboard's `landing <elapsed>` label reads startedAt from it).
   const startedAt = Date.now();
-  const infoFile = path.join(repo, ".tumwater", "state", "orchestrator.json");
-  ensureParentDir(infoFile);
-  fs.writeFileSync(
-    infoFile,
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),
-  );
+  writeOrchestratorMarker(repo, ["clean"]);
+  const infoFile = orchestratorStatePath(repo);
   writeJsonFile(landingStatePath(repo), {
     role: "clean",
     sha: "abc1234",
@@ -430,10 +419,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
 
   // …and a marker whose sha no longer has a matching queue entry (a crash between the entry
   // drop and the marker removal) is stale — never displayed, even with a live orchestrator.
-  fs.writeFileSync(
-    infoFile,
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["clean"] }),
-  );
+  writeOrchestratorMarker(repo, ["clean"]);
   writeJsonFile(landingStatePath(repo), {
     role: "clean",
     sha: "deadbee",
@@ -463,7 +449,7 @@ test("the marker is cross-checked per change and each row reads its own change's
   for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dry", "d1a0000"]]) {
     enqueueLanding(repo, { role: role!, sha: sha!, tick: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
-  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [] });
+  writeOrchestratorMarker(repo, []);
   const betaStart = Date.now() - 90_000;
   writeJsonFile(landingStatePath(repo), {
     role: "bugfix",

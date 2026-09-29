@@ -7,12 +7,11 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
-import { ensureParentDir } from "../src/files.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the
 // supervisor's shutdown semantics. These are the long-running commands, spawned with a live
@@ -42,11 +41,7 @@ test("run refuses to start while another orchestrator is alive", async () => {
 
   // Record a live pid (this test process) as the running orchestrator; two fleets in one
   // repo would double-tick every loop and race on the merge lock.
-  ensureParentDir(orchestratorStatePath(repo));
-  fs.writeFileSync(
-    orchestratorStatePath(repo),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
-  );
+  writeOrchestratorMarker(repo, []);
 
   const restore = fakePi("exit 0");
   try {

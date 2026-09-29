@@ -28,6 +28,7 @@ import type { TumwaterConfig } from "../src/config-schema.js";
 import { execFileSync } from "node:child_process";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
 
@@ -499,11 +500,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
 
 test("runDoctor's header names the live orchestrator pid when the harness is running", async () => {
   const root = readyRepo();
-  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
-  fs.writeFileSync(
-    path.join(root, ".tumwater", "state", "orchestrator.json"),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [] }),
-  );
+  writeOrchestratorMarker(root, []);
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
   assert.equal(report.header, `tumwater doctor — harness running (pid ${process.pid})`);
 });
@@ -514,11 +511,7 @@ test("runDoctor's header carries the running build's sha, staleness, and restart
   const sha = "a".repeat(40);
   const writeInfo = (build: Record<string, unknown>) => {
     const root = readyRepo();
-    fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
-    fs.writeFileSync(
-      path.join(root, ".tumwater", "state", "orchestrator.json"),
-      JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: [], build }),
-    );
+    writeOrchestratorMarker(root, [], { build });
     return root;
   };
 

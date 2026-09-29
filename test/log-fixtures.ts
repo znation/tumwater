@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readEvents, type HarnessEvent } from "../src/events.js";
-import { piLogPath } from "../src/paths.js";
+import { orchestratorStatePath, piLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
@@ -18,6 +18,24 @@ import { ensureParentDir } from "../src/files.js";
 export function writeMarker(file: string, value: unknown): void {
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify(value));
+}
+
+/** Simulate the orchestrator state marker the harness writes at startup — the
+ * {pid, startedAt, roles} payload src/orchestrator.ts stamps (plus an optional redeploy build
+ * record), written through writeMarker so every test agrees on where the file lives and how the
+ * payload is spelled. `pid` defaults to this test process, which the alive-check reads as a live
+ * harness; tests simulating a dead or foreign orchestrator pass an explicit pid. */
+export function writeOrchestratorMarker(
+  root: string,
+  roles: readonly string[],
+  opts: { pid?: number; build?: unknown } = {},
+): void {
+  writeMarker(orchestratorStatePath(root), {
+    pid: opts.pid ?? process.pid,
+    startedAt: Date.now(),
+    roles: [...roles],
+    ...(opts.build !== undefined ? { build: opts.build } : {}),
+  });
 }
 
 /** Write events.jsonl under a fixture root's .tumwater/log/ (strings pass through verbatim —

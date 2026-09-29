@@ -20,6 +20,7 @@ import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState } from "../src/types.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
 /** The persisted-state file's own tests (src/loop-state.ts): fresh defaults, the tolerant load,
@@ -213,7 +214,7 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
     [process.pid, true],
     [999_999_999, false],
   ] as const) {
-    fs.writeFileSync(file, JSON.stringify({ pid, startedAt: Date.now(), roles: ["clean"] }));
+    writeOrchestratorMarker(dir, ["clean"], { pid });
     assert.equal(readOrchestratorInfo(dir)?.pid, pid);
     assert.equal(orchestratorAlive(dir), alive);
   }

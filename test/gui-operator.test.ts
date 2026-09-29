@@ -5,12 +5,12 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
+import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
 import { startLocalGui } from "./gui-fixtures.js";
-import { writeMarker } from "./log-fixtures.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // The GUI's operator controls, split out of gui.test.ts: the daily budget cap
@@ -84,8 +84,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the
   // landing role's row phase reads `landing <elapsed> · <stage>` while every other row is
   // untouched.
-  const infoFile = orchestratorStatePath(repo);
-  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
+  writeOrchestratorMarker(repo, ["clean"]);
   const startedAt = Date.now();
   fs.writeFileSync(
     landingStatePath(repo),
@@ -114,8 +113,7 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui no-cap test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
-  const infoFile = orchestratorStatePath(repo);
-  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
+  writeOrchestratorMarker(repo, ["clean"]);
   // …cap disabled with today's spend far above zero.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
@@ -260,8 +258,7 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
-  const infoFile = orchestratorStatePath(repo);
-  writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["clean"] });
+  writeOrchestratorMarker(repo, ["clean"]);
   // …and spend at the cap so the fleet-wide pause flag is set.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
@@ -569,8 +566,7 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
 
     // Record this test process as the running orchestrator (it is alive): now the request
     // drops the marker and reports the CLI's confirmation text verbatim.
-    const infoFile = orchestratorStatePath(repo);
-    writeMarker(infoFile, { pid: process.pid, startedAt: Date.now(), roles: ["feature"] });
+    writeOrchestratorMarker(repo, ["feature"]);
     res = await fetch(base + "/api/abort", {
       method: "POST",
       body: JSON.stringify({ role: "feature" }),

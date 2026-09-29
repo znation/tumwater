@@ -23,13 +23,13 @@ import {
 } from "../src/loop-state.js";
 import {
   abortRequestPath,
-  orchestratorStatePath,
   pausedPath,
   pausedRolesPath,
   resetRequestPath,
   wakeRequestPath,
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";
 
@@ -53,7 +53,7 @@ async function expectFail(fn: () => Promise<unknown>): Promise<{ code: number; s
 /** Mark a harness live for orchestratorAlive: its info file names a pid that is provably alive
  * (this test process). */
 function markLive(root: string): void {
-  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles: [] });
+  writeOrchestratorMarker(root, []);
 }
 
 function readJson(file: string): Record<string, unknown> {
@@ -388,7 +388,7 @@ test("cmdStop fails closed with no info file, and with a torn one naming a dead 
   assert.match(absent.stderr, /no harness is running/);
 
   // A torn or stale info file (a pid that is not running) is the same "nothing to stop".
-  writeJsonFile(orchestratorStatePath(root), { pid: 999_999_999, startedAt: Date.now(), roles: [] });
+  writeOrchestratorMarker(root, [], { pid: 999_999_999 });
   const dead = await expectFail(() => cmdStop(root));
   assert.equal(dead.code, 1);
   assert.match(dead.stderr, /no harness is running/);
@@ -403,7 +403,7 @@ test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", asy
     if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");
     await new Promise((r) => setTimeout(r, 10));
   }
-  writeJsonFile(orchestratorStatePath(root), { pid: child.pid, startedAt: Date.now(), roles: [] });
+  writeOrchestratorMarker(root, [], { pid: child.pid });
   try {
     const { stdout } = await expectOk(() => cmdStop(root));
     assert.match(stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
@@ -431,7 +431,7 @@ test("cmdStop reports a pid that died between the check and the signal as alread
     err.code = "ESRCH";
     throw err;
   }) as typeof process.kill);
-  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles: [] });
+  writeOrchestratorMarker(root, []);
 
   const { stdout } = await expectOk(() => cmdStop(root));
   assert.match(stdout, /the orchestrator exited before the stop signal landed — nothing is running/);

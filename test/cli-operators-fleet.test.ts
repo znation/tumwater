@@ -8,9 +8,9 @@ import { loadLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/ui/operator-commands.js";
 import { seedCounters } from "./loop-fixtures.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
-import { ensureParentDir } from "../src/files.js";
 
 // The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split
 // from cli-operators.test.ts so node --test runs them in parallel processes — each test
@@ -130,11 +130,7 @@ test("reset-counters and wake name the live effect when a harness is running", a
   await initProject(repo, "cli reset wake live");
 
   // Record this test process as the running orchestrator (it is alive).
-  ensureParentDir(orchestratorStatePath(repo));
-  fs.writeFileSync(
-    orchestratorStatePath(repo),
-    JSON.stringify({ pid: process.pid, startedAt: Date.now(), roles: ["feature"] }),
-  );
+  writeOrchestratorMarker(repo, ["feature"]);
 
   const reset = await cli(repo, "reset-counters");
   assert.equal(reset.code, 0);
@@ -226,11 +222,7 @@ test("stop refuses when no harness is running — missing or stale info file ali
   assert.match(r.stderr, /no harness is running/);
 
   // A stale info file (dead pid) reads the same way: nothing alive to signal.
-  ensureParentDir(orchestratorStatePath(repo));
-  fs.writeFileSync(
-    orchestratorStatePath(repo),
-    JSON.stringify({ pid: 2_000_000_000, startedAt: Date.now(), roles: [] }),
-  );
+  writeOrchestratorMarker(repo, [], { pid: 2_000_000_000 });
   r = await cli(repo, "stop");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no harness is running/);
@@ -244,11 +236,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   // SIGTERM handler, so the default behaviour applies and it dies with signal SIGTERM —
   // letting the test assert the actual signal it dies from.
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
-  ensureParentDir(orchestratorStatePath(repo));
-  fs.writeFileSync(
-    orchestratorStatePath(repo),
-    JSON.stringify({ pid: child.pid, startedAt: Date.now(), roles: [] }),
-  );
+  writeOrchestratorMarker(repo, [], { pid: child.pid });
 
   const exited = new Promise<{ signal: NodeJS.Signals | null }>((resolve) => {
     child.once("exit", (_code, signal) => resolve({ signal }));
