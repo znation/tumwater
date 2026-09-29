@@ -9,7 +9,7 @@ import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
-import type { LoopState } from "../src/types.js";
+import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

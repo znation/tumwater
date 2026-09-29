@@ -14,7 +14,8 @@ import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
 import { shortSha } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState, PiRunResult, PiRunWiring, TickResult } from "./types.js";
+import type { PiRunResult, PiRunWiring, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 
 /** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before
  * the landing is attributed instead of retried: the first red keeps the pin for one more

@@ -19,7 +19,8 @@ import { landingRefName } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./loop-state.js";
 import type { AbortableLanding } from "./operator-requests.js";
-import type { FoldsUsage, LandingEntry, LoopState, TickResult } from "./types.js";
+import type { FoldsUsage, LandingEntry, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 
 /** The semaphore tier a vet waits at, below every roleTier (0/1): committed work whose author
  * the interlock has already blocked jumps ahead of parked role waiters rather than starving

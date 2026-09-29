@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { onceSummary } from "../src/cli-run.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { pauseFleet } from "../src/fleet-state.js";
-import type { LoopState } from "../src/types.js";
+import type { LoopState } from "../src/loop-state.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // Unit seam for cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron

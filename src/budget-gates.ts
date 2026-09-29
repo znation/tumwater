@@ -19,7 +19,7 @@ import {
 import { applyFallbackModel, fallbackPair } from "./config-views.js";
 import { logEvent } from "./events.js";
 import { fallbackModelFree } from "./pi-models.js";
-import type { LoopState } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
  * the fallback breaker, and the fallback view last derived from a live config. In memory

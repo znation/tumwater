@@ -1,5 +1,6 @@
 import type { BackoffConfig, TumwaterConfig } from "./config-schema.js";
-import type { LandingEntry, LoopState, TickOutcome, TickResult } from "./types.js";
+import type { LandingEntry, TickOutcome, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 
 /** The per-loop scheduling POLICY for finished work and operator demands: what a finished tick

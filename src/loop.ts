@@ -1,5 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { branchHead, isDirty, setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";

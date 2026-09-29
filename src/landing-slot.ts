@@ -1,4 +1,5 @@
-import type { LandingEntry, LoopState, PiRunResult, TickResult } from "./types.js";
+import type { LandingEntry, PiRunResult, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 import { applyLandingOutcome } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
 import { logEvent } from "./events.js";

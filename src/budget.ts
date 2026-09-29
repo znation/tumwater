@@ -8,7 +8,8 @@
  * loop-state.ts. */
 
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState, TickResult } from "./types.js";
+import type { TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 import { dayKey } from "./datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other

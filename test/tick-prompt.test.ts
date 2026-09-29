@@ -8,7 +8,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
 import { qaCoveragePath } from "../src/paths.js";
-import type { LoopState } from "../src/types.js";
+import type { LoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/tick-prompt.ts — the assembly of what one loop's tick actually runs

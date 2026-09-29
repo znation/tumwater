@@ -9,7 +9,7 @@
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
 import type { LoopRunner } from "./loop.js";
-import type { LoopState } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 import { configForRole } from "./config-views.js";
 import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 

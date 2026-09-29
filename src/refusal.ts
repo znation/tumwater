@@ -3,7 +3,8 @@ import { changedFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer } from "./commit-message.js";
 import { labeledLine } from "./reply-contract.js";
-import type { LoopState, PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { LoopState } from "./loop-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended
  * with TUMWATER_REFUSED. Only the markdown objection note may land — it is the durable record

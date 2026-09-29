@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config-schema.js";
-import type { LoopState } from "../types.js";
+import type { LoopState } from "../loop-state.js";
 import type { BuildStatus } from "../build-info.js";
 import { openQuestions } from "../backlog.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, loadConfigCached } from "../config.js";

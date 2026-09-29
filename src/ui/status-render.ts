@@ -1,5 +1,5 @@
 import path from "node:path";
-import type { LoopState } from "../types.js";
+import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";

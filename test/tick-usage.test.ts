@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { TickUsage } from "../src/tick-usage.js";
 import { freshLoopState } from "../src/loop-state.js";
-import type { LoopState, PiRunResult } from "../src/types.js";
+import type { PiRunResult } from "../src/types.js";
+import type { LoopState } from "../src/loop-state.js";
 import { piRunResult } from "./fake-pi.js";
 
 // TickUsage's accounting (src/tick-usage.ts): the once-per-run choke point every pi run of a
