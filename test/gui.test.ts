@@ -422,11 +422,14 @@ test("the GUI loop table sorts active first, then by last tick most-recent-first
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
-  // the report-chart builders. sortLoops is pure (no DOM, no esc), so nothing is injected.
+  // the report-chart builders. sortLoops classifies rows through the page's shared isActivePhase
+  // helper, so its marked region is spliced in alongside (the fmtLastTick/fmtNextRun pattern).
   const m = GUI_PAGE.match(/\/\/ loop-sort:start\n([\s\S]*?)\n  \/\/ loop-sort:end/);
   assert.ok(m, "loop-sort region found in the page");
+  const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
+  assert.ok(ap, "active-phase-fmt region found in the page");
   type LoopRow = { role: string; phase: string; lastTickEndedAt: number | null };
-  const sortLoops = new Function(`${m[1]}\nreturn sortLoops;`)() as unknown as (loops: LoopRow[]) => LoopRow[];
+  const sortLoops = new Function(`${ap[1]}\n${m[1]}\nreturn sortLoops;`)() as unknown as (loops: LoopRow[]) => LoopRow[];
 
   // refresh() renders the sorted copy, not payload order — pin the call site so the function
   // cannot become dead code.
@@ -1093,7 +1096,11 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   // marked region is spliced in alongside (same extraction pattern as the fmtLastTick test).
   const hs = GUI_PAGE.match(/\/\/ human-seconds-fmt:start\n([\s\S]*?)\n  \/\/ human-seconds-fmt:end/);
   assert.ok(hs, "human-seconds-fmt region found in the page");
-  const fmtNextRun = new Function(`${hs[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
+  // ...and through the page's shared isActivePhase helper, spliced in alongside (the same
+  // extraction pattern).
+  const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
+  assert.ok(ap, "active-phase-fmt region found in the page");
+  const fmtNextRun = new Function(`${hs[1]}\n${ap[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
     (l: { phase: string; nextRunAt: number; backoffSeconds: number }, fleetRunning: boolean) => string;
 
   const now = Date.now();

@@ -72,6 +72,14 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // for both cells, so their thresholds and rounding cannot drift.
   const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h");
   // human-seconds-fmt:end
+  // active-phase-fmt:start
+  // The active-phase predicate — the client copy of status-model.ts's isActivePhase (the page
+  // cannot import TS, per the fmtTokens precedent): a loop in flight is one whose phase starts
+  // with working, reviewing, or landing. One home shared by fmtNextRun (which adds the parked
+  // "awaiting slot" prefix as its own also-"-" case) and sortLoops's in-flight-first row order,
+  // so the three prefixes cannot drift between the two.
+  const isActivePhase = (phase) => phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
+  // active-phase-fmt:end
   // last-tick-fmt:start
   // Last tick cell — mirrors the TUI's lastTickCell in status-render.ts: the absolute local
   // time of the last tick end alongside its relative age ("14:32:05 · 3m ago"). Zero-padded
@@ -104,7 +112,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // countdown fresh on the existing 1-second poll. The page cannot import TS (the fmtTokens
   // precedent), so the two copies stay in lockstep by test.
   const fmtNextRun = (l, fleetRunning) => {
-    const active = l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing") || l.phase.startsWith("awaiting slot");
+    const active = isActivePhase(l.phase) || l.phase.startsWith("awaiting slot");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     if (sec <= 0) return "now";
@@ -121,7 +129,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
   // stay in lockstep by test. /api/status and status --json keep their payload (config)
   // order — grouping is a display concern of the two rendered tables.
   function sortLoops(loops) {
-    const cat = (l) => ((l.phase.startsWith("working") || l.phase.startsWith("reviewing") || l.phase.startsWith("landing")) ? 0 : 1);
+    const cat = (l) => (isActivePhase(l.phase) ? 0 : 1);
     return loops.slice().sort((a, b) => {
       if (cat(a) !== cat(b)) return cat(a) - cat(b);
       const ta = a.lastTickEndedAt ?? 0;
