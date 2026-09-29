@@ -4,7 +4,7 @@ import { logEvent, warnEvent } from "./events.js";
 import { enqueueLanding, queuedLandings } from "./landing-queue.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./text.js";
-import type { LandingEntry } from "./types.js";
+import type { LandingEntry } from "./landing-queue.js";
 import type { LoopState } from "./loop-state.js";
 
 /** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery

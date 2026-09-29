@@ -11,7 +11,7 @@ import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
 import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
-import type { TickOutcome } from "../src/types.js";
+import type { TickOutcome } from "../src/tick-outcome.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The orchestrator's exported unit-test seams (src/orchestrator.ts): the permit-holding

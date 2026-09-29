@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { TickOutcome, TickResult } from "./types.js";
+import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";

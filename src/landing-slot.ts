@@ -1,4 +1,5 @@
-import type { LandingEntry, TickResult } from "./types.js";
+import type { LandingEntry } from "./landing-queue.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { applyLandingOutcome } from "./tick-outcome.js";

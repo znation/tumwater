@@ -7,7 +7,7 @@ import { buildCheckEvent, buildCheckSkipWarning } from "./build-check-events.js"
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
-import type { TickOutcome } from "./types.js";
+import type { TickOutcome } from "./tick-outcome.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { errorMessage, shortSha } from "./text.js";
 import { gitTry } from "./git.js";

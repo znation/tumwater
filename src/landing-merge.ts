@@ -20,7 +20,7 @@ import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { mergeLockDir } from "./paths.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { RunsPi } from "./loop-pi.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased

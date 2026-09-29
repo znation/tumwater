@@ -9,7 +9,7 @@ import { freshLoopState } from "../src/loop-state.js";
 import { defaultConfig } from "../src/config.js";
 import { readQaCoverage } from "../src/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing-queue.js";
-import type { TickOutcome } from "../src/types.js";
+import type { TickOutcome } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";

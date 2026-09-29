@@ -12,7 +12,7 @@ import { loadLoopState } from "../src/loop-state.js";
 import { LoopRunner } from "../src/loop.js";
 import { waitFor } from "./wait.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { TickResult } from "../src/types.js";
+import type { TickResult } from "../src/tick-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around

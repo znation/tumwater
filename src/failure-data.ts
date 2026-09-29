@@ -5,7 +5,7 @@
  * function of it; the split keeps "what happened" (clustering rules, window math, bounds)
  * apart from "how it prints" (column layout, cell wording), which change for different
  * reasons. */
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole, type HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";

@@ -3,7 +3,6 @@ import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js"
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { landQueueDir } from "./paths.js";
-import type { LandingEntry } from "./types.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
@@ -13,7 +12,32 @@ import type { LandingEntry } from "./types.js";
  * ref, so the retry rides next-tick leftover recovery at normal cadence — the queue never
  * retries). Timestamped filenames order the queue across processes; a crash between enqueue
  * and drop loses nothing — the next start drains the survivors, deduping shas main already
- * holds. Same reasons the director's inbox is a directory of files (inbox.ts). */
+ * holds. Same reasons the director's inbox is a directory of files (inbox.ts). The entry's
+ * shape (LandingEntry) lives here beside the queue's reader/writer — moved out of the
+ * types.ts grab-bag. */
+
+/** One entry in the durable land queue (.tumwater/land-queue/; this module): a commit
+ * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
+ * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY landing
+ * outcome, so the queue holds only unattempted landings. No attempt counter lives in the file —
+ * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
+ */
+export interface LandingEntry {
+  /** The owning loop — events, session naming, and the lander worktree all key off it. */
+  role: string;
+  /** The pinned commit to land — checked out detached in this role's lander worktree. */
+  sha: string;
+  /** The authoring tick number, for the unique per-run session names (review + conflict resolution). */
+  tick: number;
+  /** The change's one-line summary (the commit subject minus its prefix). */
+  summary: string;
+  /** The author's claimed WHY/RISK/VERIFIED — the reviewer checks it against the diff. */
+  body?: string;
+  /** The authoring run burned past the friction thresholds: the reviewer applies extra scrutiny. */
+  highFriction?: boolean;
+  /** Enqueue time (epoch ms) — the filename orders the queue by it across processes. */
+  enqueuedAt: number;
+}
 
 let seq = 0;
 

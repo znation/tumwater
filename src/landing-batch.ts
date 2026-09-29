@@ -24,7 +24,7 @@ import {
 import { errorMessage } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { PiRunWiring } from "./loop-pi.js";
 import type { LoopState } from "./loop-state.js";
 

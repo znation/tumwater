@@ -2,7 +2,7 @@
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. */
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { shortSha } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
@@ -31,7 +31,7 @@ export function telemetryDigest(root: string): string | undefined {
 const ROLES_SHOWN = 4;
 
 /** Every `TickResult`, mapped to its display/column rank. Typed as a `Record<TickResult, …>`,
- * so adding a result to src/types.ts and forgetting it here is a compile error — the
+ * so adding a result to src/tick-outcome.ts and forgetting it here is a compile error — the
  * vocabulary is closed by the type checker, not by a comment. Order runs from "made progress"
  * through "did not" to the operator/shutdown outcomes. */
 const RESULT_ORDER: Record<TickResult, number> = {
@@ -84,7 +84,7 @@ function rate(errors: number, ticks: number): string {
 
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only
  * with the number of configured roles (fixed by config) and the RESULT_ORDER vocabulary (fixed
- * by src/types.ts), and every free string is capped — cluster examples at 120 chars, landed
+ * by src/tick-outcome.ts), and every free string is capped — cluster examples at 120 chars, landed
  * summaries at 100, a cluster's role list at 4 names plus a remainder count, and any loop id
  * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
  * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state

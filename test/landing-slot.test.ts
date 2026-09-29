@@ -29,7 +29,7 @@ import { applyTickOutcome } from "../src/tick-outcome.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing-queue.js";
 import { readEvents } from "../src/events.js";
 import { LoopRunner } from "../src/loop.js";
-import type { LandingEntry } from "../src/types.js";
+import type { LandingEntry } from "../src/landing-queue.js";
 import type { PiRunResult } from "../src/pi.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

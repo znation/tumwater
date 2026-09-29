@@ -5,7 +5,7 @@ import type { LoopRunner } from "./loop.js";
 import type { InFlightLanding } from "./landing-drain.js";
 import { landingStatePath } from "./paths.js";
 import { rateLimitHold, type RateLimitHold } from "./rate-limit-hold.js";
-import type { TickOutcome } from "./types.js";
+import type { TickOutcome } from "./tick-outcome.js";
 
 /** The orchestrator's tick-timing and scheduling seams (src/orchestrator.ts keeps the poll loop
  * itself — the control flow that calls these). Each is exported as a unit-test seam

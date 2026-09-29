@@ -1,4 +1,4 @@
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { statePath } from "./paths.js";
 

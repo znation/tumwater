@@ -22,7 +22,7 @@ import {
   todayStamp,
 } from "../src/budget.js";
 import { defaultConfig } from "../src/config.js";
-import type { TickResult } from "../src/types.js";
+import type { TickResult } from "../src/tick-outcome.js";
 
 /** Two local-time timestamps straddling midnight, built with the local Date constructor so
  * the test holds in any timezone: dayA is an evening, dayB just after local midnight. */

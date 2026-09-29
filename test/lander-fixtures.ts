@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { TickResult } from "../src/types.js";
+import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
 import { writeScript } from "./fake-commands.js";

@@ -19,7 +19,8 @@ import { landingRefName } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { saveLoopState } from "./loop-state.js";
 import type { AbortableLanding } from "./operator-requests.js";
-import type { LandingEntry, TickResult } from "./types.js";
+import type { LandingEntry } from "./landing-queue.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { FoldsUsage } from "./loop-pi.js";
 import type { LoopState } from "./loop-state.js";
 

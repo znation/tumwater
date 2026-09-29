@@ -33,7 +33,7 @@ import { fakePi } from "./fake-pi.js";
 import { waitFor, waitForFile } from "./wait.js";
 import { assistantLine, reviewerPi } from "./pi-events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { LandingEntry } from "../src/types.js";
+import type { LandingEntry } from "../src/landing-queue.js";
 
 // Unit coverage for src/landing-drain.ts — the scheduler seam between the durable land queue and
 // the landing pipeline (land-queue speed 2c): the dedupe against main and torn-head recovery,

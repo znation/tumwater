@@ -14,7 +14,7 @@ import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
 import { shortSha } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
 import type { PiRunWiring } from "./loop-pi.js";
 import type { LoopState } from "./loop-state.js";

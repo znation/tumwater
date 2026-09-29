@@ -8,7 +8,7 @@
  * loop-state.ts. */
 
 import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./types.js";
+import type { TickResult } from "./tick-outcome.js";
 import type { LoopState } from "./loop-state.js";
 import { dayKey } from "./datetime.js";
 
