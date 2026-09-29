@@ -17,6 +17,16 @@ import { errorMessage, shortSha } from "./text.js";
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
 const COMPILE_TIMEOUT_MS = 5 * 60_000;
 
+/** The outcome of one compile attempt. `rejected` marks a compile that never ran — a missing
+ * toolchain or a spawn failure (ENOENT and friends): a rejection is not a verdict about the
+ * tree, so callers must not latch it the way a real compiler exit is latched (BUGS.md
+ * 2026-09-28). */
+export interface CompileResult {
+  ok: boolean;
+  detail: string;
+  rejected?: boolean;
+}
+
 /** Compile `mainHead` — checked out detached in the mirror worktree — into its staging dir with
  * the project's own tsc, then stamp it. The mirror is the compile source (not the primary
  * checkout, which may be dirty or on another branch): it holds exactly the tree main names. tsc
@@ -30,10 +40,14 @@ export async function compileStaged(
   mirrorWt: string,
   mainHead: string,
   timeoutMs = COMPILE_TIMEOUT_MS,
-): Promise<{ ok: boolean; detail: string }> {
+): Promise<CompileResult> {
   const tsc = resolveFromNodeModules(root, path.join("typescript", "bin", "tsc"));
   if (!tsc)
-    return { ok: false, detail: `typescript is not installed under node_modules at or above ${root} — cannot rebuild` };
+    return {
+      ok: false,
+      rejected: true,
+      detail: `typescript is not installed under node_modules at or above ${root} — cannot rebuild`,
+    };
   const staged = stagingDir(root, mainHead);
   removeTree(staged);
   ensureDir(staged);
@@ -46,6 +60,13 @@ export async function compileStaged(
     const e = err as { stdout?: string; stderr?: string; killed?: boolean; code?: unknown };
     if (e.killed) return { ok: false, detail: `tsc timed out after ${timeoutMs / 1000}s` };
     const tail = clipBuildTail(`${e.stdout ?? ""}${e.stderr ?? ""}`).slice(-3).join(" | ");
+    // Distinguish "tsc ran and failed" (a numeric exit code, or output to explain it) from "tsc
+    // never ran" (a spawn failure: ENOENT for the executable or the cwd, with nothing on either
+    // stream). The former is a verdict about the tree; the latter is a rejection — naming the
+    // commit as the thing that failed tells the operator nothing, and latching it pins the
+    // fleet on the stale build even after the environment recovers (BUGS.md 2026-09-28).
+    if (typeof e.code !== "number" && !tail)
+      return { ok: false, rejected: true, detail: `could not start the compile: ${errorMessage(err)}` };
     return { ok: false, detail: `tsc exited ${String(e.code)}${tail ? `: ${tail}` : ""}` };
   }
   const stamped = await stampBuild(root, staged, mainHead);

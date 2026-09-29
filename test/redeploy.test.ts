@@ -43,7 +43,7 @@ const HEAD_D = "d".repeat(40);
 function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null } = {}) {
   const calls = { compile: [] as string[], swap: [] as string[], green: [] as string[] };
   let resolveGreen: ((v: boolean) => void) | null = null;
-  let resolveCompile: ((v: { ok: boolean; detail: string }) => void) | null = null;
+  let resolveCompile: ((v: { ok: boolean; detail: string; rejected?: boolean }) => void) | null = null;
   const deps: RedeployDeps = {
     staleness: async () => over.stale ?? { stale: true, aheadCommits: 3 },
     mainGreen: (h) => {
@@ -66,8 +66,8 @@ function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null 
     green(v: boolean) {
       resolveGreen?.(v);
     },
-    compiled(ok: boolean, detail = "") {
-      resolveCompile?.({ ok, detail });
+    compiled(ok: boolean, detail = "", rejected = false) {
+      resolveCompile?.({ ok, detail, rejected });
     },
   };
 }
@@ -325,6 +325,62 @@ test("a failed compile keeps the old build running and warns once", async () => 
   assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "and stays blocked for this head");
+});
+
+test("a compile that never ran is a rejection, not a verdict: retried instead of blocked", async () => {
+  // `tsc exited ENOENT` is execFile's spawn-failure code, not a compiler exit: the compile said
+  // nothing about the tree, so latching the head ("no retry until main moves") pins the fleet
+  // on the stale build even after the environment recovers (BUGS.md 2026-09-28). Like the
+  // REJECTED green check, the episode is dropped and the next poll re-attempts.
+  const f = fakeDeps();
+  const { r, events, types } = harness(f.deps);
+  await r.poll(HEAD_B, IDLE, true);
+  f.green(true);
+  await settle();
+  await r.poll(HEAD_B, IDLE, true);
+  f.compiled(false, "could not start the compile: spawn mirror ENOENT", true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
+  assert.match(String(events.at(-1)!.message), /could not start the rebuild of bbbbbbbb/);
+  assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");
+  f.green(true);
+  await settle();
+  await r.poll(HEAD_B, IDLE, true);
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "restart", "a repaired environment redeploys the same head");
+  assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_B]);
+});
+
+test("a rejected compile warns once per head, not once per retry", async () => {
+  // The rejection path re-attempts on every poll while the environment is broken, so a warning
+  // per attempt would flood the digest exactly as the latched ENOENT cluster did (64 in a day).
+  // The dedupe key is the head: the same head's repeated rejection stays quiet; a new head that
+  // also cannot compile is a new episode and warns again (BUGS.md 2026-09-28).
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps);
+  // Each retry emits its own restart_pending; the dedupe claim is about warnings.
+  const warnings = () => events.filter((e) => e.type === "warning");
+  const rejectOnce = async (head: string) => {
+    await r.poll(head, IDLE, true);
+    f.green(true);
+    await settle();
+    await r.poll(head, IDLE, true);
+    f.compiled(false, "could not start the compile: spawn mirror ENOENT", true);
+    await settle();
+    assert.equal(await r.poll(head, IDLE, true), "none", "dropped, not blocked");
+  };
+  await rejectOnce(HEAD_B);
+  assert.equal(warnings().length, 1);
+  assert.match(String(warnings()[0]!.message), /could not start the rebuild of bbbbbbbb/);
+  await rejectOnce(HEAD_B);
+  assert.equal(warnings().length, 1, "the same head's repeated rejection warns once, not per attempt");
+  assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_B], "and the compile was still re-attempted for the head");
+  await rejectOnce(HEAD_C);
+  assert.equal(warnings().length, 2, "a different head is a new episode and warns again");
+  assert.match(String(warnings().at(-1)!.message), /could not start the rebuild of cccccccc/);
 });
 
 test("a swap failure is reported and blocks like a compile failure", async () => {
@@ -873,6 +929,21 @@ test("compileStaged without typescript installed anywhere above the project fail
   const result = await compileStaged(root, root, "d".repeat(40));
   assert.equal(result.ok, false);
   assert.match(result.detail, /typescript is not installed/);
+  assert.equal(result.rejected, true, "a missing toolchain is a rejection, not a compiler verdict");
+});
+
+test("compileStaged reports a spawn failure as a rejection, not a verdict about the tree", async () => {
+  // A mirror worktree that vanished (or a node binary an upgrade replaced) makes the spawn
+  // itself fail with ENOENT and empty streams: the compile never ran, so the result must say so
+  // instead of reading as `tsc exited ENOENT` — a compiler verdict about the commit that never
+  // got one (BUGS.md 2026-09-28).
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  const result = await compileStaged(root, path.join(root, "mirror-went-away"), "f".repeat(40));
+  assert.equal(result.ok, false);
+  assert.equal(result.rejected, true);
+  assert.match(result.detail, /could not start the compile/);
 });
 
 test("compileStaged reports a timeout instead of hanging when tsc runs past its cap", async () => {
