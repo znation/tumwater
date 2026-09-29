@@ -5,6 +5,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### `tumwater help reset-counters` promises to "Zero ticks/commits/tokens/cost", but a role's `today` spend and the fleet budget header survive the reset, so the help overpromises what the command deliberately does (found by qa 2026-09-29)
+
+- **Symptom:** After `tumwater reset-counters`, `tumwater status` shows every role's `cost` at $0.00 but keeps the per-role `today` column and the `budget: $X/$Y today` header at the day's spend. A first-time user reading the help line expects the whole cost picture to zero; the kept `today` figures look like the reset failed.
+- **Reproduce:** In a scratch dir: `tumwater init "..."`, then give the state nonzero day costs (seed each `.tumwater/state/<role>.json` with `dayCostUsd: 0.5`, `totalCostUsd: 1.25`, `ticks: 7`; or run real ticks), then `tumwater status` (shows `$0.50` today per role, header `budget: $7.00/$50 today`), then `tumwater reset-counters`, then `tumwater status` again: `cost` and `total` drop to $0.00 while `today` stays `$0.50` and the header stays `$7.00/$50`.
+- **Cause:** This is deliberate, not lost state: src/loop-state.ts documents that `dayCostUsd` is "deliberately NOT zeroed: the budget is a safety valve, not an observation window" — zeroing it would let an operator reset their way past the daily spend cap. Only the help line is wrong.
+- **Fix direction:** Reword `tumwater help reset-counters` (src/help.ts) to say what is zeroed and what is not, e.g. "Zero lifetime ticks/commits/tokens/cost (fresh observation window); today's budget spend is kept". Do not change the behavior.
+
 ### A tick that reaches tickTimeoutSeconds discards its worktree edits and session, while a quiet kill resumes them: on 2026-09-22 every role timed out at the 1800 s default for 8 hours (97 ticks, ~55 agent-hours discarded), and since the timeout was raised 29 landed ticks ran past 30 minutes (found by human commit-history analysis 2026-09-29)
 
 - **Symptom:** From 2026-09-22 14:35 to 22:42 PDT, events.jsonl records 97 `tick_end result:error` events whose `error` is `timed out after 1800s`. They span all 14 roles and add up to ~55 agent-hours, which is 28% of all tick time in the 2026-09-22 → 09-29 window ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). Only 17 ticks landed in those 8 hours. The operator's workaround was to raise `tickTimeoutSeconds` to 54000 in the live tumwater.json. Since 2026-09-23, **29 ticks have landed work after running longer than 30 minutes** (feature 5, coverage 5, bugfix 5, dry 3, organize 3, plan 3, others 1 each; the longest was telemetry at 185 min). Each of those runs would have been discarded under the shipped default.
