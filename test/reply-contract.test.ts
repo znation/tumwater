@@ -159,6 +159,30 @@ test("isNegatedRefusal negates none and n/a under typographic quoting", () => {
   assert.ok(!isNegatedRefusal("none of the attempted fixes work “per the log”"), "a word after the token starts the reason, quoted or not");
 });
 
+// BUGS.md 2026-09-28: a whole-reason absence statement (`TUMWATER_REFUSED: nothing to do`,
+// `nothing to refuse`, `nothing refused`, `no refusal`) left isNegatedRefusal false — the
+// guard only knew `none`/`n/a` as the negating token, but a loop that found no work reaches
+// for these phrases too, and the same hard-reset destroyed its finished, tested work. The
+// match stays anchored: the phrase followed by a word (`nothing to do with the review`) is a
+// real reason and stays a refusal.
+test("isNegatedRefusal negates a whole-reason absence statement", () => {
+  for (const reason of [
+    "nothing to do",
+    "Nothing to do.",
+    "NOTHING TO REFUSE",
+    "nothing to refuse — checked the backlog",
+    "nothing to do; the backlog is empty",
+    "nothing refused",
+    "Nothing refused — the record is clean.",
+    "NO REFUSAL",
+    "no refusal; the objection was satisfied upstream",
+  ])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("nothing to do with the review"), "a word after the phrase starts the reason, so it stays a refusal");
+  assert.ok(!isNegatedRefusal("no refusal of my own — the change stands"), "a word after the phrase starts the reason, so it stays a refusal");
+  assert.ok(!isNegatedRefusal("nothing in the plan justifies this change"), "a real objection beginning with nothing stays a refusal");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",

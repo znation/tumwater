@@ -50,6 +50,9 @@ export function extractRefusal(text: string): string | null {
  *   nothing refused`, `"none"`, `none "nothing to do"`. Straight and typographic quotes
  *   alike, each of ‘ ’ “ ” decorating either side of the token (a model's quote direction
  *   is not reliable, so both classes carry all four);
+ * - the whole reason itself stating absence: `nothing to do`, `nothing to refuse`,
+ *   `nothing refused`, `no refusal` — a loop that found no work reaches for these phrases
+ *   exactly as it reaches for `none`, and they are not objections (BUGS.md 2026-09-28);
  * - with trailing sentence punctuation: `None.`, `N/A!` — punctuation is formatting;
  * - inside brackets, which become spaces rather than deletions, so `(no)ne` cannot
  *   collapse into `none`;
@@ -90,12 +93,15 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
     // `None. Nothing worth doing.`, `none "nothing to do"`, `none “nothing to do”`). The
     // hyphen stays in the class beside the en/em dashes: `none - …` is the same
     // appended-note dress as `none — …` and dropping it would regress `n/a - …` replies to
-    // genuine refusals. Anchored right after the token, so a reason that continues with a word
-    // (`none of the attempted fixes work`) stays a refusal: punctuation is formatting, a
-    // letter is the reason itself. Accepted tradeoff, same as the dash dress already carried:
-    // a real objection that opens a quoted clause right after the token (`none "of these
-    // work"`) now negates.
-    if (/^(none|n\/a)\b([ \t]*[—–\-;:,.!?('"‘’“”].*)?$/.test(candidate)) return true;
+    // genuine refusals. The alternation also carries the whole-reason absence statements a
+    // loop writes instead of `none` (`nothing to do`, `nothing to refuse`, `nothing refused`,
+    // `no refusal` — same negating intent, BUGS.md 2026-09-28). Anchored right after the
+    // token, so a reason that continues with a word (`none of the attempted fixes work`,
+    // `nothing to do with the review`, `no refusal of my own`) stays a refusal: punctuation
+    // is formatting, a letter is the reason itself. Accepted tradeoff, same as the dash dress
+    // already carried: a real objection that opens a quoted clause right after the token
+    // (`none "of these work"`) now negates.
+    if (/^(none|n\/a|nothing to do|nothing to refuse|nothing refused|no refusal)\b([ \t]*[—–\-;:,.!?('"‘’“”].*)?$/.test(candidate)) return true;
   }
   return false;
 }
