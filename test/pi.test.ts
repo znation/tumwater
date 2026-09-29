@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,7 +21,7 @@ import { configForRole } from "../src/config-views.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -880,8 +880,7 @@ test("a missing pi binary fails the tick with an error", async () => {
   const repo = makeRepo();
   await initProject(repo, "spawn failure test");
   // A PATH with git but no pi, so only the pi spawn fails.
-  const binDir = tmpdir();
-  fs.symlinkSync(execSync("which git", { encoding: "utf8" }).trim(), path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
   const oldPath = process.env.PATH;
   process.env.PATH = binDir;
   try {

@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
@@ -9,7 +8,7 @@ import { readEvents } from "../src/events.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
-import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
 
@@ -134,9 +133,7 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
 
   // A bin dir with git (the repo checks and every git call need it) and the agent stub —
   // and no pi anywhere on PATH.
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
   const stub = path.join(binDir, "agent-stub");
   writeScript(stub, "exit 0");
   cfg.agentBin = stub;

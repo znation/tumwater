@@ -44,6 +44,17 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
 
+/** A scratch bin dir whose only entry is a symlink to the real git: a restricted PATH that
+ * keeps git working (repo checks, landing, the worktree helpers) while dropping every other
+ * binary — pi, npm — so a test can isolate exactly one missing tool. Tests that need the dir
+ * to stay findable in failures pass a distinctive `prefix`. */
+export function gitOnlyBinDir(prefix = "tumwater-test-bin-"): string {
+  const binDir = tmpdir(prefix);
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  return binDir;
+}
+
 /** `git init -b main` in `dir` with the fixtures' commit identity. The identity is appended to
  * .git/config directly — byte for byte what `git config user.name test` and `git config
  * user.email …` write — because fixture repos are made ~600 times a suite and each spawn

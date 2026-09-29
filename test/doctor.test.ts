@@ -26,8 +26,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { execFileSync } from "node:child_process";
-import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -983,9 +982,7 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   // deterministic, and the command must not refuse to run like status does. Without the
   // missing-gate regression this would print "not a git repository" to stderr and exit 1
   // without ever showing the other checks.
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
 
   const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor"]);
   assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
@@ -1086,9 +1083,7 @@ test("doctor --json keeps the exit-code contract: fail checks exit 1 with no pro
   // The same broken-environment fixture the plain-render test uses: a bare directory whose
   // PATH holds only git. The JSON form must exit 1 exactly when the prose form does, and its
   // checks must carry the failing levels a script keys off.
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
 
   const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor", "--json"]);
   assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);

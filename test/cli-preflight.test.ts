@@ -1,11 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
-import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cliWithEnv } from "./cli-harness.js";
 
 // run/status/init's startup-preflight child-process tests: each fails fast with a clear
@@ -19,9 +16,7 @@ test("run fails fast with a clear message when pi is missing from PATH", async (
   // A PATH that has git (so the repo checks pass) but no pi: without the startup check,
   // the orchestrator would start and every tick of every loop would die with
   // "failed to spawn pi: spawn pi ENOENT".
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
 
   const r = await cliWithEnv(repo, { PATH: binDir }, ["run"]);
   assert.equal(r.code, 1);
@@ -34,9 +29,7 @@ test("run fails fast with a clear message when pi is missing from PATH", async (
 test("run fails fast naming the resolved agentBin and its source when it is not an executable", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run agentBin fail");
-  const binDir = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir();
 
   // TUMWATER_PI_BIN overrides for one invocation — including overriding the default into a
   // failure whose text names the variable, not the ambient PATH.

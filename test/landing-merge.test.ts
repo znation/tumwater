@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing-git.js";
@@ -15,7 +14,7 @@ import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
@@ -505,9 +504,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
   // Drop npm from PATH for the merge: runBuildCheck's spawn then fails with ENOENT — an
   // environmental skip, not a red build. git alone is symlinked into the restricted bin dir,
   // so every other step of the landing resolves exactly as usual.
-  const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  const binDir = tmpdir("no-npm-bin-");
-  fs.symlinkSync(realGit, path.join(binDir, "git"));
+  const binDir = gitOnlyBinDir("no-npm-bin-");
   const oldPath = process.env.PATH;
   process.env.PATH = binDir;
   let result: string;

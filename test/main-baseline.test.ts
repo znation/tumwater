@@ -9,7 +9,7 @@ import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
-import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -131,8 +131,7 @@ test("checkMainBaseline never caches red for an environmental skip: with npm mis
 
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node.
-  const partialBin = tmpdir("no-npm-");
-  fs.symlinkSync(sh(wt, "which", "git"), path.join(partialBin, "git"));
+  const partialBin = gitOnlyBinDir("no-npm-");
   const oldPath = process.env.PATH;
   process.env.PATH = partialBin;
   try {

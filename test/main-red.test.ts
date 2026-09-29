@@ -9,7 +9,7 @@ import { shortSha } from "../src/text.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
-import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -156,8 +156,7 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
 
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node. The skip must warn and proceed, never block authoring.
-  const partialBin = tmpdir("no-npm-");
-  fs.symlinkSync(sh(wt, "which", "git"), path.join(partialBin, "git"));
+  const partialBin = gitOnlyBinDir("no-npm-");
   const oldPath = process.env.PATH;
   process.env.PATH = partialBin;
   try {
@@ -274,8 +273,7 @@ test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async
   const script = `echo skip-healer >> ${counter}; exit 1`;
   const { root, wt } = baselineFixture(ROLE, script);
   // A PATH that keeps git but drops npm — the check cannot run, so it is not evidence of red.
-  const partialBin = tmpdir("no-npm-bugfix-");
-  fs.symlinkSync(sh(wt, "which", "git"), path.join(partialBin, "git"));
+  const partialBin = gitOnlyBinDir("no-npm-bugfix-");
   const oldPath = process.env.PATH;
   process.env.PATH = partialBin;
   try {

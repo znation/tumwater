@@ -3,7 +3,6 @@
  * own process (and its own PATH, which fakePi's global PATH swap requires). The halves are
  * balanced by measured per-test duration (~30 s each at 2026-09-09); keep them roughly equal
  * when moving tests between the files. */
-import { execFileSync } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,7 +17,7 @@ import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { gitOnlyBinDir, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
@@ -492,9 +491,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     ].join("\n"),
   );
 
-  const gitBin = tmpdir();
-  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-  fs.symlinkSync(gitPath, path.join(gitBin, "git"));
+  const gitBin = gitOnlyBinDir();
 
   const oldPath = process.env.PATH;
   process.env.PATH = `${piDir}:${gitBin}`; // pi + git only — no npm anywhere
