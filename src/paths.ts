@@ -198,7 +198,7 @@ export function landQueueDir(root: string): string {
   return path.join(tumwaterDir(root), "land-queue");
 }
 
-/** The lock dir serializing merges to main (merge.ts; doctor checks it). */
+/** The lock dir serializing merges to main (landing-merge.ts; doctor checks it). */
 export function mergeLockDir(root: string): string {
   return path.join(tumwaterDir(root), "merge.lock");
 }

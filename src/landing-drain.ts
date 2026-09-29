@@ -29,7 +29,7 @@ const LANDING_TIER = -1;
 /** The tier the merge slot's conflict-resolution runs wait at: ahead of any vet parked for a
  * permit, because the merge is the one serial step every queued change waits on. (Nothing that
  * holds a permit ever waits on the merge: no vet takes the merge lock, and the resolver runs
- * outside it — merge.ts's mergeToMain — so this cannot deadlock.) */
+ * outside it — landing-merge.ts's mergeToMain — so this cannot deadlock.) */
 const MERGE_TIER = LANDING_TIER - 1;
 
 /** One landing task the pipeline owns (merge queue 3/5, land-queue speed 2c) — a vet or the

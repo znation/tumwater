@@ -38,7 +38,7 @@ import {
 // through landApprovedChange, or a stack with one check, one fast-forward, the re-stack, 3d's
 // prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
 // landing pipeline runs them (landing-drain.ts). The reviewer run is a real pi subprocess behind
-// the fake shim; merge.ts's conflict resolver goes through the wiring's runPi, which is stubbed.
+// the fake shim; landing-merge.ts's conflict resolver goes through the wiring's runPi, which is stubbed.
 //
 // Split in three so node --test runs them in parallel processes: this file holds the vet and
 // single-change landings, the batch basics, aborts and the per-change status hook;

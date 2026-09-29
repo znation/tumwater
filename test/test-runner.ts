@@ -13,7 +13,7 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
  * reject whatever commit is being gated instead of the code under test (BUGS.md 2026-09-21);
  * they run via `npm run test:e2e` (and in CI) instead. With one or more name filters it runs
  * only the test files whose source-style name contains a filter as a plain substring (`npm test
- * merge` → merge.test.ts), so iterating on one module gets a few-second feedback loop instead
+ * merge` → landing-merge.test.ts), so iterating on one module gets a few-second feedback loop instead
  * of the full suite — filters match e2e files too, so `npm test orchestrator` or
  * `npm run test:e2e` deliberately brings the tier back. A filter that matches nothing is an
  * error listing what exists, and node --test's exit code always propagates, so both humans and

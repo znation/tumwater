@@ -86,7 +86,7 @@ export class LoopPi {
    * tick, so `tumwater abort --role` (which targets a tick's per-tick abort controller) must
    * never reach it, and the stale per-tick controller of a finished tick must not abort it
    * either. Session naming is the caller's (the reviewer composes its own from
-   * ReviewContext.tick; merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
+   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
    */
   async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
     return this.runWithTransientRetry({

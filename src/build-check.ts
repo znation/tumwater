@@ -24,7 +24,7 @@ import { clipBuildTail } from "./build-check-report.js";
  * and execution/classification logic: deterministic process verification, distinct from the
  * model-based review. runScopedBuildCheck below is the shared detect → run → build_check
  * event → skip-warning sequence of the gate's pre-check (review.ts) and the landing path's
- * in-lock re-check (merge.ts). The red-main baseline gate (main-red.ts) reuses this same
+ * in-lock re-check (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
  * authoring run is spent on top of it. The detached process-group runner runBuildCheck uses
  * (runScriptGroup) is this module's only runtime concern in process-group.ts — its run record

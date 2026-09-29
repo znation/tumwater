@@ -229,7 +229,7 @@ export function writeLandingOutcome(
 ): void {
   applyLandingOutcome(state, result, entry);
   saveLoopState(root, state);
-  // `merged` still fires from merge.ts itself — these events mark the QUEUE's bookkeeping:
+  // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's bookkeeping:
   // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
   // without landing.
   logEvent(root, {

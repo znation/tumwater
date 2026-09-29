@@ -421,7 +421,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
 // leaves an extra commit under the harness's own commit. When the merge's rebase stops on
 // the stray one and the resolution run ALSO commits its resolution, `rebase --continue`
 // replays the remaining authoring commit onto that stray commit, hits a SECOND conflict,
-// and throws — merge.ts's catch must abort cleanly and report merge_conflict instead of
+// and throws — landing-merge.ts's catch must abort cleanly and report merge_conflict instead of
 // crashing or landing broken work (the only path that reaches it; see continueRebase's doc
 // comment). Phase detection in the shim: reviewer runs carry VERDICT:, resolution runs find
 // conflict markers in seed.txt, everything else is the authoring run.

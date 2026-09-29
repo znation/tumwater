@@ -7,9 +7,9 @@ import { CONFIG_BASENAME, configPath } from "./paths.js";
 /** Git plumbing for the landing flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no landing
  * policy of their own. Landing policy (lock → rebase → verify → ff, conflict resolution, batch
- * ff) lives in merge.ts on top of these. Moved here from merge.ts: the cluster started as
- * merge.ts-only helpers (organize tick 78, moving them out of git.ts), but the lander and the
- * batch lander grew to call them directly, leaving merge.ts exporting generic rebase/ff
+ * ff) lives in landing-merge.ts on top of these. Moved here from landing-merge.ts: the cluster started as
+ * landing-merge.ts-only helpers (organize tick 78, moving them out of git.ts), but the lander and the
+ * batch lander grew to call them directly, leaving landing-merge.ts exporting generic rebase/ff
  * plumbing that had nothing to do with merging. */
 
 /** Paths currently in conflict (unmerged) in the worktree. C-quoted names are decoded to

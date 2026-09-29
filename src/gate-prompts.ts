@@ -4,7 +4,7 @@ import { formatTimestamp } from "./datetime.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
- * (merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the gate's
+ * (landing-merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the gate's
  * verdicts back to the loop that authored the change (loop.ts, main-red.ts). The
  * machine-detectable half of the gate's reply contract — verdict constants and detection for
  * parsing a reviewer's VERDICT line — lives in reply-contract.ts. */

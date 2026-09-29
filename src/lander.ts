@@ -1,7 +1,7 @@
 import { deleteRef, headOf, patchId, setRef } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { mergeToMain } from "./merge.js";
+import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { recordReview } from "./tick-outcome.js";
@@ -33,7 +33,7 @@ export const LANDING_CHECK_FAILURE_LIMIT = 2;
  * (landApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
  * nothing is rebased inside a role worktree any more. Leftover recovery re-queues its pin onto
  * that same pipeline. This is harness code, never a role: the only model runs it starts are the
- * reviewer and merge.ts's conflict resolver. */
+ * reviewer and landing-merge.ts's conflict resolver. */
 
 /** One landing request: a pinned commit plus everything its gate and events need. `role` names
  * the owning loop (events, session naming, lander worktree) — the lander itself is not a role. */
@@ -57,7 +57,7 @@ export interface LandRequest {
 
 /** What a landing needs from its owning loop: identity, config, the live state object (the
  * gate updates it in place exactly as when it ran inside runTick), the loop's shared pi wiring
- * for merge.ts's conflict resolver — which folds usage internally — an explicit foldUsage for
+ * for landing-merge.ts's conflict resolver — which folds usage internally — an explicit foldUsage for
  * the reviewer run (reviewAheadOfMain starts its own raw pi call and returns it as `gate.run`),
  * and the landing's abort signal, captured per call. */
 export interface LanderContext extends PiRunWiring {
@@ -265,7 +265,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   return result;
 }
 
-/** A landing blocked because its in-lock check went red on the rebased tree (merge.ts's
+/** A landing blocked because its in-lock check went red on the rebased tree (landing-merge.ts's
  * verifyLanding). The count is keyed by the patch-id, which a clean rebase onto a moved main
  * keeps, so the retries of one change add up while a different change starts fresh. Under
  * LANDING_CHECK_FAILURE_LIMIT the pin is kept (merge_blocked) for recovery's re-land; at the

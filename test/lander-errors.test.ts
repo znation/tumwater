@@ -2,7 +2,7 @@
  * THROWN failure (not a returned one) during the merge stage into a per-change "error" with
  * the message on the role's state, instead of losing an already-landed prefix or crashing the
  * merge slot. The wiring's runPi is the one stubbed call that can throw its way out
- * (merge.ts's conflict resolver awaits it unwrapped), so each test makes main conflict with a
+ * (landing-merge.ts's conflict resolver awaits it unwrapped), so each test makes main conflict with a
  * pinned change and the resolver blow up. The batch and single-change flows are pinned
  * end-to-end in lander.test.ts / lander-restack.test.ts with a resolver that always succeeds; these
  * pin what happens when it cannot run at all. */

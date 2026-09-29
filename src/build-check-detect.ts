@@ -149,7 +149,7 @@ export function detectBuildCheck(
  * when it is a non-blank string, else undefined — off. Opt-in: a repo that sets it trades a
  * cheaper review-gate pre-check for a full check.command run that happens once per stack at
  * the batch/landing scope instead. One reading shared by runScopedBuildCheck (which runs it at
- * scope "gate") and merge.ts's verifyLanding (which must then never treat the gate's green as
+ * scope "gate") and landing-merge.ts's verifyLanding (which must then never treat the gate's green as
  * the full check's), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: { check?: { gateCommand?: string } }): string | undefined {
   const g = config?.check?.gateCommand;

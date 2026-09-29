@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing-git.js";
-import { ffStackToMain, mergeToMain, type MergeContext } from "../src/merge.js";
+import { ffStackToMain, mergeToMain, type MergeContext } from "../src/landing-merge.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
@@ -208,7 +208,7 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
 });
 
 test("the landing-flow git helpers are exported from landing-git.js (regression)", async () => {
-  // These helpers have moved twice — git.ts → merge.ts (the bugfix that completed the
+  // These helpers have moved twice — git.ts → landing-merge.ts (the bugfix that completed the
   // half-finished organize tick 78 move) → landing-git.ts (when the lander and batch lander
   // started calling them directly). Pin the placement at runtime so a half-finished move
   // fails loudly instead of silently stranding the landing flow.

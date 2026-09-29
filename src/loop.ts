@@ -21,7 +21,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBack
 import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
-import { mergeToMain } from "./merge.js";
+import { mergeToMain } from "./landing-merge.js";
 import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal, refusalContradiction } from "./refusal.js";
 import { extractFlow, type FlowResult } from "./reply-contract.js";
@@ -223,7 +223,7 @@ export class LoopRunner {
     return { result: "aborted" };
   }
 
-  /** Land the worktree branch on main (see src/merge.ts for the rebase → verify → ff-merge →
+  /** Land the worktree branch on main (see src/landing-merge.ts for the rebase → verify → ff-merge →
    * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
    * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
    * merge queue 2/5 only the refusal-note landing (src/refusal.ts) still uses it — reviewed
@@ -316,7 +316,7 @@ export class LoopRunner {
    * outside any tick, so `tumwater abort --role` (which targets a tick's per-tick abort
    * controller) must never reach it, and the stale per-tick controller of a finished tick must
    * not abort it either. Session naming is the caller's (the reviewer composes its own from
-   * ReviewContext.tick; merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
+   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
    * The plumbing itself lives in src/loop-pi.ts; this is the landing slot's public face. */
   async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
     return this.pi.runLandingPi(wt, prompt, sessionName);

@@ -40,7 +40,7 @@ export async function git(cwd: string, ...args: string[]): Promise<string> {
 }
 
 /** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which
- * the landing flow in merge.ts needs so `rebase --continue` can never block on a commit-message
+ * the landing flow in landing-merge.ts needs so `rebase --continue` can never block on a commit-message
  * prompt; and the harness ident for rewritten committer identity). */
 export async function runGit(
   cwd: string,

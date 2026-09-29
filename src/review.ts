@@ -48,7 +48,7 @@ interface ReviewContext {
 export interface GateResult {
   decision: "approved" | "exempt" | "rejected" | "failed";
   /** The branch HEAD this gate invocation's pre-check just ran green on — the one tree the
-   * landing path may trust without re-running the check (src/merge.ts seeds the red-main
+   * landing path may trust without re-running the check (src/landing-merge.ts seeds the red-main
    * baseline with it when the rebase is a no-op, and re-verifies anything else). Absent when
    * no fresh green observation was made: gate disabled, exempt diff, already-approved early
    * return, or a pre-check that failed or skipped. */

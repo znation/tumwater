@@ -13,7 +13,7 @@ import { gitTry } from "./git.js";
  * the project's declared check — because a verdict ABOUT a specific SHA is a different concern
  * from the mechanics of running one: this module owns the cache, the in-flight dedup, the
  * re-verification policy that keeps one worktree's environmental red from blocking the fleet.
- * main-red.ts's gate consumes it; merge.ts seeds a green here after a post-rebase re-check;
+ * main-red.ts's gate consumes it; landing-merge.ts seeds a green here after a post-rebase re-check;
  * redeploy.ts re-verifies a red here before it strands the fleet on a stale build. */
 
 // ── Main baseline (red-main gate) ────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ interface MainBaselineCheck {
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
  * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
  * gate's stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
- * noteGreenBaseline seeding a green verdict for a SHA that just became main (src/merge.ts:
+ * noteGreenBaseline seeding a green verdict for a SHA that just became main (src/landing-merge.ts:
  * either its in-lock post-rebase re-check passed on exactly that tree, or the rebase was a
  * no-op so the review gate's pre-check had already run green on it).
  *
@@ -106,7 +106,7 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
 }
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the
- * landing path (src/merge.ts's verifyLanding) and the stack lander (src/landing-batch.ts' landStack) —
+ * landing path (src/landing-merge.ts's verifyLanding) and the stack lander (src/landing-batch.ts' landStack) —
  * both call it only after their fast-forward SUCCEEDED, with the exact SHA that just became
  * main: verifyLanding with the POST-rebase head in two cases — its own in-lock re-check just ran
  * this project's declared check green on that tree, or the rebase was a no-op so the review
