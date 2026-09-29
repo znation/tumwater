@@ -11,7 +11,7 @@
 import type { LoopRunner } from "./loop.js";
 import type { LoopState } from "./loop-state.js";
 import { configForRole } from "./config-views.js";
-import { DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
+import { BUGFIX_ROLE, DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
@@ -148,34 +148,45 @@ function deferralExpired(s: LoopState, now: number): boolean {
 }
 
 /** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
- * role is one of the eight deferrable built-ins — work roles and unknown/custom never defer, the
- * harness cannot judge what an arbitrary custom role needs; its last tick did nothing; it has
- * seen main before (a never-ticked role always runs its first tick); either the backlog is
- * open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued feature/bugfix work
- * outranks idle maintenance regardless of what landed — or no feature/bugfix/director/human
- * commit landed since that head; and the deferral has not outlasted DEFER_MAX_MS. Only
- * `no_change` defers: every other outcome carries pending business (retry an error, address
- * recorded review-rejection reasons, recover a merge failure) that must not stall until
- * unrelated work lands. A blocked backlog keeps maintenance deferred until the cap, then a
- * forced tick resets the episode; clearing or revising the entry lifts it on the next poll.
- * A fresh operator wake overrides all of it: `wokenAt` newer than the gap window's opening
- * tick (the same demand predicate isEligible's min-gap exemption keys on) is an explicit "try
- * again now", not idle maintenance — the demand runs even with the backlog open, and a wake
- * older than the last tick's end was already consumed by the tick that ran after it.
+ * role is one of the eight deferrable built-ins — other work roles and unknown/custom never
+ * defer, the harness cannot judge what an arbitrary custom role needs; its last tick did
+ * nothing; it has seen main before (a never-ticked role always runs its first tick); either
+ * the backlog is open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued
+ * feature/bugfix work outranks idle maintenance regardless of what landed — or no
+ * feature/bugfix/director/human commit landed since that head; and the deferral has not
+ * outlasted DEFER_MAX_MS. Only `no_change` defers: every other outcome carries pending
+ * business (retry an error, address recorded review-rejection reasons, recover a merge
+ * failure) that must not stall until unrelated work lands. A blocked backlog keeps maintenance
+ * deferred until the cap, then a forced tick resets the episode; clearing or revising the entry
+ * lifts it on the next poll. A fresh operator wake overrides all of it: `wokenAt` newer than
+ * the gap window's opening tick (the same demand predicate isEligible's min-gap exemption keys
+ * on) is an explicit "try again now", not idle maintenance — the demand runs even with the
+ * backlog open, and a wake older than the last tick's end was already consumed by the tick that
+ * ran after it.
+ *
+ * `bugfix` is the one work role that can defer: while BUGS.md `## Open` is empty (`openBugsNow`
+ * false) it has no assigned work and behaves as a search role, so it schedules like a
+ * maintenance role — same predicate, including the wake override and the DEFER_MAX_MS cap —
+ * except the backlog-open clause is dropped: its backlog is empty by precondition, so it defers
+ * only while no feature/bugfix/director/human commit landed since its last tick (a feature
+ * landing is exactly the kind of change that creates bugs, so it wakes the search). With one or
+ * more open bugs it has real work and never defers, today's behavior.
  */
 export function deferTick(
   s: LoopState,
   role: string,
   workLandedSinceLast: boolean,
   workBacklogOpen: boolean,
+  openBugsNow: boolean,
   now: number,
 ): boolean {
+  const searchBugfix = role === BUGFIX_ROLE && !openBugsNow;
   return (
     !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
-    DEFERRABLE_ROLES.has(role) &&
+    (DEFERRABLE_ROLES.has(role) || searchBugfix) &&
     s.lastResult === "no_change" &&
     s.lastMainHead !== "" &&
-    (workBacklogOpen || !workLandedSinceLast) &&
+    (searchBugfix ? !workLandedSinceLast : workBacklogOpen || !workLandedSinceLast) &&
     !deferralExpired(s, now)
   );
 }

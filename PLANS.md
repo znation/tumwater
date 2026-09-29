@@ -5,20 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Bugfix defers like a maintenance role while BUGS.md has no open bugs (planned 2026-09-29)
-
-**Goal.** bugfix is a work role (`WORK_ROLES`, src/roles.ts), so `deferTick` (src/scheduling.ts) never defers it, and it wakes on every main move even when BUGS.md `## Open` is empty. In that state it runs its open-ended latent-bug hunt. From 2026-09-22 to 09-29 that produced 133 no_change ticks costing $2.27, the largest nothing-to-do spend of any role ([docs/commit-history-analysis.md](docs/commit-history-analysis.md), "Last 7 days"). With open bugs it is real work and must never wait. With none it is a search role and should schedule like one.
-
-**Approach.**
-- src/scheduling.ts `deferTick`: add an `openBugsNow: boolean` input, or pass the role's backlog emptiness. It defers `bugfix` under the same predicate as a `DEFERRABLE_ROLES` member (last result `no_change`, main seen before, no fresh operator wake, `DEFER_MAX_MS` cap), but **only while `openBugs(root)` is empty**. While any bug is open, bugfix never defers (today's behavior). Since the backlog-open clause is what keeps maintenance deferred, bugfix's version is "defer only while no feature/bugfix/director/human commit landed since its last tick". Its own backlog being empty is the precondition, not the deferral reason.
-- src/orchestrator.ts, where `deferTick` is called for "scheduled"/"main moved" wakes: pass `openBugs(root).length === 0`. It already computes `openBugs` for `workBacklogOpen`, so reuse that read.
-- `WORK_ROLES` keeps bugfix: slot ordering (`roleTier`/`fairOrder`) is unchanged.
-- Update `deferTick`'s doc comment and the scheduling section of docs/how-it-works.md.
-
-**Files touched:** src/scheduling.ts, src/orchestrator.ts, docs/how-it-works.md, test/scheduling.test.ts.
-
-**Acceptance criteria.** With BUGS.md `## Open` empty, a bugfix whose last tick was `no_change` is deferred on a main move made only by maintenance roles, and runs on a feature/director/human landing, a fresh `wake`, or once `DEFER_MAX_MS` has passed. With one open bug it is never deferred. Other roles' deferral is unchanged (existing tests hold). `npm run test` passes.
-
 ### Yield-scaled clocks: a search role whose recent ticks land nothing ticks less often (planned 2026-09-29)
 
 **Goal.** Maintenance and search roles tick on a fixed clock plus the idle ladder. The idle ladder resets on any main move, so a role that keeps finding nothing keeps paying for it. From 2026-09-22 to 09-29, perf spent $1.17 on 41 no_change ticks against $0.48 on its 15 landings, and qa spent $0.38 on 23 no_change ticks for 2 landings ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). A role's own recent yield should stretch its interval, and one landing should restore it.
@@ -107,6 +93,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.** The new regex classifies the listed connection/5xx/model-load texts and does not claim 429 texts. `fold` stamps `lastBackendFailure` only when the run ended on it, with the kind and no retry hint. Two distinct roles ending on the same backend kind within `RATE_LIMIT_STORM_WINDOW_MS` open a hold carrying that kind; two roles on *different* kinds, or two hits from one role, do not. A relapse of the same kind escalates and caps at `RATE_LIMIT_HOLD_CAP_MS`; a different kind after a hold re-opens starts at the base. A 429 storm behaves byte-for-byte as today (same hold math, same event wording). The `rate_limit_hold` event carries `kind`, rendered with backend wording in the feed and the digest. The director is not held. `npm run test` passes.
 
 ## Done
+
+### Bugfix defers like a maintenance role while BUGS.md has no open bugs (planned 2026-09-29, done 2026-09-29)
+
+**Goal.** bugfix is a work role (`WORK_ROLES`, src/roles.ts), so `deferTick` (src/scheduling.ts) never defers it, and it wakes on every main move even when BUGS.md `## Open` is empty. In that state it runs its open-ended latent-bug hunt. From 2026-09-22 to 09-29 that produced 133 no_change ticks costing $2.27, the largest nothing-to-do spend of any role ([docs/commit-history-analysis.md](docs/commit-history-analysis.md), "Last 7 days"). With open bugs it is real work and must never wait. With none it is a search role and should schedule like one.
+
+**Approach.**
+- src/scheduling.ts `deferTick`: add an `openBugsNow: boolean` input, or pass the role's backlog emptiness. It defers `bugfix` under the same predicate as a `DEFERRABLE_ROLES` member (last result `no_change`, main seen before, no fresh operator wake, `DEFER_MAX_MS` cap), but **only while `openBugs(root)` is empty**. While any bug is open, bugfix never defers (today's behavior). Since the backlog-open clause is what keeps maintenance deferred, bugfix's version is "defer only while no feature/bugfix/director/human commit landed since its last tick". Its own backlog being empty is the precondition, not the deferral reason.
+- src/orchestrator.ts, where `deferTick` is called for "scheduled"/"main moved" wakes: pass `openBugs(root).length === 0`. It already computes `openBugs` for `workBacklogOpen`, so reuse that read.
+- `WORK_ROLES` keeps bugfix: slot ordering (`roleTier`/`fairOrder`) is unchanged.
+- Update `deferTick`'s doc comment and the scheduling section of docs/how-it-works.md.
+
+**Files touched:** src/scheduling.ts, src/orchestrator.ts, docs/how-it-works.md, test/scheduling.test.ts.
+
+**Acceptance criteria.** With BUGS.md `## Open` empty, a bugfix whose last tick was `no_change` is deferred on a main move made only by maintenance roles, and runs on a feature/director/human landing, a fresh `wake`, or once `DEFER_MAX_MS` has passed. With one open bug it is never deferred. Other roles' deferral is unchanged (existing tests hold). `npm run test` passes.
+
+**Implementation note (2026-09-29, feature).** Landed as planned, plus: `BUGFIX_ROLE` is now exported from src/roles.ts (scheduling.ts and orchestrator.ts name the role by constant); the orchestrator runs the work-landed git query for bugfix in search mode even when the feature backlog is open (its deferral keys on the verdict alone); and the four orchestrator e2e tests that used bugfix as a never-deferred heartbeat seed one open bug in BUGS.md so their premise keeps holding.
 
 ### A deterministic unused-export check in the suite (planned 2026-09-29, done 2026-09-29)
 

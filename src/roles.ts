@@ -31,6 +31,10 @@ export interface Role {
  * an un-targeted `stop` signals the whole orchestrator, director included. */
 export const DIRECTOR_ROLE = "director";
 
+/** The bugfix loop's id. It is the one work role that also defers like a maintenance role
+ * while its backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling.ts. */
+export const BUGFIX_ROLE = "bugfix";
+
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
  * the role-specific "find something to do" half of the tick prompt.
  *

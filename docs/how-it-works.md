@@ -79,7 +79,10 @@ discards a role's in-flight landing.
   first.
 - A maintenance role whose last tick did nothing is deferred until feature, bugfix, director, or
   human work lands on main, and stays deferred while PLANS.md or BUGS.md has open work. `qa` is
-  never deferred.
+  never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no open bugs it has
+  nothing assigned and defers like one — with the difference that any feature/bugfix/director/
+  human landing wakes it (a deferral only holds while no qualifying work has landed), and that
+  one open bug puts it back on the every-wake schedule.
 - The director runs your prompts immediately, outside `maxConcurrent` and ahead of every role.
 - `tumwater prompt --role <id>` queues a prompt for one loop's next tick instead of the
   director's inbox, and wakes it. `--list` shows the queues grouped by loop; per-role prompts

@@ -4,6 +4,8 @@
  * waits on real timers and runs via `npm run test:e2e`, not in the gating `npm test`. */
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
@@ -41,6 +43,13 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   const base = fastConfig(["clean", "dry", "bugfix"]);
   base.maxConcurrent = 1;
   saveConfig(repo, base);
+  // bugfix is one of the three fast-ticking roles this test needs to keep ticking between
+  // landings; with an empty BUGS.md `## Open` it defers like a maintenance role instead
+  // (deferTick), so the open bug keeps it on the every-wake schedule the test was written for.
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
+  );
   const runDir = tmpdir();
   const restore = concurrencyRecordingFakePi(runDir);
   // Keeps the DEFAULT poll interval on purpose: phase 3's "no overlap after shrink" assertion

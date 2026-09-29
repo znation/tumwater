@@ -266,23 +266,26 @@ test("deferTick: only a deferrable no_change role that has seen main and got no 
   const base = freshLoopState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
-  assert.equal(deferTick(base, "organize", false, false, NOW), true);
+  assert.equal(deferTick(base, "organize", false, false, false, NOW), true);
 
   // Each condition flipped → no deferral.
   const workLandedSinceLast = { ...base };
-  assert.equal(deferTick(workLandedSinceLast, "organize", true, false, NOW), false); // work landed
+  assert.equal(deferTick(workLandedSinceLast, "organize", true, false, false, NOW), false); // work landed
   const changed = { ...base, lastResult: "changed" as const };
-  assert.equal(deferTick(changed, "organize", false, false, NOW), false);
+  assert.equal(deferTick(changed, "organize", false, false, false, NOW), false);
   for (const result of ["rejected", "error", "refused", "merge_conflict"] as const) {
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, false, NOW), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, false, false, NOW), false);
   }
   const unseen = { ...base, lastMainHead: "" };
-  assert.equal(deferTick(unseen, "organize", false, false, NOW), false); // never ticked → first tick runs
+  assert.equal(deferTick(unseen, "organize", false, false, false, NOW), false); // never ticked → first tick runs
 
   // Work-tier roles and unknown/custom roles never defer, even with no_change + no work.
-  for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
-    assert.equal(deferTick(base, role, false, false, NOW), false);
+  // bugfix is the work-tier exception: it defers only while its backlog is empty (the tests
+  // below), so with an open bug it sits in this list too.
+  for (const role of ["feature", "plan", "director", "my-custom-loop"]) {
+    assert.equal(deferTick(base, role, false, false, false, NOW), false);
   }
+  assert.equal(deferTick(base, "bugfix", false, false, true, NOW), false);
 });
 
 test("deferTick: observers never defer, under every input", () => {
@@ -295,11 +298,13 @@ test("deferTick: observers never defer, under every input", () => {
     s.lastMainHead = "abc123";
     for (const work of [false, true]) {
       for (const backlog of [false, true]) {
-        assert.equal(
-          deferTick(s, role, work, backlog, NOW),
-          false,
-          `${role} (work=${work}, backlog=${backlog}) never defers`,
-        );
+        for (const openBugs of [false, true]) {
+          assert.equal(
+            deferTick(s, role, work, backlog, openBugs, NOW),
+            false,
+            `${role} (work=${work}, backlog=${backlog}, openBugs=${openBugs}) never defers`,
+          );
+        }
       }
     }
   }
@@ -311,20 +316,64 @@ test("deferTick: an open backlog defers idle maintenance even when work landed; 
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Backlog open → deferred regardless of the work-landed verdict.
-  assert.equal(deferTick(base, "organize", true, true, NOW), true);
-  assert.equal(deferTick(base, "organize", false, true, NOW), true);
+  assert.equal(deferTick(base, "organize", true, true, false, NOW), true);
+  assert.equal(deferTick(base, "organize", false, true, false, NOW), true);
 
   // Pending business (any non-no_change outcome) never defers, backlog open or not — a loop's
   // own unfinished work must not stall behind the fleet's.
   for (const result of ["changed", "rejected", "error", "refused", "merge_conflict"] as const) {
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true, NOW), false);
-    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, true, NOW), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true, false, NOW), false);
+    assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, true, false, NOW), false);
   }
 
   // Never-ticked roles and work/custom roles are unaffected by the backlog.
-  assert.equal(deferTick({ ...base, lastMainHead: "" }, "organize", true, true, NOW), false);
-  for (const role of ["feature", "bugfix", "plan", "director", "my-custom-loop"]) {
-    assert.equal(deferTick(base, role, true, true, NOW), false);
+  assert.equal(deferTick({ ...base, lastMainHead: "" }, "organize", true, true, false, NOW), false);
+  for (const role of ["feature", "plan", "director", "my-custom-loop"]) {
+    assert.equal(deferTick(base, role, true, true, false, NOW), false);
+  }
+});
+
+test("deferTick: bugfix with no open bugs defers like a maintenance role", () => {
+  const NOW = Date.now();
+  const base = freshLoopState("bugfix");
+  base.lastResult = "no_change";
+  base.lastMainHead = "abc123";
+  // Its backlog is empty by precondition (openBugsNow false), so the backlog-open clause is
+  // dropped: it defers exactly while no feature/bugfix/director/human commit landed since its
+  // last tick — including while PLANS.md has open plans (a backlog open elsewhere does not
+  // stand in for the work-landed verdict, and a feature landing is exactly what creates bugs).
+  assert.equal(deferTick(base, "bugfix", false, false, false, NOW), true);
+  assert.equal(deferTick(base, "bugfix", false, true, false, NOW), true);
+  assert.equal(deferTick(base, "bugfix", true, true, false, NOW), false); // work landed
+
+  // Each shared condition still applies: a productive tick, pending business, a never-ticked
+  // role, an unknown role, and the DEFER_MAX_MS cap all behave as for a maintenance role.
+  assert.equal(deferTick({ ...base, lastResult: "changed" as const }, "bugfix", false, false, false, NOW), false);
+  assert.equal(deferTick({ ...base, lastResult: "rejected" as const }, "bugfix", false, false, false, NOW), false);
+  assert.equal(deferTick({ ...base, lastMainHead: "" }, "bugfix", false, false, false, NOW), false);
+  const latch = { ...base, nextRunAt: 1_000_000 };
+  assert.equal(deferTick(latch, "bugfix", false, false, false, 1_000_000 + DEFER_MAX_MS), false);
+
+  // A fresh operator wake overrides the deferral, as for any deferrable role.
+  base.lastTickEndedAt = NOW - 2000;
+  const woken = clearBackoff(base, NOW - 500);
+  woken.nextRunAt = NOW - 1000;
+  assert.equal(deferTick(woken, "bugfix", false, false, false, NOW), false);
+});
+
+test("deferTick: bugfix with an open bug never defers, under any input", () => {
+  const NOW = Date.now();
+  const s = freshLoopState("bugfix");
+  s.lastResult = "no_change";
+  s.lastMainHead = "abc123";
+  for (const work of [false, true]) {
+    for (const backlog of [false, true]) {
+      assert.equal(
+        deferTick(s, "bugfix", work, backlog, true, NOW),
+        false,
+        `bugfix with an open bug (work=${work}, backlog=${backlog}) never defers`,
+      );
+    }
   }
 });
 
@@ -334,15 +383,15 @@ test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latc
   base.lastMainHead = "abc123";
   base.nextRunAt = 1_000_000;
   // Just due: deferred (backlog open, no work landed).
-  assert.equal(deferTick(base, "organize", false, true, 1_000_000), true);
+  assert.equal(deferTick(base, "organize", false, true, false, 1_000_000), true);
   // Still inside the window: deferred.
-  assert.equal(deferTick(base, "organize", false, true, 1_000_000 + DEFER_MAX_MS - 1), true);
+  assert.equal(deferTick(base, "organize", false, true, false, 1_000_000 + DEFER_MAX_MS - 1), true);
   // Past the window: the due tick runs regardless, refreshing lastResult and breaking the
   // no_change → defer → no_change cycle. This is the regression for the permanent latch.
-  assert.equal(deferTick(base, "organize", false, true, 1_000_000 + DEFER_MAX_MS), false);
-  assert.equal(deferTick(base, "organize", true, true, 1_000_000 + DEFER_MAX_MS), false);
+  assert.equal(deferTick(base, "organize", false, true, false, 1_000_000 + DEFER_MAX_MS), false);
+  assert.equal(deferTick(base, "organize", true, true, false, 1_000_000 + DEFER_MAX_MS), false);
   // A never-scheduled role (nextRunAt 0) is never expired by the cap.
-  assert.equal(deferTick({ ...base, nextRunAt: 0 }, "organize", false, true, 1_000_000 + DEFER_MAX_MS), true);
+  assert.equal(deferTick({ ...base, nextRunAt: 0 }, "organize", false, true, false, 1_000_000 + DEFER_MAX_MS), true);
 });
 
 test("deferTick: a fresh operator wake overrides the need-based deferral (an explicit demand runs)", () => {
@@ -358,13 +407,13 @@ test("deferTick: a fresh operator wake overrides the need-based deferral (an exp
   // without the wake honored here, the explicit "try again now" defers for up to DEFER_MAX_MS.
   const woken = clearBackoff(base, NOW - 500);
   woken.nextRunAt = NOW - 1000; // due on the clock too (the wake pulled it to now)
-  assert.equal(deferTick(woken, "clean", false, false, NOW), false);
+  assert.equal(deferTick(woken, "clean", false, false, false, NOW), false);
   // An open backlog does not keep the demanded tick parked either.
-  assert.equal(deferTick(woken, "clean", false, true, NOW), false);
+  assert.equal(deferTick(woken, "clean", false, true, false, NOW), false);
   // A wake older than the last tick's end was already consumed by the tick that ran after it:
   // that state is idle maintenance again, and still defers.
   const stale = clearBackoff(base, NOW - 5000);
-  assert.equal(deferTick(stale, "clean", false, false, NOW), true);
+  assert.equal(deferTick(stale, "clean", false, false, false, NOW), true);
 });
 
 test("once mode overrides the scheduled clock, not just the min gap", () => {

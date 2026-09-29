@@ -553,8 +553,14 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
 test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
   // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
   // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
-  // pinned in its own test below.
+  // pinned in its own test below. The open bug keeps that premise true: with an empty BUGS.md
+  // `## Open` bugfix defers like a maintenance role (deferTick), and a deferred tick would
+  // starve this test of the pi runs it asserts on.
   const repo = await makeFastRepo("live reload test", ["bugfix"], "good-model");
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
+  );
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);

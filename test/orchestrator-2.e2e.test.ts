@@ -405,11 +405,17 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
   // the default, every role enabled — and the fleet ran 8.6 h on it with no word of why.
   const repo = makeRepo();
   await initProject(repo, "config vanish test");
-  // bugfix is never need-deferred, so it keeps ticking through the whole incident. The cap is
-  // off-default so a reload-as-defaults would log max_concurrent_changed.
+  // bugfix is never need-deferred (with an open bug — with an empty BUGS.md `## Open` it
+  // defers like a maintenance role and would starve this test of pi runs), so it keeps ticking
+  // through the whole incident. The cap is off-default so a reload-as-defaults would log
+  // max_concurrent_changed.
   const cfg = fastConfig(["bugfix"], "kept-model");
   cfg.maxConcurrent = defaultConfig().maxConcurrent + 1;
   saveConfig(repo, cfg);
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
+  );
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);

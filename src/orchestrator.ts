@@ -19,7 +19,7 @@ import {
   startFallbackProbe,
 } from "./fallback-breaker.js";
 import { RATE_LIMIT_OPEN, type RateLimitHold } from "./rate-limit-hold.js";
-import { DIRECTOR_ROLE, roleTier } from "./roles.js";
+import { BUGFIX_ROLE, DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch } from "./git.js";
@@ -394,8 +394,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main is
       // non-empty, idle maintenance ticks stay deferred — queued feature/bugfix work outranks
       // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
-      // poll while the files are unchanged.
-      const workBacklogOpen = plannedPlans(root).length > 0 || openBugs(root).length > 0;
+      // poll while the files are unchanged. bugfix is not a maintenance role, but while BUGS.md
+      // `## Open` is empty it defers like one (deferTick) — openBugsNow is that emptiness, read
+      // once here and reused for both predicates.
+      const openBugsNow = openBugs(root).length > 0;
+      const workBacklogOpen = plannedPlans(root).length > 0 || openBugsNow;
 
       const reasons = new Map<LoopRunner, string | undefined>();
       // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
@@ -467,19 +470,23 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
         // until the backlog drains and qualifying work lands. Resume wakes precede this check in
         // isEligible, the director's "inbox" reason skips it, work roles are not in
-        // DEFERRABLE_ROLES, and a fresh operator wake overrides it (deferTick's woken check —
-        // an explicit "try again now" is a demand, not idle maintenance). Sitting before
-        // reasons.set also keeps a deferred role out of the wake-event pass below.
+        // DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferTick), and
+        // a fresh operator wake overrides it (deferTick's woken check — an explicit "try again
+        // now" is a demand, not idle maintenance). Sitting before reasons.set also keeps a
+        // deferred role out of the wake-event pass below.
         if (reason === "scheduled" || reason === "main moved") {
           const s = runner.state;
           // The git range is only consulted when the other conditions already hold — a
           // never-ticked role or a tick with pending business runs without paying for it, and an
-          // open backlog defers regardless of what landed.
+          // open backlog defers regardless of what landed. bugfix in search mode is the
+          // exception: its deferral keys on the work-landed verdict alone, so the backlog-open
+          // shortcut must not stand in for the query.
+          const searchBugfix = runner.role === BUGFIX_ROLE && !openBugsNow;
           const landed =
-            !workBacklogOpen && s.lastMainHead !== ""
+            (!workBacklogOpen || searchBugfix) && s.lastMainHead !== ""
               ? await workLandedSince.since(s.lastMainHead, mainHead)
               : true;
-          const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen, now);
+          const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen, openBugsNow, now);
           if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
             if (deferredNow)
               logEvent(root, { loop: runner.role, type: "tick_deferred" });
