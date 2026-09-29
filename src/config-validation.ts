@@ -4,7 +4,7 @@ import { truncate } from "./text.js";
 
 /** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
  * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
- * types.ts) and validateConfig, the gate every load and save passes through (config.ts's
+ * config-schema.ts) and validateConfig, the gate every load and save passes through (config.ts's
  * load/save, config-write.ts's budget editing and director config requests). Split out of
  * config.ts — which keeps defaultConfig and the read side (load/save/cache, per-role views) —
  * because this is a self-contained concern with its own sync obligation: it depends only on the
@@ -37,7 +37,7 @@ function typeName(v: unknown): string {
 /** Every key tumwater.json may hold, by level. Anything else is a typo that would be
  * silently ignored at runtime — the intended setting falls back to its default with no
  * warning — so it fails fast here instead (e.g. `tickTimeoutSecondss` does nothing).
- * Keep in sync with TumwaterConfig/BackoffConfig/RoleConfig in types.ts. */
+ * Keep in sync with TumwaterConfig/BackoffConfig/RoleConfig in config-schema.ts. */
 const TOP_LEVEL_KEYS = [
   "provider",
   "model",

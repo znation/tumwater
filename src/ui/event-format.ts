@@ -35,8 +35,8 @@ function elapsed(ms: unknown): string {
 }
 
 /** Human one-liner for an event, shared by `logs`, `run` output, the TUI activity pane, and the
- * GUI event feed. Presentation only: depends on the event shape (types.ts), not on events.ts's
- * log I/O — so display surfaces never import formatting from the logging module. */
+ * GUI event feed. Presentation only: depends on the event shape (events.ts's HarnessEvent),
+ * not on its log I/O — so display surfaces never import formatting from the logging module. */
 export function formatEvent(e: HarnessEvent): string {
   const time = new Date(e.ts).toLocaleTimeString();
   const loop = String(e.loop).padEnd(9);
