@@ -7,6 +7,7 @@ import {
   falseFixReason,
   fixSymbols,
   fixedHeadings,
+  missingSymbolNames,
   normalizeFixedHeading,
   sourceHaystack,
   unbackedSymbols,
@@ -89,6 +90,57 @@ test("bugEntryBody keeps the entry's fence and everything after it", () => {
   // The symbol check reads the body: a Fix paragraph living after the entry's fence must
   // contribute its symbols instead of leaving the check vacuously empty.
   assert.deepEqual(fixSymbols(body), ["totallyFakeSymbolXyz"]);
+});
+
+// Entry-body boundaries. falseFixReason compares each head entry's body against the base's
+// body of the same (normalized) heading to decide whether the diff rewrote a Fixed record, so
+// the body text must be exact: a body that swallowed the following entry or the next section
+// would never compare equal to the base's body, and every BUGS.md touch would face the symbol
+// check as if it had rewritten every record. The real BUGS.md layout has entries between
+// section headings — `## Open` follows `## Fixed` — so both terminators are load-bearing.
+
+const TWO_ENTRIES_DOC =
+  "## Fixed\n\n" +
+  "### First bug: details (fixed 2026-09-28)\n\n" +
+  "**Fix:** `firstFix` does it.\n\n" +
+  "### Second bug: details (fixed 2026-09-29)\n\n" +
+  "**Fix:** `secondFix` does it.\n";
+
+test("bugEntryBody ends an entry at the next `### ` heading", () => {
+  assert.equal(bugEntryBody(TWO_ENTRIES_DOC, "First bug: details (fixed 2026-09-28)"), "**Fix:** `firstFix` does it.");
+  assert.equal(bugEntryBody(TWO_ENTRIES_DOC, "Second bug: details (fixed 2026-09-29)"), "**Fix:** `secondFix` does it.");
+});
+
+const SECTIONS_DOC =
+  "## Fixed\n\n" +
+  "### The bug: details (fixed 2026-09-29)\n\n" +
+  "**Fix:** `theFix` does it.\n\n" +
+  "## Open\n\n" +
+  "### Next bug: details (found by qa 2026-09-29)\n\n" +
+  "**Symptom:** still broken.\n";
+
+test("bugEntryBody ends an entry at a `## ` section heading, and the next section's entry reads cleanly", () => {
+  const body = bugEntryBody(SECTIONS_DOC, "The bug: details (fixed 2026-09-29)");
+  assert.equal(body, "**Fix:** `theFix` does it.");
+  assert.ok(!body.includes("## Open"), "the body stops at the section boundary");
+  assert.equal(
+    bugEntryBody(SECTIONS_DOC, "Next bug: details (found by qa 2026-09-29)"),
+    "**Symptom:** still broken.",
+  );
+});
+
+test("bugEntryBody returns an empty body for a heading the doc does not carry", () => {
+  assert.equal(bugEntryBody(DOC, "No such bug: details (found by qa 2026-09-29)"), "");
+});
+
+test("missingSymbolNames truncates a long missing list to three names plus an ellipsis", () => {
+  // The gate's one-line rejection message stays one line no matter how many phantom symbols
+  // the entry named.
+  assert.equal(
+    missingSymbolNames(["runScriptGroup", "signalTree", "commitPathsAndDiscardRest", "resetWorktreeToMain"]),
+    "runScriptGroup, signalTree, commitPathsAndDiscardRest…",
+  );
+  assert.equal(missingSymbolNames(["runScriptGroup", "signalTree"]), "runScriptGroup, signalTree");
 });
 
 test("fixSymbols keeps whitespace-free backticked spans, drops prose and call parens", () => {
