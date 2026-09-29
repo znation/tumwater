@@ -7,7 +7,7 @@ import { errorMessage } from "./text.js";
  * cli.ts runs main() on import, so no test can import it. */
 
 /** What packageVersion decided: the version to print, or why it could not answer. */
-export interface PackageVersion {
+interface PackageVersion {
   /** The `version` field's value — a non-empty string, set exactly when there is no problem. */
   version?: string;
   /** The reason the file could not answer: unreadable, malformed JSON, or a missing/blank
