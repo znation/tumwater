@@ -6,7 +6,7 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "./files.js";
 import { stagingDir, stagingRootDir } from "./paths.js";
 import { execFileAsync } from "./process.js";
-import { shortSha } from "./text.js";
+import { errorMessage, shortSha } from "./text.js";
 
 /** Producing and swapping the compiled tree behind a self-redeploy (redeploy.ts): compile a
  * head's mirror checkout into a staging dir under .tumwater/build, then move that tree into
@@ -66,8 +66,24 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   try {
     fs.renameSync(staged, dist);
   } catch (err) {
-    if (hadDist) fs.renameSync(prev, dist); // Put the old build back before reporting.
-    throw err;
+    if (hadDist) {
+      try {
+        fs.renameSync(prev, dist); // Put the old build back before reporting.
+      } catch (restoreErr) {
+        // A restore failure leaves dist/ MISSING — the operator must hear that plus where
+        // the old build sits, not just the raw ENOENT/ENOSPC of whichever rename lost.
+        throw new Error(
+          `could not restore the previous dist after a failed build swap for ${shortSha(mainHead)}` +
+            `: ${errorMessage(err)}; dist is missing and the old build is preserved at ${prev}` +
+            ` (restore failed: ${errorMessage(restoreErr)})`,
+        );
+      }
+    }
+    // The raw error alone ("ENOTDIR", "EACCES") never says which move failed or which
+    // staged build was lost: name the head and the dist path the swap was serving.
+    throw new Error(
+      `could not move the staged build for ${shortSha(mainHead)} into ${dist}: ${errorMessage(err)}`,
+    );
   }
   removeTree(prev);
   // Superseded staged builds (heads that moved on before their swap) are dead weight.

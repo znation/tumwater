@@ -746,6 +746,47 @@ test("swapDist puts the old dist back when the staged rename fails after steppin
   assert.ok(!fs.existsSync(path.join(stagingRootDir(root), "dist.prev")), "the stepped-aside tree is gone, not left behind");
 });
 
+test("swapDist names the lost dist and its dist.prev backup when even the restore fails", (t) => {
+  // The restore itself can fail (a rename racing an unrelated fs change): the old behavior
+  // threw the restore's raw error alone, which never says dist/ is now MISSING or that the
+  // old build sits at dist.prev — exactly what an operator recovering a wedged self-redeploy
+  // needs. The message must carry both errors, the head, and the backup path.
+  const root = tmpdir();
+  const dist = path.join(root, "dist");
+  fs.mkdirSync(dist);
+  fs.writeFileSync(path.join(dist, "old.js"), "old");
+  const staged = stagingDir(root, HEAD_B);
+  fs.mkdirSync(staged, { recursive: true });
+  fs.writeFileSync(path.join(staged, "new.js"), "new");
+  const prev = path.join(stagingRootDir(root), "dist.prev");
+
+  const real = fs.renameSync as (src: fs.PathLike, dest: fs.PathLike) => void;
+  t.mock.method(fs, "renameSync", ((src: fs.PathLike, dest: fs.PathLike) => {
+    if (path.resolve(String(src)) === path.resolve(staged)) throw new Error("EACCES: simulated rename failure");
+    if (path.resolve(String(dest)) === path.resolve(dist)) throw new Error("EIO: simulated restore failure");
+    return real(src, dest);
+  }) as typeof fs.renameSync);
+  try {
+    assert.throws(
+      () => swapDist(root, dist, HEAD_B),
+      (err: unknown) => {
+        const message = String((err as Error).message);
+        return (
+          /simulated rename failure/.test(message) &&
+          /simulated restore failure/.test(message) &&
+          message.includes("dist is missing") &&
+          message.includes(prev)
+        );
+      },
+    );
+  } finally {
+    t.mock.restoreAll();
+  }
+
+  assert.ok(!fs.existsSync(dist), "dist is left missing when the restore also failed");
+  assert.ok(fs.existsSync(path.join(prev, "old.js")), "the old build is where the message says it is");
+});
+
 test("swapDist retries transient directory races on dist.prev instead of aborting the redeploy", (t) => {
   // BUGS.md 2026-09-18: a transient ENOTEMPTY on dist.prev (an entry appearing between
   // rmSync's walk and its rmdir — Spotlight, .DS_Store) threw and blocked the restart. The
