@@ -1,14 +1,16 @@
 import fs from "node:fs";
-import { openForRead, statOrNull } from "../files.js";
-import { piLogPath } from "../paths.js";
+import { openForRead, statOrNull } from "./files.js";
+import { piLogPath } from "./paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
  * complete-line window reads, per-file tail state that folds only appended bytes on each
  * poll (plus the shared stat-and-clear entry point for polling a role's pi log), and
  * byte-offset following for `logs -f`. Split out of files.ts — which keeps the
  * generic file helpers — because this is one self-contained concern with its own internal
- * structure (readCompleteLines as the primitive; withTail and followFile built on it) used
- * only by the observer layer that polls those logs. */
+ * structure (readCompleteLines as the primitive; withTail and followFile built on it).
+ * Lives here in src/, not src/ui/: it is core file I/O with no presentation concern, and
+ * its consumers — the ui observer layer polling those logs — may import core freely,
+ * while the reverse edge would be forbidden (DEVELOPMENT.md Layout). */
 
 /** Read [offset, size) and split into complete lines. `end` is the offset just past the
  * last newline: a trailing partial line (torn write in flight) is NOT consumed, so it is

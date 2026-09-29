@@ -4,7 +4,7 @@ import { eventWindowCovers, LOGS_SINCE_MAX_MS, readWindowEvents } from "../event
 import { parseEventLine, readEvents, type HarnessEvent } from "../events.js";
 import { formatEvent } from "../event-format.js";
 import { statOrNull } from "../files.js";
-import { followFile } from "./tail.js";
+import { followFile } from "../tail.js";
 import { createTranscriptRenderer } from "./transcript.js";
 import { readTranscriptTail } from "./transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";

@@ -3,7 +3,7 @@ import { commandBuffersOutput } from "../pi.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { landWorktreePath } from "../paths.js";
-import { statRoleLog, readCompleteLines, type TailState, withTail } from "./tail.js";
+import { statRoleLog, readCompleteLines, type TailState, withTail } from "../tail.js";
 
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into

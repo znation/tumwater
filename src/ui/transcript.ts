@@ -1,5 +1,5 @@
 import { parsePiEventLine } from "../pi-event-line.js";
-import { statRoleLog, type TailState, withTail } from "./tail.js";
+import { statRoleLog, type TailState, withTail } from "../tail.js";
 import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
