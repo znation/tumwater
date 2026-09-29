@@ -12,7 +12,7 @@ import type { TickOutcome } from "./tick-outcome.js";
 /** The orchestrator's tick-timing and scheduling seams (src/orchestrator.ts keeps the poll loop
  * itself — the control flow that calls these). Each is exported as a unit-test seam
  * (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an abort-interruptible
- * sleep, one poll of the fleet-wide 429 hold, and the restart hand-off's bounded wait on the
+ * sleep, one poll of the fleet-wide hold, and the restart hand-off's bounded wait on the
  * in-flight landing. Split out of orchestrator.ts — which had grown into both the poll loop and
  * the timing helpers it schedules with — so the loop reads as control flow over these named
  * steps. */

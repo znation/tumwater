@@ -40,7 +40,7 @@ export class LoopRunner {
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
-   * src/tick-usage.ts): the orchestrator's fleet-wide 429-hold wiring reads it through the
+   * src/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
    * runner (src/tick-timing.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
     return this.usage.lastRateLimit;
@@ -54,7 +54,7 @@ export class LoopRunner {
   }
   /** Per-tick and lifetime usage accounting (src/tick-usage.ts): the turns/cost windows the
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the
-   * 429 observation above. Grown through foldUsage — the once-per-run choke point. */
+   * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
   /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
    * timeout, or failure without changes) can re-queue it instead of losing the request. */

@@ -88,7 +88,7 @@ function settleLandingOutcome(
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
- * The scheduler keeps WHEN to drain (after the gates, never while a restart or a 429 hold is
+ * The scheduler keeps WHEN to drain (after the gates, never while a restart or a fleet hold is
  * pending); this module owns HOW — from the queue to each vet and the merge. */
 export interface LandingPipelineContext {
   root: string;
@@ -111,7 +111,7 @@ export interface LandingPipelineContext {
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
   roleConfig: TumwaterConfig;
-  /** The scheduler's start gate for new work (a pending restart, a 429 hold), re-checked the
+  /** The scheduler's start gate for new work (a pending restart, a fleet hold), re-checked the
    * moment a parked vet is granted its permit — the one moment it actually starts, exactly as a
    * parked role tick re-checks it (tick-timing.ts's runTimedRoleTick): a vet queued before the
    * hold must not start a reviewer mid-drain or into the storm. A held vet hands its permit
@@ -237,7 +237,7 @@ function liveRoles(p: LandingPipeline): Set<string> {
 }
 
 /** One poll of the land queue (the scheduler's WHEN: after the gates, never while a restart or
- * a 429 hold is pending): start a vet for every queued change the pipeline does not already
+ * a fleet hold is pending): start a vet for every queued change the pipeline does not already
  * hold (drainVetting), and start the merge when the slot is free and something is vetted
  * (drainMerge). A queued landing is COMMITTED work awaiting completion, not a new tick, so the
  * budget and user-pause gates deliberately do not hold it (pausing it would leave main behind
@@ -358,7 +358,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       vet.parked = false;
       if (release === null) return; // a shutdown while parked
       if (vet.controller.signal.aborted || ctx.startHeld()) {
-        release(); // stopping, or a restart / 429 hold closed the gate while it waited
+        release(); // stopping, or a restart / fleet hold closed the gate while it waited
         return;
       }
       const { usage, foldUsage } = landingUsage(author);

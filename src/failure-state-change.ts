@@ -10,7 +10,7 @@ import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, rateLimitHoldPhrase, shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
- * cap/fleet gates and the 429 hold, live-config edits, self-hosted redeploys, need-based
+ * cap/fleet gates and the fleet hold, live-config edits, self-hosted redeploys, need-based
  * deferrals, orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
  * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
  * (plans/telemetry-role.md) — so they sit beside the outcomes rather than being dropped. */

@@ -2,7 +2,7 @@
  * fallback config view it derives, as the orchestrator polls it each cycle. Extracted from
  * orchestrator.ts's poll loop: the spend check, the fallback breaker's re-key, the
  * edge-triggered budget_* events, and the fallback view derivation are one concern beside the
- * other fleet gates (src/pause-gates.ts, src/rate-limit-hold.ts's 429 hold) — the orchestrator
+ * other fleet gates (src/pause-gates.ts, src/rate-limit-hold.ts's fleet hold) — the orchestrator
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "./config-schema.js";

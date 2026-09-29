@@ -2,7 +2,7 @@
  * as the orchestrator polls them each cycle. Extracted from orchestrator.ts's poll loop: the
  * marker reads, the edge-triggered pause/resume events, and the cross-poll bookkeeping are one
  * concern beside the other fleet gates (src/budget.ts's budget gate, src/rate-limit-hold.ts's
- * 429 hold) — the orchestrator owns only the wiring. */
+ * fleet hold) — the orchestrator owns only the wiring. */
 
 import { isFleetPaused, pausedRoles } from "./fleet-state.js";
 import { logEvent } from "./events.js";
