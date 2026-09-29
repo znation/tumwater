@@ -44,12 +44,23 @@ function newReload(
   });
 }
 
-test("first poll of an unchanged tumwater.json returns the startup config and logs nothing", () => {
+/** The shared fixture: a repo whose on-disk tumwater.json holds `config`, one improve runner
+ * wired to a live reload over it, and the semaphore the reload resizes. Every test's prelude —
+ * makeRepo, writeConfig, one runner, the reload itself — lived copy-pasted here; this homes it
+ * and returns the pieces a test mutates or asserts on later (call live.poll() yourself when
+ * the test wants the first poll to happen after its own setup). */
+function liveReload(config: TumwaterConfig, roleFilter?: string) {
   const root = makeRepo();
-  const config = defaultConfig();
   writeConfig(root, config);
   const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1));
+  const sem = new Semaphore(1);
+  const live = newReload(root, config, runners, sem, roleFilter);
+  return { root, runners, sem, live };
+}
+
+test("first poll of an unchanged tumwater.json returns the startup config and logs nothing", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
 
   // loadConfigCached clones on every read, so identity is structural, not reference.
   assert.deepEqual(live.poll(), config);
@@ -57,11 +68,8 @@ test("first poll of an unchanged tumwater.json returns the startup config and lo
 });
 
 test("a config edit is pushed to existing runners and logged once, not once per poll", () => {
-  const root = makeRepo();
   const config = defaultConfig();
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1));
+  const { root, runners, live } = liveReload(config);
   live.poll();
 
   const edited = cloneConfig(config);
@@ -78,12 +86,8 @@ test("a config edit is pushed to existing runners and logged once, not once per 
 });
 
 test("a maxConcurrent edit live-resizes the semaphore and logs its own event", () => {
-  const root = makeRepo();
   const config = { ...defaultConfig(), maxConcurrent: 1 };
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const sem = new Semaphore(1);
-  const live = newReload(root, config, runners, sem);
+  const { root, sem, live } = liveReload(config);
   live.poll();
 
   const edited = cloneConfig(config);
@@ -100,11 +104,8 @@ test("a maxConcurrent edit live-resizes the semaphore and logs its own event", (
 });
 
 test("a missing tumwater.json keeps the last-known-good config and warns once per vanish", () => {
-  const root = makeRepo();
   const config = defaultConfig();
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1));
+  const { root, live } = liveReload(config);
   live.poll();
 
   fs.unlinkSync(`${root}/tumwater.json`);
@@ -122,11 +123,8 @@ test("a missing tumwater.json keeps the last-known-good config and warns once pe
 });
 
 test("a broken tumwater.json keeps the last-known-good config and warns once per distinct error", () => {
-  const root = makeRepo();
   const config = defaultConfig();
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1));
+  const { root, live } = liveReload(config);
   live.poll();
 
   fs.writeFileSync(`${root}/tumwater.json`, "{not json");
@@ -143,13 +141,10 @@ test("a broken tumwater.json keeps the last-known-good config and warns once per
 });
 
 test("enabling a role mid-run appends a runner; disabling one warns that its ticks stop", () => {
-  const root = makeRepo();
   const config = cloneConfig(defaultConfig());
   const qaRole = config.roles.qa ?? { enabled: true };
   config.roles.qa = { ...qaRole, enabled: false };
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1));
+  const { root, runners, live } = liveReload(config);
   // The first poll syncs the fleet: every enabled role missing from the list gets a runner,
   // so qa (disabled) is the only catalog role without one.
   live.poll();
@@ -173,16 +168,13 @@ test("enabling a role mid-run appends a runner; disabling one warns that its tic
 });
 
 test("a scoped round's filter skips runners for other roles, and still logs their enabling", () => {
-  const root = makeRepo();
   // A scoped once round (`run --once --role improve`): only improve may ever gain a runner,
   // even though the on-disk config enables qa too — the round must not silently widen past
   // the role it was scoped to.
   const config = cloneConfig(defaultConfig());
   const qaRole = config.roles.qa ?? { enabled: true };
   config.roles.qa = { ...qaRole, enabled: true };
-  writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
-  const live = newReload(root, config, runners, new Semaphore(1), "improve");
+  const { root, runners, live } = liveReload(config, "improve");
   // The first poll's fleet sync honors the filter too: qa is enabled on disk but gets no
   // runner, because the round was scoped before it booted.
   live.poll();
