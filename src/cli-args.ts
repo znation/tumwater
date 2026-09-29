@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { knownRoleIds, loadConfigCached } from "./config.js";
+import { knownRoleIdsCached } from "./config.js";
 import { allRoleIds, unknownRoleMessage } from "./roles.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
@@ -55,12 +55,12 @@ export function parseCountFlag(flag: string, raw: string | undefined): number {
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a
  * read-only view down — a broken file falls back to the built-in catalog rather than refusing
  * every id. Without --role no config is read. (State-changing commands instead resolve --role
- * against loadConfig and fail loudly on a broken file, as operator-commands.ts does.) Shared
- * by the tail views that scope their output to one loop (cmdLogs, cmdHistory). */
+ * against loadConfig and fail loudly on a broken file, as operator-commands.ts does.) The id
+ * set comes from config.knownRoleIdsCached, the one home of the cached-with-built-in-fallback
+ * rule. Shared by the tail views that scope their output to one loop (cmdLogs, cmdHistory). */
 export function parseRoleScope(root: string, args: string[]): string | null {
   if (!args.includes("--role")) return null;
-  const { config } = loadConfigCached(root);
-  return parseRoleFlag(args, config ? knownRoleIds(config) : allRoleIds());
+  return parseRoleFlag(args, knownRoleIdsCached(root));
 }
 
 /** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.

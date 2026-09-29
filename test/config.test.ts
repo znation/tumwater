@@ -10,6 +10,7 @@ import {
   defaultConfig,
   isCustomRole,
   knownRoleIds,
+  knownRoleIdsCached,
   loadConfig,
   loadConfigCached,
   loadConfigSafe,
@@ -562,6 +563,20 @@ test("customLoopNames, isCustomRole, and knownRoleIds are the one source of trut
   const empty = defaultConfig();
   assert.deepEqual(customLoopNames(empty), []);
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
+});
+
+test("knownRoleIdsCached is the one home of the read-only fallback rule", () => {
+  // No config: the built-in catalog, without touching loadConfigCached's cache contract.
+  assert.deepEqual(knownRoleIdsCached(tmpdir()), allRoleIds());
+  // A config with customs: catalog plus the user-defined loops.
+  const withCustom = tmpdir();
+  writeConfig(withCustom, { customLoops: [{ name: "docs-auditor", task: "t" }] });
+  assert.deepEqual(knownRoleIdsCached(withCustom), [...allRoleIds(), "docs-auditor"]);
+  // A transiently broken tumwater.json must not take a read-only view down: it falls back to
+  // the built-in catalog rather than refusing every id.
+  const broken = tmpdir();
+  fs.writeFileSync(path.join(broken, "tumwater.json"), "{");
+  assert.deepEqual(knownRoleIdsCached(broken), allRoleIds());
 });
 
 // --- The cost n/a fallback model (plans/fallback-model.md) ---

@@ -1,4 +1,4 @@
-import { knownRoleIds, loadConfig, loadConfigCached, loadConfigSafe } from "../config.js";
+import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "../config.js";
 import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "../cli-args.js";
 import {
   type CancelOutcome,
@@ -397,18 +397,15 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   //
   // Where the id set comes from differs by mode, following parseRoleScope's split: --list is
   // a read-only view, so a transiently broken tumwater.json must not take it down — it falls
-  // back to the built-in catalog (loadConfigCached), exactly like cmdLogs/cmdHistory's --role
-  // scope, at the cost of a broken config hiding a custom loop's queued section. The
+  // back to the built-in catalog (knownRoleIdsCached), exactly like cmdLogs/cmdHistory's
+  // --role scope, at the cost of a broken config hiding a custom loop's queued section. The
   // state-changing modes (enqueue, cancel) instead read through loadConfig and fail loudly
   // when an id was given: before writing to a named loop's queue the operator is owed the
   // config error, not a built-ins-only guess about whether the loop exists. With no --role
   // neither state-changing mode reads the config at all — the director queue (inbox.ts) needs
   // none, and a broken tumwater.json must not block steering the director.
   const validIds = parsed.mode === "list"
-    ? (() => {
-        const { config } = loadConfigCached(root);
-        return config ? knownRoleIds(config) : allRoleIds();
-      })()
+    ? knownRoleIdsCached(root)
     : parsed.role !== null
       ? knownRoleIds(loadConfig(root))
       : null;

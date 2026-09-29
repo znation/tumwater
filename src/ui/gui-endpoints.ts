@@ -18,11 +18,11 @@ import {
   queueFileNameProblem,
   submitPrompt,
 } from "../inbox.js";
-import { knownRoleIds, loadConfigCached } from "../config.js";
+import { knownRoleIdsCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
-import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
@@ -35,11 +35,11 @@ import type http from "node:http";
 
 /** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
  * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
- * rather than refusing every id. Shared by /api/transcript and the two operator endpoints so
- * their validation and 400 wording cannot drift. */
+ * rather than refusing every id — the rule config.knownRoleIdsCached owns. Shared by
+ * /api/transcript and the two operator endpoints so their validation and 400 wording cannot
+ * drift. */
 function validRoleIds(root: string): string[] {
-  const { config } = loadConfigCached(root);
-  return config ? knownRoleIds(config) : allRoleIds();
+  return knownRoleIdsCached(root);
 }
 
 /** Validate one request's loop-targeting role against validRoleIds, sending the shared 400 on
