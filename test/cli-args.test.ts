@@ -17,46 +17,13 @@ import {
 } from "../src/cli-args.js";
 import { allRoleIds } from "../src/roles.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { attempt } from "./exit-capture.js";
 
 // src/cli-args.ts is the only module with no direct unit tests: until now every branch was
 // reached (slowly) through a spawned CLI child in test/cli.test.ts. These tests drive the
 // parsers in-process, which also covers branches the e2e path never exercises — duplicate
 // flags (rejected with "may only be given once"), a trailing valued flag claiming only itself, whitespace-
 // only prompt text, and the bare `--` token.
-
-/** Sentinel thrown by the process.exit stub so fail() paths are catchable in-process. */
-class ExitError extends Error {
-  constructor(readonly code: number) {
-    super(`process.exit(${code})`);
-  }
-}
-
-type Outcome<T> = { exited: true; code: number; stderr: string } | { exited: false; value: T };
-
-/** Run fn with process.exit and process.stderr intercepted. fail() reports by writing to
- * stderr then exiting 1; this captures both instead of killing the test process, so every
- * failure branch is assertable in-process. Both globals are always restored. */
-function attempt<T>(fn: () => T): Outcome<T> {
-  const realExit = process.exit;
-  const realWrite = (process.stderr as unknown as { write: (s: string) => boolean }).write;
-  let stderr = "";
-  process.exit = ((code?: number) => {
-    throw new ExitError(code ?? 0);
-  }) as typeof process.exit;
-  (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string) => {
-    stderr += s;
-    return true;
-  };
-  try {
-    return { exited: false, value: fn() };
-  } catch (err) {
-    if (err instanceof ExitError) return { exited: true, code: err.code, stderr };
-    throw err;
-  } finally {
-    process.exit = realExit;
-    (process.stderr as unknown as { write: (s: string) => boolean }).write = realWrite;
-  }
-}
 
 /** Assert fn fails via fail(): exit code 1 and the captured stderr message. */
 function expectFail(fn: () => unknown): { code: number; stderr: string } {

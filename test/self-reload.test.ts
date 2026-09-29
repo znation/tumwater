@@ -8,6 +8,7 @@ import {
   type ReloadChild,
   type ReloadSpawn,
 } from "../src/ui/self-reload.js";
+import { ExitError } from "./exit-capture.js";
 
 // The dashboards' auto-reload (src/ui/self-reload.ts): decide staleness from the process's own
 // startup stamp versus the on-disk stamp, then re-exec the same command once. All seams are
@@ -45,13 +46,8 @@ function fakeSpawn(): {
   return { calls, spawnImpl: (command, args, options) => (calls.push([command, args, options]), child), listeners };
 }
 
-class ExitError extends Error {
-  constructor(readonly code: number) {
-    super(`exit ${code}`);
-  }
-}
-
-/** Run fn with process.exit intercepted; returns the code it was called with. */
+/** Run fn with process.exit intercepted (the shared ExitError sentinel from
+ * test/exit-capture.ts); returns the code it was called with. */
 function captureExit(fn: () => void): number {
   const realExit = process.exit;
   let code = -1;

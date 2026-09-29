@@ -7,6 +7,7 @@ import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
+import { captureStdout } from "./exit-capture.js";
 
 // The follow half of `tumwater logs` (`-f`) never returns — it polls until Ctrl+C — so the
 // end-to-end tests run it in a spawned child. That leaves the in-process coverage of both
@@ -14,15 +15,6 @@ import { ensureParentDir } from "../src/files.js";
 // lines, non-renderable transcript events) unmeasured. These tests call cmdLogs directly,
 // mock only setInterval so the poll can be driven deterministically, and never await the
 // never-resolving command promise.
-
-/** Intercept process.stdout.write for the duration of a test; restore() must run in finally. */
-function captureStdout(): { out: () => string; restore: () => void } {
-  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
-  const real = stdout.write;
-  let out = "";
-  stdout.write = (s: string) => ((out += s), true);
-  return { out: () => out, restore: () => (stdout.write = real) };
-}
 
 test("logs -f follows a missing event log without creating it, then picks up appended events, skipping blank and malformed lines", async (t) => {
   const repo = makeRepo();

@@ -27,59 +27,21 @@ import {
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
+import { attemptAsync } from "./exit-capture.js";
 
 /** Producer-side tests for the operator-intent protocol (src/ui/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */
 
-/** Sentinel thrown by the process.exit stub so fail() paths are catchable in-process. */
-class ExitError extends Error {
-  constructor(readonly code: number) {
-    super(`process.exit(${code})`);
-  }
-}
-
-type Outcome<T> =
-  | { exited: true; code: number; stdout: string; stderr: string }
-  | { exited: false; value: T; stdout: string; stderr: string };
-
-/** Run an async command with process.exit, stdout, and stderr intercepted, so a fail() branch
- * (exit 1 + stderr) and a success message are both assertable without killing the test process
- * or polluting the runner's output. Every global is restored in finally. */
-async function attempt<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
-  const realExit = process.exit;
-  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
-  const stderr = process.stderr as unknown as { write: (s: string) => boolean };
-  const realOutWrite = stdout.write;
-  const realErrWrite = stderr.write;
-  let out = "";
-  let err = "";
-  process.exit = ((code?: number) => {
-    throw new ExitError(code ?? 0);
-  }) as typeof process.exit;
-  stdout.write = (s: string) => ((out += s), true);
-  stderr.write = (s: string) => ((err += s), true);
-  try {
-    return { exited: false, value: await fn(), stdout: out, stderr: err };
-  } catch (e) {
-    if (e instanceof ExitError) return { exited: true, code: e.code, stdout: out, stderr: err };
-    throw e;
-  } finally {
-    process.exit = realExit;
-    stdout.write = realOutWrite;
-    stderr.write = realErrWrite;
-  }
-}
-
 async function expectOk<T>(fn: () => Promise<T>): Promise<{ value: T; stdout: string; stderr: string }> {
-  const o = await attempt(fn);
+  const o = await attemptAsync(fn);
   if (o.exited) assert.fail(`expected success, but process.exit(${o.code}) with:\n${o.stderr}`);
   return o;
 }
 
 async function expectFail(fn: () => Promise<unknown>): Promise<{ code: number; stderr: string }> {
-  const o = await attempt(fn);
+  const o = await attemptAsync(fn);
   if (!o.exited) assert.fail(`expected process.exit, but the call returned ${JSON.stringify(o.value)}`);
   return o;
 }

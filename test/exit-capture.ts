@@ -1,0 +1,84 @@
+/** In-process capture of a CLI command's fail() path: intercept process.exit, stdout, and
+ * stderr around a call so a `fail()` branch (exit 1 + a stderr message) and a success return
+ * are both assertable without killing the test process or polluting the runner's output. The
+ * single home of that stub — it lived as four per-file copies (cli-args, log-commands-views,
+ * operator-commands, self-reload) whose shapes drifted independently. Every stub restores the
+ * real globals in finally, and each saves the write function it replaces, so nests
+ * (captureStdout around an attempt, or vice versa) unwind in LIFO order. */
+
+/** Sentinel thrown by the process.exit stub so the exit is catchable in-process. */
+export class ExitError extends Error {
+  constructor(readonly code: number) {
+    super(`process.exit(${code})`);
+  }
+}
+
+/** What one captured call produced: either the fail() path (exit code + captured streams) or
+ * the call's return value — both carrying whatever the call wrote to stdout/stderr. */
+export type Outcome<T> =
+  | { exited: true; code: number; stdout: string; stderr: string }
+  | { exited: false; value: T; stdout: string; stderr: string };
+
+/** Install the exit + stream stubs and return the captured-so-far streams plus the restore
+ * step; the two attempt variants below share it. */
+function stubIo(): {
+  read: () => { stdout: string; stderr: string };
+  restore: () => void;
+} {
+  const realExit = process.exit;
+  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
+  const stderr = process.stderr as unknown as { write: (s: string) => boolean };
+  const realOutWrite = stdout.write;
+  const realErrWrite = stderr.write;
+  let out = "";
+  let err = "";
+  process.exit = ((code?: number) => {
+    throw new ExitError(code ?? 0);
+  }) as typeof process.exit;
+  stdout.write = (s: string) => ((out += s), true);
+  stderr.write = (s: string) => ((err += s), true);
+  return {
+    read: () => ({ stdout: out, stderr: err }),
+    restore: () => {
+      process.exit = realExit;
+      stdout.write = realOutWrite;
+      stderr.write = realErrWrite;
+    },
+  };
+}
+
+/** Run a synchronous fn under the stubs. */
+export function attempt<T>(fn: () => T): Outcome<T> {
+  const io = stubIo();
+  try {
+    return { exited: false, value: fn(), ...io.read() };
+  } catch (err) {
+    if (err instanceof ExitError) return { exited: true, code: err.code, ...io.read() };
+    throw err;
+  } finally {
+    io.restore();
+  }
+}
+
+/** Run an async fn under the stubs — the stubs are installed before the call and held across
+ * every await, so output written after an await is captured too. */
+export async function attemptAsync<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
+  const io = stubIo();
+  try {
+    return { exited: false, value: await fn(), ...io.read() };
+  } catch (err) {
+    if (err instanceof ExitError) return { exited: true, code: err.code, ...io.read() };
+    throw err;
+  } finally {
+    io.restore();
+  }
+}
+
+/** Intercept process.stdout.write for the duration of a test; restore() must run in finally. */
+export function captureStdout(): { out: () => string; restore: () => void } {
+  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
+  const real = stdout.write;
+  let out = "";
+  stdout.write = (s: string) => ((out += s), true);
+  return { out: () => out, restore: () => (stdout.write = real) };
+}

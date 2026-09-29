@@ -7,60 +7,20 @@ import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
+import { attemptAsync, captureStdout } from "./exit-capture.js";
 
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
 // the --grep filter and its no-match note, the --since window and its rotation caveat, the
 // --role transcript without -f, and every mutually-exclusive-flag failure that guards the
-// rival shapes. All failures are caught in-process with a process.exit stub (the idiom from
-// cli-args.test.ts), so no spawned child is needed.
-
-class ExitError extends Error {
-  constructor(readonly code: number) {
-    super(`process.exit(${code})`);
-  }
-}
-
-type Outcome<T> = { exited: true; code: number; stderr: string } | { exited: false; value: T };
-
-/** Run fn with process.exit and process.stderr intercepted so fail() paths are assertable
- * in-process; both globals are always restored. */
-async function attempt<T>(fn: () => Promise<T>): Promise<Outcome<T>> {
-  const realExit = process.exit;
-  const realWrite = (process.stderr as unknown as { write: (s: string) => boolean }).write;
-  let stderr = "";
-  process.exit = ((code?: number) => {
-    throw new ExitError(code ?? 0);
-  }) as typeof process.exit;
-  (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string) => {
-    stderr += s;
-    return true;
-  };
-  try {
-    return { exited: false, value: await fn() };
-  } catch (err) {
-    if (err instanceof ExitError) return { exited: true, code: err.code, stderr };
-    throw err;
-  } finally {
-    process.exit = realExit;
-    (process.stderr as unknown as { write: (s: string) => boolean }).write = realWrite;
-  }
-}
+// rival shapes. All failures are caught in-process with a process.exit stub (the shared
+// stub in test/exit-capture.ts), so no spawned child is needed.
 
 async function expectFail(fn: () => Promise<unknown>): Promise<string> {
-  const out = await attempt(fn);
+  const out = await attemptAsync(fn);
   if (!out.exited) assert.fail(`expected process.exit, but the call returned normally`);
   assert.equal(out.code, 1);
   return out.stderr;
-}
-
-/** Intercept process.stdout.write for the duration of a test; restore() must run in finally. */
-function captureStdout(): { out: () => string; restore: () => void } {
-  const stdout = process.stdout as unknown as { write: (s: string) => boolean };
-  const real = stdout.write;
-  let out = "";
-  stdout.write = (s: string) => ((out += s), true);
-  return { out: () => out, restore: () => (stdout.write = real) };
 }
 
 /** A repo with three distinct tick events logged, in order. */
