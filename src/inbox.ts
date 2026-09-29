@@ -66,6 +66,28 @@ export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
 // inside cachedByStat so many short-lived roots in tests cannot grow it unbounded.
 const promptCache = new Map<string, StatKeyedValue<string>>();
 
+/** One queued prompt paired with the queue-file basename that addresses it: the file name is
+ * what the dashboard's per-row cancel affordance sends (/api/prompt-cancel) — addressed by
+ * file, not by list position, so a 1 s-stale poll can never cancel the wrong entry. */
+export interface QueuedPromptEntry {
+  file: string;
+  preview: string;
+}
+
+/** The one read pass over a loop's queue that serves every preview-shaped consumer: each
+ * queued file paired with its basename and full text. Same listing order and race policy as
+ * queuedRolePrompts (a file that vanishes mid-listing is skipped, not thrown), and the same
+ * stat-keyed cache, so an unchanged file still costs one stat per poll. */
+function queuedRoleFileTexts(root: string, role: string): Array<{ file: string; text: string }> {
+  const out: Array<{ file: string; text: string }> = [];
+  for (const f of queuedFiles(root, role)) {
+    // Strings are immutable — no copy needed; a file that vanished mid-listing reads null.
+    const text = cachedByStat(promptCache, f, f, () => readTextOrNull(f), (t) => t);
+    if (text !== null) out.push({ file: path.basename(f), text });
+  }
+  return out;
+}
+
 /** Full text of every prompt queued for one loop, in execution order (oldest first) — the same
  * filename sort dequeueRolePrompt pops by. A missing queue directory reads as an empty queue,
  * like inboxSize and dequeueRolePrompt; a file that vanishes between listing and reading (a
@@ -73,13 +95,14 @@ const promptCache = new Map<string, StatKeyedValue<string>>();
  * crash on it. Unchanged files are served from the stat-keyed cache above — fresh content
  * requires an actual write to the path, which enqueueRolePrompt never does for an existing file. */
 export function queuedRolePrompts(root: string, role: string): string[] {
-  const out: string[] = [];
-  for (const f of queuedFiles(root, role)) {
-    // Strings are immutable — no copy needed; a file that vanished mid-listing reads null.
-    const text = cachedByStat(promptCache, f, f, () => readTextOrNull(f), (t) => t);
-    if (text !== null) out.push(text);
-  }
-  return out;
+  return queuedRoleFileTexts(root, role).map((e) => e.text);
+}
+
+/** Every queued prompt of one loop with the queue-file basename that addresses it, in
+ * execution order — the snapshot's cancel-addressable payload (StatusSnapshot.inboxFiles and
+ * roleInboxPrompts). Same pass, order, race policy, and stat cache as queuedRolePrompts. */
+export function queuedRolePromptEntries(root: string, role: string): QueuedPromptEntry[] {
+  return queuedRoleFileTexts(root, role).map((e) => ({ file: e.file, preview: promptPreview(e.text) }));
 }
 
 /** How many prompts are queued for one loop, without reading their contents — the snapshot's
@@ -129,6 +152,39 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
   const file = files[position - 1];
   if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
   const text = takeQueuedFile(file);
+  if (text === null) return { status: "gone" };
+  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
+  return { status: "cancelled", text };
+}
+
+/** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
+ * trusted only as a plain basename inside the loop's queue directory — anything containing a
+ * path separator or equal to `..` could name a file elsewhere on disk, and a non-`.md` name
+ * cannot be a queued prompt at all (enqueueRolePrompt writes nothing else). Returns null when
+ * the name is safe to join onto roleInboxDir, else the reason the /api/prompt-cancel endpoint
+ * sends as its 400. cancelQueuedFile re-checks it, so a caller that skips the guard fails
+ * closed. */
+export function queueFileNameProblem(name: unknown): string | null {
+  if (typeof name !== "string" || name === "") return "file required";
+  if (name.includes("/") || name.includes("\\") || name === "..") {
+    return "file must be a plain queue-file basename";
+  }
+  if (!name.endsWith(".md")) return "file must name a queued prompt's .md file";
+  return null;
+}
+
+/** Remove one queued prompt addressed by its queue-file basename — the file-addressed twin of
+ * cancelRolePrompt, for the dashboard's per-row cancel affordance (PLANS.md 2026-09-29): the
+ * address is the file itself, so a stale poll's snapshot can never cancel the wrong entry.
+ * Same race policy and event as cancelRolePrompt: { status: "gone" } when the loop already
+ * dequeued or another cancel removed the file (a normal race, never an error), else one
+ * prompt_cancelled event under that loop, logged only after a successful removal, and
+ * { status: "cancelled", text }. Throws for a name failing queueFileNameProblem — the GUI
+ * endpoint pre-checks the same guard and answers 400 before anything is touched on disk. */
+export function cancelQueuedFile(root: string, role: string, name: string): CancelOutcome {
+  const problem = queueFileNameProblem(name);
+  if (problem) throw new Error(problem);
+  const text = takeQueuedFile(path.join(roleInboxDir(root, role), name));
   if (text === null) return { status: "gone" };
   logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };

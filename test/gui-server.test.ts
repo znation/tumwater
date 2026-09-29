@@ -8,7 +8,9 @@ import { initProject } from "../src/init.js";
 import { tickRows } from "../src/ui/history.js";
 import { writeEvents } from "./log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
-import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
+import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox.js";
+import { readEvents } from "../src/events.js";
+import { DIRECTOR_ROLE } from "../src/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/ui/gui.js";
@@ -407,6 +409,81 @@ test("gui rejects oversized prompt-role bodies with 413 and stays healthy", asyn
     });
     assert.equal(ok.status, 200);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["still alive"]);
+  } finally {
+    server.close();
+  }
+});
+
+// The queued-prompts rows' cancel affordance: POST /api/prompt-cancel removes exactly the
+// prompt its queue file names — the file-addressed twin of the CLI's position-based
+// `prompt --cancel`, so a 1 s-stale poll can never cancel the wrong entry.
+test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on a race", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt-cancel test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const first = enqueueRolePrompt(repo, DIRECTOR_ROLE, "first prompt");
+    const second = enqueueRolePrompt(repo, DIRECTOR_ROLE, "second prompt");
+    const clean = enqueueRolePrompt(repo, "clean", "clean prompt");
+    const post = (body: unknown) =>
+      fetch(base + "/api/prompt-cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    // Cancelling by file removes exactly that file, logs one prompt_cancelled event under
+    // the director, and answers the preview for the flash line.
+    let res = await post({ file: path.basename(first) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "cancelled", preview: "first prompt" });
+    assert.equal(inboxSize(repo), 1);
+    assert.deepEqual(queuedRolePrompts(repo, DIRECTOR_ROLE), ["second prompt"]);
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["clean prompt"], "other queues untouched");
+    const cancelled = readEvents(repo).filter((e) => e.type === "prompt_cancelled");
+    assert.equal(cancelled.length, 1);
+    assert.equal(cancelled[0]!.loop, DIRECTOR_ROLE);
+    assert.equal(cancelled[0]!.preview, "first prompt");
+
+    // Re-cancelling the same file — or one the loop already dequeued — is "gone" (200),
+    // data for the flash line, not a 500; and it logs no second event, removes nothing else.
+    res = await post({ file: path.basename(first) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "gone" });
+    assert.equal(inboxSize(repo), 1);
+    assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled").length, 1);
+
+    // A role-scoped cancel targets that loop's own queue (role given explicitly).
+    res = await post({ role: "clean", file: path.basename(clean) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "cancelled", preview: "clean prompt" });
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), []);
+    assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled").length, 2);
+    assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled" && e.loop === "clean").length, 1);
+
+    // A hostile or malformed file name is a user-input error: 400, nothing touched on disk.
+    for (const file of ["../escape.md", "a/b.md", "a\\b.md", "..", "not-a-prompt.txt", "", undefined]) {
+      res = await post({ file });
+      assert.equal(res.status, 400, `file ${JSON.stringify(file)} rejected`);
+      assert.match(await res.text(), /file/);
+    }
+    assert.equal(inboxSize(repo), 1, "the second director prompt survived every rejection");
+
+    // An unknown role is the shared rejectBadRole 400, like /api/transcript.
+    res = await post({ role: "nope", file: path.basename(second) });
+    assert.equal(res.status, 400);
+    // The error is a JSON body, so the id's quotes come back escaped.
+    assert.match(await res.text(), /unknown role \\"nope\\"/);
+    assert.equal(inboxSize(repo), 1);
+
+    // A non-object body rides the shared readJsonObject 400.
+    res = await fetch(base + "/api/prompt-cancel", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "[1,2]",
+    });
+    assert.equal(res.status, 400);
+    assert.equal(inboxSize(repo), 1);
   } finally {
     server.close();
   }

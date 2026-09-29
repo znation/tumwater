@@ -46,10 +46,19 @@ export function statusPayload(root: string): object {
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.
     inboxPrompts: snap.inboxPrompts,
+    // Queue-file addresses beside the previews (same order — see StatusSnapshot.inboxFiles):
+    // the queued-prompts section's per-row cancel affordance POSTs one to /api/prompt-cancel.
+    // Raw data, like inbox/inboxPrompts.
+    inboxFiles: snap.inboxFiles,
     // Per-role queued-prompt counts (PLANS.md "Per-role prompts 2/2"): the loop table's
     // `p:N` state marker and the queued-prompts section's per-loop lines render from it.
     // Raw data, like inbox/inboxPrompts.
     roleInbox: snap.roleInbox,
+    // Per-role queued prompts with their queue-file addresses (see
+    // StatusSnapshot.roleInboxPrompts): the queued-prompts section renders each as its own
+    // row with a cancel link, replacing the bare "r: N queued" count line. Raw data, like
+    // inboxFiles.
+    roleInboxPrompts: snap.roleInboxPrompts,
     // The raw daily-cost-budget data, unconditionally (capUsd 0 = disabled; spend still
     // reported) — machine-readable for `status --json`; the display-ready header badge is
     // the preformatted `budgetBadge`.

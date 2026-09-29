@@ -661,8 +661,16 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 
 test("the dashboard page lists queued prompts in its project status panel", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions.
-  assert.match(GUI_PAGE, /backlogList\("queued prompts", \(d\.inboxPrompts \|\| \[\]\)\.concat/);
+  // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions — each
+  // row now a prompt with a file-addressed cancel link (PLANS.md 2026-09-29): director rows
+  // pair inboxFiles[i] with inboxPrompts[i], per-role rows render from roleInboxPrompts in
+  // place of the old "r: N queued" count line, and the click POSTs /api/prompt-cancel
+  // through the #backlog panel's delegated rowaction listener.
+  assert.match(GUI_PAGE, /data-action='promptcancel' data-file='" \+ esc\(file\)/);
+  assert.match(GUI_PAGE, /\(d\.inboxFiles \|\| \[\]\)\[i\]/);
+  assert.match(GUI_PAGE, /d\.roleInboxPrompts/);
+  assert.match(GUI_PAGE, /postJson\("\/api\/prompt-cancel"/);
+  assert.match(GUI_PAGE, /no longer queued/);
 });
 
 // Full backlog entries (PLANS.md "Read backlog entries in full from the TUI/GUI dashboards"):

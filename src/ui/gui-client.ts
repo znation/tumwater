@@ -317,17 +317,26 @@ ${GUI_CLIENT_HISTORY_JS}
         "' data-index='" + i + "'>" + esc(t) + "</a>").join("\\n");
       const backlogList = (title, items, file) => "<span class='muted'>" + esc(title + " (" + items.length + ")") + "</span>\\n" +
         (items.length ? (file ? backlogLink(file, items) : items.map(esc).join("\\n")) : "(none)");
+      // Queued prompts in execution order (previews, truncated server-side), each row
+      // carrying a cancel link addressed by its queue file — not the list position, so a 1 s
+      // stale poll can never cancel the wrong entry (POST /api/prompt-cancel). Director rows
+      // first (inboxFiles[i] pairs with inboxPrompts[i]), then each role's queue rendered per
+      // prompt in place of the old bare "r: N queued" count. These rows embed HTML (the
+      // anchor), so they escape only their text and bypass backlogList's esc-join. (none)
+      // while everything is empty, like the other sections. Full text stays in the queue
+      // files: "tumwater prompt --list --role" reads it.
+      const cancelLink = (file, role) =>
+        " <a href='#' class='rowaction' data-action='promptcancel' data-file='" + esc(file) +
+        "' data-role='" + esc(role) + "'>cancel</a>";
+      const queuedRows = (d.inboxPrompts || []).map((p, i) =>
+        esc(p) + cancelLink((d.inboxFiles || [])[i] || "", "director"),
+      ).concat(Object.keys(d.roleInboxPrompts || {}).sort().flatMap((r) =>
+        (d.roleInboxPrompts[r] || []).map((e) => esc(r + ": " + e.preview) + cancelLink(e.file, r))));
       const backlogHtml =
         backlogList("planned features", d.plans || [], "plans") + "\\n\\n" + backlogList("open bugs", d.bugs || [], "bugs") +
         "\\n\\n" + backlogList("open questions", d.questions || [], "questions") +
-        // Queued director prompts in execution order (previews, truncated server-side);
-        // (none) while the inbox is empty, like the other sections. Per-role prompts 2/2 —
-        // role queues ride the same section, labeled with their role (full text stays in the
-        // queue files: "tumwater prompt --list --role" reads it).
-        "\\n\\n" + backlogList("queued prompts", (d.inboxPrompts || []).concat(
-          Object.keys(d.roleInbox || {}).filter((r) => d.roleInbox[r] > 0)
-            .map((r) => r + ": " + d.roleInbox[r] + " queued"),
-        ));
+        "\\n\\n" + "<span class='muted'>" + esc("queued prompts (" + queuedRows.length + ")") + "</span>\\n" +
+        (queuedRows.length ? queuedRows.join("\\n") : "(none)");
       paintPanel("backlog", backlogHtml);
       const feedHtml = d.events.map(esc).join("<br>");
       const feed = document.getElementById("feed");
@@ -414,7 +423,25 @@ ${GUI_CLIENT_HISTORY_JS}
   });
   document.getElementById("rolepromptcancel").addEventListener("click", closePromptBar);
   // row-actions:end
-  document.getElementById("backlog").addEventListener("click", (ev) => {
+  document.getElementById("backlog").addEventListener("click", async (ev) => {
+    // The queued-prompts rows' cancel links: POST the row's queue-file address to
+    // /api/prompt-cancel (the file-addressed twin of the CLI's prompt --cancel), then flash
+    // the server's answer — the cancelled prompt's preview, or the gone note when the loop
+    // already dequeued it. The next 1 s poll re-renders the section either way. A failed POST
+    // flashes the error, like every other row action.
+    const cancel = ev.target.closest("a.rowaction[data-action='promptcancel']");
+    if (cancel) {
+      ev.preventDefault();
+      try {
+        const d = await postJson("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file });
+        showFlash(d && d.status === "cancelled"
+          ? "cancelled: " + (d.preview || "")
+          : "no longer queued — " + (cancel.dataset.role || "director") + " already took it");
+      } catch (e) {
+        showFlash("error: " + e.message);
+      }
+      return;
+    }
     const a = ev.target.closest("a.backloglink");
     if (!a) return;
     ev.preventDefault();

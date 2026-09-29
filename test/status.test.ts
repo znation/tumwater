@@ -270,6 +270,14 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   let snap = snapshot(repo);
   assert.equal(snap.inbox, 2);
   assert.deepEqual(snap.inboxPrompts[0], "first prompt");
+  // The same inbox pass pairs each preview with its queue-file basename (the
+  // /api/prompt-cancel address): same order, same length, plain .md basenames only.
+  assert.equal(snap.inboxFiles.length, snap.inboxPrompts.length);
+  assert.ok(
+    snap.inboxFiles.every((f) => f.endsWith(".md") && !f.includes("/") && !f.includes("\\")),
+    `plain basenames: ${JSON.stringify(snap.inboxFiles)}`,
+  );
+  assert.notEqual(snap.inboxFiles[0], snap.inboxFiles[1]);
   const preview = snap.inboxPrompts[1]!;
   assert.ok(preview.length <= 80 && preview.endsWith("…"), `preview truncated: ${JSON.stringify(preview)}`);
 
@@ -510,9 +518,9 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
 test("snapshot counts each role's own prompt queue and leaves the director to inbox", async () => {
   const repo = makeRepo();
   await initProject(repo, "roleInbox snapshot test");
-  enqueueRolePrompt(repo, "clean", "one");
-  enqueueRolePrompt(repo, "dry", "two");
-  enqueueRolePrompt(repo, "dry", "three");
+  const one = enqueueRolePrompt(repo, "clean", "one");
+  const two = enqueueRolePrompt(repo, "dry", "two");
+  const three = enqueueRolePrompt(repo, "dry", "three");
   const snap = snapshot(repo);
   assert.equal(snap.roleInbox.clean, 1);
   assert.equal(snap.roleInbox.dry, 2);
@@ -520,6 +528,14 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   assert.equal(snap.inbox, 0);
   // And it agrees with the queue files the CLI's --list reads.
   assert.deepEqual(queuedRolePrompts(repo, "dry"), ["two", "three"]);
+  // Each queued prompt also carries its queue-file address (the /api/prompt-cancel target),
+  // execution order; roles with an empty queue are absent, like the director.
+  assert.deepEqual(snap.roleInboxPrompts.clean, [{ file: path.basename(one), preview: "one" }]);
+  assert.deepEqual(snap.roleInboxPrompts.dry, [
+    { file: path.basename(two), preview: "two" },
+    { file: path.basename(three), preview: "three" },
+  ]);
+  assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });
 
 // --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---

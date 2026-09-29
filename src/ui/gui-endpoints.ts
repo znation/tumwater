@@ -1,7 +1,8 @@
 /**
  * The dashboard's /api endpoint handlers (src/ui/gui.ts routes to them): the GET data
  * endpoints — transcript, backlog, report, failures, history — and the POST operator endpoints —
- * prompt, budget, pause, wake, abort, pause-role — plus the role validation they share. The
+ * prompt, prompt-cancel, budget, pause, wake, abort, pause-role — plus the role validation
+ * they share. The
  * response/body plumbing lives below them (http-body.ts: sendJson, the body cap, readJsonObject).
  * Each handler answers its request and touches no socket beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
  * in gui.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
@@ -10,7 +11,13 @@
  */
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
-import { promptLengthProblem, submitPrompt } from "../inbox.js";
+import {
+  cancelQueuedFile,
+  promptLengthProblem,
+  promptPreview,
+  queueFileNameProblem,
+  submitPrompt,
+} from "../inbox.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
@@ -230,6 +237,34 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const text = requirePromptText(res, body, role);
   if (text === null) return;
   sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, text) });
+}
+
+/** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —
+ * the dashboard's per-row cancel affordance, the file-addressed twin of the CLI's
+ * position-addressed `prompt --cancel`. The role is optional (absent cancels from the
+ * director's queue) and validates exactly like /api/transcript; a file name failing the
+ * basename guard (inbox.ts's queueFileNameProblem) is a user-input error answered 400 with
+ * nothing touched on disk. A vanished file answers 200 { status: "gone" } — the loop already
+ * dequeued the prompt, which is data for the flash line, not a server fault. Same body
+ * discipline as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */
+export async function handlePromptCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, '{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}');
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
+  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const fileProblem = queueFileNameProblem(body.file);
+  if (fileProblem) {
+    sendJson(res, 400, { error: fileProblem });
+    return;
+  }
+  const outcome = cancelQueuedFile(root, role, body.file as string);
+  sendJson(
+    res,
+    200,
+    outcome.status === "cancelled"
+      ? { ok: true, status: "cancelled", preview: promptPreview(outcome.text) }
+      : { ok: true, status: "gone" },
+  );
 }
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —
