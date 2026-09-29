@@ -122,11 +122,12 @@ test("a stalled run is reported as quiet-killed, not timed out", async (t) => {
 // granted a zero-progress run still false-killed under merge-check load: the kill check can
 // fire before the child's first bytes exist at all (fork/exec starved by the same load, or
 // bytes written but not yet drained — a firing timer phase precedes the poll phase that
-// delivers stdout). Since startup latency is unbounded, the fix gives a run that has not
-// emitted a single byte NO quiet kill at all (the tick timeout bounds it); bytes without
-// progress keep the doubled window (zombie streams). This pins that a slow-to-speak run
-// completes where the old single window killed it — and where the doubled window would
-// kill it too, so reverting to any finite startup window re-reddens this test.
+// delivers stdout). The fix gave a byte-silent run no quiet kill at all; BUGS.md 2026-09-29
+// replaced that unbounded exemption (which delegated its bound to tickTimeoutSeconds, and
+// the live 54000 s config left a wedged run 15 hours in a slot) with a finite zero-byte
+// bound of max(two quiet windows, 30 min). This pins that ordinary startup latency — a
+// minute of byte-silence, far past the old single and doubled windows — still does not
+// kill a run; the 30-minute bound is tested separately below.
 test("a run that is slow to speak is not quiet-killed during startup", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
@@ -142,12 +143,42 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
   try {
     const run = runPi(runPiFixture(dir, { config }));
     // A minute of silence before the first byte: past the old single window (5 s) and the
-    // doubled startup window (10 s) alike — any finite startup window has fired by now.
+    // doubled startup window (10 s) alike, and well under the 30-minute zero-byte bound.
     clock.advance(60_000);
     fs.writeFileSync(go, "");
     const result = await run;
     assert.equal(result.quietKilled, false, "startup latency is not a hung tool call");
     assert.equal(result.ok, true, "the run completes once pi finally speaks");
+  } finally {
+    restore();
+  }
+});
+
+// BUGS.md 2026-09-29: the 2026-09-23 zero-byte exemption was unbounded — a run that never
+// emits a byte was bounded only by tickTimeoutSeconds, which operators raise for unrelated
+// reasons (the live config's 54000 s left a wedged model connection 15 hours in a
+// concurrency slot). The zero-byte bound is now max(two quiet windows, 30 min), independent
+// of the tick timeout. This pins that a byte-silent run is reaped by the quiet watchdog —
+// reported quietKilled, so the loop resumes it — with a tick timeout set far beyond the
+// bound; under the old exemption this run never settles short of the real 2 h timeout.
+test("a run that never emits a byte is quiet-killed at 30 minutes regardless of the tick timeout", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.quietTimeoutSeconds = 2; // zero-byte bound = max(2 × 2 s, 30 min) = 30 min
+  config.tickTimeoutSeconds = 7200; // far beyond the zero-byte bound: it must not be the reaper
+  const clock = watchdogClock(t);
+  const restore = fakePi(
+    // exec so SIGTERM reaches the sleeper directly and the run ends promptly; the script
+    // writes nothing, so sawOutput stays false for the whole run.
+    `exec sleep 30`,
+  );
+  try {
+    const run = runPi(runPiFixture(dir, { config }));
+    clock.advance(31 * 60_000); // one minute past the 30-minute zero-byte bound
+    const result = await run;
+    assert.equal(result.quietKilled, true, "a byte-silent run is reaped by the quiet watchdog");
+    assert.equal(result.timedOut, false, "the tick timeout is not the zero-byte bound");
+    assert.match(result.errorMessage ?? "", /killed as hung/);
   } finally {
     restore();
   }

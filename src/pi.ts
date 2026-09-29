@@ -288,9 +288,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // one: "recent progress" is the same window the quiet watchdog itself honors, so the
       // two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). A run
       // with no progress event at all — never emitted a byte, or bytes without one structured
-      // event — keeps today's discard path: it has not demonstrably begun, and the zero-byte
-      // exemption below delegates its bound to this timeout. Callback runs after the sync
-      // declarations below, so quietMs/lastProgressAt are initialized here.
+      // event — keeps today's discard path: it has not demonstrably begun. Callback runs
+      // after the sync declarations below, so quietMs/lastProgressAt are initialized here.
       timedOutProgressing = parser.progressCount > 0 && Date.now() - lastProgressAt <= quietMs;
       terminateChild(child);
     }, opts.config.tickTimeoutSeconds * 1000);
@@ -324,16 +323,24 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // on an interval against the wall clock, so the firing check can predate the child's
     // first bytes entirely — fork/exec starved by the same load, or bytes already written
     // but not yet drained (a firing timer phase precedes the poll phase that delivers
-    // stdout, and a suspended machine resumes the same way). Startup latency is unbounded,
-    // so no finite window bounds it: a run that has not emitted a single byte has not
-    // demonstrably begun, and gets no quiet kill at all — the tick timeout bounds it (at
-    // the production defaults the tick already fired before the old doubled window, so
-    // nothing changes there). Once bytes have flowed the run has begun; bytes without
-    // progress keep the doubled window (the zombie-stream case), and once real progress
-    // has landed quietTimeoutSeconds applies unchanged.
+    // stdout, and a suspended machine resumes the same way). The 2026-09-23 fix therefore
+    // gave a byte-silent run no quiet kill at all, delegating its bound to the tick timeout
+    // — which holds only while tickTimeoutSeconds is near the quiet window's scale (BUGS.md
+    // 2026-09-29: the live 54000 s config left a wedged model connection 15 hours in a
+    // concurrency slot). A zero-byte run now gets a finite bound of its own, independent of
+    // the tick timeout: max(two quiet windows, 30 min). Startup latency under healthy load
+    // stays far below it, so the runs the 2026-09-23 fix protected are still protected; a
+    // run that is genuinely wedged before its first byte (dead connection, unscheduled
+    // fork/exec) is reaped at half an hour instead of at the tick timeout. The false
+    // positive it can cost — a machine so loaded the child has not been scheduled in 30
+    // minutes — is a quiet kill, which resumes the session and the worktree's edits like
+    // an interruption: a restart, not discarded work. Once bytes have flowed the run has
+    // begun; bytes without progress keep the doubled window (the zombie-stream case), and
+    // once real progress has landed quietTimeoutSeconds applies unchanged.
     let sawOutput = false;
+    const zeroByteSilenceMs = Math.max(quietMs * 2, 30 * 60_000);
     const allowedSilenceMs = () =>
-      parser.progressCount > 0 ? quietMs : sawOutput ? quietMs * 2 : Infinity;
+      parser.progressCount > 0 ? quietMs : sawOutput ? quietMs * 2 : zeroByteSilenceMs;
     // The stall warning's threshold (distinct from the kill above): one hung tool call is
     // surfaced by name even while sibling calls keep streaming, so total silence is not
     // required. One warning per stalled call — the interval keeps firing until the kill or
@@ -348,11 +355,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
               if (parser.progressCount > lastProgressCount) {
                 lastProgressCount = parser.progressCount;
                 lastProgressAt = Date.now();
-              } else if (
-                quietMs > 0 &&
-                sawOutput &&
-                Date.now() - lastProgressAt > allowedSilenceMs()
-              ) {
+              } else if (quietMs > 0 && Date.now() - lastProgressAt > allowedSilenceMs()) {
                 quietKilled = true;
                 terminateChild(child);
               }
