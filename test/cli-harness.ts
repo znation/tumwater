@@ -11,7 +11,7 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
 // tested as a child process: the built dist/src/cli.js with cwd set to a temp repo.
 export const CLI = fileURLToPath(new URL("../src/cli.js", import.meta.url));
 
-export interface CliResult {
+interface CliResult {
   code: number;
   stdout: string;
   stderr: string;
