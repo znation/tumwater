@@ -24,7 +24,12 @@ import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
 import { clipToWidth, errorMessage, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
-import { captureStartupBuild, createReloadWatch, reexecSelf } from "./self-reload.js";
+import {
+  captureStartupBuild,
+  createReloadWatch,
+  reexecSelf,
+  type ReloadWatchSeams,
+} from "./self-reload.js";
 import {
   applyKey,
   parseBudgetInput,
@@ -66,11 +71,39 @@ function clipLines(lines: string[], width: number, budget: number, keep: "head" 
   return keep === "head" ? clipped.slice(0, budget) : clipped.slice(-budget);
 }
 
+/** The half of a terminal the TUI actually touches: raw mode, keypresses, and the size the
+ * renderer clips to. Production reads process.stdin/stdout; tests inject fakes so the loop
+ * is driven without a TTY. */
+export interface TuiStdin extends NodeJS.EventEmitter {
+  isTTY?: boolean;
+  setRawMode(mode: boolean): void;
+  resume?(): void;
+  pause?(): void;
+}
+export interface TuiStdout {
+  isTTY?: boolean;
+  rows?: number;
+  columns?: number;
+  write(s: string): unknown;
+}
+/** Injectable seams for runTui: a terminal stand-in plus the self-reload watch's seams
+ * (self-reload.ts's injectables) and the re-exec itself — the same treatment startGui got.
+ * Production callers omit it and get the real terminal, the real disk-stamp poll, and the
+ * real reexecSelf; tests inject fakes so the reload wiring (trigger → wake the loop →
+ * teardown → re-exec at most once) is assertable without a terminal. */
+export interface TuiSeams {
+  stdin?: TuiStdin;
+  stdout?: TuiStdout;
+  watch?: ReloadWatchSeams & { reexec?: () => void };
+}
+
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
-export async function runTui(root: string): Promise<void> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error(tuiTerminalError(Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY)));
+export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> {
+  const stdin = seams.stdin ?? (process.stdin as TuiStdin);
+  const stdout = seams.stdout ?? process.stdout;
+  if (!stdin.isTTY || !stdout.isTTY) {
+    throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
   }
 
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
@@ -84,6 +117,7 @@ export async function runTui(root: string): Promise<void> {
   const reloadWatch = createReloadWatch({
     root,
     startupInfo: captureStartupBuild(),
+    ...seams.watch,
     onTrigger: () => {
       reloadRequested = true;
       resolveMain?.();
@@ -168,8 +202,8 @@ export async function runTui(root: string): Promise<void> {
   // nothing scrolls the table off the top.
 
   const render = () => {
-    const rows = process.stdout.rows ?? 40;
-    const width = process.stdout.columns ?? 120;
+    const rows = stdout.rows ?? 40;
+    const width = stdout.columns ?? 120;
     const snap = snapshot(root);
     currentCapUsd = snap.budget.capUsd;
     currentBudgetFree = snap.budget.free;
@@ -275,7 +309,7 @@ export async function runTui(root: string): Promise<void> {
     const frame = CLEAR + parts.join("\n");
     if (frame === lastFrame) return; // Unchanged screen: rewriting it only costs terminal I/O.
     lastFrame = frame;
-    process.stdout.write(frame);
+    stdout.write(frame);
   };
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
@@ -294,9 +328,11 @@ export async function runTui(root: string): Promise<void> {
     cursor = roleSavedCursor;
   };
 
-  readline.emitKeypressEvents(process.stdin);
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
+  // readline's emitter setup only accepts a ReadStream; the fake terminal carries the same
+  // surface (an EventEmitter the test drives keypresses through), so the seam is widened here.
+  readline.emitKeypressEvents(stdin as unknown as NodeJS.ReadStream);
+  stdin.setRawMode(true);
+  stdin.resume?.();
 
   const timer = setInterval(render, 1000);
   render();
@@ -306,7 +342,7 @@ export async function runTui(root: string): Promise<void> {
     // The reload trigger may have fired between `start()` and this await; the executor
     // resolves immediately in that case so both orderings reach the same teardown.
     if (reloadRequested) resolve();
-    process.stdin.on("keypress", (str: string | undefined, key: readline.Key) => {
+    stdin.on("keypress", (str: string | undefined, key: readline.Key) => {
       if (key.ctrl && key.name === "c") {
         resolve();
         return;
@@ -549,9 +585,9 @@ export async function runTui(root: string): Promise<void> {
   });
 
   clearInterval(timer);
-  process.stdin.setRawMode(false);
-  process.stdin.pause();
-  process.stdout.write("\n");
+  stdin.setRawMode(false);
+  stdin.pause?.();
+  stdout.write("\n");
   reloadWatch.stop();
-  if (reloadRequested) reexecSelf();
+  if (reloadRequested) (seams.watch?.reexec ?? reexecSelf)();
 }
