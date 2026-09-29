@@ -115,6 +115,25 @@ function rewriteMarker(root: string, marker: LandingInFlight & { changes: Landin
   }
 }
 
+/** Read-modify-write one change's record in the live marker — the skeleton setLandingChangeStatus
+ * and setLandingStage share: read the marker off disk, hand `apply` the change named by `role`,
+ * and write the marker back through rewriteMarker. A read-modify-write of the file, not a
+ * rewrite from memory, so the stage a gate last set (the same process) survives. A no-op when
+ * there is no marker or it has no record for `role`; `apply` returns false to skip the write
+ * (setLandingStage's guard against re-staging an unchanged stage). Never throws
+ * (rewriteMarker). */
+function updateLandingChange(
+  root: string,
+  role: string,
+  apply: (change: LandingChange) => boolean | void,
+): void {
+  const marker = readLandingMarker(root);
+  const change = marker?.changes?.find((c) => c.role === role);
+  if (!marker?.changes || !change) return;
+  if (apply(change) === false) return;
+  rewriteMarker(root, { ...marker, changes: marker.changes });
+}
+
 /** Advance one change's record in the live marker — the vet's move to `vetted` and the merge's
  * per-change status hook (BatchContext.onChangeStatus). A read-modify-write of the file, not a
  * rewrite from memory, so the stage a gate last set (setLandingStage, the same process)
@@ -122,16 +141,13 @@ function rewriteMarker(root: string, marker: LandingInFlight & { changes: Landin
  * `startedAt` if it has none. A no-op when there is no marker or it has no record for `role`.
  * Never throws (rewriteMarker). */
 export function setLandingChangeStatus(root: string, role: string, status: LandingChangeStatus): void {
-  const marker = readLandingMarker(root);
-  const changes = marker?.changes;
-  const change = changes?.find((c) => c.role === role);
-  if (!marker || !changes || !change) return;
-  change.status = status;
-  if (status === "landing") {
-    change.startedAt ??= Date.now();
-    change.stage = "merging";
-  }
-  rewriteMarker(root, { ...marker, changes });
+  updateLandingChange(root, role, (change) => {
+    change.status = status;
+    if (status === "landing") {
+      change.startedAt ??= Date.now();
+      change.stage = "merging";
+    }
+  });
 }
 
 /** Add one change's record as its vet starts: each change is its own task, so records come and
@@ -187,11 +203,11 @@ export function removeLandingChange(root: string, role: string): void {
  * changes: sha and startedAt are what the
  * snapshot cross-check and the landing's elapsed read. */
 export function setLandingStage(root: string, role: string, stage: LandingStage): void {
-  const marker = readLandingMarker(root);
-  const change = marker?.changes?.find((c) => c.role === role);
-  if (!marker?.changes || !change || change.stage === stage) return;
-  change.stage = stage;
-  rewriteMarker(root, { ...marker, changes: marker.changes });
+  updateLandingChange(root, role, (change) => {
+    if (change.stage === stage) return false; // already there — keep the marker as written
+    change.stage = stage;
+    return true;
+  });
 }
 
 /** The marker's per-change records, whichever shape it has: `changes` as written, or — for a
