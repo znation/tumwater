@@ -268,12 +268,6 @@ export function vetLimit(maxConcurrent: number): number {
   return Math.max(1, maxConcurrent - 1);
 }
 
-/** Start a vet, in queue order, for every queued entry whose role the pipeline does not already
- * hold, up to vetLimit — the shared semaphore bounds how many of them run. The torn-head drop comes
- * first, and each entry is deduped against main before its vet starts: an entry whose sha main
- * already holds (a crash between the fast-forward and the drop) is dropped without a run, with
- * its marker record; a crash mid-vet leaves both entry and ref, so the entry is vetted again —
- * the established crash semantics. */
 /** Already-merged verdicts cached per (root, sha) against the main head they were computed
  * against. drainVetting re-runs its dedupe against main every poll, but a queued entry's sha is
  * fixed and merge-base --is-ancestor against the same head always returns the same answer — the
@@ -302,6 +296,12 @@ async function mergedIntoMain(root: string, sha: string, mainBranch: string, hea
   return merged;
 }
 
+/** Start a vet, in queue order, for every queued entry whose role the pipeline does not already
+ * hold, up to vetLimit — the shared semaphore bounds how many of them run. The torn-head drop comes
+ * first, and each entry is deduped against main before its vet starts: an entry whose sha main
+ * already holds (a crash between the fast-forward and the drop) is dropped without a run, with
+ * its marker record; a crash mid-vet leaves both entry and ref, so the entry is vetted again —
+ * the established crash semantics. */
 async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
   dropTornHead(ctx.root);
   const queue = queuedLandingFiles(ctx.root);
