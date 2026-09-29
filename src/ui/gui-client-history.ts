@@ -29,7 +29,7 @@ export const GUI_CLIENT_HISTORY_JS = `  // Fetch the tick history on tab activat
         ).join("") + "</tbody></table>";
     } catch (e) {
       // Same guard as fetchReport and fetchFailures: name the endpoint, status, server error.
-      panel.innerHTML = "<span class='muted'>history unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
+      panelUnavailable(panel, "history", e);
     }
   }
 `;

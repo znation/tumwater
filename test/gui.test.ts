@@ -779,8 +779,12 @@ test("the dashboard page checks r.ok before parsing both on-demand panel fetches
   assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
   assert.match(GUI_PAGE, /await postJson\("\/api\/budget", \{ maxDailyCostUsd: value \}\)/);
   assert.match(GUI_PAGE, /await postJson\("\/api\/pause", \{ paused: target \}\)/);
-  // The report panel surfaces the same message instead of a bare "unavailable".
-  assert.match(GUI_PAGE, /report unavailable" \+ \(e && e\.message/);
+  // The three fetch-on-demand tabs' catch renders share one panelUnavailable helper
+  // (muted "<label> unavailable" + the apiError message) instead of three drifted copies.
+  assert.match(GUI_PAGE, /const panelUnavailable = \(panel, label, e\)/);
+  assert.match(GUI_PAGE, /panelUnavailable\(panel, "report", e\)/);
+  assert.match(GUI_PAGE, /panelUnavailable\(panel, "failures", e\)/);
+  assert.match(GUI_PAGE, /panelUnavailable\(panel, "history", e\)/);
 });
 
 test("apiError renders the operator-facing message for every error-body shape", async () => {

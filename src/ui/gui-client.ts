@@ -60,6 +60,11 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     return apiFetch(path, { method: "POST", headers: { "content-type": "application/json" },
                            body: JSON.stringify(payload) });
   }
+  // The catch-side render the three fetch-on-demand tabs share (fetchReport, fetchFailures,
+  // fetchHistory): a muted "<label> unavailable" line carrying the apiError message when one
+  // exists. One home so the guard's shape cannot drift per tab — the three copies it replaces
+  // had already grown three different comments over one identical expression.
+  const panelUnavailable = (panel, label, e) => { panel.innerHTML = "<span class='muted'>" + label + " unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>"; };
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   // Money for the page: $ + two decimals — the client-side copy of src/text.ts's usd() rule
   // (the page cannot import TS, per the fmtTokens precedent). One home shared by the status
@@ -177,7 +182,7 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
       panel.innerHTML = "<span class='muted'>failure digest — last 14 days — click the tab again to refresh</span>\\n" + esc(d.markdown || "(no digest)");
     } catch (e) {
       // Same guard as fetchReport: name the endpoint, status, and server error.
-      panel.innerHTML = "<span class='muted'>failures unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
+      panelUnavailable(panel, "failures", e);
     }
   }
 

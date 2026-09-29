@@ -179,7 +179,7 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
     } catch (e) {
       // A failed poll is no longer a bare "unavailable": the apiError message names the
       // endpoint, status, and the server's error (a network failure says Failed to fetch).
-      panel.innerHTML = "<span class='muted'>report unavailable" + (e && e.message ? " — " + esc(e.message) : "") + "</span>";
+      panelUnavailable(panel, "report", e);
     }
   }
 `;

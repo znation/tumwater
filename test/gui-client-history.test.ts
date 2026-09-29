@@ -14,21 +14,23 @@ function makeDocument(panel: Panel) {
   return { getElementById: (id: string) => (id === "history" ? panel : null) };
 }
 
-// The client's real esc, extracted from GUI_CLIENT_JS so the tests assert against the
-// escaping the dashboard actually ships, not a lookalike copy.
-function buildClient(escSource: string) {
+// The client's real esc and shared panelUnavailable catch-render, extracted from
+// GUI_CLIENT_JS so the tests assert against the code the dashboard actually ships, not a
+// lookalike copy. fetchHistory (a splice) reaches both through gui-client.ts's concatenation.
+function buildClient(escSource: string, panelUnavailableSource: string) {
   return (getJson: unknown, panel: Panel) => {
     const body = new Function(
       "getJson",
       "document",
-      `${escSource}\n${GUI_CLIENT_HISTORY_JS}\nreturn { fetchHistory };`,
+      `${escSource}\n${panelUnavailableSource}\n${GUI_CLIENT_HISTORY_JS}\nreturn { fetchHistory };`,
     ) as (gj: unknown, doc: unknown) => { fetchHistory(): Promise<void> };
     return body(getJson, makeDocument(panel));
   };
 }
 
 const ESC_LINE = GUI_CLIENT_JS.match(/const esc = .*$/m)![0];
-const makeClient = buildClient(ESC_LINE);
+const PANEL_UNAVAILABLE_LINE = GUI_CLIENT_JS.match(/const panelUnavailable = .*$/m)![0];
+const makeClient = buildClient(ESC_LINE, PANEL_UNAVAILABLE_LINE);
 
 test("GUI_CLIENT_JS carries the history module as a byte-exact contiguous splice", async () => {
   assert.equal(
