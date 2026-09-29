@@ -151,7 +151,11 @@ export function pollRateLimitHold(
       escalation: next.escalation,
     });
   } else if (prev.until !== null && next.until === null) {
-    logEvent(root, { loop: "harness", type: "rate_limit_resumed" });
+    // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
+    // the lift must be able to name what actually ended too — "429 hold lifted" after a
+    // connection-error hold is the same lie the hold line's kind split removed
+    // (BUGS.md 2026-09-29).
+    logEvent(root, { loop: "harness", type: "rate_limit_resumed", kind: next.kind });
   }
   return next;
 }

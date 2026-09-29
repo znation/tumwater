@@ -166,8 +166,14 @@ export function formatEvent(e: HarnessEvent): string {
         return line(`backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`);
       return line(`429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`);
     }
-    case "rate_limit_resumed":
+    case "rate_limit_resumed": {
+      // The ended hold's kind rides the resumed event (pollRateLimitHold logs it), so the lift
+      // names what actually ended — the same split as the hold line above: "429 hold lifted"
+      // after a connection-error hold would be a lie about a connection error.
+      if (e.kind && e.kind !== "rate-limit")
+        return line(`backend hold lifted (${backendKindPhrase(e.kind)}) — role loops tick again`);
       return line(`429 hold lifted — role loops tick again`);
+    }
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return line(`maxConcurrent changed: ${e.from} → ${e.to}`);

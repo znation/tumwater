@@ -340,6 +340,10 @@ test("pollRateLimitHold trips on two roles' same-kind backend failures and names
   const rlAt = now + 10 * 60_000;
   hold = pollRateLimitHold(root, hold, runners, rlAt);
   assert.equal(hold.until, null, "the connection hold re-opened at its deadline");
+  // The resumed event carries the ended hold's kind (BUGS.md 2026-09-29), so the lift can
+  // name the connection error it lifted instead of a 429 that never happened.
+  const connectionResumed = holdEvents().filter((e) => e.type === "rate_limit_resumed").at(-1);
+  assert.equal(connectionResumed?.kind, "connection", "the resumed event carries the ended hold's kind");
   runners[0]!.lastRateLimit = { at: rlAt + 2_000 };
   runners[1]!.lastRateLimit = { at: rlAt + 2_000 };
   hold = pollRateLimitHold(root, hold, runners, rlAt + 2_000);

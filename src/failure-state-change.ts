@@ -99,7 +99,12 @@ export function describeStateChange(ev: HarnessEvent): string {
           : `429 hold ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;
       break;
     case "rate_limit_resumed":
-      text = "429 hold lifted — role loops tick again";
+      // Same split as the hold line above (and the event feed's rendering): the resumed event
+      // carries the ended hold's kind, so a backend hold's lift names itself.
+      text =
+        ev.kind && ev.kind !== "rate-limit"
+          ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — role loops tick again`
+          : "429 hold lifted — role loops tick again";
       break;
     case "max_concurrent_changed":
       text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;

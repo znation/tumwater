@@ -132,6 +132,12 @@ test("rate_limit_hold renders the hold duration, relapse, and at most four roles
   );
   // A malformed payload (no roles array) reads as "?", never crashes.
   assert.equal(describeStateChange(ev({ type: "rate_limit_hold", holdMs: 60_000 })), "429 hold for 60s — ?");
+  // The resumed event carries the ended hold's kind (BUGS.md 2026-09-29), so a backend
+  // hold's lift names itself; a kindless line keeps the historical 429 wording.
+  assert.equal(
+    describeStateChange(ev({ type: "rate_limit_resumed", kind: "server" })),
+    "backend hold lifted (server error) — role loops tick again",
+  );
   assert.equal(
     describeStateChange(ev({ type: "rate_limit_resumed" })),
     "429 hold lifted — role loops tick again",

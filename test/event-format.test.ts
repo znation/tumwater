@@ -719,4 +719,20 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
     ts: 0, loop: "harness", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
   } as never);
   assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops and landings start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
+
+  // The lift names what actually ended (BUGS.md 2026-09-29): the resumed event carries the
+  // ended hold's kind, so a backend hold's re-open must not render as "429 hold lifted".
+  const backendResumed = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "connection",
+  } as never);
+  assert.match(
+    backendResumed,
+    /harness\s+backend hold lifted \(connection error\) — role loops tick again$/,
+    `backend resumed line: ${backendResumed}`,
+  );
+  // A rate-limit hold's lift (and a torn resumed line with no kind) keeps the historical wording.
+  const rlResumed = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "rate-limit",
+  } as never);
+  assert.match(rlResumed, /429 hold lifted — role loops tick again$/, `rate-limit resumed line: ${rlResumed}`);
 });
