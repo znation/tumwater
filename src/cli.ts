@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   fail,
   say,
@@ -26,6 +26,7 @@ import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic } from "./help.js";
+import { packageVersion } from "./version.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
 // would run main(), so tests pin the topics against help.ts directly.
@@ -209,10 +210,15 @@ async function main(): Promise<void> {
       // A stray flag fails like every other command's: `tumwater version --json` (a plausible
       // slip from `status --json`) must not print a version as if it had answered the query.
       rejectUnknownArgs("version", args, []);
-      const pkg = JSON.parse(
-        fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
-      ) as { version: string };
-      say(pkg.version);
+      // The read lives in version.ts (testable; cli.ts runs main() on import). A broken
+      // install — a missing or malformed package.json — fails with the reason instead of a
+      // raw stack trace, and a non-string version fails instead of printing "undefined".
+      const { version, problem } = packageVersion(
+        fileURLToPath(new URL("../../package.json", import.meta.url)),
+      );
+      if (problem !== undefined || version === undefined)
+        fail(problem ?? "package.json carries no version field (the running harness's install looks broken)");
+      say(version);
       break;
     }
     case "help":
