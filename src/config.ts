@@ -57,7 +57,11 @@ export function defaultConfig(): TumwaterConfig {
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,
     minTickIntervalSeconds: 20,
-    tickTimeoutSeconds: 1800,
+    // Four hours: the largest tick a hosted model legitimately took and still landed work
+    // measured 185 minutes (BUGS.md 2026-09-29), so 30 minutes discarded real work and burned
+    // every resume before the task could finish. A run that stops making progress is still
+    // bounded earlier by the quiet watchdog, not by this cap.
+    tickTimeoutSeconds: 4 * 60 * 60,
     quietTimeoutSeconds: 1800,
     // Five minutes of command silence is well past any legitimate prefill or slow scan, and
     // lands long before the quiet watchdog's kill — the warning names what is hung while there

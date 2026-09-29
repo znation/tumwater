@@ -31,6 +31,18 @@ import { errorMessage } from "../src/text.js";
 import { withCountedReads } from "./fs-faults.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 
+// The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
+// telemetry at 185 minutes). A shipped default at or below it re-kills every such tick and
+// restarts the same long task from scratch — the 2026-09-22 meltdown shape.
+const LONGEST_LEGITIMATE_TICK_S = 185 * 60;
+
+test("the shipped tick budget clears the longest legitimate observed tick", () => {
+  assert.ok(
+    defaultConfig().tickTimeoutSeconds > LONGEST_LEGITIMATE_TICK_S,
+    `tickTimeoutSeconds ${defaultConfig().tickTimeoutSeconds}s must exceed the longest legitimate tick (${LONGEST_LEGITIMATE_TICK_S}s)`,
+  );
+});
+
 test("defaultConfig enables every role including director", () => {
   const config = defaultConfig();
   for (const id of allRoleIds()) {

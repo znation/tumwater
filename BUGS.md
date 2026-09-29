@@ -12,13 +12,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Cause:** This is deliberate, not lost state: src/loop-state.ts documents that `dayCostUsd` is "deliberately NOT zeroed: the budget is a safety valve, not an observation window" — zeroing it would let an operator reset their way past the daily spend cap. Only the help line is wrong.
 - **Fix direction:** Reword `tumwater help reset-counters` (src/help.ts) to say what is zeroed and what is not, e.g. "Zero lifetime ticks/commits/tokens/cost (fresh observation window); today's budget spend is kept". Do not change the behavior.
 
-### The shipped `tickTimeoutSeconds` default (1800 s) is shorter than ticks on the current hosted model legitimately take, so a legitimately long tick burns its whole resume streak and then restarts the same long task fresh (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day)
-
-- **Symptom:** Since 2026-09-23, 29 ticks landed work after running longer than 30 minutes under the default 1800 s budget (the longest: telemetry at 185 min) — each would have been killed at 30 min, resumed up to `QUIET_KILL_RESUME_LIMIT` (3) times by the fix below, then abandoned to a fresh tick that re-derives the same long task from scratch.
-- **Reproduce:** src/config.ts `defaultConfig` sets `tickTimeoutSeconds: 1800`; the live config raises it to 54000 as a workaround. A fixture run that needs ~31 min under the default ends `quiet_killed` four times in a row and never lands.
-- **Cause:** The default was set before the hosted model's legitimate tick duration was known; the 2026-09-22 meltdown (97 timeouts in 8 hours) was its first large observation.
-- **Fix direction:** Raise the default above the observed maximum (185 min) — e.g. 4 h — now that a timeout of a progressing run resumes instead of discarding (the Fixed entry below). Note the interplay with the zero-byte entry above (now fixed 2026-09-29): its unbounded window is gone — a byte-silent run is reaped at `max(2 × quietTimeoutSeconds, 30 min)` regardless of this knob — so raising this default no longer widens any unbounded path.
-
 ### A fleet-wide timeout storm raises no alarm: three or more roles timing out consecutively means `tickTimeoutSeconds` does not fit the serving model, but only each role's own `consecutive tick failures` warning fires (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day)
 
 - **Symptom:** On 2026-09-22 all 14 roles timed out at the 1800 s default for 8 hours; the only signal was 14 independent per-role streak warnings — nothing fleet-wide named the shared cause.
@@ -27,6 +20,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Fix direction:** When several roles' consecutive errors share one normalized cause (failure-report's `normalizeClusterKey` already clusters `timed out after <dur>`), emit one fleet-level warning naming the config knob — orchestrator or digest scope.
 
 ## Fixed
+
+### The shipped `tickTimeoutSeconds` default (1800 s) is shorter than ticks on the current hosted model legitimately take, so a legitimately long tick burns its whole resume streak and then restarts the same long task fresh (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day, fixed 2026-09-29)
+
+- **Symptom:** Since 2026-09-23, 29 ticks landed work after running longer than 30 minutes under the default 1800 s budget (the longest: telemetry at 185 min) — each would have been killed at 30 min, resumed up to `QUIET_KILL_RESUME_LIMIT` (3) times by the fix below, then abandoned to a fresh tick that re-derives the same long task from scratch.
+- **Reproduce:** src/config.ts `defaultConfig` set `tickTimeoutSeconds: 1800`; the live config raised it to 54000 as a workaround. A fixture run that needs ~31 min under the default ends `quiet_killed` four times in a row and never lands.
+- **Cause:** The default was set before the hosted model's legitimate tick duration was known; the 2026-09-22 meltdown (97 timeouts in 8 hours) was its first large observation.
+- **Fixed 2026-09-29 by bugfix loop:** Raised the shipped default to 4 h (`tickTimeoutSeconds: 4 * 60 * 60` in src/config.ts) — above the observed 185-minute maximum, now that a timeout of a progressing run resumes instead of discarding (the entry below) and a byte-silent run is reaped at `max(2 × quietTimeoutSeconds, 30 min)` regardless of this knob, so no unbounded path widens. Regression test in test/config.test.ts pins the default above the longest legitimate observed tick.
+- **Validation gap:** real-run-needed (closest tag) — no offline path could confirm the shipped default was too short: the bug only became visible as live fleet telemetry showing 29 legitimate ticks outlasting the 1800 s budget, which is what fixed the "legitimate" threshold.
 
 ### At a raised tickTimeoutSeconds a run that never emits a byte has no watchdog: the quiet kill exempts zero-byte runs on the assumption that the tick timeout bounds them, which the live 54000 s config breaks (found by human commit-history analysis 2026-09-29, fixed 2026-09-29)
 
