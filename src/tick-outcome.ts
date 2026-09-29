@@ -58,7 +58,7 @@ export function restoreMidTickWake(s: LoopState): boolean {
  * tick prompt injects (tick-prompt.ts's buildRejectedReviewNote) and the same-head strike
  * counter reads (review.ts's unreviewFailures). Mutates `s` in place; the timestamp is
  * stamped here so every call site shares one Date.now() read and the shape stays in one place
- * (types.ts's lastReview). */
+ * (loop-state.ts's lastReview). */
 export function recordReview(s: LoopState, verdict: string, reasons: string[], head?: string): void {
   s.lastReview = { verdict, reasons, ...(head === undefined ? {} : { head }), at: Date.now() };
 }
