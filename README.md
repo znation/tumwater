@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`78477273`): build clean, suite 2060/2061 (1 skipped).
+Current main (`713af4aa`): build clean, suite 2067/2068 (1 skipped).
 <!-- tumwater:status:end -->
 
 ## Usage
