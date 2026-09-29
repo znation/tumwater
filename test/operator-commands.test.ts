@@ -1,13 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import {
   cmdAbort,
   cmdPause,
   cmdResetCounters,
   cmdResume,
+  cmdStop,
   cmdWake,
+  signalOrchestrator,
 } from "../src/ui/operator-commands.js";
+import { pidAlive } from "../src/process.js";
 import { defaultConfig } from "../src/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
@@ -369,4 +373,90 @@ test("cmdPause --role --for writes the role marker with the deadline and overwri
   assert.match(second.stdout, /role clean paused for 1h —/);
   const now = readUntil();
   assert.ok(now < first && now <= Date.now() + 60 * 60_000 + 5_000, "the deadline was shortened to ~1h");
+});
+
+// --- stop ---
+
+// cmdStop is the one operator command that reaches a real process instead of a disk marker,
+// so until now it was only exercised by spawning the whole CLI (test/cli.test.ts), which
+// cannot assert that the signal landed on the recorded pid or pin the wording in-process.
+
+test("cmdStop fails closed with no info file, and with a torn one naming a dead pid", async () => {
+  const root = tmpdir();
+  const absent = await expectFail(() => cmdStop(root));
+  assert.equal(absent.code, 1);
+  assert.match(absent.stderr, /no harness is running/);
+
+  // A torn or stale info file (a pid that is not running) is the same "nothing to stop".
+  writeJsonFile(orchestratorStatePath(root), { pid: 999_999_999, startedAt: Date.now(), roles: [] });
+  const dead = await expectFail(() => cmdStop(root));
+  assert.equal(dead.code, 1);
+  assert.match(dead.stderr, /no harness is running/);
+});
+
+test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", async () => {
+  const root = tmpdir();
+  // A real sleeper plays the orchestrator: alive for the liveness check, gone after the stop.
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const deadline = Date.now() + 5_000;
+  while (child.pid === undefined || !pidAlive(child.pid)) {
+    if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  writeJsonFile(orchestratorStatePath(root), { pid: child.pid, startedAt: Date.now(), roles: [] });
+  try {
+    const { stdout } = await expectOk(() => cmdStop(root));
+    assert.match(stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
+    const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve) =>
+      child.once("exit", (code, signal) => resolve({ code, signal })),
+    );
+    assert.equal(exit.signal, "SIGTERM", "the recorded pid received SIGTERM, the same path as Ctrl+C");
+  } finally {
+    try {
+      child.kill("SIGKILL");
+    } catch {
+      // Already exited.
+    }
+  }
+});
+
+test("cmdStop reports a pid that died between the check and the signal as already stopped", async (t) => {
+  const root = tmpdir();
+  // The race window: pidAlive's signal-0 probe (passed through) says the recorded pid is
+  // alive, but the SIGTERM itself lands on nothing (ESRCH). Stop's goal is already met, so
+  // the command must exit clean with the honest wording, not a raw kill error.
+  const kill = t.mock.method(process, "kill", ((_pid: number, signal?: NodeJS.Signals | number) => {
+    if (signal === 0) return true;
+    const err = new Error("no such process") as NodeJS.ErrnoException;
+    err.code = "ESRCH";
+    throw err;
+  }) as typeof process.kill);
+  writeJsonFile(orchestratorStatePath(root), { pid: process.pid, startedAt: Date.now(), roles: [] });
+
+  const { stdout } = await expectOk(() => cmdStop(root));
+  assert.match(stdout, /the orchestrator exited before the stop signal landed — nothing is running/);
+  assert.deepEqual(
+    kill.mock.calls.map((c) => c.arguments),
+    [
+      [process.pid, 0],
+      [process.pid, "SIGTERM"],
+    ],
+    "the liveness probe ran signal-0 and the stop signal ran SIGTERM on the recorded pid",
+  );
+});
+
+test("signalOrchestrator names the pid and the remedy when delivery fails for another reason", (t) => {
+  const kill = t.mock.method(process, "kill", (() => {
+    const err = new Error("operation not permitted") as NodeJS.ErrnoException;
+    err.code = "EPERM";
+    throw err;
+  }) as typeof process.kill);
+  assert.throws(() => signalOrchestrator(4242), /pid 4242.*kill 4242/s, "the message names the pid twice: once as the subject, once as the remedy");
+  assert.deepEqual(kill.mock.calls.map((c) => c.arguments), [[4242, "SIGTERM"]]);
+});
+
+test("signalOrchestrator reads a vanished pid as gone, never throwing", () => {
+  // A pid beyond any pid space (Linux caps pids at 2^22, macOS at 99999): the signal finds
+  // nothing and the ESRCH mapping answers "gone" — the caller reports the goal as met.
+  assert.equal(signalOrchestrator(999_999_999), "gone");
 });
