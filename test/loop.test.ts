@@ -17,7 +17,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, fakePiIdle, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
@@ -334,12 +334,9 @@ test("cut-off resumes stop after the streak limit and fall back to backoff", asy
   // Every run gets cut off; a session file exists so resumes are actually attempted.
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = fakePi(
-    [
-      `flags=""`,
-      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-      `echo "run:$flags" >> "${argsFile}"`,
-      `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
-    ].join("\n"),
+    [logFlagsTo(argsFile), `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`].join(
+      "\n",
+    ),
   );
   try {
     fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
@@ -631,7 +628,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
   const restore = fakePi(
     [
       TOUCH_SESSION,
-      `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${argsFile}"`,
+      logFlagsTo(argsFile),
       APPROVE_PI,
       `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
       `  printf '%s\n' '${assistantLine("SUMMARY: Add the x marker file\nWHY: the harness needed a fixture\nRISK: none\nVERIFIED: none")}'`,
@@ -709,9 +706,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
       [
         // The resumed tick's commit goes through the review gate before merging.
         APPROVE_PI,
-        `flags=""`,
-        `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-        `echo "run:$flags" >> "${argsFile}"`,
+        logFlagsTo(argsFile),
         `printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'`,
       ].join("\n"),
     );
@@ -780,9 +775,7 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     restore = fakePi(
       [
         APPROVE_PI,
-        `flags=""`,
-        `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-        `echo "run:$flags" >> "${argsFile}"`,
+        logFlagsTo(argsFile),
         `for a in "$@"; do case "$a" in *"hang watchdog"*) printf '%s\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'; exit 0;; esac; done`,
         `exec sleep 30`,
       ].join("\n"),

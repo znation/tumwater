@@ -23,6 +23,14 @@ delete process.env.TUMWATER_PI_BIN;
  * the session dir must be seeded cannot drift between the copies. */
 export const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--session-dir" ]; then mkdir -p "$a"; touch "$a/s.jsonl"; fi; prev="$a"; done`;
 
+/** A shell fragment for fake-pi scripts: record which session-resume flags pi was invoked
+ * with (`--continue`/`-n`), appending one `run:<flags>` line per run to `file`. The loop and
+ * pi tests repeated this fragment verbatim (seven copies across four files); shared here so
+ * a change to how the resume flags are observed cannot drift between the copies. */
+export function logFlagsTo(file: string): string {
+  return `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${file}"`;
+}
+
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.
  * The script runs with the worktree as cwd. Returns a restore function. */
 export function fakePi(script: string): () => void {

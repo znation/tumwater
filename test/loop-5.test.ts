@@ -19,7 +19,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, logFlagsTo } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 
@@ -69,12 +69,7 @@ test("resume falls back to a fresh tick when there is no session to continue", a
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = fakePi(
-    [
-      `flags=""`,
-      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-      `echo "run:$flags" >> "${argsFile}"`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
+    [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
   );
   try {
     const runner = makeLoopRunner(repo, "improve");

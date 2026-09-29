@@ -22,7 +22,7 @@ import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, logFlagsTo } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -721,12 +721,7 @@ test("every tick starts a fresh pi session", async () => {
   const argsFile = path.join(tmpdir(), "argv.log");
   // The prompt argument spans many lines, so record only the flags, one run per line.
   const restore = fakePi(
-    [
-      `flags=""`,
-      `for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done`,
-      `echo "run:$flags" >> "${argsFile}"`,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
+    [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
   );
   try {
     const runner = makeLoopRunner(repo, "clean");

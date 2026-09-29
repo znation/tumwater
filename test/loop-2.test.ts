@@ -19,7 +19,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
 
@@ -612,7 +612,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   const restore = fakePi(
     [
       TOUCH_SESSION,
-      `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${argsFile}"`,
+      logFlagsTo(argsFile),
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
       `  echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2`,
