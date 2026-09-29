@@ -206,3 +206,77 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
     restore();
   }
 });
+
+// The `--role` guards of `run` (cmdRun): scoping is a once-round concept, the filter is
+// validated against the ENABLED role ids, and the startup gate is asked before any of it.
+// These were pinned only in the e2e tier (orchestrator-once.e2e.test.ts), which `npm test`
+// does not run — so a regression here sailed through the gate the suite actually enforces.
+// All four fail inside the supervisor parent before any generation spawns, so each run is a
+// fast, deterministic child exit with nothing to reap.
+
+test("run --role without --once fails with its own message before any fleet boots", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run role guard");
+
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run", "--role", "clean");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--role is only valid with --once/,
+      "daemon `run --role` stays an error: scoping is a once-round concept");
+    // The guard fires before the supervisor spawns a generation: nothing started, nothing died.
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "no orchestrator marker was written");
+    assert.equal(readEvents(repo).length, 0, "no events — the fleet never booted");
+  } finally {
+    restore();
+  }
+});
+
+test("run --once --role rejects an unknown id with the shared unknown-role wording", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run role unknown");
+
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run", "--once", "--role", "no-such-loop");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /unknown role: no-such-loop \(valid ids: /,
+      "an unknown id fails fast with the one unknownRoleMessage wording");
+    assert.equal(readEvents(repo).length, 0, "no events — the round never started");
+  } finally {
+    restore();
+  }
+});
+
+test("run --once --role validates against enabled ids: a disabled built-in reads as unknown", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run role disabled");
+
+  // A scoped round that booted a disabled role's runner would run nothing while claiming to
+  // serve the operator who just queued that loop a prompt — so a disabled id must fail here,
+  // with the same wording as a wholly unknown id (the catalog is not the target list).
+  const cfg = defaultConfig();
+  cfg.roles.clean!.enabled = false;
+  writeConfig(repo, cfg);
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run", "--once", "--role", "clean");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /unknown role: clean \(valid ids: /,
+      "a disabled id is not a role this round can run");
+    assert.equal(readEvents(repo).length, 0, "no events — the round never started");
+  } finally {
+    restore();
+  }
+});
+
+test("the startup gate is asked before the --role guards: a not-ready repo reports the gate", async () => {
+  // A git repo with commits but no tumwater.json: if the --role guard ran first, stderr would
+  // say "--role is only valid with --once"; the gate running first must name the real problem.
+  const repo = makeRepo();
+
+  const r = await cli(repo, "run", "--role", "clean");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /not initialized/, "the gate's verdict, not the flag's");
+  assert.equal(readEvents(repo).length, 0, "no events — nothing booted to trace");
+});
