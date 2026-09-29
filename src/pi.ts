@@ -7,7 +7,8 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
-import { PiStreamParser } from "./pi-stream.js";
+import { PiStreamParser, type BackendFailureKind } from "./pi-stream.js";
+export type { BackendFailureKind } from "./pi-stream.js";
 
 /** True when the command's stdout cannot reach pi live while the command runs, so a stretch of
  * silence carries no hang signal and the stall warning would be a false alarm. Two shapes do
@@ -109,6 +110,15 @@ export interface PiRunResult {
    * "later": one retry after retryAfterSeconds usually succeeds, so the loop's transient
    * retry covers it instead of discarding the tick's work. */
   transientRateLimit: boolean;
+  /** True when any event reported a provider-wide failure that is not rate limiting — the
+   * connection down, a 5xx, the model failing to load (src/pi-stream.ts TRANSIENT_BACKEND).
+   * A transient failure of the world like the 429 flag, but with no Retry-After hint to wait
+   * out: the fleet-wide hold (src/rate-limit-hold.ts), not the per-run retry, answers it. */
+  transientBackend: boolean;
+  /** Which kind of backend failure the run ended on (src/pi-stream.ts backendKind's
+   * classification) — the fleet-wide hold groups its storms by kind. Undefined when
+   * transientBackend is false. */
+  backendKind?: BackendFailureKind;
   /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
    * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
   retryAfterSeconds?: number;
@@ -424,6 +434,8 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       contextExceeded: parser.contextExceeded,
       transientServerTimeout: parser.transientServerTimeout,
       transientRateLimit: parser.transientRateLimit,
+      transientBackend: parser.transientBackend,
+      backendKind: parser.backendFailureKind,
       retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
       finalMessageContentless: parser.finalMessageContentless,

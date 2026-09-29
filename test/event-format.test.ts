@@ -696,3 +696,27 @@ test("usageText renders cost-only usage without a dangling separator", () => {
   const noUsage = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 6, result: "changed" } as never);
   assert.doesNotMatch(noUsage, / · /, `a usage-free tick_end must carry no usage clause: ${noUsage}`);
 });
+
+// The hold's generalization (PLANS.md 2026-09-29): a backend-failure kind renders as a backend
+// hold naming the kind, while the rate-limit kind keeps the exact wording every historical
+// event has.
+test("formatEvent renders a backend hold with its kind, and keeps the 429 wording for rate limits", () => {
+  const backend = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "rate_limit_hold",
+    kind: "connection",
+    roles: ["bugfix", "clean"],
+    holdMs: 60_000,
+    escalation: 0,
+  } as never);
+  assert.match(
+    backend,
+    /harness\s+backend hold \(connection error\) — bugfix, clean hit backend failures; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    `backend hold line: ${backend}`,
+  );
+  const modelLoad = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
+  } as never);
+  assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops and landings start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
+});

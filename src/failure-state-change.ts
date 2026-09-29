@@ -7,7 +7,7 @@
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
 import type { HarnessEvent } from "./events.js";
-import { budgetPhrase, rateLimitHoldPhrase, shortSha } from "./text.js";
+import { backendKindPhrase, budgetPhrase, rateLimitHoldPhrase, shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/fleet gates and the 429 hold, live-config edits, self-hosted redeploys, need-based
@@ -91,7 +91,12 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `role ${field(ev.role ?? "?")} resumed — it ticks again`;
       break;
     case "rate_limit_hold":
-      text = `429 hold ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;
+      // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
+      // the 429 wording; a backend-failure kind names itself.
+      text =
+        ev.kind && ev.kind !== "rate-limit"
+          ? `backend hold (${backendKindPhrase(ev.kind)}) ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`
+          : `429 hold ${rateLimitHoldPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;
       break;
     case "rate_limit_resumed":
       text = "429 hold lifted — role loops tick again";

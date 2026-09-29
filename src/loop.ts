@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
-import type { PiRunResult } from "./pi.js";
+import type { BackendFailureKind, PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { branchHead, isDirty, setRef } from "./git.js";
@@ -44,6 +44,13 @@ export class LoopRunner {
    * runner (src/tick-timing.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
     return this.usage.lastRateLimit;
+  }
+  /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick-usage.ts): the
+   * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
+   * kinds the fleet-wide hold groups storms by (src/rate-limit-hold.ts). Same runner surface,
+   * same consumer. */
+  get lastBackendFailure(): { at: number; kind: BackendFailureKind } | undefined {
+    return this.usage.lastBackendFailure;
   }
   /** Per-tick and lifetime usage accounting (src/tick-usage.ts): the turns/cost windows the
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the

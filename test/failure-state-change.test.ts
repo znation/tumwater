@@ -216,3 +216,22 @@ test("free fields are sliced to 24 chars and the whole line to 72", () => {
   assert.equal(line, `config changed: ${Array.from({ length: 6 }, () => "k".repeat(24)).join(", ")}`.slice(0, 72));
   assert.equal(line.length, 72);
 });
+
+// The backend-failure kinds (PLANS.md 2026-09-29) name themselves in the digest's line, while
+// the rate-limit kind keeps the "429 hold" wording every historical event has.
+test("rate_limit_hold renders backend kinds as backend holds, rate-limit as a 429 hold", () => {
+  assert.equal(
+    describeStateChange(ev({ type: "rate_limit_hold", kind: "connection", holdMs: 60_000, escalation: 0, roles: ["feature", "fix"] })),
+    "backend hold (connection error) for 60s — feature, fix",
+  );
+  assert.equal(
+    describeStateChange(ev({ type: "rate_limit_hold", kind: "server", holdMs: 180_000, escalation: 1, roles: ["feature"] })),
+    "backend hold (server error) for 3m (relapse 1) — feature",
+  );
+  // A torn line with no kind at all keeps the 429 wording too (the existing test above pins
+  // the normal rate-limit kind's wording).
+  assert.equal(
+    describeStateChange(ev({ type: "rate_limit_hold", holdMs: 60_000, escalation: 0, roles: ["feature", "fix"] })),
+    "429 hold for 60s — feature, fix",
+  );
+});

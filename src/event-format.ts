@@ -1,5 +1,5 @@
 import { eventUsage, type HarnessEvent } from "./events.js";
-import { budgetPhrase, compactTokens, padToWidth, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
+import { backendKindPhrase, budgetPhrase, compactTokens, padToWidth, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -158,8 +158,12 @@ export function formatEvent(e: HarnessEvent): string {
       return line(`role ${e.role ?? "?"} resumed — it ticks again`);
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
-      // handling the storm. Names who saw the 429s and when the fleet re-opens on its own.
+      // handling the storm. Names who saw the failure and when the fleet re-opens on its own.
+      // The rate-limit kind keeps the wording every historical event has; a backend-failure
+      // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = Array.isArray(e.roles) ? (e.roles as unknown[]).join(", ") : "several roles";
+      if (e.kind && e.kind !== "rate-limit")
+        return line(`backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`);
       return line(`429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`);
     }
     case "rate_limit_resumed":

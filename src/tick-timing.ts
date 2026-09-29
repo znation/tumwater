@@ -2,11 +2,11 @@ import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent, warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
-import type { LoopRunner } from "./loop.js";
 import type { LoopState } from "./loop-state.js";
 import type { InFlightLanding } from "./landing-drain.js";
 import { landingStatePath } from "./paths.js";
-import { rateLimitHold, type RateLimitHold } from "./rate-limit-hold.js";
+import { fleetHold, type FleetHold, type RateLimitObservation } from "./rate-limit-hold.js";
+import type { BackendFailureKind } from "./pi.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
 /** The orchestrator's tick-timing and scheduling seams (src/orchestrator.ts keeps the poll loop
@@ -107,25 +107,45 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
   });
 }
 
-/** One poll of the fleet-wide 429 hold (src/rate-limit-hold.ts): gather each runner's latest
- * run that ended on a provider 429 (LoopRunner.lastRateLimit — every role's, the director's
- * included, since its 429s are the same provider's evidence), step the pure gate, and log
- * exactly one event per crossing, like the budget gate's: `rate_limit_hold` on the way in
- * (which roles tripped it, for how long, and how many relapses deep it is) and
- * `rate_limit_resumed` when it re-opens at its own deadline. Returns the new hold for the
- * caller to keep. Exported as a unit-test seam, like runTimedRoleTick above. */
+/** One poll of the fleet-wide backend-failure hold (src/rate-limit-hold.ts): gather each
+ * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
+ * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
+ * timeout, server, and model-load kinds) — every role's, the director's included, since its
+ * failures are the same provider's evidence — step the pure gate, and log exactly one event
+ * per crossing, like the budget gate's: `rate_limit_hold` on the way in (which kind, which
+ * roles tripped it, for how long, and how many relapses deep it is) and `rate_limit_resumed`
+ * when it re-opens at its own deadline. Returns the new hold for the caller to keep. Exported
+ * as a unit-test seam, like runTimedRoleTick above. */
+/** A runner as the hold poll reads it: the role and its two episodic observations, both
+ * optional (a runner with neither simply contributes nothing). Structural, so tests stand in
+ * plain objects for the runner — its real getters are readonly, and only these fields are
+ * ever read. */
+export type HoldInputs = {
+  role: string;
+  lastRateLimit?: { at: number; retryAfterSeconds?: number };
+  lastBackendFailure?: { at: number; kind: BackendFailureKind };
+};
+
 export function pollRateLimitHold(
   root: string,
-  prev: RateLimitHold,
-  runners: readonly Pick<LoopRunner, "role" | "lastRateLimit">[],
+  prev: FleetHold,
+  runners: readonly HoldInputs[],
   now: number,
-): RateLimitHold {
-  const observations = runners.flatMap((r) => (r.lastRateLimit ? [{ role: r.role, ...r.lastRateLimit }] : []));
-  const next = rateLimitHold(prev, observations, now);
+): FleetHold {
+  const observations: RateLimitObservation[] = runners.flatMap((r) => [
+    ...(r.lastRateLimit
+      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
+      : []),
+    ...(r.lastBackendFailure
+      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      : []),
+  ]);
+  const next = fleetHold(prev, observations, now);
   if (prev.until === null && next.until !== null) {
     logEvent(root, {
       loop: "harness",
       type: "rate_limit_hold",
+      kind: next.kind,
       roles: next.roles,
       holdMs: next.until - now,
       escalation: next.escalation,

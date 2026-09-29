@@ -226,6 +226,26 @@ export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): strin
   return `for ${span}${relapse > 0 ? ` (relapse ${relapse})` : ""}`;
 }
 
+/** The human phrase for a fleet hold's backend-failure kind — the one home of that phrasing,
+ * shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
+ * lines (failure-state-change.ts), like rateLimitHoldPhrase above. A "rate-limit" hold (or a
+ * hold with no readable kind — a torn line) never renders through this: those keep the 429
+ * wording, which is the shape every historical event already has. */
+export function backendKindPhrase(kind: unknown): string {
+  switch (kind) {
+    case "connection":
+      return "connection error";
+    case "timeout":
+      return "request timed out";
+    case "server":
+      return "server error";
+    case "model-load":
+      return "model load failure";
+    default:
+      return "backend failure";
+  }
+}
+
 /** One-line description of a tool call from its name and args — shared by live progress data
  * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
  * warning (src/pi.ts names the hung command through it). Path-like keys reduce to the file

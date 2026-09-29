@@ -1,4 +1,4 @@
-import type { PiRunResult } from "./pi.js";
+import type { BackendFailureKind, PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { recordDailyCost } from "./budget.js";
 
@@ -30,10 +30,17 @@ export class TickUsage {
    * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
    * restart forgetting it costs nothing. Undefined until the first such run. */
   lastRateLimit?: { at: number; retryAfterSeconds?: number };
+  /** This loop's most recent pi run that ended on a provider-wide failure that was NOT rate
+   * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
+   * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
+   * the same rule and for the same consumer as lastRateLimit above: the fleet-wide hold
+   * (src/rate-limit-hold.ts) reads it every poll. In memory only, like lastRateLimit.
+   * Undefined until the first such run. */
+  lastBackendFailure?: { at: number; kind: BackendFailureKind };
 
-  /** Clear the per-tick windows (turns, costUsd) at tick start. lastRateLimit is NOT
-   * cleared: it is an episodic observation the orchestrator's hold consumes, not a
-   * per-tick window. */
+  /** Clear the per-tick windows (turns, costUsd) at tick start. lastRateLimit and
+   * lastBackendFailure are NOT cleared: they are episodic observations the orchestrator's
+   * hold consumes, not per-tick windows. */
   reset(): void {
     this.turns = 0;
     this.costUsd = 0;
@@ -56,5 +63,10 @@ export class TickUsage {
     // finished would stamp a 429 at its end, possibly hours late, and could trip a false storm.
     if (run.transientRateLimit && !run.ok)
       this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
+    // The backend-failure sibling of the stamp above, same rule: only a run that ENDED on the
+    // failure counts, and the kind travels with it (src/pi-stream.ts backendKind classified
+    // the text at parse time). A 429 never lands here — pi-stream checks rate-limit first.
+    if (run.transientBackend && !run.ok && run.backendKind)
+      this.lastBackendFailure = { at: Date.now(), kind: run.backendKind };
   }
 }

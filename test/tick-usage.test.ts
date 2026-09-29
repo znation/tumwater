@@ -87,3 +87,40 @@ test("reset clears the per-tick windows but keeps lastRateLimit for the orchestr
   assert.equal(u.turns, 2);
   assert.equal(u.costUsd, 0.3);
 });
+
+// The backend-failure sibling of the lastRateLimit stamp (PLANS.md 2026-09-29): the
+// connection/timeout/5xx/model-load kinds the fleet-wide hold groups storms by, stamped under
+// the same rule — only a run that ENDED on the failure.
+test("lastBackendFailure is stamped only by a run that ENDED on a backend failure, with the kind", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+  const before = Date.now();
+
+  // A run that saw a backend failure inside pi's own retry and then finished must not stamp.
+  u.fold(s, run({ transientBackend: true, backendKind: "connection", ok: true }));
+  assert.equal(!!u.lastBackendFailure, false);
+
+  // A failed run that was a rate limit — not a backend failure — stamps the 429, not this.
+  u.fold(s, run({ ok: false, transientRateLimit: true }));
+  assert.equal(!!u.lastBackendFailure, false);
+  assert.ok(u.lastRateLimit, "the 429 stamp is untouched");
+
+  // The real thing: a run that ended on the backend failure, kind and all.
+  u.fold(s, run({ ok: false, transientBackend: true, backendKind: "server" }));
+  const be = u.lastBackendFailure as { at: number; kind: string } | undefined;
+  assert.ok(be);
+  assert.equal(be.kind, "server");
+  assert.ok(be.at >= before && be.at <= Date.now());
+
+  // A later clean run does not clear or refresh the observation, like lastRateLimit.
+  u.fold(s, run({ ok: true }));
+  assert.equal((u.lastBackendFailure as { at: number } | undefined)?.at, be.at);
+});
+
+test("reset keeps lastBackendFailure for the orchestrator's hold, like lastRateLimit", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+  u.fold(s, run({ ok: false, transientBackend: true, backendKind: "model-load" }));
+  u.reset();
+  assert.ok(u.lastBackendFailure, "an episodic observation survives the per-tick reset");
+});

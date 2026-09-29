@@ -6,10 +6,11 @@ import {
   pollRateLimitHold,
   runTimedRoleTick,
   sleepInterruptible,
+  type HoldInputs,
 } from "../src/tick-timing.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
-import { RATE_LIMIT_HOLD_BASE_MS, RATE_LIMIT_OPEN } from "../src/rate-limit-hold.js";
+import { FLEET_OPEN, RATE_LIMIT_HOLD_BASE_MS } from "../src/rate-limit-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/tick-outcome.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -253,13 +254,13 @@ test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, a
   const holdEvents = () =>
     readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
   const runners = [
-    { role: "bugfix", lastRateLimit: { at: now - 5_000 } },
-    { role: "director", lastRateLimit: undefined },
-    { role: "clean", lastRateLimit: undefined },
+    { role: "bugfix", lastRateLimit: { at: now - 5_000 }, lastBackendFailure: undefined },
+    { role: "director", lastRateLimit: undefined, lastBackendFailure: undefined },
+    { role: "clean", lastRateLimit: undefined, lastBackendFailure: undefined },
   ];
 
   // One role's 429 is the per-run retry's business: no hold, no event.
-  let hold = pollRateLimitHold(root, RATE_LIMIT_OPEN, runners, now);
+  let hold = pollRateLimitHold(root, FLEET_OPEN, runners, now);
   assert.equal(hold.until, null);
   assert.equal(holdEvents().length, 0);
 
@@ -300,6 +301,52 @@ test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, a
   assert.deepEqual(relapse?.roles, ["bugfix", "director"]);
   assert.equal(relapse?.escalation, 1);
   assert.equal(relapse?.holdMs, 2 * RATE_LIMIT_HOLD_BASE_MS);
+});
+
+// The hold's generalization (PLANS.md 2026-09-29): the same poll gathers each runner's
+// lastBackendFailure beside its lastRateLimit, and a storm of one backend kind trips and
+// renders with the kind in the event payload — while a 429 storm keeps its exact wording.
+test("pollRateLimitHold trips on two roles' same-kind backend failures and names the kind", () => {
+  const root = tmpdir();
+  const now = 1_000_000_000;
+  const holdEvents = () =>
+    readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
+  // The poll's structural runner shape (src/tick-timing.ts HoldInputs), mutable so the test
+  // moves the observations as the fleet's runs would (the runner's own getters are readonly).
+  const runners: HoldInputs[] = [
+    { role: "bugfix", lastRateLimit: undefined, lastBackendFailure: { at: now - 3_000, kind: "connection" } },
+    { role: "director", lastRateLimit: undefined, lastBackendFailure: undefined },
+    { role: "clean", lastRateLimit: undefined, lastBackendFailure: { at: now, kind: "timeout" as const } },
+  ];
+
+  // Different kinds, one role each: no storm of either, no event.
+  let hold = pollRateLimitHold(root, FLEET_OPEN, runners, now);
+  assert.equal(hold.until, null);
+  assert.equal(holdEvents().length, 0);
+
+  // The second connection error makes a connection storm; the timeout is not part of it.
+  runners[2]!.lastBackendFailure = { at: now, kind: "connection" };
+  hold = pollRateLimitHold(root, hold, runners, now);
+  assert.equal(hold.until, now + RATE_LIMIT_HOLD_BASE_MS);
+  const [tripped] = holdEvents();
+  assert.equal(tripped?.type, "rate_limit_hold");
+  assert.equal(tripped?.kind, "connection", "the event carries the hold's kind");
+  assert.deepEqual(tripped?.roles, ["bugfix", "clean"]);
+  assert.equal(tripped?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
+
+  // A rate-limit storm still behaves exactly as before the generalization: kind "rate-limit".
+  // The poll past the connection hold's deadline re-opens it first (its own resumed event),
+  // and only the NEXT poll — with fresh 429s after that re-open — trips the 429 storm.
+  const rlAt = now + 10 * 60_000;
+  hold = pollRateLimitHold(root, hold, runners, rlAt);
+  assert.equal(hold.until, null, "the connection hold re-opened at its deadline");
+  runners[0]!.lastRateLimit = { at: rlAt + 2_000 };
+  runners[1]!.lastRateLimit = { at: rlAt + 2_000 };
+  hold = pollRateLimitHold(root, hold, runners, rlAt + 2_000);
+  const rlTrip = holdEvents().filter((e) => e.type === "rate_limit_hold").at(-1);
+  assert.equal(rlTrip?.kind, "rate-limit");
+  assert.deepEqual(rlTrip?.roles, ["bugfix", "director"]);
+  assert.equal(rlTrip?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
 });
 
 // BUGS.md 2026-09-23 — the restart hand-off's bounded wait on an in-flight landing. A landing

@@ -18,7 +18,7 @@ import {
   recordFallbackTick,
   startFallbackProbe,
 } from "./fallback-breaker.js";
-import { RATE_LIMIT_OPEN, type RateLimitHold } from "./rate-limit-hold.js";
+import { FLEET_OPEN, type FleetHold } from "./rate-limit-hold.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
@@ -214,7 +214,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The fleet-wide 429 hold's state across polls (src/rate-limit-hold.ts) — unlike the
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
-  let rateHold: RateLimitHold = RATE_LIMIT_OPEN;
+  let rateHold: FleetHold = FLEET_OPEN;
   // The fleet-wide error-storm warning's state across polls (src/error-storm.ts) — the active
   // storm's shared cause and roles, like the 429 hold's own memory. In memory only: a restart
   // mid-storm can re-log at most one warning.

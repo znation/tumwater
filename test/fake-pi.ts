@@ -85,6 +85,7 @@ export function piRunResult(over: Partial<PiRunResult> = {}): PiRunResult {
     contextExceeded: false,
     transientServerTimeout: false,
     transientRateLimit: false,
+    transientBackend: false,
     transientPiCrash: false,
     finalMessageContentless: false,
     compacted: false,

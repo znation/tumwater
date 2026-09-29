@@ -448,3 +448,50 @@ test("onToolCallStart observes each tool call once, at its start, with pi's name
   assert.deepEqual(parser.openToolCalls.map((c) => c.id), ["c2"]);
 });
 
+
+// The backend-failure classification (PLANS.md 2026-09-29): the non-429 provider-wide
+// failures — connection errors, request timeouts, 5xx status texts, model-load failures —
+// set transientBackend with the kind the fleet-wide hold groups storms by, while 429 texts
+// stay rate-limit-only (rate-limit is matched first, so a 429 is never also a backend
+// failure).
+test("parser classifies backend-failure error texts into the four kinds", () => {
+  const cases: Array<[string, string]> = [
+    ["Connection error.", "connection"],
+    ["fetch failed: connect ECONNREFUSED 127.0.0.1:11434", "connection"],
+    ["read ECONNRESET from provider", "connection"],
+    ["Request timed out", "timeout"],
+    ["request timed out after 30s", "timeout"],
+    ["500 Internal Server Error", "server"],
+    ["502 Bad Gateway", "server"],
+    ["503 Service Unavailable", "server"],
+    ["504 Gateway Timeout", "server"],
+    ["Failed to load model: llama-3-70b", "model-load"],
+  ];
+  for (const [text, kind] of cases) {
+    const parser = new PiStreamParser();
+    parser.feed(errorLine(text) + "\n");
+    assert.equal(parser.transientBackend, true, `${text} is a backend failure`);
+    assert.equal(parser.backendFailureKind, kind, `${text} classifies as ${kind}`);
+  }
+});
+
+test("parser never claims a 429 text as a backend failure", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine('429 "Rate limit exceeded"') + "\n");
+  assert.equal(parser.transientRateLimit, true);
+  assert.equal(parser.transientBackend, false, "a 429 stays a rate limit");
+  assert.equal(parser.backendFailureKind, undefined);
+  // Even a 429 text that mentions words the backend regex matches elsewhere.
+  const mixed = new PiStreamParser();
+  mixed.feed(errorLine("429 too many requests, service unavailable") + "\n");
+  assert.equal(mixed.transientRateLimit, true);
+  assert.equal(mixed.transientBackend, false, "rate-limit wins the match");
+  assert.equal(mixed.backendFailureKind, undefined);
+});
+
+test("parser leaves the backend flags alone on unrelated errors", () => {
+  const parser = new PiStreamParser();
+  parser.feed(errorLine("context size has been exceeded") + "\n");
+  assert.equal(parser.transientBackend, false);
+  assert.equal(parser.backendFailureKind, undefined);
+});

@@ -71,6 +71,34 @@ const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
  * "retry after 30s"). Module-private: only PiStreamParser.feedLine matches it. */
 const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
 
+/** The kinds of provider-wide failure that are NOT rate limiting: the backend itself is down,
+ * refusing connections, or cannot serve the model at all. The fleet-wide hold (src/
+ * rate-limit-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
+ * two hitting different kinds is not — so the observation carries the kind instead of
+ * re-matching the text later. Defined beside the classifier that produces it. */
+export type BackendFailureKind = "connection" | "timeout" | "server" | "model-load";
+
+/** The backend-failure error texts pi actually surfaces, matched against every error text
+ * feedLine sees — the same shapes as the rate-limit regex's various renderings: pi renders the
+ * provider's status and message variously (fetch-level "Connection error.", OpenAI-style
+ * "Request timed out" and 5xx status texts, oMLX's model-server "Failed to load model").
+ * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
+ * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
+ * and never counts as a backend failure. Module-private: only PiStreamParser.feedLine matches
+ * it; backendKind below classifies which phrase matched. */
+const TRANSIENT_BACKEND =
+  /connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|failed to load model/i;
+
+/** Which backend-failure kind an error text belongs to — pure, exported so the parser's
+ * classification is unit-testable without a stream (pi-parser.test.ts feeds the texts
+ * directly). The order is the TRANSIENT_BACKEND alternation's: one text names one kind. */
+export function backendKind(text: string): BackendFailureKind {
+  if (/connection error|connection refused|connection reset|econn(refused|reset)/i.test(text)) return "connection";
+  if (/request timed out/i.test(text)) return "timeout";
+  if (/internal server error|bad gateway|service unavailable|gateway timeout/i.test(text)) return "server";
+  return "model-load";
+}
+
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -113,6 +141,15 @@ export class PiStreamParser {
    * limiting). Transient by definition: the session is healthy and a later attempt succeeds —
    * the loop's transient retry covers it, waiting out retryAfterSeconds when present. */
   transientRateLimit = false;
+  /** True when any event reports a provider-wide failure that is not rate limiting — the
+   * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND above). Transient in
+   * the same sense: the session is healthy and a later attempt succeeds. The fleet-wide hold
+   * (src/rate-limit-hold.ts) consumes it beside the 429 flag, grouped by backendFailureKind. */
+  transientBackend = false;
+  /** Which kind of backend failure the run saw (backendKind's classification of the same
+   * text that set transientBackend) — carried so the hold's storm test can group by kind
+   * without re-matching the text. Undefined while transientBackend is false. */
+  backendFailureKind: BackendFailureKind | undefined;
   /** The Retry-After delay (seconds) from the rate-limit error text, when the provider sent
    * one. Undefined when the error carried no parseable hint. */
   retryAfterSeconds: number | undefined;
@@ -201,6 +238,11 @@ export class PiStreamParser {
         this.transientRateLimit = true;
         const hint = RETRY_AFTER.exec(text);
         if (hint) this.retryAfterSeconds = Number(hint[1]);
+      } else if (TRANSIENT_BACKEND.test(text)) {
+        // Rate-limit matched first, so a 429 stays a 429; this branch only sees the
+        // connection/5xx/model-load texts the hold groups by kind.
+        this.transientBackend = true;
+        this.backendFailureKind = backendKind(text);
       }
     }
     // Every structured event (turn/tool/message boundaries, retries, session) is real
