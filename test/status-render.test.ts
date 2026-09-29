@@ -784,6 +784,31 @@ test("nextRunCell reads now for a due idle loop and the remaining time for a fut
   assert.equal(nextRunCell(backoff, "queued", now, true), "backoff 3m", "a backing-off loop says so — that is what wake clears");
 });
 
+test("nextRunCell shows ×N beside the time for a role whose yield scales its clock", () => {
+  // Yield-scaled clocks (PLANS.md): the multiplier gates the gap in isEligible, so a
+  // `now`-due cell at ×4 is a role waiting out its stretched gap — the suffix is what
+  // makes that visible instead of looking like a broken clock.
+  const now = Date.now();
+  const scaled = freshLoopState("perf");
+  scaled.recentOutcomes = "n".repeat(16); // ×4
+  scaled.nextRunAt = now - 1000;
+  assert.equal(nextRunCell(scaled, "queued", now, true), "now ×4");
+  scaled.nextRunAt = now + 180_000;
+  assert.equal(nextRunCell(scaled, "queued", now, true), "3m ×4");
+  scaled.backoffSeconds = 240;
+  assert.equal(nextRunCell(scaled, "queued", now, true), "backoff 3m ×4");
+  // A role the scaling never applies to stays unsuffixed even with a full empty ring.
+  const work = freshLoopState("feature");
+  work.recentOutcomes = "n".repeat(20);
+  work.nextRunAt = now - 1000;
+  assert.equal(nextRunCell(work, "queued", now, true), "now");
+  // And multiplier 1 (a landing in the recent window) carries no suffix either.
+  const landed = freshLoopState("perf");
+  landed.recentOutcomes = "n".repeat(19) + "L";
+  landed.nextRunAt = now - 1000;
+  assert.equal(nextRunCell(landed, "queued", now, true), "now");
+});
+
 test("nextRunCell reads - for a loop in flight or a fleet that is not running", () => {
   const now = Date.now();
   const working = freshLoopState("clean");

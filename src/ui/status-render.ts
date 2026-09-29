@@ -2,6 +2,7 @@ import path from "node:path";
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost } from "../budget.js";
+import { yieldMultiplierFor } from "./status-model.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, displayWidth, padToWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
@@ -59,9 +60,16 @@ export function lastTickCell(ts: number | undefined): string {
 export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunning: boolean): string {
   if (!fleetRunning || s.running || isActivePhase(phase)) return "-";
   const remain = Math.round((s.nextRunAt - now) / 1000);
-  if (remain <= 0) return "now";
+  // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
+  // role whose recent ticks landed nothing keeps a longer effective gap than nextRunAt's
+  // countdown shows, and the suffix is what makes that visible. The multiplier gates the
+  // scheduled gap and the main-moved wake in isEligible, so a `now`-due cell at ×4 is a
+  // role waiting out its stretched gap, not a broken clock.
+  const mult = yieldMultiplierFor(s);
+  const suffix = mult > 1 ? ` ×${mult}` : "";
+  if (remain <= 0) return `now${suffix}`;
   const label = humanSeconds(remain);
-  return s.backoffSeconds > 0 ? `backoff ${label}` : label;
+  return (s.backoffSeconds > 0 ? `backoff ${label}` : label) + suffix;
 }
 
 /** The table's state cell: a loop's phase label (loopPhase, computed once per row by

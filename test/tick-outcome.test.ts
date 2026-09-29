@@ -6,6 +6,8 @@ import {
   clearBackoff,
   nextBackoffSeconds,
   restoreMidTickWake,
+  YIELD_RING,
+  yieldMultiplier,
 } from "../src/tick-outcome.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
@@ -115,6 +117,59 @@ test("nextBackoffSeconds caps an initial above max and treats non-positive curre
   assert.equal(nextBackoffSeconds(0, ladder), 30); // min(initial, max)
   assert.equal(nextBackoffSeconds(-5, ladder), 30); // current <= 0 → initial (capped)
   assert.equal(nextBackoffSeconds(29, ladder), 30); // growth still capped at max
+});
+
+// --- Yield-scaled clocks: the ring and the multiplier it feeds (PLANS.md) ---
+
+test("yieldMultiplier: ten consecutive empty ticks double the gap, and it caps at 8", () => {
+  // Below ten empties the plain gap stands — the ring has to say something before it
+  // stretches anything.
+  assert.equal(yieldMultiplier([]), 1);
+  assert.equal(yieldMultiplier("n".repeat(9).split("")), 1);
+  assert.equal(yieldMultiplier("n".repeat(10).split("")), 2);
+  // Doubling per five further empties: 15 → 4, 20 → 8, and the cap holds past it.
+  assert.equal(yieldMultiplier("n".repeat(14).split("")), 2);
+  assert.equal(yieldMultiplier("n".repeat(15).split("")), 4);
+  assert.equal(yieldMultiplier("n".repeat(19).split("")), 4);
+  assert.equal(yieldMultiplier("n".repeat(20).split("")), 8);
+  assert.equal(yieldMultiplier("n".repeat(30).split("")), 8);
+});
+
+test("yieldMultiplier: one landing in the last ten counted ticks resets it to 1", () => {
+  // A landing anywhere in the recent window is the evidence the clock trusts — even with
+  // nine empties stacked in front of it.
+  assert.equal(yieldMultiplier("nnnnnnnnnL".split("")), 1);
+  assert.equal(yieldMultiplier(("n".repeat(19) + "L").split("")), 1);
+  // But a landing older than the last ten does not: it has aged out of the recent window,
+  // and the empties since it are what the clock now answers for (nineteen empties → ×4).
+  assert.equal(yieldMultiplier(("L" + "n".repeat(19)).split("")), 4);
+  // A landing exactly ten ticks back is still inside the recent window — the tenth entry.
+  assert.equal(yieldMultiplier(("nnnnnnnnnnL" + "n".repeat(9)).split("")), 1);
+});
+
+test("applyTickOutcome maintains the yield ring: landings and empties recorded, the error class skipped", () => {
+  const s = freshLoopState("perf");
+  // Read through a fresh call each time: the assertions below must see the ring as
+  // applyTickOutcome left it, not a narrowed snapshot of an earlier value.
+  const ringOf = (): string => s.recentOutcomes ?? "";
+  applyTickOutcome(s, testConfig(), "perf", { result: "no_change" });
+  assert.equal(s.recentOutcomes, "n");
+  applyTickOutcome(s, testConfig(), "perf", { result: "refused" });
+  applyTickOutcome(s, testConfig(), "perf", { result: "rejected" });
+  assert.equal(s.recentOutcomes, "nnn", "every non-landing counted result is an empty");
+  applyTickOutcome(s, testConfig(), "perf", { result: "error" });
+  applyTickOutcome(s, testConfig(), "perf", { result: "aborted" });
+  applyTickOutcome(s, testConfig(), "perf", { result: "quiet_killed" });
+  assert.equal(s.recentOutcomes, "nnn", "the error class is no yield evidence — neither raises nor resets");
+  applyTickOutcome(s, testConfig(), "perf", { result: "queued" });
+  applyTickOutcome(s, testConfig(), "perf", { result: "changed" });
+  assert.equal(s.recentOutcomes, "nnnLL", "a landing (changed or queued) records L");
+  // The ring is bounded: past YIELD_RING the oldest entries fall off.
+  for (let i = 0; i < YIELD_RING; i++) applyTickOutcome(s, testConfig(), "perf", { result: "no_change" });
+  assert.equal(ringOf().length, YIELD_RING);
+  assert.equal(ringOf(), "n".repeat(YIELD_RING));
+  // And a full ring of empties is exactly the cap-earning state the multiplier reads.
+  assert.equal(yieldMultiplier(ringOf().split("")), 8);
 });
 
 // --- Post-tick outcome recording + next-run scheduling (extracted from LoopRunner.tick) ---

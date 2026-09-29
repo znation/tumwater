@@ -332,6 +332,19 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
   "steward",
 ]);
 
+/** Does this role's recent yield scale its min-tick gap (yield-scaled clocks, PLANS.md)?
+ * The search/maintenance roles — the deferrable eight, the observers, and bugfix on its
+ * empty-backlog search duty (it is the one work role that defers like maintenance, so its
+ * idle clock stretches like one too; the open-bugs state is deferTick's concern, not the
+ * clock's: ten consecutive empty ticks are empty-yield evidence however many bugs are
+ * recorded). Never the work roles whose ticks follow demand — feature, plan, director — a
+ * role with a queued prompt or a fresh wake bypasses the gap entirely (isEligible), and the
+ * multiplier is computed from counted results only (tick-outcome.ts), so feature's errors
+ * and quiet kills never stretch anything. */
+export function yieldScaledRole(role: string): boolean {
+  return DEFERRABLE_ROLES.has(role) || OBSERVER_ROLES.has(role) || role === BUGFIX_ROLE;
+}
+
 /** Scheduling tier for fairOrder's slot allocation (need-based prioritization): 0 for work
  * roles, 1 for everything else. The director is excluded by callers — it leads unconditionally,
  * ahead of both tiers. */

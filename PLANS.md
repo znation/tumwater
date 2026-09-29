@@ -5,20 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Yield-scaled clocks: a search role whose recent ticks land nothing ticks less often (planned 2026-09-29)
-
-**Goal.** Maintenance and search roles tick on a fixed clock plus the idle ladder. The idle ladder resets on any main move, so a role that keeps finding nothing keeps paying for it. From 2026-09-22 to 09-29, perf spent $1.17 on 41 no_change ticks against $0.48 on its 15 landings, and qa spent $0.38 on 23 no_change ticks for 2 landings ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). A role's own recent yield should stretch its interval, and one landing should restore it.
-
-**Approach.**
-- src/loop-state.ts `LoopState`: add `recentOutcomes?: string` (or a small ring of the last 10 results), maintained in `applyTickOutcome` (src/tick-outcome.ts). A landing is `changed`/`queued`. `error`/`aborted`/`quiet_killed` are not yield evidence and are skipped.
-- A pure `yieldMultiplier(recent: string[]): number` (new, beside `nextBackoffSeconds`): 1 when any of the last N=10 counted ticks landed, otherwise doubling per additional 5 empty ticks, capped at 8. `isEligible` (src/scheduling.ts) multiplies the role's effective `minTickIntervalSeconds` gap by it. The multiplier gates the "main moved" wake too, which is where today's cost comes from.
-- Applies to `DEFERRABLE_ROLES`, the observer roles (qa, telemetry), and bugfix while its backlog is empty (see the plan above). Never to feature, plan, or director, and never to a role with a pending inbox prompt or a fresh `wake`.
-- Surface it: `tumwater status` (and `status --json`) shows `×N` beside the next-run time when the multiplier is above 1, so an operator can see why a role is quiet.
-
-**Files touched:** src/loop-state.ts, src/tick-outcome.ts, src/scheduling.ts, src/ui/status-model.ts (the next-run cell), docs/how-it-works.md, and tests in test/tick-outcome.test.ts, test/scheduling.test.ts, and test/status-render.test.ts.
-
-**Acceptance criteria.** Ten consecutive no_change ticks give a multiplier of 2, and it caps at 8. One `changed`/`queued` tick resets it to 1. Error-class results neither raise nor reset it. A role at ×4 with a 20 s gap does not tick on a main move within 80 s. `wake` and inbox prompts bypass it. feature, plan, and director are never scaled. `npm run test` passes.
-
 ### Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29)
 
 **Goal.** The readme role's contract (src/roles.ts, the `readme` role's `find`) makes the status section carry `Current main (<sha>): build clean, suite N/N`, and says "a moved main makes the stamp stale, so syncs still run after landings". Every landing therefore schedules a README commit. That is 184 of readme's 231 commits all time and 60 in the last 7 days (9% of all commits), and 1% of readme's lines survive ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). Volatile state does not belong in a committed file. The harness can report it live instead. Depends on the harness-attested suite counts plan above for the counts.
@@ -64,6 +50,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.** The new regex classifies the listed connection/5xx/model-load texts and does not claim 429 texts. `fold` stamps `lastBackendFailure` only when the run ended on it, with the kind and no retry hint. Two distinct roles ending on the same backend kind within `RATE_LIMIT_STORM_WINDOW_MS` open a hold carrying that kind; two roles on *different* kinds, or two hits from one role, do not. A relapse of the same kind escalates and caps at `RATE_LIMIT_HOLD_CAP_MS`; a different kind after a hold re-opens starts at the base. A 429 storm behaves byte-for-byte as today (same hold math, same event wording). The `rate_limit_hold` event carries `kind`, rendered with backend wording in the feed and the digest. The director is not held. `npm run test` passes.
 
 ## Done
+
+### Yield-scaled clocks: a search role whose recent ticks land nothing ticks less often (planned 2026-09-29, done 2026-09-29)
+
+**Goal.** Maintenance and search roles tick on a fixed clock plus the idle ladder. The idle ladder resets on any main move, so a role that keeps finding nothing keeps paying for it. From 2026-09-22 to 09-29, perf spent $1.17 on 41 no_change ticks against $0.48 on its 15 landings, and qa spent $0.38 on 23 no_change ticks for 2 landings ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). A role's own recent yield should stretch its interval, and one landing should restore it.
+
+**Approach.**
+- src/loop-state.ts `LoopState`: added `recentOutcomes?: string` — a ring of one-char codes, `L` for a landing (`changed`/`queued`) and `n` for a counted empty, last YIELD_RING=20 entries, maintained by `applyTickOutcome` (src/tick-outcome.ts). `error`/`aborted`/`quiet_killed` are not yield evidence and never enter the ring, so backend failures neither stretch nor reset a role's clock.
+- A pure `yieldMultiplier(recent: string[]): number` (beside `nextBackoffSeconds`): 1 while any of the last 10 counted ticks landed, otherwise 2 at 10 empties, doubling per 5 further empties (15 → 4, 20 → 8), capped at 8. `isEligible` (src/scheduling.ts) multiplies the role's effective `minTickIntervalSeconds` gap by it — the gap check runs first, so the multiplication gates the "main moved" wake too, which is where the cost comes from.
+- Applies to `DEFERRABLE_ROLES`, the observer roles (qa, telemetry), and bugfix (predicate `yieldScaledRole` in src/roles.ts). Deviation from the draft: bugfix scales regardless of whether BUGS.md has open bugs — isEligible does not read the backlog, and ten consecutive empty ticks are empty-yield evidence however many bugs are recorded; demand prioritization stays deferTick's job. Never feature, plan, or director; a pending inbox prompt or a fresh `wake` bypasses the gap entirely.
+- Surface: `tumwater status` and `status --json` show `×N` beside the next-run time when the multiplier is above 1, so an operator can see why a role is quiet.
+
+**Files touched:** src/loop-state.ts, src/tick-outcome.ts, src/roles.ts, src/scheduling.ts, src/ui/status-model.ts (the shared `yieldMultiplierFor`), src/ui/status-render.ts (the next-run cell — where the cell actually lives, not status-model as first drafted), src/ui/status-payload.ts (the `yieldMultiplier` JSON field), src/ui/gui-client.ts (the GUI's fmtNextRun twin), docs/how-it-works.md, and tests in test/tick-outcome.test.ts, test/scheduling.test.ts, test/status-render.test.ts, and test/gui.test.ts (the lockstep twin).
+
+**Acceptance criteria.** Ten consecutive no_change ticks give a multiplier of 2, and it caps at 8. One `changed`/`queued` tick resets it to 1. Error-class results neither raise nor reset it. A role at ×4 with a 20 s gap does not tick on a main move within 80 s. `wake` and inbox prompts bypass it. feature, plan, and director are never scaled. `npm run test` passes.
+
+**Note 2026-09-29, second run.** The first implementation was rejected in review for riding unclaimed work: its diff carried the dry role's test/orchestrator-3.e2e.test.ts refactor (then unlanded on main) and the objection about its dropped failure-path abort+drain. That refactor has since landed on main on its own (eb7b1235); this run re-implemented the plan on current main, so the diff contains only this plan's files — test/orchestrator-3.e2e.test.ts is untouched.
 
 ### Plan just in time: stop refining while plans wait, and anchor plans on symbols (planned 2026-09-29, done 2026-09-29)
 

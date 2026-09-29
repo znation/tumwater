@@ -1081,6 +1081,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
   const { freshLoopState } = await import("../src/loop-state.js");
+  const { yieldMultiplierFor } = await import("../src/ui/status-model.js");
   type LoopState = ReturnType<typeof freshLoopState>;
 
   // The column sits between last result and controls, rendered from the payload's raw
@@ -1101,7 +1102,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
   assert.ok(ap, "active-phase-fmt region found in the page");
   const fmtNextRun = new Function(`${hs[1]}\n${ap[1]}\n${m[1]}\nreturn fmtNextRun;`)() as
-    (l: { phase: string; nextRunAt: number; backoffSeconds: number }, fleetRunning: boolean) => string;
+    (l: { phase: string; nextRunAt: number; backoffSeconds: number; yieldMultiplier?: number }, fleetRunning: boolean) => string;
 
   const now = Date.now();
   // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
@@ -1124,13 +1125,17 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "awaiting slot 5s", fleet: true, want: "-" },
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "awaiting slot 5s", fleet: true, want: "-" },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: false, want: "-" },
+    // Yield-scaled clocks: the payload's yieldMultiplier rides the cell as ×N, the same
+    // rule nextRunCell applies — a quiet role's effective gap is longer than the countdown.
+    { state: { nextRunAt: now - 5_000, backoffSeconds: 0, recentOutcomes: "n".repeat(16) }, phase: "queued", fleet: true, want: "now ×4" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", fleet: true, want: "backoff 3m ×8" },
   ];
   for (const c of cases) {
     const s = { ...freshLoopState("clean"), ...c.state } as LoopState;
     const label = `${c.phase} / fleet ${c.fleet ? "running" : "stopped"}`;
     assert.equal(nextRunCell(s, c.phase, now, c.fleet), c.want, `TUI: ${label}`);
     assert.equal(
-      fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds }, c.fleet),
+      fmtNextRun({ phase: c.phase, nextRunAt: s.nextRunAt, backoffSeconds: s.backoffSeconds, yieldMultiplier: yieldMultiplierFor(s) }, c.fleet),
       c.want,
       `GUI: ${label}`,
     );

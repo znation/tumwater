@@ -115,8 +115,12 @@ export const GUI_CLIENT_JS = `  const esc = (s) => String(s).replace(/[&<>"']/g,
     const active = isActivePhase(l.phase) || l.phase.startsWith("awaiting slot");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
-    if (sec <= 0) return "now";
-    return (l.backoffSeconds > 0 ? "backoff " : "") + humanSeconds(sec);
+    // The payload's yieldMultiplier rides the cell as "×N" (yield-scaled clocks): a quiet
+    // role's effective gap is longer than the countdown shows, and the suffix says why —
+    // the same rule nextRunCell applies (status-render.ts), lockstep-tested in gui.test.ts.
+    const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";
+    if (sec <= 0) return "now" + suffix;
+    return (l.backoffSeconds > 0 ? "backoff " : "") + humanSeconds(sec) + suffix;
   };
   // next-run-fmt:end
   // loop-sort:start

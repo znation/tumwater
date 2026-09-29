@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
+import { configForRole } from "../src/config-views.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { defaultConfig } from "../src/config.js";
@@ -49,6 +50,66 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   // But not if it just finished a tick.
   r.state.lastTickEndedAt = now - 1000;
   assert.equal(isEligible(r, now, "new", 0).run, false);
+});
+
+test("yield scaling stretches a quiet search role's gap — including the main-moved wake", () => {
+  // Yield-scaled clocks (PLANS.md): sixteen consecutive counted empties earn ×4, so a
+  // role with a 20 s clock must not tick — on schedule or on a main move — until 80 s
+  // have passed since its last tick, even though nextRunAt is long past.
+  const r = runner("clean");
+  const now = Date.now();
+  const gap = configForRole(r.config, "clean").minTickIntervalSeconds * 1000; // 20 s
+  r.state.ticks = 1;
+  r.state.lastTickEndedAt = now - 3 * gap; // past the plain gap, inside the stretched one
+  r.state.nextRunAt = now + 60_000; // the main-moved branch is only reached past nextRunAt
+  r.state.lastMainHead = "old";
+  r.state.recentOutcomes = "n".repeat(16);
+  assert.equal(isEligible(r, now, "abc", 0).run, false, "held inside the stretched gap");
+  assert.equal(isEligible(r, now, "new", 0).run, false, "a main move does not cut the stretch");
+  // Past the stretched gap the wake fires again.
+  r.state.lastTickEndedAt = now - (4 * gap + 1);
+  const due = isEligible(r, now, "new", 0);
+  assert.equal(due.run, true);
+  assert.equal(due.reason, "main moved");
+});
+
+test("yield scaling: a wake and a queued prompt bypass the stretch; observers scale too", () => {
+  const r = runner("clean");
+  const now = Date.now();
+  r.state.ticks = 1;
+  r.state.lastTickEndedAt = now - 1000; // deep inside any stretched gap
+  r.state.nextRunAt = now + 60_000;
+  r.state.recentOutcomes = "n".repeat(20); // ×8
+  assert.equal(isEligible(r, now, "abc", 0).run, false);
+  // A queued per-role prompt never reaches the gap check at all.
+  assert.equal(isEligible(r, now, "abc", 1).run, true, "inbox bypasses the stretch");
+  // An operator wake is an explicit demand: it overrides the gap exactly as it overrides
+  // the plain one (the gap exemption alone does not make the loop due — the wake test
+  // above pairs it with a past nextRunAt, and so does this one).
+  r.state.wokenAt = now;
+  r.state.nextRunAt = now - 1000;
+  assert.equal(isEligible(r, now, "abc", 0).run, true);
+  r.state.wokenAt = undefined;
+  // The observers are scalable: qa's two-hour clock stretches to sixteen hours at ×8.
+  const q = runner("qa");
+  q.state.ticks = 1;
+  q.state.lastTickEndedAt = now - 2 * 3600_000; // past qa's plain clock
+  q.state.nextRunAt = now + 3600_000;
+  q.state.recentOutcomes = "n".repeat(20);
+  assert.equal(isEligible(q, now, "abc", 0).run, false, "qa's stretched clock holds");
+});
+
+test("yield scaling never applies to feature, plan, or the director", () => {
+  const now = Date.now();
+  for (const role of ["feature", "plan"]) {
+    const r = runner(role);
+    const gap = configForRole(r.config, role).minTickIntervalSeconds * 1000;
+    r.state.ticks = 1;
+    r.state.lastTickEndedAt = now - gap - 1000; // past the PLAIN gap
+    r.state.nextRunAt = now - 1000;
+    r.state.recentOutcomes = "n".repeat(20); // would be ×8 if the role scaled
+    assert.equal(isEligible(r, now, "abc", 0).run, true, `${role} keeps its plain gap`);
+  }
 });
 
 test("an operator wake newer than the last tick overrides the min gap", () => {

@@ -91,6 +91,13 @@ discards a role's in-flight landing.
   again. Bugfix, the director, and markdown-only roles keep going.
 - Failed ticks retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   loop `failing` until it has a healthy tick.
+- A search role's own recent yield stretches its clock: after ten consecutive counted ticks
+  that landed nothing, its minimum gap doubles, and doubles again per five further empty
+  ticks up to ×8 — and the stretched gap gates the "main moved" wake too, so a quiet role
+  stops re-checking on every landing. One landing in the last ten counted ticks restores the
+  plain gap. Failed ticks (errors, aborts, quiet kills) count as neither. `tumwater status`
+  shows the stretch as `×N` beside the next-run time; feature, plan, and the director are
+  never scaled, and a wake or queued prompt bypasses it.
 
 ## Spend and pausing
 

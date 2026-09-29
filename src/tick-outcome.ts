@@ -122,6 +122,41 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
   s.lastReview = { verdict, reasons, ...(head === undefined ? {} : { head }), at: Date.now() };
 }
 
+/** Yield-scaled clocks (PLANS.md "Yield-scaled clocks"): how long a role's own recent
+ * results stretch its min-tick gap. The ring (LoopState.recentOutcomes) holds one char per
+ * COUNTED tick — a landing (`changed`/`queued`) is `L`, every other counted result is `n`;
+ * the error class (`error`/`aborted`/`quiet_killed`) is no yield evidence either way and is
+ * not recorded at all, so a run of backend failures neither stretches a role's clock nor
+ * resets it. */
+export const YIELD_RING = 20;
+const YIELD_LAND = "L";
+/** Results that never enter the ring. */
+const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", "quiet_killed"]);
+
+/** Record one finished tick's result on the state's yield ring, oldest entries falling off
+ * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome beside the streak
+ * counters. */
+function pushYieldOutcome(s: LoopState, result: TickResult): void {
+  if (UNCOUNTED_RESULTS.has(result)) return;
+  const ch = result === "changed" || result === "queued" ? YIELD_LAND : "n";
+  s.recentOutcomes = ((s.recentOutcomes ?? "") + ch).slice(-YIELD_RING);
+}
+
+/** The multiplier on a scalable role's minTickIntervalSeconds gap its recent yield earns:
+ * 1 while any of the last 10 counted ticks landed, otherwise doubling per 5 further empty
+ * ticks — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8. `recent` is the ring's chars, oldest
+ * first, as pushYieldOutcome recorded them. Pure; unit-tested beside the other ladder math.
+ * A landing inside the last 10 resets the multiplier to 1 even when older empties remain in
+ * the ring: one landing is the evidence the role's clock should trust, and the ring's older
+ * half only matters once the landing has aged out of the recent window. */
+const YIELD_MAX = 8;
+export function yieldMultiplier(recent: string[]): number {
+  if (recent.slice(-10).includes(YIELD_LAND)) return 1;
+  const empty = recent.filter((c) => c !== YIELD_LAND).length;
+  if (empty < 10) return 1;
+  return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - 10) / 5) + 1));
+}
+
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */
 export function nextBackoffSeconds(current: number, ladder: BackoffConfig): number {
   const { initialSeconds, factor, maxSeconds } = ladder;
@@ -206,6 +241,10 @@ export function applyTickOutcome(
   // loop.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
+  // The yield ring records the result beside the streaks: a landing or a counted empty
+  // stretches the role's min-tick gap (yieldMultiplier, read by isEligible), an error-class
+  // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).
+  pushYieldOutcome(s, outcome.result);
   // The review gate persists phase="review" around its run so a dashboard mid-review shows
   // "reviewing". A completed tick clears it so the label never lingers — except an aborted
   // one: there the interruption hit mid-review, and the next launch must recover (and

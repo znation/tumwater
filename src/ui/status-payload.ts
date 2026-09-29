@@ -4,7 +4,7 @@ import { formatEvent } from "../event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, fleetBudgetGate, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind } from "./status-model.js";
+import { buildBadge, budgetBadge, displayTokenMetrics, fleetBudgetGate, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind, yieldMultiplierFor } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -120,6 +120,10 @@ export function statusPayload(root: string): object {
         // rules nextRunCell does (see status-render.ts).
         nextRunAt: s.nextRunAt,
         backoffSeconds: s.backoffSeconds,
+        // The yield multiplier behind the next-run cell's `×N` suffix (yield-scaled
+        // clocks, PLANS.md): the payload carries the computed number, not the ring, so the
+        // GUI's JS twin applies the same display rule without re-deriving the role sets.
+        yieldMultiplier: yieldMultiplierFor(s),
       };
     }),
     events: readEvents(root, 40).map((e) => formatEvent(e)),

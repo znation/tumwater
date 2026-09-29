@@ -11,7 +11,14 @@
 import type { LoopRunner } from "./loop.js";
 import type { LoopState } from "./loop-state.js";
 import { configForRole } from "./config-views.js";
-import { BUGFIX_ROLE, DEFERRABLE_ROLES, DIRECTOR_ROLE, roleTier } from "./roles.js";
+import {
+  BUGFIX_ROLE,
+  DEFERRABLE_ROLES,
+  DIRECTOR_ROLE,
+  roleTier,
+  yieldScaledRole,
+} from "./roles.js";
+import { yieldMultiplier } from "./tick-outcome.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
@@ -73,9 +80,21 @@ export function isEligible(
   // "main moved" early wakes — resolved here so a live-reloaded config applies. An operator
   // wake overrides it (the woken check below): it is an explicit demand, the same class of
   // request the director's inbox runs without any gap.
+  //
+  // Yield scaling (PLANS.md "Yield-scaled clocks"): for a scalable role the gap is
+  // multiplied by the multiplier its recent results earned — a search role that keeps
+  // finding nothing slows down, and the multiplication gates the "main moved" wake below
+  // too, which is where the cost actually comes from (the gap check above runs first, so a
+  // scaled role inside its stretched gap neither ticks on schedule nor on a main move).
+  // One landing in the last ten counted ticks restores the plain gap; error-class results
+  // never enter the ring (tick-outcome.ts), so a failing backend does not stretch anything;
+  // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
+  const mult = yieldScaledRole(runner.role)
+    ? yieldMultiplier((runner.state.recentOutcomes ?? "").split(""))
+    : 1;
   const minGap = opts.once
     ? 0
-    : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000;
+    : configForRole(runner.config, runner.role).minTickIntervalSeconds * 1000 * mult;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval
   // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently
@@ -89,7 +108,9 @@ export function isEligible(
   if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
     return { run: true, reason: s.ticks === 0 ? "startup" : "scheduled" };
   }
-  // The world changed under a sleeping loop: main moved since its last tick.
+  // The world changed under a sleeping loop: main moved since its last tick. The stretched
+  // gap above gates this wake too (the gap check runs first), so a role whose recent ticks
+  // landed nothing does not re-check on every landing — the multiplier's whole point.
   if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
     return { run: true, reason: "main moved" };
   }

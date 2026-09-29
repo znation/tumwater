@@ -20,6 +20,15 @@ export interface LoopState {
   backoffSeconds: number;
   /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
   lastMainHead: string;
+  /** The role's recent yield as a ring of one-char codes, oldest first: `L` for a landing
+   * (a `changed`/`queued` tick) and `n` for a counted empty tick — every result except the
+   * error class (`error`/`aborted`/`quiet_killed`, which are no evidence of yield either
+   * way) and the ring keeps the last YIELD_RING entries. Read by yieldMultiplier
+   * (tick-outcome.ts) to stretch the role's min-tick gap while it keeps finding nothing;
+   * persisted because the gap decision must survive a restart like the rest of the
+   * schedule. Absent on states written before the field existed — reads as an empty ring,
+   * multiplier 1. */
+  recentOutcomes?: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
    * renders. A `queued` tick never writes it (tick-outcome.ts's applyTickOutcome): its change is still
    * in flight, which the state column already shows, so the pair keeps the prior outcome until
