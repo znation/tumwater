@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
-import { checkMainBaseline, noteGreenBaseline } from "../src/main-baseline.js";
+import { checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/main-baseline.js";
 import { defaultConfig } from "../src/config.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
+import { ensureDetachedWorktree } from "../src/worktree.js";
+import { mirrorWorktreePath } from "../src/paths.js";
+import { ensureParentDir } from "../src/files.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
@@ -267,4 +270,86 @@ test("a baseline run takes the same process-wide check permit as the scoped chec
   const result = await pending;
   assert.equal(result.baseline?.status, "green");
   assert.equal(runsOf(counter), 1, "and runs once the permit frees");
+});
+
+// mainIsGreen - the redeploy gate's boolean view of checkMainBaseline (moved here from
+// test/redeploy.test.ts, which keeps only the redeployer state machine)
+
+test("mainIsGreen: no declared check reads as green", async () => {
+  const root = makeRepo();
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  // No package.json anywhere up the tree of this temp repo: nothing to verify, nothing to block on.
+  assert.equal(await mainIsGreen(mirror, CFG), true);
+});
+
+test("mainIsGreen runs a configured check.command on a repo with no npm install anywhere", async () => {
+  // plans/portability.md §6/7: the green check must run on a Python/Rust/Go repo too — a
+  // configured command, no package.json and no node_modules in sight.
+  const counter = path.join(tmpdir(), "runs-green-cmd");
+  const root = makeRepo();
+  const checkScript = path.join(root, "check.sh");
+  fs.writeFileSync(checkScript, `#!/bin/sh\necho run >> ${counter}\n`);
+  fs.chmodSync(checkScript, 0o755);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "check");
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+
+  const cfg = { ...defaultConfig(), check: { command: `${checkScript} -q` } };
+  const events: { outcome: { status?: string; script?: string }; durationMs: number }[] = [];
+  assert.equal(await mainIsGreen(mirror, cfg, (run) => events.push(run)), true);
+  assert.equal(fs.readFileSync(counter, "utf8").split("\n").filter((l) => l === "run").length, 1, "the configured command ran");
+  assert.equal(events.length, 1, "the run is priced in the feed like an npm check's");
+
+  // And a failing configured check reads as red, naming the command.
+  fs.writeFileSync(checkScript, "#!/bin/sh\necho 'pytest: 1 failing'; exit 1\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "check now fails");
+  const redHead = sh(root, "git", "rev-parse", "HEAD");
+  const redMirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), redHead);
+  const red = await checkMainBaseline(redMirror, cfg);
+  assert.equal(red.baseline?.status, "red");
+  assert.equal(red.baseline.status === "red" ? red.baseline.script : undefined, `${checkScript} -q`);
+});
+
+test("mainIsGreen re-verifies another worktree's red in the mirror, and its green promotes the SHA fleet-wide", async () => {
+  // The 2026-09-08 failure in miniature: one worktree's ENVIRONMENT, not the tree, decides the
+  // verdict — here a `marker` file standing in for the missing node_modules. A red from such a
+  // worktree must not be what blocks the harness's own restart (BUGS.md).
+  const counter = path.join(tmpdir(), "runs");
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { test: `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"` },
+    }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const head = sh(root, "git", "rev-parse", "HEAD");
+
+  // A role worktree without the marker judges main red and caches that verdict.
+  const role = path.join(root, ".tumwater", "worktrees", "role");
+  ensureParentDir(role);
+  sh(root, "git", "worktree", "add", "-q", "--detach", role, head);
+  assert.equal((await checkMainBaseline(role, CFG)).baseline?.status, "red");
+
+  // The redeploy gate's mirror, where the same tree passes: it re-runs instead of inheriting.
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  fs.writeFileSync(path.join(mirror, "marker"), "");
+  assert.equal(await mainIsGreen(mirror, CFG), true, "the red is re-verified here, not believed");
+  assert.equal(runsOf(counter), 2);
+
+  assert.equal(await mainIsGreen(mirror, CFG), true);
+  assert.equal(runsOf(counter), 2, "a cached green short-circuits — re-verification is for reds only");
+  assert.equal(
+    (await checkMainBaseline(role, CFG)).baseline?.status,
+    "green",
+    "and the green promotes the SHA for every other gate, unblocking the role loops too",
+  );
+  assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });
