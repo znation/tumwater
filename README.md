@@ -8,7 +8,7 @@ of always-on specialists do the rest: each loop owns one concern, lands one chan
 sleeps when it has nothing to do, and wakes when main moves. All project state lives in the
 local git repo, and no remote is ever touched.
 
-![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, per-loop pause/resume toggles, the shared backlog of planned features and open bugs, the event feed, a per-tick history tab, and the director prompt box](docs/gui.png)
+![The tumwater web dashboard: the loop fleet mid-run, with live per-loop state, tick/commit/token counts, last results, per-loop pause/resume toggles and per-row cancel for queued prompts, the shared backlog of planned features and open bugs, the event feed, a per-tick history tab, and the director prompt box](docs/gui.png)
 
 ## Status
 
@@ -18,7 +18,7 @@ local git repo, and no remote is ever touched.
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
 
-Current main (`713af4aa`): build clean, suite 2067/2068 (1 skipped).
+Current main (`0f937320`): build clean, suite 2069/2070 (1 skipped).
 <!-- tumwater:status:end -->
 
 ## Usage
