@@ -156,10 +156,9 @@ function pauseOnceProcess(root: string, role: string, startFile: string): Promis
     })`;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["-e", script]);
-    const exited = new Promise<number | null>((resolve) => child.on("exit", resolve));
     let stderr = "";
     child.stderr?.on("data", (chunk) => (stderr += chunk));
-    exited.then((code) =>
+    child.on("exit", (code) =>
       code === 0 ? resolve() : reject(new Error(`the ${role} pause process failed: ${stderr}`)),
     );
   });

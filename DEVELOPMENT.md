@@ -2,7 +2,8 @@
 
 ```bash
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
-npm test                                   # build + the unit suite (what the landing gate runs)
+npm test                                   # lint + build + the unit suite (what the landing gate runs)
+npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
 npm run test:e2e                           # live-orchestrator e2e tier, kept out of the gate
 ```

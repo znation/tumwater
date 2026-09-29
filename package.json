@@ -31,12 +31,15 @@
   "scripts": {
     "build": "rm -rf dist && tsc && node scripts/stamp-build.mjs",
     "prepack": "npm run build",
-    "test": "tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
+    "lint": "eslint .",
+    "test": "eslint . && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
     "test:e2e": "tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js e2e",
     "tumwater": "node dist/src/cli.js"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "typescript": "^5.6.0"
+    "eslint": "^10.11.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.71.0"
   }
 }
