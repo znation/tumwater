@@ -7,7 +7,7 @@ import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.j
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { runCli } from "./cli-harness.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport (dayKey).
@@ -565,11 +565,6 @@ test("a log of malformed lines still yields a digest: garbage is skipped, not fa
   assert.match(digest, /no tick_end events in the window/);
 });
 
-// The CLI runs main() on import, so it is tested as a child process against the built dist
-// (cli-harness's cli(); same bridge as report.test.ts — assertions here match combined output).
-function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
-  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
-}
 
 test("tumwater report --failures prints the digest and shares the --days bound", async () => {
   const root = makeRepo();

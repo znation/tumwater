@@ -7,7 +7,7 @@ import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/ui/repor
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli, runCli } from "./cli-harness.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).
@@ -380,12 +380,8 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
   assert.match(md, /\*\*Totals:\*\* 0 output tokens · 5 ticks · 0 commits · \$2\.10 ·/);
 });
 
-// The CLI runs main() on import and reports failures via process.exit, so it is tested as a
-// child process (cli-harness's cli(): the built dist/src/cli.js, cwd a temp repo, output captured).
-// This file's assertions match combined stdout+stderr, so bridge CliResult to that shape.
-function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
-  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
-}
+// This file's assertions match combined stdout+stderr via the shared runCli bridge; a few
+// assertions need the streams apart, so those call cli-harness's cli() directly.
 
 test("tumwater report prints the Markdown report and validates --days", async () => {
   const root = makeRepo();

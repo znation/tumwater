@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { renderBacklogMarkdown } from "../src/ui/backlog-report.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { runCli } from "./cli-harness.js";
 
 const PLANS_MD = `# Plans
 
@@ -90,11 +90,6 @@ test("renderBacklogMarkdown renders three explicit empties on a bare root", () =
   }
 });
 
-// The CLI runs main() on import and reports failures via process.exit, so dispatch is tested
-// as a child process (cli-harness's cli(): the built dist/src/cli.js, cwd a temp repo, output captured).
-function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
-  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
-}
 
 test("tumwater backlog prints the backlog and rejects flags; works outside a ready repo", async () => {
   const root = makeRepo();

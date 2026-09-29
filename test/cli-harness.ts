@@ -35,6 +35,13 @@ export function cli(cwd: string, ...args: string[]): Promise<CliResult> {
   return cliWithEnv(cwd, {}, args);
 }
 
+/** Run the CLI and bridge CliResult to the { code, out } shape the report/backlog-style
+ * assertions match against: combined stdout+stderr, since those commands' failures may
+ * surface on either stream. Lives here so every test bridges the same way. */
+export function runCli(cwd: string, ...args: string[]): Promise<{ code: number; out: string }> {
+  return cli(cwd, ...args).then((r) => ({ code: r.code, out: r.stdout + r.stderr }));
+}
+
 interface SpawnedCli {
   out: () => string;
   /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout. */
