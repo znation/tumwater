@@ -13,6 +13,18 @@ if (!fs.existsSync(new URL("../dist/src/roles.js", import.meta.url))) {
   process.exit(1);
 }
 
+// Same guard for the baseline side: on a fresh checkout (or after a /tmp cleanup) no baseline
+// has ever been staged, and the import below would die with a raw ERR_MODULE_NOT_FOUND stack
+// for /tmp/tw-baseline/dist/src/ui/status.js — naming the staging command instead.
+if (!fs.existsSync("/tmp/tw-baseline/dist/src/ui/status.js")) {
+  console.error(
+    "diff-check compares compiled builds: no baseline at /tmp/tw-baseline/dist — stage one before you start\n" +
+    "changing code, from a clean main checkout:\n" +
+    "  npm run build && rm -rf /tmp/tw-baseline && mkdir /tmp/tw-baseline && cp -R dist /tmp/tw-baseline/",
+  );
+  process.exit(1);
+}
+
 // Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
 // drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
 const { allRoleIds } = await import("../dist/src/roles.js");
