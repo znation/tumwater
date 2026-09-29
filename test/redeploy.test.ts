@@ -458,28 +458,28 @@ test("a green check that fails once and then recovers still reaches the swap: th
   assert.deepEqual(events.map((e) => e.type), ["build_stale", "warning", "restart_pending", "restart"]);
 });
 
-test("a thrown compile blocks with its error text, not a bare failure", async () => {
+test("a thrown compile is a rejection, not a verdict: its error text rides the warning, nothing is latched", async () => {
+  // The production deps.compile wraps the mirror worktree checkout around compileStaged
+  // (src/redeploy.ts), so an environment failure there — a git lock, a full disk — surfaces as
+  // a REJECTED promise, not the rejected flag a spawn failure inside tsc's own run produces.
+  // Same class, different shape: it says nothing about the tree, so it must be retried, not
+  // latched, or the fleet stays pinned on the stale build after the environment recovers
+  // (BUGS.md 2026-09-28). The warning still carries compiled.error — the "compile threw"
+  // fallback would hide what actually broke.
   const f = fakeDeps({
     mainGreen: async () => true,
     compile: () => Promise.reject(new Error("tsc exploded")),
   });
   const { r, events } = harness(f.deps);
-  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold");
   await settle(); // green resolves; the next poll starts the compile
-  assert.equal(
-    await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true),
-    "hold",
-    "compile runs in the background",
-  );
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "compile runs in the background");
   await settle(); // the rejection lands in the tracked slot
-  assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
   assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning"]);
-  // compiled.error carries the rejection's message — the "compile threw" fallback would hide it.
-  assert.match(
-    String(events.at(-1)!.message),
-    /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exploded/,
-  );
-  assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
+  assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb could not run: tsc exploded — retrying on the next poll/);
+  assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");
 });
 
 test("main moving during a pending restart supersedes it: the new head is evaluated afresh", async () => {

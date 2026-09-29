@@ -94,7 +94,9 @@ export interface RedeployDeps {
    * an environmental skip) reads as green — the same warn-and-proceed the gates use. */
   mainGreen(mainHead: string): Promise<boolean>;
   /** Compile `mainHead` into its staging dir and stamp it; `detail` explains a failure, and
-   * `rejected` marks a compile that never ran (a spawn failure — a rejection, not a verdict). */
+   * `rejected` marks a compile that never ran (a spawn failure — a rejection, not a verdict).
+   * A rejected promise says the same — the environment failed before a verdict could be
+   * produced — and is retried on the next poll rather than latched. */
   compile(mainHead: string): Promise<CompileResult>;
   /** Move `mainHead`'s staged build into place as the live dist/. Throws on failure. */
   swap(mainHead: string): void;
@@ -176,8 +178,9 @@ export class Redeployer {
   private drainWindowMs = 0;
   private green: Tracked<boolean> | null = null;
   private compiled: Tracked<CompileResult> | null = null;
-  /** The head whose compile already warned that it could not start (a rejection, not a compile
-   * verdict) — one warning per episode, mirroring checkFailedHead. */
+  /** The head whose compile already warned that it could not run (a rejection or a thrown
+   * compile — neither is a verdict about the tree) — one warning per episode, mirroring
+   * checkFailedHead. */
   private compileFailedHead: string | null = null;
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
    * main moves — the warning was logged once. */
@@ -361,17 +364,22 @@ export class Redeployer {
     const c = this.compiled.result;
     if (!c?.ok) {
       const detail = c?.detail ?? this.compiled.error ?? "compile threw";
-      // A compile that never ran is not a verdict about the tree: ENOENT-class spawn failures
-      // name a broken environment (the mirror worktree, the node binary), not the commit. Like
-      // the REJECTED green check above, no blockedHead — warn once per episode, drop the pending
-      // head, and re-attempt on the next poll, so repairing the mirror or the toolchain
-      // redeploys the current head without main moving (BUGS.md 2026-09-28). A real compiler
-      // exit below still blocks.
-      if (c?.rejected) {
+      // A compile that never produced a verdict is not a verdict about the tree, in either shape
+      // it arrives in: an explicit rejection (ENOENT-class spawn failure — the environment is
+      // broken, not the commit) and a promise that rejected without a CompileResult (the
+      // production wrapper throws when the mirror worktree cannot be checked out or staging hits
+      // a disk error — a compiler verdict always returns, because compileStaged's catch converts
+      // every tsc exit into a result). Like the REJECTED green check above, no blockedHead —
+      // warn once per head, drop the pending head, and re-attempt on the next poll, so
+      // repairing the mirror or the toolchain redeploys the current head without main moving
+      // (BUGS.md 2026-09-28). A real compiler exit below still blocks.
+      if (c === undefined || c.rejected) {
         if (this.compileFailedHead !== mainHead) {
           this.compileFailedHead = mainHead;
           this.warn(
-            `could not start the rebuild of ${shortSha(mainHead)}: ${detail} — retrying on the next poll`,
+            c === undefined
+              ? `rebuild of ${shortSha(mainHead)} could not run: ${detail} — retrying on the next poll`
+              : `could not start the rebuild of ${shortSha(mainHead)}: ${detail} — retrying on the next poll`,
           );
         }
         this.clearPending();
