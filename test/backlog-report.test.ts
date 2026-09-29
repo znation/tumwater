@@ -100,10 +100,14 @@ test("tumwater backlog prints the backlog and rejects flags; works outside a rea
   assert.match(ok.out, /### Logs rotate too often \(reported 2026-09-25\)/);
   assert.match(ok.out, /## Planned features\n\n_\(none\)_/);
 
-  // One format, no flags: anything after the command fails fast like every other command.
-  const bad = await runCli(root, "backlog", "--json");
+  // --json is the command's only flag: an unknown one still fails fast like every other
+  // command, whether alone or beside the valid one.
+  const bad = await runCli(root, "backlog", "--nope");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.out, /takes no arguments/);
+  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json\)/);
+  const badPair = await runCli(root, "backlog", "--json", "--nope");
+  assert.notEqual(badPair.code, 0);
+  assert.match(badPair.out, /unknown argument: --nope/);
 
   // No requireReadyRepo gate: a plain directory (no tumwater.json, no .git) still prints the
   // three empty sections instead of a startup error.
@@ -112,7 +116,47 @@ test("tumwater backlog prints the backlog and rejects flags; works outside a rea
   assert.equal(bare.out.match(/_\(none\)_/g)?.length, 3);
 });
 
+test("tumwater backlog --json prints the three entry arrays the Markdown view renders", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
+  const ok = await runCli(root, "backlog", "--json");
+  assert.equal(ok.code, 0);
+  const payload = JSON.parse(ok.out) as {
+    plans: Array<{ title: string; body: string }>;
+    bugs: Array<{ title: string; body: string }>;
+    questions: Array<{ title: string; body: string }>;
+  };
+  // Same order and verbatim text as the Markdown render of these fixtures (the render test
+  // above pins the titles it lists, so the two forms cannot drift apart).
+  assert.deepEqual(payload.plans, [
+    {
+      title: "Show open bugs in the TUI (planned 2026-09-25)",
+      body: "**Goal.** The dashboard surfaces project status.\n\n**Approach.**\n- read PLANS.md\n- render it",
+    },
+    { title: "Timestamp of last result (planned 2026-09-24)", body: "" },
+  ]);
+  assert.deepEqual(payload.bugs, [
+    { title: "Logs rotate too often (reported 2026-09-25)", body: "**Symptom.** The log file shrinks every minute." },
+  ]);
+  // The questions fixture's Open section holds only the _None yet._ placeholder — no entries.
+  assert.deepEqual(payload.questions, []);
+  // Done/Fixed/Answered entries and the placeholder never leak in.
+  assert.ok(!ok.out.includes("old finished plan"));
+  assert.ok(!ok.out.includes("A fixed bug"));
+  assert.ok(!ok.out.includes("Which backend"));
+  assert.ok(!ok.out.includes("None yet"));
+
+  // A directory with no backlog files prints the pretty-printed all-empty object, exits 0 —
+  // a JSON document in every exit-0 case, never prose.
+  const bare = await runCli(tmpdir(), "backlog", "--json");
+  assert.equal(bare.code, 0);
+  assert.deepEqual(JSON.parse(bare.out), { plans: [], bugs: [], questions: [] });
+  assert.match(bare.out, /\n  "plans": \[\]/);
+});
+
 test("tumwater help lists the backlog command", async () => {
   const help = await runCli(makeRepo(), "help");
-  assert.match(help.out, /^  tumwater backlog {17}Show planned features, open bugs/m);
+  assert.match(help.out, /^  tumwater backlog \[--json\] {8}Show planned features, open bugs/m);
 });

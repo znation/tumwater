@@ -23,6 +23,7 @@ import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
 import { cmdGui } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
+import { backlogPayload } from "./backlog.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic } from "./help.js";
 
@@ -163,8 +164,15 @@ async function main(): Promise<void> {
     case "backlog": {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
       // command prints three empty sections in any directory (report's rationale, not config's).
-      rejectUnknownArgs("backlog", args, []);
-      say(renderBacklogMarkdown(root));
+      rejectUnknownArgs("backlog", args, [{ names: ["--json"] }]);
+      if (args.includes("--json")) {
+        // Machine-readable backlog — the three entry arrays the Markdown view renders and the
+        // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern):
+        // a pretty-printed JSON document in every exit-0 case, never prose.
+        say(JSON.stringify(backlogPayload(root), null, 2));
+      } else {
+        say(renderBacklogMarkdown(root));
+      }
       break;
     }
     case "prompt":

@@ -7,7 +7,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### `tumwater doctor --json` — the pre-flight report as machine-readable data, finishing the scriptable-surface series (planned 2026-09-28)
 
-**Goal.** doctor already "exits 0/1 so it can be scripted" (src/doctor.ts module comment), and its own doc comment calls it "the pre-flight sibling of `status --json`" — but a script that passes/fails on the verdict can only learn *which* check failed and *why* by parsing the aligned prose lines, which change shape whenever `renderDoctor` evolves. `status --json`, `report --json`, `logs --json`, `history --json` have all landed (Done entries 2026-09-28) and `backlog --json` is planned below; `doctor` is the last scriptable surface still prose-only. This plan gives it the same `--json` flag; the payload is the `DoctorReport` object itself — the collector's own payload, not a re-parse of the render (the `report --json` precedent).
+**Goal.** doctor already "exits 0/1 so it can be scripted" (src/doctor.ts module comment), and its own doc comment calls it "the pre-flight sibling of `status --json`" — but a script that passes/fails on the verdict can only learn *which* check failed and *why* by parsing the aligned prose lines, which change shape whenever `renderDoctor` evolves. `status --json`, `report --json`, `logs --json`, `history --json`, and `backlog --json` have all landed (Done entries 2026-09-28); `doctor` is the last scriptable surface still prose-only. This plan gives it the same `--json` flag; the payload is the `DoctorReport` object itself — the collector's own payload, not a re-parse of the render (the `report --json` precedent).
 
 **Approach.**
 
@@ -30,7 +30,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Exit-code semantics are unchanged in both forms: 1 when any check is `fail`, 0 otherwise; warnings never fail the exit. The flag never emits prose — a JSON document in every exit-0 case.
 - Plain `tumwater doctor` output is byte-identical to before (renderDoctor tests untouched); `doctor --verbose` is still rejected with `takes no arguments`; `tumwater help doctor` names `--json`; `npm run test` passes.
 
-### `tumwater backlog --json` — the project backlog as machine-readable data, completing the `--json` pattern (planned 2026-09-28)
+
+## Done
+
+### `tumwater backlog --json` — the project backlog as machine-readable data, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** `status --json`, `report --json`, `logs --json`, and `history --json` all exist so
 scripts can read fleet state, spend, events, and per-tick results without screen-scraping — but
@@ -64,8 +67,6 @@ surfaces stay in sync by construction (siblings: the `logs --json`, `history --j
 - `tumwater backlog --json` prints one JSON document parseable by `JSON.parse` with keys `plans`, `bugs`, `questions`, each an array of `{title, body}` objects identical to what the plain `tumwater backlog` Markdown render lists (same order, same verbatim text) and to what the GUI's `/api/backlog` serves per entry.
 - In a directory with no backlog files, `tumwater backlog --json` prints the pretty-printed all-empty object and exits 0 — a JSON document in every exit-0 case, never prose.
 - Plain `tumwater backlog` output is byte-identical to before; `tumwater help backlog` names `--json`; `npm run test` passes.
-
-## Done
 
 ### `tumwater logs --json` — the event feed as machine-readable NDJSON, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 

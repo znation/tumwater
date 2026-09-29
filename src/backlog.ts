@@ -170,3 +170,20 @@ export function openBugEntries(root: string): BacklogEntry[] {
 export function openQuestionEntries(root: string): BacklogEntry[] {
   return sectionEntries(root, "QUESTIONS.md", "Open");
 }
+
+/** The backlog as one machine-readable document: the three entry arrays the Markdown renderer
+ * and the GUI's /api/backlog endpoint serve, so `tumwater backlog --json` prints the same data
+ * every surface reads (status --json's "print the endpoint's payload" pattern). Each array keeps
+ * file order and {title, body} verbatim, and a missing or unreadable file degrades to [] like the
+ * individual readers — a bare directory yields the all-empty object, never an error. */
+export function backlogPayload(root: string): {
+  plans: BacklogEntry[];
+  bugs: BacklogEntry[];
+  questions: BacklogEntry[];
+} {
+  return {
+    plans: plannedPlanEntries(root),
+    bugs: openBugEntries(root),
+    questions: openQuestionEntries(root),
+  };
+}

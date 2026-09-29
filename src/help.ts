@@ -51,7 +51,10 @@ Usage:
                                    summary (or error), each row one line (--json prints
                                    machine-readable history data — the same rows with ts,
                                    tokens, and costUsd kept raw, the GUI's /api/history payload)
-  tumwater backlog                 Show planned features, open bugs, and open questions (the dashboards' backlog view)
+  tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
+                                   dashboards' backlog view); --json prints machine-readable
+                                   backlog data — the three entry arrays as {title, body}, the
+                                   same data the Markdown view renders
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)
   tumwater prompt --list           Show queued prompts, numbered, grouped by loop
