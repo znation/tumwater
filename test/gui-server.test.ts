@@ -5,7 +5,7 @@ import net from "node:net";
 import path from "node:path";
 import type { HarnessEvent } from "../src/events.js";
 import { initProject } from "../src/init.js";
-import { tickRows } from "../src/ui/history.js";
+import { tickRows } from "../src/history-data.js";
 import { writeEvents } from "./log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox.js";

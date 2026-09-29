@@ -217,7 +217,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
 
 /** The time a `tick_end` attests: its own `durationMs` when it carries one (every event
  * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
- * fallback ui/history.ts renders, so old events read their span the one way it can still be
+ * fallback history-data.ts renders, so old events read their span the one way it can still be
  * known. 0 when neither source has the start (rotation cut it); the fold prices no time it
  * cannot attest but still counts the tick. */
 function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {

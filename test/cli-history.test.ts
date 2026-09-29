@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events.js";
 import { initProject } from "../src/init.js";
-import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/ui/history.js";
+import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history-data.js";
 import { displayWidth } from "../src/text.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";

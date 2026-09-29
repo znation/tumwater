@@ -28,7 +28,7 @@ import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { readTranscript } from "./transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "./history.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history-data.js";
 import { parseNonNegativeInt, parsePositiveInt } from "../text.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import type http from "node:http";
