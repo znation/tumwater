@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readLockPid, withLock, withSyncLock } from "../src/lock.js";
+import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/lock.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "../src/errno.js";
 
@@ -27,6 +27,58 @@ test("readLockPid accepts plain-decimal pids and rejects torn or foreign content
 
   fs.rmSync(path.join(dir, "pid"));
   assert.equal(readLockPid(dir), null, "a missing pid file is unreadable");
+});
+
+test("classifyLock places each lock shape in absent/live/stale directly", () => {
+  // The verdict withLock acts on and doctor reports is asserted here on its own, so the
+  // four-way branch matrix cannot drift without this test failing — the withLock tests
+  // below only see its consequences through steal-or-wait outcomes.
+  const setAge = (dir: string, msAgo: number) => {
+    const when = new Date(Date.now() - msAgo);
+    fs.utimesSync(dir, when, when);
+  };
+
+  // No dir at all — nothing held, nothing stale.
+  assert.equal(classifyLock(path.join(tmpdir(), "classify-absent.lock")), "absent");
+
+  // Fresh dir, live pid (ours): a holder we must not steal from.
+  const live = path.join(tmpdir(), "classify-live.lock");
+  fs.mkdirSync(live);
+  fs.writeFileSync(path.join(live, "pid"), String(process.pid));
+  assert.equal(classifyLock(live), "live");
+
+  // Fresh dir, dead pid: safe to break.
+  const dead = path.join(tmpdir(), "classify-dead.lock");
+  fs.mkdirSync(dead);
+  fs.writeFileSync(path.join(dead, "pid"), "999999999");
+  assert.equal(classifyLock(dead), "stale");
+
+  // Old dir with a still-live pid: age alone must win, so a reused pid cannot latch
+  // a dead holder as live.
+  const old = path.join(tmpdir(), "classify-old.lock");
+  fs.mkdirSync(old);
+  fs.writeFileSync(path.join(old, "pid"), String(process.pid));
+  setAge(old, 11 * 60 * 1000);
+  assert.equal(classifyLock(old), "stale");
+
+  // No readable pid: live within the NO_PID_GRACE_MS grace (the creator may still be
+  // between mkdir and the pid write), stale once past it.
+  const freshOrphan = path.join(tmpdir(), "classify-fresh-orphan.lock");
+  fs.mkdirSync(freshOrphan);
+  assert.equal(classifyLock(freshOrphan), "live");
+  const orphan = path.join(tmpdir(), "classify-orphan.lock");
+  fs.mkdirSync(orphan);
+  setAge(orphan, 6 * 1000);
+  assert.equal(classifyLock(orphan), "stale");
+
+  // A torn pid file reads as no pid at all, so it falls into the same grace path:
+  // fresh means live, past the grace means stale.
+  const torn = path.join(tmpdir(), "classify-torn.lock");
+  fs.mkdirSync(torn);
+  fs.writeFileSync(path.join(torn, "pid"), "12 34");
+  assert.equal(classifyLock(torn), "live");
+  setAge(torn, 6 * 1000);
+  assert.equal(classifyLock(torn), "stale");
 });
 
 test("withLock serializes critical sections", async () => {
