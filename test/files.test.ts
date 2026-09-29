@@ -215,6 +215,43 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   }
 });
 
+test("pruneOldFiles skips symlinks: it neither deletes a linked file nor walks a linked directory", () => {
+  // A symlink is neither file nor directory under lstat semantics (the readdir entry's
+  // isFile/isDirectory are both false), so the walk must skip it on both counts. The stakes
+  // are real: pruneOldFiles is the session cleanup's delete pass, and a walk that followed
+  // links would delete (or prune inside) whatever the link points at — data the retention
+  // window does not own and may sit far outside the pruned tree.
+  const dir = tmpdir();
+  const outside = tmpdir();
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
+
+  // An old file outside the prune root, linked from inside it.
+  const linkedFile = path.join(outside, "old.jsonl");
+  fs.writeFileSync(linkedFile, "old");
+  fs.utimesSync(linkedFile, tenDaysAgo, tenDaysAgo);
+  fs.symlinkSync(linkedFile, path.join(dir, "link.jsonl"));
+
+  // Same stake one level deeper: a linked directory must not be recursed into, or the
+  // walk would prune the target tree's own old files.
+  const linkedDir = path.join(outside, "tree");
+  fs.mkdirSync(linkedDir);
+  const linkedDirOld = path.join(linkedDir, "old.jsonl");
+  fs.writeFileSync(linkedDirOld, "old");
+  fs.utimesSync(linkedDirOld, tenDaysAgo, tenDaysAgo);
+  fs.symlinkSync(linkedDir, path.join(dir, "tree-link"), "dir");
+
+  // A dangling link: skipped like any non-regular entry, never a crash mid-walk.
+  fs.symlinkSync(path.join(outside, "vanished-target"), path.join(dir, "dangling.jsonl"));
+
+  assert.equal(pruneOldFiles(dir, 7), 0, "nothing counts as pruned");
+  assert.ok(fs.existsSync(linkedFile), "the linked file itself survives");
+  assert.ok(fs.existsSync(linkedDirOld), "nothing inside the linked directory is pruned");
+  // The links are checked with lstat: existsSync follows them, so a dangling link would
+  // read as gone even though it was never touched.
+  for (const link of ["link.jsonl", "tree-link", "dangling.jsonl"])
+    assert.ok(fs.lstatSync(path.join(dir, link)).isSymbolicLink(), `${link} stays`);
+});
+
 test("writeTextAtomic writes the exact text and leaves no tmp remnant", () => {
   const dir = tmpdir();
   const file = path.join(dir, "deep", "queue", "p.md");
