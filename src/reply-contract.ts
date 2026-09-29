@@ -41,24 +41,26 @@ export function extractRefusal(text: string): string | null {
   return labeledLine(text, REFUSED_SENTINEL);
 }
 
-/** True when a TUMWATER_REFUSED reason negates the refusal instead of carrying it: empty,
- * `none`, or `n/a` — including a parenthesized form of either, with or without an appended
- * explanation (`(none — no entry refused this run)`), with trailing sentence punctuation
- * (`None.`, `N/A!`) still negating (BUGS.md 2026-09-28), and under markdown decoration
- * (`**none**`, `` `n/a` ``, `(**None**) — nothing refused`) still negating (BUGS.md
- * 2026-09-28), with a trailing parenthesized explanation (`none (no entry refused this
- * run)`, `n/a (nothing to do).`) still negating (BUGS.md 2026-09-28), and with an explanation
- * in any punctuation dress — the hyphen and en/em dashes, an opening parenthesis, or a
- * sentence mark starting the note (`None; nothing to refuse.`, `None. Nothing worth doing.`)
- * — still negating (BUGS.md 2026-09-28), and under quote decoration with the same two roles
- * quotes play (`"none"`, `none "nothing to do"`) still negating (BUGS.md 2026-09-28) —
- * straight quotes and their typographic counterparts alike, each of ‘ ’ “ ” decorating both
- * sides of the token (a model's quote direction is not reliable, so the classes are
- * direction-agnostic; BUGS.md 2026-09-28). A refusal is a
- * deliberate, affirmative
- * declaration; classifying a reply as one must not depend on the model never naming the
- * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
- * so a compliant model fills it in on every reply). */
+/** True when a TUMWATER_REFUSED reason negates the refusal instead of carrying it. The
+ * recognized shapes, in the order the pipeline strips them — every dress beyond the bare
+ * tokens was observed in a real reply and recorded in BUGS.md on 2026-09-28:
+ *
+ * - the bare tokens, case-insensitive: empty, `none`, `n/a`;
+ * - under markdown decoration or quote wrapping: `**none**`, `` `n/a` ``, `(**None**) —
+ *   nothing refused`, `"none"`, `none "nothing to do"`. Straight and typographic quotes
+ *   alike, each of ‘ ’ “ ” decorating either side of the token (a model's quote direction
+ *   is not reliable, so both classes carry all four);
+ * - with trailing sentence punctuation: `None.`, `N/A!` — punctuation is formatting;
+ * - inside brackets, which become spaces rather than deletions, so `(no)ne` cannot
+ *   collapse into `none`;
+ * - with an appended explanation introduced by any character that cannot begin a reason
+ *   word — the hyphen and en/em dashes, an opening parenthesis, a quote, or a sentence
+ *   mark (`none - no entry refused`, `none (no entry refused this run)`, `None; nothing
+ *   to refuse.`, `None. Nothing worth doing.`).
+ *
+ * A refusal is a deliberate, affirmative declaration; classifying a reply as one must not
+ * depend on the model never naming the sentinel (BUGS.md 2026-09-23 — the prompt lists the
+ * line beside the reply-contract fields, so a compliant model fills it in on every reply). */
 export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const raw = (reason ?? "").trim().toLowerCase();
   // Quotes join the wrapping strip beside the brackets: like brackets and markdown runs they
@@ -75,7 +77,7 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
   // dash-append regex already tolerates keeps `none) — …` from wedging a stray bracket against
   // the token. A real objection still carries words beyond the token under every stripping.
   const unbold = (s: string) => s.replace(/[*_~`'"‘’“”]+/g, " ").trim();
-  const bare = (s: string) => s.replace(/[.!,;:?!*]+$/, "").trim();
+  const bare = (s: string) => s.replace(/[.!,;:?!]+$/, "").trim();
   const unbracket = (s: string) => s.replace(/[([{)\]}]+/g, " ").trim();
   const normalized = unbracket(bare(unbold(raw)));
   for (const candidate of [raw, unwrapped, normalized]) {
