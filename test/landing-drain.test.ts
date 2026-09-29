@@ -1095,3 +1095,42 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
     restore();
   }
 });
+
+test("a git failure inside the gate's reject path settles the vet as an error outcome, naming the failure in the author's state", async () => {
+  const root = makeRepo();
+  const role = "improve";
+  const shas = await queueChanges(root, [role]);
+  // A stale index.lock in the worktree's gitdir — the wreckage of a crashed concurrent git —
+  // planted by the reviewer shim itself, so it exists by the time the gate's reject path
+  // resets the worktree (after the verdict, before the pin delete). resetWorktreeToMain's
+  // `git reset --hard` throws, the throw rides out of the gate and vetRequest, and the drain
+  // must turn it into the terminal "error" outcome — never a rejected task promise, which
+  // would leave the entry queued and its author interlocked forever.
+  const shim = [
+    `case "$PWD" in`,
+    `*_land-${role}) gd=$(sed 's/^gitdir: //' "$PWD/.git"); touch "$gd/index.lock"; ` +
+      `printf '%s\\n' '${assistantLine("VERDICT: reject\\n1. no")}'; exit 0;;`,
+    `esac`,
+  ].join("\n");
+  const restore = fakePi(shim);
+  const { ctx, pipeline } = makePipeline(root, runnersFor(root, [role]), { cap: 1 });
+  try {
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the failed vet to settle", 30_000);
+  } finally {
+    restore();
+  }
+  await Promise.allSettled(allTasks(pipeline));
+
+  const state = loadLoopState(root, role);
+  assert.equal(state.lastResult, "error", "the outcome folded into the author's state as an error");
+  assert.match(state.lastError ?? "", /index\.lock/, "the persisted state names the git failure that threw");
+  const failed = readEvents(root).filter((e) => e.type === "land_failed" && e.loop === role);
+  assert.equal(failed.length, 1, "one land_failed event, logged once by the settle");
+  assert.equal(failed[0]!.result, "error");
+  assert.equal(failed[0]!.commit, shas[role], "the event names the commit whose vet failed");
+  assert.equal(
+    await refSha(root, landingRefName(role)),
+    shas[role],
+    "the pin survives the error outcome (only a rejection deletes it) for the next re-land",
+  );
+});
