@@ -7,6 +7,17 @@ import { pidAlive } from "./process.js";
 import { withSyncLock } from "./lock.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "./paths.js";
 
+/** The fleet pause marker read once as the standing pause it represents: non-null while the
+ * operator's pause stands, null when absent/unreadable/expired. Snapshot-style callers that
+ * need both "is the fleet paused" and its deadline read this once instead of paying two
+ * full marker reads (isFleetPaused + pausedUntil each re-read the same file) per poll —
+ * the TUI and GUI poll snapshot every second. Never throws (a missing .tumwater/ reads
+ * null). Lives here beside the read-half wrappers below: one module, one marker, one read
+ * per poll per observer. */
+export function standingFleetPause(root: string): PauseMarker | null {
+  return standingMarker(pausedPath(root));
+}
+
 /** True while the operator has paused the fleet (`tumwater pause` wrote its marker). The
  * marker is persistent state, not a one-shot request: presence means paused until `resume`
  * removes it — pausing before startup starts an already-paused fleet. Never throws (a missing
@@ -14,7 +25,7 @@ import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath
  * evaluate it from disk without importing each other's modules — the same "single
  * definition" rule that put the daily-cost budget in src/budget.ts. */
 export function isFleetPaused(root: string): boolean {
-  return standingMarker(pausedPath(root)) !== null;
+  return standingFleetPause(root) !== null;
 }
 
 /** The body shape of both pause markers: the write instant plus, for a timed pause
@@ -46,7 +57,7 @@ function standingMarker(path: string): PauseMarker | null {
  * badge may claim, since only it covers the whole fleet. Lives here beside isFleetPaused —
  * one module for every marker consumer. */
 export function pausedUntil(root: string): number | undefined {
-  return standingMarker(pausedPath(root))?.until;
+  return standingFleetPause(root)?.until;
 }
 
 /** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the

@@ -10,7 +10,12 @@ import { promptPreview, queuedPrompts, queuedRolePromptCount } from "../inbox.js
 import { statePath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { freshLoopState, loadLoopState } from "../loop-state.js";
-import { isFleetPaused, orchestratorAlive, pausedRoles, pausedUntil, readOrchestratorInfo } from "../fleet-state.js";
+import {
+  orchestratorAlive,
+  pausedRoles,
+  readOrchestratorInfo,
+  standingFleetPause,
+} from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../landing-queue.js";
@@ -170,6 +175,9 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     if (r !== DIRECTOR_ROLE) roleInbox[r] = queuedRolePromptCount(root, r);
   }
   const running = orchestratorAlive(root, info);
+  // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
+  // isFleetPaused + pausedUntil would each re-read the same marker file every second.
+  const fleetPause = standingFleetPause(root);
   // One land-queue pass per poll (landing-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
   // still has a queue entry for what the marker names (per change, for a batch) — the
@@ -207,9 +215,9 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
           ? (fallbackPair(cfg) ?? null)
           : null,
     },
-    paused: isFleetPaused(root),
+    paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
-    pausedUntil: pausedUntil(root),
+    pausedUntil: fleetPause?.until,
     landQueue,
   };
 }
