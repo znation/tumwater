@@ -70,6 +70,21 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
  * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
  * with, and when the caller passes the run and its deadline fired late, the time it really
  * fired at (timedOutPhrase). */
+/** The `<label> was killed by <signal> after <secs>s; <proceeding>` sentence for an external
+ * signal kill — the one home of that phrasing, shared by buildCheckSkipWarning's "killed" skip
+ * warning and runScopedBuildCheck's merge-scope unverified reason, so the two surfaces render
+ * the same kill identically. A kill the caller could not attribute to a signal is described as
+ * an external signal rather than pretending the timeout fired. */
+export function killedPhrase(
+  label: string,
+  killed: { signal: string; durationMs: number } | undefined,
+  proceeding: string,
+): string {
+  return killed
+    ? `${label} was killed by ${killed.signal} after ${killed.durationMs / 1000}s; ${proceeding}`
+    : `${label} was killed by an external signal; ${proceeding}`;
+}
+
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,
@@ -80,11 +95,7 @@ export function buildCheckSkipWarning(
 ): string {
   if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
   if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
-  if (skipReason === "killed") {
-    return killed
-      ? `${label} was killed by ${killed.signal} after ${killed.durationMs / 1000}s; ${proceeding}`
-      : `${label} was killed by an external signal; ${proceeding}`;
-  }
+  if (skipReason === "killed") return killedPhrase(label, killed, proceeding);
   return `${label} ${timedOutPhrase(timeoutMs, run)}; ${proceeding}`;
 }
 

@@ -6,6 +6,7 @@ import {
   buildCheckEvent,
   buildCheckSkipWarning,
   DEADLINE_LATE_TOLERANCE_MS,
+  killedPhrase,
   timedOutPhrase,
   type BuildCheckScope,
 } from "./build-check-events.js";
@@ -332,7 +333,11 @@ export async function runScopedBuildCheck(
     MERGE_SCOPES.has(scope);
   const unverifiedReason =
     raw.skipReason === "killed"
-      ? `${SCOPE_WORDS[scope].label} was killed by ${raw.killedBy} after ${durationMs / 1000}s; the tree is unverified`
+      ? killedPhrase(
+          SCOPE_WORDS[scope].label,
+          raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
+          "the tree is unverified",
+        )
       : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; the tree is unverified`;
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? {
