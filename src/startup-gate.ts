@@ -4,7 +4,6 @@ import { loadConfigSafe } from "./config.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, branchExists, currentBranch, hasCommits, isGitRepo, listBranches } from "./git.js";
-import { resolveAgentBin } from "./pi.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -12,6 +11,7 @@ import {
   NO_COMMITS_MESSAGE,
   findAgentBinary,
   piMissingMessage,
+  resolveAgentBin,
 } from "./readiness.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator

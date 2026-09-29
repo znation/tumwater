@@ -31,8 +31,8 @@ import {
   agentBinSourceLabel,
   findAgentBinary,
   piMissingMessage,
+  resolveAgentBin,
 } from "./readiness.js";
-import { resolveAgentBin } from "./pi.js";
 import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig } from "./config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
-import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
+import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { PiStreamParser } from "./pi-stream.js";
 
@@ -201,30 +201,6 @@ export function hasResumableSession(sessionDir: string): boolean {
  * is created for such a run). The resolved binary follows it, so a configured agentBin
  * reads "failed to spawn <bin>" rather than blaming an ambient "pi". */
 const SPAWN_ERROR_PREFIX = "failed to spawn";
-
-/** Normalize a path-shaped agent binary against the harness process's cwd NOW, at
- * resolution time: the spawn runs with each tick's worktree as cwd, so a relative value
- * left as given would name a different file there than the run preflight and doctor (which
- * evaluate against the process cwd) had already accepted. An absolute path comes back
- * normalized; a bare name — no separator — is left for PATH resolution exactly as before.
- * No filesystem calls: the two preflight sites test resolvability, so resolution itself
- * stays trivially unit-testable. */
-function absBin(value: string): string {
-  return value.includes("/") ? path.resolve(value) : value;
-}
-
-/** Resolve which agent binary the harness spawns: TUMWATER_PI_BIN → config.agentBin →
- * "pi" (plans/portability.md §5/7). An empty or whitespace value falls through to the
- * next source, so `TUMWATER_PI_BIN= tumwater run` cannot wedge the fleet on a typo'd
- * export. This is precedence only — resolvability is checked at the preflight sites
- * (cmdRun and doctor), never here. */
-export function resolveAgentBin(config: Pick<TumwaterConfig, "agentBin">): ResolvedAgentBin {
-  const env = process.env.TUMWATER_PI_BIN?.trim();
-  if (env) return { bin: absBin(env), source: "env" };
-  const configured = config.agentBin?.trim();
-  if (configured) return { bin: absBin(configured), source: "config" };
-  return { bin: "pi", source: "default" };
-}
 
 /** The spawn-error message for a resolved binary: the default source keeps today's text
  * ("failed to spawn pi: …"); a configured source names the binary and where it came from,

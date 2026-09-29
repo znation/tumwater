@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import path from "node:path";
+import type { TumwaterConfig } from "./config-schema.js";
 import { findOnPath } from "./files.js";
 
 /** The pre-flight messages behind the readiness gate. startup-gate.ts answers with the first
@@ -17,7 +19,7 @@ const PI_MISSING_MESSAGE =
   "pi not found on PATH — install it (https://github.com/badlogic/pi-mono) or add its bin directory to your PATH";
 
 /** Where a resolved agent binary's value came from (plans/portability.md §5/7): the env
- * override, the config field, or the built-in default. Shared by resolveAgentBin (pi.ts)
+ * override, the config field, or the built-in default. Shared by resolveAgentBin below
  * and every message that names the resolution, so the wording cannot drift between the
  * surfaces that report it. */
 type AgentBinSource = "env" | "config" | "default";
@@ -70,4 +72,28 @@ export function findAgentBinary(
     }
   }
   return findOnPath(resolved.bin, pathEnv);
+}
+
+/** Normalize a path-shaped agent binary against the harness process's cwd NOW, at
+ * resolution time: the spawn runs with each tick's worktree as cwd, so a relative value
+ * left as given would name a different file there than the run preflight and doctor (which
+ * evaluate against the process cwd) had already accepted. An absolute path comes back
+ * normalized; a bare name — no separator — is left for PATH resolution exactly as before.
+ * No filesystem calls: the two preflight sites test resolvability, so resolution itself
+ * stays trivially unit-testable. */
+function absBin(value: string): string {
+  return value.includes("/") ? path.resolve(value) : value;
+}
+
+/** Resolve which agent binary the harness spawns: TUMWATER_PI_BIN → config.agentBin →
+ * "pi" (plans/portability.md §5/7). An empty or whitespace value falls through to the
+ * next source, so `TUMWATER_PI_BIN= tumwater run` cannot wedge the fleet on a typo'd
+ * export. This is precedence only — resolvability is checked at the preflight sites
+ * (cmdRun and doctor), never here. */
+export function resolveAgentBin(config: Pick<TumwaterConfig, "agentBin">): ResolvedAgentBin {
+  const env = process.env.TUMWATER_PI_BIN?.trim();
+  if (env) return { bin: absBin(env), source: "env" };
+  const configured = config.agentBin?.trim();
+  if (configured) return { bin: absBin(configured), source: "config" };
+  return { bin: "pi", source: "default" };
 }

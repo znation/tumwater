@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agentBinSourceLabel, piMissingMessage } from "../src/readiness.js";
+import path from "node:path";
+import { agentBinSourceLabel, piMissingMessage, resolveAgentBin } from "../src/readiness.js";
 
 // Unit coverage for src/readiness.ts's agent-binary resolution messages. The module exists so
 // that cli.ts's fail-fast, doctor.ts's report, and pi.ts's spawn errors describe the same
@@ -38,4 +39,58 @@ test("piMissingMessage for a configured source names the resolved value and wher
   const config = piMissingMessage({ bin: "./my-pi", source: "config" });
   assert.match(config, /^pi not found — resolved "\.\/my-pi" from agentBin in tumwater\.json is not an executable/);
   assert.match(config, /point agentBin in tumwater\.json at a working pi binary/);
+});
+
+// plans/portability.md §5/7: the agent binary is TUMWATER_PI_BIN → agentBin → "pi". The
+// resolver is precedence only (no filesystem calls — resolvability is the preflight sites'
+// job); a path-shaped value is normalized against the process cwd AT RESOLUTION TIME, so
+// the spawn — which runs with each tick's worktree as cwd — lands on the same file the run
+// preflight and doctor checked.
+test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", () => {
+  assert.deepEqual(resolveAgentBin({}), { bin: "pi", source: "default" });
+  assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+    bin: "/opt/pi/bin/pi",
+    source: "config",
+  });
+
+  process.env.TUMWATER_PI_BIN = "/x/pi-override";
+  try {
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/x/pi-override",
+      source: "env",
+    });
+    // A whitespace value falls through to config, so an empty export cannot wedge the fleet.
+    process.env.TUMWATER_PI_BIN = "  ";
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/opt/pi/bin/pi",
+      source: "config",
+    });
+    process.env.TUMWATER_PI_BIN = "";
+    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+      bin: "/opt/pi/bin/pi",
+      source: "config",
+    });
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+});
+
+test("resolveAgentBin normalizes a path-shaped value against the process cwd; a bare name is left to PATH", () => {
+  const rel = resolveAgentBin({ agentBin: "bin/pi" });
+  assert.equal(rel.source, "config");
+  assert.equal(rel.bin, path.resolve("bin/pi")); // absolute, so the worktree cwd cannot redirect it
+
+  const envRel = resolveAgentBin({});
+  process.env.TUMWATER_PI_BIN = "./scripts/pi";
+  try {
+    const r = resolveAgentBin({});
+    assert.equal(r.source, "env");
+    assert.equal(r.bin, path.resolve("scripts/pi"));
+  } finally {
+    delete process.env.TUMWATER_PI_BIN;
+  }
+  assert.equal(envRel.bin, "pi"); // sanity: no env leak into the default case
+
+  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).bin, "pi-wrapper");
+  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).source, "config");
 });
