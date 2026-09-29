@@ -3,6 +3,28 @@
 Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
+## Planned
+
+### Cancel a queued prompt from the dashboard — the GUI's queued-prompts rows get a per-row cancel control, backed by a file-addressed `/api/prompt-cancel` (planned 2026-09-29)
+
+**Goal.** The dashboard's "queued prompts" section lists what will run next — the director's previews from `statusPayload`'s `inboxPrompts`, plus per-role `"r: N queued"` count lines — but every row is plain text with no affordance (src/ui/gui-client.ts, the `backlogList("queued prompts", …)` block; the comment even says "queued prompts stay plain — they have no body"). The CLI already has `tumwater prompt --cancel <n>` (src/ui/operator-commands.ts `cmdPrompt`, position-addressed over src/inbox.ts `cancelRolePrompt`), but an operator steering from the GUI must switch terminals to retract a prompt they just regretted. This plan gives every queued-prompt row in the dashboard a cancel link that removes exactly that prompt — addressed by its queue file, not by list position, so a 1 s-stale poll can never cancel the wrong entry — reusing the shared cancel core and the `prompt_cancelled` event shape.
+
+**Approach.**
+
+1. **File-addressed cancel core (src/inbox.ts).** New `cancelQueuedFile(root, role, name)`: resolve `roleInboxDir(root, role)` + `name`, rejecting any `name` that is not a plain basename (contains `/` or `\`, or equals `..`) — a traversal guard, since the name arrives over HTTP; then `takeQueuedFile(file)`, the race-safe read-and-remove the position-based `cancelRolePrompt` already shares with `dequeueRolePrompt`; then log one `prompt_cancelled` event under that loop with `promptPreview(text)` (exactly `cancelRolePrompt`'s event, logged only after successful removal) and return the same `CancelOutcome` (`"cancelled" | "gone"`). A vanished file reads as `"gone"` — a concurrent dequeue is a normal race, not an error.
+2. **Addressable payload (src/ui/status.ts, src/ui/status-payload.ts).** Keep `inboxPrompts: string[]` untouched — the TUI consumes it (src/ui/tui.ts) and stays read-only. Add, from the same inbox pass: `inboxFiles: string[]` (the director queue's file basenames, same order as `inboxPrompts` — `snapshot()` already gets the directory listing; expose the names beside the previews) and `roleInboxPrompts: Record<string, { file: string; preview: string }[]>` for each non-director role with queued prompts, filled from `queuedRolePrompts` (the stat-keyed `promptCache` keeps an unchanged file at one stat per poll, so the common empty case costs nothing). The payload passes both through unchanged.
+3. **Endpoint (src/ui/gui-endpoints.ts, routed in src/ui/gui.ts beside `handlePrompt`).** `handlePromptCancel`: POST `/api/prompt-cancel`, body `{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}` with `role` optional (defaults to the director). Discipline mirrors the sibling handlers: `readJsonObject` → 400 malformed / 413 oversized; a given role through the shared `rejectBadRole` → 400; a file name failing the basename guard → 400 (user-input error, nothing touched on disk); success → 200 `{ ok: true, status: "cancelled" | "gone", preview? }` — `"gone"` is data, like the CLI's "no longer queued" line, never a 500.
+4. **Dashboard (src/ui/gui-client.ts).** The queued-prompts section renders each row (director and per-role, replacing the `"r: N queued"` count hack with actual per-prompt rows) as `preview <a href='#' class='rowaction' data-action='promptcancel' data-file='…' data-role='…'>cancel</a>`, wired through the existing delegated `a.rowaction` listener; the click POSTs and flashes the server message in the header ("cancelled: <preview>" / "no longer queued — <role> already took it"), and the next 1 s poll re-renders the section. `test/gui.test.ts`'s page-shape assertion on the `backlogList("queued prompts", …)` concat is updated to the new render.
+
+**Files touched.** `src/inbox.ts`, `src/ui/status.ts`, `src/ui/status-payload.ts`, `src/ui/gui-endpoints.ts`, `src/ui/gui.ts`, `src/ui/gui-client.ts`; tests `test/status.test.ts`, `test/gui.test.ts`, `test/gui-server.test.ts`. No changes to the CLI (`cmdPrompt` stays position-based) or the TUI.
+
+**Acceptance criteria.**
+
+- Every queued-prompt row in the dashboard's "queued prompts" section — director queue and per-role queues alike — carries a cancel link; clicking it removes that exact prompt's queue file, logs one `prompt_cancelled` event under that loop, and the row disappears on the next poll.
+- Cancelling a prompt the loop already dequeued answers `"gone"` (HTTP 200) and removes nothing else — a prompt enqueued after the operator's poll snapshot is never the one cancelled.
+- A `file` value with a path separator, `..`, or a non-`.md` name is rejected 400 with the queue's files untouched; an unknown `role` is rejected 400 with the shared `rejectBadRole` wording.
+- `snapshot()`'s `inboxPrompts` stays `string[]` (TUI unchanged); `tumwater prompt --list/--cancel` behave exactly as before; `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor --json` — the pre-flight report as machine-readable data, finishing the scriptable-surface series (planned 2026-09-28, refined 2026-09-28, done 2026-09-29)
