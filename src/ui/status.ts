@@ -19,6 +19,7 @@ import {
   standingFleetPause,
 } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
+import type { TestCounts } from "../build-check.js";
 import { fleetDailyCost } from "../budget.js";
 import { queuedLandings } from "../landing-queue.js";
 
@@ -129,13 +130,9 @@ export interface StatusSnapshot {
 }
 
 /** A runner summary block as the build_check event carries it (build-check-events.ts spreads
- * the outcome's counts through). Structurally checked on read: the event log is loose-typed. */
-interface TestCounts {
-  tests: number;
-  pass: number;
-  fail: number;
-  skipped: number;
-}
+ * the outcome's counts through): parseTestCounts's exported TestCounts, single-homed in
+ * build-check.ts beside its parser. Structurally checked on read (asCounts): the event log is
+ * loose-typed. */
 
 function asCounts(v: unknown): TestCounts | undefined {
   if (typeof v !== "object" || v === null) return undefined;

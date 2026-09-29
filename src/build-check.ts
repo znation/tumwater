@@ -89,8 +89,11 @@ export interface BuildCheckOutcome {
   counts?: TestCounts;
 }
 
-/** What a node:test-style runner's summary block reports, as parseTestCounts read it. */
-interface TestCounts {
+/** What a node:test-style runner's summary block reports, as parseTestCounts read it. The
+ * build_check event carries it verbatim (build-check-events.ts spreads the outcome's counts
+ * through), so the event's readers — the status snapshot's mainCheck (ui/status.ts) — import
+ * this shape instead of re-declaring it. */
+export interface TestCounts {
   tests: number;
   pass: number;
   fail: number;
