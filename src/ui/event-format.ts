@@ -1,5 +1,5 @@
 import { eventUsage, type HarnessEvent } from "../events.js";
-import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "../text.js";
+import { budgetPhrase, compactTokens, padToWidth, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "../text.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -39,7 +39,11 @@ function elapsed(ms: unknown): string {
  * not on its log I/O — so display surfaces never import formatting from the logging module. */
 export function formatEvent(e: HarnessEvent): string {
   const time = new Date(e.ts).toLocaleTimeString();
-  const loop = String(e.loop).padEnd(9);
+  // Padded in terminal display columns (padToWidth), not String#padEnd's UTF-16 code units:
+  // a custom loop name holding a wide character (CJK, emoji) counts one code unit but two
+  // display columns, so a padEnd cell rendered wider than its column and the message column
+  // sat right of every ASCII row's (the same unit mistake the aligned tables shed).
+  const loop = padToWidth(String(e.loop), 9);
   // The `<time> <loop-padded> ` head every branch renders — one home for the two-column
   // prefix, so the loop column's width and the time shape cannot drift per branch.
   const line = (message: string) => `${time} ${loop} ${message}`;

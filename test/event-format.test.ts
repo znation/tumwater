@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatEvent } from "../src/ui/event-format.js";
+import { displayWidth } from "../src/text.js";
 
 test("formatEvent renders each type as one line", () => {
   const cases = [
@@ -19,6 +20,23 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[1] as never), /tidy up/);
   assert.match(formatEvent(cases[2] as never), /boom/);
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
+});
+
+test("formatEvent keeps the loop column aligned when a loop name holds a wide character", () => {
+  // The loop column is padded so every line's message starts at the same display column.
+  // A custom loop name carrying a wide character (CJK, emoji) is one UTF-16 code unit but
+  // two terminal columns per char, so a String#padEnd cell rendered wider than its column
+  // and that row's message sat right of every ASCII row's (BUGS.md, event feed sibling of
+  // the aligned-tables fix).
+  const ts = 0;
+  const ascii = formatEvent({ ts, loop: "bugfix", type: "wake", reason: "main moved" } as never);
+  const wide = formatEvent({ ts, loop: "翻译", type: "wake", reason: "main moved" } as never);
+  // Both lines share the identical time prefix, so the loop column starts right after it.
+  const time = new Date(ts).toLocaleTimeString();
+  const messageColumn = (line: string) =>
+    displayWidth(line.slice(time.length + 1).split("woke")[0]!);
+  assert.equal(messageColumn(ascii), 10, `expected the 9-wide loop column plus a space: ${ascii}`);
+  assert.equal(messageColumn(wide), messageColumn(ascii), `wide-character row misaligned: ${wide}`);
 });
 
 test("formatEvent renders wake reasons and warning messages operators rely on", () => {
