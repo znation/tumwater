@@ -890,3 +890,22 @@ test("a loop with queued prompts carries a p:N marker on its state cell", () => 
   assert.doesNotMatch(dryRow, /p:/, "an empty queue renders no marker");
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
+
+test("the status header carries a mainCheck badge only after a merge-scope check", () => {
+  // No check yet: no badge — the header of a quiet fleet stays byte-identical to before.
+  const none = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(none, /· main /);
+  // Green with counts (PLANS.md "Retire the README freshness stamp" wording: the old README
+  // stamp's `suite N/N (N skipped)` shape, rendered live instead of committed).
+  const green = renderStatus(tmpdir(), {
+    ...snapshotWith([{ role: "clean" }]),
+    mainCheck: { sha: "a".repeat(40), status: "passed", counts: { tests: 10, pass: 9, fail: 0, skipped: 1 }, at: 0 },
+  }).split("\n")[0] ?? "";
+  assert.match(green, /· main a{8}: green · 9\/10 \(1 skipped\)/);
+  // Red with no counts (the check never printed a summary block): verdict only.
+  const red = renderStatus(tmpdir(), {
+    ...snapshotWith([{ role: "clean" }]),
+    mainCheck: { sha: "a".repeat(40), status: "failed", at: 0 },
+  }).split("\n")[0] ?? "";
+  assert.match(red, /· main a{8}: red$/);
+});

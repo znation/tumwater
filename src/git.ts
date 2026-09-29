@@ -218,11 +218,13 @@ export function resolveGitDir(dir: string): string | undefined {
 
 /** The branch `dir`'s checkout has, read from its HEAD file without spawning git: undefined
  * (not null) when the files cannot answer and the `git symbolic-ref` fallback should decide.
+ * Exported for synchronous poll loops that need the same resolution the async currentBranch
+ * gives (ui/status.ts's mainCheck derivation cannot await inside its per-second snapshot).
  * A `.git` directory (primary checkout) or a `gitdir: <path>` pointer file (a linked worktree —
  * the harness itself can run from one, as its own role worktrees do) both resolve. The HEAD
  * line must be `ref: refs/heads/<branch>`; a bare sha means detached HEAD — the same null the
  * spawn produces, since symbolic-ref fails on it — and anything else is unusual (undefined). */
-function currentBranchFromHeadFile(dir: string): string | null | undefined {
+export function currentBranchFromHeadFile(dir: string): string | null | undefined {
   const gitdir = resolveGitDir(dir);
   if (gitdir === undefined) return undefined; // No repo here (or .git unreadable) — let the spawn decide.
   let head: string;

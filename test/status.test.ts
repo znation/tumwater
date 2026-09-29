@@ -17,11 +17,11 @@ import { initProject } from "../src/init.js";
 import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } from "../src/paths.js";
 import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 import { writeJsonFile } from "../src/json-files.js";
-import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { makeRepo, mainSha, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
@@ -620,4 +620,54 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   r = await cli(repo, "status", "--jsonn");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --jsonn/);
+});
+
+test("snapshot carries mainCheck from the newest merge-scope build_check event", () => {
+  const repo = makeRepo();
+  // Absent before any merge-scope check has run (and with no events at all) — the JSON
+  // payload omits the key entirely (no null placeholder, matching pausedUntil's idiom).
+  assert.equal(snapshot(repo).mainCheck, undefined);
+  assert.equal("mainCheck" in (statusPayload(repo) as object), false);
+
+  const base = 1_700_000_000_000;
+  // A landing check + the landed event after it: the check ran pre-merge, so the sha it
+  // verified is the landing's own (PLANS.md "Retire the README freshness stamp") — the
+  // landed event's `commit` field, exactly as writeLandingOutcome logs it. A gate-scope
+  // check verifies a role worktree, not main — it never qualifies.
+  writeEvents(repo, [
+    { ts: base, loop: "lander", type: "build_check", scope: "gate", status: "passed" },
+    {
+      ts: base + 1000,
+      loop: "lander",
+      type: "build_check",
+      scope: "landing",
+      status: "passed",
+      counts: { tests: 10, pass: 9, fail: 0, skipped: 1 },
+    },
+    { ts: base + 2000, loop: "lander", type: "landed", commit: "a".repeat(40) },
+  ]);
+  const landed = snapshot(repo).mainCheck;
+  assert.ok(landed, "mainCheck present after a landing check");
+  assert.equal(landed!.sha, "a".repeat(40));
+  assert.equal(landed!.status, "passed");
+  assert.deepEqual(landed!.counts, { tests: 10, pass: 9, fail: 0, skipped: 1 });
+  assert.equal(landed!.at, base + 1000);
+  // The JSON payload carries the raw block plus its preformatted badge (GUI parity with the
+  // TUI header — the badge is built once in status-model, both surfaces render it).
+  const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string };
+  assert.deepEqual(payload.mainCheck, landed);
+  assert.match(payload.mainCheckBadge, / · main a{8}: green · 9\/10 \(1 skipped\)/);
+
+  // A newer baseline check with no landed event after it: the check ran ON main's tip, so the
+  // sha is main's current head. A gate-scope check never displaces a merge-scope one.
+  writeEvents(repo, [
+    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base + 2000, loop: "lander", type: "landed", commit: "a".repeat(40) },
+    { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" },
+  ]);
+  const baseline = snapshot(repo).mainCheck;
+  assert.ok(baseline, "mainCheck present after a baseline check");
+  assert.equal(baseline!.sha, mainSha(repo));
+  assert.equal(baseline!.status, "failed");
+  assert.equal(baseline!.counts, undefined);
 });

@@ -3,7 +3,7 @@ import { readEvents } from "../events.js";
 import { formatEvent } from "../event-format.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, yieldMultiplierFor } from "./status-model.js";
+import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -35,6 +35,14 @@ export function statusPayload(root: string): object {
     // preformatted through status-model's landingBadge, so the page cannot re-derive it.
     landQueue: snap.landQueue,
     landingBadge: landingBadge(snap.landQueue),
+    // Main's newest merge-scope check (PLANS.md "Retire the README freshness stamp"): the
+    // raw block is machine-readable for `status --json`, and the header badge is
+    // preformatted through status-model's mainCheckBadge — the same string the TUI/status
+    // header renders — so the page cannot re-derive the verdict client-side. Omitted (not
+    // null) before any merge-scope check has run — the same omit-undefined idiom as
+    // pausedUntil.
+    ...(snap.mainCheck ? { mainCheck: snap.mainCheck } : {}),
+    mainCheckBadge: mainCheckBadge(snap.mainCheck),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.

@@ -43,7 +43,7 @@ export interface HarnessEvent {
     | "tick_start"
     | "tick_end"
     | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
-    | "landed" // the landing slot finished with the change on main; carries sha, the lander's outcome, durationMs, and the landing's own usage
+    | "landed" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
     | "land_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload — retry rides next-tick leftover recovery, never the queue
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open

@@ -338,6 +338,23 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
+/** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
+ * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
+ * README stamp the readme role used to maintain. Empty when the snapshot carries no check
+ * (none has run yet), so a quiet header stays byte-identical to a pre-check fleet. The
+ * verdict maps passed→green, failed→red; anything else (a skipped scope check) renders its
+ * raw word — an unverified tree must not read green. The counts fragment omits a zero-skip
+ * parenthetical, matching the stamp wording the README carried. */
+export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
+  if (!mainCheck) return "";
+  const verdict = mainCheck.status === "passed" ? "green" : mainCheck.status === "failed" ? "red" : mainCheck.status;
+  const counts = mainCheck.counts
+    ? ` · ${mainCheck.counts.pass}/${mainCheck.counts.tests}${mainCheck.counts.skipped > 0 ? ` (${mainCheck.counts.skipped} skipped)` : ""}`
+    : "";
+  const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";
+  return ` · main ${sha}${verdict}${counts}`;
+}
+
 /** The fleet's current budget-gate state, derived from a snapshot's budget block — the one
  * home for the budgetReached + fallback-readiness wiring both observer surfaces share: the
  * TUI/status table needs the `paused` verdict for loopPhase, the JSON/GUI payload ships the

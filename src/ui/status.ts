@@ -7,6 +7,8 @@ import { fallbackPair } from "../config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { queuedRolePromptCount, queuedRolePromptEntries } from "../inbox.js";
+import { readEvents } from "../events.js";
+import { currentBranchFromHeadFile, readBranchHead } from "../git.js";
 import { statePath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { freshLoopState, loadLoopState } from "../loop-state.js";
@@ -109,6 +111,71 @@ export interface StatusSnapshot {
    * only its records whose entry is still queued are kept, and it displays while one of them
    * is not yet `done`. */
   landQueue: { depth: number; inFlight?: LandingInFlight };
+  /** Main's newest merge-scope build check (PLANS.md "Retire the README freshness stamp"):
+   * the latest `build_check` event at the `landing`/`batch`/`baseline` scope, read from the
+   * event tail — the live replacement for the committed README stamp the readme role used to
+   * maintain. `sha` is the main commit the check verified: a `landed` event after the check
+   * names it via its `commit` field (a landing/batch check runs pre-merge; the landing's own
+   * `landed` commit is the head it produced), otherwise main's current tip (a baseline check
+   * runs ON the tip, and a later landing would have logged a newer check). Unresolvable from
+   * either source — no landing yet and no readable ref — drops the field. Absent entirely
+   * before any merge-scope check has run (and in tests that assemble snapshots by hand). */
+  mainCheck?: {
+    sha?: string;
+    status: "passed" | "failed" | "skipped";
+    counts?: TestCounts;
+    at: number;
+  };
+}
+
+/** A runner summary block as the build_check event carries it (build-check-events.ts spreads
+ * the outcome's counts through). Structurally checked on read: the event log is loose-typed. */
+interface TestCounts {
+  tests: number;
+  pass: number;
+  fail: number;
+  skipped: number;
+}
+
+function asCounts(v: unknown): TestCounts | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const c = v as Record<string, unknown>;
+  return typeof c.tests === "number" && typeof c.pass === "number" && typeof c.fail === "number" && typeof c.skipped === "number"
+    ? { tests: c.tests, pass: c.pass, fail: c.fail, skipped: c.skipped }
+    : undefined;
+}
+
+/** The newest merge-scope build_check in the event tail, with the main sha it verified
+ * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
+ * verified a role worktree, not main. */
+function mainCheckForPoll(root: string, cfg: TumwaterConfig): StatusSnapshot["mainCheck"] {
+  const events = readEvents(root);
+  let check: (typeof events)[number] | undefined;
+  for (const e of events) {
+    if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
+      check = e;
+    }
+  }
+  if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
+  let landedAfter: (typeof events)[number] | undefined;
+  let landedBefore: (typeof events)[number] | undefined;
+  for (const e of events) {
+    if (e.type !== "landed" || typeof e.ts !== "number") continue;
+    if (e.ts > check.ts) landedAfter = e;
+    else landedBefore = e;
+  }
+  const branch = cfg.baseBranch ?? currentBranchFromHeadFile(root) ?? "main";
+  const sha =
+    (typeof landedAfter?.commit === "string" ? landedAfter.commit : undefined) ??
+    readBranchHead(root, branch) ??
+    (typeof landedBefore?.commit === "string" ? landedBefore.commit : undefined);
+  const counts = asCounts(check.counts);
+  return {
+    ...(sha ? { sha } : {}),
+    status: check.status as "passed" | "failed" | "skipped",
+    ...(counts ? { counts } : {}),
+    at: check.ts,
+  };
 }
 
 /** The 4/5 cross-check against the queue: the marker as observers may display it, or
@@ -244,5 +311,6 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     pausedRoles: pausedRoles(root),
     pausedUntil: fleetPause?.until,
     landQueue,
+    mainCheck: mainCheckForPoll(root, cfg),
   };
 }

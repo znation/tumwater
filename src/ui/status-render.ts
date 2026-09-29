@@ -13,6 +13,7 @@ import {
   isActivePhase,
   landingBadge,
   loopRowCells,
+  mainCheckBadge,
   pauseBadge,
   sortLoopsByState,
 } from "./status-model.js";
@@ -122,7 +123,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   lines.push(
     `tumwater · ${name} · ${header}${landingBadge(snap.landQueue)}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
       snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${budgetBadge(snap.budget)}${pauseBadge(snap.pausedUntil, now)}`,
+    }${budgetBadge(snap.budget)}${mainCheckBadge(snap.mainCheck)}${pauseBadge(snap.pausedUntil, now)}`,
   );
   lines.push("");
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale

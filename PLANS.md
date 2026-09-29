@@ -5,19 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29)
-
-**Goal.** The readme role's contract (src/roles.ts, the `readme` role's `find`) makes the status section carry `Current main (<sha>): build clean, suite N/N`, and says "a moved main makes the stamp stale, so syncs still run after landings". Every landing therefore schedules a README commit. That is 184 of readme's 231 commits all time and 60 in the last 7 days (9% of all commits), and 1% of readme's lines survive ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). Volatile state does not belong in a committed file. The harness can report it live instead. Depends on the harness-attested suite counts plan above for the counts.
-
-**Approach.**
-- src/roles.ts `readme`: the status section carries (a) the capability summary and (b) the open-work pointer, and no stamp. Delete the "moved main makes the stamp stale" sentence. The readme role syncs when user-facing surfaces drifted (commands, flags, config keys, docs), and `git log <last readme commit>..main` replaces `<stamped sha>..main` as its delta. Update the pin in test/prompt.test.ts (`Current main \(`<sha>`\): build clean, suite N\/N`).
-- src/ui/status.ts `snapshot` / src/ui/status-payload.ts: add `mainCheck: { sha, status, counts?, at }`, main's newest `build_check` at the `landing`/`batch`/`baseline` scope, read from events.jsonl. The `tumwater status` header and the GUI show it as `main <sha>: green · 2065/2066 (1 skipped)`.
-- README.md: delete the stamp line from the managed status section once the role no longer maintains it, in the same change. Update the status-section wording in docs/how-it-works.md and in the init template if it seeds a stamp.
-
-**Files touched:** src/roles.ts, src/ui/status.ts, src/ui/status-payload.ts, src/ui/status-render.ts (header), README.md, docs/how-it-works.md, and tests in test/prompt.test.ts, test/status.test.ts, and test/status-render.test.ts.
-
-**Acceptance criteria.** The readme prompt no longer mentions a freshness stamp or `<stamped sha>`. `status --json` carries `mainCheck` with the newest merge-scope check's sha, status, and counts (absent before any check). The status header renders it. README.md has no `Current main (` line. `npm run test` passes.
-
 ### Fleet-wide backend-failure hold: extend the 429 storm hold to connection, 5xx, and model-load failures (planned 2026-09-29)
 
 **Goal.** The only cross-role failure response is the 429 storm hold (src/rate-limit-hold.ts `rateLimitHold`, fed by `transientRateLimit` in src/pi-stream.ts via src/tick-usage.ts `lastRateLimit`). Other backend-wide failures are unclassified: "Connection error.", "Request timed out", 5xx "Internal Server Error", "Failed to load model", and memory-guard rejections or aborts. Each fails every role separately, and each role backs off on its own `ERROR_BACKOFF` ladder. That is ~100 ticks all time (mostly the local-model era) and 7 in the last week ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). When one backend is down, every role learns it separately.
@@ -36,6 +23,20 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.** The new regex classifies the listed connection/5xx/model-load texts and does not claim 429 texts. `fold` stamps `lastBackendFailure` only when the run ended on it, with the kind and no retry hint. Two distinct roles ending on the same backend kind within `RATE_LIMIT_STORM_WINDOW_MS` open a hold carrying that kind; two roles on *different* kinds, or two hits from one role, do not. A relapse of the same kind escalates and caps at `RATE_LIMIT_HOLD_CAP_MS`; a different kind after a hold re-opens starts at the base. A 429 storm behaves byte-for-byte as today (same hold math, same event wording). The `rate_limit_hold` event carries `kind`, rendered with backend wording in the feed and the digest. The director is not held. `npm run test` passes.
 
 ## Done
+
+### Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29, done 2026-09-29)
+
+**Goal.** The readme role's contract (src/roles.ts, the `readme` role's `find`) makes the status section carry `Current main (<sha>): build clean, suite N/N`, and says "a moved main makes the stamp stale, so syncs still run after landings". Every landing therefore schedules a README commit. That is 184 of readme's 231 commits all time and 60 in the last 7 days (9% of all commits), and 1% of readme's lines survive ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). Volatile state does not belong in a committed file. The harness can report it live instead. Depends on the harness-attested suite counts plan above for the counts.
+
+**Approach.**
+- src/roles.ts `readme`: the status section carries (a) the capability summary and (b) the open-work pointer, and no stamp. Delete the "moved main makes the stamp stale" sentence. The readme role syncs when user-facing surfaces drifted (commands, flags, config keys, docs), and `git log <last readme commit>..main` replaces `<stamped sha>..main` as its delta, found via the role's own `Tick: readme #N` commit trailer. Update the pin in test/prompt.test.ts.
+- src/ui/status.ts `snapshot`: add `mainCheck: { sha?, status, counts?, at }` — the newest `build_check` at the `landing`/`batch`/`baseline` scope in the event tail. The sha is the main commit the check verified: a `landed` event after the check names it (landing/batch checks run pre-merge), otherwise main's current tip (a baseline check runs ON the tip, and a later landing would have logged a newer check); the tip is read synchronously from the ref files, so src/git.ts's `currentBranchFromHeadFile` is now exported for it.
+- A display-ready `mainCheckBadge` (` · main <sha>: green · N/N (N skipped)`) lives beside the other header badges in src/ui/status-model.ts and renders in the `tumwater status` header (src/ui/status-render.ts) and the GUI header (src/ui/gui-client.ts, via the payload's preformatted badge — the same pattern buildBadge uses).
+- README.md: delete the stamp line from the managed status section in the same change. docs/how-it-works.md and the init template name no stamp, so they needed nothing.
+
+**Files touched:** src/roles.ts, src/ui/status.ts, src/ui/status-payload.ts, src/ui/status-model.ts (the shared badge, added beyond the plan: the payload and the header must render one string), src/ui/status-render.ts (header), src/ui/gui-client.ts (header consumer, likewise added), src/git.ts (exported an existing private helper the sync snapshot needed), README.md, and tests in test/prompt.test.ts, test/status.test.ts, and test/status-render.test.ts.
+
+**Acceptance criteria.** The readme prompt no longer mentions a freshness stamp or `<stamped sha>`. `status --json` carries `mainCheck` with the newest merge-scope check's sha, status, and counts (absent before any check). The status header renders it. README.md has no `Current main (` line. `npm run test` passes. — All met (suite 2134/2135, 1 skipped). First landed 2026-09-29 but rejected in review for a producer/consumer field mismatch — the sha derivation read the `landed` event's `sha`, a field production never logs (writeLandingOutcome logs `commit`) — and re-landed the same day reading `commit`, with tests using the real event shape and the payload omitting `mainCheck` entirely before any check.
 
 ### Time and spend by outcome in the failure digest (planned 2026-09-29, done 2026-09-29)
 

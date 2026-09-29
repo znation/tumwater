@@ -853,7 +853,7 @@ test("the readme prompt rewrites the status section wholesale instead of appendi
   assert.match(find, /rewrite it wholesale on each sync — never append to it/);
 });
 
-test("the readme prompt names the state-only content: summary, backlog pointer, freshness stamp", () => {
+test("the readme prompt names the state-only content: summary, backlog pointer — no stamp", () => {
   const find = oneLine(readme!.find);
   assert.match(
     find,
@@ -865,8 +865,21 @@ test("the readme prompt names the state-only content: summary, backlog pointer, 
     find,
     /one line pointing at PLANS\.md, BUGS\.md, and QUESTIONS\.md for open work — never a copy of their entries/,
   );
-  // The freshness-stamp convention verbatim: main's sha plus build/suite state.
-  assert.match(find, /Current main \(`<sha>`\): build clean, suite N\/N/);
+  // No freshness stamp (PLANS.md "Retire the README freshness stamp"): main's build/suite state
+  // is volatile — it is reported live by `tumwater status`'s mainCheck, never committed, so a
+  // landing no longer forces a README sync.
+  assert.doesNotMatch(find, /[Ff]reshness stamp|Current main \(/);
+  assert.match(find, /reported live by `tumwater status` \(its mainCheck\) — never stamped into the section/);
+});
+
+test("the readme prompt works from the delta since its own last commit", () => {
+  const find = oneLine(readme!.find);
+  // The delta anchor is the role's own last commit (found via its Tick trailer), not a stamped
+  // sha in the brief — the stamp was the only thing that made the old anchor resolvable.
+  assert.match(find, /git log --oneline <last readme commit>\.\.main/);
+  assert.match(find, /Tick: readme #N/);
+  // Sync is need-based now: a landing that touched no user-facing surface needs no sync.
+  assert.match(find, /a landing that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
 });
 
 test("the readme prompt forbids per-tick landing narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
@@ -1142,9 +1155,9 @@ test("the director investigates only enough to route", () => {
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
 });
 
-test("the readme role syncs from the git delta since its stamp", () => {
+test("the readme role syncs from the git delta since its own last commit", () => {
   const find = oneLine(roleById("readme")!.find);
-  assert.match(find, /`git log --oneline <stamped sha>\.\.main` names everything that landed since the last sync/);
+  assert.match(find, /`git log --oneline <last readme commit>\.\.main` names everything that landed/);
   assert.match(find, /read only what those commits touched/);
 });
 

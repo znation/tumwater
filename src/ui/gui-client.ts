@@ -280,6 +280,10 @@ ${GUI_CLIENT_HISTORY_JS}
       document.getElementById("header").textContent =
         (d.running ? "running (pid " + d.pid + (d.buildBadge || "") + ")" : "orchestrator not running") +
         (d.landingBadge || "") +
+        // Main's last check (the README-stamp replacement) arrives preformatted too —
+        // status-model's mainCheckBadge, same string the TUI header renders. Empty before
+        // any merge-scope check has run.
+        (d.mainCheckBadge || "") +
         (d.inbox ? " · inbox: " + d.inbox : "") +
         (qn ? " · questions: " + qn : "");
       // The daily cost budget badge arrives preformatted from the payload — status-model's
