@@ -6,7 +6,7 @@
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
 
-import { isJsonObject } from "./json-object.js";
+import { parseJsonObject } from "./json-object.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
@@ -39,18 +39,12 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
   // verifiably not one this consumer acts on.
   const type = piEventType(trimmed);
   if (type !== null && !types.has(type)) return null;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    // pi's stream is one JSON object per line: a valid-JSON scalar, `null`, or array is torn or
-    // foreign noise, not an event. Without this check the `as T` cast below hands a consumer a
-    // value with no event fields (returned `5`, `"noise"`, `[1,2]`) — the same object check
-    // parseEventLine applies to the harness event log and PiStreamParser.feedLine applies to
-    // pi's stdout.
-    if (!isJsonObject(parsed)) return null;
-    return parsed as T;
-  } catch {
-    return null; // Torn or non-JSON line — skip without failing.
-  }
+  // pi's stream is one JSON object per line: a valid-JSON scalar, `null`, or array is torn or
+  // foreign noise, not an event — parseJsonObject reads it as no data (the same policy
+  // parseEventLine applies to the harness event log and PiStreamParser.feedLine applies to
+  // pi's stdout), never the bare `as T` cast that would hand a consumer a value with no event
+  // fields (returned `5`, `"noise"`, `[1,2]`).
+  return parseJsonObject(trimmed) as T | null;
 }
 
 /** True when a tool_execution_update's partialResult carries new output content. bash emits

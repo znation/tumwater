@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "./text.js";
-import { isJsonObject } from "./json-object.js";
+import { parseJsonObject } from "./json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs,
@@ -214,20 +214,14 @@ export class PiStreamParser {
     // events around them). Skip even parsing them.
     if (piEventType(line) === "message_update") return;
 
-    let event: PiStreamEvent;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      // pi's stream is one JSON object per line: a valid-JSON scalar, `null`, or array is torn
-      // or foreign noise, not an event. Reading fields off it throws on `null` — escaping this
-      // try and crashing the whole parse — and a stray scalar would otherwise pass the truthy
-      // check below and be counted as forward progress, resetting the hang watchdog for a line
-      // that proves nothing. Skip it: the same object check parseEventLine applies to the
-      // harness event log.
-      if (!isJsonObject(parsed)) return;
-      event = parsed as PiStreamEvent;
-    } catch {
-      return; // Non-JSON noise on stdout; ignore.
-    }
+    // pi's stream is one JSON object per line: a torn, non-JSON, or valid-JSON-scalar line is
+    // noise, not an event — parseJsonObject reads it as no data (the same policy parseEventLine
+    // applies to the harness event log and parsePiEventLine applies to pi's log lines) instead
+    // of a bare truthy check that would count a stray scalar as forward progress, resetting the
+    // hang watchdog for a line that proves nothing.
+    const parsed = parseJsonObject(line);
+    if (!parsed) return; // Non-JSON noise on stdout; ignore.
+    const event = parsed as PiStreamEvent;
     for (const text of [event.errorMessage, event.finalError, event.message?.errorMessage]) {
       if (!text) continue;
       if (CONTEXT_ERROR.test(text)) this.contextExceeded = true;

@@ -12,3 +12,20 @@
 export function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/** Parse `text` as JSON and require the result to be a plain object, returning null when
+ * either half fails — the one home of the "read one JSON value or read it as no data" policy
+ * every line-oriented parser here applies (parseEventLine on the harness event log,
+ * parsePiEventLine on pi's log lines, PiStreamParser.feedLine on pi's stdout). A torn or
+ * partial line, a non-JSON fragment, or a valid-JSON scalar/`null`/array is never a thrower
+ * and never a truthy stand-in for data: it reads as nothing, exactly as isJsonObject's
+ * definition above requires. Callers that need the parse ERROR (not just its absence) keep
+ * their own try/catch, like config-write.ts. */
+export function parseJsonObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return isJsonObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}

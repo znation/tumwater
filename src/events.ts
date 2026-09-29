@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { eventsLogPath } from "./paths.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { dayKey } from "./datetime.js";
-import { isJsonObject } from "./json-object.js";
+import { parseJsonObject } from "./json-object.js";
 import {
   ensureParentDir,
   openForRead,
@@ -146,13 +146,8 @@ function terminateTornTail(file: string): void {
  * files. Without it, `readEvents` pushes the truthy non-object into the feed and `formatEvent`
  * renders it as an `Invalid Date undefined` line. */
 export function parseEventLine(line: string): HarnessEvent | null {
-  try {
-    const parsed: unknown = JSON.parse(line);
-    if (!isJsonObject(parsed)) return null; // Not an event object.
-    return parsed as HarnessEvent;
-  } catch {
-    return null; // Skip partial/corrupt lines (e.g. torn writes).
-  }
+  const parsed = parseJsonObject(line);
+  return parsed ? (parsed as HarnessEvent) : null;
 }
 
 /** The local calendar-day key ("YYYY-MM-DD") of an event's `ts`, or null when it carries no
