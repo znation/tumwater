@@ -670,4 +670,40 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(baseline!.sha, mainSha(repo));
   assert.equal(baseline!.status, "failed");
   assert.equal(baseline!.counts, undefined);
+
+  // A merge-scope check older than the default 200-event tail still badges the header: a
+  // burst of quiet ticks logs hundreds of events without moving main, and a tail that ends
+  // before the last check would make the badge vanish and reappear as ticks tick by. The
+  // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/ui/status.ts) until the check is inside it —
+  // every event after the check is newer, so one window holds the whole derivation.
+  const busy = makeRepo();
+  writeEvents(busy, [
+    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base + 1000, loop: "lander", type: "landed", commit: "b".repeat(40) },
+    ...Array.from({ length: 300 }, (_, i) => ({
+      ts: base + 2000 + i,
+      loop: "feature",
+      type: "wake",
+      reason: "quiet tick filler",
+    })),
+  ]);
+  const deep = snapshot(busy).mainCheck;
+  assert.ok(deep, "mainCheck survives a tail deeper than the default 200");
+  assert.equal(deep!.sha, "b".repeat(40));
+  assert.equal(deep!.status, "passed");
+
+  // The growth cap holds: past MAIN_CHECK_SCAN_MAX_EVENTS the badge drops (the same graceful
+  // loss log rotation imposes) instead of scanning without end on every poll.
+  const capped = makeRepo();
+  writeEvents(capped, [
+    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base + 1000, loop: "lander", type: "landed", commit: "c".repeat(40) },
+    ...Array.from({ length: 6_000 }, (_, i) => ({
+      ts: base + 2000 + i,
+      loop: "feature",
+      type: "wake",
+      reason: "over-cap filler",
+    })),
+  ]);
+  assert.equal(snapshot(capped).mainCheck, undefined, "past the scan cap the badge drops");
 });

@@ -9,6 +9,11 @@ _None yet._
 
 ## Fixed
 
+### The status header's `main <sha>: green` badge reads only the default 200-event tail: a burst of quiet or failing ticks logs hundreds of events without moving main, so once the newest merge-scope `build_check` falls outside `readEvents`' default tail the badge silently vanishes and reappears as ticks tick by — "absent" stopped meaning the field's own contract (no merge-scope check has run) and started meaning "the window ended" (found by bugfix loop 2026-09-29, fixed 2026-09-29)
+
+Fix: `mainCheckForPoll` grows its tail (×4 from 200, capped at `MAIN_CHECK_SCAN_MAX_EVENTS` = 5000) until a merge-scope check is inside it — every event the sha derivation needs after the check is newer, so one window holds the whole derivation; past the cap the badge drops, the same graceful loss log rotation already imposes. Regression tests: a check 300 events deep still badges, and one past the cap does not.
+**Validation gap:** unclear-invariant — no existing test seeded an event log deeper than the read tail, so confirming the flap meant first reconstructing what "absent" had to mean (no check has ever run vs. the window ended) and pinning that as the invariant.
+
 ### The failure digest still splits the two tick-timeout shapes the storm reducer just learned to pool: `clusterMessages` and the loss-cause fold group by raw `normalizeClusterKey`, so a mixed fleet of plain and progressing timeouts renders two half-size clusters in the digest's error section and splits its timeout agent-hours across two loss rows — one of which a top-N cut can drop (found by bugfix loop 2026-09-29, fixed 2026-09-29)
 
 - **Symptom:** After the 2026-09-29 storm-pooling fix, the error-storm warning treats pi's two tick-timeout message shapes as one cause on one knob, but the failure digest (`tumwater report --failures`) did not: `collectFailureReport`'s error clusters and its `lossCauses` ranking grouped by raw `normalizeClusterKey(error)`. A fleet mixing `timed out after 1800s` and the progressing `timed out after 1800s while still making progress — …` renders two clusters instead of one, and the top-loss table splits one cause's agent-hours across two rows — the same half-a-cause blindness the storm fix removed, on the surface an operator reads to decide whether `tickTimeoutSeconds` fits the serving model.

@@ -145,16 +145,38 @@ function asCounts(v: unknown): TestCounts | undefined {
     : undefined;
 }
 
+/** How far mainCheckForPoll may grow its event tail. The per-poll default (readEvents' 200)
+ * covers a healthy fleet — a merge-scope check rides every landing and every redeploy — but a
+ * burst of quiet or failing ticks logs hundreds of events without moving main, and a tail
+ * that ends before the last check makes the header badge vanish and reappear as ticks tick
+ * by. Growing until the check is found keeps "absent" meaning what the field's contract says
+ * (no merge-scope check has run) rather than "the window ended"; the cap keeps the worst
+ * per-poll scan bounded — readTailText reads bytes proportional to the line count, and this
+ * runs every poll, so it stays below history's one-ask bound (HISTORY_SCAN_MAX_EVENTS, 20k).
+ * Past the cap the badge drops, the same graceful loss log rotation already imposes. */
+const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
+
 /** The newest merge-scope build_check in the event tail, with the main sha it verified
  * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
- * verified a role worktree, not main. */
+ * verified a role worktree, not main. The tail grows until a merge-scope check is inside it
+ * (see MAIN_CHECK_SCAN_MAX_EVENTS): a check older than the default tail must still badge the
+ * header, and every event after the check — the landed pairing the sha needs — is newer, so
+ * one window holds the whole derivation. */
 function mainCheckForPoll(root: string, cfg: TumwaterConfig): StatusSnapshot["mainCheck"] {
-  const events = readEvents(root);
-  let check: (typeof events)[number] | undefined;
-  for (const e of events) {
-    if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
-      check = e;
+  let check: ReturnType<typeof readEvents>[number] | undefined;
+  let events: ReturnType<typeof readEvents> = [];
+  for (let window = 200; ; window = Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
+    events = readEvents(root, window);
+    for (const e of events) {
+      if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
+        check = e;
+      }
     }
+    // Found, the log is shorter than the window (nothing older exists to find), or the cap
+    // is reached: the tail is final. A stale `check` from a previous, smaller window cannot
+    // happen — each iteration rescans from scratch, and a later window's scan sees every
+    // event the smaller one did.
+    if (check || events.length < window || window >= MAIN_CHECK_SCAN_MAX_EVENTS) break;
   }
   if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
   let landedAfter: (typeof events)[number] | undefined;
