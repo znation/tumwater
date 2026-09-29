@@ -290,6 +290,19 @@ test("parseInitArgs --file validation: missing path, duplicates, stray positiona
   const missing = expectFail(() => parseInitArgs(["--file", missingFile]));
   assert.match(missing.stderr, /cannot read prompt file/);
   assert.ok(missing.stderr.includes(JSON.stringify(missingFile)), `names the given path:\n${missing.stderr}`);
+
+  // An empty file reads as an empty prompt, which the bare-init path silently treats as
+  // "re-seed from README.md" — the operator's --file argument ignored. Name the file like
+  // every other bad --file shape (a whitespace-only file is the same failure).
+  const emptyFile = path.join(dir, "empty.md");
+  fs.writeFileSync(emptyFile, "");
+  const empty = expectFail(() => parseInitArgs(["--file", emptyFile]));
+  assert.match(empty.stderr, /is empty/);
+  assert.ok(empty.stderr.includes(JSON.stringify(emptyFile)), `names the given path:\n${empty.stderr}`);
+
+  const blankFile = path.join(dir, "blank.md");
+  fs.writeFileSync(blankFile, "   \n\n  ");
+  assert.match(expectFail(() => parseInitArgs(["--file", blankFile])).stderr, /is empty/);
 });
 
 test("parseBranchFlag: absent returns null, a value passes, a missing value fails", () => {

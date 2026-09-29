@@ -266,12 +266,20 @@ export function parseInitArgs(args: string[]): {
       if (args.includes(flag)) claimed.push(args.indexOf(flag));
     }
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
+    let contents: string;
     try {
-      return { prompt: fs.readFileSync(file, "utf8"), branch, adopt, dryRun };
+      contents = fs.readFileSync(file, "utf8");
     } catch (err) {
       // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
       fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
     }
+    // An empty (or whitespace-only) file reads as an empty prompt, which the bare-init path
+    // then treats as "re-seed from README.md" — the operator's --file argument silently
+    // ignored on an initialized repo, and a generic "an initial prompt is required" (which
+    // never names the file) on a fresh one. Name the file, like every other bad --file shape.
+    if (contents.trim() === "")
+      fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
+    return { prompt: contents, branch, adopt, dryRun };
   }
   // Everything except the --branch pair and the booleans is prompt text; the join keeps
   // single-dash tokens as content, exactly as before — with no flag present this is the old
