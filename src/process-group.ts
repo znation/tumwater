@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 // build-check.ts imports this module's runtime values, this file imports only the type.
 import type { BuildCheckRun } from "./build-check.js";
 import { signalTree, withoutLaunchServicesCheckIn } from "./process.js";
+import { errCode } from "./errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
  * group — exactly like pi — and settles exactly once, bounding a timed-out tree at its
@@ -50,7 +51,7 @@ function groupAlive(pid: number | undefined): boolean {
     process.kill(-pid, 0);
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    return errCode(err) === "EPERM";
   }
 }
 

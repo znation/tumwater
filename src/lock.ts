@@ -3,6 +3,7 @@ import path from "node:path";
 import { pidAlive } from "./process.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 import { removeTree } from "./files.js";
+import { errCode } from "./errno.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
  * recorded pid still looks alive, so a reused pid cannot latch a dead holder as live. */
@@ -114,7 +115,7 @@ function acquireStep(dir: string, timeoutMs: number, waitedMs: number): AcquireS
     // other errno (a read-only or missing parent, a file in the way, ENOSPC) cannot be fixed
     // by waiting; retrying to the deadline would replace the real cause with a misleading
     // "timed out … waiting for lock" two minutes later. Name it and fail now.
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
+    if (errCode(err) !== "EEXIST") {
       throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
     }
     tryBreakStale(dir);

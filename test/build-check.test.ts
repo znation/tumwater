@@ -6,6 +6,7 @@ import { runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
 import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build-check-report.js";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
 import { buildCheckSkipWarning } from "../src/build-check-events.js";
+import { errCode } from "../src/errno.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
@@ -20,7 +21,7 @@ function groupAlive(pgid: number): boolean {
     process.kill(-pgid, 0);
     return true;
   } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
+    return errCode(err) === "EPERM";
   }
 }
 

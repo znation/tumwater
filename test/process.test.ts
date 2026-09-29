@@ -14,6 +14,7 @@ import {
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { errnoError } from "../src/errno.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and fleet-state.ts's orchestrator-alive status. Its
@@ -145,7 +146,7 @@ test("systemProcessProbe.cwds on Linux reads /proc, strips ' (deleted)', and ski
   const original = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "linux" });
   const readlink = t.mock.method(fs, "readlinkSync", (target: string) => {
-    if (target === "/proc/11/cwd") throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
+    if (target === "/proc/11/cwd") throw errnoError("ENOENT", "ENOENT: no such file");
     if (target === "/proc/12/cwd") return "/gone/build-dir (deleted)";
     return "/Users/z/repo/.tumwater/worktrees/coverage";
   });

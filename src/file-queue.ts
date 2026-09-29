@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { errCode } from "./errno.js";
 
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
  * (inbox.ts) and the durable land queue (landing-queue.ts): one file per entry, ordered by
@@ -32,7 +33,7 @@ export function removeQueueFile(file: string): boolean {
     fs.rmSync(file);
     return true;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if (errCode(err) === "ENOENT") return false;
     throw err;
   }
 }

@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readLockPid, withLock, withSyncLock } from "../src/lock.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { errnoError } from "../src/errno.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");
@@ -201,9 +202,7 @@ test("withLock removes its own lock dir when the pid write fails", async () => {
   (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
     if (!hit && p === path.join(lock, "pid")) {
       hit = true;
-      const err = new Error("simulated pid write failure") as NodeJS.ErrnoException;
-      err.code = "EACCES";
-      throw err;
+      throw errnoError("EACCES", "simulated pid write failure");
     }
     return (orig as (p: unknown, ...r: unknown[]) => void)(p, ...rest);
   };

@@ -29,6 +29,7 @@ import {
   wakeRequestPath,
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { errnoError } from "../src/errno.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";
@@ -427,9 +428,7 @@ test("cmdStop reports a pid that died between the check and the signal as alread
   // the command must exit clean with the honest wording, not a raw kill error.
   const kill = t.mock.method(process, "kill", ((_pid: number, signal?: NodeJS.Signals | number) => {
     if (signal === 0) return true;
-    const err = new Error("no such process") as NodeJS.ErrnoException;
-    err.code = "ESRCH";
-    throw err;
+    throw errnoError("ESRCH", "no such process");
   }) as typeof process.kill);
   writeOrchestratorMarker(root, []);
 
@@ -447,9 +446,7 @@ test("cmdStop reports a pid that died between the check and the signal as alread
 
 test("signalOrchestrator names the pid and the remedy when delivery fails for another reason", (t) => {
   const kill = t.mock.method(process, "kill", (() => {
-    const err = new Error("operation not permitted") as NodeJS.ErrnoException;
-    err.code = "EPERM";
-    throw err;
+    throw errnoError("EPERM", "operation not permitted");
   }) as typeof process.kill);
   assert.throws(() => signalOrchestrator(4242), /pid 4242.*kill 4242/s, "the message names the pid twice: once as the subject, once as the remedy");
   assert.deepEqual(kill.mock.calls.map((c) => c.arguments), [[4242, "SIGTERM"]]);

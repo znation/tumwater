@@ -8,6 +8,7 @@ import { roleInboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
 import { truncate } from "./text.js";
+import { errCode } from "./errno.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
@@ -106,7 +107,7 @@ export function takeQueuedFile(file: string): string | null {
   try {
     text = fs.readFileSync(file, "utf8");
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; // Cancelled mid-listing.
+    if (errCode(err) === "ENOENT") return null; // Cancelled mid-listing.
     throw err;
   }
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.

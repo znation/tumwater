@@ -9,6 +9,7 @@ import { GUI_PAGE } from "./gui-page.js";
 import { statusPayload } from "./status-payload.js";
 import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "./self-reload.js";
 import { errorMessage } from "../text.js";
+import { errCode } from "../errno.js";
 import {
   handleAbort,
   handleBacklog,
@@ -84,7 +85,7 @@ export async function cmdGui(root: string, args: string[]): Promise<void> {
   } catch (err) {
     // A taken port is the common listen failure; Node's raw EADDRINUSE does not
     // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
-    if ((err as NodeJS.ErrnoException).code === "EADDRINUSE")
+    if (errCode(err) === "EADDRINUSE")
       fail(
         `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
       );

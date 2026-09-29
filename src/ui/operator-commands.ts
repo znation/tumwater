@@ -10,6 +10,7 @@ import {
 } from "../inbox.js";
 import { formatTime } from "../datetime.js";
 import { errorMessage } from "../text.js";
+import { errCode } from "../errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "../roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop-state.js";
 import { clearBackoff } from "../tick-outcome.js";
@@ -305,7 +306,7 @@ export function signalOrchestrator(pid: number): "signalled" | "gone" {
     process.kill(pid, "SIGTERM");
     return "signalled";
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = errCode(err);
     if (code === "ESRCH") return "gone";
     if (code === "EPERM")
       throw new Error(
