@@ -4,7 +4,19 @@
  * single home of that stub — it lived as four per-file copies (cli-args, log-commands-views,
  * operator-commands, self-reload) whose shapes drifted independently. Every stub restores the
  * real globals in finally, and each saves the write function it replaces, so nests
- * (captureStdout around an attempt, or vice versa) unwind in LIFO order. */
+ * (captureStdout around an attempt, or vice versa) unwind in LIFO order.
+ *
+ * SCOPE LIMIT — subprocess-spawning commands must not be captured here. The stub replaces
+ * process.stdout.write, the same stream `node --test`'s child mode reports results to the
+ * parent over; a capture held across an await that spawns a child process (git, node) lets
+ * the runner's report traffic flush inside the stub window and discards it, so
+ * `node --test file.js` counts fewer tests than ran (observed 2026-09-29: 15 ran, 1 counted)
+ * while failures still surface — silently corrupting the suite's accounting, which the
+ * harness's build gate trusts. A finally-guarded restore does not help: the loss happens
+ * mid-window, not at teardown. Verified safe: pure in-process awaits (the log-view commands,
+ * which only read files). Verified broken: cmdInit (spawns git). Test the spawning commands
+ * through the CLI child process instead — runCli/spawnCli from test/cli-harness.ts, as
+ * test/cli.test.ts does — where capture is the child's own pipe and costs nothing. */
 
 /** Sentinel thrown by the process.exit stub so the exit is catchable in-process. */
 export class ExitError extends Error {
