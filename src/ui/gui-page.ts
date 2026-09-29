@@ -1,75 +1,120 @@
-/** The dashboard page shell served at `/` by `tumwater gui`: the markup and CSS for the
- * zero-dependency single-file app, with its browser-side logic inlined from gui-client.ts
- * as the page's only <script>. Kept in its own module so gui.ts stays focused on serving
- * logic and the API payload; edit this template when the page's layout or styles change. */
+/** The dashboard page shell served at `/` by `tumwater gui`: the markup of the zero-dependency
+ * single-file app, with its stylesheet (gui-styles.ts) and browser logic (gui-client.ts)
+ * inlined. The shell is a sidebar beside a main column. The sidebar is the fleet's frame on
+ * every view: which project this is and whether its fleet is up (build, land queue), the
+ * views — Fleet's carrying a badge while something needs a human — and the fleet-wide
+ * controls: today's spend against the cap, and pause. The main column shows one view: Fleet
+ * (alerts for whatever needs a human, the composer that steers the director or one loop,
+ * today's progress, every loop grouped by what it is doing, the backlog, and the notable
+ * activity), History, Usage, or Failures. A drawer opens
+ * any loop's detail and live transcript, or any backlog entry in full. Kept apart from gui.ts
+ * so the server module stays about serving. */
 import { GUI_CLIENT_JS } from "./gui-client.js";
+import { GUI_STYLES } from "./gui-styles.js";
+import { iconSvg, LOGO_SVG } from "./gui-icons.js";
+
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(LOGO_SVG.replace(' class="logo"', ""))}`;
+
 export const GUI_PAGE = `<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tumwater</title>
-<style>
-  :root { color-scheme: dark; }
-  body { background:#101418; color:#d6dde4; font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
-         max-width:1100px; margin:2rem auto; padding:0 1rem; }
-  h1 { font-size:16px; font-weight:600; } h1 .muted, .muted { color:#7a8794; font-weight:400; }
-  table { border-collapse:collapse; width:100%; margin:1rem 0; font-size:12px; }
-  th,td { text-align:left; padding:4px 10px 4px 0; border-bottom:1px solid #1e2831; white-space:nowrap; }
-  td.wide { white-space:normal; }
-  th { color:#7a8794; font-weight:500; }
-  .working { color:#7ec8ff; } .changed { color:#7fd88f; } .error, .merge_conflict { color:#ff9a8a; }
-  #feed { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
-          height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; }
-  #transcript, #failures { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
-          max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
-          margin-bottom:1rem; }
-  #backlog { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:10px 14px;
-          max-height:16em; overflow-y:auto; font-size:13px; color:#9fb0bf; white-space:pre-wrap;
-          margin-bottom:1rem; }
-  a { color:#7ec8ff; text-decoration:none; cursor:pointer; } a.active { color:#d6dde4; font-weight:600; }
-  form { display:flex; gap:8px; margin:1rem 0; }
-  input { flex:1; background:#0b0e12; color:#d6dde4; border:1px solid #2a3642; border-radius:6px;
-          padding:8px 10px; font:inherit; }
-  button { background:#20303e; color:#d6dde4; border:1px solid #2a3642; border-radius:6px;
-           padding:8px 16px; font:inherit; cursor:pointer; }
-  #flash { color:#7fd88f; margin-left:8px; }
-  #viewnav { margin:0.5rem 0; }
-  .stats { display:flex; gap:12px; flex-wrap:wrap; margin:1rem 0; }
-  .stat { background:#0b0e12; border:1px solid #1e2831; border-radius:6px; padding:8px 14px; min-width:9em; }
-  .stat b { display:block; font-size:15px; margin-top:2px; }
-  .chartblock { margin:1rem 0; }
-  .charttitle { color:#7a8794; font-weight:500; margin-bottom:6px; }
-  #report svg text { fill:#7a8794; font-size:10px; }
-  #report svg rect:hover { opacity:.8; }
-  #report-tip { position:fixed; pointer-events:none; display:none; background:#0b0e12; border:1px solid #2a3642;
-          border-radius:6px; padding:4px 8px; font-size:12px; color:#d6dde4; white-space:nowrap; z-index:10; }
-  .legend { display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; color:#9fb0bf; font-size:12px; }
-  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; }
-</style>
-<h1>tumwater <span class="muted" id="header">connecting…</span><span id="budgetwrap"></span><span id="pausewrap"></span></h1>
-<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet</a><span class="muted"> | </span><a href="#" id="tab-report">report</a><span class="muted"> | </span><a href="#" id="tab-failures">failures</a><span class="muted"> | </span><a href="#" id="tab-history">history</a></nav>
-<form id="promptform">
-  <input id="prompt" placeholder="type a prompt for the project — it runs immediately via the director loop" autocomplete="off">
-  <button>send</button><span id="flash"></span>
-</form>
-<!-- Per-row prompt bar (hidden until a loop row's "prompt" link opens it): one shared input,
-     addressed by the link's role, submitting to /api/prompt-role. -->
-<div id="rolepromptwrap" hidden><form id="rolepromptform">
-  <span id="rolepromptlabel" class="muted"></span>
-  <input id="roleprompt" placeholder="type a prompt for this loop — it runs at its next tick" autocomplete="off">
-  <button>send</button><button type="button" id="rolepromptcancel">cancel</button>
-</form></div>
-<div id="fleet-view">
-<table>
-  <thead><tr><th>loop</th><th>state</th><th>current</th><th>ticks</th><th>commits</th><th>gen</th><th>peak ctx</th><th>cost</th><th>today</th><th>last tick</th><th>last result</th><th>next run</th><th>controls</th></tr></thead>
-  <tbody id="loops"></tbody>
-</table>
-<div id="transcript" hidden></div>
-<div id="backlog"></div>
-<div id="feed"></div>
+<link rel="icon" href="${FAVICON}">
+<script>try{var t=localStorage.getItem("tumwater-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<style>${GUI_STYLES}</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+<aside class="sidebar" aria-label="Fleet">
+  <div class="side-top">
+    <a class="brand" href="#fleet" aria-label="tumwater fleet">${LOGO_SVG}<span>tumwater</span></a>
+    <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
+  </div>
+  <div class="side-project">
+    <div class="side-label">Project</div>
+    <div class="project" id="project" title="Project directory">&nbsp;</div>
+    <div class="side-status" id="statuschips" aria-live="polite"></div>
+  </div>
+  <nav class="side-nav" id="viewnav" aria-label="Views">
+    <a href="#fleet" id="tab-fleet" class="tab active" aria-current="page">${iconSvg("grid")}<span>Fleet</span><span class="badge t-red" id="navbadge" hidden></span></a>
+    <a href="#history" id="tab-history" class="tab">${iconSvg("list")}<span>History</span></a>
+    <a href="#usage" id="tab-usage" class="tab">${iconSvg("bars")}<span>Usage</span></a>
+    <a href="#failures" id="tab-failures" class="tab">${iconSvg("alert")}<span>Failures</span></a>
+  </nav>
+  <div class="side-controls">
+    <div class="menu-anchor up" id="budgetwrap"></div>
+    <div class="menu-anchor up" id="pausewrap"></div>
+  </div>
+</aside>
+<main id="main" class="main">
+  <section id="fleet-view" class="view" aria-labelledby="fleet-title">
+    <div class="view-head">
+      <div><h1 id="fleet-title">Fleet</h1><p id="fleetsub">&nbsp;</p></div>
+    </div>
+    <div id="alerts" class="alerts" aria-live="polite"></div>
+    <form id="promptform" class="composer" autocomplete="off">
+      <div class="composer-row">
+        <label class="composer-target"><span class="sr-only">Send to</span><select id="prompttarget" class="field"><option value="director">Director</option></select></label>
+        <textarea id="prompt" rows="1" placeholder="Tell the fleet what to do next…" aria-label="Prompt"></textarea>
+        <button type="submit" class="btn btn-primary" id="promptsend" title="Send (Enter)">${iconSvg("send")}<span>Send</span></button>
+      </div>
+      <div class="composer-foot">
+        <span id="prompthint"></span>
+        <span class="composer-meta"><span id="promptcount"></span><a href="#" id="queuelink" hidden></a></span>
+      </div>
+    </form>
+    <div id="stats" class="stats"></div>
+    <section class="card" aria-labelledby="loops-title">
+      <header class="card-head">
+        <h2 id="loops-title">Loops</h2>
+        <div class="spacer"></div>
+        <button type="button" class="btn btn-sm" id="wakeall" title="Wake every loop now, skipping any sleep or backoff">${iconSvg("bolt")}<span>Wake all</span></button>
+      </header>
+      <div class="table-wrap">
+        <table class="table loops" id="loopstable">
+          <thead><tr><th class="c-loop">Loop</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="loops"></tbody>
+        </table>
+      </div>
+    </section>
+    <div class="grid-2">
+      <section class="card" id="backlogcard" aria-labelledby="backlog-title">
+        <header class="card-head">
+          <h2 id="backlog-title">Backlog</h2>
+          <div class="spacer"></div>
+          <div class="seg" id="backlogtabs" role="tablist" aria-label="Backlog sections"></div>
+        </header>
+        <div id="backlog" class="list"></div>
+      </section>
+      <section class="card" aria-labelledby="activity-title">
+        <header class="card-head">
+          <h2 id="activity-title">Activity</h2>
+          <div class="spacer"></div>
+          <div class="seg" id="feedfilter" role="tablist" aria-label="Activity filter">
+            <button type="button" data-filter="notable" class="active">Notable</button><button type="button" data-filter="all">All events</button>
+          </div>
+        </header>
+        <ol id="feed" class="feed"></ol>
+      </section>
+    </div>
+  </section>
+  <section id="history" class="view" aria-label="History" hidden></section>
+  <section id="report" class="view" aria-label="Usage" hidden></section>
+  <section id="failures" class="view" aria-label="Failures" hidden></section>
+</main>
 </div>
-<div id="report" hidden></div>
-<div id="failures" hidden></div>
-<div id="history" hidden></div>
+<aside id="drawer" class="drawer" role="dialog" aria-labelledby="drawertitle" hidden>
+  <div class="drawer-head"><div id="drawerhead" class="drawer-title"></div><button type="button" class="icon-btn" data-act="close" title="Close (Esc)" aria-label="Close">${iconSvg("x")}</button></div>
+  <div id="drawerbody" class="drawer-body"></div>
+</aside>
+<div id="scrim" class="scrim" hidden></div>
+<div id="flash" class="toast" role="status" aria-live="polite"></div>
 <script>
 ${GUI_CLIENT_JS}
 </script>
+</body>
+</html>
 `;

@@ -139,33 +139,6 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
   assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
 });
 
-test("the dashboard page renders the preformatted budget badge from the payload", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The badge arrives display-ready (status-render's budgetBadge — standing while enabled,
-  // n/a for an all-free fleet, empty when disabled), so the page just appends it: one string
-  // with a single home, no client-side money formatting left to drift from the TUI header.
-  assert.match(GUI_PAGE, /\(d\.budgetBadge \|\| ""\)/);
-  assert.doesNotMatch(GUI_PAGE, /fmtUsdCap/, "the old client-side cap mirror is gone");
-});
-
-// Merge queue 4/5 — the GUI header renders the preformatted land-queue badge in the same
-// order as renderStatus's header (after the running/pid+build part, before the inbox
-// badge) — the buildBadge pattern: plain text inside the #header span, NOT the interactive
-// #budgetwrap fragment, which owns the click-to-edit budget editor.
-test("the dashboard page renders the preformatted land-queue badge from the payload", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /\(d\.landingBadge \|\| ""\)/);
-  // The badge joins the #header textContent (before the inbox badge), never the budgetwrap
-  // fragment: landingBadge has no affordance to edit, and budgetwrap's innerHTML would
-  // clobber it.
-  const headerLine = GUI_PAGE.match(/document\.getElementById\("header"\)\.textContent =\n?\s*\(d\.running[\s\S]*?qn : ""\);/);
-  assert.ok(headerLine, "the #header textContent assignment exists");
-  assert.ok(
-    (headerLine[0] ?? "").indexOf("d.landingBadge") < (headerLine[0] ?? "").indexOf("d.inbox"),
-    "the landing badge precedes the inbox badge, mirroring renderStatus's header order",
-  );
-});
-
 // The operator module is served through string interpolation into GUI_CLIENT_JS, so a
 // stray newline or lost indent at either splice boundary would ship a silently different
 // dashboard script while the module and its region tests all still pass. Pin the splice:
@@ -178,80 +151,6 @@ test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splic
     "the operator module's constant must appear verbatim in the assembled script " +
       "(a mismatch means the interpolation gained or lost bytes at a splice boundary)",
   );
-});
-
-// Free-state regression (BUGS.md, 2026-09-14): an all-free fleet's badge must be plain,
-// unclickable text — no <a id=budgetbadge>, so the page's delegated click handler cannot
-// open a cap editor that could never bind. The budget-edit block runs in the page's script
-// scope, where esc() is defined; the test extracts the marker-delimited block and evals it
-// against a minimal DOM stub, so the free branch is tested behaviorally, not by source shape.
-test("the budget badge is plain text on an all-free fleet and a link otherwise", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const block = GUI_PAGE.split("// budget-edit:start")[1]!.split("// budget-edit:end")[0]!;
-  const wrap = { innerHTML: "" };
-  const empty = { innerHTML: "", textContent: "", focus() {}, select() {} };
-  const document = {
-    getElementById: (id: string) => (id === "budgetwrap" ? wrap : empty),
-    addEventListener: () => {},
-  };
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const { renderBudgetBadge } = new Function(
-    "document",
-    "esc",
-    block + "\nreturn { renderBudgetBadge };",
-  )(document, esc) as { renderBudgetBadge: (d: object) => void };
-
-  renderBudgetBadge({ budget: { spentUsd: 0, capUsd: 50, free: true, fallback: null }, budgetBadge: " · budget: n/a" });
-  assert.doesNotMatch(wrap.innerHTML, /<a[^>]*id='budgetbadge'/, "free fleet: no clickable badge");
-  assert.doesNotMatch(wrap.innerHTML, /<input/, "free fleet: no editor in sight");
-  assert.match(wrap.innerHTML, /· budget: n\/a/, "free fleet: the n/a text still shows");
-
-  renderBudgetBadge({ budget: { spentUsd: 1.5, capUsd: 50, free: false, fallback: null }, budgetBadge: " · budget: $1.50/$50 today" });
-  assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "priced fleet: the badge stays a link");
-
-  renderBudgetBadge({ budget: { spentUsd: 2, capUsd: 0, free: false, fallback: null }, budgetBadge: " · budget: $2.00 today · no cap" });
-  assert.match(wrap.innerHTML, /<a href='#' id='budgetbadge'>/, "disabled fleet: the badge is still the edit affordance");
-});
-
-// A browser-rejected <input type=number> (the operator typed "$25" or "5,000") reports value
-// "" exactly like a deliberately cleared field — and "" means "no cap" (post 0), so without a
-// guard a typo silently DISABLES the spend cap. The budget-edit block runs in the page's script
-// scope; evaling it against a minimal DOM stub pins the guard behaviorally.
-test("the budget editor refuses browser-rejected number text instead of silently disabling the cap", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const block = GUI_PAGE.split("// budget-edit:start")[1]!.split("// budget-edit:end")[0]!;
-  const input = { value: "", validity: { badInput: true }, focus() {}, select() {} };
-  const flash = { textContent: "" };
-  const document = {
-    getElementById: (id: string) =>
-      id === "budgetinput" ? input : id === "flash" ? flash : { innerHTML: "", textContent: "" },
-    addEventListener: () => {},
-  };
-  const posts: unknown[] = [];
-  // The block's save path posts through the page's shared postJson (which itself guards via
-  // apiFetch); the stub records the payload object directly.
-  const postJson = async (_path: string, payload: unknown) => {
-    posts.push(payload);
-    return { ok: true };
-  };
-  const { saveBudget } = new Function(
-    "document",
-    "esc",
-    "postJson",
-    "setTimeout",
-    block + "\nreturn { saveBudget };",
-  )(document, (s: string) => s, postJson, () => {}) as { saveBudget: () => Promise<void> };
-
-  await saveBudget();
-  assert.equal(posts.length, 0, "rejected text must not POST a cap change");
-  assert.match(flash.textContent, /budget must be a number of 0 or more/, "the operator sees why nothing saved");
-
-  // A genuinely cleared field still means "no cap" (0), unchanged by the guard.
-  input.validity.badInput = false;
-  input.value = "";
-  await saveBudget();
-  assert.deepEqual(posts, [{ maxDailyCostUsd: 0 }], "clear field still disables the cap");
 });
 
 test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
@@ -441,55 +340,48 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
   }
 });
 
-// The pause badge runs in the page's script scope; its marker-delimited block is evaled
-// against a minimal DOM stub, so the render + click behavior is pinned behaviorally, like the
-// budget-editor tests above.
-test("the pause badge reflects the payload and its click POSTs the opposite state", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const block = GUI_PAGE.split("// pause-control:start")[1]!.split("// pause-control:end")[0]!;
-  const wrap = { innerHTML: "" };
-  const flash = { textContent: "" };
-  const document = {
-    getElementById: (id: string) => (id === "pausewrap" ? wrap : flash),
-    addEventListener: () => {},
-  };
-  const lastStatus: { paused?: boolean } = { paused: false };
-  const posts: unknown[] = [];
-  // togglePause posts through the page's shared postJson; the stub records the payload object.
-  const postJson = async (_path: string, payload: unknown) => {
-    posts.push(payload);
-    return { ok: true };
-  };
-  // The countdown goes through the page's shared humanSeconds helper (gui-client.ts), so the
-  // eval'd scope gets the real human-seconds-fmt region — the same bucketing the last-tick
-  // and next-run cells use — rather than a second copy of the phrasing in the test.
-  const humanSecondsBlock = GUI_PAGE.split("// human-seconds-fmt:start")[1]!.split("// human-seconds-fmt:end")[0]!;
-  const { renderPauseBadge, togglePause } = new Function(
-    "document",
-    "postJson",
-    "showFlash",
-    "lastStatus",
-    humanSecondsBlock + "\n" + block + "\nreturn { renderPauseBadge, togglePause };",
-  )(document, postJson, () => {}, lastStatus) as {
-    renderPauseBadge: (d: { paused: boolean; pausedUntil?: number }) => void;
-    togglePause: () => Promise<void>;
-  };
+// The dashboard's pause menu offers timed pauses: /api/pause takes an optional forSeconds and
+// writes the same `until` deadline `tumwater pause --for` does, under the same 90-day cap.
+test("POST /api/pause with forSeconds writes a timed pause and rejects bad durations", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui timed pause test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const before = Date.now();
+    let res = await fetch(base + "/api/pause", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paused: true, forSeconds: 1800 }),
+    });
+    assert.equal(res.status, 200);
+    const answer = (await res.json()) as { ok: boolean; paused: boolean; until: number };
+    assert.equal(answer.paused, true);
+    const marker = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number };
+    assert.equal(marker.until, answer.until, "the answer names the deadline the marker holds");
+    assert.ok(marker.until >= before + 1_800_000 && marker.until <= Date.now() + 1_800_000, "30 minutes from now");
+    assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
 
-  renderPauseBadge({ paused: false });
-  assert.match(wrap.innerHTML, /<a href='#' id='pausebadge'> · pause</, "unpaused: the pause affordance");
-  await togglePause();
-  assert.deepEqual(posts, [{ paused: true }], "clicking pause asks the server to pause");
+    // A deadline only makes sense when pausing; a non-positive, non-numeric, or over-cap one is a
+    // client error that leaves the marker alone.
+    for (const body of [
+      { paused: false, forSeconds: 60 },
+      { paused: true, forSeconds: 0 },
+      { paused: true, forSeconds: -5 },
+      { paused: true, forSeconds: "3600" },
+      { paused: true, forSeconds: 91 * 86_400 },
+    ]) {
+      res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify(body) });
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.match(((await res.json()) as { error: string }).error, /forSeconds/);
+    }
+    assert.equal((JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
 
-  lastStatus.paused = true; // the next poll's payload
-  renderPauseBadge({ paused: true });
-  assert.match(wrap.innerHTML, / · paused — resume</, "paused: the resume affordance");
-  // The payload's pausedUntil rides only while the marker stands unexpired, so a standing
-  // timed pause names its countdown — recomputed from Date.now(), through humanSeconds —
-  // while the link keeps its resume behavior.
-  renderPauseBadge({ paused: true, pausedUntil: Date.now() + 12 * 60_000 });
-  assert.match(wrap.innerHTML, / · paused — auto-resumes in 12m — resume</, "timed pause: the countdown rides the resume link");
-  await togglePause();
-  assert.deepEqual(posts, [{ paused: true }, { paused: false }], "clicking resume asks the server to resume");
+    // A pause without forSeconds is a standing one, as before.
+    res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify({ paused: true }) });
+    assert.deepEqual(await res.json(), { ok: true, paused: true });
+  } finally {
+    server.close();
+  }
 });
 
 // --- POST /api/wake and POST /api/abort — the dashboard's per-row controls, backed by the
@@ -665,109 +557,6 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
   } finally {
     server.close();
   }
-});
-
-// The loop rows' wake/abort controls run in the page's script scope; their marker-delimited
-// block is evaled against a minimal DOM stub, like the budget/pause badge tests above: a click
-// on a rowaction anchor POSTs the row's role to the matching endpoint and flashes the server's
-// confirmation, and a failed POST flashes the error instead.
-test("the loop rows' controls post the row's role and flash the server's message", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  const block = GUI_PAGE.split("// row-actions:start")[1]!.split("// row-actions:end")[0]!;
-  const listeners: Array<(ev: unknown) => Promise<void> | void> = [];
-  const loopsEl = {
-    addEventListener: (_: string, fn: (ev: unknown) => void) => listeners.push(fn),
-  };
-  // The per-role prompt bar's elements (gui-page's #rolepromptwrap): the prompt rowaction
-  // opens the bar instead of posting, and the form's submit/cancel listeners are captured
-  // here like the loops listener above.
-  const barListeners: Record<string, Array<(ev: unknown) => Promise<void> | void>> = {};
-  const promptWrap = { hidden: true };
-  const promptLabel = { textContent: "" };
-  const promptInput = { value: "", focus: () => {} };
-  const barEl = (id: string) => ({
-    addEventListener: (_: string, fn: (ev: unknown) => void) => (barListeners[id] ??= []).push(fn),
-  });
-  const document = {
-    getElementById: (id: string) =>
-      id === "loops" ? loopsEl
-      : id === "rolepromptwrap" ? promptWrap
-      : id === "rolepromptlabel" ? promptLabel
-      : id === "roleprompt" ? promptInput
-      : id === "rolepromptform" ? barEl(id)
-      : id === "rolepromptcancel" ? barEl(id)
-      : null,
-    addEventListener: () => {},
-  };
-  const flashes: string[] = [];
-  const posts: Array<{ path: string; payload: unknown }> = [];
-  const postJson = async (path: string, payload: unknown) => {
-    posts.push({ path, payload });
-    if (path === "/api/abort") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
-    if (path === "/api/prompt-role" && (payload as { text?: string }).text === "boom")
-      throw new Error("/api/prompt-role failed: HTTP 400");
-    if (path === "/api/pause-role") return { ok: true, changed: true, paused: true };
-    return { ok: true, message: "wake requested for feature — a running fleet applies it within ~2s" };
-  };
-  new Function("document", "postJson", "showFlash", "refresh", block)(document, postJson, (msg: string) => flashes.push(msg), () => {});
-  assert.equal(listeners.length, 1, "the block registers its delegated listener");
-  const handler = listeners[0]!;
-
-  // A wake anchor: the row's role rides the POST, the confirmation flashes.
-  const wakeAnchor = { dataset: { action: "wake", role: "feature" } };
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? wakeAnchor : null) }, preventDefault: () => {} });
-  assert.deepEqual(posts, [{ path: "/api/wake", payload: { role: "feature" } }]);
-  assert.match(flashes[0]!, /wake requested for feature/);
-
-  // An abort anchor posts to /api/abort; the failure surfaces in the flash.
-  const abortAnchor = { dataset: { action: "abort", role: "bugfix" } };
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? abortAnchor : null) }, preventDefault: () => {} });
-  assert.deepEqual(posts[1], { path: "/api/abort", payload: { role: "bugfix" } });
-  assert.match(flashes[1]!, /^error: \/api\/abort failed: HTTP 409/);
-
-  // A pause anchor posts to /api/pause-role; the flash is composed from the endpoint's
-  // changed/paused flags, which carry no server message.
-  const pauseAnchor = { dataset: { action: "pause", role: "docs" } };
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? pauseAnchor : null) }, preventDefault: () => {} });
-  assert.deepEqual(posts[2], { path: "/api/pause-role", payload: { role: "docs" } });
-  assert.equal(flashes[2], "docs paused");
-  const resumeAnchor = { dataset: { action: "resume", role: "docs" } };
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? resumeAnchor : null) }, preventDefault: () => {} });
-  assert.deepEqual(posts[3], { path: "/api/pause-role", payload: { role: "docs" } });
-  assert.equal(flashes[3], "docs resumed");
-
-  // A click on a plain loop link (the closest match fails) is left to the other listener.
-  await handler({ target: { closest: () => null }, preventDefault: () => {} });
-  assert.equal(posts.length, 4, "a non-rowaction click posts nothing");
-
-  // A prompt anchor opens the shared bar addressed to the row's loop instead of posting;
-  // the form's send then POSTs /api/prompt-role with the trimmed text and closes the bar.
-  const promptAnchor = { dataset: { action: "prompt", role: "feature" } };
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? promptAnchor : null) }, preventDefault: () => {} });
-  assert.equal(posts.length, 4, "opening the bar posts nothing");
-  assert.equal(promptWrap.hidden, false, "the bar is visible while addressed");
-  assert.equal(promptLabel.textContent, "prompt for feature:");
-  promptInput.value = "  tighten the docs loop  ";
-  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
-  assert.deepEqual(posts[4], { path: "/api/prompt-role", payload: { role: "feature", text: "tighten the docs loop" } });
-  assert.match(flashes[4]!, /wake requested for feature/);
-  assert.equal(promptWrap.hidden, true, "a successful send closes the bar");
-  assert.equal(promptInput.value, "", "a successful send clears the input");
-
-  // An empty send queues nothing; a failed POST flashes the error and keeps both the bar and
-  // the text for resubmission; cancel closes the bar without posting.
-  promptInput.value = "   ";
-  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
-  assert.equal(posts.length, 5, "an empty send posts nothing");
-  promptInput.value = "boom";
-  await handler({ target: { closest: (sel: string) => (sel === "a.rowaction" ? promptAnchor : null) }, preventDefault: () => {} });
-  await barListeners["rolepromptform"]![0]!({ preventDefault: () => {} });
-  assert.match(flashes[5]!, /^error: \/api\/prompt-role failed/);
-  assert.equal(promptWrap.hidden, false, "a failed send keeps the bar open");
-  assert.equal(promptInput.value, "boom", "a failed send keeps the text");
-  await barListeners["rolepromptcancel"]![0]!({ preventDefault: () => {} });
-  assert.equal(promptWrap.hidden, true, "cancel closes the bar");
-  assert.equal(posts.length, 6, "cancel posts nothing");
 });
 
 // POST /api/prompt-role — the dashboard's per-row prompt control, backed by the same submit

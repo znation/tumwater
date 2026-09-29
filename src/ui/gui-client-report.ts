@@ -1,19 +1,22 @@
-/** The GUI dashboard's report tab, browser-side: the pure SVG chart builders, the shared
- * role-stack renderer, the hover-tip chip, the stat-block row, and the fetchReport call
- * that renders them into #report. Inlined into gui-client.ts's GUI_CLIENT_JS by string
- * interpolation, so the served script stays byte-identical to the pre-split single blob
- * and the marked regions (report-chart, report-tip) that test/gui-report.test.ts extracts
- * keep matching. It runs as part of the page's only <script> and cannot import the harness
- * modules — it reaches gui-client.ts's core helpers (esc, getJson, fmtTokens) through that
- * concatenation. Edit here when the report tab's client behavior changes. */
-export const GUI_CLIENT_REPORT_JS = `// report-chart:start
-  const REPORT_PALETTE = ["#7ec8ff", "#7fd88f", "#ffb454", "#c792ea", "#ff9a8a", "#56b6c2", "#e0d37a", "#d19bf6"];
+/** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
+ * totals (each with its per-day average) over four daily bar charts — landed commits, ticks by
+ * loop, output tokens, spend by loop — with gridlines, a scale, and one shared color per loop;
+ * a window picker switches between 7, 14, 30, and 90 days. Failures renders the failure digest
+ * (/api/failures, the Markdown `tumwater report --failures` prints) through the page's
+ * Markdown renderer, over the same kind of window picker. Both fetch when their view opens,
+ * on Refresh, and — Usage only, throttled — when new events arrive while it is open. The chart
+ * builders are pure (report-chart region) and the hover chip is one shared element
+ * (report-tip region); both are exercised in isolation by the tests. Spliced into
+ * gui-client.ts's script, reaching its helpers (esc, getJson, icon, fmtTokens, fmtUsd,
+ * renderMarkdown) through that concatenation. */
+export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
+  // One color per loop, assigned in the report's role order so a loop keeps its color across
+  // both per-loop charts and the legend. Chosen to stay distinct on white and on gray-950.
+  const REPORT_PALETTE = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#a855f7", "#f97316", "#14b8a6",
+    "#ec4899", "#84cc16", "#06b6d4", "#eab308", "#64748b", "#d946ef"];
 
-  // Window totals per role, in the same order renderReportMarkdown's "Ticks by role" line
-  // uses — count desc, then name asc — so legend and stack order match the Markdown report.
-  // The fold covers costByRole too (it rides the same tick_end events, so its roles are a
-  // subset in practice) so the single shared order can never drop a spend-bearing role from
-  // the cost chart.
+  // Window totals per role — ticks desc, then name — so the legend and the stack order match
+  // the Markdown report's "Ticks by role" line. Roles that only spent (no ticks) still count.
   function reportRoleOrder(data) {
     const byRole = {};
     for (const d of data.series) {
@@ -23,67 +26,87 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
 
-  // X-axis labels: MM-DD like the Markdown table's day column, thinned to at most seven —
-  // label index i when i % ceil(n/7) === 0 (n=14 → every other day; n≤7 → all days).
+  // X-axis labels: MM-DD, thinned to at most seven, counted back from the newest day so today
+  // always carries its label.
   function reportDayLabels(series) {
     const step = Math.ceil(series.length / 7);
-    return series.map((d, i) => (i % step === 0 ? d.date.slice(5) : ""));
+    const last = series.length - 1;
+    return series.map((d, i) => ((last - i) % step === 0 ? d.date.slice(5) : ""));
   }
 
-  // Shared bar geometry: fixed plot box, one slot per day so zero days keep their space and
-  // all four charts' x-axes line up. segmentsOf(day) → [{ value, color, title }] stacked
-  // bottom-up; each positive segment becomes a <rect> whose <title> carries the same
-  // abbreviated value the stat blocks show — the text the report-tip hover chip displays
-  // (zero values leave an empty slot — no rect to hover).
-  const REPORT_W = 560;
-  const REPORT_H = 170;
-  const REPORT_PAD_T = 8;
+  // The scale's top: a round number at or above the tallest bar (1/2/5 × 10^k), even for small
+  // counts so the midline stays a whole number.
+  function niceMax(v, integer) {
+    if (!(v > 0)) return integer ? 2 : 1;
+    if (integer && v <= 10) return Math.max(2, Math.ceil(v / 2) * 2);
+    const p = Math.pow(10, Math.floor(Math.log10(v)));
+    const n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+  }
+
+  const REPORT_W = 600;
+  const REPORT_H = 190;
+  const REPORT_PAD_L = 46;
+  const REPORT_PAD_R = 6;
+  const REPORT_PAD_T = 10;
   const REPORT_PAD_B = 24;
 
-  function reportSvg(series, segmentsOf) {
-    const n = series.length;
+  // Shared bar geometry: one slot per day (zero days keep their space, so every chart's x-axis
+  // lines up), a scale with a midline, and segmentsOf(day) → [{ value, color, title }] stacked
+  // bottom-up. Each positive segment is a <rect> whose <title> is the hover chip's text.
+  function reportSvg(series, segmentsOf, fmtAxis, integer) {
+    const n = Math.max(1, series.length);
+    const plotW = REPORT_W - REPORT_PAD_L - REPORT_PAD_R;
     const plotH = REPORT_H - REPORT_PAD_T - REPORT_PAD_B;
-    const slotW = REPORT_W / n;
-    const barW = Math.max(4, slotW * 0.6);
-    const max = Math.max(0, ...series.map((d) => segmentsOf(d).reduce((a, s) => a + s.value, 0)));
+    const slotW = plotW / n;
+    const barW = Math.max(3, Math.min(30, slotW * 0.62));
+    const tallest = Math.max(0, ...series.map((d) => segmentsOf(d).reduce((a, s) => a + s.value, 0)));
+    const max = niceMax(tallest, integer);
+    const y = (v) => REPORT_PAD_T + plotH - (v / max) * plotH;
     const labels = reportDayLabels(series);
-    let out = "<svg viewBox='0 0 " + REPORT_W + " " + REPORT_H + "' width='" + REPORT_W + "' height='" + REPORT_H + "' role='img'>";
-    out += "<line x1='0' y1='" + (REPORT_PAD_T + plotH) + "' x2='" + REPORT_W + "' y2='" + (REPORT_PAD_T + plotH) + "' stroke='#1e2831'/>";
+    let out = "<svg viewBox='0 0 " + REPORT_W + " " + REPORT_H + "' role='img'>";
+    for (const f of [0, 0.5, 1]) {
+      const gy = y(max * f).toFixed(1);
+      out += "<line class='" + (f === 0 ? "axis" : "grid") + "' x1='" + REPORT_PAD_L + "' x2='" + (REPORT_W - REPORT_PAD_R) + "' y1='" + gy + "' y2='" + gy + "'/>";
+      if (f === 0 || tallest > 0) out += "<text x='" + (REPORT_PAD_L - 8) + "' y='" + (Number(gy) + 4).toFixed(1) + "' text-anchor='end'>" + esc(fmtAxis(max * f)) + "</text>";
+    }
     series.forEach((d, i) => {
-      const x = i * slotW + (slotW - barW) / 2;
-      let y = REPORT_PAD_T + plotH; // stack from the baseline up
+      const x = REPORT_PAD_L + i * slotW + (slotW - barW) / 2;
+      let stacked = 0;
       for (const s of segmentsOf(d)) {
-        if (s.value <= 0 || max === 0) continue;
-        const h = Math.max(1, (s.value / max) * plotH);
-        y -= h;
-        out += "<rect x='" + x.toFixed(2) + "' y='" + y.toFixed(2) + "' width='" + barW.toFixed(2) + "' height='" + h.toFixed(2) + "' fill='" + s.color + "'><title>" + esc(s.title) + "</title></rect>";
+        if (s.value <= 0) continue;
+        const top = y(stacked + s.value);
+        const h = Math.max(1, y(stacked) - top);
+        out += "<rect x='" + x.toFixed(2) + "' y='" + top.toFixed(2) + "' width='" + barW.toFixed(2) + "' height='" + h.toFixed(2) + "' rx='2' fill='" + s.color + "'><title>" + esc(s.title) + "</title></rect>";
+        stacked += s.value;
       }
-      if (labels[i]) out += "<text x='" + (i * slotW + slotW / 2).toFixed(2) + "' y='" + (REPORT_H - 8) + "' text-anchor='middle'>" + labels[i] + "</text>";
+      if (labels[i]) out += "<text x='" + (REPORT_PAD_L + i * slotW + slotW / 2).toFixed(2) + "' y='" + (REPORT_H - 6) + "' text-anchor='middle'>" + labels[i] + "</text>";
     });
     return out + "</svg>";
   }
 
+  const countAxis = (v) => String(Math.round(v));
+
   function chartTokens(data) {
-    return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#7ec8ff", title: d.date + ": " + fmtTokens(d.tokensOut) }]);
+    return reportSvg(data.series, (d) => [{ value: d.tokensOut, color: "#6366f1", title: d.date + ": " + fmtTokens(d.tokensOut) + " output tokens" }],
+      (v) => fmtTokens(Math.round(v)), true);
   }
 
   function chartCommits(data) {
-    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#7fd88f", title: d.date + ": " + fmtTokens(d.commits) }]);
+    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#10b981", title: d.date + ": " + plural(d.commits, "commit") + " landed" }],
+      countAxis, true);
   }
 
-  // Stacked bars, one color per role from the fixed palette — colors wrap modulo so a fleet
-  // with more roles than palette entries still renders. The first (highest-count) role sits
-  // at the bottom; the legend under the chart lists roles in that same stack order. Role
-  // names are dynamic strings (custom loops): escaped like every other dynamic value.
-  // The ticks and cost charts are the same shape over different fields, so one builder takes
-  // the field name and the tooltip formatter — the two charts share reportRoleOrder's order,
-  // the palette, and the legend byte-for-byte.
-  function roleStackChart(data, field, fmt) {
+  // Stacked bars, one color per role in reportRoleOrder's order (the first role at the bottom),
+  // with a legend in the same order. Role names are dynamic (custom loops): escaped everywhere.
+  function roleStackChart(data, field, fmt, fmtAxis, integer) {
     const roles = reportRoleOrder(data);
     const colorOf = (i) => REPORT_PALETTE[i % REPORT_PALETTE.length];
     const svg = reportSvg(
       data.series,
-      (d) => roles.map(([role], i) => ({ value: d[field][role] || 0, color: colorOf(i), title: d.date + " " + role + ": " + fmt(d[field][role] || 0) })),
+      (d) => roles.map(([role], i) => ({ value: d[field][role] || 0, color: colorOf(i), title: d.date + " · " + role + ": " + fmt(d[field][role] || 0) })),
+      fmtAxis,
+      integer,
     );
     const legend = roles.length
       ? "<div class='legend'>" + roles.map(([role], i) => "<span><span class='swatch' style='background:" + colorOf(i) + "'></span>" + esc(role) + "</span>").join("") + "</div>"
@@ -92,25 +115,20 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
   }
 
   function chartTicksByRole(data) {
-    return roleStackChart(data, "ticksByRole", fmtTokens);
+    return roleStackChart(data, "ticksByRole", (n) => plural(n, "tick"), countAxis, true);
   }
 
   function chartCostByRole(data) {
-    return roleStackChart(data, "costByRole", fmtUsd);
+    return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
   // report-chart:end
 
   // report-tip:start
-  // Hover label for the report charts: one shared, cursor-following chip that shows each
-  // bar segment's value immediately. Each segment's existing <title> is the label text —
-  // the same abbreviated value the chart builders produce and escape — so the tooltip
-  // cannot drift from them; no rect (gaps, axis, legend, stats row) or an empty title
-  // hides the chip. The native <title> tooltip may still appear after the browser's
-  // delay; the styled chip is the immediate affordance.
+  // Hover label for the charts: one cursor-following chip showing the hovered segment's
+  // <title> — the same text the builders escape — so the chip cannot drift from the chart. It
+  // lives on document.body (the view re-renders its own content), is created on first use, and
+  // hides over anything that is not a titled bar.
   function reportTipElement() {
-    // Idempotent: created once, on first use. It lives on document.body, outside #report,
-    // because fetchReport replaces #report's innerHTML on every tab activation — a tip
-    // inside it would be destroyed and re-created per fetch.
     let tip = document.getElementById("report-tip");
     if (!tip) {
       tip = document.createElement("div");
@@ -125,12 +143,6 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
   }
   function attachReportTip() {
     const panel = document.getElementById("report");
-    // Delegation on the container itself — never replaced, only re-rendered by innerHTML —
-    // survives every re-render, so the listeners attach exactly once at init. pointermove
-    // positions the chip in viewport coordinates (matching position:fixed) and measures it
-    // AFTER showing it, so the flip to the cursor's other side is exact within 12 px of the
-    // viewport's right/bottom edge; pointerleave hides it when the pointer leaves the panel
-    // (switching tabs fires it, since the nav-link click moves the pointer out first).
     panel.addEventListener("pointermove", (ev) => {
       const target = ev.target instanceof Element ? ev.target.closest("rect") : null;
       const title = target ? target.querySelector("title")?.textContent : "";
@@ -150,36 +162,99 @@ export const GUI_CLIENT_REPORT_JS = `// report-chart:start
   }
   // report-tip:end
 
-  // The six stat blocks above the charts, from data.totals — tokens through fmtTokens and
-  // cost through the shared fmtUsd (the page's one money rule, hoisted in gui-client.ts).
+  // The six totals above the charts, each with its average per day of the window.
   function reportSummary(data) {
     const t = data.totals;
-    const block = (label, value) => "<div class='stat'><span class='muted'>" + esc(label) + "</span><b>" + value + "</b></div>";
+    const days = Math.max(1, Number(data.days) || data.series.length || 1);
+    const tile = (label, ic, value, perDay) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
+      "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(perDay + " a day") + "</span></div>";
     return [
-      block("output tokens", fmtTokens(t.tokensOut)),
-      block("ticks", String(t.ticks)),
-      block("commits", String(t.commits)),
-      block("cost", fmtUsd(t.costUsd)),
-      block("features done", String(t.featuresDone)),
-      block("bugs fixed", String(t.bugsFixed)),
+      tile("Commits landed", "merge", String(t.commits), "≈ " + (t.commits / days).toFixed(1)),
+      tile("Features done", "plan", String(t.featuresDone), "≈ " + (t.featuresDone / days).toFixed(1)),
+      tile("Bugs fixed", "bug", String(t.bugsFixed), "≈ " + (t.bugsFixed / days).toFixed(1)),
+      tile("Ticks", "refresh", String(t.ticks), "≈ " + Math.round(t.ticks / days)),
+      tile("Output tokens", "bars", fmtTokens(t.tokensOut), "≈ " + fmtTokens(Math.round(t.tokensOut / days))),
+      tile("Spent", "dollar", fmtUsd(t.costUsd), "≈ " + fmtUsd(t.costUsd / days)),
     ].join("");
   }
 
-  // Fetch the report on tab activation and render summary + four charts into #report.
-  async function fetchReport() {
-    const panel = document.getElementById("report");
+  // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
+  function viewHead(title, blurb, pickerId, choices, current, refreshId) {
+    return "<div class='view-head'><div><h1>" + esc(title) + "</h1><p>" + esc(blurb) + "</p></div><div class='toolbar'>" +
+      "<div class='seg' id='" + pickerId + "'>" + choices.map((n) => "<button type='button' data-days='" + n + "' class='" +
+        (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + "</div>" +
+      "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
+  }
+  function markWindow(pickerId, current) {
+    const seg = $(pickerId);
+    if (seg) Array.from(seg.children).forEach((b) => b.classList.toggle("active", Number(b.dataset.days) === current));
+  }
+
+  let usageDays = Number(recall("usage-days")) || 14;
+  let usageFetchedAt = 0;
+  async function fetchReport(throttled) {
+    if (throttled && Date.now() - usageFetchedAt < 60000) return;
+    usageFetchedAt = Date.now();
+    const panel = $("report");
+    if (!panel.dataset.built) {
+      panel.dataset.built = "1";
+      panel.innerHTML = viewHead("Usage", "What the fleet produced and what it cost, per day and per loop.", "usagewindow", [7, 14, 30, 90], usageDays, "usagerefresh") +
+        "<div id='usagebody'><div class='empty'>Loading…</div></div>";
+    }
+    markWindow("usagewindow", usageDays);
     try {
-      const d = await getJson("/api/report?days=14");
-      const block = (title, svg) => "<div class='chartblock'><div class='charttitle'>" + title + "</div>" + svg + "</div>";
-      panel.innerHTML = "<div class='stats'>" + reportSummary(d) + "</div>" +
-        block("Output tokens per day", chartTokens(d)) +
-        block("Ticks per day by role", chartTicksByRole(d)) +
-        block("Commits per day", chartCommits(d)) +
-        block("Cost per day by role", chartCostByRole(d));
+      const d = await getJson("/api/report?days=" + usageDays);
+      const block = (title, svg) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
+        "</h2><span class='muted'>per day</span></header><div class='chart'>" + svg + "</div></section>";
+      $("usagebody").innerHTML = "<div class='stats six'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
+        block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
+        block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
+        (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) + "</p>" : "");
     } catch (e) {
-      // A failed poll is no longer a bare "unavailable": the apiError message names the
-      // endpoint, status, and the server's error (a network failure says Failed to fetch).
-      panelUnavailable(panel, "report", e);
+      // Name the endpoint, status, and server error rather than a bare "unavailable".
+      $("usagebody").innerHTML = "<div class='card empty'><strong>Usage report unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";
     }
   }
+
+  let failDays = Number(recall("fail-days")) || 14;
+  async function fetchFailures() {
+    const panel = $("failures");
+    if (!panel.dataset.built) {
+      panel.dataset.built = "1";
+      panel.innerHTML = viewHead("Failures", "What went wrong, where, and how often — the digest the telemetry loop reads.", "failwindow", [7, 14, 30], failDays, "failrefresh") +
+        "<div id='failbody'><div class='empty'>Loading…</div></div>";
+    }
+    markWindow("failwindow", failDays);
+    try {
+      const d = await getJson("/api/failures?days=" + failDays);
+      // The view head already titles the page, so the digest's own "# …" heading is dropped.
+      const md = String(d.markdown || "").replace(/^# .*\n+/, "");
+      $("failbody").innerHTML = md.trim()
+        ? "<article class='card md'>" + renderMarkdown(md, true) + "</article>"
+        : "<div class='card empty'><strong>No failure digest</strong>Nothing has been recorded in this window.</div>";
+    } catch (e) {
+      $("failbody").innerHTML = "<div class='card empty'><strong>Failure digest unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";
+    }
+  }
+
+  document.getElementById("report").addEventListener("click", (ev) => {
+    const b = ev.target instanceof Element ? ev.target.closest("[data-days]") : null;
+    if (b) {
+      usageDays = Number(b.dataset.days);
+      store("usage-days", String(usageDays));
+      fetchReport();
+      return;
+    }
+    if (ev.target instanceof Element && ev.target.closest("#usagerefresh")) fetchReport();
+  });
+  document.getElementById("failures").addEventListener("click", (ev) => {
+    const b = ev.target instanceof Element ? ev.target.closest("[data-days]") : null;
+    if (b) {
+      failDays = Number(b.dataset.days);
+      store("fail-days", String(failDays));
+      fetchFailures();
+      return;
+    }
+    if (ev.target instanceof Element && ev.target.closest("#failrefresh")) fetchFailures();
+  });
 `;

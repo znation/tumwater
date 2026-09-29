@@ -239,7 +239,7 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
  * value whose wall-clock resume time no `Date` can even hold (a `--for 100000000d` once printed
  * "resumes automatically at NaN:NaN:NaN"). Lives beside the parse it guards so the CLI's one
  * `--for` surface cannot outgrow it unnoticed. */
-const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
+export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from starting new ticks —
  * in-flight ones finish, every other role (the director included) keeps running; without one,

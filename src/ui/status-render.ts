@@ -2,9 +2,8 @@ import path from "node:path";
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost } from "../budget.js";
-import { yieldMultiplierFor } from "./status-model.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
-import { clipToWidth, compactTokens, displayWidth, padToWidth, usd } from "../text.js";
+import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
 import {
   buildBadge,
@@ -15,7 +14,11 @@ import {
   loopRowCells,
   mainCheckBadge,
   pauseBadge,
+  phaseTone,
+  resultTone,
   sortLoopsByState,
+  yieldMultiplierFor,
+  type Tone,
 } from "./status-model.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
@@ -69,8 +72,8 @@ export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunni
   return (s.backoffSeconds > 0 ? `backoff ${label}` : label) + suffix;
 }
 
-/** The table's state cell: a loop's phase label (computed once per row — renderStatus passes
- * loopRowCells's result — so the same label drives the row order), with the current work item prepended
+/** The table's state cell: a loop's phase label (loopPhase, computed once per row by
+ * renderStatus so the same label drives the row order), with the current work item prepended
  * while a tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
  * appending — so the item survives ellipsis clipping on narrow terminals; the live detail
  * after it is what gets clipped first. Idle loops are untouched: their log tail describes a
@@ -101,12 +104,77 @@ const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
 ];
 const COLUMN_GAP = 2;
 
-/** Render the status table shared by `tumwater status` and the TUI. When `maxWidth` is
- * given, wide cells are clipped so no line exceeds it (terminal rows never wrap). */
-export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
+/** A run of text on a status line, with the tone it may be drawn in (status-model's Tone, or
+ * "brand" / "bold" for the header's name and the totals). Plain renderings join the text and
+ * ignore the tone; the TUI colors each toned span. */
+export interface StatusSpan {
+  text: string;
+  tone?: Tone | "brand" | "bold";
+}
+
+/** One status line as spans. */
+export type StatusLine = StatusSpan[];
+
+const plainText = (line: readonly StatusSpan[]): string => line.map((s) => s.text).join("");
+
+/** Clip a line of spans to `width` display columns exactly as clipToWidth clips its joined text
+ * (same cut, same ellipsis), keeping each surviving span's tone — so coloring a line never
+ * changes where it is cut, and escape codes are never counted as columns. */
+export function clipSpans(line: readonly StatusSpan[], width: number): StatusSpan[] {
+  const joined = plainText(line);
+  const clipped = clipToWidth(joined, width);
+  if (clipped === joined) return [...line];
+  const ellipsis = width > 1; // clipToWidth spends one column on "…" whenever it can
+  let keep = clipped.length - (ellipsis ? 1 : 0);
+  const out: StatusSpan[] = [];
+  for (const span of line) {
+    if (keep <= 0) break;
+    const text = span.text.slice(0, keep);
+    keep -= text.length;
+    out.push({ ...span, text });
+  }
+  if (ellipsis) {
+    const last = out[out.length - 1];
+    if (last) out[out.length - 1] = { ...last, text: `${last.text}…` };
+    else out.push({ text: "…" });
+  }
+  return out;
+}
+
+/** A header badge (" · land queue: 2", ", build abc…") as a plain separator plus its toned
+ * words, so the TUI colors the words and not the dots. Empty badges add nothing. */
+function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
+  if (!badge) return [];
+  const sep = /^(?: · |, )/.exec(badge)?.[0] ?? "";
+  return [{ text: sep }, { text: badge.slice(sep.length), ...(tone ? { tone } : {}) }];
+}
+
+/** The daily budget badge's tone: yellow from 85% of the cap, red once it is spent. */
+function budgetTone(budget: StatusSnapshot["budget"]): Tone | undefined {
+  if (budget.free || !(budget.capUsd > 0)) return undefined;
+  const share = budget.spentUsd / budget.capUsd;
+  return share >= 1 ? "red" : share >= 0.85 ? "yellow" : undefined;
+}
+
+/** The loop facts one status render computed, for callers that build more on them (the TUI's
+ * attention lines): each loop's rendered phase, whether it is in flight, its last error. */
+interface StatusLoopRow {
+  role: string;
+  phase: string;
+  inFlight: boolean;
+  lastError?: string;
+}
+
+/** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
+ * plus the per-loop facts it computed (see StatusLoopRow). When `maxWidth` is given, wide cells
+ * are clipped so no line exceeds it (terminal rows never wrap). */
+export function renderStatusSpans(
+  root: string,
+  snap: StatusSnapshot,
+  maxWidth?: number,
+): { lines: StatusLine[]; loops: StatusLoopRow[] } {
   const name = path.basename(path.resolve(root));
-  const lines: string[] = [];
-  const header = snap.running ? `running (pid ${snap.pid}${buildBadge(snap.build)})` : "not running — start with `tumwater run`";
+  const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's
   // next-run cell — a per-site Date.now() could tick over between them and disagree with
   // itself.
@@ -120,12 +188,21 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // wording) rides last so a fleet under a timed pause reads how long until it comes back —
   // empty unless the fleet marker's deadline stands in the future, so a role-only or
   // indefinite pause keeps today's header byte-identical.
-  lines.push(
-    `tumwater · ${name} · ${header}${landingBadge(snap.landQueue)}${snap.inbox ? ` · inbox: ${snap.inbox}` : ""}${
-      snap.questions ? ` · questions: ${snap.questions}` : ""
-    }${budgetBadge(snap.budget)}${mainCheckBadge(snap.mainCheck)}${pauseBadge(snap.pausedUntil, now)}`,
-  );
-  lines.push("");
+  const running: StatusSpan[] = snap.running
+    ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build), snap.build?.stale ? "yellow" : undefined), { text: ")" }]
+    : [{ text: "not running — start with `tumwater run`", tone: "dim" }];
+  lines.push([
+    { text: "tumwater", tone: "brand" },
+    { text: ` · ${name} · ` },
+    ...running,
+    ...badgeSpans(landingBadge(snap.landQueue), "blue"),
+    ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
+    ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
+    ...badgeSpans(budgetBadge(snap.budget), budgetTone(snap.budget)),
+    ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck ? (snap.mainCheck.status === "passed" ? "green" : snap.mainCheck.status === "failed" ? "red" : "yellow") : undefined),
+    ...badgeSpans(pauseBadge(snap.pausedUntil, now), "yellow"),
+  ]);
+  lines.push([]);
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
   // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
@@ -140,8 +217,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // label drives the state cell and the shared row order (sortLoopsByState).
   // Per-role prompts 2/2 — a loop with queued prompts carries a small `p:N` marker on its
   // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
-  // operator steering one loop that something is waiting for it. The GUI renders the same
-  // marker from its own JS copy keyed on the payload's roleInbox (gui-client.ts).
+  // operator steering one loop that something is waiting for it.
   const roleQueued = (role: string): string => {
     const n = snap.roleInbox[role] ?? 0;
     return n > 0 ? ` p:${n}` : "";
@@ -152,8 +228,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     const cells = loopRowCells(snap, root, s);
     return {
       s,
-      generated: cells.generated,
-      peakCtx: cells.peakCtx,
+      m: { generated: cells.generated, peakCtx: cells.peakCtx },
       live: cells.live,
       phase: cells.phase,
       role: s.role,
@@ -163,30 +238,44 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // User-defined loops (snapshot's `custom` flag) get an asterisk beside their name — the
   // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS and
   // its width derives from row content, so the extra character widens it automatically.
-  // Rows are ordered by the shared display rule (active phases first, last tick most-recent
-  // first) so the TUI/status table groups landing with working/reviewing like the GUI table.
-  const rows = sortLoopsByState(withMetrics).map(({ s, generated, peakCtx, live, phase }) => [
-    s.custom ? `${s.role}*` : s.role,
-    // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
-    // this role by loopRowCells's landing argument above) rides this same phase string.
-    stateCell(root, s, phase, live) + roleQueued(s.role),
-    String(s.ticks),
-    String(s.commits),
-    compactTokens(generated),
-    compactTokens(peakCtx),
-    usd(s.totalCostUsd),
-    usd(dailyCost(s)),
-    lastTickCell(s.lastTickEndedAt),
-    s.lastResult ? `${s.lastResult}${s.lastSummary ? ` — ${s.lastSummary}` : ""}` : "-",
-    nextRunCell(s, phase, now, snap.running),
-  ]);
-  const totalsRow = [
+  // Rows are ordered by the shared display rule (status-model's loopRank, then last tick most
+  // recent first) so the TUI/status table groups loops the way the GUI table does.
+  // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain), the
+  // last result tones its outcome word, a backoff countdown reads yellow.
+  const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
+  const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
+    const state = stateCell(root, s, phase, live);
+    const tone = phaseTone(phase);
+    // The whole state cell carries the phase's tone: a work item leads the cell (so it
+    // survives clipping), and clipping often leaves only it — the color still tells the state.
+    const stateSpans: StatusSpan[] = [{ text: state, ...(tone ? { tone } : {}) }];
+    const next = nextRunCell(s, phase, now, snap.running);
+    const resultT = resultTone(s.lastResult);
+    return [
+      cell(s.custom ? `${s.role}*` : s.role),
+      // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
+      // this role by loopPhase's `landing` argument above) rides this same phase string.
+      [...stateSpans, { text: roleQueued(s.role) }],
+      cell(String(s.ticks)),
+      cell(String(s.commits)),
+      cell(compactTokens(m.generated)),
+      cell(compactTokens(m.peakCtx)),
+      cell(usd(s.totalCostUsd)),
+      cell(usd(dailyCost(s))),
+      cell(lastTickCell(s.lastTickEndedAt)),
+      s.lastResult
+        ? [{ text: s.lastResult, ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
+        : cell("-"),
+      cell(next, next.startsWith("backoff") ? "yellow" : undefined),
+    ];
+  });
+  const totalsRow: StatusSpan[][] = [
     "total",
     "",
     "",
     "",
-    compactTokens(withMetrics.reduce((sum, { generated }) => sum + generated, 0)),
-    compactTokens(Math.max(0, ...withMetrics.map(({ peakCtx }) => peakCtx))),
+    compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
+    compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The fleet's today-spend — by construction equal to the header badge's spend while
     // enabled (snapshot derives both from the same loops), so table and badge cannot drift.
@@ -194,12 +283,12 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-  ];
+  ].map((text) => cell(text));
   const allRows = [...rows, totalsRow];
   // Widths are measured in terminal display columns (displayWidth), not UTF-16 code units:
   // a cell holding CJK or emoji renders two columns per code point, and a code-unit measure
   // lets that row's later cells drift right of the header's.
-  const widths = cols.map((c, i) => Math.max(displayWidth(c), ...allRows.map((r) => displayWidth(r[i] ?? ""))));
+  const widths = cols.map((c, i) => Math.max(displayWidth(c), ...allRows.map((r) => displayWidth(plainText(r[i] ?? [])))));
 
   if (maxWidth !== undefined) {
     let overflow = widths.reduce((a, b) => a + b, 0) + COLUMN_GAP * (cols.length - 1) - maxWidth;
@@ -212,23 +301,50 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     }
   }
 
-  const fmt = (r: string[]) =>
-    r.map((cell, i) => padToWidth(clipToWidth(cell, widths[i] ?? 0), widths[i] ?? 0)).join("  ").trimEnd();
-  const separator = widths.map((w) => "-".repeat(w)).join("  ");
-  lines.push(fmt(cols));
+  // Each cell clipped and padded to its column (padding stays untoned), the columns joined by
+  // the gap, and the line's trailing padding trimmed — the plain text is exactly the aligned
+  // table it has always been.
+  const fmt = (r: StatusSpan[][], tone?: StatusSpan["tone"]): StatusLine => {
+    const out: StatusSpan[] = [];
+    r.forEach((c, i) => {
+      const w = widths[i] ?? 0;
+      const clipped = clipSpans(c, w);
+      if (i > 0) out.push({ text: "  " });
+      out.push(...clipped.map((sp) => (tone && !sp.tone ? { ...sp, tone } : sp)));
+      const pad = w - displayWidth(plainText(clipped));
+      if (pad > 0) out.push({ text: " ".repeat(pad) });
+    });
+    // trimEnd, span-wise
+    while (out.length) {
+      const last = out[out.length - 1]!;
+      const trimmed = last.text.trimEnd();
+      if (trimmed === last.text) break;
+      if (trimmed) {
+        out[out.length - 1] = { ...last, text: trimmed };
+        break;
+      }
+      out.pop();
+    }
+    return out;
+  };
+  const separator: StatusLine = [{ text: widths.map((w) => "-".repeat(w)).join("  "), tone: "dim" }];
+  lines.push(fmt(cols.map((c) => cell(c)), "dim"));
   lines.push(separator);
   for (const r of rows) lines.push(fmt(r));
   lines.push(separator);
-  lines.push(fmt(totalsRow));
+  lines.push(fmt(totalsRow, "bold"));
   // One footnote under the table when any custom loop exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
-  if (snap.loops.some((l) => l.custom)) lines.push("* user-defined loop");
+  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
+  const loops = withMetrics.map(({ s, phase }) => ({ role: s.role, phase, inFlight: isActivePhase(phase), ...(s.lastError ? { lastError: s.lastError } : {}) }));
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
-  const finished = lines.join("\n");
-  if (maxWidth === undefined) return finished;
-  return finished
-    .split("\n")
-    .map((line) => clipToWidth(line, maxWidth))
-    .join("\n");
+  return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops };
+}
+
+/** Render the status table shared by `tumwater status` and the TUI as plain text (see
+ * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
+ * (terminal rows never wrap). */
+export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
+  return renderStatusSpans(root, snap, maxWidth).lines.map(plainText).join("\n");
 }

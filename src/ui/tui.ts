@@ -3,6 +3,7 @@ import {
   type BacklogEntry,
   openBugEntries,
   openQuestionEntries,
+  openQuestions,
   plannedPlanEntries,
 } from "../backlog.js";
 import { readEvents } from "../events.js";
@@ -23,8 +24,9 @@ import {
   submitRolePromptAndWake,
 } from "./operator-commands.js";
 import { snapshot } from "./status.js";
-import { renderStatus } from "./status-render.js";
-import { clipToWidth, errorMessage, usdCap } from "../text.js";
+import { renderStatusSpans, type StatusLine } from "./status-render.js";
+import { fleetAlerts } from "./status-model.js";
+import { errorMessage, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
 import {
   captureStartupBuild,
@@ -45,52 +47,24 @@ import {
   moveEntrySelection,
   stepEntryScroll,
 } from "./tui-backlog.js";
+import {
+  alertLines,
+  eventTone,
+  hintLine,
+  paintLine,
+  prefixWidth,
+  promptPrefix,
+  resolveStyles,
+  tabStrip,
+  toneLine,
+  transcriptTone,
+  type TuiView,
+} from "./tui-frame.js";
 
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
 
 const CLEAR = "\x1b[2J\x1b[H";
-
-/** The TUI's text styling: bold for headers, flash, and the questions nudge; dim for body
- * lines, empty notes, and hints. The two attribute escapes ride every styled span, so they
- * travel as one set instead of loose constants. */
-interface TuiStyles {
-  bold: string;
-  dim: string;
-  reset: string;
-}
-
-const STYLED: TuiStyles = { bold: "\x1b[1m", dim: "\x1b[2m", reset: "\x1b[0m" };
-const PLAIN: TuiStyles = { bold: "", dim: "", reset: "" };
-
-/** Resolve a run's styles from the NO_COLOR convention (no-color.org): a set, non-empty
- * variable suppresses the bold and dim attributes — dim body text is unreadable on some
- * terminals and invisible to color-blind operators and screen readers. CLEAR stays either
- * way: erasing the screen is cursor motion, not styling. Resolved per run (not at module
- * load) so a test can flip the environment between runs. */
-function resolveStyles(noColor: string | undefined): TuiStyles {
-  return noColor !== undefined && noColor !== "" ? PLAIN : STYLED;
-}
-
-// TUI rendering repeats one shape: wrap text in an escape pair, clipping it to the pane
-// width. These helpers centralize that for the bold/dim headers and prompts and the clipped
-// body lists; short unclipped styles (the "recent activity" header, the dim body/empty-note
-// wraps further down) stay styled inline. All take the run's styles so a NO_COLOR run
-// renders the same layout with the attributes dropped.
-function boldLine(s: TuiStyles, text: string, width: number): string {
-  return `${s.bold}${clipToWidth(text, width)}${s.reset}`;
-}
-
-function dimLine(s: TuiStyles, text: string, width: number): string {
-  return `${s.dim}${clipToWidth(text, width)}${s.reset}`;
-}
-
-/** Clip each body line to the pane width, keeping at most `budget` of them — "head" keeps
- * the top of the list (backlog files are newest-first), "tail" the bottom (event feeds). */
-function clipLines(lines: string[], width: number, budget: number, keep: "head" | "tail"): string[] {
-  const clipped = lines.map((l) => clipToWidth(l, width));
-  return keep === "head" ? clipped.slice(0, budget) : clipped.slice(-budget);
-}
 
 /** The half of a terminal the TUI actually touches: raw mode, keypresses, and the size the
  * renderer clips to. Production reads process.stdin/stdout; tests inject fakes so the loop
@@ -202,8 +176,10 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // panes — PgDn/PgUp there. Reset to the head whenever the view is entered, like entryScroll.
   let paneScroll = 0;
   // The activity pane's current line budget, refreshed by every render so keypress handlers
-  // can page within it without re-deriving the height math.
+  // can page within it without re-deriving the height math. An open backlog entry spends the
+  // pane's first line on its title, so its body pages by one line less (entryBudget).
   let eventBudget = 0;
+  let entryBudget = 0;
   let roleIds: string[] = [];
   // The last frame written to the terminal: the per-second re-render only rewrites the
   // screen when the composed frame actually differs. An idle fleet's frame changes only
@@ -234,108 +210,74 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     currentBudgetFree = snap.budget.free;
     roleIds = snap.loops.map((s) => s.role);
     view = Math.min(view, roleIds.length + 3); // clamp a stale index if roles changed
-    const status = renderStatus(root, snap, width);
-    const statusLines = status.split("\n").length;
-    // A highlighted nudge above the activity pane while questions await a human answer —
-    // a cheap signal that something needs a decision. It consumes one line of the budget.
-    const hasQuestions = snap.questions > 0;
+    const status = renderStatusSpans(root, snap, width);
+    // What needs the operator — the dashboard's alert banners (status-model's fleetAlerts), as
+    // attention lines under the header. Each consumes one line of the height budget.
+    const attention = alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
+    const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
     // Numbered previews of prompts queued for the director, between the table and the
     // activity pane: what will run next, in execution order. Each line consumes exactly
-    // one line of the budget, like the questions nudge above it.
+    // one line of the budget, like the attention lines above.
     const queued = snap.inboxPrompts;
-    eventBudget = Math.max(3, rows - statusLines - 6 - (hasQuestions ? 1 : 0) - queued.length);
-    // The pane occupies the same slot as recent activity: one header line plus at most
-    // eventBudget clipped lines, so the height-budget math is unchanged either way.
-    let header: string;
-    let body: string[];
-    let emptyNote = "(no events yet)";
+    eventBudget = Math.max(3, rows - statusLines.length - 6 - queued.length);
+    entryBudget = Math.max(1, eventBudget - 1);
+    // The pane occupies one tab-strip line plus at most eventBudget clipped lines, so the
+    // height-budget math is the same in every view.
     const role = view > 0 && view <= roleIds.length ? roleIds[view - 1] : undefined; // defined: view is clamped above
-    if (role) {
-      header = boldLine(
-        styles,
-        `transcript: ${role} — Ctrl+P pause · Ctrl+A abort · Ctrl+W wake · Ctrl+R prompt · Ctrl+T to cycle`,
-        width,
-      );
-      body = clipLines(readTranscript(root, role, eventBudget), width, eventBudget, "tail");
+    const pane: TuiView = role
+      ? { kind: "transcript", role, index: view, count: roleIds.length }
+      : view === roleIds.length + 1 ? { kind: "backlog" }
+        : view === roleIds.length + 2 ? { kind: "usage" }
+          : view === roleIds.length + 3 ? { kind: "failures" }
+            : { kind: "activity" };
+    let body: StatusLine[];
+    let emptyNote = "(no events yet)";
+    if (pane.kind === "transcript") {
+      body = readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l)));
       emptyNote = "(no transcript yet)";
-    } else if (view === roleIds.length + 1) {
-      // Project status: planned features, open bugs, and open questions from
-      // PLANS.md/BUGS.md/QUESTIONS.md, read fresh each render like events. Keeps the HEAD of
-      // the list when it overflows — file order is newest-first, unlike events which keep the tail.
+    } else if (pane.kind === "backlog") {
+      // Planned features, open bugs, and open questions from PLANS.md/BUGS.md/QUESTIONS.md,
+      // read fresh each render like events. Keeps the HEAD of the list when it overflows —
+      // file order is newest-first, unlike events which keep the tail.
       const planEntries = plannedPlanEntries(root);
       const bugEntries = openBugEntries(root);
       const questionEntries = openQuestionEntries(root);
-      if (selectedEntry === null) {
-        header = boldLine(styles, "project status — Ctrl+T to cycle", width);
-        body = clipLines(
-          backlogLines(
-            planEntries.map((e) => e.title),
-            bugEntries.map((e) => e.title),
-            questionEntries.map((e) => e.title),
-          ),
-          width,
-          eventBudget,
-          "head",
-        );
+      const flat = selectedEntry === null ? [] : flatEntries();
+      const sel = selectedEntry === null || flat.length === 0 ? null : Math.min(selectedEntry, flat.length - 1);
+      if (sel === null) {
+        // List mode (and a stale selection with no entries left falls back to it): section
+        // headings stand out, empty sections read dim.
+        body = backlogLines(planEntries.map((e) => e.title), bugEntries.map((e) => e.title), questionEntries.map((e) => e.title))
+          .slice(0, eventBudget)
+          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined));
       } else {
-        // Entry browsing: the selected entry's full body under a header naming its section
-        // and title. A stale selection (an entry removed from the file since the last render)
-        // clamps to the last remaining entry; with no entries at all it falls back to list mode.
-        const flat = flatEntries();
-        const sel = flat.length > 0 ? Math.min(selectedEntry, flat.length - 1) : null;
-        if (sel === null) {
-          header = boldLine(styles, "project status — Ctrl+T to cycle", width);
-          body = clipLines(["(no planned features, open bugs, or open questions)"], width, eventBudget, "head");
-        } else {
-          const e = flat[sel]!;
-          const win = entryBodyWindow(e.body, entryScroll, eventBudget, width);
-          // The scroll affordance appears only while the body overflows the pane — short
-          // entries keep today's exact header.
-          const browse = win.total > eventBudget ? "↑↓ browse · PgUp/PgDn scroll" : "↑↓ browse";
-          header = boldLine(styles, `${e.label}: ${e.title} — ${browse} · Ctrl+T cycle`, width);
-          body = win.lines;
-        }
+        // Entry browsing: the selected entry's full body under a line naming its section and
+        // title. A stale selection (an entry removed since the last render) clamps to the last.
+        const e = flat[sel]!;
+        const win = entryBodyWindow(e.body, entryScroll, entryBudget, width);
+        body = [toneLine(`${e.label}: ${e.title}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))];
       }
-    } else if (view === roleIds.length + 2 || view === roleIds.length + 3) {
-      // Markdown panes (usage report, failures): the same Markdown `tumwater report` prints,
-      // windowed exactly like project-status entry mode. The cache is set on view entry by the
-      // Ctrl+T handler, so this branch only re-windows a string — no per-frame collect.
-      const label = view === roleIds.length + 2 ? "usage report" : "failures";
+    } else if (pane.kind === "usage" || pane.kind === "failures") {
+      // The Markdown `tumwater report` prints, windowed like backlog entry mode. The cache is
+      // set on view entry by the Ctrl+T handler, so this only re-windows a string.
       const win = entryBodyWindow(paneCache ?? "", paneScroll, eventBudget, width);
-      // The scroll affordance appears only while the body overflows the pane — a fitting
-      // report keeps the plain header (the browse-hint pattern entry mode already uses).
-      const scroll = win.total > eventBudget ? "PgUp/PgDn scroll · " : "";
-      header = boldLine(styles, `${label} — ${scroll}Ctrl+T to cycle`, width);
-      body = win.lines;
+      body = win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined));
     } else {
-      header = `${styles.bold}recent activity${styles.reset}`;
-      body = clipLines(readEvents(root, eventBudget).map((e) => formatEvent(e)), width, eventBudget, "tail");
+      body = readEvents(root, eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))).slice(-eventBudget);
     }
 
-    const parts = [status, ""];
-    if (hasQuestions) {
-      parts.push(
-        boldLine(styles, `questions: ${snap.questions} awaiting answers (see QUESTIONS.md)`, width),
-      );
-    }
-    for (const [i, preview] of queued.entries()) {
-      parts.push(clipToWidth(`${i + 1}. ${preview}`, width));
-    }
-    parts.push(header);
-    parts.push(
-      body.length
-        ? body.map((l) => `${styles.dim}${l}${styles.reset}`).join("\n")
-        : `${styles.dim}${emptyNote}${styles.reset}`,
-    );
+    const mode = { budget: budgetMode, rolePromptFor };
+    const parts = [...statusLines.map((l) => paintLine(styles, l)), ""];
+    for (const [i, preview] of queued.entries()) parts.push(paintLine(styles, toneLine(`${i + 1}. ${preview}`, width)));
+    parts.push(paintLine(styles, tabStrip(pane, width)));
+    parts.push(body.length ? body.map((l) => paintLine(styles, l)).join("\n") : paintLine(styles, toneLine(emptyNote, width, "dim")));
     parts.push("");
-    if (flash && Date.now() < flashUntil) parts.push(boldLine(styles, flash, width));
-    parts.push(
-      rolePromptFor
-        ? dimLine(styles, `prompt for ${rolePromptFor}: Enter to send · Esc to cancel · Ctrl+C to quit`, width)
-        : dimLine(styles, "type a prompt for the project, Enter to send · Ctrl+B edit budget · Ctrl+C to quit", width),
-    );
-    // Window long prompts around the cursor so its position stays visible.
-    parts.push(`> ${renderInputView(input, cursor, width)}`);
+    if (flash && Date.now() < flashUntil) parts.push(paintLine(styles, toneLine(flash, width, "bold")));
+    parts.push(paintLine(styles, hintLine(pane, mode, width)));
+    // The prompt line names its target, like the dashboard's composer; long prompts window
+    // around the cursor so its position stays visible.
+    const prefix = promptPrefix(mode);
+    parts.push(paintLine(styles, prefix) + renderInputView(input, cursor, width - prefixWidth(prefix) + 2));
     const frame = CLEAR + parts.join("\n");
     if (frame === lastFrame) return; // Unchanged screen: rewriting it only costs terminal I/O.
     lastFrame = frame;
@@ -520,7 +462,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           entryScroll = stepEntryScroll(
             entryScroll,
             body ? body.split("\n").length : 0,
-            eventBudget,
+            entryBudget,
             key.name === "pagedown" ? "down" : "up",
           );
         }

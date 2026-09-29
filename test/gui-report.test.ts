@@ -12,6 +12,7 @@ import { atLocalTs as atNoon } from "./oracles.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
+import { clientScope } from "./gui-client-scope.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -138,196 +139,127 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   }
 });
 
-test("the dashboard page carries the report tab nav and its view containers", async () => {
+test("the Usage and Failures views fetch their window on activation, never on a timer", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-
-  // Nav row under the h1 with all four tabs; fleet is active by default.
-  assert.match(
-    GUI_PAGE,
-    /<nav id="viewnav"><a href="#" id="tab-fleet" class="active">fleet<\/a>[\s\S]*?<a href="#" id="tab-report">report<\/a>[\s\S]*?<a href="#" id="tab-failures">failures<\/a>[\s\S]*?<a href="#" id="tab-history">history<\/a><\/nav>/,
-  );
-
-  // The fleet view wraps exactly the four fleet elements; #report and #failures are hidden
-  // siblings shown when active (the page's existing hidden-attribute pattern).
-  assert.match(
-    GUI_PAGE,
-    /<div id="fleet-view">\n<table>[\s\S]*?<\/table>\n<div id="transcript" hidden><\/div>\n<div id="backlog"><\/div>\n<div id="feed"><\/div>\n<\/div>/,
-  );
-  assert.match(
-    GUI_PAGE,
-    /<\/div>\n<div id="report" hidden><\/div>\n<div id="failures" hidden><\/div>\n<div id="history" hidden><\/div>\n<script>/,
-  );
-  // #failures reuses #transcript's box, so the digest keeps its newlines and scrolls.
-  assert.match(GUI_PAGE, /#transcript, #failures \{[\s\S]*?white-space:pre-wrap/);
-
-  // The director prompt form sits outside the fleet view — visible on every tab.
-  const formIdx = GUI_PAGE.indexOf('<form id="promptform">');
-  const viewIdx = GUI_PAGE.indexOf('<div id="fleet-view">');
-  assert.ok(formIdx !== -1 && viewIdx !== -1 && formIdx < viewIdx, "the prompt form stays outside the fleet view");
-
-  // Report and failures are fetched on tab activation only — no per-second polls of them.
-  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=14"\)/);
-  assert.match(GUI_PAGE, /if \(v === "report"\) fetchReport\(\)/);
-  assert.match(GUI_PAGE, /getJson\("\/api\/failures\?days=14"\)/);
+  // Both views have a container and a sidebar link; the window pickers choose the days.
+  assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
+  assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
+  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=" \+ usageDays\)/);
+  assert.match(GUI_PAGE, /getJson\("\/api\/failures\?days=" \+ failDays\)/);
+  assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
-  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the existing 1s status refresh");
+  // The fleet view's "today" tiles read a one-day report, refreshed on new events.
+  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=1"\)/);
+  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the 1 s status refresh");
 });
-
 test("the report charts carry a cursor-following hover label", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-
-  // The shared chip: fixed in viewport coordinates, inert to the pointer (so it cannot
-  // flicker away the instant the cursor reaches it), hidden until a segment shows it.
-  assert.match(GUI_PAGE, /#report-tip \{[^}]*position:fixed[^}]*pointer-events:none[^}]*display:none[^}]*\}/);
-  // The only hover affordance on the charts is the dimmed segment; legend/stats/axis text
-  // stay untouched.
-  assert.match(GUI_PAGE, /#report svg rect:hover \{[^}]*opacity:\.8/);
-
-  // The label is read from each segment's existing <title> — the abbreviated value the
-  // chart-builder test pins byte-for-byte — never re-derived, so the tooltip cannot drift
-  // from the builders' label strings.
+  // The shared chip: fixed in viewport coordinates, inert to the pointer (so it cannot flicker
+  // away the instant the cursor reaches it), hidden until a segment shows it.
+  assert.match(GUI_PAGE, /#report-tip \{[^}]*position: ?fixed[^}]*pointer-events: ?none[^}]*display: ?none[^}]*\}/);
+  assert.match(GUI_PAGE, /#report svg rect:hover \{[^}]*opacity: ?\.8/);
+  // The label is each segment's own <title> — never re-derived — read off the #report
+  // container, which re-renders its content but is never replaced, so one attach at start-up
+  // survives every render.
   assert.match(GUI_PAGE, /ev\.target instanceof Element \? ev\.target\.closest\("rect"\) : null/);
   assert.match(GUI_PAGE, /target\.querySelector\("title"\)\?\.textContent/);
-
-  // The listeners delegate off the #report container itself — which fetchReport re-renders
-  // by innerHTML but never replaces — so one attach at init survives every re-render;
-  // pointerleave hides the chip when the pointer leaves the panel.
   assert.match(GUI_PAGE, /attachReportTip\(\) \{\n    const panel = document\.getElementById\("report"\);[\s\S]*?panel\.addEventListener\("pointermove", /);
   assert.match(GUI_PAGE, /panel\.addEventListener\("pointerleave", /);
-
-  // The tooltip JS is a marked region (the page's loop-sort / last-tick-fmt convention)
-  // wired in once at init, immediately before the final refresh + 1 s poll.
-  assert.match(GUI_PAGE, /\/\/ report-tip:start\n[\s\S]*?\n  \/\/ report-tip:end/);
-  assert.match(GUI_PAGE, /attachReportTip\(\);\n  refresh\(\);\n  setInterval\(refresh, 1000\);/);
+  assert.equal(GUI_PAGE.match(/attachReportTip\(\);/g)?.length, 1, "attached once, at start-up");
 });
-
-test("the report tab's SVG chart builders render bars, stacks, and thinned labels", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-
-  // Extract the marked region — same regex-extract + new Function pattern as the esc test.
-  // The page's own esc is injected so role names escape exactly like every other dynamic value;
-  // the page's own fmtTokens and fmtUsd are extracted the same way (the esc test's
-  // single-line-const seam) and injected so the chart labels and money rule cannot drift from
-  // the stat blocks above them.
-  const m = GUI_PAGE.match(/\/\/ report-chart:start\n([\s\S]*?)\n  \/\/ report-chart:end/);
-  assert.ok(m, "report-chart region found in the page");
-  const fm = GUI_PAGE.match(/const fmtTokens = \((\w+)\) => (.+);$/m);
-  assert.ok(fm, "fmtTokens definition found in the page");
-  const fmtTokens = new Function(fm[1]!, `return (${fm[2]});`) as (n: number) => string;
-  const fum = GUI_PAGE.match(/const fmtUsd = \((\w+)\) => (.+);$/m);
-  assert.ok(fum, "fmtUsd definition found in the page");
-  const fmtUsd = new Function(fum[1]!, `return (${fum[2]});`) as (n: number) => string;
-  type ChartBuilders = {
+test("the Usage charts render bars on a shared scale, stacks per loop, and a labeled today", () => {
+  type Builders = {
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
     chartCommits(d: ReportData): string;
     chartCostByRole(d: ReportData): string;
+    niceMax(v: number, integer: boolean): number;
+    reportDayLabels(series: ReportDay[]): string[];
+    REPORT_PALETTE: string[];
   };
-  const escImpl = (s: string) => String(s).replace(/[&<>]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c] as string));
-  const builders = new Function("esc", "fmtTokens", "fmtUsd", `${m[1]}\nreturn { chartTokens, chartTicksByRole, chartCommits, chartCostByRole };`) as unknown as (
-    esc: (s: string) => string,
-    fmtTokens: (n: number) => string,
-    fmtUsd: (n: number) => string,
-  ) => ChartBuilders;
-  const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole } = builders(escImpl, fmtTokens, fmtUsd);
+  const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole, niceMax, reportDayLabels, REPORT_PALETTE } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartTokens", "chartTicksByRole", "chartCommits", "chartCostByRole", "niceMax", "reportDayLabels", "REPORT_PALETTE"],
+  );
 
-  // Fixture: 14 days — tokens rising to a max on the last day, two roles with distinct window
-  // totals (feature > bugfix), one zero day in the middle.
+  // 14 days — tokens rising to a max on the last day, two roles with distinct window totals
+  // (feature > bugfix), one zero day in the middle.
   const mkDay = (date: string, tokensOut: number, ticksByRole: Record<string, number>, commits: number, costByRole: Record<string, number> = {}): ReportDay => ({
-    date,
-    tokensOut,
-    ticksByRole,
-    costByRole,
-    commits,
-    costUsd: 0.5,
-    featuresDone: 0,
-    bugsFixed: 0,
+    date, tokensOut, ticksByRole, costByRole, commits, costUsd: 0.5, featuresDone: 0, bugsFixed: 0,
   });
   const series: ReportDay[] = [];
   for (let i = 0; i < 14; i++) {
     const date = `2026-09-${String(i + 1).padStart(2, "0")}`;
-    if (i === 7) series.push({ ...mkDay(date, 0, {}, 0), costUsd: 0 }); // the zero day
+    if (i === 7) series.push({ ...mkDay(date, 0, {}, 0), costUsd: 0 });
     else series.push(mkDay(date, (i + 1) * 1000, i % 2 === 0 ? { feature: 3, bugfix: 1 } : { feature: 2 }, i % 3 === 0 ? 2 : 1, i % 2 === 0 ? { feature: 0.06, bugfix: 0.02 } : { feature: 0.04 }));
   }
   const data: ReportData = {
-    days: 14,
-    from: series[0]!.date,
-    to: series[13]!.date,
-    series,
+    days: 14, from: series[0]!.date, to: series[13]!.date, series,
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
   };
-
   const parseRects = (svg: string) =>
-    [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(
+    [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' rx='2' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(
       (r) => ({ x: +r[1]!, y: +r[2]!, w: +r[3]!, h: +r[4]!, fill: r[5]!, title: r[6]! }),
     );
 
-  // "Output tokens per day": one bar per non-zero day; the window-max day's bar is the tallest.
-  const tokenRects = parseRects(chartTokens(data));
-  assert.equal(tokenRects.length, 13, "one bar per non-zero day (the zero day leaves an empty slot)");
-  const maxBar = tokenRects.find((r) => r.title === "2026-09-14: 14.0k");
-  assert.ok(maxBar, "tokens ≥ 10k are abbreviated like the stat blocks");
+  // The scale tops out at a round number at or above the tallest bar; small counts stay even so
+  // the midline is a whole number.
+  assert.deepEqual([niceMax(14_000, true), niceMax(3, true), niceMax(7, true), niceMax(0, true), niceMax(0.34, false)], [20_000, 4, 8, 2, 0.5]);
+
+  // Output tokens: one bar per non-zero day on one baseline, the tallest the window's max.
+  const tokens = chartTokens(data);
+  const tokenRects = parseRects(tokens);
+  assert.equal(tokenRects.length, 13, "one bar per non-zero day (the zero day keeps an empty slot)");
+  const maxBar = tokenRects.find((r) => r.title === "2026-09-14: 14.0k output tokens");
+  assert.ok(maxBar, "tooltips abbreviate like the stat tiles");
   for (const r of tokenRects) {
     assert.ok(r.h <= maxBar!.h + 1e-9, "no bar exceeds the window-max bar");
     assert.ok(Math.abs(r.y + r.h - (maxBar!.y + maxBar!.h)) < 1e-9, "every bar sits on the same baseline");
   }
+  // The scale's labels: zero, the midline, the top.
+  assert.match(tokens, />0<\/text>/);
+  assert.match(tokens, />10\.0k<\/text>/);
+  assert.match(tokens, />20\.0k<\/text>/);
 
-  // X-axis labels: MM-DD like the Markdown table, thinned to at most seven.
-  const labels = [...chartTokens(data).matchAll(/<text [^>]*>([^<]*)<\/text>/g)].map((t) => t[1]!);
-  assert.ok(labels.length <= 7, "labels thinned to at most seven");
-  assert.equal(labels[0], "09-01", "the first day is always labeled (MM-DD)");
+  // Day labels: MM-DD, at most seven, counted back from the newest so today is always labeled.
+  const labels = reportDayLabels(series).filter(Boolean);
+  assert.ok(labels.length <= 7);
+  assert.equal(reportDayLabels(series).at(-1), "09-14", "the newest day carries its label");
 
-  // "Commits per day": one bar per non-zero day with the abbreviated value in its tooltip
-  // (counts below 10k pass through unchanged).
+  // Landed commits: plain counts in the tooltip.
   const commitRects = parseRects(chartCommits(data));
   assert.equal(commitRects.length, 13);
-  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2"), "small commit tooltips are unchanged");
+  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2 commits landed"));
 
-  // "Ticks per day by role": one segment per (day, role) with ticks; the highest-count role
-  // sits at the bottom of each stack and first in the legend, colored from the fixed palette.
+  // Ticks by loop: one segment per (day, loop); the busiest loop sits at the bottom and leads
+  // the legend, each loop keeping one palette color.
   const stacked = parseRects(chartTicksByRole(data));
-  assert.equal(stacked.length, 7 * 2 + 6 * 1, "one segment per (day, role) with ticks");
+  assert.equal(stacked.length, 7 * 2 + 6 * 1);
   const day0 = stacked.filter((r) => r.title.startsWith("2026-09-01 "));
-  assert.equal(day0.length, 2);
   const feat = day0.find((r) => r.title.includes("feature"))!;
   const bug = day0.find((r) => r.title.includes("bugfix"))!;
-  assert.ok(feat.y > bug.y, "the highest-count role (feature) sits at the bottom of the stack");
+  assert.ok(feat.y > bug.y, "the busiest loop sits at the bottom of the stack");
   assert.ok(Math.abs(feat.h - 3 * bug.h) < 0.05, "segment heights are proportional to their values");
+  assert.equal(feat.title, "2026-09-01 · feature: 3 ticks");
   const legend = chartTicksByRole(data);
-  assert.match(legend, /style='background:#7ec8ff'><\/span>feature<\/span>/, "first role gets palette[0]");
-  assert.match(legend, /style='background:#7fd88f'><\/span>bugfix<\/span>/, "second role gets palette[1]");
+  assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[0]}'></span>feature</span>`), "first loop gets the first color");
+  assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[1]}'></span>bugfix</span>`));
 
-  // "Cost per day by role": the fourth chart shares the ticks chart's role order, palette,
-  // and legend byte-for-byte, but its segments and tooltips come from costByRole through
-  // fmtUsd ($ + toFixed(2), the stat block's cost rule).
+  // Spend by loop shares the ticks chart's order, colors, and legend; its values are money.
   const costRects = parseRects(chartCostByRole(data));
-  assert.equal(costRects.length, 7 * 2 + 6 * 1, "one segment per (day, role) with spend (the zero day carries none)");
-  const costDay0 = costRects.filter((r) => r.title.startsWith("2026-09-01 "));
-  assert.equal(costDay0.length, 2);
-  const costFeat = costDay0.find((r) => r.title.includes("feature"))!;
-  const costBug = costDay0.find((r) => r.title.includes("bugfix"))!;
-  assert.ok(costFeat.y > costBug.y, "the cost stack shares the ticks chart's stack order");
-  assert.equal(costFeat.title, "2026-09-01 feature: $0.06", "cost tooltips format through fmtUsd");
-  assert.ok(Math.abs(costFeat.h - 3 * costBug.h) < 0.05, "segment heights are proportional to spend");
-  const legendOf = (s: string) => s.slice(s.indexOf("<div class='legend'>"));
-  assert.equal(legendOf(chartCostByRole(data)), legendOf(chartTicksByRole(data)), "the cost chart's legend is identical to the ticks chart's");
+  assert.equal(costRects.length, 7 * 2 + 6 * 1);
+  const costFeat = costRects.find((r) => r.title.startsWith("2026-09-01 · feature"))!;
+  assert.equal(costFeat.title, "2026-09-01 · feature: $0.06");
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartCostByRole(data)), legendOf(chartTicksByRole(data)));
 
-  // Role names are dynamic strings (custom loops): escaped in legend and tooltips like every
-  // other dynamic value — raw HTML in a role name must not render.
-  const hostile: ReportData = {
-    ...data,
-    series: [mkDay("2026-09-01", 0, { "<b>x</b>": 2 }, 0)],
-  };
+  // Loop names are dynamic (custom loops): escaped in legend and tooltips.
+  const hostile: ReportData = { ...data, series: [mkDay("2026-09-01", 0, { "<b>x</b>": 2 }, 0)] };
   const hostileSvg = chartTicksByRole(hostile);
-  assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a role name is not rendered");
-  assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/, "role names are escaped in legend and tooltips");
-  // The cost chart shares the same escaping and renders no segments for a costless day.
-  const hostileCost = chartCostByRole(hostile);
-  assert.ok(!hostileCost.includes("<b>x</b>"), "raw HTML in a role name is not rendered in the cost chart");
-  assert.match(hostileCost, /&lt;b&gt;x&lt;\/b&gt;/);
-  assert.equal(parseRects(hostileCost).length, 0, "a day with no costByRole renders no cost segments");
+  assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a loop name is not rendered");
+  assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.equal(parseRects(chartCostByRole(hostile)).length, 0, "a day without spend renders no cost segments");
 });
-
 test("the dashboard page abbreviates millions with M, in lockstep with compactTokens", async () => {
   // Regression (2026-09-20): the page's own fmtTokens copy stopped at `k`, so the loop
   // table's generated/peak-ctx cells and the report summary's output-tokens block rendered

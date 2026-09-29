@@ -21,7 +21,7 @@ import {
 import { knownRoleIdsCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { collectReport } from "../report-data.js";
@@ -329,20 +329,38 @@ function requirePausedFlag(res: http.ServerResponse, body: Record<string, unknow
   return value;
 }
 
-/** Handle POST /api/pause: the dashboard header's pause/resume toggle — the same operator
- * gate `tumwater pause` and `resume` write, via fleet-state.ts's shared writers
+/** Handle POST /api/pause: the dashboard's pause control — the same operator gate
+ * `tumwater pause [--for <duration>]` and `resume` write, via fleet-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
  * idempotence. Same body discipline as /api/prompt and /api/budget (readJsonObject → 400
  * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)
- * rather than a toggle, so a retried request is idempotent. */
+ * rather than a toggle, so a retried request is idempotent. An optional `forSeconds` makes it
+ * a timed pause (the marker's `until`, capped like the CLI's `--for`); it only accompanies
+ * `paused: true`. */
 export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"paused": true}');
+  const body = await readJsonObject(req, res, '{"paused": true, "forSeconds": 3600}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
   const value = requirePausedFlag(res, body);
   if (value === null) return;
-  if (value) pauseFleet(root);
+  const forSeconds = body.forSeconds;
+  if (forSeconds !== undefined) {
+    if (!value) {
+      sendJson(res, 400, { error: "forSeconds only applies when pausing (paused: true)" });
+      return;
+    }
+    if (typeof forSeconds !== "number" || !Number.isFinite(forSeconds) || forSeconds <= 0) {
+      sendJson(res, 400, { error: `forSeconds must be a positive number of seconds (got ${JSON.stringify(forSeconds)})` });
+      return;
+    }
+    if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {
+      sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} (90 days) — pause without it for a standing pause` });
+      return;
+    }
+  }
+  const untilMs = typeof forSeconds === "number" ? Date.now() + Math.round(forSeconds * 1000) : undefined;
+  if (value) pauseFleet(root, untilMs);
   else resumeFleet(root);
-  sendJson(res, 200, { ok: true, paused: value });
+  sendJson(res, 200, { ok: true, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
 }
 
 /** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing

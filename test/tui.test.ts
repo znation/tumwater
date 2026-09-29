@@ -68,7 +68,10 @@ function startTui(root: string) {
     assert.ok(keypressHandler, "keypress handler registered by runTui");
     keypressHandler!(str, { name, ...extra });
   }
-  const lastFrame = () => frames[frames.length - 1] ?? "";
+  const rawFrame = () => frames[frames.length - 1] ?? "";
+  // Frames as the eye reads them: color and attribute codes stripped (the screen-clear code
+  // stays); rawFrame keeps them for the styling tests.
+  const lastFrame = () => rawFrame().replace(/\x1b\[[0-9;]*m/g, "");
   const lines = () => lastFrame().split("\n");
 
   function cleanup() {
@@ -93,7 +96,7 @@ function startTui(root: string) {
     cleanup();
   }
 
-  return { key: press, lastFrame, lines, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
+  return { key: press, lastFrame, rawFrame, lines, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
 }
 
 /** A fresh initialized repo with exactly one non-director role enabled, so the Ctrl+T
@@ -107,14 +110,14 @@ async function makeTuiRepo(): Promise<string> {
   return repo;
 }
 
-test("runTui renders the fleet table and an empty recent-activity pane on start", async () => {
+test("runTui renders the fleet table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
   try {
     const frame = tui.lastFrame();
-    assert.match(frame, /recent activity/); // default view: recent events
+    assert.match(frame, /\[Activity\]/); // default view: recent events
     assert.match(frame, /\(no events yet\)/);
-    assert.equal(tui.lines().at(-1), "> "); // empty prompt line at the bottom
+    assert.equal(tui.lines().at(-1), "director › "); // empty prompt line at the bottom, addressed to the director
     // The one enabled loop is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
@@ -140,7 +143,7 @@ test("runTui skips the terminal write when a re-render composes an identical fra
     assert.equal(tui.lastFrame(), initial); // the screen still shows the original frame
     tui.key("h", "h"); // typing changes the prompt line: a new frame is written
     assert.equal(tui.frames.length, writes + 1, "changed frame is written");
-    assert.match(tui.lastFrame(), /> h$/m);
+    assert.match(tui.lastFrame(), /director › h$/m);
   } finally {
     await tui.quit();
   }
@@ -159,11 +162,11 @@ test("runTui honors NO_COLOR: no bold or dim escapes, layout and clear unchanged
     process.env.NO_COLOR = "1";
     const plain = startTui(repo);
     try {
-      const frame = plain.lastFrame();
+      const frame = plain.rawFrame();
       assert.doesNotMatch(frame, /\x1b\[1m/); // no bold
       assert.doesNotMatch(frame, /\x1b\[2m/); // no dim
       assert.match(frame, /\x1b\[2J\x1b\[H/); // screen clear still ships
-      assert.match(frame, /recent activity/); // layout intact
+      assert.match(frame, /\[Activity\]/); // layout intact
       assert.match(frame, /\(no events yet\)/);
     } finally {
       await plain.quit();
@@ -171,8 +174,8 @@ test("runTui honors NO_COLOR: no bold or dim escapes, layout and clear unchanged
     process.env.NO_COLOR = ""; // empty: not a set variable — styling stays on
     const styled = startTui(repo);
     try {
-      assert.match(styled.lastFrame(), /\x1b\[2m/); // dim body/empty-note wraps return
-      assert.match(styled.lastFrame(), /\x1b\[1m/); // bold header returns
+      assert.match(styled.rawFrame(), /\x1b\[2m/); // dim body/empty-note wraps return
+      assert.match(styled.rawFrame(), /\x1b\[1m/); // bold header returns
     } finally {
       await styled.quit();
     }
@@ -219,11 +222,11 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
   const tui = startTui(repo);
   try {
     for (const ch of "fix the bug") tui.key(ch, ch);
-    assert.equal(tui.lines().at(-1), "> fix the bug");
+    assert.equal(tui.lines().at(-1), "director › fix the bug");
 
     // Backspace deletes before the cursor; retype to restore.
     tui.key(undefined, "backspace");
-    assert.equal(tui.lines().at(-1), "> fix the bu");
+    assert.equal(tui.lines().at(-1), "director › fix the bu");
     tui.key("g", "g");
 
     tui.key(undefined, "return");
@@ -237,7 +240,7 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
     assert.match(frame, /queued for the director loop/);
     assert.match(frame, /user prompt queued: fix the bug/);
     // The input line is cleared after submit.
-    assert.equal(tui.lines().at(-1), "> ");
+    assert.equal(tui.lines().at(-1), "director › ");
 
     // An empty Enter queues nothing more.
     tui.key(undefined, "return");
@@ -269,7 +272,7 @@ test("a failed prompt submit keeps the text and flashes the error instead of los
     assert.match(frame, /error: ENOSPC/); // the reason is surfaced, not swallowed
     assert.doesNotMatch(frame, /queued for the director loop/);
     // The text is kept so it can be resubmitted once the failure is fixed.
-    assert.equal(tui.lines().at(-1), "> fix the bug");
+    assert.equal(tui.lines().at(-1), "director › fix the bug");
     const inbox = path.join(repo, ".tumwater", "inbox");
     assert.equal(fs.readdirSync(inbox).filter((f) => f.endsWith(".md")).length, 0);
   } finally {
@@ -287,7 +290,7 @@ function seedEntry(root: string, file: string, heading: string): void {
 /** Local-noon fixture timestamps: oracles.ts's atLocalTs (daysAgo, hour 12) — a fixed hour keeps
  * the fixture from straddling midnight between seeding and collectReport's own clock read. */
 
-test("Ctrl+T cycles events → transcript → project status → usage report → failures", async () => {
+test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures", async () => {
   const repo = await makeTuiRepo();
   // Seed the clean loop's pi log with one assistant turn so the transcript pane has
   // something real to show (the user message must never render).
@@ -312,17 +315,19 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
 
   const tui = startTui(repo);
   try {
-    assert.match(tui.lastFrame(), /recent activity/);
+    assert.match(tui.lastFrame(), /\[Activity\]/);
 
     tui.key(undefined, "t", { ctrl: true });
     let frame = tui.lastFrame();
-    assert.match(frame, /transcript: clean — Ctrl\+P pause · Ctrl\+A abort · Ctrl\+W wake · Ctrl\+R prompt · Ctrl\+T to cycle/);
+    assert.match(frame, /\[Transcript: clean \(1\/1\)\]/);
+    // The loop's own keys ride the hint line while its transcript is up.
+    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
     assert.doesNotMatch(frame, /Build a thing/); // …but never the user's tick prompt
 
     tui.key(undefined, "t", { ctrl: true });
     frame = tui.lastFrame();
-    assert.match(frame, /project status — Ctrl\+T to cycle/);
+    assert.match(frame, /\[Backlog\]/);
     // One plan and one bug seeded above render under their counted subheaders; the empty
     // questions section renders (none).
     seedEntry(repo, "PLANS.md", "### Add a --json flag");
@@ -338,7 +343,7 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
 
     tui.key(undefined, "t", { ctrl: true }); // → usage report
     frame = tui.lastFrame();
-    assert.match(frame, /usage report — Ctrl\+T to cycle/);
+    assert.match(frame, /\[Usage\]/);
     // The pane shows the same Markdown `tumwater report` prints for this root and window:
     // the Totals line plus a day row per seeded event (tokens bucketed by local day).
     assert.match(frame, /Totals:/);
@@ -347,14 +352,14 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
 
     tui.key(undefined, "t", { ctrl: true }); // → failures
     frame = tui.lastFrame();
-    assert.match(frame, /failures — (PgUp\/PgDn scroll · )?Ctrl\+T to cycle/);
+    assert.match(frame, /\[Failures\]/);
     // The pane shows exactly renderFailureMarkdown(collectFailureReport(root, 14)): the
     // digest head, with a real outcome row for the seeded ticks' roles.
     assert.match(frame, /# tumwater failure digest/);
     assert.match(frame, /## Outcome by role/);
 
     tui.key(undefined, "t", { ctrl: true });
-    assert.match(tui.lastFrame(), /recent activity/); // wraps back to events
+    assert.match(tui.lastFrame(), /\[Activity\]/); // wraps back to Activity
   } finally {
     await tui.quit();
   }
@@ -382,19 +387,19 @@ A second body line, kept verbatim.`,
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "t", { ctrl: true }); // → project status
     let frame = tui.lastFrame();
-    assert.match(frame, /project status — Ctrl\+T to cycle/);
+    assert.match(frame, /\[Backlog\]/);
     assert.match(frame, /Add a --json flag/); // list mode shows the heading…
     assert.doesNotMatch(frame, /Machine-readable status output/); // …but not its body
 
     tui.key(undefined, "down"); // opens the first entry's full body
     frame = tui.lastFrame();
-    assert.match(frame, /plan: Add a --json flag \(planned 2026-09-05\) — ↑↓ browse · Ctrl\+T cycle/);
+    assert.match(frame, /^plan: Add a --json flag \(planned 2026-09-05\)$/m);
     assert.match(frame, /Machine-readable status output/);
     assert.match(frame, /A second body line, kept verbatim/);
 
     tui.key(undefined, "down"); // crosses into the bugs section (the bare bug)
     frame = tui.lastFrame();
-    assert.match(frame, /bug: Crashes on empty input — ↑↓ browse · Ctrl\+T cycle/);
+    assert.match(frame, /^bug: Crashes on empty input$/m);
     assert.match(frame, /no details for this entry/); // a bare heading has an empty body
 
     tui.key(undefined, "up"); // back to the plan (index 0 — the FIRST entry)
@@ -405,13 +410,13 @@ A second body line, kept verbatim.`,
     assert.match(tui.lastFrame(), /plan: Add a --json flag/);
 
     tui.key(undefined, "t", { ctrl: true }); // leaves the view and clears the selection…
-    assert.match(tui.lastFrame(), /usage report —/); // …onto the usage-report pane (no events seeded)
+    assert.match(tui.lastFrame(), /\[Usage\]/); // …onto the usage-report pane (no events seeded)
     tui.key(undefined, "t", { ctrl: true }); // → failures
     tui.key(undefined, "t", { ctrl: true }); // → events
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     tui.key(undefined, "t", { ctrl: true }); // → project status again
     frame = tui.lastFrame();
-    assert.match(frame, /project status — Ctrl\+T to cycle/); // list mode restored…
+    assert.match(frame, /\[Backlog\]/); // list mode restored…
     assert.doesNotMatch(frame, /Machine-readable status output/); // …body no longer shown
   } finally {
     await tui.quit();
@@ -446,7 +451,7 @@ ${Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0
     tui.key(undefined, "down"); // open the plan's full body
 
     let frame = tui.lastFrame();
-    assert.match(frame, /plan: Long body plan \(planned 2026-09-05\) — ↑↓ browse · PgUp\/PgDn scroll · Ctrl\+T cycle/);
+    assert.match(frame, /^plan: Long body plan \(planned 2026-09-05\)$/m);
     // The head window shows the first budget-many lines.
     let win = visibleBodyLines(frame);
     assert.ok(win.length >= 3, `pane shows a real window: ${win.length} lines`);
@@ -521,7 +526,7 @@ test("a stale entry selection falls back to the empty list when entries disappea
     // A keypress in the stale state: PgDn takes the no-entries path of the page handler…
     tui.key(undefined, "pagedown");
     const frame = tui.lastFrame();
-    assert.match(frame, /project status — Ctrl\+T to cycle/); // list-mode header restored
+    assert.match(frame, /\[Backlog\]/); // list-mode header restored
     assert.match(frame, /\(no planned features, open bugs, or open questions\)/);
     assert.doesNotMatch(frame, /Machine-readable status output/); // …and the body is gone
   } finally {
@@ -529,23 +534,25 @@ test("a stale entry selection falls back to the empty list when entries disappea
   }
 });
 
-test("open questions add a nudge line above the activity pane", async () => {
+test("open questions raise an attention line under the header", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
   try {
-    assert.doesNotMatch(tui.lastFrame(), /awaiting answers/); // seeded QUESTIONS.md is empty
+    assert.doesNotMatch(tui.lastFrame(), /needs your answer/); // seeded QUESTIONS.md is empty
 
     // Post a question under ## Open (the first "_None yet._" placeholder).
-    seedEntry(repo, "QUESTIONS.md", "### Q1: which database?");
+    seedEntry(repo, "QUESTIONS.md", "### Q1: which database? (asked 2026-09-29)");
 
-    // Any keypress re-renders; the nudge appears and the question counts in the header.
+    // Any keypress re-renders: the question counts in the header, and its attention line —
+    // the dashboard's alert wording — sits right under it, without the date note.
     tui.key(undefined, "left");
-    assert.match(tui.lastFrame(), /questions: 1 awaiting answers/);
+    const ls = tui.lines();
+    assert.match(ls[0] ?? "", /· questions: 1/);
+    assert.equal(ls[1], "? 1 question needs your answer — Q1: which database?");
   } finally {
     await tui.quit();
   }
 });
-
 test("queued prompts render numbered above the activity pane and shrink its budget", async () => {
   const repo = await makeTuiRepo();
   // Seed enough events that the recent-activity pane is full at the default budget, so a
@@ -560,7 +567,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
     // Body lines run from after the pane header to the blank line before the hint.
     const bodyLen = () => {
       const ls = tui.lines();
-      const h = ls.findIndex((l) => l.includes("recent activity"));
+      const h = ls.findIndex((l) => l.includes("[Activity]"));
       let n = 0;
       for (let i = h + 1; i < ls.length && (ls[i] ?? "") !== ""; i++) n++;
       return n;
@@ -572,7 +579,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
     tui.key(undefined, "left"); // any keypress re-renders with a fresh snapshot
 
     const ls = tui.lines();
-    const h = ls.findIndex((l) => l.includes("recent activity"));
+    const h = ls.findIndex((l) => l.includes("[Activity]"));
     assert.equal(ls[h - 2], "1. fix the login bug", "first queue line sits above the pane");
     assert.ok((ls[h - 1] ?? "").startsWith("2. "), "second queue line is numbered in order");
     // The overlong prompt's preview is ≤80 chars, so its line fits the terminal width.
@@ -585,7 +592,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
     (process.stdout as { columns?: number }).columns = 60;
     tui.key(undefined, "left");
     const ls2 = tui.lines();
-    const h2 = ls2.findIndex((l) => l.includes("recent activity"));
+    const h2 = ls2.findIndex((l) => l.includes("[Activity]"));
     for (const line of [ls2[h2 - 2], ls2[h2 - 1]]) {
       assert.ok(line !== undefined && line.length <= 60, `queue line fits the width: ${JSON.stringify(line)}`);
     }
@@ -638,7 +645,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     // Ctrl+B enters budget-edit mode pre-filled with the current cap and flashes a hint.
     tui.key(undefined, "b", { ctrl: true });
     assert.match(tui.lastFrame(), /edit daily cost budget/);
-    assert.equal(tui.lines().at(-1), "> 50");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50");
 
     // Enter on a valid value persists it to tumwater.json and returns to prompt mode.
     tui.key(undefined, "backspace");
@@ -648,25 +655,27 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     assert.match(tui.lastFrame(), /budget set to \$25/);
     let cfg = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8")) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 25);
-    assert.equal(tui.lines().at(-1), "> draft prompt"); // previous prompt text restored
+    assert.equal(tui.lines().at(-1), "director › draft prompt"); // previous prompt text restored
 
     // Invalid input flashes the error and STAYS in edit mode so it can be fixed.
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> 25"); // re-entered pre-filled with the new cap
+    assert.equal(tui.lines().at(-1), "daily cap $ 25"); // re-entered pre-filled with the new cap
     tui.key(undefined, "backspace");
     tui.key(undefined, "backspace");
     for (const ch of "abc") tui.key(ch, ch);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget must be a number/);
-    assert.equal(tui.lines().at(-1), "> abc", "still in edit mode with the text kept");
+    assert.equal(tui.lines().at(-1), "daily cap $ abc", "still in edit mode with the text kept");
 
     // Esc cancels back to prompt mode with the previous text restored.
     tui.key(undefined, "escape");
-    assert.equal(tui.lines().at(-1), "> draft prompt");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    // The Activity view's hint advertises the key.
+    assert.match(tui.lastFrame(), /Ctrl\+B daily cap/);
 
     // Empty means "no cap": clear the line and Enter disables the budget.
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> 25");
+    assert.equal(tui.lines().at(-1), "daily cap $ 25");
     tui.key(undefined, "backspace");
     tui.key(undefined, "backspace");
     tui.key(undefined, "return");
@@ -676,14 +685,11 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
 
     // A disabled cap pre-fills an empty line (empty means "no cap" on save)…
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> ");
+    assert.equal(tui.lines().at(-1), "daily cap $ ");
     // …and Ctrl+T exits budget mode too — cycling the view and restoring the draft.
     tui.key(undefined, "t", { ctrl: true });
-    assert.match(tui.lastFrame(), /transcript: clean/);
-    assert.equal(tui.lines().at(-1), "> draft prompt");
-
-    // The footer hint advertises the key.
-    assert.match(tui.lastFrame(), /Ctrl\+B edit budget/);
+    assert.match(tui.lastFrame(), /\[Transcript: clean/);
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
   } finally {
     await tui.quit();
   }
@@ -715,8 +721,8 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
       for (const ch of "draft prompt") tui.key(ch, ch);
       tui.key(undefined, "b", { ctrl: true });
       assert.match(tui.lastFrame(), /budget n\/a — all models free/);
-      assert.equal(tui.lines().at(-1), "> draft prompt", "the editor never opened — prompt untouched");
-      assert.match(tui.lastFrame(), /Ctrl\+B edit budget/, "the footer hint is unchanged");
+      assert.equal(tui.lines().at(-1), "director › draft prompt", "the editor never opened — prompt untouched");
+      assert.match(tui.lastFrame(), /Ctrl\+B daily cap/, "the footer hint is unchanged");
     } finally {
       await tui.quit();
     }
@@ -735,18 +741,18 @@ test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", a
   try {
     for (const ch of "keep me") tui.key(ch, ch);
     tui.key(undefined, "b", { ctrl: true }); // enter: pre-filled with the current cap
-    assert.equal(tui.lines().at(-1), "> 50");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50");
 
     // The same key in edit mode toggles out (the exit branch), restoring the draft.
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> keep me");
+    assert.equal(tui.lines().at(-1), "director › keep me");
 
     // The toggle is symmetric: re-entering re-fills the cap, and the draft survives a
     // second round-trip through the editor.
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> 50");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50");
     tui.key(undefined, "escape");
-    assert.equal(tui.lines().at(-1), "> keep me");
+    assert.equal(tui.lines().at(-1), "director › keep me");
   } finally {
     await tui.quit();
   }
@@ -808,7 +814,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
     tui.key(undefined, "t", { ctrl: true }); // → usage report
     tui.key(undefined, "t", { ctrl: true }); // → failures
     let frame = tui.lastFrame();
-    assert.match(frame, /failures — PgUp\/PgDn scroll · Ctrl\+T to cycle/);
+    assert.match(frame, /\[Failures\][\s\S]*PgUp\/PgDn scroll/);
     assert.match(frame, /# tumwater failure digest/); // head window shows the title
     assert.doesNotMatch(frame, /## Landed in the window/); // …and not the tail
 
@@ -848,7 +854,7 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
   const tui = startTui(repo); // first render: the display caches this last-known-good config
   try {
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> 50");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50");
 
     // Break the config AFTER the first render: render falls back to the cached copy, but
     // the saver's fresh loadConfig hits the broken file.
@@ -859,14 +865,14 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     tui.key(undefined, "return");
 
     assert.match(tui.lastFrame(), /not valid JSON/); // the load failure flashes
-    assert.equal(tui.lines().at(-1), "> 30", "still in edit mode with the value kept");
+    assert.equal(tui.lines().at(-1), "daily cap $ 30", "still in edit mode with the value kept");
     assert.match(fs.readFileSync(cfgPath, "utf8"), /not valid json/, "the broken file is not overwritten");
 
     // Once the file is valid again the same draft saves — staying open was a retry, not a dead end.
     fs.writeFileSync(cfgPath, original);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget set to \$30/);
-    assert.equal(tui.lines().at(-1), "> ");
+    assert.equal(tui.lines().at(-1), "director › ");
     const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 30);
   } finally {
@@ -883,7 +889,7 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
   const tui = startTui(repo);
   try {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
-    assert.match(tui.lastFrame(), /Ctrl\+P pause · Ctrl\+A abort · Ctrl\+W wake/); // header hint
+    assert.match(tui.lastFrame(), /Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/); // header hint
 
     tui.key(undefined, "p", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), ["clean"]);
@@ -980,7 +986,7 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     tui.key(undefined, "w", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), []);
     assert.equal(fs.existsSync(wakeRequestPath(repo)), false);
-    assert.equal(tui.lines().at(-1), "> 50", "still editing the cap, keys inert");
+    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, keys inert");
 
     // A failed marker write flashes the reason instead of killing the TUI: the paused-roles
     // path is a directory, so writeJsonAtomic's rename throws and the catch flashes it.
@@ -998,12 +1004,12 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
   const tui = startTui(repo);
   try {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
-    assert.match(tui.lastFrame(), /Ctrl\+W wake · Ctrl\+R prompt/); // the header hint names it
+    assert.match(tui.lastFrame(), /Ctrl\+R prompt clean/); // the hint names the viewed loop
 
     tui.key(undefined, "r", { ctrl: true });
     assert.match(tui.lastFrame(), /prompt for clean: Enter to send, Esc to cancel/);
     // The bottom hint names the addressed loop while the mode holds the line.
-    assert.match(tui.lastFrame(), /prompt for clean: Enter to send · Esc to cancel · Ctrl\+C to quit/);
+    assert.match(tui.lastFrame(), /Enter send to clean · Esc cancel · Ctrl\+C quit/);
     for (const ch of "check the clean queue") tui.key(ch, ch);
     tui.key(undefined, "return");
 
@@ -1012,7 +1018,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["clean"]);
     assert.match(tui.lastFrame(), /queued for the clean loop/);
-    assert.equal(tui.lines().at(-1), "> ");
+    assert.equal(tui.lines().at(-1), "director › ");
 
     // A whitespace-only Enter queues nothing and stays in edit mode with the way out.
     tui.key(undefined, "r", { ctrl: true });
@@ -1020,7 +1026,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /prompt text is empty/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
-    assert.equal(tui.lines().at(-1), ">  "); // the space stayed: the editor is still open
+    assert.equal(tui.lines().at(-1), "clean ›  "); // the space stayed: the editor is still open
   } finally {
     await tui.quit();
   }
@@ -1044,7 +1050,7 @@ test("a throwing role-prompt submit flashes the error and keeps the editor open"
     assert.match(tui.lastFrame(), /rides into the clean tick's prefill/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), [], "nothing queued behind the failure");
     // The editor stays open with the oversized text kept, so the operator can trim it.
-    assert.match(tui.lastFrame(), /prompt for clean: Enter to send/);
+    assert.match(tui.lastFrame(), /Enter send to clean/);
 
     // Esc drops the mode with its draft; a fresh short prompt then queues normally —
     // the failure left nothing wedged.
@@ -1066,25 +1072,25 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     for (const ch of "director draft") tui.key(ch, ch);
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "r", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> ", "entering the mode blanks the line");
+    assert.equal(tui.lines().at(-1), "clean › ", "entering the mode blanks the line and names the loop");
 
     // Mutually exclusive: Ctrl+B while role-prompt mode holds the line flashes the way out
     // instead of entering budget mode (which would clobber a saved draft pair).
     tui.key(undefined, "b", { ctrl: true });
     assert.match(tui.lastFrame(), /finish or cancel the prompt for clean first \(Esc cancels\)/);
     assert.doesNotMatch(tui.lastFrame(), /edit daily cost budget/);
-    assert.equal(tui.lines().at(-1), "> ", "the refusal leaves the role editor open");
+    assert.equal(tui.lines().at(-1), "clean › ", "the refusal leaves the role editor open");
 
     for (const ch of "role text") tui.key(ch, ch);
     tui.key(undefined, "escape"); // Esc restores the saved director draft
-    assert.equal(tui.lines().at(-1), "> director draft");
-    assert.match(tui.lastFrame(), /type a prompt for the project/); // the ordinary hint is back
+    assert.equal(tui.lines().at(-1), "director › director draft");
+    assert.match(tui.lastFrame(), /Enter send · Ctrl\+R prompt clean/); // the transcript view's ordinary hint is back
 
     // Ctrl+R again toggles the mode off the same way.
     tui.key(undefined, "r", { ctrl: true });
     for (const ch of "queued text") tui.key(ch, ch);
     tui.key(undefined, "r", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "> director draft");
+    assert.equal(tui.lines().at(-1), "director › director draft");
     assert.match(tui.lastFrame(), /role prompt cancelled/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), [], "the toggle-off queued nothing");
 
@@ -1093,7 +1099,7 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     for (const ch of "queued text") tui.key(ch, ch);
     tui.key(undefined, "return");
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["queued text"]);
-    assert.equal(tui.lines().at(-1), "> director draft");
+    assert.equal(tui.lines().at(-1), "director › director draft");
   } finally {
     await tui.quit();
   }

@@ -582,10 +582,10 @@ test("gui /api/history serves an empty row set when the event log is missing, an
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { rows: [] });
 
-    // The page carries the fourth tab's nav anchor and its hidden view container.
+    // The page carries the History view's sidebar link and its hidden view container.
     const page = await (await fetch(base + "/")).text();
-    assert.match(page, /id="tab-history"/);
-    assert.match(page, /id="history" hidden/);
+    assert.match(page, /href="#history" id="tab-history"/);
+    assert.match(page, /<section id="history" class="view"[^>]*hidden>/);
   } finally {
     server.close();
   }

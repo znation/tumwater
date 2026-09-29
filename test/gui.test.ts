@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import type os from "node:os";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { lanAddresses, startGui } from "../src/ui/gui.js";
@@ -293,20 +294,6 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
   }
 });
 
-test("the prompt form checks its response before clearing the box and claiming queued", async () => {
-  // Regression: the submit handler ignored the response entirely — a network failure or a
-  // 4xx/5xx still cleared the input and flashed "queued", silently losing the operator's
-  // prompt. It must guard r.ok like saveBudget and the poll fetches, and keep the text on
-  // failure. Asserted against the served page, where the handler actually lives.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /await postJson\("\/api\/prompt", \{ text \}\)/);
-  const handler = GUI_PAGE.match(/"promptform"\)\.addEventListener\("submit"[\s\S]*?\n {2}\}\);/)?.[0] ?? "";
-  assert.ok(handler, "prompt submit handler found");
-  assert.ok(handler.includes("showFlash(\"error: \" + e.message)"), "failure flashes the error");
-  assert.ok(handler.includes('showFlash("queued")'), "success path flashes queued");
-  assert.ok(!handler.includes('flash.textContent = "queued"'), "no unconditional queued flash");
-});
-
 test("status payload combines persisted + live token metrics for running loops only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui metrics test");
@@ -351,20 +338,6 @@ test("status payload carries the current work item for running loops only", asyn
     "running loop shows its in-flight work item",
   );
   assert.equal(payload.loops.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
-});
-
-test("the dashboard page has a current column after state", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /<th>state<\/th><th>current<\/th>/);
-});
-
-test("the dashboard page has a last tick column between cost and last result", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The per-loop today-spend column (PLANS.md "Per-loop today spend") landed between cost and
-  // last tick, so the header order now pins all four cells at once.
-  assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th><th>last result<\/th>/);
-  // The cell renders client-side from the payload's existing lastTickEndedAt field.
-  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
 });
 
 test("the GUI last tick cell shows absolute time plus relative age, mirroring the TUI", async () => {
@@ -418,73 +391,6 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastTick(ts), lastTickCell(ts));
 });
 
-test("the GUI loop table sorts active first, then by last tick most-recent-first", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-
-  // Extract the marked region — same regex-extract + new Function pattern as the esc test and
-  // the report-chart builders. sortLoops classifies rows through the page's shared isActivePhase
-  // helper, so its marked region is spliced in alongside (the fmtLastTick/fmtNextRun pattern).
-  const m = GUI_PAGE.match(/\/\/ loop-sort:start\n([\s\S]*?)\n  \/\/ loop-sort:end/);
-  assert.ok(m, "loop-sort region found in the page");
-  const ap = GUI_PAGE.match(/\/\/ active-phase-fmt:start\n([\s\S]*?)\n  \/\/ active-phase-fmt:end/);
-  assert.ok(ap, "active-phase-fmt region found in the page");
-  type LoopRow = { role: string; phase: string; lastTickEndedAt: number | null };
-  const sortLoops = new Function(`${ap[1]}\n${m[1]}\nreturn sortLoops;`)() as unknown as (loops: LoopRow[]) => LoopRow[];
-
-  // refresh() renders the sorted copy, not payload order — pin the call site so the function
-  // cannot become dead code.
-  assert.match(GUI_PAGE, /sortLoops\(d\.loops\)\.map\(\(l\) =>/);
-
-  const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;
-  const loops: LoopRow[] = [
-    { role: "sleepy", phase: "sleeping (for 5m)", lastTickEndedAt: t(3) },
-    { role: "working-b", phase: "working 2m", lastTickEndedAt: t(1) },
-    { role: "reviewing-a", phase: "reviewing @ …", lastTickEndedAt: null },
-    { role: "queued-z", phase: "queued", lastTickEndedAt: t(5) },
-    { role: "working-a", phase: "working 1m", lastTickEndedAt: t(2) },
-    { role: "landing-x", phase: "landing 2m", lastTickEndedAt: t(0) },
-    { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
-    { role: "main-red", phase: "main red", lastTickEndedAt: t(0) },
-  ];
-  // In-flight phases (working/reviewing/landing) before inactive; within each group, last tick
-  // most-recent-first; a null (never completed a tick) sorts after any timestamp in its own
-  // category. landing-x's tick is older than queued-z's and sleepy's, yet it still groups with
-  // the actives — the regression this fixture pins.
-  assert.deepEqual(sortLoops(loops).map((l) => l.role), [
-    "working-a",     // active, t(2) — newest among actives
-    "working-b",     // active, t(1)
-    "landing-x",     // active (landing), t(0) — groups with in-flight work despite the old tick
-    "reviewing-a",   // active, null — last of the active group
-    "queued-z",      // inactive, t(5) — newest among inactives, below every active
-    "sleepy",        // inactive, t(3)
-    "main-red",      // inactive, t(0) — tie with landing-x, role name breaks it
-    "never-ticked",  // inactive, null — last of all
-  ]);
-
-  // Equal timestamps break on role name ascending, so an identical payload always renders in
-  // the same order regardless of payload order.
-  const tied: LoopRow[] = [
-    { role: "zeta", phase: "sleeping (for 1m)", lastTickEndedAt: t(4) },
-    { role: "alpha", phase: "queued", lastTickEndedAt: t(4) },
-    { role: "mid", phase: "main red", lastTickEndedAt: t(4) },
-  ];
-  assert.deepEqual(sortLoops(tied).map((l) => l.role), ["alpha", "mid", "zeta"]);
-
-  // Lockstep with the TUI/status comparator (status-model.ts `sortLoopsByState`): the page
-  // cannot import TS, so the shared ordering rule is pinned by cross-checking the two copies
-  // over the same fixtures — every branch (active/inactive, timestamp, null, role tie) must
-  // agree, or a drift in either surface fails here.
-  const { sortLoopsByState } = await import("../src/ui/status-model.js");
-  const order = (rows: LoopRow[]) => sortLoopsByState(rows).map((l) => l.role);
-  assert.deepEqual(order(loops), sortLoops(loops).map((l) => l.role));
-  assert.deepEqual(order(tied), sortLoops(tied).map((l) => l.role));
-
-  // The input array is not reordered in place — the payload stays untouched for other consumers.
-  const before = loops.map((l) => l.role);
-  sortLoops(loops);
-  assert.deepEqual(loops.map((l) => l.role), before, "sortLoops returns a new array");
-});
-
 // The per-loop today spend on the GUI surface (PLANS.md "Per-loop today spend"): /api/status
 // carries todayUsd per loop — the daily budget window, 0 while its stamp is stale or missing,
 // same helper and semantics as the TUI's `today` column — and the page renders its cell
@@ -512,16 +418,6 @@ test("status payload carries todayUsd per loop from its daily window", async () 
   saveLoopState(repo, freshLoopState("organize"));
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.loops.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
-});
-
-test("the dashboard page renders the today cell from the payload's todayUsd", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The header cell sits between cost and last tick (pinned by the regex above)...
-  assert.match(GUI_PAGE, /<th>cost<\/th><th>today<\/th><th>last tick<\/th>/);
-  // ...and the cell renders client-side from todayUsd, beside its existing cost formatting
-  // (both through the page's shared fmtUsd money rule).
-  assert.match(GUI_PAGE, /fmtUsd\(l\.costUsd\)/);
-  assert.match(GUI_PAGE, /fmtUsd\(l\.todayUsd\)/);
 });
 
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.
@@ -552,14 +448,6 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
   payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
   assert.deepEqual(payload.plans, ["Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)"]);
   assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
-});
-
-test("the dashboard page has a project status panel", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /<div id="backlog"><\/div>/);
-  // The panel renders from the payload's plans/bugs fields.
-  assert.match(GUI_PAGE, /d\.plans \|\| \[\]/);
-  assert.match(GUI_PAGE, /d\.bugs \|\| \[\]/);
 });
 
 // Open questions (QUESTIONS.md) drive the dashboard's `questions: N` header badge and its
@@ -596,16 +484,6 @@ test("status payload carries open questions, fresh per poll", async () => {
   assert.deepEqual(payload.questions, [], "an answered question is no longer open");
 });
 
-test("the dashboard page renders the open-questions section and header badge from the payload", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The #backlog panel gets an open questions section alongside plans/bugs… (its third
-  // argument names the /api/backlog file so each entry line links into the detail panel)
-  assert.match(GUI_PAGE, /backlogList\("open questions", d\.questions \|\| \[\], "questions"\)/);
-  // …and the header badge derives its count from that same list, shown only when N > 0.
-  assert.match(GUI_PAGE, /const qn = \(d\.questions \|\| \[\]\)\.length/);
-  assert.match(GUI_PAGE, /\(qn \? " · questions: " \+ qn : ""\)/);
-});
-
 // Queued director prompts ride /api/status as truncated previews in execution order; the
 // project status panel lists them like its other sections — (none) while the inbox is empty.
 
@@ -629,20 +507,6 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
   payload = statusPayload(repo) as { inbox: number; inboxPrompts: string[] };
   assert.equal(payload.inbox, 1);
   assert.deepEqual(payload.inboxPrompts, [preview]);
-});
-
-test("the dashboard page lists queued prompts in its project status panel", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // The #backlog panel gets a queued-prompts section alongside plans/bugs/questions — each
-  // row now a prompt with a file-addressed cancel link (PLANS.md 2026-09-29): director rows
-  // pair inboxFiles[i] with inboxPrompts[i], per-role rows render from roleInboxPrompts in
-  // place of the old "r: N queued" count line, and the click POSTs /api/prompt-cancel
-  // through the #backlog panel's delegated rowaction listener.
-  assert.match(GUI_PAGE, /data-action='promptcancel' data-file='" \+ esc\(file\)/);
-  assert.match(GUI_PAGE, /\(d\.inboxFiles \|\| \[\]\)\[i\]/);
-  assert.match(GUI_PAGE, /d\.roleInboxPrompts/);
-  assert.match(GUI_PAGE, /postJson\("\/api\/prompt-cancel"/);
-  assert.match(GUI_PAGE, /no longer queued/);
 });
 
 // Full backlog entries (PLANS.md "Read backlog entries in full from the TUI/GUI dashboards"):
@@ -736,57 +600,6 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
   }
 });
 
-test("the dashboard page renders backlog entries as links into /api/backlog", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // Each entry line is an <a> carrying its file and zero-based index…
-  assert.match(GUI_PAGE, /class='backloglink/);
-  assert.match(GUI_PAGE, /data-file='/);
-  assert.match(GUI_PAGE, /data-index='/);
-  // …clicking one fetches the on-demand endpoint into the detail panel (the same #transcript
-  // panel loop transcripts use — mutual exclusion is pinned by the click handlers below).
-  assert.match(GUI_PAGE, /\/api\/backlog\?file=/);
-  assert.match(GUI_PAGE, /a\.backloglink/);
-  // The `?` must stay escaped: unescaped it is a quantifier on the preceding space and can
-  // never match the page's literal ternary (`key ? null`) text.
-  assert.match(GUI_PAGE, /backlogKey = backlogKey === key \? null : key/);
-});
-
-test("the dashboard page checks r.ok before parsing both on-demand panel fetches", async () => {
-  // Regression: the transcript branch parsed its response without an ok check. Every error
-  // body /api/transcript sends is JSON ({error}) with no lines, so a failed poll (400 for a
-  // role outside the catalog once custom loops exist, 500 when the log read throws) rendered
-  // "(no transcript yet for this loop)" — claiming an empty log instead of keeping the last
-  // good content. Both on-demand fetches must fail identically into the catch that keeps the
-  // previous panel content.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  // Both on-demand fetches route through the shared getJson, whose r.ok guard throws
-  // apiError before any parse — so a JSON error body is never read as panel content.
-  assert.match(
-    GUI_PAGE,
-    /getJson\("\/api\/transcript\?role=" \+ encodeURIComponent\(transcriptRole\) \+ "&n=50"\)/,
-    "the transcript poll goes through the guarded getJson",
-  );
-  assert.match(
-    GUI_PAGE,
-    /getJson\("\/api\/backlog\?file=" \+ encodeURIComponent\(file\) \+ "&index=" \+ encodeURIComponent\(index\)\)/,
-    "the backlog poll goes through the guarded getJson",
-  );
-  // The single guard every endpoint call shares, and the error helper it throws: apiError
-  // names the endpoint, the HTTP status, and the server's error text (parsed leniently:
-  // JSON {error} or plain text) — the fix a failed budget save used to flash as a bare
-  // "bad response".
-  assert.match(GUI_PAGE, /if \(!r\.ok\) throw await apiError\(path, r\);/);
-  assert.match(GUI_PAGE, /async function apiError\(path, r\)/);
-  assert.match(GUI_PAGE, /await postJson\("\/api\/budget", \{ maxDailyCostUsd: value \}\)/);
-  assert.match(GUI_PAGE, /await postJson\("\/api\/pause", \{ paused: target \}\)/);
-  // The three fetch-on-demand tabs' catch renders share one panelUnavailable helper
-  // (muted "<label> unavailable" + the apiError message) instead of three drifted copies.
-  assert.match(GUI_PAGE, /const panelUnavailable = \(panel, label, e\)/);
-  assert.match(GUI_PAGE, /panelUnavailable\(panel, "report", e\)/);
-  assert.match(GUI_PAGE, /panelUnavailable\(panel, "failures", e\)/);
-  assert.match(GUI_PAGE, /panelUnavailable\(panel, "history", e\)/);
-});
-
 test("apiError renders the operator-facing message for every error-body shape", async () => {
   // The guard above is pinned by source shape; this pins its BEHAVIOR — endpoint, HTTP
   // status, and the server's error text joined by the same separator — for every body shape
@@ -836,51 +649,25 @@ test("apiError renders the operator-facing message for every error-body shape", 
   assert.equal(await getJson("/api/status"), payload, "a 2xx response flows through to the caller");
 });
 
-test("the dashboard status poll checks r.ok before parsing", async () => {
-  // Regression: refresh() parsed /api/status without an ok check. The server's 500 catch
-  // sends a JSON {error} body, so on a failed poll that object was assigned to lastStatus
-  // and the frame rendered from it ("orchestrator not running", no loops) before the render
-  // throw landed in the catch — and the budget editor prefilled from the error object.
-  // Throwing before the assignment keeps the last good payload and reports "connection lost".
+// Backlog bodies, plans, and bugs are model-written Markdown the loops edit; with
+// --all-interfaces the dashboard is reachable network-wide without auth, so nothing they carry
+// may execute in the operator's browser. The page escapes every dynamic value through its own
+// esc() (the drawer renders bodies through renderMarkdown, which escapes first — pinned in
+// gui-client.test.ts); the server hands the raw text over unchanged.
+test("the dashboard page escapes dynamic text, and /api/backlog serves bodies raw", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(
-    GUI_PAGE,
-    /const d = await getJson\("\/api\/status"\);/,
-    "the status poll goes through the guarded getJson (a JSON {error} body is not fleet state)",
-  );
-});
-
-test("the dashboard page escapes backlog entry bodies before innerHTML", async () => {
-  // Regression: the detail panel used to splice d.body — model-written markdown from
-  // PLANS/BUGS/QUESTIONS.md, edited by loops — straight into innerHTML while every other
-  // dynamic value on the page (the same entry's title included) went through esc(). HTML in a
-  // plan/bug/question entry would then execute in the operator's browser; with
-  // --all-interfaces the dashboard is reachable network-wide without auth.
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-
-  // The detail panel line routes d.body through esc (esc("") is "", so empty bodies still
-  // fall back to the placeholder).
-  assert.match(
-    GUI_PAGE,
-    /" — click the entry again to close<\/span>\\n" \+ \(esc\(d\.body\) \|\| "\(no details for this entry\)"\)/,
-  );
-
-  // Exercise the page's own esc: one pass neutralizes tags and ampersands alike. The body
-  // capture anchors at the statement's terminating semicolon (end of line), not the first `;`
-  // — the replacement map contains one inside its "&amp;" string literal.
+  // The capture anchors at the statement's terminating semicolon (end of line), not the first
+  // `;` — the replacement map contains one inside its "&amp;" string literal.
   const m = GUI_PAGE.match(/const esc = \((\w+)\) => (.+);$/m);
   assert.ok(m, "esc definition found in the page");
   const esc = new Function(m[1]!, `return (${m[2]});`) as (s: string) => string;
   assert.equal(esc("<img src=x onerror=alert(1)>"), "&lt;img src=x onerror=alert(1)&gt;", "tags are neutralized");
   assert.equal(esc("a & b < c > d"), "a &amp; b &lt; c &gt; d", "ampersands and angle brackets escape");
   // Quotes escape too: esc is interpolated inside single-quoted attribute contexts
-  // (data-role='…', the budget input's value='…'), where an unescaped quote would break
-  // out of the attribute and let the value inject markup of its own.
+  // (data-role='…', title='…'), where an unescaped quote would break out of the attribute.
   assert.equal(esc("' onmouseover='x"), "&#39; onmouseover=&#39;x", "single quotes escape (attribute context)");
   assert.equal(esc('a "b"'), "a &quot;b&quot;", "double quotes escape");
 
-  // The server contract is unchanged: /api/backlog still serves the raw markdown body —
-  // escaping is the page's job, like every other field it renders.
   const repo = makeRepo();
   await initProject(repo, "backlog esc test");
   writeBacklogFile(repo, "BUGS.md", [
@@ -900,7 +687,6 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
     server.close();
   }
 });
-
 // The build badge on the GUI surface: /api/status carries it pre-formatted through
 // status-render's buildBadge — the same string the TUI header renders — so the page cannot
 // re-derive (and drift from) the multi-branch text client-side.
@@ -924,15 +710,6 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
   assert.match(payload.buildBadge, /build aaaaaaaa — STALE: main \+7 commit\(s\) since; restart BLOCKED: main cccccccc is red$/);
-});
-
-test("the dashboard header takes its build badge pre-formatted from the payload", async () => {
-  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
-  assert.match(GUI_PAGE, /d\.buildBadge \|\| ""/);
-  // The old client-side reconstruction (sha slice + STALE/restart fragments) is gone — the
-  // badge text has exactly one home: status-render's buildBadge.
-  assert.doesNotMatch(GUI_PAGE, /STALE: main \+/);
-  assert.doesNotMatch(GUI_PAGE, /restart BLOCKED/);
 });
 
 test("the dashboard page reloads itself when the serving build sha changes", async () => {
@@ -1088,9 +865,8 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { yieldMultiplierFor } = await import("../src/ui/status-model.js");
   type LoopState = ReturnType<typeof freshLoopState>;
 
-  // The column sits between last result and controls, rendered from the payload's raw
-  // nextRunAt/backoffSeconds fields.
-  assert.match(GUI_PAGE, /<th>last result<\/th><th>next run<\/th><th>controls<\/th>/);
+  // The status pill's "wakes in 12m" line and the drawer's Next run both render from the
+  // payload's raw nextRunAt/backoffSeconds through this helper.
   assert.match(GUI_PAGE, /fmtNextRun\(l, d\.running\)/);
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc, sortLoops,
@@ -1144,4 +920,59 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
       `GUI: ${label}`,
     );
   }
+});
+
+test("the dashboard page is one self-contained document: sidebar, views, composer, drawer, one poll", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  // The sidebar carries the four views as #fragment links, so Back/Forward and bookmarks work.
+  for (const [id, href] of [["tab-fleet", "#fleet"], ["tab-history", "#history"], ["tab-usage", "#usage"], ["tab-failures", "#failures"]]) {
+    assert.match(GUI_PAGE, new RegExp(`<a href="${href}" id="${id}" class="tab`), `${id} links to ${href}`);
+  }
+  // Each view's container, the composer (with its target picker), the alerts, and the drawer.
+  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "loops", "backlog", "feed", "drawer", "budgetwrap", "pausewrap"]) {
+    assert.match(GUI_PAGE, new RegExp(`id="${id}"`), `#${id} is in the shell`);
+  }
+  // The page makes no request off its own server: no remote scripts, styles, fonts, or images.
+  assert.doesNotMatch(GUI_PAGE, /(?:src|href)=["']https?:|url\(\s*["']?https?:|@import/, "nothing is fetched from elsewhere");
+  // The only timer is the 1 s status poll; everything else refetches on events or on demand.
+  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "one poll");
+  assert.match(GUI_PAGE, /setInterval\(refresh, 1000\)/);
+});
+
+test("the status payload names the project and carries the recent events as data", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui event items test");
+  const { logEvent } = await import("../src/events.js");
+  const { formatEvent } = await import("../src/event-format.js");
+  logEvent(repo, { loop: "qa", type: "tick_end", tick: 3, result: "error", error: "429 Rate limit exceeded" });
+  logEvent(repo, { loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" });
+  logEvent(repo, { loop: "bugfix", type: "build_check", scope: "landing", script: "test", status: "failed" });
+  const payload = statusPayload(repo) as {
+    project: string;
+    events: string[];
+    eventItems: Array<{ ts: number; loop: string; type: string; result?: string; message: string }>;
+  };
+  assert.equal(payload.project, path.basename(repo), "the project is the directory's name");
+  assert.equal(payload.eventItems.length, payload.events.length, "one item per feed line");
+  const tail = payload.eventItems.slice(-3);
+  assert.deepEqual(tail.map((e) => [e.loop, e.type, e.result]), [["qa", "tick_end", "error"], ["bugfix", "merged", undefined], ["bugfix", "build_check", "failed"]]);
+  // Each item's message is its feed line without the time and loop columns.
+  for (const [i, item] of payload.eventItems.entries()) {
+    assert.ok(payload.events[i]!.endsWith(" " + item.message), `line ${i} ends with its item's message`);
+  }
+  assert.equal(tail[1]!.message, `merged aaaaaaaa to main — Escape backlog bodies`);
+  assert.equal(formatEvent({ ts: tail[1]!.ts, loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" }), payload.events.at(-2));
+});
+
+test("the status payload carries each loop's last error for the rows that failed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui last error test");
+  const s = freshLoopState("qa");
+  s.lastResult = "error";
+  s.lastError = "429 Rate limit exceeded";
+  saveLoopState(repo, s);
+  saveLoopState(repo, freshLoopState("clean"));
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; lastError: string | null }> };
+  assert.equal(payload.loops.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.lastError, null);
 });

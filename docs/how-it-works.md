@@ -108,7 +108,7 @@ discards a role's in-flight landing.
   paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
   role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
   a cool-down of 5 minutes doubling to at most 30.
-- `tumwater pause` / `resume`, or the GUI's pause badge, block new role ticks until lifted.
+- `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
   exempt — its queued prompts simply wait in the inbox. `pause --for <duration>` (e.g. `2h`)
@@ -149,7 +149,7 @@ to share a baseline with collaborators. It sets enabled roles, provider, model, 
 while the fleet runs, and each one logs a `config_changed` event.
 
 - **Custom loops:** add `customLoops` entries by hand or by prompting the director ("add a loop
-  named X that does Y"). They show with a `*` on both dashboards.
+  named X that does Y"). The TUI marks them with `*`, the web dashboard with a `custom` tag.
 - **Agent binary:** resolved as `TUMWATER_PI_BIN`, then `agentBin`, then `pi` on PATH.
 
 ## Operator notes
@@ -158,12 +158,18 @@ while the fleet runs, and each one logs a `config_changed` event.
   does the opposite: it clears backoff so loops tick within one poll.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
-- The GUI's report and failures tabs match `tumwater report` and `tumwater report --failures`.
-- In the TUI, viewing a loop's transcript (`Ctrl+T` to cycle) puts that loop's controls in the
-  pane header: `Ctrl+P` toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
+- The web dashboard opens on Fleet: alerts for whatever needs you (a failing or stuck loop, a red
+  main, a spent budget, an old build, open questions, a pause), the prompt box, today's progress,
+  the loops grouped by what they are doing, the backlog, and the notable activity. Clicking a loop
+  opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
+  and Failures views match `tumwater history`, `tumwater report`, and `tumwater report --failures`.
+- The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
+  cycles Activity, each loop's Transcript, Backlog, Usage, and Failures.
+- In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`
+  toggles its pause, `Ctrl+A` aborts its in-flight tick, `Ctrl+W` clears
   its backoff, and `Ctrl+R` opens the role-prompt editor that queues a prompt for that loop's
-  next tick (Enter sends it; Esc or `Ctrl+R` again cancels and restores the draft). Each keypress flashes
-  its outcome in the header for a few seconds.
+  next tick (Enter sends it; Esc or `Ctrl+R` again cancels and restores the draft). The prompt
+  line names who Enter sends to. Each keypress flashes its outcome for a few seconds.
 - Review runs show as `── review @ <timestamp> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.
