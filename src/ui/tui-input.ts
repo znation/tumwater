@@ -1,4 +1,4 @@
-import { cutSplitsSurrogatePair } from "../text.js";
+import { cutSplitsSurrogatePair, displayWidth } from "../text.js";
 
 /** Pure prompt-line editing for the TUI (src/ui/tui.ts): the line editor, its display window,
  * the daily-budget input parser, and the terminal guard message runTui throws at startup.
@@ -109,41 +109,44 @@ export function parseRolePromptInput(
 
 /** The visible slice of the prompt line for a terminal `width` columns: the whole text
  * when it fits, otherwise a non-empty window that keeps the cursor inside it (at or near
- * the right edge) so mid-text edits stay visible. Both window edges fall on character
- * boundaries, so the displayed line never carries a lone surrogate (terminals render it as
- * garbage) — the display-side sibling of the edit-side rule applyKey enforces. With the
- * "> " prefix the rendered line never exceeds `width` columns for width >= 4, preserving
- * the one-logical-line-per-visual-line invariant.
+ * the right edge) so mid-text edits stay visible. Widths are measured in terminal display
+ * columns (displayWidth), not UTF-16 code units: a CJK character is one code unit but two
+ * columns, and a unit-budgeted line rendered wider than the terminal and wrapped. Both
+ * window edges fall on character boundaries, so the displayed line never carries a lone
+ * surrogate (terminals render it as garbage) — the display-side sibling of the edit-side
+ * rule applyKey enforces. With the "> " prefix the rendered line never exceeds `width`
+ * columns for width >= 4, preserving the one-logical-line-per-visual-line invariant.
  */
 export function renderInputView(text: string, cursor: number, width: number): string {
   const room = Math.max(1, width - 3); // headroom for the "> " prefix and a leading ellipsis
-  if (text.length <= room) return text;
+  // The whole prompt fits beside the two-column prefix: show it all — the one column of
+  // slack over `room` is free when no ellipsis is spent, and hiding fit-able text behind a
+  // window would only make the edit point harder to see in context.
+  if (displayWidth(text) <= width - 2) return text;
   const { start, end } = inputViewWindow(text, cursor, room);
   const slice = text.slice(start, end);
   const withEllipsis = start > 0 ? `…${slice}` : slice;
-  // Degenerate narrow case: at room 1–2 an astral character at the cursor needs one unit
+  // Degenerate narrow case: at room 1–2 a wide character at the cursor needs one column
   // more than `room` (inputViewWindow's whole-character fallback), so the ellipsis no longer
   // fits beside it. The "> " prefix already fixes the line's floor at `width` - 2 columns,
   // so spending one more would wrap the prompt line; drop the truncation cue instead, since
   // showing the character being edited matters more than signalling clipped text.
-  return withEllipsis.length <= width - 2 ? withEllipsis : slice;
+  return displayWidth(withEllipsis) <= width - 2 ? withEllipsis : slice;
 }
 
-/** The code-unit window `[start, end)` renderInputView shows for a prompt line longer than
- * `room` units. The cursor is clamped into the text and snapped to the start of any
- * surrogate pair it lands inside, then the window is placed with the cursor at its right
- * edge (or left of it when the cursor is near the start). An edge that would split a
- * surrogate pair is nudged to the nearest boundary: the start is floored over the pair only
- * when the wider window still fits (it lands at 0, where the ellipsis column is free),
- * otherwise stepped forward over the pair while the right edge stays anchored; the end is
- * backed off the pair. Either way the window contains the cursor (a cursor inside a pair is
- * first snapped to that pair's start), so the edit point is always visible. At room 1–2
- * around adjacent astral characters those two nudges can meet at the cursor and leave an
- * empty window — which renderInputView would draw as a bare ellipsis — so the smallest
- * whole-character window around the cursor (the character it sits on, or the one before it
- * at end of text) is returned instead; it may exceed `room` by one unit, and renderInputView
- * drops the ellipsis when the pair no longer both fit. Pure, so it is unit-testable without
- * a TTY. */
+/** The code-unit window `[start, end)` renderInputView shows for a prompt line wider than
+ * its `room` display columns. The budget is spent in terminal display columns — each
+ * character costs its displayWidth, so a CJK character costs two and astral pairs are never
+ * measured as halves — while the returned window stays in UTF-16 code units so text.slice
+ * keeps working unchanged. The cursor is clamped into the text and snapped to the start of
+ * any surrogate pair it lands inside, then the window is placed with the cursor's character
+ * at its right edge (or anchored at the text's start, filled rightward, when the cursor is
+ * near the beginning). The window contains the cursor, so the edit point is always visible.
+ * When the character under the cursor alone is wider than `room` (a wide character at room
+ * 1), no fitting window exists — the smallest whole-character window around the cursor (the
+ * character it sits on, or the one before it at end of text) is returned instead; it may
+ * exceed `room` by one column, and renderInputView drops the ellipsis when it no longer
+ * both fit. Pure, so it is unit-testable without a TTY. */
 export function inputViewWindow(
   text: string,
   cursor: number,
@@ -151,20 +154,45 @@ export function inputViewWindow(
 ): { start: number; end: number } {
   const clamp = Math.max(0, Math.min(cursor, text.length));
   const c = cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
-  const start0 = Math.max(0, Math.min(c - (room - 1), text.length - room));
-  let start = cutSplitsSurrogatePair(text, start0) ? (start0 === 1 ? 0 : start0 + 1) : start0;
-  const end0 = Math.min(text.length, start0 + room);
-  let end = cutSplitsSurrogatePair(text, end0) ? end0 - 1 : end0;
-  if (end <= start && text.length > 0) {
-    if (c < text.length) {
-      // The cursor sits on a character: show that whole character (two units when astral).
-      start = c;
-      end = cutSplitsSurrogatePair(text, c + 1) ? c + 2 : c + 1;
-    } else {
-      // Cursor at end of text: show the whole character before it.
-      end = c;
-      start = cutSplitsSurrogatePair(text, c - 1) ? c - 2 : c - 1;
+  // Per-character decomposition: where each code point starts (in units) and how many
+  // terminal columns it renders as. The cursor is always on a character boundary (applyKey
+  // snaps mid-pair cursors; BMP characters are one unit each), so it names a character.
+  const chars = Array.from(text);
+  const n = chars.length;
+  const starts: number[] = [];
+  let units = 0;
+  for (const ch of chars) {
+    starts.push(units);
+    units += ch.length;
+  }
+  const prefix: number[] = [0]; // prefix[k] = display columns before character k
+  for (let k = 0; k < n; k++) prefix.push(prefix[k]! + displayWidth(chars[k]!));
+  // The character the cursor sits on; past the last character it is a virtual end marker.
+  let ci = n;
+  for (let k = 0; k < n; k++) {
+    if (starts[k]! <= c && c < starts[k]! + chars[k]!.length) {
+      ci = k;
+      break;
     }
+  }
+  // Window ending at the cursor's character, extended left while the column budget holds
+  // (cursor at the right edge); anchored at the text's start instead when the cursor is
+  // near the beginning, then filled rightward up to the budget.
+  const cursorEnd = Math.min(n, ci + 1);
+  let startCp = cursorEnd;
+  while (startCp > 0 && prefix[cursorEnd]! - prefix[startCp - 1]! <= room) startCp--;
+  let endCp = cursorEnd;
+  if (startCp === 0 && endCp < n) {
+    while (endCp < n && prefix[endCp + 1]! - prefix[0]! <= room) endCp++;
+  }
+  let start = startCp < n ? starts[startCp]! : units;
+  let end = endCp < n ? starts[endCp]! : units;
+  if (end <= start && n > 0) {
+    // The character under the cursor alone exceeds the budget: show that whole character
+    // (two columns when wide), or the whole character before it at end of text.
+    const k = ci < n ? ci : n - 1;
+    start = starts[k]!;
+    end = starts[k]! + chars[k]!.length;
   }
   return { start, end };
 }

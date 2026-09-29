@@ -8,7 +8,7 @@ import {
   renderInputView,
   tuiTerminalError,
 } from "../src/ui/tui-input.js";
-import { cutSplitsSurrogatePair } from "../src/text.js";
+import { cutSplitsSurrogatePair, displayWidth } from "../src/text.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 
@@ -175,7 +175,15 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
   assert.equal(renderInputView("\u{1f600}\u{1f600}", 4, 4), "\u{1f600}");
 
   const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-  const samples = ["a".repeat(40), "\u{1f600}".repeat(8), "x\u{1f600}y\u00e9\u{1f600}z".repeat(3)];
+  // "你好世界你好" is 6 UTF-16 units but 12 display columns — the unit-vs-column mismatch
+  // this suite's samples once missed entirely.
+  const samples = [
+    "a".repeat(40),
+    "\u{1f600}".repeat(8),
+    "x\u{1f600}y\u00e9\u{1f600}z".repeat(3),
+    "你好世界你好",
+    "x你好\u{1f600}y",
+  ];
   for (const text of samples) {
     for (let width = 4; width <= 24; width++) {
       const room = Math.max(1, width - 3);
@@ -186,7 +194,9 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
         const where = `width ${width}, cursor ${cursor}`;
         const view = renderInputView(text, cursor, width);
         assert.ok(!loneSurrogate.test(view), `${where}: ${JSON.stringify(view)} has a lone surrogate`);
-        assert.ok(("> " + view).length <= width, `${where}: ${JSON.stringify(view)} exceeds the width`);
+        // Measured in display columns, not UTF-16 units — the unit spelling passed while a
+        // wide-character line still wrapped the terminal.
+        assert.ok(displayWidth("> " + view) <= width, `${where}: ${JSON.stringify(view)} exceeds the width`);
         assert.ok(view.length > 0, `${where}: ${JSON.stringify(view)} is empty`);
         // The window must keep the (clamped) cursor inside it — the property the rejected
         // fix broke: it dropped tail units so the cursor fell off the right edge.
@@ -198,11 +208,32 @@ test("renderInputView windows astral text without a lone surrogate or a hidden c
         // fallback no longer leaves it room beside the slice.
         const slice = text.slice(start, end);
         const withEllipsis = start > 0 ? `…${slice}` : slice;
-        const expected = withEllipsis.length <= width - 2 ? withEllipsis : slice;
-        assert.equal(expected, text.length <= room ? text : view, `${where}: window/render drift`);
+        // When the whole text fits beside the prefix, renderInputView shows it whole and
+        // never consults the window; otherwise it mirrors the window's render rule.
+        const whole = displayWidth(text) <= width - 2;
+        const windowed = displayWidth(withEllipsis) <= width - 2 ? withEllipsis : slice;
+        assert.equal(whole ? text : windowed, view, `${where}: window/render drift`);
       }
     }
   }
+});
+
+test("renderInputView budgets the prompt line in display columns, not UTF-16 units", () => {
+  // Regression: "你好世界你好" is 6 code units but 12 columns; the unit-budgeted fit check
+  // returned the whole line beside the "> " prefix — 14 columns on a 10-column terminal,
+  // wrapping the prompt line the one-line-per-visual-line invariant forbids.
+  const text = "你好世界你好";
+  // Cursor at end: the widest window of ≤ 7 columns ending at the last character.
+  assert.equal(renderInputView(text, text.length, 10), "…界你好");
+  const view = renderInputView(text, text.length, 10);
+  assert.ok(displayWidth("> " + view) <= 10, `got ${JSON.stringify(view)}`);
+  // The window keeps the cursor's character visible (cursor at end of text).
+  assert.ok(view.includes("好"), `cursor character not visible in ${JSON.stringify(view)}`);
+  // A line that fits whole in columns shows whole even when its unit length would have
+  // tripped the old unit-budgeted check: "ab你好cd" is 6 units but 8 columns.
+  assert.equal(renderInputView("ab你好cd", 6, 10), "ab你好cd");
+  // And an all-ASCII line still windows exactly as before.
+  assert.equal(renderInputView("a".repeat(50), 50, 10), "…" + "a".repeat(7));
 });
 
 test("tuiTerminalError names the missing stream and points at the non-interactive views", () => {
