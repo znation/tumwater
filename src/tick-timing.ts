@@ -1,7 +1,9 @@
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
+import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent, warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
 import type { LoopRunner } from "./loop.js";
+import type { LoopState } from "./loop-state.js";
 import type { InFlightLanding } from "./landing-drain.js";
 import { landingStatePath } from "./paths.js";
 import { rateLimitHold, type RateLimitHold } from "./rate-limit-hold.js";
@@ -130,6 +132,44 @@ export function pollRateLimitHold(
     });
   } else if (prev.until !== null && next.until === null) {
     logEvent(root, { loop: "harness", type: "rate_limit_resumed" });
+  }
+  return next;
+}
+
+/** One poll of the fleet-wide error-storm warning (src/error-storm.ts): gather each runner's
+ * current error streak (LoopState.consecutiveErrors/lastError — the same fields the per-role
+ * "consecutive tick failures" warning reads, the director's included, since its failures are
+ * the fleet's evidence too), step the pure reducer, and log exactly one warning per episode,
+ * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
+ * naming the roles, the shared normalized cause, and the config knob when the cause has one
+ * (a fleet timing out together means tickTimeoutSeconds does not fit the serving model).
+ * Storms clear silently — the members' own recoveries already tell that story — and the
+ * reducer's `prev` pass-through keeps a held storm event-free. Returns the new storm for the
+ * caller to keep. Exported as a unit-test seam, like pollRateLimitHold above. */
+export function pollErrorStorm(
+  root: string,
+  prev: ErrorStorm,
+  runners: readonly { role: string; state: Pick<LoopState, "consecutiveErrors" | "lastError"> }[],
+): ErrorStorm {
+  const observations = runners.map((r) => ({
+    role: r.role,
+    consecutiveErrors: r.state.consecutiveErrors ?? 0,
+    lastError: r.state.lastError,
+  }));
+  const next = errorStorm(prev, observations);
+  if (next.key !== null && next.key !== prev.key) {
+    const knob = errorStormKnob(next.key);
+    logEvent(root, {
+      loop: "harness",
+      type: "warning",
+      message:
+        `error storm — ${next.roles.length} roles failing consecutively on one shared cause ` +
+        `(${next.key})${knob ? ` — ${knob} likely does not fit the serving model` : ""}: ` +
+        next.roles.join(", "),
+      roles: next.roles,
+      cause: next.key,
+      ...(knob ? { knob } : {}),
+    });
   }
   return next;
 }

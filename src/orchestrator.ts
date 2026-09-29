@@ -45,6 +45,7 @@ import { piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeploy.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
 import type { LaunchServicesWatch } from "./launch-services.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
@@ -52,6 +53,7 @@ import {
   drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
+  pollErrorStorm,
   pollRateLimitHold,
   runTimedRoleTick,
   sleepInterruptible,
@@ -213,6 +215,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // budget gate's prevGate it is the gate's own memory (deadline, relapse count), not just the
   // last value for edge-triggered events. In memory only: a restart starts open.
   let rateHold: RateLimitHold = RATE_LIMIT_OPEN;
+  // The fleet-wide error-storm warning's state across polls (src/error-storm.ts) — the active
+  // storm's shared cause and roles, like the 429 hold's own memory. In memory only: a restart
+  // mid-storm can re-log at most one warning.
+  let errorStormState: ErrorStorm = ERROR_STORM_QUIET;
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
   // resolved its target branch at startup, and a human checking out something else mid-run
   // must not silently change what the fleet merges into — every role worktree is based on
@@ -328,6 +334,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // the storm.
       rateHold = pollRateLimitHold(root, rateHold, runners, now);
       const rateHeld = rateHold.until !== null;
+
+      // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks
+      // fail consecutively on one shared cause, each role's own "consecutive tick failures"
+      // warning still fires alone — this adds the one fleet-level warning that names the
+      // cause (and the config knob, when the cause has one) instead of leaving the operator
+      // to diff 14 streak lines. Observational only: it gates nothing, so unlike the 429 hold
+      // above there is no re-open event — the members' own recoveries tell that story.
+      errorStormState = pollErrorStorm(root, errorStormState, runners);
 
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's

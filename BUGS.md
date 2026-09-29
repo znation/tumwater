@@ -12,14 +12,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Cause:** This is deliberate, not lost state: src/loop-state.ts documents that `dayCostUsd` is "deliberately NOT zeroed: the budget is a safety valve, not an observation window" — zeroing it would let an operator reset their way past the daily spend cap. Only the help line is wrong.
 - **Fix direction:** Reword `tumwater help reset-counters` (src/help.ts) to say what is zeroed and what is not, e.g. "Zero lifetime ticks/commits/tokens/cost (fresh observation window); today's budget spend is kept". Do not change the behavior.
 
-### A fleet-wide timeout storm raises no alarm: three or more roles timing out consecutively means `tickTimeoutSeconds` does not fit the serving model, but only each role's own `consecutive tick failures` warning fires (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day)
+## Fixed
+
+### A fleet-wide timeout storm raises no alarm: three or more roles timing out consecutively means `tickTimeoutSeconds` does not fit the serving model, but only each role's own `consecutive tick failures` warning fires (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day, fixed 2026-09-29)
 
 - **Symptom:** On 2026-09-22 all 14 roles timed out at the 1800 s default for 8 hours; the only signal was 14 independent per-role streak warnings — nothing fleet-wide named the shared cause.
 - **Reproduce:** Any config whose tick budget every role exceeds: each loop warns alone on its own streak; no digest event or warning aggregates the identical `timed out after <dur>` errors across roles.
 - **Cause:** The streak warning lives per loop (loop.ts's ERROR_STREAK_WARN path) with no fleet-level aggregation of same-shaped failures.
-- **Fix direction:** When several roles' consecutive errors share one normalized cause (failure-report's `normalizeClusterKey` already clusters `timed out after <dur>`), emit one fleet-level warning naming the config knob — orchestrator or digest scope.
-
-## Fixed
+- **Fixed 2026-09-29 by bugfix loop:** New POLICY module src/error-storm.ts on the 429-hold's shape (src/rate-limit-hold.ts): a pure reducer that trips when ERROR_STORM_ROLES (3, the per-role warn bar) distinct roles' consecutive error streaks share one normalized cause (normalizeClusterKey), edge-triggered with clear-and-re-arm and a strongest-cause tiebreak; the orchestrator poll (pollErrorStorm in src/tick-timing.ts, wired beside pollRateLimitHold) logs exactly one `warning` event per episode naming the roles, the cause, and the config knob when the cause has one (`timed out after <dur>` → `tickTimeoutSeconds`; no knob is invented for causes no setting controls). Observational only — it gates nothing, unlike the 429 hold.
+- **Validation gap:** no-observability — the failure was an absence that left no trace: each role's own streak warning was individually correct and healthy-looking, so confirming that no mechanism aggregated the shared cause across roles required reading the whole poll loop rather than observing any output; the regression tests (test/error-storm.test.ts, 10) pin the new aggregate directly.
 
 ### The shipped `tickTimeoutSeconds` default (1800 s) is shorter than ticks on the current hosted model legitimately take, so a legitimately long tick burns its whole resume streak and then restarts the same long task fresh (found by bugfix loop 2026-09-29, decomposed from the timeout-discard bug fixed the same day, fixed 2026-09-29)
 
