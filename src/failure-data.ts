@@ -198,6 +198,23 @@ export function normalizeClusterKey(message: string): string {
   return normalized.trim().slice(0, EXAMPLE_MAX);
 }
 
+/** normalizeClusterKey's rendering of the two tick-timeout errors src/pi.ts emits — the plain
+ * kill and the still-making-progress variant (session and worktree edits preserved for
+ * resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (tickTimeoutSeconds),
+ * so every consumer that counts by cluster key pools them under the plain one. */
+export const TICK_TIMEOUT_KEY = "timed out after <dur>";
+const TICK_TIMEOUT_PROGRESSING_KEY =
+  "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
+
+/** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
+ * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
+ * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
+ * reducer applies, src/error-storm.ts), and every other cause stands as normalizeClusterKey
+ * rendered it. */
+export function poolTimeoutKey(key: string): string {
+  return key === TICK_TIMEOUT_PROGRESSING_KEY ? TICK_TIMEOUT_KEY : key;
+}
+
 /** A live cluster while collecting; `roles` is a set until the final sort. */
 interface ClusterDraft {
   key: string;
@@ -218,7 +235,7 @@ function clusterMessages(
 ): { clusters: Cluster[]; hiddenClusters: number } {
   const drafts = new Map<string, ClusterDraft>();
   for (const { message, role, ts, keyPrefix } of messages) {
-    const key = `${keyPrefix ?? ""}${normalizeClusterKey(message)}`;
+    const key = `${keyPrefix ?? ""}${poolTimeoutKey(normalizeClusterKey(message))}`;
     const draft = drafts.get(key);
     if (draft) {
       draft.count++;
@@ -334,7 +351,7 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
     if (cls === "no_change") {
       key = `no_change\u0000${role}`;
     } else if (CLUSTERED_RESULTS.has(String(ev.result)) && typeof ev.error === "string" && ev.error !== "") {
-      key = normalizeClusterKey(ev.error);
+      key = poolTimeoutKey(normalizeClusterKey(ev.error));
       example = ev.error.trim().slice(0, EXAMPLE_MAX);
     }
     if (key === null) continue;

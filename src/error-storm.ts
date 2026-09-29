@@ -9,7 +9,7 @@
  * event). Like the 429 hold it has memory — which storm is active is a fact about the past
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
-import { normalizeClusterKey } from "./failure-data.js";
+import { normalizeClusterKey, poolTimeoutKey, TICK_TIMEOUT_KEY } from "./failure-data.js";
 import { ERROR_STREAK_WARN } from "./tick-outcome.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
@@ -43,31 +43,16 @@ export interface ErrorStorm {
 /** The fleet's starting state: no storm. */
 export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
-/** normalizeClusterKey's rendering of the tick-timeout errors src/pi.ts emits. There are two
- * shapes — the plain kill and the still-making-progress variant (session and worktree edits
- * preserved for resume, BUGS.md 2026-09-29) — and both point at the same knob, so the reducer
- * pools them under the plain key (stormTimeoutKey) instead of splitting a mixed fleet into
- * sub-threshold clusters. */
-const TICK_TIMEOUT_KEY = "timed out after <dur>";
-const TICK_TIMEOUT_PROGRESSING_KEY =
-  "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
-
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
  * mapped: `timed out after <dur>` is the reducer's pooled rendering of the tick-timeout errors
- * (src/pi.ts's two `timed out after ${tickTimeoutSeconds}s` shapes), and a fleet-wide run of
- * it means the tick budget does not fit the serving model — the one cause with a knob to name.
- * Every other cause is left unmapped: the storm warning still names it, but inventing a knob
- * for a cause no setting controls would send an operator turning the wrong dial. Exported
- * for its unit tests. */
+ * (src/pi.ts's two `timed out after ${tickTimeoutSeconds}s` shapes, pooled into one key by
+ * poolTimeoutKey — failure-data.ts owns the two shapes and their pooling), and a fleet-wide
+ * run of it means the tick budget does not fit the serving model — the one cause with a knob
+ * to name. Every other cause is left unmapped: the storm warning still names it, but inventing
+ * a knob for a cause no setting controls would send an operator turning the wrong dial.
+ * Exported for its unit tests. */
 export function errorStormKnob(key: string): string | undefined {
   return key === TICK_TIMEOUT_KEY ? "tickTimeoutSeconds" : undefined;
-}
-
-/** The storm key a normalized error clusters under: the two tick-timeout shapes pool into the
- * plain one (a mixed fleet of both is one storm on one knob, not two half-storms); every
- * other cause stands as normalizeClusterKey rendered it. */
-function stormKey(key: string): string {
-  return key === TICK_TIMEOUT_PROGRESSING_KEY ? TICK_TIMEOUT_KEY : key;
 }
 
 /** Step the storm by one orchestrator poll: from `prev` and every role's current streak,
@@ -84,7 +69,7 @@ export function errorStorm(prev: ErrorStorm, observations: readonly ErrorStormOb
   const rolesByKey = new Map<string, Set<string>>();
   for (const { role, consecutiveErrors, lastError } of observations) {
     if ((consecutiveErrors ?? 0) < ERROR_STREAK_WARN || !lastError) continue;
-    const key = stormKey(normalizeClusterKey(lastError));
+    const key = poolTimeoutKey(normalizeClusterKey(lastError));
     if (!key) continue;
     const roles = rolesByKey.get(key) ?? new Set<string>();
     roles.add(role);

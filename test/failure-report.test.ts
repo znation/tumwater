@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { TELEMETRY_DIGEST_DAYS, renderFailureMarkdown, telemetryDigest } from "../src/failure-report.js";
-import { collectFailureReport, normalizeClusterKey } from "../src/failure-data.js";
+import { collectFailureReport, normalizeClusterKey, poolTimeoutKey } from "../src/failure-data.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
@@ -652,6 +652,42 @@ test("time and spend folds role × outcome class, pairing old events with tick_s
   assert.match(md, /\| feature \| 1\.0 h · \$0\.20 \| — \| — \|/);
   assert.match(md, /\| bugfix \| — \| 1\.0 h · \$0\.30 \| 0\.0 h · \$0\.00 \|/);
   assert.match(md, /no_change on bugfix/);
+});
+
+test("poolTimeoutKey pools the two tick-timeout shapes into one cause", () => {
+  assert.equal(poolTimeoutKey("timed out after <dur>"), "timed out after <dur>");
+  assert.equal(
+    poolTimeoutKey(
+      "timed out after <dur> while still making progress — session and worktree edits preserved for resume",
+    ),
+    "timed out after <dur>",
+  );
+  assert.equal(poolTimeoutKey("pi exited 1"), "pi exited 1", "every other cause stands as normalized");
+});
+
+test("a mixed fleet of plain and progressing tick timeouts pools into one digest cluster", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "error",
+      error: "timed out after 1800s while still making progress — session and worktree edits preserved for resume",
+      durationMs: 3_600_000, costUsd: 0.20 },
+    { ts: at(0), loop: "clean", type: "tick_end", result: "error", error: "pi exited 1" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  // One cause, one knob (tickTimeoutSeconds): both shapes are the same timeout, so the digest
+  // reports one cluster — not two half-size rows a top-N cut can drop.
+  const timeout = data.errors.clusters.find((c) => c.key.startsWith("timed out"));
+  assert.ok(timeout, `the timeout cause is itemized: ${JSON.stringify(data.errors.clusters)}`);
+  assert.equal(timeout?.key, "timed out after <dur>");
+  assert.equal(timeout?.count, 2);
+  assert.deepEqual(timeout?.roles, ["bugfix", "feature"]);
+  // The loss ranking sums both shapes' agent-hours under the pooled cause.
+  const loss = data.lossCauses.find((c) => c.example.startsWith("timed out"));
+  assert.ok(loss, `the loss table carries the pooled cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(loss?.ticks, 2);
+  assert.equal(loss?.ms, 5_400_000);
+  assert.ok(Math.abs((loss?.costUsd ?? 0) - 0.3) < 1e-9, `summed cost: ${loss?.costUsd}`);
 });
 
 test("report --failures --json prints the digest's collected data", async () => {
