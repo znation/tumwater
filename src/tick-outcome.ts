@@ -62,6 +62,12 @@ export interface TickOutcome {
    * failure digest's error clusters include main_red ticks, and without a cause on the event
    * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
   error?: string;
+  /** Why a resumed session's bridge prompt names its cause, when the resume's result itself is
+   * not specific enough to derive it: a quiet_killed tick can be a hung tool call (the default
+   * "hung-tool" bridge) or a tick timeout that fired on a run still making progress (a
+   * "timeout" bridge, which asks for the smallest finish against the same limit). Set only by
+   * those outcomes; every other resume cause is derived from state (cut-off streak, restart). */
+  resumeCause?: "hung-tool" | "timeout";
   /** The tick ended on leftover recovery (src/leftover.ts) — the leftover went on the land queue
    * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
    * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
@@ -263,7 +269,7 @@ export function applyTickOutcome(
     // (BUGS.md 2026-09-18).
     if (role !== DIRECTOR_ROLE && s.quietKillStreak <= QUIET_KILL_RESUME_LIMIT) {
       s.resumePending = true;
-      s.resumeCause = "hung-tool";
+      s.resumeCause = outcome.resumeCause ?? "hung-tool";
       s.nextRunAt = Date.now();
     } else if (role !== DIRECTOR_ROLE) {
       s.resumePending = false;

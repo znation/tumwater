@@ -489,11 +489,11 @@ export class LoopRunner {
     }
 
     // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
-    // bridge then warns against re-running it unchanged); a cut-off streak means the last run
-    // ran out of context and pi compacted the session (the bridge asks for the smallest finish);
-    // otherwise a shutdown/crash.
-    const resumeCause =
-      pendingResumeCause === "hung-tool" ? "hung-tool" : (s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart";
+    // bridge then warns against re-running it unchanged) or on the tick deadline while still
+    // making progress (the bridge asks for the smallest finish against the same limit); a
+    // cut-off streak means the last run ran out of context and pi compacted the session (the
+    // bridge asks for the smallest finish); otherwise a shutdown/crash.
+    const resumeCause = pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
     let prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
@@ -606,6 +606,18 @@ export class LoopRunner {
       s.lastError = pi.errorMessage ?? "killed as hung";
       this.requeuePromptForResume(userPrompt);
       return { result: "quiet_killed" };
+    }
+    if (pi.timedOut && pi.timedOutProgressing) {
+      // The deadline fired on a run still making progress: a slow run, not a failed one, and
+      // the slow run is exactly the case where discarding costs the most (BUGS.md 2026-09-29:
+      // 97 timeouts in 8 hours, ~55 agent-hours discarded). Handle it the way a quiet kill is
+      // handled — keep the session and the worktree's edits, resume promptly, bounded by the
+      // same quiet-kill streak — while a run with no recent progress keeps the discard path
+      // below. Director ticks never resume; requeuePromptForResume re-queues their prompt
+      // fresh, and applyTickOutcome schedules the immediate retry without a resume.
+      s.lastError = pi.errorMessage ?? "timed out while still making progress";
+      this.requeuePromptForResume(userPrompt);
+      return { result: "quiet_killed", resumeCause: "timeout" };
     }
     if (pi.timedOut) {
       s.lastError = pi.errorMessage ?? "timed out";

@@ -54,7 +54,7 @@ export interface LoopState {
    * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
    * warns against re-running the hung command unchanged). Cleared with resumePending at tick
    * start; absent for restart/cut-off resumes, whose causes are derived. */
-  resumeCause?: "hung-tool";
+  resumeCause?: "hung-tool" | "timeout";
   /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

@@ -78,6 +78,11 @@ export interface PiRunResult {
   stopReason?: string;
   errorMessage?: string;
   timedOut: boolean;
+  /** The tick timeout fired on a run that was still making progress — a real progress event
+   * within the last quietTimeoutSeconds. A slow run, not a hung one: the loop preserves its
+   * session and worktree edits and resumes it like a quiet kill instead of discarding them
+   * (BUGS.md 2026-09-29). Never true without timedOut. */
+  timedOutProgressing: boolean;
   /** The run was killed because the harness is shutting down. */
   aborted: boolean;
   /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
@@ -258,6 +263,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     const decoder = new StringDecoder("utf8");
     let stderr = "";
     let timedOut = false;
+    let timedOutProgressing = false;
     let settled = false;
 
     // plans/portability.md §5/7: the agent binary is configurable. resolveAgentBin
@@ -278,6 +284,14 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
 
     const timeout = setTimeout(() => {
       timedOut = true;
+      // A deadline that fires on a run still making progress killed a slow run, not a hung
+      // one: "recent progress" is the same window the quiet watchdog itself honors, so the
+      // two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). A run
+      // with no progress event at all — never emitted a byte, or bytes without one structured
+      // event — keeps today's discard path: it has not demonstrably begun, and the zero-byte
+      // exemption below delegates its bound to this timeout. Callback runs after the sync
+      // declarations below, so quietMs/lastProgressAt are initialized here.
+      timedOutProgressing = parser.progressCount > 0 && Date.now() - lastProgressAt <= quietMs;
       terminateChild(child);
     }, opts.config.tickTimeoutSeconds * 1000);
 
@@ -425,6 +439,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       stopReason: parser.stopReason,
       errorMessage: undefined,
       timedOut: false,
+      timedOutProgressing: false,
       quietKilled: false,
       aborted,
       contextExceeded: parser.contextExceeded,
@@ -474,12 +489,16 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
             : quietKilled
               ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
               : timedOut
-                ? `timed out after ${opts.config.tickTimeoutSeconds}s`
+                ? timedOutProgressing
+                  ? `timed out after ${opts.config.tickTimeoutSeconds}s while still making progress — session and worktree edits preserved for resume`
+                  : `timed out after ${opts.config.tickTimeoutSeconds}s`
                 : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
           // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
           // intact, so the loop resumes them (quiet_killed) instead of discarding them as an
-          // unfulfilled timeout does.
+          // unfulfilled timeout does. A deadline that fired on a run still making progress
+          // gets the same treatment (BUGS.md 2026-09-29).
           timedOut,
+          timedOutProgressing: timedOut && timedOutProgressing,
           quietKilled,
         }),
       );

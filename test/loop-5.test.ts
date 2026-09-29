@@ -327,6 +327,58 @@ test("a timed-out tick reports an error and never commits partial work", async (
   }
 });
 
+// A deadline that fires on a run still making progress killed a slow run, not a hung one —
+// the case where discarding costs the most (BUGS.md 2026-09-29: 97 timeouts in 8 hours,
+// ~55 agent-hours discarded). It is handled the way a quiet kill is handled.
+
+test("a tick timeout that fires on a run still making progress is resumed like a quiet kill (regression)", async () => {
+  const repo = await initializedRepo();
+  // Speaks one real progress event, writes an edit, then runs on silently past the deadline:
+  // a slow run. Contrast the zero-byte fixture above, whose timeout still discards.
+  const restore = fakePi(
+    [`printf '%s\\n' '${assistantLine("still working")}'`, `echo partial > partial.txt`, `exec sleep 30`].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = makeLoopRunner(repo, "improve", config);
+    const before = mainSha(repo);
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "quiet_killed");
+    assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
+    assert.equal(mainSha(repo), before, "nothing landed on main");
+    assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
+    assert.equal(runner.state.resumeCause, "timeout");
+    assert.ok(
+      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      "the slow run's half-done edit survives for its resume",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a timed-out run that emitted bytes but no progress event still discards (regression)", async () => {
+  const repo = await initializedRepo();
+  // Plain text on stdout: bytes without a single structured event are not progress (the same
+  // rule that keeps zombie-stream keepalives from feeding the quiet watchdog), so the run has
+  // not demonstrably begun and keeps today's discard path.
+  const restore = fakePi(`echo just bytes\nexec sleep 30`);
+  try {
+    const config = defaultConfig();
+    config.tickTimeoutSeconds = 1;
+    const runner = makeLoopRunner(repo, "improve", config);
+    const before = mainSha(repo);
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    assert.match(runner.state.lastError ?? "", /^timed out after 1s$/);
+    assert.equal(mainSha(repo), before);
+    assert.ok(runner.state.backoffSeconds > 0);
+  } finally {
+    restore();
+  }
+});
+
 test("a rebase conflict is resolved by a second pi run and lands with linear history", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase");
