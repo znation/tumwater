@@ -4,12 +4,14 @@
  * collection time. The Markdown rendering of this data lives in failure-report.ts, a pure
  * function of it; the split keeps "what happened" (clustering rules, window math, bounds)
  * apart from "how it prints" (column layout, cell wording), which change for different
- * reasons. */
+ * reasons. The cluster-key rules themselves — normalization, timeout pooling, grouping — live
+ * in failure-cluster.ts, shared with the error-storm reducer. */
 import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole, eventUsage, tickStartMap, type HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
+import { clusterMessages, normalizeClusterKey, poolTimeoutKey, EXAMPLE_MAX, type Cluster } from "./failure-cluster.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -19,18 +21,7 @@ const WARNING_TOP = 7;
 const REVIEW_FAILURE_TOP = 5;
 const REJECTION_TOP = 5;
 const LANDED_TOP = 10;
-const EXAMPLE_MAX = 120;
 const SUMMARY_MAX = 100;
-
-/** A normalized cluster of like error/warning/rejection strings. */
-interface Cluster {
-  key: string; // the normalized form, the grouping key
-  count: number;
-  roles: string[]; // unique, sorted
-  firstSeen: number; // epoch ms
-  lastSeen: number;
-  example: string; // the first verbatim occurrence, trimmed for display
-}
 
 /** One clustered section of the digest: the top-N clusters it itemizes, plus what the cut
  * hides — `total` counts every event the section owns in the current window (for rejections,
@@ -180,91 +171,6 @@ export interface FailureReportData {
   landedTotal: number; // all merges in the window, before the newest-LANDED_TOP cut
   stateChanges: StateChange[];
   stateChangesTotal: number; // all transitions in the window, before the newest-N cut
-}
-
-/** A cluster key is the message with the volatile parts replaced, rules applied in this order:
-
- * rule carries a negative lookbehind so the exit status after `exited ` survives — `pi exited
- * 1` and `pi exited null` must stay distinct; the code is semantic. The result is trimmed to
- * 120 chars. Deliberately conservative: over-clustering hides a real second failure mode,
- * while under-clustering merely costs a row. Exported for its own unit tests. */
-export function normalizeClusterKey(message: string): string {
-  const normalized = message
-    .replace(/\b[0-9a-f]{7,40}\b/g, "<sha>")
-    .replace(/\/(?:[\w.@+-]+\/)+[\w.@+-]+/g, "<path>")
-    .replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?/g, "<ts>")
-    .replace(/\d+(?:\.\d+)?(?:ms|s|m)\b/g, "<dur>")
-    .replace(/(?<!exited\s)\b\d+\b/g, "<n>");
-  return normalized.trim().slice(0, EXAMPLE_MAX);
-}
-
-/** normalizeClusterKey's rendering of the two tick-timeout errors src/pi.ts emits — the plain
- * kill and the still-making-progress variant (session and worktree edits preserved for
- * resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (tickTimeoutSeconds),
- * so every consumer that counts by cluster key pools them under the plain one. */
-export const TICK_TIMEOUT_KEY = "timed out after <dur>";
-const TICK_TIMEOUT_PROGRESSING_KEY =
-  "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
-
-/** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
- * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
- * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
- * reducer applies, src/error-storm.ts), and every other cause stands as normalizeClusterKey
- * rendered it. */
-export function poolTimeoutKey(key: string): string {
-  return key === TICK_TIMEOUT_PROGRESSING_KEY ? TICK_TIMEOUT_KEY : key;
-}
-
-/** A live cluster while collecting; `roles` is a set until the final sort. */
-interface ClusterDraft {
-  key: string;
-  count: number;
-  roles: Set<string>;
-  firstSeen: number;
-  lastSeen: number;
-  example: string;
-}
-
-/** Group messages by their normalized key, newest/oldest tracked per cluster. `keyPrefix`
- * scopes a cluster to something the message itself omits (rejections key on role too) without
- * polluting the verbatim example. Returns the top-N clusters plus how many fell past the cut,
- * so the render can mark the truncation instead of presenting the survivors as the whole. */
-function clusterMessages(
-  messages: Array<{ message: string; role: string; ts: number; keyPrefix?: string }>,
-  top: number,
-): { clusters: Cluster[]; hiddenClusters: number } {
-  const drafts = new Map<string, ClusterDraft>();
-  for (const { message, role, ts, keyPrefix } of messages) {
-    const key = `${keyPrefix ?? ""}${poolTimeoutKey(normalizeClusterKey(message))}`;
-    const draft = drafts.get(key);
-    if (draft) {
-      draft.count++;
-      draft.roles.add(role);
-      if (ts < draft.firstSeen) draft.firstSeen = ts;
-      if (ts > draft.lastSeen) draft.lastSeen = ts;
-    } else {
-      drafts.set(key, {
-        key,
-        count: 1,
-        roles: new Set([role]),
-        firstSeen: ts,
-        lastSeen: ts,
-        example: message.trim().slice(0, EXAMPLE_MAX),
-      });
-    }
-  }
-  const sorted = [...drafts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
-  return {
-    clusters: sorted.slice(0, top).map((d) => ({
-      key: d.key,
-      count: d.count,
-      roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
-      firstSeen: d.firstSeen,
-      lastSeen: d.lastSeen,
-      example: d.example,
-    })),
-    hiddenClusters: Math.max(0, sorted.length - top),
-  };
 }
 
 /** Attach a section's window total (events the section owns, counted before any filter the

@@ -1,0 +1,105 @@
+/** The cluster-key rules shared by everything that groups failure messages into causes: the
+ * failure digest's collection (failure-data.ts) and the error-storm reducer (error-storm.ts)
+ * both count by these keys, so the normalization, the two tick-timeout shapes and their
+ * pooling, and the grouping engine live here rather than inside either consumer. Pure string
+ * and grouping logic — no event reads, no clock. */
+
+/** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
+ * The digest's other caps (top-N counts, summary width) live beside their consumers in
+ * failure-data.ts. */
+export const EXAMPLE_MAX = 120;
+
+/** A normalized cluster of like error/warning/rejection strings. */
+export interface Cluster {
+  key: string; // the normalized form, the grouping key
+  count: number;
+  roles: string[]; // unique, sorted
+  firstSeen: number; // epoch ms
+  lastSeen: number;
+  example: string; // the first verbatim occurrence, trimmed for display
+}
+
+/** A cluster key is the message with the volatile parts replaced, rules applied in this order:
+
+ * rule carries a negative lookbehind so the exit status after `exited ` survives — `pi exited
+ * 1` and `pi exited null` must stay distinct; the code is semantic. The result is trimmed to
+ * 120 chars. Deliberately conservative: over-clustering hides a real second failure mode,
+ * while under-clustering merely costs a row. Exported for its own unit tests. */
+export function normalizeClusterKey(message: string): string {
+  const normalized = message
+    .replace(/\b[0-9a-f]{7,40}\b/g, "<sha>")
+    .replace(/\/(?:[\w.@+-]+\/)+[\w.@+-]+/g, "<path>")
+    .replace(/\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?/g, "<ts>")
+    .replace(/\d+(?:\.\d+)?(?:ms|s|m)\b/g, "<dur>")
+    .replace(/(?<!exited\s)\b\d+\b/g, "<n>");
+  return normalized.trim().slice(0, EXAMPLE_MAX);
+}
+
+/** normalizeClusterKey's rendering of the two tick-timeout errors src/pi.ts emits — the plain
+ * kill and the still-making-progress variant (session and worktree edits preserved for
+ * resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (tickTimeoutSeconds),
+ * so every consumer that counts by cluster key pools them under the plain one. */
+export const TICK_TIMEOUT_KEY = "timed out after <dur>";
+const TICK_TIMEOUT_PROGRESSING_KEY =
+  "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
+
+/** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
+ * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
+ * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
+ * reducer applies, src/error-storm.ts), and every other cause stands as normalizeClusterKey
+ * rendered it. */
+export function poolTimeoutKey(key: string): string {
+  return key === TICK_TIMEOUT_PROGRESSING_KEY ? TICK_TIMEOUT_KEY : key;
+}
+
+/** A live cluster while collecting; `roles` is a set until the final sort. */
+interface ClusterDraft {
+  key: string;
+  count: number;
+  roles: Set<string>;
+  firstSeen: number;
+  lastSeen: number;
+  example: string;
+}
+
+/** Group messages by their normalized key, newest/oldest tracked per cluster. `keyPrefix`
+ * scopes a cluster to something the message itself omits (rejections key on role too) without
+ * polluting the verbatim example. Returns the top-N clusters plus how many fell past the cut,
+ * so the render can mark the truncation instead of presenting the survivors as the whole. */
+export function clusterMessages(
+  messages: Array<{ message: string; role: string; ts: number; keyPrefix?: string }>,
+  top: number,
+): { clusters: Cluster[]; hiddenClusters: number } {
+  const drafts = new Map<string, ClusterDraft>();
+  for (const { message, role, ts, keyPrefix } of messages) {
+    const key = `${keyPrefix ?? ""}${poolTimeoutKey(normalizeClusterKey(message))}`;
+    const draft = drafts.get(key);
+    if (draft) {
+      draft.count++;
+      draft.roles.add(role);
+      if (ts < draft.firstSeen) draft.firstSeen = ts;
+      if (ts > draft.lastSeen) draft.lastSeen = ts;
+    } else {
+      drafts.set(key, {
+        key,
+        count: 1,
+        roles: new Set([role]),
+        firstSeen: ts,
+        lastSeen: ts,
+        example: message.trim().slice(0, EXAMPLE_MAX),
+      });
+    }
+  }
+  const sorted = [...drafts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  return {
+    clusters: sorted.slice(0, top).map((d) => ({
+      key: d.key,
+      count: d.count,
+      roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
+      firstSeen: d.firstSeen,
+      lastSeen: d.lastSeen,
+      example: d.example,
+    })),
+    hiddenClusters: Math.max(0, sorted.length - top),
+  };
+}
