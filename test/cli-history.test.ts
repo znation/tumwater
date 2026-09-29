@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { HarnessEvent } from "../src/events.js";
 import { initProject } from "../src/init.js";
 import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/ui/history.js";
 import { displayWidth } from "../src/text.js";
@@ -7,7 +8,6 @@ import { expectedTimestamp } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
-import type { HarnessEvent } from "../src/types.js";
 
 // The `history` command: the tickRows collector's pairing/filtering/bounding as unit cases,
 // plus CLI smoke runs over a seeded event log — the pattern test/cli-logs.test.ts uses.

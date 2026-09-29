@@ -1,5 +1,5 @@
+import type { HarnessEvent } from "../events.js";
 import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "../text.js";
-import type { HarnessEvent } from "../types.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): tokens and cost arrive loosely typed on HarnessEvent, so each is coerced

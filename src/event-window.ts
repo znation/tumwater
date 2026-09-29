@@ -1,5 +1,4 @@
-import type { HarnessEvent } from "./types.js";
-import { eventDayKey, parseEventLine } from "./events.js";
+import { eventDayKey, parseEventLine, type HarnessEvent } from "./events.js";
 import { eventsLogPath } from "./paths.js";
 import { readTailText } from "./files.js";
 

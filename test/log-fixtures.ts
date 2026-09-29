@@ -5,8 +5,7 @@
  * the fake-pi line builders these logs are assembled from live in pi-events.ts. */
 import fs from "node:fs";
 import path from "node:path";
-import type { HarnessEvent } from "../src/types.js";
-import { readEvents } from "../src/events.js";
+import { readEvents, type HarnessEvent } from "../src/events.js";
 import { piLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";

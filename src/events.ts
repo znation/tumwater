@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import type { HarnessEvent } from "./types.js";
 import { eventsLogPath } from "./paths.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { dayKey } from "./datetime.js";
@@ -34,6 +33,54 @@ export function eventsRotationLabel(): string {
   return `rotated at ${EVENTS_MAX_BYTES / (1024 * 1024)} MB`;
 }
 
+/** One line in .tumwater/log/events.jsonl: what logEvent appends (a HarnessEventInput plus
+ * its `ts` stamp) and every consumer (event-window, history, the report and failure
+ * collectors) reads back. */
+export interface HarnessEvent {
+  ts: number;
+  loop: string;
+  type:
+    | "tick_start"
+    | "tick_end"
+    | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
+    | "landed" // the landing slot finished with the change on main; carries sha, the lander's outcome, durationMs, and the landing's own usage
+    | "land_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload — retry rides next-tick leftover recovery, never the queue
+    | "merged"
+    | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
+    | "wake"
+    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred (no feature/bugfix/director/human commit landed since its last no_change tick); one per deferral episode
+    | "orchestrator_start"
+    | "orchestrator_stop"
+    | "prompt_enqueued"
+    | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
+    | "counters_reset"
+    | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
+    | "resume"
+    | "review_start"
+    | "review_verdict" // approved; carries durationMs of the reviewer run
+    | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
+    | "review_failed"
+    | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired (build-check-events.ts buildCheckRunFields)
+    | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
+    | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
+    | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
+    | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
+    | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
+    | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
+    | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
+    | "rate_limit_hold" // several roles' runs ended on a provider 429 within a short window (src/rate-limit-hold.ts); role loops and the landing slot start nothing new until it re-opens; carries roles, holdMs, escalation
+    | "rate_limit_resumed" // the 429 hold reached its deadline; role loops tick again
+    | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
+    | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
+    | "config_changed" // a live tumwater.json edit changed other settings (keys)
+    | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy.ts)
+    | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
+    | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
+    | "restart_refused" // a new generation would fail `tumwater run`'s startup gate here (reason); the running build stays and the gate is re-asked every poll
+    | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the fleet is down
+    | "warning";
+  [key: string]: unknown;
+}
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
  * are allowed via the index signature. Exported for modules that hand events to an injected
  * logger instead of calling logEvent directly (redeploy.ts). */

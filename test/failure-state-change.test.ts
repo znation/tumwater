@@ -5,7 +5,7 @@ import {
   STATE_CHANGE_TOP,
   STATE_CHANGE_TYPES,
 } from "../src/failure-state-change.js";
-import type { HarnessEvent } from "../src/types.js";
+import type { HarnessEvent } from "../src/events.js";
 
 // describeStateChange is the wording half of the failure digest's Fleet state changes section:
 // one bounded line per harness self-decision event. Fixtures here carry only the payload fields

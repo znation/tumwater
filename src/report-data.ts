@@ -9,10 +9,9 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
-import { eventDayKey, eventRole } from "./events.js";
+import { eventDayKey, eventRole, type HarnessEvent } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
-import type { HarnessEvent } from "./types.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window

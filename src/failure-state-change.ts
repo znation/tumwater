@@ -6,7 +6,7 @@
  * failure-data.ts. Every free string is sliced here, so the digest's byte bound holds for any
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
-import type { HarnessEvent } from "./types.js";
+import type { HarnessEvent } from "./events.js";
 import { budgetPhrase, rateLimitHoldPhrase, shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the

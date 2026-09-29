@@ -1,8 +1,7 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { dayKey } from "../datetime.js";
 import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
-import { parseEventLine, readEvents } from "../events.js";
-import type { HarnessEvent } from "../types.js";
+import { parseEventLine, readEvents, type HarnessEvent } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { statOrNull } from "../files.js";
 import { followFile } from "./tail.js";

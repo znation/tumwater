@@ -1,9 +1,8 @@
 import { fail, flagValue, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
-import { readEvents } from "../events.js";
+import { readEvents, type HarnessEvent } from "../events.js";
 import { formatTimestamp } from "../datetime.js";
 import { collapseWhitespace, displayWidth, padToWidth, shortSpanPhrase, truncate } from "../text.js";
 import { usageText } from "./event-format.js";
-import type { HarnessEvent } from "../types.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
