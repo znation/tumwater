@@ -153,6 +153,18 @@ function asCounts(v: unknown): TestCounts | undefined {
  * Past the cap the badge drops, the same graceful loss log rotation already imposes. */
 const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 
+/** Per-root note that the previous poll had to grow past the default 200-event tail without
+ * finding a merge-scope check. A check rides every landing, so a poll that grew all the way to
+ * the cap is a burst of quiet or failing ticks — hundreds of events between landings — and the
+ * next poll's growth starts straight at the cap instead of re-scanning the ×4 ladder's
+ * intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per fresh tail, vs 5.2k for
+ * 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per append+poll). A poll
+ * that finds a check clears the note, so the ordinary find-in-200 / find-in-800 path pays the
+ * same small windows as before. In-memory only: a wrong guess costs the ladder it skipped, never
+ * a wrong verdict — every window's scan is complete for its size. */
+const mainCheckGrewFull = new Set<string>();
+const MAIN_CHECK_FULL_SET_MAX = 64;
+
 /** The newest merge-scope build_check in the event tail, with the main sha it verified
  * (mainCheck's derivation — see the field's comment). A gate-scope check is excluded: it
  * verified a role worktree, not main. The tail grows until a merge-scope check is inside it
@@ -162,7 +174,8 @@ const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 function mainCheckForPoll(root: string, cfg: TumwaterConfig): StatusSnapshot["mainCheck"] {
   let check: ReturnType<typeof readEvents>[number] | undefined;
   let events: ReturnType<typeof readEvents> = [];
-  for (let window = 200; ; window = Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
+  const grewFull = mainCheckGrewFull.has(root);
+  for (let window = 200; ; window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
     events = readEvents(root, window);
     for (const e of events) {
       if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
@@ -175,6 +188,9 @@ function mainCheckForPoll(root: string, cfg: TumwaterConfig): StatusSnapshot["ma
     // event the smaller one did.
     if (check || events.length < window || window >= MAIN_CHECK_SCAN_MAX_EVENTS) break;
   }
+  if (mainCheckGrewFull.size >= MAIN_CHECK_FULL_SET_MAX) mainCheckGrewFull.clear();
+  if (check) mainCheckGrewFull.delete(root);
+  else mainCheckGrewFull.add(root);
   if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
   let landedAfter: (typeof events)[number] | undefined;
   let landedBefore: (typeof events)[number] | undefined;
