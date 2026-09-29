@@ -8,7 +8,9 @@ import { runOrchestrator } from "../src/orchestrator.js";
 import { drainMerge, newLandingPipeline, startVet, type LandingPipelineContext } from "../src/landing-drain.js";
 import { headLanding } from "../src/landing-queue.js";
 import { Semaphore } from "../src/semaphore.js";
+import { loadLoopState } from "../src/loop-state.js";
 import { LoopRunner } from "../src/loop.js";
+import { waitFor } from "./wait.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { TickResult } from "../src/types.js";
 
@@ -88,6 +90,30 @@ export function startLiveOrchestrator(
       }
     },
   };
+}
+
+/** Poll until `role`'s persisted loop state has completed at least `n` ticks and is idle
+ * (not mid-tick) — the live-orchestrator e2e tests' shared "a tick finished" gate, the
+ * `waitFor(() => loadLoopState(repo, role).ticks >= n && !loadLoopState(repo, role).running,
+ * what)` idiom that recurred verbatim across the suite. Reads the state file fresh each
+ * poll, exactly like the inline form; `ms` forwards to waitFor's deadline (default when
+ * omitted). Tests that wait for the tick to start but not finish, or that assert on the
+ * state between the two conditions, keep their explicit waitFor calls. */
+export async function awaitSettledTick(
+  repo: string,
+  role: string,
+  n: number,
+  what: string,
+  ms?: number,
+): Promise<void> {
+  await waitFor(
+    () => {
+      const s = loadLoopState(repo, role);
+      return s.ticks >= n && !s.running;
+    },
+    what,
+    ms,
+  );
 }
 
 /** Land the head of the durable land queue through the orchestrator's own landing pipeline
