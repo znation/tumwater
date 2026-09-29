@@ -9,6 +9,7 @@ import {
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
 } from "./role-guidance.js";
+import { NOTHING_TO_DO } from "./reply-contract.js";
 
 /** One loop's identity and instruction set: `id` is the key every surface names the loop
  * by, and `find` is the role-specific half of its tick prompt. */
@@ -49,8 +50,9 @@ implemented (prefer ones marked ready or with a written plan). List the entries 
 \`grep -n '^##' PLANS.md\` gives every heading with its line number — then read only the chosen
 entry's line range and the code it names. Implement it completely: code, tests, and any docs.
 The reviewer checks your diff against the entry's files-touched list and acceptance criteria, so
-land everything the entry promises, or update the entry to say what changed and why. A plan too
-large to finish in this run is not split by you: append the note
+land everything the entry promises, or update the entry to say what changed and why. When a
+plan's anchors no longer match the code, correct the entry in the same change instead of
+refusing. A plan too large to finish in this run is not split by you: append the note
 ${NEEDS_REVIEW_NOTE}
 under its heading, skip it, and implement the next available plan that fits — you may mark
 several oversized entries while scanning, but land exactly one plan. Skip entries already
@@ -89,10 +91,12 @@ already exist and that no Planned or Done entry already covers it (\`grep -n '^#
 lists every entry; read only the ones whose headings look related). Ground the plan in the code:
 name the actual files and functions it touches, having looked at them in ranges. ${PLAN_SIZING}
 ${DECOMPOSITION_GUIDANCE}
-A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks refining the weakest existing plan: split it
-into independently landable sub-plans that cross-reference each other (per PLAN_SIZING, each with
-its own acceptance criteria), then remove the note. Otherwise, if PLANS.md already has several
-unimplemented plans, prefer refining the weakest existing plan over adding another.`,
+A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
+independently landable sub-plans that cross-reference each other (per PLAN_SIZING, each with its
+own acceptance criteria), then remove the note. Otherwise, when PLANS.md \`## Planned\` already
+holds two or more plans without a Needs-review note, end with ${NOTHING_TO_DO} — feature has
+work, and a waiting plan is refined by the feature run that picks it up, against the code as it
+stands then.`,
   },
   {
     id: "readme",

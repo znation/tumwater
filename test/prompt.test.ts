@@ -1058,14 +1058,19 @@ test("the feature role maps PLANS.md by heading, matches the reviewer's plan che
   assert.match(find, /land exactly one plan/);
   assert.match(find, /Skip entries already carrying a \*\*Needs review …\*\* note/);
   assert.ok(!/split before implementing/.test(find), "the inline-split instruction is gone");
+  assert.match(find, /correct the entry in the same change instead of refusing/);
 });
 
-test("the plan role prioritizes a Needs review plan and clears the note after splitting", () => {
+test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
-  assert.match(find, /outranks refining the weakest existing plan/);
+  assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
   assert.match(find, /then remove the note/);
+  assert.ok(!/refining the weakest/.test(find), "the refine-the-weakest clause is gone");
+  assert.match(find, /two or more plans without a Needs-review note, end with/);
+  assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
+  assert.match(find, /refined by the feature run that picks it up/);
 });
 
 test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {
@@ -1096,6 +1101,9 @@ test("the plan role and the director size plans to one implementation run via th
   assert.match(sizing, /Size every plan to ONE implementation run by a mid-sized model working alone/);
   assert.match(sizing, /at most a few hundred lines of change including tests/);
   assert.match(sizing, /split into independently landable sub-plans/);
+  // Anchors drift: line numbers go stale with every landing, symbols do not.
+  assert.match(sizing, /file paths and symbol names/);
+  assert.match(sizing, /never on line numbers or ranges/);
   // The self-hosting build lag (BUGS.md 2026-09-23): a landing that changes how landings behave
   // must not also depend on that change, since the fleet lands it with the previous build.
   assert.match(sizing, /every commit lands under the build that predates it/);

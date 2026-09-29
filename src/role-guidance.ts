@@ -22,8 +22,10 @@ them up independently; if the parts are not truly independent, keep a single ent
 export const PLAN_SIZING = `Size every plan to ONE implementation run by a mid-sized model working
 alone: a handful of files, at most a few hundred lines of change including tests, and no design
 question left open for the implementer. Anything larger is split into independently landable
-sub-plans that cross-reference each other, each with its own acceptance criteria. When the project
-is the harness running the fleet, every commit lands under the build that predates it, so a
+sub-plans that cross-reference each other, each with its own acceptance criteria. Anchor plans on
+file paths and symbol names — functions, types, constants, test names — never on line numbers or
+ranges, because line anchors go stale with every landing. When the project is the harness running
+the fleet, every commit lands under the build that predates it, so a
 change to how landings behave and any step that depends on it are separate sub-plans, the second
 landing only once the first is the running build.`;
 
