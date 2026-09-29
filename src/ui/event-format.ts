@@ -40,9 +40,12 @@ function elapsed(ms: unknown): string {
 export function formatEvent(e: HarnessEvent): string {
   const time = new Date(e.ts).toLocaleTimeString();
   const loop = String(e.loop).padEnd(9);
+  // The `<time> <loop-padded> ` head every branch renders — one home for the two-column
+  // prefix, so the loop column's width and the time shape cannot drift per branch.
+  const line = (message: string) => `${time} ${loop} ${message}`;
   switch (e.type) {
     case "tick_start":
-      return `${time} ${loop} tick #${e.tick} started`;
+      return line(`tick #${e.tick} started`);
     case "tick_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
       // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
@@ -50,55 +53,55 @@ export function formatEvent(e: HarnessEvent): string {
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
       // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
-      return `${time} ${loop} tick #${e.tick} ${e.result}${extra}${usagePhrase(e)}`;
+      return line(`tick #${e.tick} ${e.result}${extra}${usagePhrase(e)}`);
     }
     case "merged":
-      return `${time} ${loop} merged ${shortSha(e.commit)} to main — ${e.summary}`;
+      return line(`merged ${shortSha(e.commit)} to main — ${e.summary}`);
     case "land_queued":
       // Merge queue 3/5: routine state change (the tick committed and the landing slot is
       // ahead) — no warning prefix. The landing's own events follow it.
-      return `${time} ${loop} queued ${shortSha(e.commit)} for landing — ${e.summary}`;
+      return line(`queued ${shortSha(e.commit)} for landing — ${e.summary}`);
     case "landed":
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
       // render bare — the same phrase tick_end carries for its run.
-      return `${time} ${loop} landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usagePhrase(e)}`;
+      return line(`landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usagePhrase(e)}`);
     case "land_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
-      return `${time} ${loop} landing of ${shortSha(e.commit)} did not land (${e.result})${elapsed(e.durationMs)}`;
+      return line(`landing of ${shortSha(e.commit)} did not land (${e.result})${elapsed(e.durationMs)}`);
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
-      return `${time} ${loop} question posted: ${e.question}`;
+      return line(`question posted: ${e.question}`);
     case "wake":
-      return `${time} ${loop} woke (${e.reason})`;
+      return line(`woke (${e.reason})`);
     case "tick_deferred":
       // Routine state change (need-based prioritization), like counters_reset — no warning
       // prefix. One per deferral episode; the tick's own events cover the episode's end.
-      return `${time} ${loop} deferred — no work landed since last tick`;
+      return line(`deferred — no work landed since last tick`);
     case "orchestrator_start":
-      return `${time} ${loop} orchestrator started (pid ${e.pid}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
+      return line(`orchestrator started (pid ${e.pid}${e.build ? `, build ${shortSha(e.build)}` : ""})`);
     case "orchestrator_stop":
-      return `${time} ${loop} orchestrator stopped`;
+      return line(`orchestrator stopped`);
     case "prompt_enqueued":
-      return `${time} ${loop} user prompt queued: ${String(e.preview)}`;
+      return line(`user prompt queued: ${String(e.preview)}`);
     case "prompt_cancelled":
       // Routine operation (the user removed a queued prompt), not a warning.
-      return `${time} ${loop} user prompt cancelled: ${String(e.preview)}`;
+      return line(`user prompt cancelled: ${String(e.preview)}`);
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.
       const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
-      return `${time} ${loop} counters reset${scope} (ticks, commits, tokens, cost)`;
+      return line(`counters reset${scope} (ticks, commits, tokens, cost)`);
     }
     case "tick_aborted":
       // Routine state change (the user stopped one loop's tick), like counters_reset — no
       // warning prefix. The resulting tick_end line carries the user_aborted outcome.
-      return `${time} ${loop} tick aborted by user`;
+      return line(`tick aborted by user`);
     case "review_start":
-      return `${time} ${loop} reviewing ${shortSha(e.head)} before merge`;
+      return line(`reviewing ${shortSha(e.head)} before merge`);
     case "review_verdict":
-      return `${time} ${loop} review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
+      return line(`review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`);
     case "review_rejected": {
       const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
       // Only the first reason renders; when more exist, say so instead of letting the
@@ -108,10 +111,10 @@ export function formatEvent(e: HarnessEvent): string {
         reasons.length > 1
           ? ` (+${reasons.length - 1} more — the author's next tick carries every reason)`
           : "";
-      return `${time} ${loop} review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${more}${elapsed(e.durationMs)}`;
+      return line(`review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${more}${elapsed(e.durationMs)}`);
     }
     case "review_failed":
-      return `${time} ${loop} review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;
+      return line(`review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`);
     case "build_check":
       // The deterministic check's cost, per run: scope names which gate paid (the pre-merge
       // review gate, the red-main baseline check of main itself, or the merge lock's
@@ -119,7 +122,7 @@ export function formatEvent(e: HarnessEvent): string {
       // for an npm check but the FULL configured command otherwise (checkScriptName in
       // build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
-      return `${time} ${loop} build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
+      return line(`build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`);
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the fleet stopped instead of
@@ -131,75 +134,79 @@ export function formatEvent(e: HarnessEvent): string {
         : e.fallbackDemoted
           ? ` (fallback ${e.fallbackDemoted} is not serving — ${e.failures ?? "?"} consecutive ticks failed on it; one probe tick retries it after a cool-down)`
           : "";
-      return `${time} ${loop} budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
+      return line(`budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`);
     }
     case "budget_fallback":
       // The cap is spent but the fleet keeps working: name the free model it switched to, the
       // one fact that distinguishes this from a pause.
-      return `${time} ${loop} budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
+      return line(`budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`);
     case "budget_resumed":
-      return `${time} ${loop} budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
+      return line(`budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`);
     case "fleet_paused":
       // Routine state change, like counters_reset — no warning prefix.
-      return `${time} ${loop} fleet paused — role loops stop starting new ticks (director keeps running)`;
+      return line(`fleet paused — role loops stop starting new ticks (director keeps running)`);
     case "fleet_resumed":
-      return `${time} ${loop} fleet resumed — role loops tick again`;
+      return line(`fleet resumed — role loops tick again`);
     case "role_paused":
       // Routine state change, like fleet_paused — no warning prefix.
-      return `${time} ${loop} role ${e.role ?? "?"} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
+      return line(`role ${e.role ?? "?"} paused — it stops starting new ticks (the rest of the fleet keeps running)`);
     case "role_resumed":
-      return `${time} ${loop} role ${e.role ?? "?"} resumed — it ticks again`;
+      return line(`role ${e.role ?? "?"} resumed — it ticks again`);
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the 429s and when the fleet re-opens on its own.
       const roles = Array.isArray(e.roles) ? (e.roles as unknown[]).join(", ") : "several roles";
-      return `${time} ${loop} 429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+      return line(`429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`);
     }
     case "rate_limit_resumed":
-      return `${time} ${loop} 429 hold lifted — role loops tick again`;
+      return line(`429 hold lifted — role loops tick again`);
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
-      return `${time} ${loop} maxConcurrent changed: ${e.from} → ${e.to}`;
+      return line(`maxConcurrent changed: ${e.from} → ${e.to}`);
     }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
-      return `${time} ${loop} sessionRetentionDays changed: ${e.from} → ${e.to}`;
+      return line(`sessionRetentionDays changed: ${e.from} → ${e.to}`);
     }
     case "config_changed": {
       // Routine state change, like its maxConcurrent/retention siblings — no warning prefix.
       // A bare/empty keys array (a torn or hand-edited line) still renders.
       const keys = Array.isArray(e.keys) ? (e.keys as unknown[]).join(", ") : "";
-      return keys ? `${time} ${loop} config changed: ${keys}` : `${time} ${loop} config changed`;
+      return line(`config changed${keys ? `: ${keys}` : ""}`);
     }
     case "build_stale":
       // Self-hosting fleets only (src/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
-      return `${time} ${loop} build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${e.aheadCommits} commit(s) ahead in src/`;
+      return line(`build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${e.aheadCommits} commit(s) ahead in src/`);
     case "restart_pending":
-      return `${time} ${loop} restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
+      return line(`restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`);
     case "restart":
-      return `${time} ${loop} restarting onto build ${shortSha(e.to)} (drained ${Math.round(Number(e.drainedMs ?? 0) / 60_000)}m${
-        Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
-      })`;
+      return line(
+        `restarting onto build ${shortSha(e.to)} (drained ${Math.round(Number(e.drainedMs ?? 0) / 60_000)}m${
+          Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
+        })`,
+      );
     case "restart_refused":
       // The restart is refused, not failed: the running build stays and the gate is re-asked
       // every poll, so the line names both builds and what the operator must repair.
-      return `${time} ${loop} restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${e.reason}; staying on build ${shortSha(e.from)} until it can`;
+      return line(`restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${e.reason}; staying on build ${shortSha(e.from)} until it can`);
     case "supervisor_exit": {
       // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
       const how = e.signal ? `was killed by ${e.signal}` : `exited ${e.code}`;
-      return `${time} ${loop} fleet down — generation ${e.generation} ${how}${e.reason ? `: ${e.reason}` : ""}; the supervisor exited (restart with \`tumwater run\`)`;
+      return line(`fleet down — generation ${e.generation} ${how}${e.reason ? `: ${e.reason}` : ""}; the supervisor exited (restart with \`tumwater run\`)`);
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
       // reading the feed can tell a restart from a loop fighting the context ceiling.
-      return e.cause === "cut-off"
-        ? `${time} ${loop} resuming the run cut off at the context ceiling (compacted pi session, same worktree)`
-        : `${time} ${loop} resuming the tick a shutdown interrupted (same pi session and worktree)`;
+      return line(
+        e.cause === "cut-off"
+          ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
+          : "resuming the tick a shutdown interrupted (same pi session and worktree)",
+      );
     case "warning":
-      return `${time} ${loop} warning: ${e.message}`;
+      return line(`warning: ${e.message}`);
     default:
-      return `${time} ${loop} ${e.type}`;
+      return line(`${e.type}`);
   }
 }
