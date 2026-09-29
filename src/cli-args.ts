@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { knownRoleIds, loadConfigCached } from "./config.js";
-import { allRoleIds } from "./roles.js";
+import { allRoleIds, unknownRoleMessage } from "./roles.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
@@ -126,7 +126,7 @@ export function parseRoleFlag(args: string[], validIds?: string[]): string | nul
   if (role === null) return null;
   if (!role) fail("--role needs a role id (e.g. `--role feature`)");
   const ids = validIds ?? allRoleIds();
-  if (!ids.includes(role)) fail(`unknown role: ${role} (valid ids: ${ids.join(", ")})`);
+  if (!ids.includes(role)) fail(unknownRoleMessage(role, ids));
   return role;
 }
 

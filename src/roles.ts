@@ -354,6 +354,13 @@ export function roleById(id: string): Role | undefined {
   return ROLES.find((r) => r.id === id);
 }
 
+/** The harness's one unknown-role error text: `unknown role: <id> (valid ids: <ids>)`.
+ * parseRoleFlag, the operator commands, and tick-prompt's defensive runner path share it so
+ * the wording cannot drift between the CLI, the GUI, and a tick's internal error. */
+export function unknownRoleMessage(role: string, validIds: readonly string[]): string {
+  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})`;
+}
+
 /** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the
  * role-specific find-something-to-do text, and the title is what identifies the loop inside
  * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context. */

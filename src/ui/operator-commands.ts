@@ -10,7 +10,7 @@ import {
 } from "../inbox.js";
 import { formatTime } from "../datetime.js";
 import { errorMessage } from "../text.js";
-import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
+import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "../roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop-state.js";
 import { clearBackoff } from "../tick-outcome.js";
 import {
@@ -412,7 +412,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       ? knownRoleIds(loadConfig(root))
       : null;
   if (validIds !== null && parsed.role !== null && !validIds.includes(parsed.role)) {
-    fail(`unknown role: ${parsed.role} (valid ids: ${validIds.join(", ")})`);
+    fail(unknownRoleMessage(parsed.role, validIds));
   }
   const role = parsed.role;
   if (parsed.mode === "list") {
