@@ -9,6 +9,14 @@ _None yet._
 
 ## Fixed
 
+### The error-storm warning misses the timeout shape the fleet now actually emits: pi's progressing-timeout message normalizes to a different cluster key than the plain one, so `errorStormKnob` names no knob for it and a mixed fleet of both shapes splits into sub-threshold clusters that never trip (found by bugfix loop 2026-09-29, fixed 2026-09-29)
+
+- **Symptom:** After the 2026-09-29 timeout fixes, a tick killed at `tickTimeoutSeconds` while still making progress emits `timed out after <dur> while still making progress — session and worktree edits preserved for resume` (src/pi.ts), not the plain `timed out after <dur>`. The new fleet-wide storm warning (src/error-storm.ts) clusters those under two different normalizeClusterKey keys: a storm of progressing timeouts warns with no `tickTimeoutSeconds` knob named, and a fleet mixing both shapes (e.g. some roles stalled, some working) splits 2/2 into two sub-threshold clusters and stays completely silent — the exact timeout-storm blindness the warning was built to end.
+- **Reproduce:** `errorStorm(ERROR_STORM_QUIET, [three roles with the progressing lastError])` returned key `timed out after <dur> while still making progress — …` (no knob); a 2-progressing + 1-plain fleet returned `null` (no storm). Confirmed by the new regression test before the fix.
+- **Cause:** `errorStorm` grouped observations by raw `normalizeClusterKey(lastError)`, and `errorStormKnob` matched only the bare key; pi's two timeout message shapes were never canonicalized to one storm cause.
+- **Fixed 2026-09-29 by bugfix loop:** errorStorm now canonicalizes the progressing shape to the plain `TICK_TIMEOUT_KEY` (both pi.ts timeout messages are one cause with one knob) before grouping; `errorStormKnob` is unchanged and keeps naming `tickTimeoutSeconds`. Regression tests in test/error-storm.test.ts pin the pooled mixed-fleet storm and the wiring's knob for an all-progressing storm.
+- **Validation gap:** unclear-invariant — the existing suite passed because it pinned only the plain timeout shape; confirming the gap first required reconstructing what "one shared cause" must mean here (both of pi.ts's timeout emissions are the same storm on `tickTimeoutSeconds`) before any test could be written. Closest tag: the missing piece was a fixture emitting the second shape, not a shim.
+
 ### `tumwater help reset-counters` promises to "Zero ticks/commits/tokens/cost", but a role's `today` spend and the fleet budget header survive the reset, so the help overpromises what the command deliberately does (found by qa 2026-09-29, fixed 2026-09-29)
 
 - **Symptom:** After `tumwater reset-counters`, `tumwater status` shows every role's `cost` at $0.00 but keeps the per-role `today` column and the `budget: $X/$Y today` header at the day's spend. A first-time user reading the help line expects the whole cost picture to zero; the kept `today` figures look like the reset failed.

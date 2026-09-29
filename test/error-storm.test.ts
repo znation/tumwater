@@ -108,6 +108,27 @@ test("a storm that switches cause is a new episode", () => {
   assert.notEqual(switched, tripped, "the old cause no longer explains the fleet; the new one names itself");
 });
 
+test("the progressing timeout shape pools with the plain one into one storm", () => {
+  // src/pi.ts emits two tick-timeout messages: the plain one and the still-making-progress
+  // variant (session and worktree preserved for resume). Both point at the same knob, so the
+  // reducer pools them under one cause — a mixed fleet must not split 2/2 into two
+  // sub-threshold clusters and stay quiet while the fleet is melting down.
+  const progressing = "timed out after 1800s while still making progress — session and worktree edits preserved for resume";
+  const mixed = errorStorm(ERROR_STORM_QUIET, [
+    obs("clean", 3, progressing),
+    obs("coverage", 3, progressing),
+    obs("dry", 3, "timed out after 1800s"),
+  ]);
+  assert.equal(mixed.key, TIMEOUT_KEY, "two timeout shapes are one cause");
+  assert.deepEqual(mixed.roles, ["clean", "coverage", "dry"]);
+  const allProgressing = errorStorm(ERROR_STORM_QUIET, [
+    obs("clean", 3, progressing),
+    obs("coverage", 4, progressing),
+    obs("dry", 3, progressing),
+  ]);
+  assert.equal(allProgressing.key, TIMEOUT_KEY);
+});
+
 test("errorStormKnob names tickTimeoutSeconds for the timeout cause and nothing else", () => {
   assert.equal(errorStormKnob(TIMEOUT_KEY), "tickTimeoutSeconds");
   assert.equal(errorStormKnob("pi exited 1"), undefined);
@@ -147,4 +168,19 @@ test("pollErrorStorm logs exactly one warning on the crossing, naming the knob, 
   );
   assert.equal(storm.key, null);
   assert.equal(stormEvents().length, 1, "clearing logs nothing");
+});
+
+test("pollErrorStorm names the knob for a storm of progressing timeouts too", () => {
+  const root = tmpdir("tumwater-error-storm-");
+  const stormEvents = () => readEvents(root).filter((e) => e.type === "warning" && (e as { cause?: string }).cause !== undefined);
+  const progressing = "timed out after 1800s while still making progress — session and worktree edits preserved for resume";
+  const runners = ["clean", "coverage", "dry"].map((role) => ({
+    role,
+    state: { consecutiveErrors: 3, lastError: progressing },
+  }));
+  const storm = pollErrorStorm(root, ERROR_STORM_QUIET, runners);
+  assert.equal(storm.key, TIMEOUT_KEY);
+  const first = stormEvents()[0]!;
+  assert.equal((first as { knob?: string }).knob, "tickTimeoutSeconds");
+  assert.match(String(first.message), /tickTimeoutSeconds/);
 });
