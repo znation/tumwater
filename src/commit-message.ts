@@ -36,8 +36,10 @@ const COMMIT_BODY_FIELD_MAX = 200;
 
 /** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_RULE
  * contract declared by prompt.ts. Each field is optional: a non-compliant reply still commits
- * (subject + trailer). */
-export interface CommitBody {
+ * (subject + trailer). Module-private: every consumer — extractCommitBody, formatCommitBody,
+ * buildCommitMessage — lives in this file, and tick-stage.ts works with the extracted values
+ * structurally rather than naming the type. */
+interface CommitBody {
   why?: string;
   risk?: string;
   verified?: string;
