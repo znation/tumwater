@@ -7,6 +7,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+// Before the dist/ imports below: a tree without a build would otherwise die here with a raw
+// ERR_MODULE_NOT_FOUND stack for dist/src/ui/status.js (repro: rm -rf dist && node scripts/bench-live.mjs)
+// instead of the fix. Name the command that produces a build — the benchmark's numbers mean
+// nothing against a stale one anyway, so a missing dist is not an edge case.
+if (!fs.existsSync(new URL("../dist/src/ui/status.js", import.meta.url))) {
+  console.error("bench-live benchmarks the compiled build: run `npm run build` first (dist/src is missing).");
+  process.exit(1);
+}
+
 const { snapshot } = await import("../dist/src/ui/status.js");
 const { renderStatus } = await import("../dist/src/ui/status-render.js");
 
