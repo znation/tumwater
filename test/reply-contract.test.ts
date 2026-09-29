@@ -134,6 +134,31 @@ test("isNegatedRefusal negates none and n/a under quoting", () => {
   assert.ok(!isNegatedRefusal('none of the attempted fixes work "per the log"'), "a word after the token starts the reason, quoted or not");
 });
 
+// BUGS.md 2026-09-28: a typographic-quoted negation (`“none”`, `none “nothing to do”`) left
+// isNegatedRefusal false — the four curly quotes play the same two roles the straight quotes
+// play (decoration around the token, opening mark of an appended note), but neither the
+// wrapping strip beside the brackets nor the appended-note separator class recognized them, so
+// a work-completed reply ending that way was a "genuine" refusal whose tested work the harness
+// hard-reset. Each quote is pinned in BOTH roles, and — because unbold's quote-stripping masks
+// a bare wrapped token — in the combined shape `q none q…q` that ONLY the strip classes (both
+// directions, both anchors) plus the appended-note class can satisfy: a model's quote direction
+// is not reliable, so `”none ”nothing to do”` with a closing quote opening must negate too.
+test("isNegatedRefusal negates none and n/a under typographic quoting", () => {
+  for (const q of ["‘", "’", "“", "”"]) {
+    for (const reason of [
+      `${q}none${q}`, // wrapping role (decorated token)
+      `${q}n/a${q}`, //
+      `none ${q}nothing to do${q}`, // note-opener role (raw candidate)
+      `${q}none ${q}nothing to do${q}`, // both roles at once — strip-sensitive shape
+    ])
+      assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  }
+  assert.ok(isNegatedRefusal("”none ”nothing to do”"), "a closing quote opening the wrap still negates");
+  assert.ok(isNegatedRefusal("“(**none**)”"), "quotes nest with markdown like brackets do");
+  assert.ok(!isNegatedRefusal("“user data would be deleted”"), "a real reason under curly quotes stays a refusal");
+  assert.ok(!isNegatedRefusal("none of the attempted fixes work “per the log”"), "a word after the token starts the reason, quoted or not");
+});
+
 test("isNegatedRefusal keeps a real reason a refusal", () => {
   for (const reason of [
     "it would delete user data",

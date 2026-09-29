@@ -50,18 +50,23 @@ export function extractRefusal(text: string): string | null {
  * run)`, `n/a (nothing to do).`) still negating (BUGS.md 2026-09-28), and with an explanation
  * in any punctuation dress — the hyphen and en/em dashes, an opening parenthesis, or a
  * sentence mark starting the note (`None; nothing to refuse.`, `None. Nothing worth doing.`)
- * — still negating (BUGS.md 2026-09-28), and under straight-quote decoration with the same
- * two roles quotes play (`"none"`, `none "nothing to do"`) still negating (BUGS.md
- * 2026-09-28). A refusal is a
+ * — still negating (BUGS.md 2026-09-28), and under quote decoration with the same two roles
+ * quotes play (`"none"`, `none "nothing to do"`) still negating (BUGS.md 2026-09-28) —
+ * straight quotes and their typographic counterparts alike, each of ‘ ’ “ ” decorating both
+ * sides of the token (a model's quote direction is not reliable, so the classes are
+ * direction-agnostic; BUGS.md 2026-09-28). A refusal is a
  * deliberate, affirmative
  * declaration; classifying a reply as one must not depend on the model never naming the
  * sentinel (BUGS.md 2026-09-23 — the prompt lists the line beside the reply-contract fields,
  * so a compliant model fills it in on every reply). */
 export function isNegatedRefusal(reason: string | null | undefined): boolean {
   const raw = (reason ?? "").trim().toLowerCase();
-  // Straight quotes join the wrapping strip beside the brackets: like brackets and markdown
-  // runs they are decoration around the token, never part of the reason (BUGS.md 2026-09-28).
-  const unwrapped = raw.replace(/^[([{'"]+\s*|\s*[)\]}'"]+$/g, "").trim();
+  // Quotes join the wrapping strip beside the brackets: like brackets and markdown runs they
+  // are decoration around the token, never part of the reason (BUGS.md 2026-09-28). All four
+  // typographic quotes sit in BOTH classes — a model's quote direction is not reliable (the
+  // probe `”none ”nothing to do”` opens with a closing quote), and a class missing one
+  // direction leaves that dress a genuine refusal (BUGS.md 2026-09-28).
+  const unwrapped = raw.replace(/^[(\[{'"‘’“”]+\s*|\s*[)\]}'"‘’“”]+$/g, "").trim();
   // The normalizations compose in one pipeline — markdown decoration, then trailing sentence
   // marks, then brackets — each seeing the output of the last, because the wrappings nest
   // (`(**None**) — nothing refused` is decoration inside brackets around the dash-appended
@@ -69,25 +74,26 @@ export function isNegatedRefusal(reason: string | null | undefined): boolean {
   // a space rather than a deletion, so `(no)ne` cannot collapse into `none`, and the space the
   // dash-append regex already tolerates keeps `none) — …` from wedging a stray bracket against
   // the token. A real objection still carries words beyond the token under every stripping.
-  const unbold = (s: string) => s.replace(/[*_~`'"]+/g, " ").trim();
+  const unbold = (s: string) => s.replace(/[*_~`'"‘’“”]+/g, " ").trim();
   const bare = (s: string) => s.replace(/[.!,;:?!*]+$/, "").trim();
   const unbracket = (s: string) => s.replace(/[([{)\]}]+/g, " ").trim();
   const normalized = unbracket(bare(unbold(raw)));
   for (const candidate of [raw, unwrapped, normalized]) {
     if (candidate === "" || candidate === "none" || candidate === "n/a") return true;
     // The appended-explanation family: after the token, any character that cannot begin a
-    // reason word — the ASCII hyphen and en/em dashes, an opening parenthesis, a straight
-    // quote, or sentence punctuation (`;`, `:`, `,`, `.`, `!`, `?`) — starts a note that rides
-    // the token rather than continuing it (`none - no entry refused`, `none (no entry refused
-    // this run)`, `None; nothing to refuse.`, `None. Nothing worth doing.`, `none "nothing
-    // to do"`). The hyphen stays in the class beside the en/em dashes: `none - …` is the same
+    // reason word — the ASCII hyphen and en/em dashes, an opening parenthesis, a quote
+    // (straight or typographic, either direction), or sentence punctuation (`;`, `:`, `,`,
+    // `.`, `!`, `?`) — starts a note that rides the token rather than continuing it (`none -
+    // no entry refused`, `none (no entry refused this run)`, `None; nothing to refuse.`,
+    // `None. Nothing worth doing.`, `none "nothing to do"`, `none “nothing to do”`). The
+    // hyphen stays in the class beside the en/em dashes: `none - …` is the same
     // appended-note dress as `none — …` and dropping it would regress `n/a - …` replies to
     // genuine refusals. Anchored right after the token, so a reason that continues with a word
     // (`none of the attempted fixes work`) stays a refusal: punctuation is formatting, a
     // letter is the reason itself. Accepted tradeoff, same as the dash dress already carried:
     // a real objection that opens a quoted clause right after the token (`none "of these
     // work"`) now negates.
-    if (/^(none|n\/a)\b([ \t]*[—–\-;:,.!?('"].*)?$/.test(candidate)) return true;
+    if (/^(none|n\/a)\b([ \t]*[—–\-;:,.!?('"‘’“”].*)?$/.test(candidate)) return true;
   }
   return false;
 }
