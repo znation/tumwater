@@ -64,6 +64,41 @@ function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, al
   return false;
 }
 
+/** Read an integer query parameter with the GUI's established discipline for an explicit
+ * count: absent → `fallback` (or, when no fallback is given, the parameter is required and
+ * its absence is its own 400 — "<name> required"); present but not a plain decimal integer
+ * of the requested kind → 400 with the shared wording ("<name> must be a … integer (got
+ * …)"). The transcript's n, the backlog's index, and history's n all ride it, so their
+ * 400 wording and their absent-vs-malformed split cannot drift. windowDays deliberately
+ * does not come through here — a report URL typo degrades to the default window instead of
+ * erroring. Returns the parsed value, or null once the 400 is sent. */
+function intQuery(
+  q: URLSearchParams,
+  res: http.ServerResponse,
+  name: string,
+  kind: "positive" | "non-negative",
+  fallback?: number,
+): number | null {
+  const raw = q.get(name);
+  if (raw === null) {
+    if (fallback !== undefined) return fallback;
+    sendJson(res, 400, { error: `${name} required` });
+    return null;
+  }
+  const parsed = kind === "positive" ? parsePositiveInt(raw) : parseNonNegativeInt(raw);
+  if (parsed === null) {
+    sendJson(
+      res,
+      400,
+      {
+        error: `${name} must be a ${kind === "positive" ? "positive" : "non-negative"} integer (got ${JSON.stringify(raw)})`,
+      },
+    );
+    return null;
+  }
+  return parsed;
+}
+
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
@@ -74,16 +109,8 @@ function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, al
 export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
-  let n = 50;
-  const nRaw = q.get("n");
-  if (nRaw !== null) {
-    const parsed = parsePositiveInt(nRaw);
-    if (parsed === null) {
-      sendJson(res, 400, { error: `n must be a positive integer (got ${JSON.stringify(nRaw)})` });
-      return;
-    }
-    n = parsed;
-  }
+  const n = intQuery(q, res, "n", "positive", 50);
+  if (n === null) return;
   sendJson(res, 200, { lines: readTranscript(root, role as string, n) });
 }
 
@@ -108,16 +135,8 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: plans, bugs, questions)` });
     return;
   }
-  const indexRaw = q.get("index");
-  if (indexRaw === null) {
-    sendJson(res, 400, { error: "index required" });
-    return;
-  }
-  const index = parseNonNegativeInt(indexRaw);
-  if (index === null) {
-    sendJson(res, 400, { error: `index must be a non-negative integer (got ${JSON.stringify(indexRaw)})` });
-    return;
-  }
+  const index = intQuery(q, res, "index", "non-negative");
+  if (index === null) return;
   const entry = entries[index];
   if (!entry) {
     sendJson(res, 400, { error: `index ${index} out of range (${file} has ${entries.length} open entries)` });
@@ -167,12 +186,8 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * but files, like /api/report and /api/failures. Reads files directly, so it works whether
  * or not the fleet is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  const nRaw = q.get("n");
-  const parsed = nRaw === null ? HISTORY_DEFAULT_TICKS : parseNonNegativeInt(nRaw);
-  if (parsed === null) {
-    sendJson(res, 400, { error: `n must be a non-negative integer (got ${JSON.stringify(nRaw)})` });
-    return;
-  }
+  const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
+  if (parsed === null) return;
   const n = Math.min(HISTORY_MAX_TICKS, Math.max(1, parsed));
   const role = q.get("role") || null; // "" and absent both read all loops
   sendJson(res, 200, { rows: readTickRows(root, n, role) });
