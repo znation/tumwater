@@ -567,6 +567,13 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
     ts: 0, loop: "harness", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
   } as never);
   assert.match(refused, /restart onto build bbbbbbbb refused — the new build could not start here: not initialized; staying on build aaaaaaaa/);
+  // A blocked restart is a different verdict (redeploy latched this head, and only main
+  // moving ends it): the line must name the blocked head, the reason, and the build that
+  // stays — the refused wording would mislead an operator into repairing the wrong thing.
+  const blocked = formatEvent({
+    ts: 0, loop: "harness", type: "restart_blocked", from: "a".repeat(40), to: "b".repeat(40), reason: "main is red",
+  } as never);
+  assert.match(blocked, /restart blocked for main bbbbbbbb — main is red; staying on build aaaaaaaa until main moves/);
   const down = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" } as never);
   assert.match(down, /fleet down — generation 2 exited 1: not initialized; the supervisor exited \(restart with `tumwater run`\)/);
   const killed = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" } as never);
