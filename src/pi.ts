@@ -10,10 +10,6 @@ import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { PiStreamParser } from "./pi-stream.js";
 
-/** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
- * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
- * prompt), each traced to a torn chunk from the model server rather than to the session. Matched
- * against the child's stderr at exit; exported for tests. */
 /** True when the command's stdout cannot reach pi live while the command runs, so a stretch of
  * silence carries no hang signal and the stall warning would be a false alarm. Two shapes do
  * this: a pipe (`npm test 2>&1 | tail -8`) holds every byte in the pipeline until the upstream
@@ -46,6 +42,10 @@ export function commandBuffersOutput(command: string): boolean {
   return false;
 }
 
+/** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
+ * the first 18 days died this way (one of them 2 h 39 m of director work on a fresh steering
+ * prompt), each traced to a torn chunk from the model server rather than to the session. Matched
+ * against the child's stderr at exit; exported for tests. */
 export const TRANSIENT_PI_CRASH =
   /Unexpected end of JSON input|is not valid JSON|(Unterminated string|Unexpected non-whitespace|Expected ('|")|Bad (control|escaped) character)[^\n]* in JSON/;
 

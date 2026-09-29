@@ -61,15 +61,6 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
   );
 }
 
-/** The one-line warning for an environmental check skip, keyed on why the check could not run.
- * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
- * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
- * those two words, so the mapping lives here once instead of drifting per surface. A "killed"
- * skip carries the caller's `killed` info when it has it — the signal and the check's real
- * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
- * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
- * with, and when the caller passes the run and its deadline fired late, the time it really
- * fired at (timedOutPhrase). */
 /** The `<label> was killed by <signal> after <secs>s; <proceeding>` sentence for an external
  * signal kill — the one home of that phrasing, shared by buildCheckSkipWarning's "killed" skip
  * warning and runScopedBuildCheck's merge-scope unverified reason, so the two surfaces render
@@ -85,6 +76,15 @@ export function killedPhrase(
     : `${label} was killed by an external signal; ${proceeding}`;
 }
 
+/** The one-line warning for an environmental check skip, keyed on why the check could not run.
+ * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
+ * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
+ * those two words, so the mapping lives here once instead of drifting per surface. A "killed"
+ * skip carries the caller's `killed` info when it has it — the signal and the check's real
+ * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
+ * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
+ * with, and when the caller passes the run and its deadline fired late, the time it really
+ * fired at (timedOutPhrase). */
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,

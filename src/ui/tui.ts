@@ -81,6 +81,9 @@ export interface TuiStdin extends NodeJS.EventEmitter {
   resume?(): void;
   pause?(): void;
 }
+/** The output half of the terminal the TUI touches: the size the renderer clips to and where
+ * its bytes go. Production reads process.stdout; tests inject fakes so the loop is driven
+ * without a TTY. */
 export interface TuiStdout {
   isTTY?: boolean;
   rows?: number;
