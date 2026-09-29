@@ -104,6 +104,19 @@ export async function initializedRepo(): Promise<string> {
 /** Seed a fixture's tumwater.json with the given (partial) config: the project config file's
  * name and write convention live here, so a test states only the keys under test. Fixtures
  * that deliberately write torn or invalid JSON keep their own raw writeFileSync. */
+/** Make a repo's main "red": commit a package.json whose test script fails (appending to
+ * `counter` so tests can count how often npm actually ran), plus an untracked node_modules dir
+ * at root — the installed-project signature detectBuildCheck walks up to from the worktree. */
+export function makeMainRed(repo: string, counter: string): void {
+  fs.mkdirSync(path.join(repo, "node_modules")); // untracked install marker (gitignored in real projects)
+  fs.writeFileSync(
+    path.join(repo, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo baseline-failure-line; echo run >> ${counter}; exit 1` } }),
+  );
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "make main red");
+}
+
 export function writeConfig(dir: string, value: unknown): void {
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify(value));
 }
