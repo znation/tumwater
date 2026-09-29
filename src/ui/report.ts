@@ -10,13 +10,9 @@ import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
 
-// The windowed tail read (and the REPORT_*_DAYS bounds it serves) moved to core
-// event-window.ts so the failure digest can share it without a core→ui import. Re-exported
-// here because every existing caller (cli.ts, gui.ts, the tests) imports them from this
-// module — moving them must not churn those import sites; cmdReport binds the same constants
-// directly so it can enforce the bounds.
+// The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
+// them without a core→ui import; callers needing them import that module directly.
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
-export { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS }; // REPORT_SINCE_MAX_MS has no caller through this module — only cmdReport uses it, locally
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */

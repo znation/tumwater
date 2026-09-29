@@ -16,7 +16,7 @@ import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
 import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./report.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
