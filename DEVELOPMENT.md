@@ -5,6 +5,7 @@ npm install && npm run build && npm link   # build from source and put `tumwater
 npm test                                   # lint + build + the unit suite (what the landing gate runs)
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
+npm test 'loop#resume'                     # …and inside them, only tests whose name contains "resume"
 npm run test:e2e                           # live-orchestrator e2e tier, kept out of the gate
 ```
 

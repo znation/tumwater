@@ -15,8 +15,12 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
  * only the test files whose source-style name contains a filter as a plain substring (`npm test
  * merge` → landing-merge.test.ts), so iterating on one module gets a few-second feedback loop instead
  * of the full suite — filters match e2e files too, so `npm test orchestrator` or
- * `npm run test:e2e` deliberately brings the tier back. A filter that matches nothing is an
- * error listing what exists, and node --test's exit code always propagates, so both humans and
+ * `npm run test:e2e` deliberately brings the tier back. A filter may carry a `#name` part
+ * (`npm test 'loop#resume'`), which additionally filters the individual tests inside the selected
+ * files by name substring — with 2,000+ tests, running one module still runs its whole file, and
+ * the failing test's name is usually known. A filter that matches nothing is an error listing what
+ * exists (a `#name` that matches nothing fails the run too — a silent empty pass would look
+ * exactly like a green suite), and node --test's exit code always propagates, so both humans and
  * the gate can rely on it. Files start longest-first by the durations earlier runs recorded
  * (orderByDuration), and the run gets a hermetic, git-cheap environment (suiteEnv). The
  * selection and ordering logic is pure and exported (selectTestFiles, orderByDuration) so
@@ -33,6 +37,33 @@ interface TestFileSelection {
   files: string[];
   /** Set when nothing could be selected (no dist/test dir, no *.test.js in it, or no filter match). */
   error?: string;
+  /** The `#name` parts of the filters, escaped and ORed into one node --test
+   * --test-name-pattern (regex) value; undefined when no filter carried one. */
+  namePattern?: string;
+}
+
+/** One filter as typed: `file` selects test files by name substring; the optional part after a
+ * `#` (a test's own name substring) narrows what runs inside the selected files. A bare `#`
+ * with nothing after it is rejected by selectTestFiles — an empty pattern would mean "run
+ * nothing", which is never what a typo'd filter intended. */
+interface ParsedFilter {
+  file: string;
+  name: string | null;
+}
+
+/** Split one filter at its first `#`: everything before selects files (empty = no constraint,
+ * the `#name`-less default set), everything after names tests. Later `#`s stay in the name —
+ * test names may contain one; the split is not recursive. */
+export function parseFilter(raw: string): ParsedFilter {
+  const hash = raw.indexOf("#");
+  return hash < 0 ? { file: raw, name: null } : { file: raw.slice(0, hash), name: raw.slice(hash + 1) };
+}
+
+/** Escape a `#name` part so node --test's pattern matcher (a regex) sees the literal substring
+ * the developer typed — the same no-regex rule the file part follows, so a name like
+ * "merge (2)" filters, not explodes. */
+function escapeNamePattern(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** The e2e tier: files whose name carries `.e2e.` are excluded from the unfiltered (gating)
@@ -44,8 +75,25 @@ const E2E_PATTERN = /\.e2e\.test\.js$/;
  * `.e2e.test.js` tier (run that via `npm run test:e2e`). Otherwise a file is selected when its
  * source-style name contains at least one filter as a plain substring (no regex, case-sensitive
  * — `loop` selects both loop.test.ts and loop-2.test.ts); e2e files are filterable like any
- * other. Non-test files in the directory are ignored. */
+ * other. Non-test files in the directory are ignored.
+ *
+ * File selection uses each filter's part before the `#`: at least one non-empty part selects
+ * files by substring (e2e included, as before — naming a file is deliberate iteration); when
+ * every part is empty (bare `#name` filters, or none) the run is the unfiltered gating set,
+ * e2e excluded — a name-only search is a dev tool, and it must not silently pay the e2e tier's
+ * wall-clock budget. Every non-null name part is ORed into one --test-name-pattern applied
+ * across all selected files (node's pattern is global, so `a#x b#y` runs tests matching x or
+ * y in the files a or b select — the name parts cannot be per-file, and one alternation is
+ * the honest shape of that). */
 export function selectTestFiles(filters: readonly string[], distDir: string): TestFileSelection {
+  for (const raw of filters) {
+    if (parseFilter(raw).name === "")
+      return {
+        names: [],
+        files: [],
+        error: `a "#" must be followed by the test name to run, as in loop#resume (got ${JSON.stringify(raw)})`,
+      };
+  }
   let entries: string[];
   try {
     entries = fs.readdirSync(distDir);
@@ -58,10 +106,11 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
     .map((f) => ({ file: path.join(distDir, f), name: f.replace(/\.js$/, ".ts") }));
   if (named.length === 0)
     return { names: [], files: [], error: `no *.test.js files under ${distDir} — run \`npm run build\` first` };
-  const picked =
-    filters.length === 0
-      ? named.filter((n) => !E2E_PATTERN.test(n.file))
-      : named.filter((n) => filters.some((fl) => n.name.includes(fl)));
+  const parsed = filters.map(parseFilter);
+  const namedFile = parsed.some((p) => p.file !== "");
+  const picked = !namedFile
+    ? named.filter((n) => !E2E_PATTERN.test(n.file))
+    : named.filter((n) => parsed.some((p) => p.file !== "" && n.name.includes(p.file)));
   if (picked.length === 0)
     return {
       names: [],
@@ -70,7 +119,12 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
         .map((n) => n.name)
         .join(", ")}`,
     };
-  return { names: picked.map((n) => n.name), files: picked.map((n) => n.file) };
+  const nameParts = parsed.flatMap((p) => (p.name === null ? [] : [p.name]));
+  return {
+    names: picked.map((n) => n.name),
+    files: picked.map((n) => n.file),
+    ...(nameParts.length === 0 ? {} : { namePattern: nameParts.map(escapeNamePattern).join("|") }),
+  };
 }
 
 /** The compiled test directory this build's tests live in (dist/test, this module's own dir). */
@@ -192,6 +246,29 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   return env;
 }
 
+/** Detect a `#name` filter that matched nothing, from the TAP side-channel the run wrote to
+ * `tap`: TAP records one `ok`/`not ok` line per thing the run executed, and node --test names a
+ * file whose tests all miss the pattern by the file itself (`ok 1 - loop.test.js`) while matched
+ * tests and their parent describes carry their own names. So when every ok line names a compiled
+ * test file, nothing inside any file ran — the filter passed an empty suite, which must fail
+ * loudly (a silent green run would read as verified work that never executed). Returns the
+ * failure reason, or null when something matched — or when no TAP was written (a crashed run's
+ * exit code already reports that; this guard only speaks for a green-but-empty run).
+ * Exported for test/test-runner.test.ts to pin without spawning node --test. */
+export function noNameMatchReason(tapPath: string): string | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(tapPath, "utf8");
+  } catch {
+    return null;
+  }
+  const ran = [...raw.matchAll(/^(?:not )?ok \d+ - (.+)$/gm)]
+    .map((m) => (m[1] ?? "").replace(/ # .*$/, "")) // a trailing directive (# SKIP, # TODO) is not the name
+    .filter((n) => n !== "");
+  if (ran.length === 0 || ran.some((n) => !n.endsWith(".test.js"))) return null;
+  return 'no test name matches the "#name" filter — the selected file(s) ran empty; check the spelling after "#"';
+}
+
 function main(): void {
   const filters = process.argv.slice(2);
   const distDir = defaultDistDir();
@@ -202,9 +279,13 @@ function main(): void {
   }
   // One line of what is about to run — only on the filtered path; the unfiltered suite keeps
   // byte-identical output for the harness's build gate.
-  if (filters.length > 0) console.log(`running ${sel.names.length} test file(s): ${sel.names.join(", ")}`);
+  if (filters.length > 0)
+    console.log(
+      `running ${sel.names.length} test file(s)${sel.namePattern ? ` (tests matching ${sel.namePattern})` : ""}: ${sel.names.join(", ")}`,
+    );
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-suite-"));
   const fresh = path.join(scratch, "durations.json");
+  const tap = path.join(scratch, "tap.out");
   const reporter = fileURLToPath(new URL("./test-durations-reporter.js", import.meta.url));
   const files = orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {});
   let status: number;
@@ -217,11 +298,25 @@ function main(): void {
       "--test-reporter-destination=stdout",
       `--test-reporter=${reporter}`,
       `--test-reporter-destination=${fresh}`,
+      // Only with a #name filter: a third reporter whose TAP output backs the empty-match
+      // guard below (the spec output cannot be read here — it streams to the developer).
+      ...(sel.namePattern
+        ? ["--test-name-pattern=" + sel.namePattern, "--test-reporter=tap", `--test-reporter-destination=${tap}`]
+        : []),
       ...files,
     ];
     const r = spawnSync(process.execPath, args, { stdio: "inherit", env: suiteEnv(scratch) });
     status = r.status ?? 1;
     recordDurations(distDir, fresh);
+    // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
+    // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
+    if (sel.namePattern && status === 0) {
+      const miss = noNameMatchReason(tap);
+      if (miss !== null) {
+        process.stderr.write(`tumwater: ${miss}\n`);
+        status = 1;
+      }
+    }
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }

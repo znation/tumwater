@@ -6,7 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
-import { orderByDuration, selectTestFiles, suiteEnv, suiteGitEnv } from "./test-runner.js";
+import { noNameMatchReason, orderByDuration, parseFilter, selectTestFiles, suiteEnv, suiteGitEnv } from "./test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -60,6 +60,51 @@ test("matching is a plain substring: case-sensitive, no regex metacharacters", (
   // A regex metacharacter in the filter is literal, not a pattern.
   const dotSel = selectTestFiles(["loop-2"], fakeDistDir("loop-2.test.js"));
   assert.deepEqual(dotSel.names, ["loop-2.test.ts"]);
+});
+
+test("a #name part filters the tests inside the selected files, as one escaped-literal pattern", () => {
+  const dir = fakeDistDir("loop.test.js", "tui.test.js", "loop.e2e.test.js");
+  // The file part selects like a bare filter (e2e included — naming a file is deliberate).
+  const sel = selectTestFiles(["loop#hangs"], dir);
+  assert.equal(sel.error, undefined);
+  assert.deepEqual(sel.names, ["loop.e2e.test.ts", "loop.test.ts"]);
+  assert.equal(sel.namePattern, "hangs");
+  // The name parts OR together and are regex-escaped, so node --test's matcher sees the
+  // literal substring typed — the same no-regex rule the file part follows.
+  const two = selectTestFiles(["loop#one", "tui#x.y"], dir);
+  assert.equal(two.error, undefined);
+  assert.equal(two.namePattern, "one|x\\.y");
+  // A bare #name filter searches the whole suite — the unfiltered gating set, e2e excluded.
+  const bare = selectTestFiles(["#only"], dir);
+  assert.equal(bare.error, undefined);
+  assert.deepEqual(bare.names, ["loop.test.ts", "tui.test.ts"]);
+  assert.equal(bare.namePattern, "only");
+  // A filter with no name part still selects without a pattern, as before.
+  assert.equal(selectTestFiles(["tui"], dir).namePattern, undefined);
+  // A bare `#` would mean "run nothing" — rejected with the syntax shown.
+  const empty = selectTestFiles(["loop#"], dir);
+  assert.match(empty.error ?? "", /a "#" must be followed by the test name to run/);
+  // parseFilter splits at the first # only; a test name may itself carry one.
+  assert.deepEqual(parseFilter("a#b#c"), { file: "a", name: "b#c" });
+  assert.deepEqual(parseFilter("plain"), { file: "plain", name: null });
+});
+
+test("noNameMatchReason reads the run's TAP side-channel: all-file ok lines mean the #name filter matched nothing", () => {
+  const tap = (content: string): string => {
+    const dir = tmpdir("tap-guard-");
+    const file = path.join(dir, "tap.out");
+    fs.writeFileSync(file, content);
+    return file;
+  };
+  // node --test names a file whose tests all miss the pattern by the file itself; matched
+  // tests and their parent describes carry their own names.
+  assert.match(noNameMatchReason(tap("ok 1 - loop.test.js\nok 2 - tui.test.js\n")) ?? "", /no test name matches/);
+  assert.equal(noNameMatchReason(tap("ok 1 - resume hangs\nok 2 - loop.test.js\n")), null);
+  assert.equal(noNameMatchReason(tap("ok 1 - resume # SKIP later\nok 2 - tui.test.js\n")), null, "a directive suffix is not the name");
+  assert.equal(noNameMatchReason(tap("not ok 1 - a failed test\nok 2 - loop.test.js\n")), null, "a failed match still matched");
+  // No TAP (a crashed run) is not evidence: the exit code already reports that.
+  assert.equal(noNameMatchReason(path.join(tmpdir(), "absent-tap.out")), null);
+  assert.equal(noNameMatchReason(tap("")), null);
 });
 
 test("no match reports every available name so one edit fixes it", () => {
@@ -181,6 +226,34 @@ test("the spawned runner runs exactly the filtered file and exits with its resul
     typeof durations["json-object.test.js"] === "number" && durations["json-object.test.js"] >= 0,
     `expected a json-object.test.js duration, got ${JSON.stringify(durations)}`,
   );
+});
+
+test("the spawned runner runs only the tests a #name filter matches, and fails a pattern that matches nothing", () => {
+  // json-object.test.ts's first test, matched by a substring of its name.
+  const hit = spawnSync(process.execPath, [runnerPath, "json-object#plain object"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(hit.status, 0, `stderr: ${hit.stderr}`);
+  assert.match(hit.stdout ?? '', /^running 1 test file\(s\) \(tests matching plain object\): json-object\.test\.ts$/m);
+  assert.match(hit.stdout ?? '', /^✔ a plain object is a JSON object/m);
+
+  // A pattern that matches nothing exits 0 at node --test's level — node sees a green run of
+  // file wrappers — so the runner's own guard must fail it, or a typo'd filter would read as
+  // a green suite that verified nothing.
+  const miss = spawnSync(process.execPath, [runnerPath, "json-object#nosuchname"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(miss.status, 1);
+  assert.match(miss.stderr ?? "", /^tumwater: no test name matches the "#name" filter/m);
+  // The pattern and the syntax error surface like the file filters' do.
+  const bare = spawnSync(process.execPath, [runnerPath, "json-object#"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(bare.status, 1);
+  assert.match(bare.stderr ?? "", /must be followed by the test name to run/);
 });
 
 test("the spawned runner exits 1 and lists candidates when a filter matches nothing", () => {
