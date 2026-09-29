@@ -31,7 +31,7 @@ import { assistantLine, reviewerPi } from "./pi-events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LandingEntry } from "../src/landing-queue.js";
 
-/** First slice of the landing-drain suite (landing-drain-2.test.ts carries the rest) — split so
+/** First slice of the landing-drain suite (landing-pipeline.test.ts carries the rest) — split so
  * node --test runs the slices in parallel processes: top-level tests within one file run
  * sequentially, while each test FILE gets its own process. The slices are balanced by measured
  * per-test duration (~18.5s vs ~18.1s at 2026-09-29); keep them roughly equal when moving tests
