@@ -11,12 +11,10 @@ import {
   sourceHaystack,
   unbackedSymbols,
 } from "../src/fix-claim.js";
-import { reviewAheadOfMain } from "../src/review.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { defaultConfig } from "../src/config.js";
-import { freshLoopState } from "../src/loop-state.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { reviewGate, ROLE } from "./gate-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an
@@ -313,12 +311,6 @@ test("falseFixReason checks a Fixed entry whose narrative after its quoted fence
 
 // ── Gate orchestration ──────────────────────────────────────────────────────────────────
 
-const ROLE = "improve";
-
-function gateCtx(root: string, wt: string, tick = 1) {
-  return { root, role: ROLE, wt, mainBranch: "main", config: defaultConfig(), tick };
-}
-
 /** Repo whose worktree carries an md-only BUGS.md commit claiming a fix for `symbol`. */
 async function falseFixFixture(symbol: string, symbolOnTree: boolean): Promise<string> {
   const root = makeRepo();
@@ -345,8 +337,7 @@ test("gate rejects an md-only BUGS.md fix claim with no code behind it, without 
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
     assert.ok(!fs.existsSync(marker));
     assert.match(result.detail!, /runScriptGroup/);
@@ -377,8 +368,7 @@ test("gate rejects an md-only rewrite of an already-Fixed record's narrative", a
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected", "the rewrite faces the same symbol check");
     assert.ok(!fs.existsSync(marker));
     assert.match(result.detail!, /runScriptGroup/);
@@ -393,8 +383,7 @@ test("gate exempts an md-only BUGS.md fix claim whose symbols exist on the tree"
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "exempt");
     assert.ok(!fs.existsSync(marker));
   } finally {

@@ -19,6 +19,7 @@ import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
+import { gateCtx, reviewGate, ROLE } from "./gate-fixtures.js";
 
 // Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
@@ -237,8 +238,6 @@ test("a bold-numbered rejection reaches the author's next-tick note numbered onc
 // the worktree records whether the reviewer ran at all (so "no run" branches are asserted,
 // not merely assumed).
 
-const ROLE = "improve";
-
 /** Repo with a worktree one commit ahead of main — a code change, so NOT exempt. */
 async function gateFixture(): Promise<{ root: string; wt: string; head: string }> {
   const root = makeRepo();
@@ -249,10 +248,6 @@ async function gateFixture(): Promise<{ root: string; wt: string; head: string }
   return { root, wt, head: await headOf(wt, "HEAD") };
 }
 
-function gateCtx(root: string, wt: string, tick = 1) {
-  return { root, role: ROLE, wt, mainBranch: "main", config: defaultConfig(), tick };
-}
-
 test("gate approves a good diff, records the HEAD, and discards the reviewer's stray edits", async () => {
   const { root, wt, head } = await gateFixture();
   const committed = fs.readFileSync(path.join(wt, "seed.txt"), "utf8");
@@ -261,8 +256,7 @@ test("gate approves a good diff, records the HEAD, and discards the reviewer's s
       `printf '%s\n' '${assistantLine("VERDICT: approve\n1. solid change", { tokens: 17, output: 17, cost: 0.02 })}'`,
   );
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.equal(state.lastApprovedHead, head);
     assert.equal(state.lastReview?.verdict, "approve");
@@ -284,8 +278,7 @@ test("gate rejects a bad diff: branch reset to main, reasons recorded", async ()
     `printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the build\n2. no regression test")}'`,
   );
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.equal(result.detail, "breaks the build"); // first reason feeds lastSummary
     assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded
@@ -307,8 +300,7 @@ test("gate logs a bold-numbered approval's first finding as the review_verdict r
     "**1. Scope matches the claim.** No unclaimed changes.\n\n**2. Tests pin it.** Both ways.\n\nVERDICT: approve";
   const restore = fakePi(`printf '%s\n' '${assistantLine(reply)}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     const verdict = readEvents(root).find((e) => e.type === "review_verdict");
     assert.equal(verdict?.reason, "Scope matches the claim. No unclaimed changes.");
@@ -325,8 +317,7 @@ test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empt
   const { root, wt, head } = await gateFixture();
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: reject")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.equal(result.detail, "no reasons given"); // fallback: no first reason to feed lastSummary
     assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded like any reject
@@ -349,8 +340,7 @@ test("gate fails closed on a verdict-less reply: commit kept for re-review", asy
     `touch '${marker}'\nprintf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
   );
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.ok(fs.existsSync(marker)); // the reviewer did run
     assert.equal(result.decision, "failed");
     assert.match(result.detail ?? "", /no parseable VERDICT/);
@@ -486,8 +476,7 @@ test("gate exempts a doc-only diff without running pi", async () => {
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "exempt");
     assert.ok(!fs.existsSync(marker)); // no reviewer run at all
     assert.equal(state.lastApprovedHead, undefined);
@@ -503,8 +492,7 @@ test("gate is a no-op when review.enabled is false", async () => {
   try {
     const config = defaultConfig();
     config.review.enabled = false;
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    const { result } = await reviewGate(root, wt, { config });
     assert.equal(result.decision, "exempt");
     assert.ok(!fs.existsSync(marker));
   } finally {
@@ -537,7 +525,7 @@ test("a review's session is named by its role and tick", async () => {
       `printf '%s\n' '${assistantLine("VERDICT: approve")}'`,
   );
   try {
-    await reviewAheadOfMain(gateCtx(root, wt), freshLoopState(ROLE)); // tick 1 gate run
+    await reviewGate(root, wt); // tick 1 gate run
     const gateArgs = fs.readFileSync(argsFile, "utf8").split("\n");
     assert.ok(gateArgs.includes("tumwater-review-improve-1"), `gate session name missing in ${gateArgs}`);
   } finally {
@@ -551,8 +539,7 @@ test("gate fails closed on an aborted run without bookkeeping", async () => {
   try {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
     assert.equal(result.decision, "failed");
     assert.ok(result.aborted);
     assert.equal(await aheadOfMain(wt, "main"), 1); // commit stays; the resumed tick re-reviews it
@@ -590,8 +577,7 @@ test("gate pre-check compiles the worktree against the root install — a health
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
     assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
     // Both halves of the gate price themselves in the feed: the deterministic pre-check as a
@@ -683,8 +669,7 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
     assert.equal(result.run, undefined, "the reviewer never ran");
@@ -717,8 +702,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
@@ -764,8 +748,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
     const reasons = state.lastReview?.reasons ?? [];
@@ -873,9 +856,8 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
     `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${prompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
   );
   try {
-    const state = freshLoopState(ROLE);
     const head = await headOf(wt, "HEAD");
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(result.run, "the reviewer ran, exactly as after a first-time pass");
     const runs = fs.readFileSync(prompts, "utf8").split("===RUN===").filter((b) => b.trim());
@@ -963,8 +945,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   try {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), signal: controller.signal }, state);
+    const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
     assert.equal(result.decision, "failed");
     assert.ok(result.aborted);
     assert.ok(!fs.existsSync(marker), "no pi run");
@@ -981,8 +962,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
   const marker = path.join(tmpdir(), "pi-ran");
   const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), buildCheckTimeoutMs: 400 }, state);
+    const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
     assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the landing path
     assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
@@ -1002,8 +982,7 @@ test("a green pre-check hands its verified head to the landing path", async () =
   const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
   const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
   try {
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
     assert.equal(result.verifiedHead, await headOf(wt, "HEAD")); // exactly the tree the pre-check ran green on
   } finally {
@@ -1117,7 +1096,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${prompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
   );
   try {
-    const result = await reviewAheadOfMain(gateCtx(root, wt), freshLoopState(ROLE));
+    const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(prompts, "utf8");
     assert.match(run, /The harness already ran the project's own check on this exact tree and it passed:/);
@@ -1134,7 +1113,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${barePrompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
   );
   try {
-    const result = await reviewAheadOfMain(gateCtx(bare.root, bare.wt), freshLoopState(ROLE));
+    const { result } = await reviewGate(bare.root, bare.wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(barePrompts, "utf8");
     assert.ok(!run.includes("The harness already ran"), "no pre-check claim when nothing ran");
@@ -1171,7 +1150,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
   const greenPrompts = path.join(tmpdir(), "prompts.log");
   const restore = reviewer(greenPrompts);
   try {
-    const result = await reviewAheadOfMain(gateCtx(green.root, green.wt), freshLoopState(ROLE));
+    const { result } = await reviewGate(green.root, green.wt);
     assert.equal(result.decision, "approved", "the tripwire warns; it never changes the verdict");
     assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not re-run the check named above/m);
     assert.deepEqual(rerunWarnings(green.root), [
@@ -1185,10 +1164,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
   const timedPrompts = path.join(tmpdir(), "prompts.log");
   const restoreTimed = reviewer(timedPrompts);
   try {
-    const result = await reviewAheadOfMain(
-      { ...gateCtx(timed.root, timed.wt), buildCheckTimeoutMs: 400 },
-      freshLoopState(ROLE),
-    );
+    const { result } = await reviewGate(timed.root, timed.wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved");
     assert.equal(result.verifiedHead, undefined, "the pre-check timed out — no verified result");
     assert.ok(!fs.readFileSync(timedPrompts, "utf8").includes("Do not re-run"), "no verified result, no rule");
