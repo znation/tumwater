@@ -182,6 +182,13 @@ export class Redeployer {
    * compile — neither is a verdict about the tree) — one warning per episode, mirroring
    * checkFailedHead. */
   private compileFailedHead: string | null = null;
+  /** The head whose compile start already logged `restart_pending` — one in-progress state
+   * event per head, not one per doomed retry: a rejection drops the episode and the next poll
+   * starts a fresh one, which would otherwise re-emit "compiling" on every poll while the
+   * environment stays broken (BUGS.md 2026-09-28). Cleared when an episode ends in a state
+   * other than compiling (a refusal or a completed restart), so a later episode for the same
+   * head is a real transition again. */
+  private pendingLoggedHead: string | null = null;
   /** A head whose restart was blocked (red main, compile failure, swap error): no retry until
    * main moves — the warning was logged once. */
   private blockedHead: string | null = null;
@@ -351,13 +358,19 @@ export class Redeployer {
     }
     if (!this.compiled) {
       this.compiled = track(this.deps.compile(mainHead));
-      this.log({
-        loop: "harness",
-        type: "restart_pending",
-        build: this.build.sha,
-        head: mainHead,
-        aheadCommits: this.staleness.aheadCommits,
-      });
+      // Once per head, not once per episode: a rejected compile drops the episode and the next
+      // poll starts a fresh one, and a state stream that re-enters "compiling" it never left
+      // is noise on top of the missing terminal event (BUGS.md 2026-09-28).
+      if (this.pendingLoggedHead !== mainHead) {
+        this.pendingLoggedHead = mainHead;
+        this.log({
+          loop: "harness",
+          type: "restart_pending",
+          build: this.build.sha,
+          head: mainHead,
+          aheadCommits: this.staleness.aheadCommits,
+        });
+      }
       return "hold";
     }
     if (!this.compiled.done) return "hold";
@@ -439,6 +452,8 @@ export class Redeployer {
       abortedTicks: inFlight.roleInFlight,
       drainWindowMs: this.drainWindowMs,
     });
+    // The state stream left "compiling"; a later episode for this same head is a new transition.
+    this.pendingLoggedHead = null;
     return "restart";
   }
 
@@ -467,6 +482,9 @@ export class Redeployer {
       this.refusedReason = reason;
       this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason });
     }
+    // The state stream left "compiling" via the refusal event; a later episode for the same
+    // head — the gate re-asked after the environment was repaired — is a new transition.
+    this.pendingLoggedHead = null;
     return this.endDrain();
   }
 
@@ -482,6 +500,12 @@ export class Redeployer {
     this.blockedHead = head;
     this.blockedReason = reason;
     this.clearPending();
+    // A typed transition, not only a warning: the digest's Fleet state changes section replays
+    // the decisions, and a stream that entered "compiling" must leave it when the compile dies
+    // — its two other endings (restart, restart_refused) each have an event, so the third does
+    // too (BUGS.md 2026-09-28). Logged before the warning, so the warning is never the state
+    // stream's only trace of the episode's end.
+    this.log({ loop: "harness", type: "restart_blocked", from: this.build.sha, to: head, reason });
     this.warn(message);
   }
 

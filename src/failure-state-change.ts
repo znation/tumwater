@@ -31,6 +31,7 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "restart_pending",
   "restart",
   "restart_refused",
+  "restart_blocked",
   "tick_deferred",
   "orchestrator_start",
   "orchestrator_stop",
@@ -119,6 +120,9 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "restart_refused":
       text = `restart onto ${shortSha(ev.to)} refused: ${field(ev.reason)}`;
+      break;
+    case "restart_blocked":
+      text = `restart blocked — ${field(ev.reason)}; staying on build ${shortSha(ev.from)}`;
       break;
     case "tick_deferred":
       text = "deferred — no work landed since last tick";

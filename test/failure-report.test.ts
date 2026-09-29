@@ -508,6 +508,10 @@ test("each harness state transition renders its own bounded line", () => {
       { type: "restart_refused", to: "b".repeat(40), reason: "not initialized" },
       "restart onto bbbbbbbb refused: not initialized",
     ],
+    [
+      { type: "restart_blocked", from: "a".repeat(40), to: "b".repeat(40), reason: "rebuild of bbbbbbbb failed" },
+      "restart blocked — rebuild of bbbbbbbb fail; staying on build aaaaaa",
+    ],
     [{ type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" }, "fleet down — generation 2 exited 1: not initialized"],
     [{ type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "fleet down — generation 1 killed by SIGKILL"],
     [

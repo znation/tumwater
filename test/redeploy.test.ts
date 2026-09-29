@@ -294,8 +294,8 @@ test("a red main blocks the restart for that head with one warning; a moved main
   f.green(false);
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
-  assert.deepEqual(types(), ["build_stale", "warning"]);
-  assert.match(String(events[1]!.message), /is red — holding the restart/);
+  assert.deepEqual(types(), ["build_stale", "restart_blocked", "warning"]);
+  assert.match(String(events.at(-1)!.message), /is red — holding the restart/);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "blocked: no second green check for the same head");
   assert.deepEqual(f.calls.green, [HEAD_B]);
   // Published, not just warned about once: nothing will change until main moves, and a bare
@@ -307,7 +307,7 @@ test("a red main blocks the restart for that head with one warning; a moved main
   assert.equal(r.status().restartBlocked, undefined, "the new head starts clean");
   assert.equal(r.status().restartPending, true);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C]);
-  assert.deepEqual(types(), ["build_stale", "warning"], "still stale relative to the same build: no second build_stale");
+  assert.deepEqual(types(), ["build_stale", "restart_blocked", "warning"], "still stale relative to the same build: no second build_stale");
 });
 
 test("a failed compile keeps the old build running and warns once", async () => {
@@ -320,11 +320,38 @@ test("a failed compile keeps the old build running and warns once", async () => 
   f.compiled(false, "tsc exited 2: src/x.ts(1,1): error TS1005");
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
+  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_blocked", "warning"]);
   assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exited 2/);
   assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "and stays blocked for this head");
+});
+
+test("a blocked restart leaves the state stream: a restart_blocked event beside the warning, once per head", async () => {
+  // The digest's Fleet state changes section replays only typed transitions, and the restart
+  // episode had one for its start (`restart_pending`) and its two happy/refused endings — but
+  // not for `block()`, which warned only. A broken toolchain therefore left the state stream
+  // reading "compiling" forever while the warning cluster said the rebuilds had died
+  // (BUGS.md 2026-09-28): the block is a terminal state, so it gets its own event.
+  const f = fakeDeps();
+  const { r, events, types } = harness(f.deps);
+  await r.poll(HEAD_B, IDLE, true);
+  f.green(true);
+  await settle();
+  await r.poll(HEAD_B, IDLE, true);
+  f.compiled(false, "tsc exited 2: src/x.ts(1,1): error TS1005");
+  await settle();
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none");
+  assert.ok(types().includes("restart_blocked"), "the block is a typed transition, not only a warning");
+  assert.deepEqual(events.find((e) => e.type === "restart_blocked"), {
+    loop: "harness",
+    type: "restart_blocked",
+    from: BUILD.sha,
+    to: HEAD_B,
+    reason: "rebuild of bbbbbbbb failed",
+  });
+  assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "stays blocked for this head");
+  assert.equal(events.filter((e) => e.type === "restart_blocked").length, 1, "the latch means no poll re-emits it");
 });
 
 test("a compile that never ran is a rejection, not a verdict: retried instead of blocked", async () => {
@@ -358,7 +385,10 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   // The rejection path re-attempts on every poll while the environment is broken, so a warning
   // per attempt would flood the digest exactly as the latched ENOENT cluster did (64 in a day).
   // The dedupe key is the head: the same head's repeated rejection stays quiet; a new head that
-  // also cannot compile is a new episode and warns again (BUGS.md 2026-09-28).
+  // also cannot compile is a new episode and warns again (BUGS.md 2026-09-28). The same key
+  // holds the state stream quiet: a retry re-enters "compiling" without ever leaving it, so a
+  // second restart_pending per head would pin the digest's newest transition there forever.
+  const pending = (head: string) => events.filter((e) => e.type === "restart_pending" && e.head === head).length;
   const f = fakeDeps();
   const { r, events } = harness(f.deps);
   // Each retry emits its own restart_pending; the dedupe claim is about warnings.
@@ -374,12 +404,15 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   };
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1);
+  assert.equal(pending(HEAD_B), 1);
   assert.match(String(warnings()[0]!.message), /could not start the rebuild of bbbbbbbb/);
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1, "the same head's repeated rejection warns once, not per attempt");
+  assert.equal(pending(HEAD_B), 1, "and its in-progress state event is logged once, not once per doomed retry");
   assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_B], "and the compile was still re-attempted for the head");
   await rejectOnce(HEAD_C);
   assert.equal(warnings().length, 2, "a different head is a new episode and warns again");
+  assert.equal(pending(HEAD_C), 1, "the new head's compile start is a fresh state event");
   assert.match(String(warnings().at(-1)!.message), /could not start the rebuild of cccccccc/);
 });
 

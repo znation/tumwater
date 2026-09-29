@@ -37,6 +37,7 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "restart_pending",
     "restart",
     "restart_refused",
+    "restart_blocked",
     "tick_deferred",
     "orchestrator_start",
     "orchestrator_stop",
@@ -148,7 +149,7 @@ test("live-edit events name the knob and both values", () => {
   assert.equal(describeStateChange(ev({ type: "config_changed" })), "config changed");
 });
 
-test("build_stale and the restart trio render shas and the refusal reason", () => {
+test("build_stale and the restart quartet render shas and the refusal reason", () => {
   assert.equal(
     describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: 3 })),
     "build abcdef12 stale — main 12345678 3 commit(s) ahead",
@@ -161,6 +162,13 @@ test("build_stale and the restart trio render shas and the refusal reason", () =
   assert.equal(
     describeStateChange(ev({ type: "restart_refused", to: "abcdef1234567890", reason: "startup gate failed" })),
     "restart onto abcdef12 refused: startup gate failed",
+  );
+  // The third terminal state: a latched block must leave "compiling" in the state stream, or
+  // the digest's newest transitions read as an endless in-progress build (BUGS.md 2026-09-28).
+  // The reason rides the 24-char field cap (the full sentence is the warning's business).
+  assert.equal(
+    describeStateChange(ev({ type: "restart_blocked", from: "abcdef1234567890", to: "1234567890abcdef", reason: "rebuild of 12345678 failed" })),
+    "restart blocked — rebuild of 12345678 fail; staying on build abcdef12",
   );
 });
 

@@ -190,6 +190,10 @@ export function formatEvent(e: HarnessEvent): string {
       // The restart is refused, not failed: the running build stays and the gate is re-asked
       // every poll, so the line names both builds and what the operator must repair.
       return line(`restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${e.reason}; staying on build ${shortSha(e.from)} until it can`);
+    case "restart_blocked":
+      // The restart is blocked, not refused: a verdict latched this head, so the line names
+      // what failed and that only main moving can end it.
+      return line(`restart blocked for main ${shortSha(e.to)} — ${e.reason}; staying on build ${shortSha(e.from)} until main moves`);
     case "supervisor_exit": {
       // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
