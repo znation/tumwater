@@ -113,6 +113,19 @@ test("isNegatedRefusal negates none and n/a with a punctuation-separated explana
   assert.ok(!isNegatedRefusal("none of the attempted fixes work; repro attached"), "a word after the token starts the reason, punctuation or not");
 });
 
+// BUGS.md 2026-09-29: the one-character ellipsis (`…`) plays the two roles the ASCII sentence
+// marks play — a trailing mark on the token (`None…`) and the opening mark of an appended
+// explanation (`none… nothing to do`) — but neither bare()'s trailing-punctuation class nor the
+// appended-note separator class recognized it, so a work-completed reply ending that way was a
+// "genuine" refusal whose finished, tested work the harness hard-reset, the same destruction
+// the previous fixes in this guard closed. The three-dot ASCII ellipsis (`...`) already
+// stripped via its dots; only the single-character mark was missing.
+test("isNegatedRefusal negates none and n/a under the one-character ellipsis", () => {
+  for (const reason of ["None…", "n/a…", "none…", "none… nothing to do", "N/A… really nothing", "(none)…"])
+    assert.ok(isNegatedRefusal(reason), `negated: ${JSON.stringify(reason)}`);
+  assert.ok(!isNegatedRefusal("none of the attempted fixes work…"), "a word after the token starts the reason, ellipsis or not");
+});
+
 // BUGS.md 2026-09-28: a quoted negation (`"none"`, `none "nothing to do"`) left isNegatedRefusal
 // false — straight quotes are decoration around the token or the opening mark of an appended
 // note (punctuation, which cannot begin a reason word), but neither the wrapping strip beside
