@@ -1,6 +1,6 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
 import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { failureHeadline } from "./build-check-report.js";
 import type { BuildCheckOutcome } from "./build-check.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "./build-check-events.js";

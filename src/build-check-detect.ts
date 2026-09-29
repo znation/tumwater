@@ -36,8 +36,8 @@ export type BuildCheck =
 
 /** Hard cap on one build check run — a hung script (watch mode) must not wedge the tick, and
  * a timeout is environmental, never fail-closed. The default `check.timeoutSeconds` resolves
- * to this (via ms in detectBuildCheck); build-check.ts re-exports it as runBuildCheck's
- * default timeout parameter so tests can shorten it. */
+ * to this (via ms in detectBuildCheck); runBuildCheck uses it as its default timeout
+ * parameter so tests can shorten it. */
 export const BUILD_CHECK_TIMEOUT_MS = 300_000;
 
 /** How many ancestors a walk-up may climb before giving up. Five covers every layout the

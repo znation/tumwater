@@ -1,4 +1,4 @@
-import { BUILD_CHECK_TIMEOUT_MS } from "./build-check.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
 import type { LoopRunner } from "./loop.js";

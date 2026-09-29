@@ -46,12 +46,6 @@ import { clipBuildTail } from "./build-check-report.js";
 
 // ── Execution ─────────────────────────────────────────────────────────────────────────────
 
-/** Hard cap on one build check run — a hung script (watch mode) must not wedge the tick, and
- * a timeout is environmental, never fail-closed. A parameter of runBuildCheck so tests can
- * shorten it. Defined in build-check-detect.ts (the configured command's timeoutSeconds
- * resolves against it there) and re-exported here, where every consumer imports it. */
-export { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
-
 /** Why a declared check reached no verdict: the script never finished (timeout), the script
  * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
  * 2026-09-23), npm is not on PATH, or the toolchain below the project is broken. Shared with
