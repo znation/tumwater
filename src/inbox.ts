@@ -69,7 +69,7 @@ const promptCache = new Map<string, StatKeyedValue<string>>();
 /** One queued prompt paired with the queue-file basename that addresses it: the file name is
  * what the dashboard's per-row cancel affordance sends (/api/prompt-cancel) — addressed by
  * file, not by list position, so a 1 s-stale poll can never cancel the wrong entry. */
-export interface QueuedPromptEntry {
+interface QueuedPromptEntry {
   file: string;
   preview: string;
 }
