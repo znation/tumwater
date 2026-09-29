@@ -29,7 +29,7 @@ import {
   wakeRequestPath,
 } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "../src/errno.js";
+import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";

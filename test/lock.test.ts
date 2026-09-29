@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/lock.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "../src/errno.js";
+import { errnoError } from "./fs-faults.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");

@@ -14,7 +14,7 @@ import {
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errnoError } from "../src/errno.js";
+import { errnoError } from "./fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
 // holder's merge lock must be breakable) and fleet-state.ts's orchestrator-alive status. Its

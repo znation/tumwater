@@ -2,9 +2,18 @@ import fs from "node:fs";
 
 /** Monkey-patched fs entry points: fault-injection helpers that simulate the races and
  * surprises real readers must survive (a log rotation rename landing between a reader's stat
- * and its open, a file vanishing mid-read), plus the read-counting spy the cache tests use.
- * Each patch swaps a global fs entry point for the duration of a call — surgery on shared
- * state, so these live together here rather than beside ordinary fixture builders. */
+ * and its open, a file vanishing mid-read), plus the read-counting spy the cache tests use,
+ * and `errnoError` — the synthetic errno throw a test raises when it stubs an fs or process
+ * call. Each patch swaps a global fs entry point for the duration of a call — surgery on
+ * shared state, so these live together here rather than beside ordinary fixture builders. */
+
+/** An Error carrying the errno `code`, the shape fs and process calls throw — the synthetic
+ * failure a stubbed call raises (the code under test reads it back with src/errno.ts's
+ * `errCode`). Lives beside the injection helpers: simulating a failure and planting it are
+ * one concern. */
+export function errnoError(code: string, message = code): NodeJS.ErrnoException {
+  return Object.assign(new Error(message), { code }) as NodeJS.ErrnoException;
+}
 
 /** Wrap fs.openSync so the first open of `file` unlinks it instead — simulating a log
  * rotation rename landing between a reader's stat and its open (the race tail readers must

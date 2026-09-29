@@ -18,7 +18,8 @@ import {
 } from "../src/inbox.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { errCode, errnoError } from "../src/errno.js";
+import { errCode } from "../src/errno.js";
+import { errnoError } from "./fs-faults.js";
 
 test("inbox is FIFO and dequeues to empty", () => {
   const dir = tmpdir();
