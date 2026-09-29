@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 
 /** Process-liveness probe shared by every place that decides whether a recorded pid still
  * belongs to a live process: the merge lock's stale-holder check (lock.ts) and the
- * orchestrator-alive status (state.ts). Also the host process-table reader behind doctor's
+ * orchestrator-alive status (fleet-state.ts). Also the host process-table reader behind doctor's
  * orphaned-worktree-process and launchservicesd checks (ProcessProbe, below), and the child
  * environment that keeps the harness's Node processes out of LaunchServices on macOS. */
 

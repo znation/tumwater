@@ -8,7 +8,7 @@ import { buildRejectedReviewNote } from "../src/gate-prompts.js";
 import { aheadOfMain, headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";

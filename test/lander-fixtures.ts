@@ -6,7 +6,7 @@ import { setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { eventsLogPath, landingRefName } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";

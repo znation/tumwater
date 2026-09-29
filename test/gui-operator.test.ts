@@ -6,7 +6,7 @@ import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, orchestratorStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
 import { startLocalGui } from "./gui-fixtures.js";
@@ -387,7 +387,7 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   }
 });
 
-// POST /api/pause — the dashboard header's pause/resume toggle: the same shared state.ts
+// POST /api/pause — the dashboard header's pause/resume toggle: the same shared fleet-state.ts
 // writers the CLI uses, so the GUI and `tumwater pause`/`resume` cannot drift.
 
 test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {

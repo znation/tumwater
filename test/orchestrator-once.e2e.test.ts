@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";

@@ -22,7 +22,7 @@ export type TickResult =
   | "skipped"; // nothing to run (e.g. director with an empty inbox);
 
 /** The outcome of one full tick: its result plus what the harness learned from it.
- * Consumed by the orchestrator's dashboards and by state.ts's post-tick scheduling
+ * Consumed by the orchestrator's dashboards and by tick-outcome.ts's post-tick scheduling
  * (applyTickOutcome). */
 export interface TickOutcome {
   result: TickResult;

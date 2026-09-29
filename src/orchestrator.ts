@@ -456,7 +456,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // one check covers both. Uniform over every role, director included: its prompt is not
         // finished until it lands. Placed before the need-based deferral block on purpose —
         // no episode bookkeeping is needed (the tick that queued the landing ran, which closed
-        // any deferral episode; its `queued` can leave a prior no_change in lastResult — state.ts
+        // any deferral episode; its `queued` can leave a prior no_change in lastResult — loop-state.ts
         // records only completed results — but the landing's outcome replaces it before the
         // interlock lets the role back into this pass), and skipping here saves that branch's
         // workLandedSince git-range query for the skipped role.

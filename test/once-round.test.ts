@@ -55,7 +55,7 @@ test("settleSkipped reports a pending resume as pending work, not idle or backof
   const repo = makeRepo();
   // A cut-off tick resumes deliberately one interval out: resumePending with a future
   // nextRunAt and backoffSeconds left wherever the previous outcome put it — zero after a
-  // productive tick (the cutOff arm only schedules the interval, src/state.ts). The old
+  // productive tick (the cutOff arm only schedules the interval, src/tick-outcome.ts). The old
   // classification read this state as "idle — nothing was due", which is false: the role's
   // half-finished work is the reason it is not ticking.
   const waiting = makeLoopRunner(repo, "improve");

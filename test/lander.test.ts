@@ -6,7 +6,7 @@ import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, reviewPinnedChange } f
 import type { BatchRoleWiring } from "../src/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/types.js";

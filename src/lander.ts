@@ -5,7 +5,7 @@ import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
 import { recordReview } from "./tick-outcome.js";
-import { saveLoopState } from "./state.js";
+import { saveLoopState } from "./loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "./build-check.js";
 import { checkFailureReasons } from "./build-check-report.js";

@@ -5,7 +5,7 @@ import path from "node:path";
 import { stageTickLanding } from "../src/tick-stage.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import { defaultConfig } from "../src/config.js";
 import { readQaCoverage } from "../src/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing-queue.js";

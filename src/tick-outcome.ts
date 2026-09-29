@@ -6,10 +6,10 @@ import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
  * or landing does to the loop's clock — which outcomes retry promptly, which back off and on
  * which ladder, how cut-off and quiet-kill resume streaks are bounded — plus the wake
  * semantics (clearBackoff, restoreMidTickWake), the backoff ladder arithmetic, and the
- * review-verdict record the next tick's prompt reads. Split out of state.ts — which keeps the
+ * review-verdict record the next tick's prompt reads. Split out of loop-state.ts — which keeps the
  * persisted state file's load/save and the observation-window counter reset — because
  * persistence and policy are different concerns that happen to touch the same LoopState
- * object: this module holds the rules for MUTATING that state, state.ts the rules for keeping
+ * object: this module holds the rules for MUTATING that state, loop-state.ts the rules for keeping
  * it on disk. No I/O here: every function mutates the caller's state in place (the caller's
  * object is authoritative across an in-flight tick and saves it itself), so the policy is
  * unit-testable without touching a disk. */

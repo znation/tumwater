@@ -9,7 +9,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { writeMarker } from "./log-fixtures.js";
@@ -1111,7 +1111,7 @@ test("the dashboard client sends the Bearer token and strips ?token= from the ad
 test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
-  const { freshLoopState } = await import("../src/state.js");
+  const { freshLoopState } = await import("../src/loop-state.js");
   type LoopState = ReturnType<typeof freshLoopState>;
 
   // The column sits between last result and controls, rendered from the payload's raw

@@ -5,7 +5,7 @@ import path from "node:path";
 import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/refusal.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import type { LoopState, PiRunResult, TickResult } from "../src/types.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";

@@ -16,7 +16,7 @@ import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
 import { enqueueRolePrompt, takeQueuedFile } from "./inbox.js";
 import { stageTickLanding } from "./tick-stage.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "./state.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, restoreMidTickWake } from "./tick-outcome.js";
 import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
@@ -334,7 +334,7 @@ export class LoopRunner {
    * worktree, commit and merge any changes it made, then schedule the next run from the
    * outcome — changed/skipped/cut-off ticks wait at least the minimum interval, an aborted
    * one resumes promptly on restart, an unproductive one backs off on the idle ladder, and
-   * a failed one on the shorter error ladder (state.ts). Never throws: a failed tick
+   * a failed one on the shorter error ladder (tick-outcome.ts). Never throws: a failed tick
    * is an "error" result, saved and logged like any other so the loop stays resumable and
    * observable. */
   async tick(): Promise<TickOutcome> {
@@ -397,7 +397,7 @@ export class LoopRunner {
     // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
     // the previous value rather than waking on "main moved" to nowhere.
     s.lastMainHead = (await branchHead(this.root, this.mainBranch)) ?? s.lastMainHead;
-    // Record the outcome on state and schedule the next run (see src/state.ts for the
+    // Record the outcome on state and schedule the next run (see src/tick-outcome.ts for the
     // per-result policy: prompt retry, backoff, bounded cut-off resumes).
     applyTickOutcome(s, cfg, this.role, outcome);
     // A wake consumed while this tick ran stamped the shared state in place, but the outcome

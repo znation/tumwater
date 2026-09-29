@@ -12,7 +12,7 @@ import { LaunchServicesWatch } from "./launch-services.js";
 import { formatEvent } from "./ui/event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
-import { loadLoopState } from "./state.js";
+import { loadLoopState } from "./loop-state.js";
 import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 

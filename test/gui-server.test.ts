@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import type { HarnessEvent } from "../src/types.js";
 import { tickRows } from "../src/ui/history.js";
 import { writeEvents } from "./log-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { dequeuePrompt, DIRECTOR_PROMPT_MAX_CHARS, inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";

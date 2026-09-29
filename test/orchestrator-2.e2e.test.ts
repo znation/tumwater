@@ -14,7 +14,7 @@ import { snapshot } from "../src/ui/status.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt, submitRolePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { clearBackoff } from "../src/tick-outcome.js";
 import { readOrchestratorInfo, pauseRole, resumeRole } from "../src/fleet-state.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";

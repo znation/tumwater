@@ -22,7 +22,7 @@ import { readEvents } from "../src/events.js";
 import { landingChanges, readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config.js";
-import { freshLoopState, loadLoopState } from "../src/state.js";
+import { freshLoopState, loadLoopState } from "../src/loop-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { snapshot } from "../src/ui/status.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";

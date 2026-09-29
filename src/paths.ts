@@ -57,12 +57,12 @@ export function branchName(role: string): string {
   return `tumwater/${role}`;
 }
 
-/** A role's per-loop state file (.tumwater/state/<role>.json; state.ts). */
+/** A role's per-loop state file (.tumwater/state/<role>.json; loop-state.ts). */
 export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
-/** The orchestrator's own info file (its pid, for liveness checks — state.ts). */
+/** The orchestrator's own info file (its pid, for liveness checks — fleet-state.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
@@ -74,7 +74,7 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
-/** The in-flight landing marker (state.ts, merge queue 4/5): the orchestrator's drain task
+/** The in-flight landing marker (landing-drain.ts, merge queue 4/5): the orchestrator's drain task
  * writes it when a landing starts and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */

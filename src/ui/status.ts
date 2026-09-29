@@ -9,7 +9,7 @@ import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { promptPreview, queuedPrompts, queuedRolePromptCount } from "../inbox.js";
 import { statePath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles.js";
-import { freshLoopState, loadLoopState } from "../state.js";
+import { freshLoopState, loadLoopState } from "../loop-state.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles, pausedUntil, readOrchestratorInfo } from "../fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing-slot.js";
 import { fleetDailyCost } from "../budget.js";

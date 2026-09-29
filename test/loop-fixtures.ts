@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { LoopRunner } from "../src/loop.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { writeScript } from "./fake-commands.js";

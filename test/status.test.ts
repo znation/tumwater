@@ -11,7 +11,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
 import { enqueueLanding } from "../src/landing-queue.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } from "../src/paths.js";

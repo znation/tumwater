@@ -15,7 +15,7 @@ import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { logEvent, readEvents } from "../src/events.js";
-import { loadLoopState, saveLoopState } from "../src/state.js";
+import { loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
 import {
   abortRequestPath,

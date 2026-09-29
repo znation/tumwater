@@ -11,7 +11,7 @@ import { readPrinciples } from "./prompt.js";
 import { buildReviewPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-outcome.js";
-import { saveLoopState } from "./state.js";
+import { saveLoopState } from "./loop-state.js";
 import { shortSha } from "./text.js";
 import { BUILD_CHECK_TIMEOUT_MS, runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TickUsage } from "../src/tick-usage.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import type { LoopState, PiRunResult } from "../src/types.js";
 import { piRunResult } from "./fake-pi.js";
 

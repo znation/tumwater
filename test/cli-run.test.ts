@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { onceSummary } from "../src/cli-run.js";
-import { freshLoopState, saveLoopState } from "../src/state.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { pauseFleet } from "../src/fleet-state.js";
 import type { LoopState } from "../src/types.js";
 import { makeRepo } from "./repo-fixtures.js";

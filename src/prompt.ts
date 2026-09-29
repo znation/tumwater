@@ -389,7 +389,7 @@ ${SUMMARY_BLOCK}`;
 
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
  * off at the context ceiling without landing anything (the loop gave up resuming — see
- * state.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
+ * tick-outcome.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
  * cross-tick memory that the last attempt was too big for the window. */
 export function buildCutOffNote(streak: number): string {
   const runs = streak === 1 ? "run" : `${streak} runs`;

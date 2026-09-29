@@ -187,7 +187,7 @@ export function loopPhase(
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
   // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
   // Except a green wake that queues a change: `queued` is in flight, not a completed result,
-  // so it leaves the main_red pair in place until its landing resolves (state.ts's
+  // so it leaves the main_red pair in place until its landing resolves (tick-outcome.ts's
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
   if (s.lastResult === "main_red" && s.queuedSummary === undefined) return "main red";

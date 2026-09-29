@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LoopRunner } from "../src/loop.js";
 import { initProject } from "../src/init.js";
-import { loadLoopState, saveLoopState } from "../src/state.js";
+import { loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 

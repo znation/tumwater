@@ -5,7 +5,7 @@ import path from "node:path";
 import { BATCH_RESTACK_ATTEMPTS } from "../src/landing-batch.js";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { sh } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

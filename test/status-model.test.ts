@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
 import { budgetBadge, landingBadge, loopPhase, pauseBadge, workingDetail } from "../src/ui/status-model.js";
-import { freshLoopState } from "../src/state.js";
+import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { GATE_SESSION, SESSION, toolStart, writePiLog } from "./status-fixtures.js";

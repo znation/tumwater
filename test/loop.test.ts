@@ -10,7 +10,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { defaultConfig, customLoopNames, loadConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
-import { loadLoopState } from "../src/state.js";
+import { loadLoopState } from "../src/loop-state.js";
 import { configRequestPath, piLogPath, sessionDir, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
 import { eventsOfType } from "./log-fixtures.js";

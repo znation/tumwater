@@ -22,7 +22,7 @@ import {
   loadLoopState,
   saveLoopState,
   zeroCounters,
-} from "../src/state.js";
+} from "../src/loop-state.js";
 import { nextBackoffSeconds } from "../src/tick-outcome.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";

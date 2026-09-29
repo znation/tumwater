@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
 import { resetRequestPath } from "../src/paths.js";
-import { loadLoopState } from "../src/state.js";
+import { loadLoopState } from "../src/loop-state.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";

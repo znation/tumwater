@@ -1,11 +1,11 @@
 /** The daily-cost budget: a loop's and the fleet's local-day spend, the gate those figures
  * drive (plans/daily-cost-budget.md, plans/fallback-model.md), and the circuit breaker that
- * judges whether the gate's fallback can actually serve. Split out of state.ts, which owns
+ * judges whether the gate's fallback can actually serve. Split out of loop-state.ts, which owns
  * LoopState persistence and scheduling bookkeeping: the budget is POLICY both the scheduler and
  * every observer evaluate from the same definitions. Kept free of the scheduler and of pi's
  * model catalog (fallback readiness arrives as plain booleans), so observers can depend on it
  * without importing either — the one-way rule that previously kept these functions in
- * state.ts. */
+ * loop-state.ts. */
 
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState, TickResult } from "./types.js";
