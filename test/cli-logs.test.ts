@@ -14,8 +14,8 @@ import { ensureParentDir } from "../src/files.js";
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live
 // handle so the test can observe the initial window and newly appended entries). The
-// --since/--grep half lives in cli-logs-2.test.ts. Split out of test/cli.test.ts, which
-// grew past 1500 lines mixing every command family.
+// --since/--grep half lives in cli-logs-filtering.test.ts. Split out of test/cli.test.ts,
+// which grew past 1500 lines mixing every command family.
 
 test("logs -n validates its value instead of misbehaving", async () => {
   const repo = makeRepo();

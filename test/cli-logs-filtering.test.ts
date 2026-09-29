@@ -7,7 +7,7 @@ import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
 import { ensureParentDir } from "../src/files.js";
 
-// The second half of the `logs` command's CLI tests — --since, --grep, and the docs pin —
+// The `logs` command's window-and-filter CLI tests — --since, --grep, and the docs pin —
 // split from cli-logs.test.ts so node --test runs them in parallel processes. That file
 // keeps argument validation, the per-role transcript views, and the -f follow mode.
 

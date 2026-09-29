@@ -12,10 +12,10 @@ import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { ensureParentDir } from "../src/files.js";
 
-// The second half of the operator-command CLI tests (reset-counters, wake, stop, config),
-// split from cli-operators.test.ts so node --test runs them in parallel processes — each
-// test spawns the CLI, so the file is CPU-bound on its own. cli-operators.test.ts keeps
-// the abort and pause/resume families.
+// The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split
+// from cli-operators.test.ts so node --test runs them in parallel processes — each test
+// spawns the CLI, so the file is CPU-bound on its own. cli-operators.test.ts keeps the
+// abort and pause/resume families.
 
 // --- logs/reset-counters/abort --role: user-defined loop targets ---
 
