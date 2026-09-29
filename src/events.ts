@@ -242,5 +242,7 @@ function scanEventTail(file: string, limit: number): HarnessEvent[] {
   return events;
 }
 
-// Human-facing formatting of events lives in event-format.ts (presentation, shared by the
-// display surfaces); this module owns only the log file and its subscribers.
+// Human-facing formatting of events lives in event-format.ts, beside this module because
+// both display surfaces (src/ui/) and core consumers (the `run` banner's live stream,
+// src/cli-run.ts) render it, and src/ui/ is imported only by each other and cli.ts
+// (DEVELOPMENT.md Layout). This module owns only the log file and its subscribers.

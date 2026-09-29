@@ -11,7 +11,7 @@ import { renderReportMarkdown } from "./report.js";
 import { REPORT_DEFAULT_DAYS } from "../event-window.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
-import { formatEvent } from "./event-format.js";
+import { formatEvent } from "../event-format.js";
 import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";

@@ -2,7 +2,7 @@ import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, pa
 import { dayKey } from "../datetime.js";
 import { eventWindowCovers, LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents, type HarnessEvent } from "../events.js";
-import { formatEvent } from "./event-format.js";
+import { formatEvent } from "../event-format.js";
 import { statOrNull } from "../files.js";
 import { followFile } from "./tail.js";
 import { createTranscriptRenderer } from "./transcript.js";

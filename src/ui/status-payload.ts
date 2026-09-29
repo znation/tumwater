@@ -1,6 +1,6 @@
 import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents } from "../events.js";
-import { formatEvent } from "./event-format.js";
+import { formatEvent } from "../event-format.js";
 import { readLiveProgress } from "./progress.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";

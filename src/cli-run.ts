@@ -9,7 +9,7 @@ import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
 import { logEvent, subscribeEvents } from "./events.js";
 import { LaunchServicesWatch } from "./launch-services.js";
-import { formatEvent } from "./ui/event-format.js";
+import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
