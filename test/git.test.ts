@@ -45,7 +45,7 @@ import {
 } from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
-import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { mainSha, makeRepo, seedCommit, sh, tmpdir } from "./repo-fixtures.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -244,18 +244,14 @@ test("rebaseOntoMain resolves divergence and aborts cleanly on conflict", async 
   const wt = await ensureWorktree(repo, "clean", "main");
 
   // Non-conflicting divergence rebases.
-  fs.writeFileSync(path.join(repo, "main-only.txt"), "m\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main advance");
+  seedCommit(repo, "main-only.txt", "m\n", "main advance");
   fs.writeFileSync(path.join(wt, "branch-only.txt"), "b\n");
   await commitAll(wt, "branch work");
   assert.ok(await rebaseOntoMain(wt, "main"));
   assert.ok(await ffMainTo(repo, branchName("clean"), "main"));
 
   // Conflicting divergence aborts and leaves the worktree usable.
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
   assert.ok(!(await rebaseOntoMain(wt, "main")));
@@ -282,9 +278,7 @@ test("rebaseOntoMainLeaveConflicts leaves markers in place for a resolver", asyn
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "clean");
 
   // Conflicting divergence stops mid-rebase with markers in the worktree.
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
@@ -304,9 +298,7 @@ test("continueRebase concludes a resolved conflict on top of main", async () => 
 
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   fs.writeFileSync(path.join(wt, "seed.txt"), "combined version\n");
@@ -327,9 +319,7 @@ test("continueRebase skips a resolution that leaves no unique content", async ()
 
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   // The resolver takes main's side entirely: the replayed commit is now empty and git
@@ -356,9 +346,7 @@ test("resetWorktreeToMain clears an interrupted rebase", async () => {
   const wt = await ensureWorktree(repo, "dry", "main");
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
   // Start a conflicting rebase and leave it in progress (a killed tick mid-resolution).
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   await resetWorktreeToMain(wt, "main");
@@ -399,16 +387,12 @@ test("hasConflictMarkers treats a deleted file as resolved", () => {
 // continueRebase committed its markers to main.
 test("conflictedFiles decodes C-quoted paths for non-ASCII filenames", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "h\u00e9llo.ts"), "base\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "seed non-ascii file");
+  seedCommit(repo, "h\u00e9llo.ts", "base\n", "seed non-ascii file");
   const wt = await ensureWorktree(repo, "clean", "main");
 
   fs.writeFileSync(path.join(wt, "h\u00e9llo.ts"), "branch version\n");
   await commitAll(wt, "branch edit");
-  fs.writeFileSync(path.join(repo, "h\u00e9llo.ts"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main edit");
+  seedCommit(repo, "h\u00e9llo.ts", "main version\n", "main edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   const files = await conflictedFiles(wt);
@@ -428,16 +412,12 @@ test("conflictedFiles decodes C-quoted paths for non-ASCII filenames", async () 
 test("conflictedFiles decodes C-quoted quote/tab/newline/CR/backslash filenames", async () => {
   const name = 'we"ird\tna\nnd\r\\me.md';
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, name), "base\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "seed special-char file");
+  seedCommit(repo, name, "base\n", "seed special-char file");
   const wt = await ensureWorktree(repo, "clean", "main");
 
   fs.writeFileSync(path.join(wt, name), "branch version\n");
   await commitAll(wt, "branch edit");
-  fs.writeFileSync(path.join(repo, name), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main edit");
+  seedCommit(repo, name, "main version\n", "main edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   const files = await conflictedFiles(wt);
@@ -467,9 +447,7 @@ test("readBranchHead matches git rev-parse across loose and packed refs", () => 
   assert.equal(readBranchHead(repo, "main"), head);
 
   // A new commit re-loosens the ref while packed-refs keeps the stale entry — loose wins.
-  fs.writeFileSync(path.join(repo, "b.txt"), "b\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "second");
+  seedCommit(repo, "b.txt", "b\n", "second");
   head = mainSha(repo);
   assert.equal(readBranchHead(repo, "nope"), null); // unknown branch: null, not the stale sha
   assert.equal(readBranchHead(repo, "main"), head);
@@ -487,9 +465,7 @@ test("changedFiles is empty on a clean worktree", async () => {
 
 test("changedFiles lists modified, untracked, and deleted files by repo-relative path", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "gone.txt"), "bye\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "second");
+  seedCommit(repo, "gone.txt", "bye\n", "second");
 
   fs.rmSync(path.join(repo, "gone.txt")); // tracked, deleted
   fs.writeFileSync(path.join(repo, "seed.txt"), "edited\n"); // tracked, modified
@@ -540,9 +516,7 @@ test("changedFiles decodes C-quoted carriage returns in filenames", async () => 
 // the following NUL-terminated record (which must be skipped, not read as a status line).
 test("changedFiles reports a staged rename by its destination path, not the `from -> to` field", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "old.md"), "note\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "add note");
+  seedCommit(repo, "old.md", "note\n", "add note");
   sh(repo, "git", "mv", "old.md", "h\u00e9llo.md");
 
   const files = await changedFiles(repo);
@@ -600,9 +574,7 @@ test("commitPathsAndDiscardRest returns null when the paths hold no changes", as
 
 test("commitPathsAndDiscardRest commits only the given paths and discards every other change", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(path.join(repo, "notes.md"), "old\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "second");
+  seedCommit(repo, "notes.md", "old\n", "second");
 
   // A refusing run's leftovers: the objection note (md), a half-done code edit, and junk.
   fs.writeFileSync(path.join(repo, "notes.md"), "objection\n");
@@ -761,9 +733,7 @@ test("abortSync still aborts an interrupted rebase when state exists", async () 
   // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
   await commitAll(wt, "branch seed edit");
-  fs.writeFileSync(path.join(repo, "seed.txt"), "main version\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "main seed edit");
+  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
 
   const logFile = path.join(tmpdir(), "git-calls.log");
@@ -911,15 +881,9 @@ test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", asy
 test("subjectsBetween lists main's subjects since a head, newest first; null for an unknown base", async () => {
   const repo = makeRepo(); // one seed commit on main
   const base = await headOf(repo, "main");
-  fs.writeFileSync(path.join(repo, "a.txt"), "1\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "tumwater(feature): a");
-  fs.writeFileSync(path.join(repo, "b.txt"), "2\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "tumwater(readme): b");
-  fs.writeFileSync(path.join(repo, "c.txt"), "3\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "human commit c");
+  seedCommit(repo, "a.txt", "1\n", "tumwater(feature): a");
+  seedCommit(repo, "b.txt", "2\n", "tumwater(readme): b");
+  seedCommit(repo, "c.txt", "3\n", "human commit c");
   assert.deepEqual(await subjectsBetween(repo, base, "main"), [
     "human commit c",
     "tumwater(readme): b",
@@ -942,9 +906,7 @@ test("subjectsBetween lists main's subjects since a head, newest first; null for
 function patchFixture(): { repo: string; side: string } {
   const repo = makeRepo();
   const lines = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`);
-  fs.writeFileSync(path.join(repo, "a.txt"), lines.join("\n") + "\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "ten lines");
+  seedCommit(repo, "a.txt", lines.join("\n") + "\n", "ten lines");
   sh(repo, "git", "checkout", "-q", "-b", "side");
   fs.writeFileSync(path.join(repo, "a.txt"), lines.map((l, i) => (i === 5 ? "changed" : l)).join("\n") + "\n");
   sh(repo, "git", "commit", "-am", "side change");

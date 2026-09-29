@@ -62,6 +62,16 @@ export function gitOnlyBinDir(prefix = "tumwater-test-bin-"): string {
   return binDir;
 }
 
+/** Write `content` to `path.join(dir, name)` and commit everything in `dir` with `message` —
+ * the standard "advance a repo by one plain commit" move the git tests repeat dozens of times
+ * (diverging main, seeding conflicts, laying down history). Sync, using the fixtures' sh()
+ * spelling so it relies on gitInit's config-file identity like every other fixture call. */
+export function seedCommit(dir: string, name: string, content: string, message: string): void {
+  fs.writeFileSync(path.join(dir, name), content);
+  sh(dir, "git", "add", "-A");
+  sh(dir, "git", "commit", "-m", message);
+}
+
 /** `git init -b main` in `dir` with the fixtures' commit identity. The identity is appended to
  * .git/config directly — byte for byte what `git config user.name test` and `git config
  * user.email …` write — because fixture repos are made ~600 times a suite and each spawn
