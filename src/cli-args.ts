@@ -124,7 +124,7 @@ export function failOverDurationCap(flag: string, ms: number, maxMs: number, hin
 export function parseRoleFlag(args: string[], validIds?: string[]): string | null {
   const role = flagValue(args, "--role");
   if (role === null) return null;
-  if (!role) fail("--role needs a role id (e.g. `--role feature`)");
+  if (!role) fail(ROLE_VALUE_ERROR);
   const ids = validIds ?? allRoleIds();
   if (!ids.includes(role)) fail(unknownRoleMessage(role, ids));
   return role;
@@ -136,8 +136,7 @@ export function parseRoleFlag(args: string[], validIds?: string[]): string | nul
 export function parseBranchFlag(args: string[]): string | null {
   const branch = flagValue(args, "--branch");
   if (branch === null) return null;
-  if (!branch || branch.startsWith("-"))
-    fail("--branch needs a branch name (e.g. `--branch release/2.0`)");
+  if (!branch || branch.startsWith("-")) fail(BRANCH_VALUE_ERROR);
   return branch;
 }
 
@@ -150,13 +149,31 @@ interface FlagSpec {
   value?: boolean;
   /** How the value is named in error messages (e.g. "<id>"); defaults to "<value>". */
   valueName?: string;
+  /** The error when the flag appears as the last argument with no value. Defaults to
+   * `<first spelling> needs a value`, what the generic parse helpers (parseCountFlag,
+   * parsePortFlag, parseDurationFlag) print; set it when the command's own parser phrases
+   * the missing value more specifically, so this gate's early report — it runs before the
+   * ready-repo gate and every command body — says exactly what that parser would have said. */
+  missingValue?: string;
 }
+
+/** The missing-value error parseRoleFlag and parsePromptArgs share with ROLE_FLAG's trailing
+ * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
+export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
+/** The missing-or-flag-shaped-value error parseBranchFlag shares with RUN_FLAG_SPECS'
+ * --branch entry, for the same no-drift reason. */
+const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
 
 /** The `--role <id>` flag spec, shared by every role-targeting command (logs, reset-counters,
  * wake, abort, pause, resume): one definition of the flag's spelling and value shape so the
  * accepted vocabulary and its rendering in rejectUnknownArgs' error messages cannot drift
  * apart. */
-export const ROLE_FLAG: FlagSpec = { names: ["--role"], value: true, valueName: "<id>" };
+export const ROLE_FLAG: FlagSpec = {
+  names: ["--role"],
+  value: true,
+  valueName: "<id>",
+  missingValue: ROLE_VALUE_ERROR,
+};
 
 /** The `--for <duration>` flag spec, accepted by `pause` alone (the timed pause): one
  * definition of the flag's spelling and value shape, beside ROLE_FLAG, so the gate's accepted
@@ -170,7 +187,7 @@ export const DURATION_FLAG: FlagSpec = { names: ["--for"], value: true, valueNam
  * accepts — before this vocabulary existed, run parsed --branch and silently ignored
  * every other flag, so a typo'd option ran the daemon with default behavior. */
 export const RUN_FLAG_SPECS: FlagSpec[] = [
-  { names: ["--branch"], value: true, valueName: "<name>" },
+  { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
   ROLE_FLAG,
 ];
@@ -179,8 +196,11 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
  * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs
  * with default behavior, which is worse than an error: `reset-counters --rol x` zeroed every
  * loop instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim
- * one token; valued flags claim two (a trailing flag with no value claims only itself — the
- * command's own parser reports the missing value first). A repeated flag fails: the parsers
+ * one token; valued flags claim two — and a valued flag left without its value fails right
+ * here, with the spec's missingValue wording: cli.ts runs this gate before the ready-repo gate
+ * and the command bodies, so a missing value must be named before any environment check ("not
+ * a git repository") can mask it from an operator typing `tumwater pause --role` outside an
+ * initialized repo. A repeated flag fails: the parsers
  * below read flags with indexOf, so a second occurrence used to be silently dropped and the
  * operator's later value (gui --port 8000 --port 9000, logs -n 5 -n 10) never took effect —
  * the same "may only be given once" rule parseInitArgs and parsePromptArgs apply to their
@@ -208,6 +228,8 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
     }
     if (seen.has(spec)) fail(`${spec.names[0]} may only be given once`);
     seen.add(spec);
+    if (spec.value && i === args.length - 1)
+      fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
     const n = spec.value ? 2 : 1;
     for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
   }
@@ -324,9 +346,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const roleFlag = args.indexOf("--role");
   if (args.filter((a) => a === "--role").length > 1) fail("--role may only be given once");
   const roleRaw = roleFlag >= 0 ? args[roleFlag + 1] : undefined;
-  if (roleFlag >= 0 && (!roleRaw || roleRaw.startsWith("--"))) {
-    fail("--role needs a role id (e.g. `--role feature`)");
-  }
+  if (roleFlag >= 0 && (!roleRaw || roleRaw.startsWith("--"))) fail(ROLE_VALUE_ERROR);
   const role = roleRaw ?? null;
   // The flag and its value are never prompt content: --role is a scope, not text. Only claimed
   // when actually present — negative indexes would over-claim real tokens.

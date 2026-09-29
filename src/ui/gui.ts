@@ -64,6 +64,11 @@ export function lanAddresses(
  * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
  * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
  * cases; everything gui-specific after that gate is this function's job. */
+/** The empty-secret error cmdGui prints for a valueless `--token`, exported so cli.ts's
+ * rejectUnknownArgs spec for --token can fail a trailing `gui --token` with the same wording
+ * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
+export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
+
 export async function cmdGui(root: string, args: string[]): Promise<void> {
   const portRaw = flagValue(args, "--port");
   const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
@@ -76,7 +81,7 @@ export async function cmdGui(root: string, args: string[]): Promise<void> {
   // from args) while the real secret sits unreached after another flag.
   const tokenRaw = flagValue(args, "--token");
   const token = tokenRaw ?? "";
-  if (tokenRaw !== null && !token) fail("--token requires a non-empty secret (e.g. `--token s3cret`)");
+  if (tokenRaw !== null && !token) fail(TOKEN_VALUE_ERROR);
   if (tokenRaw !== null && token.startsWith("--"))
     fail(
       `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,

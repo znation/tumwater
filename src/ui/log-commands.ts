@@ -30,6 +30,11 @@ function rejectRoleViewRival(rest: string[], flag: string, active: boolean): voi
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
  * loop's pi transcript (see cmdLogsTranscript). */
+/** The missing-pattern error cmdLogs prints for a valueless `--grep`, exported so cli.ts's
+ * rejectUnknownArgs spec for --grep can fail a trailing `logs --grep` with the same wording
+ * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
+export const GREP_VALUE_ERROR = "logs --grep needs a pattern";
+
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
@@ -65,7 +70,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     rejectRoleViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
-    if (grepRaw === undefined || grepRaw === "") fail("logs --grep needs a pattern");
+    if (grepRaw === undefined || grepRaw === "") fail(GREP_VALUE_ERROR);
     grepPattern = grepRaw;
     grepLower = grepRaw.toLowerCase();
   }

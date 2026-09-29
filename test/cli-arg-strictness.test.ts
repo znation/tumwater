@@ -6,7 +6,7 @@ import { dequeuePrompt, inboxSize } from "../src/inbox.js";
 import { resetRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { seedCounters } from "./loop-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
 // Argument-strictness child-process tests: every command must reject unknown arguments and
@@ -96,4 +96,32 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   // Valid combinations still work.
   r = await cli(repo, "logs", "-n", "3", "--role", "clean");
   assert.equal(r.code, 0);
+});
+
+test("a valued flag left without its value is named before the ready-repo gate", async () => {
+  // Outside an initialized repo, `pause --role` used to report "not a git repository": the
+  // ready-repo gate sits between rejectUnknownArgs and each command's own parser, so the
+  // missing value was masked until the operator had fixed an environment that was never the
+  // problem. The gate now names it with the parser's own wording, and no marker is written.
+  const empty = tmpdir();
+  const r = await cli(empty, "pause", "--role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater: --role needs a role id/);
+  assert.doesNotMatch(r.stderr, /git repository/);
+
+  // prompt has no rejectUnknownArgs (free-form positionals), so its parse runs before the
+  // gate instead — the same slip, the same wording, no environment error.
+  const p = await cli(empty, "prompt", "--role");
+  assert.equal(p.code, 1);
+  assert.match(p.stderr, /tumwater: --role needs a role id/);
+  assert.doesNotMatch(p.stderr, /git repository/);
+
+  // In a ready repo the same slips fail identically — the gate runs there too.
+  const repo = makeRepo();
+  await initProject(repo, "cli missing flag value");
+  for (const args of [["pause", "--role"], ["prompt", "--role"]]) {
+    const ready = await cli(repo, ...args);
+    assert.equal(ready.code, 1);
+    assert.match(ready.stderr, /tumwater: --role needs a role id/);
+  }
 });

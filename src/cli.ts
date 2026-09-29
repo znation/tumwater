@@ -4,12 +4,13 @@ import {
   fail,
   say,
   DURATION_FLAG,
+  parsePromptArgs,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
 } from "./cli-args.js";
 import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./ui/operator-commands.js";
-import { cmdLogs } from "./ui/log-commands.js";
+import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";
 import { repoNotReady } from "./startup-gate.js";
@@ -21,7 +22,7 @@ import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
-import { cmdGui } from "./ui/gui.js";
+import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
 import { errorMessage } from "./text.js";
@@ -89,7 +90,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("gui", args, [
         { names: ["--port"], value: true, valueName: "<n>" },
         { names: ["--all-interfaces"] },
-        { names: ["--token"], value: true, valueName: "<secret>" },
+        { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
       ]);
       await requireReadyRepo(root);
       await cmdGui(root, args);
@@ -148,7 +149,7 @@ async function main(): Promise<void> {
         { names: ["-f", "--follow"] },
         { names: ["-n"], value: true, valueName: "<count>" },
         { names: ["--since"], value: true, valueName: "<duration>" },
-        { names: ["--grep"], value: true, valueName: "<text>" },
+        { names: ["--grep"], value: true, valueName: "<text>", missingValue: GREP_VALUE_ERROR },
         { names: ["--json"] },
         ROLE_FLAG,
         { names: ["--prompt"] },
@@ -180,6 +181,13 @@ async function main(): Promise<void> {
       break;
     }
     case "prompt":
+      // Parse before the gate: prompt's positionals are free-form, so rejectUnknownArgs
+      // cannot run here, and without this pre-parse `tumwater prompt --role` outside an
+      // initialized repo would report "not a git repository" instead of the flag error —
+      // the same masking every other command's spec-based missing-value check avoids.
+      // parsePromptArgs is pure (fail() is its only effect), so cmdPrompt re-running it
+      // below cannot drift from what this pre-parse accepted.
+      parsePromptArgs(args);
       await requireReadyRepo(root);
       await cmdPrompt(root, args);
       break;

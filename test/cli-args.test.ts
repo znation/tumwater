@@ -11,6 +11,7 @@ import {
   parsePortFlag,
   parseRoleFlag,
   rejectUnknownArgs,
+  ROLE_VALUE_ERROR,
   RUN_FLAG_SPECS,
   parseInitArgs,
   parsePromptArgs,
@@ -22,7 +23,8 @@ import { attempt } from "./exit-capture.js";
 // src/cli-args.ts is the only module with no direct unit tests: until now every branch was
 // reached (slowly) through a spawned CLI child in test/cli.test.ts. These tests drive the
 // parsers in-process, which also covers branches the e2e path never exercises — duplicate
-// flags (rejected with "may only be given once"), a trailing valued flag claiming only itself, whitespace-
+// flags (rejected with "may only be given once"), trailing valued flags (now a gate-level
+// "needs a value" error), whitespace-
 // only prompt text, and the bare `--` token.
 
 /** Assert fn fails via fail(): exit code 1 and the captured stderr message. */
@@ -144,7 +146,7 @@ test("parseRoleFlag accepts user-defined loop names from a supplied id list", ()
 const LOGS_SPECS = [
   { names: ["-f", "--follow"] },
   { names: ["-n"], value: true, valueName: "<count>" },
-  { names: ["--role"], value: true, valueName: "<id>" },
+  { names: ["--role"], value: true, valueName: "<id>", missingValue: ROLE_VALUE_ERROR },
 ];
 const GUI_SPECS = [
   { names: ["--port"], value: true, valueName: "<n>" },
@@ -199,16 +201,32 @@ test("rejectUnknownArgs rejects unknown tokens with the command's valid flags li
   assert.match(logs.stderr, /-f\/--follow, -n <count>, --role <id>/);
 });
 
-test("rejectUnknownArgs: valued flags claim their value token; duplicates fail, trailing flags pass through", () => {
+test("rejectUnknownArgs: valued flags claim their value token; duplicates and missing values fail", () => {
   // A valued flag claims the following token even when it looks like a known flag — so this
   // is NOT an unknown-argument error (the command's own parser reports "unknown role: -f").
   expectOk(() => rejectUnknownArgs("logs", ["--role", "-f"], LOGS_SPECS));
 
-  // A trailing valued flag with no value claims only itself, not a phantom token — the
-  // command's own parser reports the missing value first (parseCountFlag below).
-  expectOk(() => rejectUnknownArgs("logs", ["-n"], LOGS_SPECS));
+  // A trailing valued flag with no value fails right here, with the spec's missingValue
+  // wording — cli.ts runs this gate before the ready-repo gate, so "pause --role" outside an
+  // initialized repo must name the flag, not "not a git repository".
+  const bare = expectFail(() => rejectUnknownArgs("logs", ["-n"], LOGS_SPECS));
+  assert.match(bare.stderr, /tumwater: -n needs a value/);
+  const roleBare = expectFail(() => rejectUnknownArgs("logs", ["--follow", "--role"], LOGS_SPECS));
+  // The exact message parseRoleFlag prints — the drift-guard below pins the two together.
+  assert.equal(
+    roleBare.stderr,
+    expectFail(() => parseRoleFlag(["--role"])).stderr,
+    "the gate's missing-value report must be the parser's own wording",
+  );
+  const branchBare = expectFail(() => rejectUnknownArgs("run", ["--branch"], RUN_FLAG_SPECS));
+  assert.equal(
+    branchBare.stderr,
+    expectFail(() => parseBranchFlag(["--branch"])).stderr,
+    "--branch's wording is shared with parseBranchFlag too",
+  );
+  // The generic helpers' wording is the spec default (parseCountFlag below).
   const then = expectFail(() => parseCountFlag("-n", undefined));
-  assert.match(then.stderr, /-n needs a value/);
+  assert.equal(then.stderr, bare.stderr);
 
   // A repeated flag fails instead of silently keeping the first occurrence — the same
   // "may only be given once" rule parseInitArgs and parsePromptArgs apply, keyed by spec
