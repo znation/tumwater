@@ -5,7 +5,7 @@ import path from "node:path";
 import { LoopPi } from "../src/loop-pi.js";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
-import type { PiRunResult } from "../src/types.js";
+import type { PiRunResult } from "../src/pi.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine, errorLine } from "./pi-events.js";

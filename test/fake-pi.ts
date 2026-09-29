@@ -1,4 +1,4 @@
-import type { PiRunResult } from "../src/types.js";
+import type { PiRunResult } from "../src/pi.js";
 import { assistantLine } from "./pi-events.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";

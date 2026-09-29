@@ -3,7 +3,8 @@ import { changedFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer } from "./commit-message.js";
 import { labeledLine } from "./reply-contract.js";
-import type { PiRunResult, TickOutcome, TickResult } from "./types.js";
+import type { TickOutcome, TickResult } from "./types.js";
+import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended

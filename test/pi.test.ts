@@ -15,7 +15,7 @@ import {
 } from "../src/pi.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, signalTree, withoutLaunchServicesCheckIn } from "../src/process.js";
 import { toolUpdateHasContent } from "../src/pi-event-line.js";
-import type { PiRunResult } from "../src/types.js";
+import type { PiRunResult } from "../src/pi.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { configForRole } from "../src/config-views.js";
 import { initProject } from "../src/init.js";

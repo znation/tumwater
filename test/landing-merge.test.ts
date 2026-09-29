@@ -12,7 +12,7 @@ import { initProject } from "../src/init.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
-import type { PiRunResult } from "../src/types.js";
+import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";

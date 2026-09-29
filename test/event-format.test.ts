@@ -96,7 +96,7 @@ test("formatEvent renders a no-change tick with no summary or error suffix", () 
 
 test("formatEvent degrades gracefully for unknown event types", () => {
   // The default branch is a safety net: HarnessEvent's union has no exhaustiveness check, so a
-  // type added in types.ts without a case here would otherwise render empty or crash on every
+  // type added in events.ts without a case here would otherwise render empty or crash on every
   // display surface. Pin the graceful fallback.
   const line = formatEvent({ ts: 0, loop: "clean", type: "brand_new_type" } as never);
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);

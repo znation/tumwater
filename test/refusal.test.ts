@@ -6,7 +6,8 @@ import { handleRefusal, refusalContradiction, type RefusalContext } from "../src
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/loop-state.js";
-import type { PiRunResult, TickResult } from "../src/types.js";
+import type { TickResult } from "../src/types.js";
+import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";

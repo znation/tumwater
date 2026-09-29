@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { PiRunResult } from "./types.js";
+import type { PiRunResult } from "./pi.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import { RATE_LIMIT_HOLD_BASE_MS } from "./rate-limit-hold.js";
 import { configForRole } from "./config-views.js";
@@ -194,3 +194,21 @@ export class LoopPi {
     return run;
   }
 }
+
+/** The loop's shared pi wiring as landing code reaches it, split into the two halves the
+ * landing contexts need. `RunsPi` is one pi run in `wt` through the loop's shared wiring
+ * (role config, session dir, raw log, transient-failure retry — src/loop-pi.ts); `FoldsUsage`
+ * adds one run's spend to the owning loop's counters exactly once (the reviewer and
+ * conflict-resolution runs charge to the authoring role). Declared once here so the contract
+ * — and its wording — cannot drift apart across the four contexts that restate it:
+ * LanderContext and BatchRoleWiring carry both halves (PiRunWiring), MergeContext only the
+ * runner (its runPi folds usage internally), and VettedLanding only the fold. */
+export interface RunsPi {
+  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
+}
+
+export interface FoldsUsage {
+  foldUsage(run: PiRunResult): void;
+}
+
+export interface PiRunWiring extends RunsPi, FoldsUsage {}

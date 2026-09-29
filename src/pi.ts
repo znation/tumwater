@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { PiRunResult } from "./types.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
@@ -48,6 +47,75 @@ export function commandBuffersOutput(command: string): boolean {
  * against the child's stderr at exit; exported for tests. */
 export const TRANSIENT_PI_CRASH =
   /Unexpected end of JSON input|is not valid JSON|(Unterminated string|Unexpected non-whitespace|Expected ('|")|Bad (control|escaped) character)[^\n]* in JSON/;
+
+/** Distilled result of one pi run. */
+export interface PiRunResult {
+  ok: boolean;
+  /** Text of the last assistant message. */
+  finalText: string;
+  /** True when any assistant message in the run declared nothing-to-do (the sentinel).
+   * Covers the whole reply, not just the last message, so a sentinel emitted in an
+   * intermediate turn is not lost to a later closing remark. */
+  nothingToDo: boolean;
+  /** True when any assistant message carried the TUMWATER_REFUSED sentinel — the run declined
+   * its task (see plans/refusal-and-thrash.md). Same whole-reply scan as nothingToDo. */
+  refused: boolean;
+  /** The one-line reason captured from the first TUMWATER_REFUSED line; empty/undefined when
+   * the sentinel appeared without a reason. */
+  refusedReason?: string;
+  /** Text of the LAST assistant message carrying a parseable VERDICT line — the review
+   * gate's reply contract (see buildReviewPrompt). Scanned across every message like the
+   * sentinel, so a verdict in an intermediate turn survives later closing remarks. */
+  verdictText?: string;
+  /** Tokens the model generated in this run (usage.output summed across turns). */
+  outputTokens: number;
+  /** Largest single-request context of the run. */
+  peakContextTokens: number;
+  /** Assistant turns completed in this run (message_end events) — feeds the commit trailer
+   * and the high-friction flag; a tick sums it across its pre-commit runs. */
+  turns: number;
+  costUsd: number;
+  stopReason?: string;
+  errorMessage?: string;
+  timedOut: boolean;
+  /** The run was killed because the harness is shutting down. */
+  aborted: boolean;
+  /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
+   * typically one hung tool call (a command waiting on input or scanning far more than
+   * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session
+   * and any worktree edits are intact, so the loop resumes them promptly instead of discarding.
+   */
+  quietKilled: boolean;
+  /** The provider rejected the context as too large. With fresh-per-tick sessions this is
+   * purely diagnostic: the next tick starts a new session regardless. */
+  contextExceeded: boolean;
+  /** True when any event reported the model server killing an idle predict stream (LM
+   * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
+   * failure of the world, not of the session: one fresh retry usually succeeds. */
+  transientServerTimeout: boolean;
+  /** True when pi itself crashed on malformed JSON — its stderr ends in a JSON.parse failure
+   * ("Unterminated string in JSON at position N", "Expected ',' or '}' …") — which in observed
+   * runs came from a torn model-server chunk, never from the session. Like the predict-stream
+   * timeout it is a transient failure of the world: the session is intact on disk and one
+   * `--continue` retry picks the run up where it stopped instead of losing hours of work. */
+  transientPiCrash: boolean;
+  /** True when any event reported the provider rejecting the request with HTTP 429 (rate
+   * limiting). A transient failure of the world, not of the session — the world saying
+   * "later": one retry after retryAfterSeconds usually succeeds, so the loop's transient
+   * retry covers it instead of discarding the tick's work. */
+  transientRateLimit: boolean;
+  /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
+   * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
+  retryAfterSeconds?: number;
+  /** The run's last assistant message carried no text and no tool call (thinking-only or
+   * empty). A compliant finish always ends with a text block, so this signals a generation
+   * cut off mid-stream — typically pi clamping max output tokens to the sliver left under
+   * the declared context window, with the provider misreporting the truncation as a normal
+   * stop. Used to diagnose otherwise-mysterious no-sentinel no_change ticks. */
+  finalMessageContentless: boolean;
+  /** pi auto-compacted the session during (or at the end of) the run. */
+  compacted: boolean;
+}
 
 /** Options for one non-interactive pi run (runPi). Exported so a caller that builds the
  * same wiring in several places (loop.ts's author run and SUMMARY follow-up) can share one

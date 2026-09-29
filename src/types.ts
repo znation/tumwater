@@ -1,10 +1,11 @@
-/** The harness's runtime types: what one tick produces (TickResult, TickOutcome), the
- * durable land queue's entry (LandingEntry), and one pi run's distilled result
- * (PiRunResult). The per-loop persisted state's type (LoopState) lives beside its
- * loader/saver in loop-state.ts. The event log's line shape (HarnessEvent) lives beside
- * its writer in events.ts. The tumwater.json config schema types live in config-schema.ts
- * — the config on disk and the runtime state below are two layers, changed for different
- * reasons. */
+/** The harness's runtime types for one tick's lifecycle: what one tick produces
+ * (TickResult, TickOutcome) and the durable land queue's entry (LandingEntry). The
+ * per-loop persisted state's type (LoopState) lives beside its loader/saver in
+ * loop-state.ts. The event log's line shape (HarnessEvent) lives beside its writer in
+ * events.ts. One pi run's distilled result (PiRunResult) lives beside runPi in pi.ts,
+ * with the landing wiring contracts (RunsPi, FoldsUsage, PiRunWiring) in loop-pi.ts.
+ * The tumwater.json config schema types live in config-schema.ts — the config on disk
+ * and the runtime state below are two layers, changed for different reasons. */
 
 export type TickResult =
   | "changed" // a landing completed: the change is merged to main
@@ -81,90 +82,3 @@ export interface LandingEntry {
   /** Enqueue time (epoch ms) — the filename orders the queue by it across processes. */
   enqueuedAt: number;
 }
-
-/** Distilled result of one pi run. */
-export interface PiRunResult {
-  ok: boolean;
-  /** Text of the last assistant message. */
-  finalText: string;
-  /** True when any assistant message in the run declared nothing-to-do (the sentinel).
-   * Covers the whole reply, not just the last message, so a sentinel emitted in an
-   * intermediate turn is not lost to a later closing remark. */
-  nothingToDo: boolean;
-  /** True when any assistant message carried the TUMWATER_REFUSED sentinel — the run declined
-   * its task (see plans/refusal-and-thrash.md). Same whole-reply scan as nothingToDo. */
-  refused: boolean;
-  /** The one-line reason captured from the first TUMWATER_REFUSED line; empty/undefined when
-   * the sentinel appeared without a reason. */
-  refusedReason?: string;
-  /** Text of the LAST assistant message carrying a parseable VERDICT line — the review
-   * gate's reply contract (see buildReviewPrompt). Scanned across every message like the
-   * sentinel, so a verdict in an intermediate turn survives later closing remarks. */
-  verdictText?: string;
-  /** Tokens the model generated in this run (usage.output summed across turns). */
-  outputTokens: number;
-  /** Largest single-request context of the run. */
-  peakContextTokens: number;
-  /** Assistant turns completed in this run (message_end events) — feeds the commit trailer
-   * and the high-friction flag; a tick sums it across its pre-commit runs. */
-  turns: number;
-  costUsd: number;
-  stopReason?: string;
-  errorMessage?: string;
-  timedOut: boolean;
-  /** The run was killed because the harness is shutting down. */
-  aborted: boolean;
-  /** The run was killed by the quiet watchdog: no pi progress for over quietTimeoutSeconds —
-   * typically one hung tool call (a command waiting on input or scanning far more than
-   * intended), not a slow run. Distinct from timedOut (the whole-run tick budget): the session
-   * and any worktree edits are intact, so the loop resumes them promptly instead of discarding.
-   */
-  quietKilled: boolean;
-  /** The provider rejected the context as too large. With fresh-per-tick sessions this is
-   * purely diagnostic: the next tick starts a new session regardless. */
-  contextExceeded: boolean;
-  /** True when any event reported the model server killing an idle predict stream (LM
-   * Studio's "Engine protocol predict stream timed out", e.g. after OS sleep). A transient
-   * failure of the world, not of the session: one fresh retry usually succeeds. */
-  transientServerTimeout: boolean;
-  /** True when pi itself crashed on malformed JSON — its stderr ends in a JSON.parse failure
-   * ("Unterminated string in JSON at position N", "Expected ',' or '}' …") — which in observed
-   * runs came from a torn model-server chunk, never from the session. Like the predict-stream
-   * timeout it is a transient failure of the world: the session is intact on disk and one
-   * `--continue` retry picks the run up where it stopped instead of losing hours of work. */
-  transientPiCrash: boolean;
-  /** True when any event reported the provider rejecting the request with HTTP 429 (rate
-   * limiting). A transient failure of the world, not of the session — the world saying
-   * "later": one retry after retryAfterSeconds usually succeeds, so the loop's transient
-   * retry covers it instead of discarding the tick's work. */
-  transientRateLimit: boolean;
-  /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
-   * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
-  retryAfterSeconds?: number;
-  /** The run's last assistant message carried no text and no tool call (thinking-only or
-   * empty). A compliant finish always ends with a text block, so this signals a generation
-   * cut off mid-stream — typically pi clamping max output tokens to the sliver left under
-   * the declared context window, with the provider misreporting the truncation as a normal
-   * stop. Used to diagnose otherwise-mysterious no-sentinel no_change ticks. */
-  finalMessageContentless: boolean;
-  /** pi auto-compacted the session during (or at the end of) the run. */
-  compacted: boolean;
-}
-
-/** The loop's shared pi wiring as landing code reaches it, split into the two halves the
- * landing contexts need. `RunsPi` is one pi run in `wt` through the loop's shared wiring
- * (role config, session dir, raw log, transient-failure retry — src/loop-pi.ts); `FoldsUsage`
- * adds one run's spend to the owning loop's counters exactly once (the reviewer and
- * conflict-resolution runs charge to the authoring role). Declared once here so the contract
- * — and its wording — cannot drift apart across the four contexts that restate it:
- * LanderContext and BatchRoleWiring carry both halves (PiRunWiring), MergeContext only the
- * runner (its runPi folds usage internally), and VettedLanding only the fold. */
-export interface RunsPi {
-  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
-}
-
-export interface FoldsUsage {
-  foldUsage(run: PiRunResult): void;
-}
-
-export interface PiRunWiring extends RunsPi, FoldsUsage {}

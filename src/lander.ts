@@ -14,7 +14,9 @@ import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
 import { shortSha } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { PiRunResult, PiRunWiring, TickResult } from "./types.js";
+import type { TickResult } from "./types.js";
+import type { PiRunResult } from "./pi.js";
+import type { PiRunWiring } from "./loop-pi.js";
 import type { LoopState } from "./loop-state.js";
 
 /** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before

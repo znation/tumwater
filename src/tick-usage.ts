@@ -1,4 +1,4 @@
-import type { PiRunResult } from "./types.js";
+import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { recordDailyCost } from "./budget.js";
 
