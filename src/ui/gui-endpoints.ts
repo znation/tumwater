@@ -10,11 +10,11 @@
  */
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
-import { promptLengthProblem, submitPrompt, submitRolePrompt } from "../inbox.js";
+import { promptLengthProblem, submitPrompt } from "../inbox.js";
 import { knownRoleIds, loadConfigCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { requestAbort, requestWake } from "./operator-commands.js";
+import { requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
 import { allRoleIds, DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./report.js";
 import { collectReport } from "../report-data.js";
@@ -229,8 +229,7 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const role = body.role as string;
   const text = requirePromptText(res, body, role);
   if (text === null) return;
-  submitRolePrompt(root, role, text);
-  sendJson(res, 200, { ok: true, message: requestWake(root, [role]) });
+  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, text) });
 }
 
 /** Handle POST /api/budget: the dashboard's budget-badge editor saves the daily cost cap —

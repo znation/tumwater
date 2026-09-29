@@ -97,8 +97,8 @@ export function parseBudgetInput(
  * error so the flash can show it and the editor stays open for a fix — whitespace-only input
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc
  * so an operator who opened the editor by accident learns the way out. Pure, like
- * parseBudgetInput; the submit path itself (submitRolePrompt + single-role wake) lives in
- * tui.ts with the other disk-writing handlers. */
+ * parseBudgetInput; the submit path itself (the shared submitRolePromptAndWake, wired to
+ * the editor by tui.ts) lives with the other disk-writing handlers. */
 export function parseRolePromptInput(
   text: string,
 ): { ok: true; value: string } | { ok: false; error: string } {

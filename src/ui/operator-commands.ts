@@ -125,6 +125,20 @@ export function requestWake(root: string, roles: string[]): string {
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
 
+/** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt
+ * --role`, the dashboard's POST /api/prompt-role, and the TUI's Ctrl+R submit all share:
+ * submitRolePrompt enqueues into the loop's own queue (length-capped by the shared rule)
+ * and logs under the loop, then requestWake's single-role marker brings a live fleet's
+ * loop in within one poll instead of whenever its backoff next expires (and is safe with
+ * no fleet running — the same contract as `tumwater wake`). Returns requestWake's
+ * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
+ * call keeps a surface from ever queueing a prompt without the wake that delivers it
+ * promptly — the pairing is the invariant, not each surface's private discipline. */
+export function submitRolePromptAndWake(root: string, role: string, text: string): string {
+  submitRolePrompt(root, role, text);
+  return requestWake(root, [role]);
+}
+
 /** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
  * fixed — try again", so the named roles tick within one poll instead of sleeping until
  * their backoff expires. */
@@ -450,14 +464,11 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
-  submitRolePrompt(root, target, parsed.text);
+  const wake = submitRolePromptAndWake(root, target, parsed.text);
   if (role === null) {
     say("queued for the director loop");
   } else {
     say(`queued for the ${role} loop`);
   }
-  // A live fleet sees the prompt now instead of whenever the sleeping loop's backoff next
-  // expires: wake just the targeted role (requestWake's marker is safe with no fleet
-  // running — the same contract as `tumwater wake`).
-  say(requestWake(root, [target]));
+  say(wake);
 }

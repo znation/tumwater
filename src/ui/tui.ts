@@ -11,7 +11,7 @@ import { renderReportMarkdown, REPORT_DEFAULT_DAYS } from "./report.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { formatEvent } from "./event-format.js";
-import { submitPrompt, submitRolePrompt } from "../inbox.js";
+import { submitPrompt } from "../inbox.js";
 import { setDailyBudgetUsd } from "../config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";
 import {
@@ -19,6 +19,7 @@ import {
   requestWake,
   rolePauseMessage,
   roleResumeMessage,
+  submitRolePromptAndWake,
 } from "./operator-commands.js";
 import { snapshot } from "./status.js";
 import { renderStatus } from "./status-render.js";
@@ -534,9 +535,9 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           }
         } else if (rolePromptFor) {
           // Enter in role-prompt mode submits for the viewed loop through the same path
-          // `tumwater prompt --role` uses: submitRolePrompt enqueues into that loop's own
-          // queue (length-capped by the shared rule) and logs under the loop, then a
-          // single-role wake brings a live fleet's loop in within one poll. An invalid
+          // `tumwater prompt --role` uses: the shared submitRolePromptAndWake enqueues into
+          // that loop's own queue (length-capped by the shared rule), logs under the loop,
+          // and wakes it so a live fleet's loop comes in within one poll. An invalid
           // (whitespace-only) line flashes and STAYS in edit mode; a failed queue write
           // flashes the reason and keeps the text, the same contract the director path
           // below honors; success restores the saved draft.
@@ -546,8 +547,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           } else {
             const role = rolePromptFor;
             try {
-              submitRolePrompt(root, role, parsed.value);
-              requestWake(root, [role]);
+              submitRolePromptAndWake(root, role, parsed.value);
               exitRolePromptMode();
               flashMessage(`queued for the ${role} loop`);
             } catch (err) {
