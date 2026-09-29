@@ -9,15 +9,11 @@ import { formatTime, pad2 } from "../datetime.js";
 import {
   buildBadge,
   budgetBadge,
-  displayTokenMetrics,
-  fleetBudgetGate,
   humanSeconds,
   isActivePhase,
   landingBadge,
-  landingForRole,
-  loopPhase,
+  loopRowCells,
   pauseBadge,
-  progressKind,
   sortLoopsByState,
 } from "./status-model.js";
 
@@ -72,8 +68,8 @@ export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunni
   return (s.backoffSeconds > 0 ? `backoff ${label}` : label) + suffix;
 }
 
-/** The table's state cell: a loop's phase label (loopPhase, computed once per row by
- * renderStatus so the same label drives the row order), with the current work item prepended
+/** The table's state cell: a loop's phase label (computed once per row — renderStatus passes
+ * loopRowCells's result — so the same label drives the row order), with the current work item prepended
  * while a tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
  * appending — so the item survives ellipsis clipping on narrow terminals; the live detail
  * after it is what gets clipped first. Idle loops are untouched: their log tail describes a
@@ -136,18 +132,11 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
   // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
   const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result", "next run"];
-  // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
-  // plans/fallback-model.md: only `paused` — the cap reached with no usable free fallback —
-  // stops the loops, so only it turns an idle role row into `budget paused`. Under `fallback`
-  // the loops keep ticking (on the free model, which the header badge names), so their rows
-  // read their normal state. The operator pause is fleet-wide too and outranks both.
-  const budgetPausedNow = fleetBudgetGate(snap.budget) === "paused";
-  const userPausedNow = snap.paused;
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
-  // its own, up to three stats + reads per loop per second. The phase is computed here once
-  // and carried on the row: the same label drives the state cell and the shared row order
-  // (sortLoopsByState), so the two cannot diverge.
+  // its own, up to three stats + reads per loop per second. The phase is computed once per
+  // row (in loopRowCells, shared with the GUI payload) and carried on the row: the same
+  // label drives the state cell and the shared row order (sortLoopsByState).
   // Per-role prompts 2/2 — a loop with queued prompts carries a small `p:N` marker on its
   // state cell (appended, so the work-item prefix survives clipping ahead of it), telling the
   // operator steering one loop that something is waiting for it. The GUI renders the same
@@ -157,14 +146,15 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     return n > 0 ? ` p:${n}` : "";
   };
   const withMetrics = snap.loops.map((s) => {
-    // The tail read names the run kind the loop's phase describes (progressKind) — a gate
-    // run's session mid-tick must not reset the working cell's counts (BUGS.md 2026-09-22).
-    const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
+    // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the GUI
+    // payload (status-payload.ts) repeats, so the two dashboards cannot drift apart.
+    const cells = loopRowCells(snap, root, s);
     return {
       s,
-      m: displayTokenMetrics(root, s, live),
-      live,
-      phase: loopPhase(s, snap.running, root, budgetPausedNow, live, userPausedNow || snap.pausedRoles.includes(s.role), landingForRole(snap.landQueue, s.role)),
+      generated: cells.generated,
+      peakCtx: cells.peakCtx,
+      live: cells.live,
+      phase: cells.phase,
       role: s.role,
       lastTickEndedAt: s.lastTickEndedAt,
     };
@@ -174,15 +164,15 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // its width derives from row content, so the extra character widens it automatically.
   // Rows are ordered by the shared display rule (active phases first, last tick most-recent
   // first) so the TUI/status table groups landing with working/reviewing like the GUI table.
-  const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }) => [
+  const rows = sortLoopsByState(withMetrics).map(({ s, generated, peakCtx, live, phase }) => [
     s.custom ? `${s.role}*` : s.role,
     // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
-    // this role by loopPhase's `landing` argument above) rides this same phase string.
+    // this role by loopRowCells's landing argument above) rides this same phase string.
     stateCell(root, s, phase, live) + roleQueued(s.role),
     String(s.ticks),
     String(s.commits),
-    compactTokens(m.generated),
-    compactTokens(m.peakCtx),
+    compactTokens(generated),
+    compactTokens(peakCtx),
     usd(s.totalCostUsd),
     usd(dailyCost(s)),
     lastTickCell(s.lastTickEndedAt),
@@ -194,8 +184,8 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
     "",
     "",
     "",
-    compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
-    compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
+    compactTokens(withMetrics.reduce((sum, { generated }) => sum + generated, 0)),
+    compactTokens(Math.max(0, ...withMetrics.map(({ peakCtx }) => peakCtx))),
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
     // The fleet's today-spend — by construction equal to the header badge's spend while
     // enabled (snapshot derives both from the same loops), so table and badge cannot drift.

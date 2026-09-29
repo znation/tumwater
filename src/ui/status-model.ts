@@ -68,8 +68,8 @@ function inFlightDetail(head: string, p: LiveProgress | null): string {
  * event is the log's newest and its counts are what "reviewing" describes — the author's
  * own run ("author") for every other in-flight phase. One home for the rule so the TUI
  * table and the GUI payload cannot drift (the precomputed `live` tail must name the same
- * run the phase label does). */
-export function progressKind(s: LoopState): ProgressRunKind {
+ * run the phase label does). Module-private: loopRowCells is the only reader. */
+function progressKind(s: LoopState): ProgressRunKind {
   return s.phase === "review" ? "gate" : "author";
 }
 
@@ -238,6 +238,35 @@ interface LoopSortRow {
   lastTickEndedAt?: number | null;
 }
 
+/** One loop row's display derivation — the block both observer surfaces re-ran per loop
+ * (renderStatus's withMetrics map and statusPayload's loops map): a single live tail read
+ * (the running-and-not-parked gate, read at the phase's progressKind), the token metrics
+ * over that tail, and the rendered phase string. The phase's snapshot-level gates are
+ * derived here too — budget paused (only `paused` stops a loop; `fallback` keeps it ticking
+ * on the free model, which the header badge names), the fleet pause plus the per-role one
+ * (one `paused` flag to loopPhase covers both), and the role's landing cell (merge queue
+ * 4/5) — so the two dashboards' per-loop cells cannot drift apart. */
+export function loopRowCells(
+  snap: StatusSnapshot,
+  root: string,
+  s: LoopState,
+): { live: LiveProgress | null; generated: number; peakCtx: number; phase: string } {
+  const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
+  const m = displayTokenMetrics(root, s, live);
+  const phase = loopPhase(
+    s,
+    snap.running,
+    root,
+    fleetBudgetGate(snap.budget) === "paused",
+    live,
+    // The per-role pause reads the same `paused` cell as the fleet pause: one flag to
+    // loopPhase covers both gates (status-model has no per-role branch of its own).
+    snap.paused || snap.pausedRoles.includes(s.role),
+    landingForRole(snap.landQueue, s.role),
+  );
+  return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
+}
+
 /** Is this phase one of the in-flight states? The three labels come from loopPhase:
  * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5) — a vetted
  * change waiting for the merge slot (`vetted, awaiting merge`) runs nothing, so it is not in
@@ -277,8 +306,9 @@ export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[
  * (combining would double-count), while a stale `running` flag after a crash is still
  * correct to combine because that unfinished tick's counters were reset to 0 at tick start
  * and never re-saved. `live`, when given, is the frame's precomputed tail — it skips the log
- * read; without it a running loop reads on its own (standalone callers). */
-export function displayTokenMetrics(
+ * read; without it a running loop reads on its own (standalone callers). Module-private:
+ * loopRowCells is the only reader now that both dashboards derive their rows through it. */
+function displayTokenMetrics(
   root: string,
   s: LoopState,
   live?: LiveProgress | null,
@@ -312,8 +342,9 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
  * home for the budgetReached + fallback-readiness wiring both observer surfaces share: the
  * TUI/status table needs the `paused` verdict for loopPhase, the JSON/GUI payload ships the
  * same one, and budgetBadge needs `fallback` — so the three-valued display rule cannot
- * drift between the surfaces. */
-export function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
+ * drift between the surfaces. Module-private: loopPhase (via loopRowCells) and budgetBadge
+ * are the only readers. */
+function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
   return budgetGate(budgetReached(budget), budget.fallback !== null);
 }
 

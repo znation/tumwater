@@ -1,10 +1,9 @@
 import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents } from "../events.js";
 import { formatEvent } from "../event-format.js";
-import { readLiveProgress } from "./progress.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, displayTokenMetrics, fleetBudgetGate, isActivePhase, landingBadge, landingForRole, loopPhase, progressKind, yieldMultiplierFor } from "./status-model.js";
+import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, yieldMultiplierFor } from "./status-model.js";
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -15,12 +14,6 @@ import { buildBadge, budgetBadge, displayTokenMetrics, fleetBudgetGate, isActive
  * status-model helpers the TUI table uses. */
 export function statusPayload(root: string): object {
   const snap = snapshot(root);
-  // The budget gate is fleet-wide (plans/daily-cost-budget.md) and three-valued since
-  // plans/fallback-model.md: only `paused` (the cap reached with no usable free fallback)
-  // stops the loops, so only it makes an idle role loop's phase read `budget paused` — under
-  // `fallback` they keep ticking on the free model. One flag covers both dashboards through
-  // loopPhase, derived through status-model's shared fleetBudgetGate like renderStatus does.
-  const budgetPausedNow = fleetBudgetGate(snap.budget) === "paused";
   return {
     running: snap.running,
     pid: snap.pid,
@@ -73,24 +66,10 @@ export function statusPayload(root: string): object {
     // client-side (PLANS.md "Pause countdown").
     pausedUntil: snap.pausedUntil,
     loops: snap.loops.map((s) => {
-      // One live tail read per running loop per poll (was up to three — see renderStatus).
-      // The kind follows the phase (progressKind) — see renderStatus / BUGS.md 2026-09-22.
-      const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
-      const m = displayTokenMetrics(root, s, live);
-      const phase = loopPhase(
-        s,
-        snap.running,
-        root,
-        budgetPausedNow,
-        live,
-        // The per-role pause reads the same `paused` cell as the fleet pause: one flag to
-        // loopPhase covers both gates (status-model has no per-role branch of its own).
-        snap.paused || snap.pausedRoles.includes(s.role),
-        // Merge queue 4/5 — the role whose change is landing reads `landing <elapsed> ·
-        // <stage>` (the marker-driven record, filtered to this role); every other row is
-        // untouched.
-        landingForRole(snap.landQueue, s.role),
-      );
+      // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
+      // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
+      // drift apart.
+      const { live, generated, peakCtx, phase } = loopRowCells(snap, root, s);
       return {
         role: s.role,
         // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
@@ -106,8 +85,8 @@ export function statusPayload(root: string): object {
         currentWork: live?.currentWork ?? null,
         ticks: s.ticks,
         commits: s.commits,
-        generated: m.generated,
-        peakCtx: m.peakCtx,
+        generated,
+        peakCtx,
         costUsd: s.totalCostUsd,
         // The loop's spend for the local day (the daily budget window): 0 while its stamp
         // is stale or missing — same helper and semantics as the TUI's `today` column.
