@@ -1,12 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import { collectReport, collectReportSince, type ReportData } from "../src/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/ui/report.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { cli, runCli } from "./cli-harness.js";
 
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
@@ -97,65 +95,54 @@ test("collectReport counts features done and bugs fixed from backlog history", (
   const d3 = dayKey(at(2));
   const dOld = dayKey(at(30)); // out of the 5-day window
 
-  fs.writeFileSync(
-    path.join(root, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      `### Still planned (planned ${dayKey(at(1))})`,
-      "",
-      `Body prose that mentions done ${d2} — the Planned section is never scanned.`,
-      "",
-      "## Done",
-      "",
-      `### Full heading entry (planned 2026-09-01, done ${d1})`,
-      "",
-      `**Goal.** Body prose that says done ${d3} — only the heading's metadata counts.`,
-      "",
-      "- acceptance bullet without a date",
-      "",
+  writeBacklogFile(root, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: `### Still planned (planned ${dayKey(at(1))})
+
+Body prose that mentions done ${d2} — the Planned section is never scanned.`,
+    },
+    {
+      heading: "## Done",
       // The real-world false positive: a body bullet whose following prose paragraph carries a
-      // lowercase cross-reference to another entry must not count as that other entry.
-      `**Relationship to other plans.** Sibling of the done daily-cost-budget plan (done ${d2}) — never counted.`,
-      "",
-      "### Wrapped heading entry (planned 2026-09-02, done", // date lands on the second line
-      `${d2})`,
-      "",
-      "Body.",
-      "",
-      `- Compressed epitaph (planned 2026-08-25, done ${d3}; commit abc1234)`,
-      "- No date epitaph (planned 2026-08-20; commit def5678)",
-      `- Out-of-window epitaph (planned 2026-07-01, done ${dOld}; commit 9999999)`,
-      "",
-    ].join("\n"),
-  );
-  fs.writeFileSync(
-    path.join(root, "BUGS.md"),
-    [
-      "# Bugs",
-      "",
-      "## Open",
-      "",
-      `### Still open (found by qa loop ${dayKey(at(1))})`,
-      "",
-      "Body.",
-      "",
-      "## Fixed",
-      "",
-      `### Full fixed entry (found by bugfix loop 2026-09-05, fixed ${d2})`,
-      "",
-      "**Symptom:** Body with a repro bullet that carries no date.",
-      "",
-      "- repro step one",
-      "",
-      `- Closed variant (reported 2026-08-30, closed ${d1}; commit abc)`,
-      `- Resolved variant (found by human log analysis 2026-09-04, resolved ${d3}; commit def)`,
-      `- Old epitaph (reported 2026-07-01, fixed ${dOld}; commit 8888888)`,
-      "",
-    ].join("\n"),
-  );
+      // lowercase cross-reference to another entry must not count as that other entry. The
+      // wrapped entry's date lands on its second line.
+      body: `### Full heading entry (planned 2026-09-01, done ${d1})
+
+**Goal.** Body prose that says done ${d3} — only the heading's metadata counts.
+
+- acceptance bullet without a date
+
+**Relationship to other plans.** Sibling of the done daily-cost-budget plan (done ${d2}) — never counted.
+
+### Wrapped heading entry (planned 2026-09-02, done
+${d2})
+
+Body.
+
+- Compressed epitaph (planned 2026-08-25, done ${d3}; commit abc1234)
+- No date epitaph (planned 2026-08-20; commit def5678)
+- Out-of-window epitaph (planned 2026-07-01, done ${dOld}; commit 9999999)`,
+    },
+  ]);
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: `### Still open (found by qa loop ${dayKey(at(1))})\n\nBody.`,
+    },
+    {
+      heading: "## Fixed",
+      body: `### Full fixed entry (found by bugfix loop 2026-09-05, fixed ${d2})
+
+**Symptom:** Body with a repro bullet that carries no date.
+
+- repro step one
+
+- Closed variant (reported 2026-08-30, closed ${d1}; commit abc)
+- Resolved variant (found by human log analysis 2026-09-04, resolved ${d3}; commit def)
+- Old epitaph (reported 2026-07-01, fixed ${dOld}; commit 8888888)`,
+    },
+  ]);
 
   const data = collectReport(root, 5);
   const byDate = new Map(data.series.map((d) => [d.date, d]));
@@ -177,27 +164,22 @@ test("a ### heading quoted in a fenced block inside a Fixed entry adds no phanto
   // its own: before the fix each fenced `### `/`- ` date line inflated the report's fixed count.
   const root = tmpdir();
   const d1 = dayKey(at(2));
-  fs.writeFileSync(
-    path.join(root, "BUGS.md"),
-    [
-      "# Bugs",
-      "",
-      "## Fixed",
-      "",
-      `### Real bug (found 2026-08-01, fixed ${d1})`,
-      "",
-      "Body prose.",
-      "",
-      "```md",
-      "## Fixed",
-      "",
-      `### Quoted entry (fixed ${dayKey(at(1))})`,
-      "",
-      `- Quoted epitaph (fixed ${dayKey(at(0))}; commit abc)`,
-      "```",
-      "",
-    ].join("\n"),
-  );
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `### Real bug (found 2026-08-01, fixed ${d1})
+
+Body prose.
+
+\`\`\`md
+## Fixed
+
+### Quoted entry (fixed ${dayKey(at(1))})
+
+- Quoted epitaph (fixed ${dayKey(at(0))}; commit abc)
+\`\`\``,
+    },
+  ]);
 
   const data = collectReport(root, 5);
   assert.equal(data.totals.bugsFixed, 1);
@@ -213,26 +195,21 @@ test("a body bullet that mentions a completion date is not an entry; an epitaph'
   const root = tmpdir();
   const d1 = dayKey(at(2));
   const d2 = dayKey(at(1));
-  fs.writeFileSync(
-    path.join(root, "BUGS.md"),
-    [
-      "# Bugs",
-      "",
-      "## Fixed",
-      "",
-      `### Real entry with a body list (found by bugfix loop ${d1}, fixed ${d1})`,
-      "",
-      "The sibling symptom was recorded twice before:",
-      "",
-      `- a first false start (fixed ${d2})`,
-      `- a second false start (fixed ${d2})`,
-      "",
-      "And a closing note.",
-      "",
-      `- A real epitaph in the compressed style (found by telemetry loop ${d2}, fixed ${d2}; commit abc1234)`,
-      "",
-    ].join("\n"),
-  );
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `### Real entry with a body list (found by bugfix loop ${d1}, fixed ${d1})
+
+The sibling symptom was recorded twice before:
+
+- a first false start (fixed ${d2})
+- a second false start (fixed ${d2})
+
+And a closing note.
+
+- A real epitaph in the compressed style (found by telemetry loop ${d2}, fixed ${d2}; commit abc1234)`,
+    },
+  ]);
 
   const data = collectReport(root, 5);
   assert.equal(data.totals.bugsFixed, 2); // the entry's own day + the epitaph's day — not 5
@@ -389,10 +366,10 @@ test("tumwater report prints the Markdown report and validates --days", async ()
     JSON.stringify({ ts: at(3), loop: "feature", type: "tick_end", tick: 1, result: "no_change", tokens: 313 }),
     JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 42 }),
   ]);
-  fs.writeFileSync(
-    path.join(root, "PLANS.md"),
-    `# Plans\n\n## Planned\n\n## Done\n\n- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)\n`,
-  );
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Planned" },
+    { heading: "## Done", body: `- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)` },
+  ]);
 
   const full = await runCli(root, "report");
   assert.equal(full.code, 0);
@@ -626,10 +603,10 @@ test("report --json --days prints the collector's payload; the Markdown render i
     JSON.stringify({ ts: at(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
     JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change", tokens: 42 }),
   ]);
-  fs.writeFileSync(
-    path.join(root, "PLANS.md"),
-    `# Plans\n\n## Planned\n\n## Done\n\n- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)\n`,
-  );
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Planned" },
+    { heading: "## Done", body: `- Epitaph (planned 2026-09-01, done ${dayKey(at(0))}; commit abc)` },
+  ]);
 
   const json = await runCli(root, "report", "--json", "--days", "4");
   assert.equal(json.code, 0);

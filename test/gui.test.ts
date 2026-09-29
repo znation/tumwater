@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import type os from "node:os";
-import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -13,7 +12,7 @@ import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
@@ -533,14 +532,20 @@ test("status payload carries planned plans and open bugs, fresh per poll", async
 
   // A later edit to the tracked markdown is visible on the next payload (no caching).
   // Entries must land inside their sections — appending would file them under Done/Fixed.
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    "# Plans\n\n## Planned\n\n### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)\n\n**Goal:** The dashboard surfaces project status.\n\n## Done\n\n_None yet._\n",
-  );
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    "# Bugs\n\n## Open\n\n### A routine merge conflict logs a warning (reported 2026-08-25)\n\n**Symptom:** The main log is full of warnings.\n\n## Fixed\n\n_None yet._\n",
-  );
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)\n\n**Goal:** The dashboard surfaces project status.",
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(repo, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: "### A routine merge conflict logs a warning (reported 2026-08-25)\n\n**Symptom:** The main log is full of warnings.",
+    },
+    { heading: "## Fixed" },
+  ]);
   payload = statusPayload(repo) as { plans: string[]; bugs: string[] };
   assert.deepEqual(payload.plans, ["Show open bugs and planned features in the TUI/GUI (planned 2026-08-24)"]);
   assert.deepEqual(payload.bugs, ["A routine merge conflict logs a warning (reported 2026-08-25)"]);
@@ -565,43 +570,25 @@ test("status payload carries open questions, fresh per poll", async () => {
 
   // A question posted under ## Open shows on the next poll; an entry in ## Answered must
   // never leak into the open list — the header badge count is this list's length.
-  fs.writeFileSync(
-    path.join(repo, "QUESTIONS.md"),
-    [
-      "# Questions",
-      "",
-      "## Open",
-      "",
-      "### Q1: which database?",
-      "",
-      "**Context:** the storage layer is undecided.",
-      "",
-      "## Answered",
-      "",
-      "### Q0: earlier question (answered 2026-08-27)",
-    ].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "QUESTIONS.md", [
+    {
+      heading: "## Open",
+      body: "### Q1: which database?\n\n**Context:** the storage layer is undecided.",
+    },
+    { heading: "## Answered", body: "### Q0: earlier question (answered 2026-08-27)" },
+  ]);
   payload = statusPayload(repo) as { questions: string[] };
   assert.deepEqual(payload.questions, ["Q1: which database?"], "only the Open section counts");
 
   // Answering it (moving the entry to ## Answered) drops it on the next poll — a stale
   // cache would keep the badge showing `questions: 1` long after the decision was made.
-  fs.writeFileSync(
-    path.join(repo, "QUESTIONS.md"),
-    [
-      "# Questions",
-      "",
-      "## Open",
-      "",
-      "_None yet._",
-      "",
-      "## Answered",
-      "",
-      "### Q1: which database? (answered 2026-08-29)",
-      "",
-      "**Decision:** SQLite.",
-    ].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "QUESTIONS.md", [
+    { heading: "## Open" },
+    {
+      heading: "## Answered",
+      body: "### Q1: which database? (answered 2026-08-29)\n\n**Decision:** SQLite.",
+    },
+  ]);
   payload = statusPayload(repo) as { questions: string[] };
   assert.deepEqual(payload.questions, [], "an answered question is no longer open");
 });
@@ -662,34 +649,22 @@ test("the dashboard page lists queued prompts in its project status panel", asyn
 test("gui /api/backlog serves an entry's title and body and validates file/index", async () => {
   const repo = makeRepo();
   await initProject(repo, "backlog gui test");
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      "### First plan (planned 2026-09-05)",
-      "",
-      "**Goal.** The first goal.",
-      "",
-      "A second body line, kept verbatim.",
-      "",
-      "### Second plan (planned 2026-09-04)", // bare heading: empty body
-      "",
-      "## Done",
-      "",
-      "_None yet._",
-    ].join("\n") + "\n",
-  );
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    ["# Bugs", "", "## Open", "", "### One bug (reported 2026-09-05)", "", "**Symptom.** It breaks.", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
-  );
-  fs.writeFileSync(
-    path.join(repo, "QUESTIONS.md"),
-    ["# Questions", "", "## Open", "", "### Q1: which database?", "", "**Context:** the storage layer is undecided.", "", "## Answered", "", "_None yet._"].join("\n") + "\n",
-  );
+  // The second plan is a bare heading: empty body.
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### First plan (planned 2026-09-05)\n\n**Goal.** The first goal.\n\nA second body line, kept verbatim.\n\n### Second plan (planned 2026-09-04)",
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(repo, "BUGS.md", [
+    { heading: "## Open", body: "### One bug (reported 2026-09-05)\n\n**Symptom.** It breaks." },
+    { heading: "## Fixed" },
+  ]);
+  writeBacklogFile(repo, "QUESTIONS.md", [
+    { heading: "## Open", body: "### Q1: which database?\n\n**Context:** the storage layer is undecided." },
+    { heading: "## Answered" },
+  ]);
 
   const { server, base } = await startLocalGui(repo);
   try {
@@ -746,10 +721,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     }
 
     // An empty section is out of range at index 0 (seeded placeholders are not entries).
-    fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    ["# Bugs", "", "## Open", "", "_None yet._", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
-  );
+    writeBacklogFile(repo, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed" }]);
     res = await fetch(base + "/api/backlog?file=bugs&index=0");
     assert.equal(res.status, 400);
 
@@ -904,10 +876,13 @@ test("the dashboard page escapes backlog entry bodies before innerHTML", async (
   // escaping is the page's job, like every other field it renders.
   const repo = makeRepo();
   await initProject(repo, "backlog esc test");
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    ["# Bugs", "", "## Open", "", "### A bug with HTML in its body (reported 2026-09-06)", "", "<img src=x onerror=alert(1)>", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: "### A bug with HTML in its body (reported 2026-09-06)\n\n<img src=x onerror=alert(1)>",
+    },
+    { heading: "## Fixed" },
+  ]);
   const { server, base } = await startLocalGui(repo);
   try {
     const res = await fetch(base + "/api/backlog?file=bugs&index=0");

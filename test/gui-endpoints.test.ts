@@ -1,13 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import type http from "node:http";
 import { handleReport, handleFailures } from "../src/ui/gui-endpoints.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 
 // The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -52,10 +50,9 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
     JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }),
   ]);
   // A PLANS.md Done entry dated today counts as one feature done in the window.
-  fs.writeFileSync(
-    path.join(root, "PLANS.md"),
-    ["# Plans", "", "## Done", "", `### Something (planned 2026-09-20, done ${dayKey(at(0))}; commit abc1234)`, "", ""].join("\n"),
-  );
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Done", body: `### Something (planned 2026-09-20, done ${dayKey(at(0))}; commit abc1234)` },
+  ]);
 
   const { captured, data } = serveReport(root, "?days=5");
   const report = data as { days: number; series: { date: string; tokensOut: number; commits: number; featuresDone: number; costByRole: Record<string, number> }[]; totals: { tokensOut: number; ticks: number; commits: number; featuresDone: number; costUsd: number } };

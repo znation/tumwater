@@ -13,7 +13,7 @@ import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths
 import { runTui } from "../src/ui/tui.js";
 import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { writeLogLines, writeOrchestratorMarker } from "./log-fixtures.js";
 
@@ -364,24 +364,17 @@ test("project status browses entries in full with up/down and resets on Ctrl+T",
   const repo = await makeTuiRepo();
   // One plan with a real body (the seeded placeholder file has none) so browsing shows more
   // than the heading, plus one bare bug to cross into the next section.
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      "### Add a --json flag (planned 2026-09-05)",
-      "",
-      "**Goal.** Machine-readable status output.",
-      "",
-      "A second body line, kept verbatim.",
-      "",
-      "## Done",
-      "",
-      "_None yet._",
-    ].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: `### Add a --json flag (planned 2026-09-05)
+
+**Goal.** Machine-readable status output.
+
+A second body line, kept verbatim.`,
+    },
+    { heading: "## Done" },
+  ]);
   seedEntry(repo, "BUGS.md", "### Crashes on empty input");
 
   const tui = startTui(repo);
@@ -436,22 +429,15 @@ test("PgDn/PgUp page the selected entry's body, clamped at both ends", async () 
   const repo = await makeTuiRepo();
   // One plan whose 80-line body overflows any pane budget this fake TTY can produce
   // (rows=40 → budget ≤ ~33), so paging has real room in both directions.
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      "### Long body plan (planned 2026-09-05)",
-      "",
-      ...Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0")}`),
-      "",
-      "## Done",
-      "",
-      "_None yet._",
-    ].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: `### Long body plan (planned 2026-09-05)
+
+${Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0")}`).join("\n")}`,
+    },
+    { heading: "## Done" },
+  ]);
 
   const tui = startTui(repo);
   try {
@@ -517,22 +503,10 @@ test("PgUp/PgDn are ignored in project-status list mode (no entry selected)", as
 
 test("a stale entry selection falls back to the empty list when entries disappear", async () => {
   const repo = await makeTuiRepo();
-  fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    [
-      "# Plans",
-      "",
-      "## Planned",
-      "",
-      "### Add a --json flag (planned 2026-09-05)",
-      "",
-      "**Goal.** Machine-readable status output.",
-      "",
-      "## Done",
-      "",
-      "_None yet._",
-    ].join("\n") + "\n",
-  );
+  writeBacklogFile(repo, "PLANS.md", [
+    { heading: "## Planned", body: "### Add a --json flag (planned 2026-09-05)\n\n**Goal.** Machine-readable status output." },
+    { heading: "## Done" },
+  ]);
 
   const tui = startTui(repo);
   try {
@@ -542,10 +516,7 @@ test("a stale entry selection falls back to the empty list when entries disappea
     assert.match(tui.lastFrame(), /Machine-readable status output/);
 
     // The entry is removed from PLANS.md while selected (a loop landed an edit).
-    fs.writeFileSync(
-    path.join(repo, "PLANS.md"),
-    ["# Plans", "", "## Planned", "", "_None yet._", "", "## Done", "", "_None yet._"].join("\n") + "\n",
-  );
+    writeBacklogFile(repo, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
 
     // A keypress in the stale state: PgDn takes the no-entries path of the page handler…
     tui.key(undefined, "pagedown");

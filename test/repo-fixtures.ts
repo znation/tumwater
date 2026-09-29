@@ -108,6 +108,35 @@ export function writeConfig(dir: string, value: unknown): void {
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify(value));
 }
 
+/** Write a backlog fixture file (PLANS.md, BUGS.md, or QUESTIONS.md) from its sections. The
+ * single home of the skeleton every backlog fixture used to hand-roll — title heading, blank
+ * line, each `## ` section heading with its body — so a test states only the entries under
+ * test. A section with no body renders the canonical `_None yet._` placeholder the init
+ * templates seed; a body is trimmed at its edges (the parsers trim it right back). The exact
+ * bytes match the hand-rolled arrays the fixtures used before: title, blank, heading, blank,
+ * body, blank, next heading — so the parsers under test see the documents they always did. */
+interface BacklogSection {
+  /** The section's full heading line, as the real files carry it (e.g. "## Planned"). */
+  heading: string;
+  /** The section's body below its heading, verbatim; omitted means "empty section". */
+  body?: string;
+}
+
+export function writeBacklogFile(
+  root: string,
+  file: "PLANS.md" | "BUGS.md" | "QUESTIONS.md",
+  sections: BacklogSection[],
+): void {
+  const title = file === "PLANS.md" ? "# Plans" : file === "BUGS.md" ? "# Bugs" : "# Questions";
+  const out = [title, ""];
+  sections.forEach((section, i) => {
+    if (i > 0) out.push("");
+    const body = section.body === undefined ? "_None yet._" : section.body.trim();
+    out.push(section.heading, "", ...body.split("\n"));
+  });
+  fs.writeFileSync(path.join(root, file), out.join("\n") + "\n");
+}
+
 /** A makeRepo'd repo (no package.json — nothing declares a build check) plus a linked
  * worktree for `role` at the real location, checked out to pristine main: the shape the
  * no-check-declared baseline tests need. `dir` is the repo path, created if missing. */
