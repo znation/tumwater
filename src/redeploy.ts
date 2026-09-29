@@ -517,22 +517,23 @@ export class Redeployer {
 
 /** The production Redeployer for `root`, or null when the running dist carries no build stamp
  * (compiled with a bare tsc): then provenance is unknown and there is nothing to compare. */
-export async function createRedeployer(
+/** The redeployer's production effects, bound to one repo: the mirror worktree both the green
+ * check and the compile run in, the baseline check that reads the live config per call, the
+ * staged compile, and the dist swap. Extracted from createRedeployer so the wiring itself is
+ * unit-testable — isSelfHosted pins createRedeployer to the repo the running build was stamped
+ * in (a fixture repo never reads as self-hosted), but these closures are plain repo-rooted
+ * effects any fixture can drive. */
+export function redeployDeps(
   root: string,
+  build: BuildInfo,
   log: (event: RedeployEvent) => void,
-  /** The successor's startup gate (RedeployDeps.bootProblem) — cli-run.ts binds
-   * runStartupProblem to the invocation's own flags, the ones the supervisor forwards to every
-   * generation. */
   bootProblem: () => Promise<string | null>,
-): Promise<Redeployer | null> {
-  const build = readBuildInfo();
-  if (!build) return null;
-  const selfHosted = await isSelfHosted(root, build);
+): RedeployDeps {
   const dist = distDir();
   // The mirror worktree — main checked out detached at the pending head — serves both the green
   // check and the compile; it is (re)pointed at each head before use.
   const mirror = async (mainHead: string) => ensureDetachedWorktree(root, mirrorWorktreePath(root), mainHead);
-  const deps: RedeployDeps = {
+  return {
     staleness: (mainHead) => buildStaleness(root, build.sha, mainHead),
     mainGreen: async (mainHead) =>
       // The live config per call (a mid-run edit applies to the next green check like it
@@ -546,5 +547,25 @@ export async function createRedeployer(
     swap: (mainHead) => swapDist(root, dist, mainHead),
     bootProblem,
   };
-  return new Redeployer(build, selfHosted, deps, log, RESTART_DRAIN_MAX_MS, autoRestartRecord(root));
+}
+
+export async function createRedeployer(
+  root: string,
+  log: (event: RedeployEvent) => void,
+  /** The successor's startup gate (RedeployDeps.bootProblem) — cli-run.ts binds
+   * runStartupProblem to the invocation's own flags, the ones the supervisor forwards to every
+   * generation. */
+  bootProblem: () => Promise<string | null>,
+): Promise<Redeployer | null> {
+  const build = readBuildInfo();
+  if (!build) return null;
+  const selfHosted = await isSelfHosted(root, build);
+  return new Redeployer(
+    build,
+    selfHosted,
+    redeployDeps(root, build, log, bootProblem),
+    log,
+    RESTART_DRAIN_MAX_MS,
+    autoRestartRecord(root),
+  );
 }

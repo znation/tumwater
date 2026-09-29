@@ -11,6 +11,7 @@ import {
   type AutoRestartRecord,
   type RedeployDeps,
   Redeployer,
+  redeployDeps,
   RESTART_COOLDOWN_MS,
   RESTART_EXIT_CODE,
 } from "../src/redeploy.js";
@@ -742,6 +743,53 @@ test("RESTART_EXIT_CODE is EX_TEMPFAIL, distinct from success, fail(), and a for
   assert.equal(RESTART_EXIT_CODE, 75);
 });
 
+
+test("the production mainGreen wiring runs the real check in a fresh mirror and logs the baseline event", async () => {
+  // createRedeployer's own closures never ran under test: isSelfHosted pins it to the repo the
+  // running build was stamped in (a fixture never reads as self-hosted), so the unit tier drove
+  // Redeployer with scripted deps while the real wiring — mirror worktree, live config read,
+  // baseline build_check event — executed only inside a live daemon whose main actually moved.
+  // redeployDeps is that wiring, exposed: a real repo, the real npm check, green and red alike.
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node -e 'process.exit(0)'" } }),
+  );
+  fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const greenHead = sh(root, "git", "rev-parse", "HEAD");
+
+  const events: HarnessEventInput[] = [];
+  const deps = redeployDeps(root, { sha: greenHead, builtAt: 1, root }, (e) => events.push(e), async () => null);
+  assert.equal(await deps.mainGreen(greenHead), true, "a passing suite reads green");
+
+  // A red main reads false — the verdict the restart gate blocks a swap on.
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node -e 'process.exit(1)'" } }),
+  );
+  sh(root, "git", "commit", "-aqm", "break the suite");
+  const redHead = sh(root, "git", "rev-parse", "HEAD");
+  assert.equal(await deps.mainGreen(redHead), false, "a failing suite reads red");
+
+  // Each check priced exactly one baseline build_check event through the wiring's own log —
+  // the feed's record that the fleet spent this minute verifying its successor.
+  const baseline = events.filter((e) => e.type === "build_check" && e.scope === "baseline");
+  assert.deepEqual(
+    baseline.map((e) => [e.status, e.loop, e.script]),
+    [
+      ["passed", "harness", "test"],
+      ["failed", "harness", "test"],
+    ],
+  );
+  // The mirror worktree the closure created is real and repointed at each asked head.
+  assert.equal(
+    sh(mirrorWorktreePath(root), "git", "rev-parse", "HEAD"),
+    redHead,
+    "the mirror sits at the head its check verified",
+  );
+});
 
 test("a toolchain-broken suite leaves no latched block: the skip reads as green and the restart proceeds", async () => {
   // BUGS.md 2026-09-15 end to end: git works (the mirror checkout and the rev-parse key both
