@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatEvent } from "../src/event-format.js";
+import { formatEvent, usageText } from "../src/event-format.js";
 import { displayWidth } from "../src/text.js";
 
 test("formatEvent renders each type as one line", () => {
@@ -634,4 +634,65 @@ test("formatEvent renders land_queued, landed, and land_failed", () => {
   // A failed landing names the outcome — the detail lives in the review/merge events themselves.
   const failed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
   assert.match(failed, /landing of abcdef12 did not land \(merge_conflict\) \(in 1s\)$/, `land_failed must name the outcome: ${failed}`);
+});
+
+// Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or
+// hand-edited line can omit any field. The feed's fallbacks ("?", pi's default provider,
+// "several roles") must render — the operator reading `logs` during an incident sees these
+// lines, and a blank or undefined-injected line would be worse than the degraded truth.
+test("formatEvent renders the fallback sides of optional payload fields", () => {
+  // budget_fallback without provider/model: the switch still happened; name the unknown.
+  const fallbackBare = formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10 } as never);
+  assert.match(
+    fallbackBare,
+    /budget fallback — \$10\.50 of \$10\.00 daily cost reached; role loops continue on pi's default provider\/pi's default model \(cost n\/a\)$/,
+    `absent backend must read as pi's defaults: ${fallbackBare}`,
+  );
+
+  // A demoted fallback whose failure count was lost still reads — the "?" says a field is
+  // missing, not that nothing failed.
+  const demotedBare = formatEvent({
+    ts: 0, loop: "harness", type: "budget_paused", spentUsd: 10.5, capUsd: 10, fallbackDemoted: "omlx/qwen",
+  } as never);
+  assert.match(
+    demotedBare,
+    /\(fallback omlx\/qwen is not serving — \? consecutive ticks failed on it; one probe tick retries it after a cool-down\)$/,
+    `absent failure count must degrade to "?": ${demotedBare}`,
+  );
+
+  // role_paused/role_resumed carry the role loosely; without one the line still names its kind.
+  const pausedBare = formatEvent({ ts: 0, loop: "harness", type: "role_paused" } as never);
+  assert.match(pausedBare, /role \? paused — it stops starting new ticks/, `absent role must read "?": ${pausedBare}`);
+  const resumedBare = formatEvent({ ts: 0, loop: "harness", type: "role_resumed" } as never);
+  assert.match(resumedBare, /role \? resumed — it ticks again$/, `absent role must read "?": ${resumedBare}`);
+
+  // rate_limit_hold whose roles payload is not an array (a torn line): "several roles" beats
+  // crashing the feed or joining a string's characters.
+  const holdBare = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_hold", roles: "feature", holdMs: 60_000, escalation: 0,
+  } as never);
+  assert.match(
+    holdBare,
+    /429 hold — several roles rate-limited by the provider/, `a non-array roles payload must read "several roles": ${holdBare}`,
+  );
+
+  // restart without drainedMs/abortedTicks (the old event shape, or a torn line): zero
+  // defaults, and no resume clause.
+  const restartBare = formatEvent({ ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40) } as never);
+  assert.match(restartBare, /\(drained 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);
+});
+
+// usageText's either-part-omitted rule has a third shape the tick_end/landed tests never hit:
+// cost without tokens (a provider that reports spend but not token counts). The separator
+// must not appear before the money, and a fully empty usage must contribute nothing at all.
+test("usageText renders cost-only usage without a dangling separator", () => {
+  assert.equal(usageText({ ts: 0, loop: "x", type: "tick_end", costUsd: 0.05 } as never), "$0.05");
+  assert.equal(usageText({ ts: 0, loop: "x", type: "tick_end", tokens: 0, costUsd: 0 } as never), "");
+  // In a sentence context the cost-only fragment rides the same " · " glue — and an event
+  // with no usage contributes neither text nor separator.
+  const costOnly = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "changed", costUsd: 0.05 } as never);
+  assert.match(costOnly, /tick #5 changed · \$0\.05$/, `cost-only usage: ${costOnly}`);
+  assert.doesNotMatch(costOnly, /tok/);
+  const noUsage = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 6, result: "changed" } as never);
+  assert.doesNotMatch(noUsage, / · /, `a usage-free tick_end must carry no usage clause: ${noUsage}`);
 });
