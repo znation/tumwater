@@ -193,12 +193,22 @@ export function loadConfig(root: string): TumwaterConfig {
 /** loadConfig past its existence check: parse, validate, and default-fill a file the caller
  * has already seen. Split out so loadConfigCached's stat stays its ONE presence check — a file
  * deleted between that stat and this read throws (a broken file for that one poll, so
- * last-known-good holds) instead of re-checking existence and coming back as the defaults. */
+ * last-known-good holds) instead of re-checking existence and coming back as the defaults.
+ *
+ * Two validation passes, so load enforces exactly what saveConfig and applyConfigRequest do
+ * (they gate the fully merged shape): the raw file first, so its own errors keep their precise
+ * messages — a whole-section wrong type degrades or crashes under overlaying (a string where
+ * `customLoops` belongs makes the merge itself throw) — then the merged result, so cross-field
+ * rules that depend on defaults catch the shape the file actually produces: a file naming only
+ * `idleBackoff.maxSeconds` is judged against the default initialSeconds here, not waved
+ * through to be rejected by the next save or silently clamped at runtime. */
 function loadPresentConfig(file: string): TumwaterConfig {
   const { raw, problem } = parseJsonConfig(file, CONFIG_BASENAME);
   if (problem !== undefined) throw new Error(problem);
   validateConfig(raw);
-  return overlayDefaults(defaultConfig(), raw as Partial<TumwaterConfig>);
+  const merged = overlayDefaults(defaultConfig(), raw as Partial<TumwaterConfig>);
+  validateConfig(merged);
+  return merged;
 }
 
 /** Load tumwater.json without throwing: either the validated config or the error message

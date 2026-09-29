@@ -155,15 +155,20 @@ const POSITIVE_INTEGER: NumberRule = {
 };
 const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
-/** Validate user-supplied tumwater.json values before defaults are filled in, so a typo
- * fails fast with an actionable message instead of misbehaving at runtime — e.g. a
- * non-numeric tickTimeoutSeconds becomes NaN and kills every pi run instantly, a
- * non-numeric logMaxBytes rotates the event log on every write, an unknown role id (a
- * misspelled entry under `roles`) spawns a phantom loop that errors every tick, and an
- * unknown key is silently ignored so the intended setting never takes effect. Collects
- * every problem so one edit can fix them all; throws a single Error listing them. `label`
- * names the file in the thrown messages — validateConfig also gates the tracked example
- * template, whose problems must not be misreported as tumwater.json's. */
+/** Validate tumwater.json values, so a typo fails fast with an actionable message instead
+ * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
+ * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
+ * unknown role id (a misspelled entry under `roles`) spawns a phantom loop that errors every
+ * tick, and an unknown key is silently ignored so the intended setting never takes effect.
+ * Collects every problem so one edit can fix them all; throws a single Error listing them.
+ * `label` names the file in the thrown messages — validateConfig also gates the tracked
+ * example template, whose problems must not be misreported as tumwater.json's.
+ *
+ * Called on two shapes: the raw file before defaults are filled in (load's first pass, the
+ * example template — per-key rules there keep their precise messages, naming exactly what
+ * the file holds), and the fully merged config (load's second pass, saveConfig,
+ * applyConfigRequest) — the shape that actually runs, so cross-field rules that depend on
+ * defaults are judged here, where both sides of the comparison are always present. */
 export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   if (!isJsonObject(raw)) {
     throw new Error(`${label} must be a JSON object (got ${typeName(raw)})`);
@@ -445,6 +450,21 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       }
     }
   }
+
+  // Cross-field (judged on the merged config, where both sides are always present; on a raw
+  // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
+  // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards
+  // the configured initial wait. Name both values so one edit fixes the pair.
+  const backoff = r.idleBackoff;
+  if (
+    isJsonObject(backoff) &&
+    typeof backoff.initialSeconds === "number" &&
+    typeof backoff.maxSeconds === "number" &&
+    backoff.maxSeconds < backoff.initialSeconds
+  )
+    problems.push(
+      `idleBackoff.maxSeconds (${show(backoff.maxSeconds)}) must be ≥ idleBackoff.initialSeconds (${show(backoff.initialSeconds)}) — every idle wait is clamped to the smaller, so the smaller max would silently shorten the configured first wait`,
+    );
 
   if (problems.length > 0) {
     throw new Error(`invalid ${label}:\n  - ${problems.join("\n  - ")}`);

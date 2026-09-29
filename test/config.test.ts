@@ -159,17 +159,37 @@ test("loadConfig merges partial files over defaults", () => {
     path.join(dir, "tumwater.json"),
     JSON.stringify({
       model: "sonnet",
-      idleBackoff: { maxSeconds: 60 },
+      // Above the default initialSeconds, so the merged shape stays valid — a max BELOW
+      // the default initial is loadConfig's rejection, tested separately below.
+      idleBackoff: { maxSeconds: 7200 },
       roles: { clean: { enabled: false }, perf: { enabled: true } },
     }),
   );
   const config = loadConfig(dir);
   assert.equal(config.model, "sonnet");
-  assert.equal(config.idleBackoff.maxSeconds, 60);
+  assert.equal(config.idleBackoff.maxSeconds, 7200);
   assert.equal(config.idleBackoff.factor, defaultConfig().idleBackoff.factor);
   assert.equal(config.roles.clean?.enabled, false);
   assert.equal(config.roles.improve?.enabled, true);
   assert.equal(config.roles.perf?.enabled, true);
+});
+
+test("loadConfig rejects a backoff max below the initial it would clamp away, naming both values", () => {
+  // Judged on the MERGED config (the shape saveConfig gates, so load and save agree): a
+  // file naming only maxSeconds is measured against the default initialSeconds it merges
+  // with — the same wait scheduleBackoff would silently clamp at runtime.
+  const dir = tmpdir();
+  writeConfig(dir, { idleBackoff: { maxSeconds: 60 } });
+  assert.throws(
+    () => loadConfig(dir),
+    /idleBackoff\.maxSeconds \(60\) must be ≥ idleBackoff\.initialSeconds \(120\)/,
+  );
+  // And when the file names both keys itself.
+  writeConfig(dir, { idleBackoff: { initialSeconds: 300, maxSeconds: 60 } });
+  assert.throws(
+    () => loadConfig(dir),
+    /idleBackoff\.maxSeconds \(60\) must be ≥ idleBackoff\.initialSeconds \(300\)/,
+  );
 });
 
 test("loadConfig enables qa with its slow clock when the file omits it", () => {

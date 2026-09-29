@@ -148,6 +148,27 @@ test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", 
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
 });
 
+test("validateConfig rejects a backoff max below the initial it would clamp away, naming both values", () => {
+  // Both keys named by the caller.
+  assert.match(
+    validationError({ ...defaultConfig(), idleBackoff: { initialSeconds: 300, factor: 2, maxSeconds: 60 } }),
+    /idleBackoff\.maxSeconds \(60\) must be ≥ idleBackoff\.initialSeconds \(300\) — every idle wait is clamped to the smaller/,
+  );
+  // Only max named: on the merged config (defaultConfig fills the initial) the default
+  // participates — the shape load and save both gate.
+  assert.match(
+    validationError({ ...defaultConfig(), idleBackoff: { ...defaultConfig().idleBackoff, maxSeconds: 60 } }),
+    /idleBackoff\.maxSeconds \(60\) must be ≥ idleBackoff\.initialSeconds \(120\)/,
+  );
+  // On a raw partial file only one side is known, so the per-key rules judge it alone —
+  // the cross-field rule fires after the merge, not on the file's own incomplete shape.
+  assert.doesNotThrow(() => validateConfig({ idleBackoff: { maxSeconds: 60 } }));
+  assert.doesNotThrow(() => validateConfig({ idleBackoff: { initialSeconds: 3600 } }));
+  // A non-numeric side is the per-key rules' problem, not this one's.
+  assert.match(validationError({ idleBackoff: { initialSeconds: "x", maxSeconds: 60 } }), /initialSeconds must be/);
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), idleBackoff: { ...defaultConfig().idleBackoff, maxSeconds: 3600 } }));
+});
+
 test("validateConfig reports every invalid value in one error", () => {
   const msg = validationError({
     maxConcurrent: -3,
