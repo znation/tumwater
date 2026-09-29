@@ -9,7 +9,7 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
-import { eventDayKey, eventRole, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, eventUsage, type HarnessEvent } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 
@@ -37,10 +37,10 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const role = eventRole(ev);
     target.ticksByRole[role] = (target.ticksByRole[role] ?? 0) + 1;
     if (target.ticks !== undefined) target.ticks++;
-    target.tokensOut += typeof ev.tokens === "number" ? ev.tokens : 0;
-    const cost = typeof ev.costUsd === "number" ? ev.costUsd : 0;
-    target.costUsd += cost;
-    if (cost !== 0) target.costByRole[role] = (target.costByRole[role] ?? 0) + cost;
+    const { tokens, costUsd } = eventUsage(ev);
+    target.tokensOut += tokens;
+    target.costUsd += costUsd;
+    if (costUsd !== 0) target.costByRole[role] = (target.costByRole[role] ?? 0) + costUsd;
   } else if (ev.type === "merged") {
     target.commits++;
   }

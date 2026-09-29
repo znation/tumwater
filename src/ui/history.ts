@@ -1,5 +1,5 @@
 import { fail, flagValue, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
-import { readEvents, type HarnessEvent } from "../events.js";
+import { eventUsage, readEvents, type HarnessEvent } from "../events.js";
 import { formatTimestamp } from "../datetime.js";
 import { collapseWhitespace, displayWidth, padToWidth, shortSpanPhrase, truncate } from "../text.js";
 import { usageText } from "./event-format.js";
@@ -31,8 +31,8 @@ const HISTORY_SCAN_MAX_EVENTS = 20_000;
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
  * nor cost, matching the payload's omit-when-zero convention. `ts` is the raw tick_end instant
  * (epoch ms) the rendered `time` string is derived from, and `tokens`/`costUsd` the raw usage
- * numbers `usage` folds into one string (0 when the event carries none, the same
- * omit-when-zero convention): the three fields `tumwater history --json` and the GUI's
+ * numbers `usage` folds into one string (0 when the event carries none — eventUsage's
+ * loose-typing coercion, shared with the event feed's fragment): the three fields `tumwater history --json` and the GUI's
  * /api/history serve so a script gets the numbers, not the table's rendering of them. */
 interface TickRow {
   ts: number;
@@ -61,11 +61,12 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
     const e = scoped[i];
     if (!e || e.type !== "tick_end") continue;
     const startTs = starts.get(`${e.loop}#${e.tick}`);
+    const usage = eventUsage(e);
     rows.push({
       ts: e.ts,
       time: formatTimestamp(e.ts),
-      tokens: Number(e.tokens ?? 0),
-      costUsd: Number(e.costUsd ?? 0),
+      tokens: usage.tokens,
+      costUsd: usage.costUsd,
       loop: String(e.loop),
       tick: Number(e.tick),
       result: String(e.result),

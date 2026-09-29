@@ -1,16 +1,16 @@
-import type { HarnessEvent } from "../events.js";
+import { eventUsage, type HarnessEvent } from "../events.js";
 import { budgetPhrase, compactTokens, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "../text.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
- * (tick_end, landed): tokens and cost arrive loosely typed on HarnessEvent, so each is coerced
- * and rendered through the shared token/money formats (compactTokens, usd) in one place. Either
+ * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
+ * every usage consumer shares), rendered through the shared token/money formats
+ * (compactTokens, usd) in one place. Either
  * part is omitted when zero or absent, so skipped ticks and zero-usage landings render
  * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator
  * the budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase;
  * table-cell contexts (history's usage column) use the bare text. */
 export function usageText(e: HarnessEvent): string {
-  const tokens = Number(e.tokens ?? 0);
-  const costUsd = Number(e.costUsd ?? 0);
+  const { tokens, costUsd } = eventUsage(e);
   return (
     (tokens > 0 ? `${compactTokens(tokens)} tok` : "") +
     (costUsd > 0 ? `${tokens > 0 ? " · " : ""}${usd(costUsd)}` : "")

@@ -167,6 +167,20 @@ export function eventRole(ev: HarnessEvent): string {
   return typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
 }
 
+/** The usage numbers an event records (`tick_end`'s own run, `landed`'s landing slot):
+ * `tokens` and `costUsd` arrive `unknown` through the event's index signature, so they are
+ * coerced to numbers here, with an absent, non-numeric, or non-finite value reading as 0 —
+ * the one convention every usage consumer applies (the event feed's usage fragment,
+ * `tumwater history`'s rows and --json, the usage report's fold), so the field rule —
+ * including what a corrupt value contributes — lives beside the event shape, not re-spelled
+ * per consumer. */
+export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number } {
+  const tokens = typeof ev.tokens === "number" && Number.isFinite(ev.tokens) ? ev.tokens : 0;
+  const costUsd =
+    typeof ev.costUsd === "number" && Number.isFinite(ev.costUsd) ? ev.costUsd : 0;
+  return { tokens, costUsd };
+}
+
 /** Read the last `limit` events (best-effort; skips malformed lines).
  * A limit that is not a positive number reads as an empty window — `[]` — matching
  * readTranscriptTail's zero-boundary semantics (the raw `lines.slice(-limit)` below would not: `slice(-0)` is
