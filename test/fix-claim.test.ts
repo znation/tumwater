@@ -119,14 +119,15 @@ const SECTIONS_DOC =
   "### Next bug: details (found by qa 2026-09-29)\n\n" +
   "**Symptom:** still broken.\n";
 
-test("bugEntryBody ends an entry at a `## ` section heading, and the next section's entry reads cleanly", () => {
+test("bugEntryBody ends an entry at a `## ` section heading and reads only the Fixed section", () => {
   const body = bugEntryBody(SECTIONS_DOC, "The bug: details (fixed 2026-09-29)");
   assert.equal(body, "**Fix:** `theFix` does it.");
   assert.ok(!body.includes("## Open"), "the body stops at the section boundary");
-  assert.equal(
-    bugEntryBody(SECTIONS_DOC, "Next bug: details (found by qa 2026-09-29)"),
-    "**Symptom:** still broken.",
-  );
+  // Every caller looks up a heading fixedHeadings produced (the Fixed section), so a
+  // heading that lives only in another section is absent: "" — which also means an entry
+  // whose Open-record body would otherwise be mistaken for an unchanged Fixed body
+  // (base Open → head Fixed, heading text identical) still faces the symbol check.
+  assert.equal(bugEntryBody(SECTIONS_DOC, "Next bug: details (found by qa 2026-09-29)"), "");
 });
 
 test("bugEntryBody returns an empty body for a heading the doc does not carry", () => {

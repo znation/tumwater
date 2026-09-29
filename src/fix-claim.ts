@@ -22,11 +22,12 @@
  * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences:
  * fixedHeadings walks parseEntryDetails — backlog.ts's fence-aware entry parser, the same
  * one the dashboards read — and bugEntryBody consults fenceTracker before treating any line
- * as entry structure. */
+ * as entry structure — and as of 2026-09-29 both readers walk parseEntryDetails: one
+ * fence-aware scanner serves headings and bodies alike, so the two cannot drift apart. */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { fenceTracker, parseEntryDetails } from "./backlog.js";
+import { parseEntryDetails } from "./backlog.js";
 import { gitTry } from "./git.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
@@ -54,28 +55,15 @@ export function fixedHeadings(doc: string): string[] {
  * line inside a fenced code block is quoted content, never a boundary, and a fence inside
  * the entry itself (an entry quoting a markdown template) is body content the entry keeps —
  * the body runs to the next heading outside the fence, not to the fence's first quoted
- * `## `/`### ` line. */
+ * `## `/`### ` line.
+ *
+ * Read through parseEntryDetails like fixedHeadings (every caller looks up a heading
+ * fixedHeadings produced, so the Fixed section is the only one that matters) instead of
+ * hand-rolling a second fence-aware walk of the same document: one parser serves headings
+ * and bodies alike, so the two lookups can never disagree about where an entry starts,
+ * ends, or what is quoted content. */
 export function bugEntryBody(doc: string, heading: string): string {
-  const lines = doc.split("\n");
-  let body: string[] | undefined;
-  const fenced = fenceTracker();
-  for (const line of lines) {
-    // fenceTracker must see every line in order (fence state is document-wide), so it runs
-    // even while the body has not opened yet; inside a fence a line is never structure.
-    if (fenced.inside(line)) {
-      if (body) body.push(line);
-      continue;
-    }
-    if (/^### /.test(line)) {
-      if (body) break;
-      if (line.replace(/^###\s+/, "").trim() === heading) body = [];
-    } else if (/^## /.test(line)) {
-      if (body) break;
-    } else if (body) {
-      body.push(line);
-    }
-  }
-  return (body ?? []).join("\n").trim();
+  return parseEntryDetails(doc, "Fixed").find((entry) => entry.title === heading)?.body ?? "";
 }
 
 /** The backticked, whitespace-free spans of one entry's `**Fix:**` paragraph (the whole body
