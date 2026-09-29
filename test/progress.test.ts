@@ -11,7 +11,7 @@ import {
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { writeLogLines } from "./log-fixtures.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
@@ -147,8 +147,7 @@ test("parseProgress skips empty text blocks when capturing the work item", () =>
 test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, [SESSION, assistantLine("working", { tokens: 500 }), toolStart("read", { path: "x.ts" })].join("\n") + "\n");
+  writeLogLines(file, [SESSION, assistantLine("working", { tokens: 500 }), toolStart("read", { path: "x.ts" })]);
   const p = readLiveProgress(root, "clean");
   assert.ok(p);
   assert.equal(p.turns, 1);
@@ -160,8 +159,7 @@ test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
 test("readLiveProgress accumulates appended lines across polls", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n");
+  writeLogLines(file, [SESSION]);
   assert.equal(readLiveProgress(root, "clean")?.turns, 0);
   fs.appendFileSync(file, assistantLine("one", { tokens: 100 }) + "\n");
   assert.equal(readLiveProgress(root, "clean")?.turns, 1);
@@ -180,23 +178,19 @@ test("readLiveProgress accumulates appended lines across polls", () => {
 test("a lander (gate) session mid-log does not reset the author run's counts", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   const gateSession = JSON.stringify({
     type: "session",
     version: 3,
     id: "g",
     cwd: landWorktreePath(root, "clean"),
   });
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       SESSION,
       assistantLine("author turn one", { tokens: 100 }),
       assistantLine("author turn two", { tokens: 200 }),
       gateSession, // the landing's reviewer run starts mid-tick
       assistantLine("reviewer turn", { tokens: 300 }),
-    ].join("\n") + "\n",
-  );
+    ]);
   const author = readLiveProgress(root, "clean");
   assert.equal(author?.turns, 2, "the working cell keeps the author run's turns");
   assert.equal(author?.contextTokens, 200);
@@ -209,7 +203,6 @@ test("a lander (gate) session mid-log does not reset the author run's counts", (
 test("the next author session resets only the author accumulator, and gate lines fold into gate", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   const gateSession = JSON.stringify({
     type: "session",
     version: 3,
@@ -222,17 +215,14 @@ test("the next author session resets only the author accumulator, and gate lines
     id: "a",
     cwd: worktreePath(root, "clean"),
   });
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       SESSION,
       assistantLine("old tick", { tokens: 999 }),
       gateSession,
       assistantLine("reviewer", { tokens: 50 }),
       authorSession, // the role's next tick starts
       assistantLine("new tick", { tokens: 10 }),
-    ].join("\n") + "\n",
-  );
+    ]);
   const author = readLiveProgress(root, "clean");
   assert.equal(author?.turns, 1, "the new tick's run starts from zero");
   assert.equal(author?.contextTokens, 10);
@@ -244,17 +234,13 @@ test("the next author session resets only the author accumulator, and gate lines
 test("the harness's review label line routes following lines to the gate accumulator", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       SESSION,
       assistantLine("author", { tokens: 100 }),
       // src/pi.ts writes the harness's label line before the reviewer's session event.
       JSON.stringify({ type: "tumwater_run", label: "review" }),
       assistantLine("reviewer", { tokens: 200 }),
-    ].join("\n") + "\n",
-  );
+    ]);
   assert.equal(readLiveProgress(root, "clean")?.turns, 1, "the author run keeps its count");
   const gate = readLiveProgress(root, "clean", "gate");
   assert.equal(gate?.turns, 1, "the labeled run's line folded into gate");
@@ -264,11 +250,8 @@ test("the harness's review label line routes following lines to the gate accumul
 test("a review label line starts the gate accumulator fresh — the previous gate run's counts cannot bleed into the next review", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   const gateSession = JSON.stringify({ type: "session", version: 3, id: "g", cwd: landWorktreePath(root, "clean") });
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       SESSION,
       assistantLine("author", { tokens: 100 }),
       // One finished gate run (a previous review, or this gate's build-fix run)…
@@ -279,8 +262,7 @@ test("a review label line starts the gate accumulator fresh — the previous gat
       // cell reads the gate accumulator as soon as the marker's stage says reviewing — which
       // can precede this run's session event by a poll — so the reset must happen here.
       JSON.stringify({ type: "tumwater_run", label: "review" }),
-    ].join("\n") + "\n",
-  );
+    ]);
   const gate = readLiveProgress(root, "clean", "gate");
   assert.equal(gate?.turns, 0, "the previous run's turns are gone at the new label");
   assert.equal(gate?.contextTokens, 0, "its context too");
@@ -297,8 +279,7 @@ test("a review label line starts the gate accumulator fresh — the previous gat
 test("readLiveProgress does not count a torn trailing line until it is complete", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n");
+  writeLogLines(file, [SESSION]);
   fs.appendFileSync(file, '{"type":"message_end","mess'); // torn write, no newline
   assert.equal(readLiveProgress(root, "clean")?.turns, 0);
   assert.equal(readLiveProgress(root, "clean")?.turns, 0); // still incomplete: not counted twice or lost
@@ -311,12 +292,11 @@ test("readLiveProgress does not count a torn trailing line until it is complete"
 test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n" + assistantLine("old tick", { tokens: 999 }) + "\n");
+  writeLogLines(file, [SESSION, assistantLine("old tick", { tokens: 999 })]);
   assert.equal(readLiveProgress(root, "clean")?.turns, 1);
   // rotateIfLarge renames the log and a fresh file starts for the next run.
   fs.renameSync(file, file + ".1");
-  fs.writeFileSync(file, SESSION + "\n" + assistantLine("new tick", { tokens: 7 }) + "\n");
+  writeLogLines(file, [SESSION, assistantLine("new tick", { tokens: 7 })]);
   const p = readLiveProgress(root, "clean");
   assert.equal(p?.turns, 1);
   assert.equal(p?.contextTokens, 7);
@@ -394,8 +374,7 @@ test("a content-bearing tool_execution_update moves the open call's activity clo
   // so the feed forwards content-bearing updates to the open call's clock.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  writeLogLines(file, [SESSION, toolStart("bash", { command: "npm test" })]);
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined, "the bash call is open after start");
 
@@ -415,8 +394,7 @@ test("content-free tool_execution_updates leave the activity clock alone (no kee
   // stamp's epoch value through the later read, no wall-clock tolerance needed.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  writeLogLines(file, [SESSION, toolStart("bash", { command: "npm test" })]);
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined);
 
@@ -448,8 +426,7 @@ test("a tool_execution_update for an unknown id leaves open calls untouched", as
   // credited to our call — entries are matched by id, never by position.
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, SESSION + "\n" + toolStart("bash", { command: "npm test" }) + "\n");
+  writeLogLines(file, [SESSION, toolStart("bash", { command: "npm test" })]);
   const stamp1 = readLiveProgress(root, "clean")?.openToolCalls?.[0]?.lastActivityAt;
   assert.ok(stamp1 !== undefined);
 
@@ -540,10 +517,9 @@ test("toolCallStallMs resolves the configured threshold, defaulting to five minu
 test("findSeedOffset grows its window until it contains the log's last session", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   const first = assistantLine("before", { tokens: 1 });
   const lines = [first, SESSION, assistantLine("after", { tokens: 2 })];
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
   const size = fs.statSync(file).size;
   const sessionOffset = first.length + 1; // Byte offset of the session line.
   // A 40-byte window cannot hold the session; the scan must grow past it.
@@ -556,15 +532,13 @@ test("findSeedOffset grows its window until it contains the log's last session",
 test("findSeedOffset returns 0 for a log with no session event", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, [assistantLine("a"), assistantLine("b")].join("\n") + "\n");
+  writeLogLines(file, [assistantLine("a"), assistantLine("b")]);
   assert.equal(findSeedOffset(file, fs.statSync(file).size, 40), 0);
 });
 
 test("readLiveProgress counts a run past the default tail window from its session, not from the window edge", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   // Two turns, a session (the current run's anchor), one turn, then >4 MB of streaming
   // deltas: the last 4 MB hold no session and no turns, so the old seed reported 0 turns
   // for a run whose real count is 1.
@@ -572,7 +546,7 @@ test("readLiveProgress counts a run past the default tail window from its sessio
   const lines = [assistantLine("old tick", { tokens: 1 }), SESSION, assistantLine("current", { tokens: 9 })];
   const need = 4 * 1024 * 1024 + 1024 - lines.join("\n").length;
   for (let i = 0, n = Math.ceil(need / filler.length); i < n; i++) lines.push(filler);
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
   const p = readLiveProgress(root, "clean");
   assert.ok(p);
   assert.equal(p.turns, 1, "the run after the last session has exactly one turn");
@@ -581,13 +555,12 @@ test("readLiveProgress counts a run past the default tail window from its sessio
 test("readLiveProgress counts every turn of a run larger than the tail window", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  ensureParentDir(file);
   // One session, then more than 4 MB of assistant turns: the old seed counted only the
   // turns inside the last 4 MB — a fraction of the run — on first observation.
   const lines = [SESSION];
   const turns: string[] = [];
   for (let i = 0; i < 24_000; i++) turns.push(assistantLine(`turn ${i}`, { tokens: 10 }));
-  fs.writeFileSync(file, lines.concat(turns).join("\n") + "\n");
+  writeLogLines(file, lines.concat(turns));
   assert.ok(fs.statSync(file).size > 4 * 1024 * 1024, "the fixture must exceed the tail window");
   assert.equal(readLiveProgress(root, "clean")?.turns, 24_000);
 });

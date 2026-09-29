@@ -5,7 +5,7 @@ import { initProject } from "../src/init.js";
 import { eventsLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
-import { ensureParentDir } from "../src/files.js";
+import { writeLogLines } from "./log-fixtures.js";
 
 // The `logs` command's window-and-filter CLI tests — --since, --grep, and the docs pin —
 // split from cli-logs.test.ts so node --test runs them in parallel processes. That file
@@ -16,11 +16,7 @@ import { ensureParentDir } from "../src/files.js";
 // by its tick number in the rendered line.
 function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
   const file = eventsLogPath(repo);
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    agesMs.map((age, i) => JSON.stringify({ ts: now - age, loop: "clean", type: "tick_start", tick: i + 1 })).join("\n") + "\n",
-  );
+  writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "tick_start", tick: i + 1 })));
 }
 
 test("logs --since prints only the events of the window, oldest-first", async () => {
@@ -159,7 +155,6 @@ const COMMIT_B = "def4567890abcdef";
 function seedMixedLog(repo: string): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
-  ensureParentDir(file);
   const events = [
     { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
     { ts: now - 5000, loop: "feature", type: "tick_start", tick: 1 },
@@ -168,7 +163,7 @@ function seedMixedLog(repo: string): void {
     { ts: now - 2000, loop: "bugfix", type: "tick_end", tick: 2, result: "refused", summary: "nothing to do" },
     { ts: now - 1000, loop: "bugfix", type: "land_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 },
   ];
-  fs.writeFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  writeLogLines(file, events);
 }
 
 test("logs --grep matches the event type id even where the rendering paraphrases it", async () => {

@@ -7,11 +7,11 @@ import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { readCompleteLines } from "../src/ui/tail.js";
 import { expectedTimestamp } from "./oracles.js";
-import { writeTurnLog } from "./log-fixtures.js";
+import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
 
 /** A harness-written run-label marker line (src/pi.ts writes it for labeled runs). */
 function reviewMarker(): string {
@@ -50,7 +50,6 @@ test("readTranscriptTail honors limit=0: slice(-0) must not widen the window", (
 test("readTranscriptTail matches a full re-read with prompts included, newest entry a prompt", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= 6; i++) {
     if (i % 2 === 0) lines.push(reviewMarker());
@@ -62,7 +61,7 @@ test("readTranscriptTail matches a full re-read with prompts included, newest en
   // entry IS the prompt (separator + its lines).
   lines.push(agentStart());
   lines.push(userLine("newest prompt\nwith two lines", FIXED_TS + 7 * 60_000));
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
@@ -89,7 +88,6 @@ test("readTranscriptTail matches a full re-read with prompts included, newest en
 test("readTranscriptTail matches a full re-read on a multi-MB log and reads only the tail", (t) => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // ~400 runs with realistic padding (deltas + tool noise) → several MB, so the last-50
   // window (~half a scan chunk) is far smaller than the file.
   const lines: string[] = [];
@@ -105,7 +103,7 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
       ]),
     );
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
   const size = fs.statSync(file).size;
   assert.ok(size > 3 * 1024 * 1024, `fixture should span several scan chunks (got ${size})`);
 
@@ -139,7 +137,6 @@ test("readTranscriptTail matches a full re-read on a multi-MB log and reads only
 test("readTranscriptTail re-reads fully when contentless turns undercount candidates", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // Each run's second assistant turn is contentless: a candidate line that renders nothing,
   // so the backward scan's stop boundary under-delivers and must fall back to a full read.
   const lines: string[] = [];
@@ -149,7 +146,7 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
     lines.push(assistantBlocks([]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -161,7 +158,6 @@ test("readTranscriptTail re-reads fully when contentless turns undercount candid
 test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // Blank lines can land in pi's JSONL log (a torn write whose newline arrives separately,
   // or a manual edit). The backward scan walks lines with its own arithmetic and has a
   // dedicated skip for them — pin that it skips them exactly like the full re-read does:
@@ -183,7 +179,7 @@ test("readTranscriptTail skips blank lines exactly like a full re-read", () => {
     assistantBlocks([{ type: "text", text: "turn 3" }]),
     "", // trailing blank line (the file still ends with a newline)
   ];
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -231,8 +227,7 @@ test("readTranscriptTail returns null for missing or empty logs", () => {
 test("readTranscriptTail returns null when rotation removes the file between stat and open", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
-  fs.writeFileSync(file, agentStart() + "\n" + assistantBlocks([{ type: "text", text: "hi" }]) + "\n");
+  writeLogLines(file, [agentStart(), assistantBlocks([{ type: "text", text: "hi" }])]);
   const restore = vanishOnOpen(file);
   try {
     assert.equal(readTranscriptTail(file, 50), null); // no throw — same as a missing log
@@ -250,7 +245,6 @@ test("readTranscriptTail returns null when rotation removes the file between sta
 test("readTranscriptTail scans the opened inode when rotation recreates the path smaller between stat and open", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // Old content: three labeled runs — larger than the new file below.
   const oldLines: string[] = [];
   for (let i = 1; i <= 3; i++) {
@@ -259,7 +253,7 @@ test("readTranscriptTail scans the opened inode when rotation recreates the path
     oldLines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     oldLines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, oldLines.join("\n") + "\n");
+  writeLogLines(file, oldLines);
   // New content at the same path after rotation: two labeled runs, smaller.
   const newLines: string[] = [];
   for (let i = 1; i <= 2; i++) {
@@ -286,12 +280,8 @@ test("readTranscriptTail scans the opened inode when rotation recreates the path
 test("readTranscriptTail returns null when rotation recreates the path as an empty file between stat and open", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // Non-empty old content so the pre-open stat reports a size worth scanning.
-  fs.writeFileSync(
-    file,
-    agentStart() + "\n" + userLine("prompt", FIXED_TS) + "\n" + assistantBlocks([{ type: "text", text: "hi" }]) + "\n",
-  );
+  writeLogLines(file, [agentStart(), userLine("prompt", FIXED_TS), assistantBlocks([{ type: "text", text: "hi" }])]);
   // Rotation renames the old log away and recreates the path before open lands — here as an
   // empty file (a fresh log with nothing appended yet): the opened inode is empty, so the
   // reader reports no data instead of scanning stale bytes off a size that no longer exists.
@@ -306,7 +296,6 @@ test("readTranscriptTail returns null when rotation recreates the path as an emp
 test("readTranscriptTail includes a marker line when it labels the boundary run", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   // Every run is labeled; with limit 1 the walk arms on the newest agent_start and must keep
   // walking to its marker — the window starts at M even though A is what armed the stop.
   const lines: string[] = [];
@@ -316,7 +305,7 @@ test("readTranscriptTail includes a marker line when it labels the boundary run"
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -337,7 +326,6 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
   // slides, boundaries land on markers and agent_starts alike; the oracle must hold throughout.
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= 40; i++) {
     if (i % 2 === 0) lines.push(reviewMarker());
@@ -345,7 +333,7 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -359,7 +347,6 @@ test("readTranscriptTail matches a full re-read with a stale marker, mislabel in
   // separator picks it up. The invariant is tail ≡ full re-read — not "labels are always correct".
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= 5; i++) {
     if (i === 3) lines.push(reviewMarker()); // stale — its reviewer died before emitting anything
@@ -367,7 +354,7 @@ test("readTranscriptTail matches a full re-read with a stale marker, mislabel in
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -385,7 +372,6 @@ test("readTranscriptTail excludes a labeled run older than the window boundary",
   // and contributes nothing, while the whole-file window still carries its label.
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= 6; i++) {
     if (i === 1) lines.push(reviewMarker());
@@ -393,7 +379,7 @@ test("readTranscriptTail excludes a labeled run older than the window boundary",
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -419,13 +405,12 @@ test("readTranscriptTail stops at the arming agent_start when EOF precedes any m
   // at that agent_start, dropping the orphan tail exactly as a full re-read's slice(-limit) does.
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= 3; i++) lines.push(assistantBlocks([{ type: "text", text: `orphan ${i}` }])); // rotated tail
   lines.push(agentStart()); // unlabeled run — no marker line precedes it
   lines.push(userLine("prompt", FIXED_TS + 60_000));
   for (let i = 1; i <= 10; i++) lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);

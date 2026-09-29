@@ -15,8 +15,7 @@ import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
-import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { writeLogLines, writeOrchestratorMarker } from "./log-fixtures.js";
 
 
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are
@@ -294,29 +293,22 @@ test("Ctrl+T cycles events → transcript → project status → usage report �
   // something real to show (the user message must never render).
   const logDir = path.join(repo, ".tumwater", "log");
   fs.mkdirSync(logDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(logDir, "clean.pi.jsonl"),
-    [
+  writeLogLines(path.join(logDir, "clean.pi.jsonl"), [
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({ type: "message_end", message: { role: "user", timestamp: Date.now(), content: [] } }),
       JSON.stringify({
         type: "message_end",
         message: { role: "assistant", content: [{ type: "text", text: "tidied the imports" }] },
       }),
-    ].join("\n") + "\n",
-  );
+    ]);
   // Seed the event log with explicit ts values (logEvent always stamps Date.now(), so direct
   // append is the controllable path): ticks across two roles on two days plus one merge.
   const eventsFile = path.join(repo, ".tumwater", "log", "events.jsonl");
-  ensureParentDir(eventsFile);
-  fs.writeFileSync(
-    eventsFile,
-    [
+  writeLogLines(eventsFile, [
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
       JSON.stringify({ ts: atNoon(0), loop: "clean", type: "tick_end", tick: 2, result: "no_change", tokens: 150 }),
       JSON.stringify({ ts: atNoon(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
-    ].join("\n") + "\n",
-  );
+    ]);
 
   const tui = startTui(repo);
   try {
@@ -551,9 +543,9 @@ test("a stale entry selection falls back to the empty list when entries disappea
 
     // The entry is removed from PLANS.md while selected (a loop landed an edit).
     fs.writeFileSync(
-      path.join(repo, "PLANS.md"),
-      ["# Plans", "", "## Planned", "", "_None yet._", "", "## Done", "", "_None yet._"].join("\n") + "\n",
-    );
+    path.join(repo, "PLANS.md"),
+    ["# Plans", "", "## Planned", "", "_None yet._", "", "## Done", "", "_None yet._"].join("\n") + "\n",
+  );
 
     // A keypress in the stale state: PgDn takes the no-entries path of the page handler…
     tui.key(undefined, "pagedown");

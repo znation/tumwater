@@ -38,15 +38,24 @@ export function writeOrchestratorMarker(
   });
 }
 
-/** Write events.jsonl under a fixture root's .tumwater/log/ (strings pass through verbatim —
- * for malformed lines; objects are JSON-encoded like logEvent writes them). */
-export function writeEvents(root: string, lines: unknown[]): void {
-  const file = path.join(root, ".tumwater", "log", "events.jsonl");
+/** Write a fixture log file (a pi session log or the harness's events.jsonl) the way the real
+ * writers stamp them: create the parent directories, then emit `lines` as newline-joined JSONL
+ * with a trailing newline. Strings pass through verbatim (for malformed or blank lines); any
+ * other value is JSON-encoded like logEvent writes it. The single place tests stamp raw log
+ * bytes — writeEvents, writePiLog, and writeTurnLog build on it, and tests that need a shape
+ * the named helpers don't cover call it directly instead of hand-rolling the write. */
+export function writeLogLines(file: string, lines: readonly unknown[]): void {
   ensureParentDir(file);
   fs.writeFileSync(
     file,
     lines.map((l) => (typeof l === "string" ? l : JSON.stringify(l))).join("\n") + "\n",
   );
+}
+
+/** Write events.jsonl under a fixture root's .tumwater/log/ (strings pass through verbatim —
+ * for malformed lines; objects are JSON-encoded like logEvent writes them). */
+export function writeEvents(root: string, lines: unknown[]): void {
+  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl"), lines);
 }
 
 /** Write a synthetic pi session log of `turns` complete runs — the fixture most transcript
@@ -65,7 +74,7 @@ export function writeTurnLog(turns: number): { root: string; file: string } {
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
   return { root, file };
 }
 

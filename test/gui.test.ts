@@ -12,10 +12,9 @@ import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { startLocalGui } from "./gui-fixtures.js";
-import { writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
+import { writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
@@ -190,10 +189,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
 
     // With a log: same rendered lines as the CLI transcript.
     const file = piLogPath(repo, "feature");
-    ensureParentDir(file);
-    fs.writeFileSync(
-      file,
-      [
+    writeLogLines(file, [
         JSON.stringify({ type: "agent_start" }),
         JSON.stringify({
           type: "message_end",
@@ -206,8 +202,7 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
             content: [{ type: "text", text: "did the thing" }, { type: "toolCall", id: "c1", name: "read", arguments: { path: "/a/PLANS.md" } }],
           },
         }),
-      ].join("\n") + "\n",
-    );
+      ]);
     const ok = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10");
     assert.ok(ok.lines.some((l) => l.startsWith("── run @ ")));
     assert.ok(ok.lines.includes("  did the thing"));
@@ -245,10 +240,7 @@ test("gui /api/transcript accepts user-defined loop roles listed in tumwater.jso
   cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // A log for the custom loop — same shape as a built-in's.
-  ensureParentDir(piLogPath(repo, "nightly"));
-  fs.writeFileSync(
-    piLogPath(repo, "nightly"),
-    [
+  writeLogLines(piLogPath(repo, "nightly"), [
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({
         type: "message_end",
@@ -257,8 +249,7 @@ test("gui /api/transcript accepts user-defined loop roles listed in tumwater.jso
           content: [{ type: "text", text: "did the nightly thing" }],
         },
       }),
-    ].join("\n") + "\n",
-  );
+    ]);
   const { server, base } = await startLocalGui(repo);
   try {
     // The custom id is accepted and serves its transcript like any built-in's…
@@ -328,11 +319,7 @@ test("status payload combines persisted + live token metrics for running loops o
   saveLoopState(repo, s);
   // ...and the in-flight tick's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })].join("\n") + "\n",
-  );
+  writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
   const payload = statusPayload(repo) as {
     loops: Array<{ role: string; generated: number; peakCtx: number }>;
   };
@@ -350,16 +337,11 @@ test("status payload carries the current work item for running loops only", asyn
   s.running = true;
   saveLoopState(repo, s);
   const file = piLogPath(repo, "feature");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [SESSION, assistantLine('implement plan "Linear history on main"')].join("\n") + "\n",
-  );
+  writeLogLines(file, [SESSION, assistantLine('implement plan "Linear history on main"')]);
   // ...and an idle loop whose log tail is a finished tick (must not leak its item).
   saveLoopState(repo, freshLoopState("clean"));
   const file2 = piLogPath(repo, "clean");
-  ensureParentDir(file2);
-  fs.writeFileSync(file2, [SESSION, assistantLine("old finished work")].join("\n") + "\n");
+  writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
 
   const payload = statusPayload(repo) as {
     loops: Array<{ role: string; currentWork: string | null }>;
@@ -764,7 +746,10 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     }
 
     // An empty section is out of range at index 0 (seeded placeholders are not entries).
-    fs.writeFileSync(path.join(repo, "BUGS.md"), ["# Bugs", "", "## Open", "", "_None yet._", "", "## Fixed", "", "_None yet._"].join("\n") + "\n");
+    fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    ["# Bugs", "", "## Open", "", "_None yet._", "", "## Fixed", "", "_None yet._"].join("\n") + "\n",
+  );
     res = await fetch(base + "/api/backlog?file=bugs&index=0");
     assert.equal(res.status, 400);
 

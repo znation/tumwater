@@ -4,10 +4,10 @@ import fs from "node:fs";
 import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
-import { writeTurnLog } from "./log-fixtures.js";
+import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
 
 test("formatTranscript renders a run separator and an assistant turn", () => {
   const lines = [
@@ -259,7 +259,7 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
   }
-  fs.writeFileSync(file, lines.join("\n") + "\n");
+  writeLogLines(file, lines);
 
   const all = readTranscript(root, "feature");
   assert.equal(all.filter((l) => l.startsWith("── run")).length, 3);
@@ -277,11 +277,7 @@ test("readTranscript returns the last N entries oldest-first and [] without a lo
 test("readTranscript polls incrementally: appends only, live separator, no duplicates", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [agentStart(), userLine("prompt 1"), assistantBlocks([{ type: "text", text: "turn 1" }])].join("\n") + "\n",
-  );
+  writeLogLines(file, [agentStart(), userLine("prompt 1"), assistantBlocks([{ type: "text", text: "turn 1" }])]);
 
   // First poll seeds the whole file.
   assert.deepEqual(readTranscript(root, "feature", 50), [
@@ -339,19 +335,12 @@ test("readTranscript honors limit=1 while a pending separator is live: slice(-0)
 test("readTranscript reseeds when rotation replaces the file", () => {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "old turn" }])].join("\n") + "\n",
-  );
+  writeLogLines(file, [agentStart(), userLine("p"), assistantBlocks([{ type: "text", text: "old turn" }])]);
   assert.ok(readTranscript(root, "feature").includes("  old turn"));
 
   // Rotation renames the big log aside and pi starts a fresh file at the same path.
   fs.renameSync(file, file + ".1");
-  fs.writeFileSync(
-    file,
-    [agentStart(), userLine("p2", FIXED_TS + 60_000), assistantBlocks([{ type: "text", text: "new turn" }])].join("\n") + "\n",
-  );
+  writeLogLines(file, [agentStart(), userLine("p2", FIXED_TS + 60_000), assistantBlocks([{ type: "text", text: "new turn" }])]);
   const out = readTranscript(root, "feature");
   assert.ok(out.includes("  new turn"));
   assert.ok(!out.some((l) => l.includes("old turn")));

@@ -9,7 +9,7 @@ import { expectedTimestamp } from "./oracles.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { writeLogLines } from "./log-fixtures.js";
 
 // The `logs` command family through the real CLI entry point: argument validation, the
 // rendered per-role pi transcript, --prompt, and the -f follow mode (spawned with a live
@@ -45,14 +45,13 @@ test("logs -n validates its value instead of misbehaving", async () => {
 function seedTickEvents(repo: string, count: number): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
-  ensureParentDir(file);
   const events = Array.from({ length: count }, (_, i) => ({
     ts: now - (count - i) * 1000,
     loop: "clean",
     type: "tick_start",
     tick: i + 1,
   }));
-  fs.writeFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  writeLogLines(file, events);
 }
 
 test("logs -n --json prints exactly the raw stored events, in the text view's order, one JSON object per line", async () => {
@@ -128,10 +127,7 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
   const TS1 = 1787222691956;
   const TS2 = TS1 + 3_600_000;
   const file = piLogPath(repo, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       JSON.stringify({ type: "session", version: 3, id: "x" }),
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt one (must not appear)" }], timestamp: TS1 } }),
@@ -151,8 +147,7 @@ test("logs --role prints the rendered pi transcript and -n limits entries", asyn
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "tick prompt two (must not appear)" }], timestamp: TS2 } }),
       JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "second run done" }], stopReason: "stop" } }),
-    ].join("\n") + "\n",
-  );
+    ]);
 
   let r = await cli(repo, "logs", "--role", "clean");
   assert.equal(r.code, 0);
@@ -180,18 +175,14 @@ test("logs --role --prompt shows each run's exact prompt and -n limits to the ne
   const TS1 = 1787222691956;
   const TS2 = TS1 + 3_600_000;
   const file = piLogPath(repo, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [
+  writeLogLines(file, [
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT ONE\nsecond line" }], timestamp: TS1 } }),
       JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "turn one" }] } }),
       JSON.stringify({ type: "agent_start" }),
       // The newest run has no assistant turn yet: with --prompt the newest entry is its prompt.
       JSON.stringify({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "PROMPT TWO" }], timestamp: TS2 } }),
-    ].join("\n") + "\n",
-  );
+    ]);
   let r = await cli(repo, "logs", "--role", "clean", "--prompt");
   assert.equal(r.code, 0);
   // Each prompt lands under its run separator and before that run's assistant turn, verbatim.
@@ -224,8 +215,7 @@ test("logs --role still reads a transcript when tumwater.json is broken", async 
   await initProject(repo, "broken config transcript test");
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
   const file = piLogPath(repo, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")].join("\n") + "\n");
+  writeLogLines(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")]);
 
   const r = await cli(repo, "logs", "--role", "clean");
   assert.equal(r.code, 0, r.stderr);
@@ -264,11 +254,7 @@ test("logs --role -f prints each turn exactly once across the initial window and
 
   // One completed run on disk; a second is appended while following.
   const file = piLogPath(repo, "clean");
-  ensureParentDir(file);
-  fs.writeFileSync(
-    file,
-    [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")].join("\n") + "\n",
-  );
+  writeLogLines(file, [JSON.stringify({ type: "session", version: 3, id: "x" }), assistantLine("first turn text")]);
 
   const s = spawnCli(repo, ["logs", "--role", "clean", "-f"]);
   try {

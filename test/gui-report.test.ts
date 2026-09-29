@@ -11,7 +11,7 @@ import { initProject } from "../src/init.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { writeLogLines } from "./log-fixtures.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -32,16 +32,12 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   // collectReport reads it — a line using `role` would bucket under "?") plus one merged;
   // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
   const evFile = eventsLogPath(repo);
-  ensureParentDir(evFile);
-  fs.writeFileSync(
-    evFile,
-    [
+  writeLogLines(evFile, [
       JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
       JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change" }),
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
       JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
-    ].join("\n") + "\n",
-  );
+    ]);
   const today = localDayKey(Date.now());
   fs.writeFileSync(
     path.join(repo, "PLANS.md"),
@@ -101,16 +97,12 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   // Seed events with explicit ts values across roles, including one error so the digest has a
   // cluster to render — the endpoint's whole job is to hand back renderFailureMarkdown's text.
   const evFile = eventsLogPath(repo);
-  ensureParentDir(evFile);
-  fs.writeFileSync(
-    evFile,
-    [
+  writeLogLines(evFile, [
       JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
       JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "error", error: "pi exited 1" }),
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
       JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change" }),
-    ].join("\n") + "\n",
-  );
+    ]);
 
   const { server, base } = await startLocalGui(repo);
   try {
