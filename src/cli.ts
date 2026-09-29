@@ -133,9 +133,12 @@ async function main(): Promise<void> {
     case "doctor": {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
-      rejectUnknownArgs("doctor", args, []);
+      rejectUnknownArgs("doctor", args, [{ names: ["--json"] }]);
       const report = await runDoctor(root);
-      say(renderDoctor(report));
+      // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
+      // the render — the `report --json` precedent. The exit-code contract below holds in both
+      // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
+      say(args.includes("--json") ? JSON.stringify(report, null, 2) : renderDoctor(report));
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

@@ -3,9 +3,9 @@
 Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
-## Planned
+## Done
 
-### `tumwater doctor --json` — the pre-flight report as machine-readable data, finishing the scriptable-surface series (planned 2026-09-28)
+### `tumwater doctor --json` — the pre-flight report as machine-readable data, finishing the scriptable-surface series (planned 2026-09-28, done 2026-09-29)
 
 **Goal.** doctor already "exits 0/1 so it can be scripted" (src/doctor.ts module comment), and its own doc comment calls it "the pre-flight sibling of `status --json`" — but a script that passes/fails on the verdict can only learn *which* check failed and *why* by parsing the aligned prose lines, which change shape whenever `renderDoctor` evolves. `status --json`, `report --json`, `logs --json`, `history --json`, and `backlog --json` have all landed (Done entries 2026-09-28); `doctor` is the last scriptable surface still prose-only. This plan gives it the same `--json` flag; the payload is the `DoctorReport` object itself — the collector's own payload, not a re-parse of the render (the `report --json` precedent).
 
@@ -20,7 +20,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Tests in test/doctor.test.ts (the CLI section, lines ~974-1048, which already drives doctor through the real `cli()`/`cliWithEnv()` entry points):
   - `doctor --json` output parses with `JSON.parse`; the document carries `header` (string), `checks` (array of `{name, level, detail}`), and `verdict` (string); the `(name, level, detail)` tuples equal, in order, the check lines the plain `doctor` render prints for the same fixtures — so the two forms cannot drift.
   - A failing environment (reuse the broken-repo fixture style of the existing fail tests) with `--json` still exits 1 and its `checks` carry `level: "fail"`; a healthy fixture exits 0.
-  - The existing `doctor rejects unknown arguments` test (line 1040, `--verbose` → `takes no arguments`) keeps passing unchanged: `--verbose` is still an unknown flag beside the new `--json`.
+  - The existing `doctor rejects unknown arguments` test (line 1040, `--verbose`) keeps passing: `--verbose` is still an unknown flag beside the new `--json`.
 
 **Files touched:** src/cli.ts, src/help.ts, README.md, test/doctor.test.ts. (src/doctor.ts, src/doctor-checks.ts, src/ui/doctor-report.ts are deliberately untouched.)
 
@@ -28,10 +28,15 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 - `tumwater doctor --json` prints one JSON document parseable by `JSON.parse` with keys `header`, `checks`, `verdict`; `checks` lists every check in `runDoctor`'s fixed order with `level` one of `ok`/`warn`/`fail` and `detail` text identical to the plain render's lines.
 - Exit-code semantics are unchanged in both forms: 1 when any check is `fail`, 0 otherwise; warnings never fail the exit. The flag never emits prose — a JSON document in every exit-0 case.
-- Plain `tumwater doctor` output is byte-identical to before (renderDoctor tests untouched); `doctor --verbose` is still rejected with `takes no arguments`; `tumwater help doctor` names `--json`; `npm run test` passes.
+- Plain `tumwater doctor` output is byte-identical to before (renderDoctor tests untouched); `doctor --verbose` is still rejected; `tumwater help doctor` names `--json`; `npm run test` passes.
 
-
-## Done
+**Implemented 2026-09-29 by feature, as planned, with one correction:** accepting `--json`
+means `rejectUnknownArgs` no longer has an empty spec list, so `doctor --verbose` is rejected
+as `unknown argument: --verbose (valid flags for tumwater doctor: --json)` — the same message
+`status --verbose` produces — rather than `takes no arguments`. The test was updated to match
+this shared-rejector contract; the entry above was corrected in place. Everything else landed
+as written: CLI flag, help stanza re-padded to the same column as `status [--json]`, README
+audit row, and two new CLI-level tests (payload-vs-render equality, failing-env exit code).
 
 ### `tumwater backlog --json` — the project backlog as machine-readable data, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 

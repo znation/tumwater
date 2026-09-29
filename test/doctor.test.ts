@@ -18,6 +18,7 @@ import {
   runDoctor,
 } from "../src/doctor.js";
 import { renderDoctor } from "../src/ui/doctor-report.js";
+import { helpTopic } from "../src/help.js";
 import { checkOrphans } from "../src/doctor-orphans.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
 import type { ProcessProbe, ProcessRow } from "../src/process.js";
@@ -1037,12 +1038,74 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
   }
 });
 
+test("doctor --json prints the collector's own payload, matching the plain render", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor json");
+
+  const restore = fakePi("exit 0");
+  try {
+    const plain = await cli(repo, "doctor");
+    assert.equal(plain.code, 0, `expected exit 0:\n${plain.stdout}\n${plain.stderr}`);
+    const json = await cli(repo, "doctor", "--json");
+    assert.equal(json.code, 0, `expected exit 0:\n${json.stdout}\n${json.stderr}`);
+
+    // The flag never emits prose: the whole stdout is one JSON.parse-able document carrying
+    // the DoctorReport object itself — header, the checks array, and the verdict.
+    const report = JSON.parse(json.stdout);
+    assert.equal(typeof report.header, "string");
+    assert.match(report.header, /tumwater doctor/);
+    assert.equal(typeof report.verdict, "string");
+    assert.ok(Array.isArray(report.checks) && report.checks.length > 0, "checks array missing");
+    for (const c of report.checks) {
+      assert.ok(["ok", "warn", "fail"].includes(c.level), `unexpected level: ${c.level}`);
+      assert.equal(typeof c.name, "string");
+      assert.equal(typeof c.detail, "string");
+    }
+
+    // The two forms cannot drift: the JSON tuples equal, in order, the check lines the
+    // plain render prints for the same fixture — rendering the parsed payload must match
+    // the plain run's prose byte-for-byte (header, every check line in order, verdict),
+    // with say()'s final newline added. Two details are host- or suite-volatile between two
+    // back-to-back invocations — the build stamp (the gui-reload test swaps
+    // dist/build-info.json mid-suite) and the mach-port count — so they are masked before
+    // the comparison; every other byte must agree.
+    const maskVolatile = (text: string): string =>
+      text
+        .replace(/harness build [0-9a-f]+/g, "harness build <sha>")
+        .replace(/holds \d+/g, "holds <n>");
+    assert.equal(maskVolatile(renderDoctor(report) + "\n"), maskVolatile(plain.stdout));
+
+    // The help topic derives from the same stanza and names the new flag.
+    assert.match(helpTopic("doctor")!, /--json/);
+  } finally {
+    restore();
+  }
+});
+
+test("doctor --json keeps the exit-code contract: fail checks exit 1 with no prose", async () => {
+  // The same broken-environment fixture the plain-render test uses: a bare directory whose
+  // PATH holds only git. The JSON form must exit 1 exactly when the prose form does, and its
+  // checks must carry the failing levels a script keys off.
+  const binDir = tmpdir();
+  const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  fs.symlinkSync(gitPath, path.join(binDir, "git"));
+
+  const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor", "--json"]);
+  assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
+  const report = JSON.parse(r.stdout); // no prose around the document, even on failure
+  assert.ok(report.checks.some((c: { level: string }) => c.level === "fail"));
+  assert.ok(report.checks.some((c: { level: string }) => c.level === "warn"));
+  assert.ok(!report.checks.some((c: { level: string }) => c.level !== c.level.toLowerCase()));
+  assert.match(report.verdict, /3 problems/);
+});
+
 test("doctor rejects unknown arguments", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli doctor args");
 
-  // Like every other no-flag command, doctor takes no arguments at all.
+  // --json is now the one accepted flag; --verbose is still unknown beside it, named by the
+  // shared rejector the same way status names an unknown flag beside its own --json.
   const r = await cli(repo, "doctor", "--verbose");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /takes no arguments/);
+  assert.match(r.stderr, /unknown argument: --verbose/);
 });
