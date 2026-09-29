@@ -31,8 +31,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc && node scripts/stamp-build.mjs",
     "prepack": "npm run build",
-    "lint": "eslint .",
-    "test": "eslint . && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
+    "lint": "eslint . --cache",
+    "test": "eslint . --cache && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
     "test:e2e": "tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js e2e",
     "tumwater": "node dist/src/cli.js"
   },
