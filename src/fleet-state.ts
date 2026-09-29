@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { BuildStatus } from "./build-info.js";
-import type { FallbackDemotion } from "./budget.js";
+import type { FallbackDemotion } from "./fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { ensureParentDir, removeQuiet } from "./files.js";
 import { pidAlive } from "./process.js";
@@ -171,7 +171,7 @@ export interface OrchestratorInfo {
    * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
    * read one file instead of running git themselves. */
   build?: BuildStatus;
-  /** Present while the budget gate's fallback breaker (src/budget.ts) holds the configured free
+  /** Present while the budget gate's fallback breaker (src/fallback-breaker.ts) holds the configured free
    * fallback demoted: the cap is reached and the pair is priced at zero, but its backend failed
    * the breaker's failureLimit consecutive role ticks, so the scheduler reads the gate as
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.

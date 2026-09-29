@@ -42,7 +42,7 @@ import { checkLaunchServicesPorts } from "./launch-services.js";
 import { errorMessage, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
 import { type CheckOutcome, type DoctorReport } from "./doctor-checks.js";
-import type { FallbackDemotion } from "./budget.js";
+import type { FallbackDemotion } from "./fallback-breaker.js";
 import { briefFile } from "./readme.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
 
@@ -181,7 +181,7 @@ export function checkBrief(root: string): CheckOutcome {
  * surface only after the day's budget is already spent — so doctor checks it up front, before
  * the operator needs it. Read-only: it inspects pi's definitions file, never pi or the network.
  * A price is not readiness, though: whether the backend can SERVE is known only from the
- * fallback's own ticks (src/budget.ts's breaker, BUGS.md 2026-09-20), so a free pair reads
+ * fallback's own ticks (src/fallback-breaker.ts's breaker, BUGS.md 2026-09-20), so a free pair reads
  * "serving not verified" — unless the running orchestrator has published that its breaker
  * demoted the pair (`demoted`, from orchestrator.json; runDoctor passes it only while that
  * orchestrator is alive), which warns with the failure count and the next probe time. No

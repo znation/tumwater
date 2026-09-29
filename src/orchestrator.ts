@@ -17,7 +17,7 @@ import {
   abandonFallbackProbe,
   recordFallbackTick,
   startFallbackProbe,
-} from "./budget.js";
+} from "./fallback-breaker.js";
 import { RATE_LIMIT_OPEN, type RateLimitHold } from "./rate-limit-hold.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
@@ -76,7 +76,8 @@ interface RunOptions {
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
    * configured fallback model is actually cost-free — a test seam, like status.ts's. */
   modelsPath?: string;
-  /** The fallback breaker's thresholds (src/budget.ts, default FALLBACK_BREAKER_POLICY) — a
+  /** The fallback breaker's thresholds (src/fallback-breaker.ts, default
+   * FALLBACK_BREAKER_POLICY) — a
    * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
   /** The restart hand-off's per-phase wait on an in-flight landing (default

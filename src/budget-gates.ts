@@ -6,16 +6,13 @@
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "./config-schema.js";
+import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
 import {
-  budgetGate,
-  budgetPaused,
-  type BudgetGate,
   type FallbackBreaker,
   fallbackServing,
-  fleetDailyCost,
   IDLE_FALLBACK_BREAKER,
   rekeyFallbackBreaker,
-} from "./budget.js";
+} from "./fallback-breaker.js";
 import { applyFallbackModel, fallbackPair } from "./config-views.js";
 import { logEvent } from "./events.js";
 import { fallbackModelFree } from "./pi-models.js";
@@ -29,7 +26,7 @@ interface BudgetGateState {
    * plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
    * between two of them is worth exactly one event. */
   prevGate: BudgetGate;
-  /** Whether the engaged fallback's backend is serving (src/budget.ts's FallbackBreaker,
+  /** Whether the engaged fallback's backend is serving (fallback-breaker.ts's FallbackBreaker,
    * BUGS.md 2026-09-20): folded from the outcomes of role ticks that ran on it, re-keyed by
    * every poll (and folded further by the orchestrator's tick bookkeeping). */
   breaker: FallbackBreaker;

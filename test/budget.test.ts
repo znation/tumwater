@@ -2,25 +2,27 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { freshLoopState } from "../src/loop-state.js";
 import {
-  abandonFallbackProbe,
   budgetGate,
   budgetPaused,
   budgetReached,
   dailyCost,
+  fleetDailyCost,
+  recordDailyCost,
+  todayStamp,
+} from "../src/budget.js";
+import {
+  abandonFallbackProbe,
   FALLBACK_BREAKER_POLICY,
   type FallbackBreaker,
   fallbackDemotion,
   fallbackEvidence,
   fallbackProbeDue,
   fallbackServing,
-  fleetDailyCost,
   IDLE_FALLBACK_BREAKER,
-  recordDailyCost,
   recordFallbackTick,
   rekeyFallbackBreaker,
   startFallbackProbe,
-  todayStamp,
-} from "../src/budget.js";
+} from "../src/fallback-breaker.js";
 import { defaultConfig } from "../src/config.js";
 import type { TickResult } from "../src/tick-outcome.js";
 
