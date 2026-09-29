@@ -486,6 +486,40 @@ function scriptedRedeployer(
   return { redeployer, swaps };
 }
 
+/** The file's eight scripted-redeploy orchestrator runs in one place: the AbortController
+ * (armed with a hard self-abort deadline so a stalled drain cannot hang the suite — absent
+ * when the test stops the run itself and no fixed deadline fits its waits) plus the
+ * runOrchestrator call with this file's fixed seam values (config from disk, main, the fast
+ * poll, the redeployer). `stop` ends the run in finally — aborting (a no-op once the run has
+ * returned) and swallowing shutdown noise; the fake-pi restore stays at the call site, since
+ * each test's script differs. */
+function startRedeployRun(
+  repo: string,
+  redeployer: Redeployer,
+  opts: { timeoutMs?: number; handoffLandingWindowMs?: number } = {},
+) {
+  const controller = new AbortController();
+  const timeout = opts.timeoutMs === undefined ? null : setTimeout(() => controller.abort(), opts.timeoutMs);
+  const run = runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal: controller.signal,
+    pollMs: FAST_POLL_MS,
+    redeploy: redeployer,
+    ...(opts.handoffLandingWindowMs ? { handoffLandingWindowMs: opts.handoffLandingWindowMs } : {}),
+  });
+  return {
+    run,
+    signal: controller.signal,
+    async stop() {
+      if (timeout !== null) clearTimeout(timeout);
+      controller.abort();
+      await run.catch(() => undefined);
+    },
+  };
+}
+
 test("a stale self-hosted build drains the fleet, swaps, and returns restart", async () => {
   const repo = await makeFastRepo("self-redeploy test", ["clean"]);
   const restore = fakePiIdle();
@@ -493,17 +527,9 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
   // A prompt for the director sits in the inbox: while a restart is pending nothing new starts
   // — director included — so it must still be queued when the process hands over.
   enqueuePrompt(repo, "hello director");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { run, stop } = startRedeployRun(repo, redeployer, { timeoutMs: 15_000 });
   try {
-    const exit = await runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: controller.signal,
-      pollMs: FAST_POLL_MS,
-      redeploy: redeployer,
-    });
+    const exit = await run;
     assert.deepEqual(exit, { restart: true });
     const head = sh(repo, "git", "rev-parse", "HEAD");
     assert.deepEqual(swaps, [head], "the compiled head was swapped into dist");
@@ -514,7 +540,7 @@ test("a stale self-hosted build drains the fleet, swaps, and returns restart", a
     assert.equal(fs.readdirSync(path.join(repo, ".tumwater/inbox")).length, 1, "the held director prompt survives for the next generation");
     assert.equal(readOrchestratorInfo(repo), null, "the info file is removed like any other stop");
   } finally {
-    clearTimeout(timeout);
+    await stop();
     restore();
   }
 });
@@ -526,8 +552,7 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
   saveConfig(repo, cfg);
   const restore = fakePiIdle();
   const { redeployer } = scriptedRedeployer(repo);
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  const { stop } = startRedeployRun(repo, redeployer);
   try {
     await waitFor(() => readOrchestratorInfo(repo)?.build?.stale === true, "stale build published");
     const info = readOrchestratorInfo(repo)!;
@@ -537,8 +562,7 @@ test("the orchestrator publishes the build's staleness in orchestrator.json whil
     const start = readEvents(repo).find((e) => e.type === "orchestrator_start")!;
     assert.equal(start.build, "0".repeat(40), "the start event names the build");
   } finally {
-    controller.abort();
-    await done.catch(() => undefined);
+    await stop();
     restore();
   }
 });
@@ -552,17 +576,8 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
   // start against a fresh build, then move main — the recomputation finds the build stale with
   // that tick in flight, which is exactly the situation the drain cap exists for.
   const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(partial) });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { run, stop } = startRedeployRun(repo, redeployer, { timeoutMs: 15_000 });
   try {
-    const run = runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: controller.signal,
-      pollMs: FAST_POLL_MS,
-      redeploy: redeployer,
-    });
     await waitFor(() => fs.existsSync(partial), "the tick to start");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     const exit = await run;
@@ -575,7 +590,7 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
     assert.equal(restart.abortedTicks, 1);
   } finally {
-    clearTimeout(timeout);
+    await stop();
     restore();
   }
 });
@@ -599,17 +614,8 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
   // The permit holder never finishes on its own; the parked role would run the same script.
   const restore = fakePi(`touch started.txt\nexec sleep 30`);
   const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => started().length > 0 });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { run, stop } = startRedeployRun(repo, redeployer, { timeoutMs: 15_000 });
   try {
-    const run = runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: controller.signal,
-      pollMs: FAST_POLL_MS,
-      redeploy: redeployer,
-    });
     await waitFor(() => started().length > 0, "the permit holder's tick to start");
     const [holder] = started();
     const parked = holder === "clean" ? "dry" : "clean";
@@ -631,7 +637,7 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     assert.deepEqual(started(), [holder], "the parked role's pi never ran");
     assert.equal(loadLoopState(repo, parked).ticks, 0, "no state write for a tick that never started");
   } finally {
-    clearTimeout(timeout);
+    await stop();
     restore();
   }
 });
@@ -654,8 +660,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
       return false;
     },
   });
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  const { stop } = startRedeployRun(repo, redeployer);
   try {
     await waitFor(() => started().length > 0, "the permit holder's tick to start");
     const [holder] = started();
@@ -678,8 +683,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
     assert.ok(parkedStart > red, "the parked tick did not start inside the hold — only after it lifted");
     assert.deepEqual(swaps, []);
   } finally {
-    controller.abort();
-    await done.catch(() => undefined);
+    await stop();
     restore();
   }
 });
@@ -695,17 +699,8 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
   const restore = fakePi(`touch started.txt\nsleep 2\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const { redeployer, swaps } = scriptedRedeployer(repo, { drainMaxMs: 500, stale: () => fs.existsSync(marker) });
   enqueuePrompt(repo, "a long human prompt");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const { run, stop } = startRedeployRun(repo, redeployer, { timeoutMs: 15_000 });
   try {
-    const run = runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: controller.signal,
-      pollMs: FAST_POLL_MS,
-      redeploy: redeployer,
-    });
     await waitFor(() => fs.existsSync(marker), "the director tick to start");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running prompt");
     const exit = await run;
@@ -718,7 +713,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
     assert.ok(Number(restart.drainedMs) > 500, `the hold ran past the drain window (${String(restart.drainedMs)}ms)`);
     assert.equal(restart.abortedTicks, 0);
   } finally {
-    clearTimeout(timeout);
+    await stop();
     restore();
   }
 });
@@ -727,8 +722,7 @@ test("a failed compile leaves the fleet running the old build", async () => {
   const repo = await makeFastRepo("compile failure test", ["clean"]);
   const restore = fakePiIdle();
   const { redeployer, swaps } = scriptedRedeployer(repo, { compileOk: false });
-  const controller = new AbortController();
-  const done = runOrchestrator({ root: repo, config: loadConfig(repo), mainBranch: "main", signal: controller.signal, pollMs: FAST_POLL_MS, redeploy: redeployer });
+  const { stop } = startRedeployRun(repo, redeployer);
   try {
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "warning" && /rebuild of .* failed/.test(String(e.message))),
@@ -748,8 +742,7 @@ test("a failed compile leaves the fleet running the old build", async () => {
     await waitFor(() => eventsOfType(repo, "tick_start").length > before, "ticks resume after the hold lifts");
     assert.deepEqual(swaps, []);
   } finally {
-    controller.abort();
-    await done.catch(() => undefined);
+    await stop();
     restore();
   }
 });
@@ -1043,24 +1036,17 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
   // Staleness is re-evaluated only when main moves: stale once the first vet's reviewer is
   // running, and the test moves main after that — so the restart arrives mid-review.
   const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(reviewing) });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90_000);
+  const { run, stop, signal } = startRedeployRun(repo, redeployer, {
+    timeoutMs: 90_000,
+    handoffLandingWindowMs: 500,
+  });
   try {
-    const run = runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: controller.signal,
-      pollMs: FAST_POLL_MS,
-      redeploy: redeployer,
-      handoffLandingWindowMs: 500,
-    });
     await waitFor(() => fs.existsSync(reviewing), "the first vet's reviewer run to be in flight");
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the vets");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
-    assert.ok(!controller.signal.aborted, "the hand-off ended the run, not the test's safety stop");
+    assert.ok(!signal.aborted, "the hand-off ended the run, not the test's safety stop");
 
     const events = readEvents(repo);
     const index = (pattern: RegExp) =>
@@ -1082,7 +1068,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
     assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
-    clearTimeout(timeout);
+    await stop();
     restore();
   }
 });
