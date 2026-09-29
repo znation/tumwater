@@ -923,6 +923,16 @@ test("buildSummaryRequestPrompt asks for exactly the closing block and nothing e
   assert.doesNotMatch(p, /VERDICT/, "must never read as a reviewer run");
 });
 
+// The harness attests the suite counts (PLANS.md 2026-09-29), so the VERIFIED line asks for
+// what was run and observed beyond the total and no longer models a count ("182 pass") —
+// authors restating counts was the top record-claim rejection at the review gate.
+test("the VERIFIED line asks for observations beyond the suite total, not a count", () => {
+  const p = buildSummaryRequestPrompt();
+  assert.match(p, /beyond the suite total \(the harness attests the counts\)/);
+  assert.match(p, /repro script showed X before, Y after/);
+  assert.doesNotMatch(p, /182 pass/, "the count example is gone");
+});
+
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
 // the fleet's transcripts showed roles with no backlog reading the codebase file by file (30+
 // whole-file reads, ~300 KB of tool output per tick, 277 whole-file reads against 6 ranged ones)

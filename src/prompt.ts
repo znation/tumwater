@@ -33,7 +33,7 @@ export const PRINCIPLES_MAX_CHARS = 4000;
 const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
-  VERIFIED: <what you actually ran and observed (e.g. "npm test, 182 pass") — write none when nothing was run>`;
+  VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
 
 /** The rule every loop prompt states for ending a run that made changes — the exact
  * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.

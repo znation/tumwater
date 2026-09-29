@@ -596,6 +596,55 @@ test("gate pre-check compiles the worktree against the root install — a health
   }
 });
 
+// The harness owns the suite counts (PLANS.md 2026-09-29): the gate's green check reads the
+// runner's summary (parseTestCounts), records it on the build_check event, and attests it in
+// the review prompt — so neither author nor reviewer states a total, which is where most
+// record-claim rejections came from.
+test("the gate's green pre-check attests the runner's counts in the event and the review prompt", async () => {
+  const root = makeRepo();
+  const binDir = path.join(root, "node_modules", ".bin");
+  fs.mkdirSync(binDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  writeScript(
+    path.join(binDir, "buildcheck-tool"),
+    'echo "ℹ tests 3"; echo "ℹ pass 3"; echo "ℹ fail 0"; echo "ℹ skipped 0"',
+  );
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+  );
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change");
+
+  // The fake pi dumps its prompt (pi's last argv) to a file so the attested line is asserted,
+  // not merely assumed.
+  const promptFile = path.join(tmpdir(), "review-prompt");
+  const restore = fakePi(
+    `for a in "$@"; do printf '%s' "$a" >> '${promptFile}'; done\n` +
+      `printf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+  );
+  try {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    const checks = readEvents(root).filter((e) => e.type === "build_check");
+    assert.equal(checks.length, 1);
+    assert.deepEqual(checks[0]!.counts, { tests: 3, pass: 3, fail: 0, skipped: 0 });
+    const prompt = fs.readFileSync(promptFile, "utf8");
+    assert.match(
+      prompt,
+      /\(the project's declared check\) passed — 3 pass, 0 fail, 0 skipped of 3/,
+      "the attested counts appear above the checklist",
+    );
+  } finally {
+    restore();
+  }
+});
+
 // ── Build pre-check: gate-level e2e (failing build, hanging build) ──────────────────
 
 /** A repo whose root carries the install signature (package.json + node_modules) and a

@@ -236,7 +236,12 @@ export async function reviewAheadOfMain(
       // so every role's next fresh tick is a cache hit instead of one redundant full-suite
       // re-run on an already-verified tree.
       verifiedHead = head;
-      verifiedByHarness = `${describeCheck(check)} (the project's declared check) passed`;
+      // The counts are the harness's own reading of the runner's summary (parseTestCounts):
+      // attesting them here means neither the author nor the reviewer states a total, which is
+      // where most record-claim rejections came from (PLANS.md 2026-09-29).
+      verifiedByHarness = outcome.counts
+        ? `${describeCheck(check)} (the project's declared check) passed — ${outcome.counts.pass} pass, ${outcome.counts.fail} fail, ${outcome.counts.skipped} skipped of ${outcome.counts.tests}`
+        : `${describeCheck(check)} (the project's declared check) passed`;
     }
   }
 

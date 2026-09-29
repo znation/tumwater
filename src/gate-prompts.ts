@@ -108,8 +108,10 @@ tool calls, are the expensive unit — and keep anything that depends on a prior
 Check, in this order:
 1. Does the diff do exactly what the summary and WHY claim — no more, no less? An unclaimed
    change is a finding.
-2. Are the VERIFIED claims consistent with the diff (commands, files, test counts)? A claim you
-   can disprove is a rejection.
+2. Are the VERIFIED claims consistent with the diff (commands, files, observations)? A claim you
+   can disprove is a rejection. Suite counts are the harness's own attestation — they appear in
+   the passed-check line above when the check ran green — so a count missing from VERIFIED is
+   not a finding.
 3. Do new or changed tests exercise the new behavior — would they fail without the change?
 4. For a planned feature or recorded bug, does the change deliver what its PLANS.md/BUGS.md
    entry promises (files touched, acceptance criteria), and is the entry updated to match? An

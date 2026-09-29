@@ -177,6 +177,10 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   assert.match(prompt, /read only what the diff touches: the changed functions, their callers, and the tests that cover them/);
   assert.match(prompt, /Check, in this order: 1\. Does the diff do exactly what the summary and WHY claim/);
   assert.match(prompt, /2\. Are the VERIFIED claims consistent with the diff/);
+  // Suite counts are the harness's own attestation (PLANS.md 2026-09-29): the checklist sends
+  // the reviewer to the passed-check line instead of judging a stated total.
+  assert.match(prompt, /Suite counts are the harness's own attestation/);
+  assert.match(prompt, /a count missing from VERIFIED is not a finding/);
   assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);
   assert.match(prompt, /4\. For a planned feature or recorded bug, does the change deliver what its PLANS\.md\/BUGS\.md entry promises/);
   // A newer user instruction supersedes an older recorded entry ("latest instruction wins"): the

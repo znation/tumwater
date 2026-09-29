@@ -125,7 +125,7 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
 export function buildCheckEvent(
   loop: string,
   scope: BuildCheckScope | "baseline",
-  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run">,
+  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts">,
   durationMs: number,
 ): HarnessEventInput {
   return {
@@ -136,5 +136,8 @@ export function buildCheckEvent(
     script: outcome.script,
     durationMs,
     ...buildCheckRunFields(outcome),
+    // The harness's own attestation of the runner's summary (parseTestCounts), carried on
+    // passed and failed outcomes when the check printed a summary block.
+    ...(outcome.counts ? { counts: outcome.counts } : {}),
   };
 }

@@ -2,10 +2,10 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
+import { parseTestCounts, runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
 import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build-check-report.js";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
-import { buildCheckSkipWarning } from "../src/build-check-events.js";
+import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
 import { errCode } from "../src/errno.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
 import { readEvents } from "../src/events.js";
@@ -83,6 +83,74 @@ test("runBuildCheck still classifies a genuinely failing build as failed with th
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "failed");
   assert.ok((outcome.outputTail ?? []).some((l) => l.includes("TS9999")));
+});
+
+// The harness attests the runner's own summary counts (PLANS.md 2026-09-29): parseTestCounts
+// reads the node:test summary block out of combined output, and runBuildCheck carries the
+// counts on passed and failed outcomes so no model has to state a total.
+test("parseTestCounts reads the node:test summary block, including skipped", () => {
+  const out = [
+    "earlier output the check printed",
+    "ℹ tests 2066",
+    "ℹ suites 0",
+    "ℹ pass 2065",
+    "ℹ fail 0",
+    "ℹ cancelled 0",
+    "ℹ skipped 1",
+    "ℹ todo 0",
+    "ℹ duration_ms 73.78325",
+  ].join("\n");
+  assert.deepEqual(parseTestCounts(out), { tests: 2066, pass: 2065, fail: 0, skipped: 1 });
+});
+
+test("parseTestCounts returns undefined when no complete summary block appears", () => {
+  assert.equal(parseTestCounts("ok\nnothing summary-shaped\n"), undefined);
+  // A block missing any of the four counts is not a summary.
+  assert.equal(parseTestCounts("ℹ pass 2\nℹ fail 0\n"), undefined);
+});
+
+test("parseTestCounts takes the last complete block when several appear", () => {
+  const out = [
+    "ℹ tests 3",
+    "ℹ pass 3",
+    "ℹ fail 0",
+    "ℹ skipped 0",
+    "later run's summary:",
+    "ℹ tests 9",
+    "ℹ pass 7",
+    "ℹ fail 1",
+    "ℹ skipped 1",
+  ].join("\n");
+  assert.deepEqual(parseTestCounts(out), { tests: 9, pass: 7, fail: 1, skipped: 1 });
+});
+
+test("runBuildCheck carries the runner's summary counts on passed and failed outcomes", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
+  );
+  const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
+  writeScript(tool, 'echo "ℹ tests 3"; echo "ℹ pass 3"; echo "ℹ fail 0"; echo "ℹ skipped 0"');
+  const ok = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
+  assert.equal(ok.status, "passed");
+  assert.deepEqual(ok.counts, { tests: 3, pass: 3, fail: 0, skipped: 0 });
+  writeScript(tool, 'echo "ℹ tests 3"; echo "ℹ pass 1"; echo "ℹ fail 2"; echo "ℹ skipped 0"; exit 1');
+  const bad = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
+  assert.equal(bad.status, "failed");
+  assert.deepEqual(bad.counts, { tests: 3, pass: 1, fail: 2, skipped: 0 });
+});
+
+test("buildCheckEvent carries the counts when the outcome has them", () => {
+  const withCounts = buildCheckEvent(
+    "feature",
+    "gate",
+    { status: "passed", script: "test", counts: { tests: 3, pass: 3, fail: 0, skipped: 0 } },
+    5,
+  );
+  assert.deepEqual(withCounts.counts, { tests: 3, pass: 3, fail: 0, skipped: 0 });
+  const without = buildCheckEvent("feature", "gate", { status: "skipped", script: "test" }, 5);
+  assert.equal("counts" in without, false, "no counts field when the outcome has none");
 });
 
 test("runBuildCheck skips (not fails closed) when the script times out", async () => {

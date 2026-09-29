@@ -83,6 +83,50 @@ export interface BuildCheckOutcome {
    * checkFailureReasons passes such reasons through verbatim — the "build check failed" prefix
    * would send the author hunting a test failure that never happened (BUGS.md 2026-09-28). */
   unverified?: boolean;
+  /** The runner's own summary counts (`ℹ tests/pass/fail/skipped N`), parsed from the combined
+   * output on passed and failed outcomes — absent when the check printed no such block. The
+   * harness attests these so no model has to restate them (PLANS.md 2026-09-29). */
+  counts?: TestCounts;
+}
+
+/** What a node:test-style runner's summary block reports, as parseTestCounts read it. */
+interface TestCounts {
+  tests: number;
+  pass: number;
+  fail: number;
+  skipped: number;
+}
+
+/** One `ℹ <key> <number>` line of the runner's summary block whose key we carry. */
+const TEST_COUNT_LINE = /^ℹ\s+(tests|pass|fail|skipped)\s+(\d+)\s*$/;
+/** Any other `ℹ <key> <number>` line of the summary block (suites, cancelled, todo,
+ * duration_ms) — it belongs to the block in progress but carries nothing we attest. */
+const TEST_SUMMARY_LINE = /^ℹ\s+(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)\s+\d/;
+
+/** Read the runner's summary counts out of combined check output. Blocks are runs of
+ * consecutive `ℹ` summary lines; the last complete block wins (nested or repeated runs each
+ * print one). Returns undefined when no block carries all four counts. */
+export function parseTestCounts(output: string): TestCounts | undefined {
+  let block: Partial<TestCounts> | undefined;
+  let best: TestCounts | undefined;
+  const close = () => {
+    const { tests, pass, fail, skipped } = block ?? {};
+    if (typeof tests === "number" && typeof pass === "number" && typeof fail === "number" && typeof skipped === "number") {
+      best = { tests, pass, fail, skipped };
+    }
+    block = undefined;
+  };
+  for (const line of output.split("\n")) {
+    const m = TEST_COUNT_LINE.exec(line);
+    if (m) {
+      block ??= {};
+      block[m[1] as keyof TestCounts] = Number(m[2]);
+    } else if (!TEST_SUMMARY_LINE.test(line)) {
+      close();
+    }
+  }
+  close();
+  return best;
 }
 
 /** When one check's process group actually ran, as runScriptGroup observed it: carried on
@@ -215,7 +259,11 @@ export async function runBuildCheck(
   // bound fired (BUGS.md 2026-09-23). npm re-raises a script child's signal death, so the
   // group leader is what closes with the signal.
   if (r.signal) return { status: "skipped", script, skipReason: "killed", killedBy: r.signal, run };
-  if (r.code === 0) return { status: "passed", script, run };
+  // Passed and failed outcomes both carry the runner's own summary counts when its output
+  // printed a summary block: the harness attests the numbers so no model has to (PLANS.md
+  // 2026-09-29). Skipped outcomes say nothing about the tree, so their output is not read.
+  if (r.code === 0)
+    return { status: "passed", script, run, counts: parseTestCounts(`${r.stdout}${r.stderr}`) };
   // A started process that exited nonzero is a deterministic failure of the build itself —
   // unless its output names a broken toolchain: then the environment, not the tree, killed it,
   // and the same skip semantics apply (never a deterministic rejection, never a red baseline).
@@ -229,6 +277,7 @@ export async function runBuildCheck(
       script,
       outputTail: clipBuildTail(output),
       run,
+      counts: parseTestCounts(output),
     };
   }
   // Spawn failed before anything ran — the runner is missing from PATH.
