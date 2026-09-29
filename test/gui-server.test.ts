@@ -462,7 +462,10 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled" && e.loop === "clean").length, 1);
 
     // A hostile or malformed file name is a user-input error: 400, nothing touched on disk.
-    for (const file of ["../escape.md", "a/b.md", "a\\b.md", "..", "not-a-prompt.txt", "", undefined]) {
+    // "a\u0000.md" is the shape that once reached the fs layer and answered a 500: a NUL
+    // byte is no character a filename can hold, so the fs call throws a non-ENOENT error
+    // instead of the "gone" path — the guard must reject it before anything touches disk.
+    for (const file of ["../escape.md", "a/b.md", "a\\b.md", "..", "a\u0000.md", "not-a-prompt.txt", "", undefined]) {
       res = await post({ file });
       assert.equal(res.status, 400, `file ${JSON.stringify(file)} rejected`);
       assert.match(await res.text(), /file/);

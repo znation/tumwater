@@ -159,14 +159,16 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
 
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
  * trusted only as a plain basename inside the loop's queue directory — anything containing a
- * path separator or equal to `..` could name a file elsewhere on disk, and a non-`.md` name
- * cannot be a queued prompt at all (enqueueRolePrompt writes nothing else). Returns null when
- * the name is safe to join onto roleInboxDir, else the reason the /api/prompt-cancel endpoint
- * sends as its 400. cancelQueuedFile re-checks it, so a caller that skips the guard fails
- * closed. */
+ * path separator or equal to `..` could name a file elsewhere on disk, a NUL byte is not a
+ * character any filename can hold (the fs layer throws on it rather than answering ENOENT,
+ * so the endpoint's 400 contract needs it rejected before anything touches the disk), and a
+ * non-`.md` name cannot be a queued prompt at all (enqueueRolePrompt writes nothing else).
+ * Returns null when the name is safe to join onto roleInboxDir, else the reason the
+ * /api/prompt-cancel endpoint sends as its 400. cancelQueuedFile re-checks it, so a caller
+ * that skips the guard fails closed. */
 export function queueFileNameProblem(name: unknown): string | null {
   if (typeof name !== "string" || name === "") return "file required";
-  if (name.includes("/") || name.includes("\\") || name === "..") {
+  if (name.includes("/") || name.includes("\\") || name.includes("\0") || name === "..") {
     return "file must be a plain queue-file basename";
   }
   if (!name.endsWith(".md")) return "file must name a queued prompt's .md file";
