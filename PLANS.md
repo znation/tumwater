@@ -5,6 +5,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater doctor --json` — the pre-flight report as machine-readable data, finishing the scriptable-surface series (planned 2026-09-28)
+
+**Goal.** doctor already "exits 0/1 so it can be scripted" (src/doctor.ts module comment), and its own doc comment calls it "the pre-flight sibling of `status --json`" — but a script that passes/fails on the verdict can only learn *which* check failed and *why* by parsing the aligned prose lines, which change shape whenever `renderDoctor` evolves. `status --json`, `report --json`, `logs --json`, `history --json` have all landed (Done entries 2026-09-28) and `backlog --json` is planned below; `doctor` is the last scriptable surface still prose-only. This plan gives it the same `--json` flag; the payload is the `DoctorReport` object itself — the collector's own payload, not a re-parse of the render (the `report --json` precedent).
+
+**Approach.**
+
+- src/doctor-checks.ts: no change — `DoctorReport` (`{ header: string; checks: Array<{ name: string } & { level: "ok" | "warn" | "fail"; detail: string }>; verdict: string }`) is already pure JSON (strings and lowercase keys only, no Dates or functions), so the flag serializes it verbatim.
+- src/doctor.ts: no change — `runDoctor` (lines 411-443) already returns the full `DoctorReport`; the CLI is the only place that folds it into prose.
+- src/cli.ts, the `doctor` case (lines 132-140): change `rejectUnknownArgs("doctor", args, [])` to `rejectUnknownArgs("doctor", args, [{ names: ["--json"] }])` (the `status`/`report`/`history` cases' pattern), then `say(args.includes("--json") ? JSON.stringify(report, null, 2) : renderDoctor(report))`. The `if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1;` line runs unchanged in both forms — warnings still never fail the exit.
+- src/ui/doctor-report.ts: no change — plain `tumwater doctor` output stays byte-identical and its tests hold untouched.
+- src/help.ts, the `doctor` stanza (line 35): `  tumwater doctor` becomes `  tumwater doctor [--json]` re-padded so the description column stays at column 35 exactly like the `tumwater status [--json]` line above it (2 leading spaces + 32-char command field, i.e. 10 spaces after `doctor [--json]` — the current 18), and a trailing phrase in the sibling wording style, e.g. `… (read-only; exit 0/1; --json prints the report object — header, the checks array with level, name, and detail, and verdict)`. `helpTopic`/`helpStanzas` derive from this text; test/help.test.ts only asserts the topic starts at `^  tumwater doctor`, which still holds — no test change there.
+- README.md, the Audit row (line 43): extend the `tumwater doctor` mention the way the same row already treats `report --json`, e.g. `tumwater doctor` (pre-flight; `--json` prints the report as JSON, for scripts).
+- Tests in test/doctor.test.ts (the CLI section, lines ~974-1048, which already drives doctor through the real `cli()`/`cliWithEnv()` entry points):
+  - `doctor --json` output parses with `JSON.parse`; the document carries `header` (string), `checks` (array of `{name, level, detail}`), and `verdict` (string); the `(name, level, detail)` tuples equal, in order, the check lines the plain `doctor` render prints for the same fixtures — so the two forms cannot drift.
+  - A failing environment (reuse the broken-repo fixture style of the existing fail tests) with `--json` still exits 1 and its `checks` carry `level: "fail"`; a healthy fixture exits 0.
+  - The existing `doctor rejects unknown arguments` test (line 1040, `--verbose` → `takes no arguments`) keeps passing unchanged: `--verbose` is still an unknown flag beside the new `--json`.
+
+**Files touched:** src/cli.ts, src/help.ts, README.md, test/doctor.test.ts. (src/doctor.ts, src/doctor-checks.ts, src/ui/doctor-report.ts are deliberately untouched.)
+
+**Acceptance criteria.**
+
+- `tumwater doctor --json` prints one JSON document parseable by `JSON.parse` with keys `header`, `checks`, `verdict`; `checks` lists every check in `runDoctor`'s fixed order with `level` one of `ok`/`warn`/`fail` and `detail` text identical to the plain render's lines.
+- Exit-code semantics are unchanged in both forms: 1 when any check is `fail`, 0 otherwise; warnings never fail the exit. The flag never emits prose — a JSON document in every exit-0 case.
+- Plain `tumwater doctor` output is byte-identical to before (renderDoctor tests untouched); `doctor --verbose` is still rejected with `takes no arguments`; `tumwater help doctor` names `--json`; `npm run test` passes.
+
 ### `tumwater backlog --json` — the project backlog as machine-readable data, completing the `--json` pattern (planned 2026-09-28)
 
 **Goal.** `status --json`, `report --json`, `logs --json`, and `history --json` all exist so
