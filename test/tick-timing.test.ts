@@ -34,11 +34,12 @@ test("drainInFlightWork on an operator stop waits out ticks and landings, announ
   let aborts = 0;
   const tick = new Promise<void>((r) => setTimeout(() => ((tickSettledAt = Date.now()), r()), 30));
   const task = new Promise<void>((r) => setTimeout(() => ((landingSettledAt = Date.now()), r()), 20));
-  const startedAt = Date.now();
   await drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["clean", "dry"])], false, 5_000, () => void aborts++);
   assert.equal(aborts, 0, "an operator stop never aborts: the signal already did");
-  assert.ok(Date.now() - startedAt >= 30, "the drain waited out the reserved tick");
-  assert.ok(tickSettledAt <= Date.now() && landingSettledAt <= Date.now());
+  // Settled-before-return, not elapsed wall time: the timers start before any "now" the test
+  // could read, so an elapsed check races the clock (it read 29 ms of a 30 ms tick in CI).
+  assert.ok(tickSettledAt > 0, "the drain waited out the reserved tick");
+  assert.ok(landingSettledAt > 0, "the drain waited out the landing");
   const w = warnings(root);
   assert.equal(w.length, 1, "only the landing wait is announced");
   assert.match(w[0]!, /^shutdown waiting on the in-flight landing of clean, dry$/);
@@ -50,11 +51,9 @@ test("drainInFlightWork on a restart with a landing inside its window waits out 
   let aborts = 0;
   const tick = new Promise<void>((r) => setTimeout(() => ((tickSettledAt = Date.now()), r()), 40));
   const task = new Promise<void>((r) => setTimeout(r, 10)); // finishes inside the hand-off window
-  const startedAt = Date.now();
   await drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["organize"])], true, 5_000, () => void aborts++);
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
-  assert.ok(Date.now() - startedAt >= 40, "the restart still waits out reserved ticks that settled");
-  assert.ok(tickSettledAt <= Date.now());
+  assert.ok(tickSettledAt > 0, "the restart still waits out reserved ticks that settled");
   const w = warnings(root);
   assert.equal(w.length, 1, "the hand-off's own wait announcement, not the shutdown one");
   assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of organize/);
