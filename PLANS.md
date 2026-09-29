@@ -5,7 +5,115 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Bugfix defers like a maintenance role while BUGS.md has no open bugs (planned 2026-09-29)
+
+**Goal.** bugfix is a work role (`WORK_ROLES`, src/roles.ts), so `deferTick` (src/scheduling.ts) never defers it, and it wakes on every main move even when BUGS.md `## Open` is empty. In that state it runs its open-ended latent-bug hunt. From 2026-09-22 to 09-29 that produced 133 no_change ticks costing $2.27, the largest nothing-to-do spend of any role ([docs/commit-history-analysis.md](docs/commit-history-analysis.md), "Last 7 days"). With open bugs it is real work and must never wait. With none it is a search role and should schedule like one.
+
+**Approach.**
+- src/scheduling.ts `deferTick`: add an `openBugsNow: boolean` input, or pass the role's backlog emptiness. It defers `bugfix` under the same predicate as a `DEFERRABLE_ROLES` member (last result `no_change`, main seen before, no fresh operator wake, `DEFER_MAX_MS` cap), but **only while `openBugs(root)` is empty**. While any bug is open, bugfix never defers (today's behavior). Since the backlog-open clause is what keeps maintenance deferred, bugfix's version is "defer only while no feature/bugfix/director/human commit landed since its last tick". Its own backlog being empty is the precondition, not the deferral reason.
+- src/orchestrator.ts, where `deferTick` is called for "scheduled"/"main moved" wakes: pass `openBugs(root).length === 0`. It already computes `openBugs` for `workBacklogOpen`, so reuse that read.
+- `WORK_ROLES` keeps bugfix: slot ordering (`roleTier`/`fairOrder`) is unchanged.
+- Update `deferTick`'s doc comment and the scheduling section of docs/how-it-works.md.
+
+**Files touched:** src/scheduling.ts, src/orchestrator.ts, docs/how-it-works.md, test/scheduling.test.ts.
+
+**Acceptance criteria.** With BUGS.md `## Open` empty, a bugfix whose last tick was `no_change` is deferred on a main move made only by maintenance roles, and runs on a feature/director/human landing, a fresh `wake`, or once `DEFER_MAX_MS` has passed. With one open bug it is never deferred. Other roles' deferral is unchanged (existing tests hold). `npm run test` passes.
+
+### Yield-scaled clocks: a search role whose recent ticks land nothing ticks less often (planned 2026-09-29)
+
+**Goal.** Maintenance and search roles tick on a fixed clock plus the idle ladder. The idle ladder resets on any main move, so a role that keeps finding nothing keeps paying for it. From 2026-09-22 to 09-29, perf spent $1.17 on 41 no_change ticks against $0.48 on its 15 landings, and qa spent $0.38 on 23 no_change ticks for 2 landings ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). A role's own recent yield should stretch its interval, and one landing should restore it.
+
+**Approach.**
+- src/loop-state.ts `LoopState`: add `recentOutcomes?: string` (or a small ring of the last 10 results), maintained in `applyTickOutcome` (src/tick-outcome.ts). A landing is `changed`/`queued`. `error`/`aborted`/`quiet_killed` are not yield evidence and are skipped.
+- A pure `yieldMultiplier(recent: string[]): number` (new, beside `nextBackoffSeconds`): 1 when any of the last N=10 counted ticks landed, otherwise doubling per additional 5 empty ticks, capped at 8. `isEligible` (src/scheduling.ts) multiplies the role's effective `minTickIntervalSeconds` gap by it. The multiplier gates the "main moved" wake too, which is where today's cost comes from.
+- Applies to `DEFERRABLE_ROLES`, the observer roles (qa, telemetry), and bugfix while its backlog is empty (see the plan above). Never to feature, plan, or director, and never to a role with a pending inbox prompt or a fresh `wake`.
+- Surface it: `tumwater status` (and `status --json`) shows `×N` beside the next-run time when the multiplier is above 1, so an operator can see why a role is quiet.
+
+**Files touched:** src/loop-state.ts, src/tick-outcome.ts, src/scheduling.ts, src/ui/status-model.ts (the next-run cell), docs/how-it-works.md, and tests in test/tick-outcome.test.ts, test/scheduling.test.ts, and test/status-render.test.ts.
+
+**Acceptance criteria.** Ten consecutive no_change ticks give a multiplier of 2, and it caps at 8. One `changed`/`queued` tick resets it to 1. Error-class results neither raise nor reset it. A role at ×4 with a 20 s gap does not tick on a main move within 80 s. `wake` and inbox prompts bypass it. feature, plan, and director are never scaled. `npm run test` passes.
+
+### Harness-attested suite counts: parse the gate check's `node --test` summary and hand it to the reviewer (planned 2026-09-29)
+
+**Goal.** The VERIFIED line of every commit body is model-written (src/prompt.ts `SUMMARY_BLOCK`, e.g. `"npm test, 182 pass"`), and the reviewer's checklist rejects a VERIFIED claim the diff disproves (src/gate-prompts.ts `buildReviewPrompt`). From 2026-09-22 to 09-29, 151 of 686 reviews were rejected, and roughly 113 of those reasons cite a record claim, most often a count or SHA ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). The harness already runs the suite at the gate. Today it keeps only green/red plus a failure tail, and even throws away the `ℹ pass N` lines (src/build-check-report.ts `FRAMING_LINE`). The harness should own the counts, so a model can no longer get them wrong.
+
+**Approach.**
+- src/build-check.ts: add `counts?: { tests: number; pass: number; fail: number; skipped: number }` to `BuildCheckOutcome`. Fill it from the combined stdout/stderr on both passed and failed outcomes with a pure `parseTestCounts(output): counts | undefined` that matches node's `ℹ tests N`, `ℹ pass N`, `ℹ fail N`, and `ℹ skipped N` summary lines (the last block wins). A project whose check prints no such block gets `undefined`, and nothing else changes.
+- src/build-check-events.ts `buildCheckEvent`: include `counts` when present, so `build_check` events record it.
+- src/review.ts, where `verifiedByHarness` is set: append the counts, e.g. `` `npm test` (the project's declared check) passed — 2065 pass, 0 fail, 1 skipped of 2066 ``.
+- src/gate-prompts.ts checklist item 2: the reviewer checks that the claimed *commands* and observations match the diff. Counts are harness-attested and appear above. A count missing from VERIFIED is not a finding.
+- src/prompt.ts `SUMMARY_BLOCK`: VERIFIED asks for what was run and observed beyond the suite total ("npm test; repro script showed X before, Y after"). Drop the `182 pass` example so authors stop restating counts. Update the prompt pins in test/prompt.test.ts.
+
+**Files touched:** src/build-check.ts, src/build-check-events.ts, src/review.ts, src/gate-prompts.ts, src/prompt.ts, and tests in test/build-check.test.ts, test/review.test.ts, and test/prompt.test.ts.
+
+**Acceptance criteria.** `parseTestCounts` reads the real runner's summary, including `skipped`, returns `undefined` for output with no summary, and takes the last block when several appear. A passing gate check's `build_check` event carries `counts`. The review prompt names the counts when the check passed. `SUMMARY_BLOCK` no longer shows a count example, and the review checklist says counts are harness-attested. `npm run test` passes.
+
+### Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29)
+
+**Goal.** The readme role's contract (src/roles.ts, the `readme` role's `find`) makes the status section carry `Current main (<sha>): build clean, suite N/N`, and says "a moved main makes the stamp stale, so syncs still run after landings". Every landing therefore schedules a README commit. That is 184 of readme's 231 commits all time and 60 in the last 7 days (9% of all commits), and 1% of readme's lines survive ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). Volatile state does not belong in a committed file. The harness can report it live instead. Depends on the harness-attested suite counts plan above for the counts.
+
+**Approach.**
+- src/roles.ts `readme`: the status section carries (a) the capability summary and (b) the open-work pointer, and no stamp. Delete the "moved main makes the stamp stale" sentence. The readme role syncs when user-facing surfaces drifted (commands, flags, config keys, docs), and `git log <last readme commit>..main` replaces `<stamped sha>..main` as its delta. Update the pin in test/prompt.test.ts (`Current main \(`<sha>`\): build clean, suite N\/N`).
+- src/ui/status.ts `snapshot` / src/ui/status-payload.ts: add `mainCheck: { sha, status, counts?, at }`, main's newest `build_check` at the `landing`/`batch`/`baseline` scope, read from events.jsonl. The `tumwater status` header and the GUI show it as `main <sha>: green · 2065/2066 (1 skipped)`.
+- README.md: delete the stamp line from the managed status section once the role no longer maintains it, in the same change. Update the status-section wording in docs/how-it-works.md and in the init template if it seeds a stamp.
+
+**Files touched:** src/roles.ts, src/ui/status.ts, src/ui/status-payload.ts, src/ui/status-render.ts (header), README.md, docs/how-it-works.md, and tests in test/prompt.test.ts, test/status.test.ts, and test/status-render.test.ts.
+
+**Acceptance criteria.** The readme prompt no longer mentions a freshness stamp or `<stamped sha>`. `status --json` carries `mainCheck` with the newest merge-scope check's sha, status, and counts (absent before any check). The status header renders it. README.md has no `Current main (` line. `npm run test` passes.
+
+### A deterministic unused-export check in the suite (planned 2026-09-29)
+
+**Goal.** 28 of clean's 67 commits from 2026-09-22 to 09-29 un-exported a symbol that nothing outside its own file uses. Each costs a tick, a gate check, and a landing slot, for about 4 changed lines ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). tsconfig's `noUnusedLocals` does not cover exports. A test that fails on such an export catches it in the *author's* gate check, before it lands, and clean never needs a tick for it. PRINCIPLES.md allows no runtime dependencies (the TypeScript toolchain is the only dev-time exception), so the check is in-house.
+
+**Approach.**
+- New test/exports.test.ts: walk `src/**/*.ts`, collect top-level `export function|const|let|class|interface|type|enum <Name>` declarations, and fail when a name appears as a whole word in no *other* file under src/, test/, or scripts/. Tests count as users: exported-for-test is legitimate. Name each offender as `src/file.ts: Name` in the assertion message, with the fix ("drop `export`, or use it elsewhere"). A short, commented allowlist covers genuine entry points (e.g. the CLI's exported `main`, if any).
+- The tree has **zero** violations on main `53745873` (checked by the same scan), so the test lands green and acts as a regression guard.
+- src/roles.ts `clean`: add one line saying internal-only exports are caught by test/exports.test.ts, so do not spend a tick on them. Update the clean prompt pin if one exists.
+
+**Files touched:** test/exports.test.ts (new), src/roles.ts, test/prompt.test.ts (if clean's text is pinned).
+
+**Acceptance criteria.** Adding `export` to a file-local helper makes `npm run test` fail with that file and name. The current tree passes. The scan ignores `export` inside comments and template strings (at minimum, a line comment `// export const x` is not a declaration). The clean prompt names the check. `npm run test` passes.
+
+### Plan just in time: stop refining while plans wait, and anchor plans on symbols (planned 2026-09-29)
+
+**Goal.** 113 of plan's 193 commits all time, and 16 of 45 from 2026-09-22 to 09-29, re-audit or refine a waiting plan because landings moved its anchors ("re-audit … after 95 landings of drift"). The role prompt invites this ("if PLANS.md already has several unimplemented plans, prefer refining the weakest existing plan"). The plans also cite line numbers (`src/cli.ts, the doctor case (lines 132-140)`), which drift on nearly every landing, although feature greps for symbols anyway ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)).
+
+**Approach.**
+- src/roles.ts `plan`: replace the "prefer refining the weakest existing plan" clause with: when PLANS.md `## Planned` already holds two or more plans without a Needs-review note, end with the nothing-to-do sentinel. Feature has work, and a waiting plan is refined by the feature run that picks it up, against the code as it is then. The Needs-review split rule stays first.
+- src/role-guidance.ts `PLAN_SIZING` (shared with the director): anchor on file paths and symbol names (functions, types, constants, test names), never on line numbers or ranges, because line anchors go stale with every landing.
+- src/roles.ts `feature`: one line saying that when a plan's anchors no longer match, correct the entry in the same change instead of refusing.
+- Pin the new wording in test/prompt.test.ts.
+
+**Files touched:** src/roles.ts, src/role-guidance.ts, test/prompt.test.ts.
+
+**Acceptance criteria.** The plan prompt tells the role to stop at two or more waiting plans and no longer says "prefer refining the weakest". `PLAN_SIZING` forbids line-number anchors. The feature prompt allows in-place anchor correction. The prompt pins pass, and `npm run test` passes.
+
+### Time and spend by outcome in the failure digest (planned 2026-09-29)
+
+**Goal.** The failure digest (src/failure-report.ts `renderFailureMarkdown`) counts ticks by outcome per role. A 200 ms error and a 30-minute timeout therefore weigh the same, and nothing ranks agent-hours or dollars lost by cause. `tick_end` carries no duration (src/loop.ts, the `tick_end` `logEvent`). Only `tumwater history` pairs it with `tick_start`, and it never sums the result. The 2026-09-22 timeout episode (97 ticks, ~55 agent-hours discarded) read as 97 identical errors ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)).
+
+**Approach.**
+- src/loop.ts: add `durationMs` (tick start to end, wall clock) to the `tick_end` event. The loop already knows the tick's start time. Old events without it are read by pairing with `tick_start` by (loop, tick), as src/ui/history.ts does. Factor that pairing into one shared helper rather than a second copy.
+- src/failure-data.ts: per role and result, sum hours and `costUsd`. For `error`/`aborted`/`quiet_killed`, also by error cluster (the existing clustering).
+- src/failure-report.ts: a `## Time and spend by outcome` section after "Outcome by role" with two parts. First, a role × {landed, no_change, error-class} table of hours and dollars. Second, the top 5 loss causes by hours (an error cluster, or "no_change on <role>"). `report --failures --json` carries the same data.
+- src/roles.ts `telemetry`: rank what it files by hours or dollars lost, not by tick count.
+
+**Files touched:** src/loop.ts, src/ui/history.ts (shared pairing), src/failure-data.ts, src/failure-report.ts, src/roles.ts, and tests in test/failure-report.test.ts and test/loop.test.ts.
+
+**Acceptance criteria.** New `tick_end` events carry `durationMs`. The digest shows hours and dollars per role × outcome class and the top loss causes, and falls back to start/end pairing for old events. A fixture with one 30-minute timeout and ten 1-second errors ranks the timeout first. `npm run test` passes.
+
+### Fleet-wide backend-failure hold: extend the 429 storm hold to connection, 5xx, and model-load failures (planned 2026-09-29)
+
+**Goal.** The only cross-role failure response is the 429 storm hold (src/rate-limit-hold.ts `rateLimitHold`, fed by `transientRateLimit` in src/pi-stream.ts via src/tick-usage.ts `lastRateLimit`). Other backend-wide failures are unclassified: "Connection error.", "Request timed out", 5xx "Internal Server Error", "Failed to load model", and memory-guard rejections or aborts. Each fails every role separately, and each role backs off on its own `ERROR_BACKOFF` ladder. That is ~100 ticks all time (mostly the local-model era) and 7 in the last week ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). When one backend is down, every role learns it separately.
+
+**Approach.**
+- src/pi-stream.ts: add a `TRANSIENT_BACKEND` pattern (connection error/refused/reset, `Request timed out`, HTTP 5xx, `Failed to load model`, `memory guard`) and a `transientBackend` flag beside `transientRateLimit`. A run that ends on it with `!run.ok` records `lastBackendFailure` in src/tick-usage.ts, like `lastRateLimit`.
+- src/rate-limit-hold.ts: generalize the storm detector to take a failure kind. Two distinct roles failing the same way within `RATE_LIMIT_STORM_WINDOW_MS` opens a hold with the same base, doubling, and cap. Emit `backend_hold`/`backend_resumed` events (or `rate_limit_hold` with a `kind` field). The director stays exempt, as it is today.
+- Show the hold in the status header next to the rate-limit badge.
+
+**Files touched:** src/pi-stream.ts, src/tick-usage.ts, src/rate-limit-hold.ts, src/tick-timing.ts (`pollRateLimitHold`), src/ui/status-model.ts, and tests in test/pi-stream.test.ts and test/rate-limit-hold.test.ts.
+
+**Acceptance criteria.** Two roles ending on "Connection error." within two minutes open a fleet hold. One role alone does not. A 429 storm behaves exactly as before. The hold escalates on relapse and caps at the existing maximum. The director is not held. `npm run test` passes.
 
 ## Done
 
