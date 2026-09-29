@@ -50,6 +50,18 @@ test("unknown command fails with a hint", async () => {
   assert.match(r.stderr, /unknown command: frobnicate/);
 });
 
+test("a mistyped command suggests the closest listed one", async () => {
+  const r = await cli(tmpdir(), "statis");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown command: statis — did you mean `status`\?/);
+});
+
+test("a mistyped help topic suggests the closest command too", async () => {
+  const r = await cli(tmpdir(), "help", "statu");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no help topic: statu — did you mean `status`\?/);
+});
+
 test("status refuses repos that are not ready", async () => {
   // Not a git repo.
   let r = await cli(tmpdir(), "status");

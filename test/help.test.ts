@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HELP, helpStanzas, helpTopic } from "../src/help.js";
+import { HELP, helpStanzas, helpTopic, suggestCommand } from "../src/help.js";
 
 /** Every command the full help lists — the set a `tumwater help <command>` topic must cover. */
 const ALL_COMMANDS = [
@@ -55,6 +55,18 @@ test("multi-form commands yield every usage form in their topic", () => {
 test("helpTopic returns null for an unknown command", () => {
   assert.equal(helpTopic("statu"), null);
   assert.equal(helpTopic("--json"), null);
+});
+
+test("suggestCommand names a listed command within two edits", () => {
+  // One-edit typos and case differences suggest; everything else stays silent.
+  assert.equal(suggestCommand("statis"), "status");
+  assert.equal(suggestCommand("LOGS"), "logs");
+  assert.equal(suggestCommand("repot"), "report");
+  // Far from every command: no hint rather than a wrong one.
+  assert.equal(suggestCommand("frobnicate"), null);
+  assert.equal(suggestCommand(""), null);
+  // The candidates come from the help text, not a second hand-kept list.
+  assert.equal(suggestCommand("statis", HELP.replace(/status/g, "stetos")), "stetos");
 });
 
 test("topics end with the pointer back to the full list", () => {

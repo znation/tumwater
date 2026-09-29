@@ -26,7 +26,7 @@ import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
 import { errorMessage } from "./text.js";
-import { HELP, helpTopic } from "./help.js";
+import { HELP, helpTopic, suggestCommand } from "./help.js";
 import { packageVersion } from "./version.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
@@ -240,16 +240,24 @@ async function main(): Promise<void> {
       if (args.length === 1) {
         const name = args[0] ?? "";
         const topic = helpTopic(name);
-        if (topic === null)
-          fail(`no help topic: ${name} (try \`tumwater help\` for the full command list)`);
+        if (topic === null) {
+          const suggestion = suggestCommand(name);
+          fail(
+            `no help topic: ${name}${suggestion ? ` — did you mean \`${suggestion}\`?` : ""} (try \`tumwater help\` for the full command list)`,
+          );
+        }
         say(topic);
       } else {
         process.stdout.write(HELP);
       }
       break;
     }
-    default:
-      fail(`unknown command: ${command} (try \`tumwater help\`)`);
+    default: {
+      const suggestion = suggestCommand(command);
+      fail(
+        `unknown command: ${command}${suggestion ? ` — did you mean \`${suggestion}\`?` : ""} (try \`tumwater help\`)`,
+      );
+    }
   }
 }
 
