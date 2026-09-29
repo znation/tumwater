@@ -56,10 +56,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
     if (rest.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
-    const pattern = grepRaw;
-    if (pattern === undefined || pattern === "") fail("logs --grep needs a pattern");
-    grepPattern = pattern;
-    grepLower = pattern.toLowerCase();
+    if (grepRaw === undefined || grepRaw === "") fail("logs --grep needs a pattern");
+    grepPattern = grepRaw;
+    grepLower = grepRaw.toLowerCase();
   }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
