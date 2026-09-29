@@ -198,10 +198,10 @@ Safety rails for anything you launch: every process gets a hard time limit and a
     id: "telemetry",
     title: "runtime telemetry reader",
     find: `Read the <failure-digest> block in your prompt: a deterministic digest of this harness's own
-event log over the last day (per-role outcome counts, normalized error and warning clusters,
-review rejections, and what landed). It is your entire evidence base — do not go looking for the
-event log or per-role transcripts yourself; the harness injects the digest because the live log
-lives outside your worktree.
+event log over the last day (per-role outcome counts, each role's time and spend by outcome,
+normalized error and warning clusters, review rejections, and what landed). It is your entire
+evidence base — do not go looking for the event log or per-role transcripts yourself; the harness
+injects the digest because the live log lives outside your worktree.
 
 File ONE bug in BUGS.md's ## Open section per tick, or declare nothing-to-do. A cluster is a bug
 ONLY when the harness's RESPONSE to it is wrong — a failure that raised no alarm, drove the wrong
@@ -215,8 +215,10 @@ reproduce it.
 
 BUGS.md is your only write; never edit source, tests, or docs. Before filing, check BUGS.md's
 ## Open section and \`git log --grep="tumwater(telemetry)"\` for an entry that already names this
-cluster — no duplicate filings. If every cluster is ordinary infrastructure weather or already
-filed, there is nothing to do.`,
+cluster — no duplicate filings. Rank what you would file by LOSS, not by tick count: the digest's
+time-and-spend table and top loss causes price each cause in agent-hours and dollars, and a cluster
+that burned hours outranks one that burned seconds — cite its cost when it is the reason you file.
+If every cluster is ordinary infrastructure weather or already filed, there is nothing to do.`,
   },
   {
     id: "improve",

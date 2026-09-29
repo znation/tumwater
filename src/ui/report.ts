@@ -114,11 +114,7 @@ export function renderReportMarkdown(data: ReportData): string {
  * collect through report-data.ts / failure-data.ts, and print. Unknown-args rejection and the
  * no-ready-repo-gate decision stay in cli.ts's case, like every other command's. */
 export async function cmdReport(root: string, args: string[]): Promise<void> {
-  // --failures has no JSON form: the digest is a clustered narrative with no agreed shape,
-  // and inventing one here would pin a schema nobody asked for. Failing fast (same style as
-  // the mutual exclusions below) beats printing Markdown a --json caller cannot parse.
-  if (args.includes("--failures") && args.includes("--json"))
-    fail("report --failures cannot be combined with --json (the failure digest is a clustered narrative with no agreed JSON shape; a machine-readable form is a separate plan if ever wanted)");
+
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
   const sinceRaw = flagValue(args, "--since");
@@ -147,6 +143,14 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // already rejected 0, non-decimals, and a missing value.
     if (days > REPORT_MAX_DAYS)
       fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(daysRaw)})`);
+  }
+  // --failures --json prints the collector's own payload (the FailureReportData object), the
+  // report --json and doctor --json precedent: the time-and-spend fold gave the digest a
+  // stable data shape, so the machine-readable form is the data itself, not a re-parse of the
+  // Markdown (the old "clustered narrative with no agreed shape" refusal is retired).
+  if (args.includes("--failures") && args.includes("--json")) {
+    say(JSON.stringify(collectFailureReport(root, days), null, 2));
+    return;
   }
   if (args.includes("--json")) {
     say(JSON.stringify(collectReport(root, days), null, 2));

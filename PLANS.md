@@ -18,20 +18,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Acceptance criteria.** The readme prompt no longer mentions a freshness stamp or `<stamped sha>`. `status --json` carries `mainCheck` with the newest merge-scope check's sha, status, and counts (absent before any check). The status header renders it. README.md has no `Current main (` line. `npm run test` passes.
 
-### Time and spend by outcome in the failure digest (planned 2026-09-29)
-
-**Goal.** The failure digest (src/failure-report.ts `renderFailureMarkdown`) counts ticks by outcome per role. A 200 ms error and a 30-minute timeout therefore weigh the same, and nothing ranks agent-hours or dollars lost by cause. `tick_end` carries no duration (src/loop.ts, the `tick_end` `logEvent`). Only `tumwater history` pairs it with `tick_start`, and it never sums the result. The 2026-09-22 timeout episode (97 ticks, ~55 agent-hours discarded) read as 97 identical errors ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)).
-
-**Approach.**
-- src/loop.ts: add `durationMs` (tick start to end, wall clock) to the `tick_end` event. The loop already knows the tick's start time. Old events without it are read by pairing with `tick_start` by (loop, tick), as src/ui/history.ts does. Factor that pairing into one shared helper rather than a second copy.
-- src/failure-data.ts: per role and result, sum hours and `costUsd`. For `error`/`aborted`/`quiet_killed`, also by error cluster (the existing clustering).
-- src/failure-report.ts: a `## Time and spend by outcome` section after "Outcome by role" with two parts. First, a role × {landed, no_change, error-class} table of hours and dollars. Second, the top 5 loss causes by hours (an error cluster, or "no_change on <role>"). `report --failures --json` carries the same data.
-- src/roles.ts `telemetry`: rank what it files by hours or dollars lost, not by tick count.
-
-**Files touched:** src/loop.ts, src/ui/history.ts (shared pairing), src/failure-data.ts, src/failure-report.ts, src/roles.ts, and tests in test/failure-report.test.ts and test/loop.test.ts.
-
-**Acceptance criteria.** New `tick_end` events carry `durationMs`. The digest shows hours and dollars per role × outcome class and the top loss causes, and falls back to start/end pairing for old events. A fixture with one 30-minute timeout and ten 1-second errors ranks the timeout first. `npm run test` passes.
-
 ### Fleet-wide backend-failure hold: extend the 429 storm hold to connection, 5xx, and model-load failures (planned 2026-09-29)
 
 **Goal.** The only cross-role failure response is the 429 storm hold (src/rate-limit-hold.ts `rateLimitHold`, fed by `transientRateLimit` in src/pi-stream.ts via src/tick-usage.ts `lastRateLimit`). Other backend-wide failures are unclassified: "Connection error.", "Request timed out", 5xx "Internal Server Error", "Failed to load model", and memory-guard rejections or aborts. Each fails every role separately, and each role backs off on its own `ERROR_BACKOFF` ladder. That is ~100 ticks all time (mostly the local-model era) and 7 in the last week ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). When one backend is down, every role learns it separately.
@@ -50,6 +36,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.** The new regex classifies the listed connection/5xx/model-load texts and does not claim 429 texts. `fold` stamps `lastBackendFailure` only when the run ended on it, with the kind and no retry hint. Two distinct roles ending on the same backend kind within `RATE_LIMIT_STORM_WINDOW_MS` open a hold carrying that kind; two roles on *different* kinds, or two hits from one role, do not. A relapse of the same kind escalates and caps at `RATE_LIMIT_HOLD_CAP_MS`; a different kind after a hold re-opens starts at the base. A 429 storm behaves byte-for-byte as today (same hold math, same event wording). The `rate_limit_hold` event carries `kind`, rendered with backend wording in the feed and the digest. The director is not held. `npm run test` passes.
 
 ## Done
+
+### Time and spend by outcome in the failure digest (planned 2026-09-29, done 2026-09-29)
+
+**Goal.** The failure digest (src/failure-report.ts `renderFailureMarkdown`) counts ticks by outcome per role. A 200 ms error and a 30-minute timeout therefore weigh the same, and nothing ranks agent-hours or dollars lost by cause. `tick_end` carries no duration (src/loop.ts, the `tick_end` `logEvent`). Only `tumwater history` pairs it with `tick_start`, and it never sums the result. The 2026-09-22 timeout episode (97 ticks, ~55 agent-hours discarded) read as 97 identical errors ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)).
+
+**Note 2026-09-29, feature run.** Landed with three deviations from the draft, none changing the acceptance criteria: (1) the shared tick-start pairing helper lives in src/events.ts (`tickStartMap`) rather than src/ui/history.ts — the codebase keeps collectors free of core→ui imports, and history.ts still switched to it; (2) the table's error-class bucket holds every non-landed, non-no_change result (review gate and merge-gate outcomes price in too), while the loss ranking clusters only `error`/`aborted`/`quiet_killed` as drafted — the other error-class results carry no message a cluster can own; (3) the byte-bound test moved 6 → 7 KB for the new section's worst case (one 3-cell row per configured role + 5 loss-cause lines). `report --failures --json` now prints the collector's `FailureReportData` — the old "clustered narrative with no agreed JSON shape" refusal is retired, since the digest now has a stable data shape.
 
 ### Yield-scaled clocks: a search role whose recent ticks land nothing ticks less often (planned 2026-09-29, done 2026-09-29)
 

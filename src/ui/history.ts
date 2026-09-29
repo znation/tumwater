@@ -1,5 +1,5 @@
 import { fail, flagValue, parseCountFlag, parseRoleScope, say } from "../cli-args.js";
-import { eventUsage, readEvents, type HarnessEvent } from "../events.js";
+import { eventUsage, readEvents, tickStartMap, type HarnessEvent } from "../events.js";
 import { formatTimestamp } from "../datetime.js";
 import { collapseWhitespace, displayWidth, padToWidth, shortSpanPhrase, truncate } from "../text.js";
 import { usageText } from "../event-format.js";
@@ -52,10 +52,9 @@ interface TickRow {
  * the tests share this collector, and neither writes anything. */
 export function tickRows(events: HarnessEvent[], limit: number, role: string | null): TickRow[] {
   const scoped = role === null ? events : events.filter((e) => e.loop === role);
-  const starts = new Map<string, number>();
-  for (const e of scoped) {
-    if (e.type === "tick_start") starts.set(`${e.loop}#${e.tick}`, e.ts);
-  }
+  // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
+  // and the digest's fold cannot drift into different notions of a tick's span.
+  const starts = tickStartMap(scoped);
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];

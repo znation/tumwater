@@ -362,6 +362,7 @@ export class LoopRunner {
     s.running = true;
     s.lastTickStartedAt = Date.now();
     const tick = s.ticks;
+    const tickStartedAt = s.lastTickStartedAt;
     this.save();
     logEvent(this.root, { loop: this.role, type: "tick_start", tick });
 
@@ -432,6 +433,11 @@ export class LoopRunner {
     // snapshots. Both fields are per-tick windows (reset above, folded in foldUsage over every
     // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
     // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
+    // The tick's wall-clock span rides on tick_end too (PLANS.md, time-and-spend plan): the
+    // failure digest weighs a 30-minute timeout against a 200-ms error, which start/end pairing
+    // alone only gives it when both ends survive rotation. Same omit-when-zero convention as
+    // the usage fields — an instant skipped tick renders byte-identical to a pre-feature line.
+    const tickDurationMs = Math.max(0, Date.now() - tickStartedAt);
     logEvent(this.root, {
       loop: this.role,
       type: "tick_end",
@@ -439,6 +445,7 @@ export class LoopRunner {
       result: outcome.result,
       summary: outcome.summary,
       error: s.lastError,
+      ...(tickDurationMs > 0 ? { durationMs: tickDurationMs } : {}),
       ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
       ...(this.usage.costUsd > 0 ? { costUsd: this.usage.costUsd } : {}),
     });

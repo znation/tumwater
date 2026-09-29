@@ -7,7 +7,7 @@
  * reasons. */
 import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
-import { eventDayKey, eventRole, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, tickStartMap, type HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 
@@ -48,6 +48,84 @@ export interface ClusterSection {
 export interface OutcomeRow {
   role: string;
   counts: Partial<Record<TickResult, number>>;
+}
+
+/** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
+ * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
+ * result is "error-class" — it burned agent time without landing, whether the cause was a
+ * hard failure or the review gate. Typed as a full Record so a result added to
+ * src/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
+ * failure-report.ts. */
+const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
+  changed: "landed",
+  queued: "landed",
+  no_change: "no_change",
+  refused: "no_change",
+  skipped: "no_change",
+  rejected: "error",
+  review_error: "error",
+  merge_conflict: "error",
+  merge_blocked: "error",
+  main_red: "error",
+  error: "error",
+  quiet_killed: "error",
+  aborted: "error",
+  user_aborted: "error",
+};
+
+/** One cell of the time-and-spend table: the ticks that ended on one outcome class, their
+ * summed wall-clock span (start→end) and cost. `ms` is 0 when no duration is known — an old
+ * `tick_end` whose `tick_start` rotated out of the retained log — so the cell still counts
+ * the tick but prices no time it cannot attest. */
+export interface SpendCell {
+  ticks: number;
+  ms: number;
+  costUsd: number;
+}
+
+/** One role's row of the time-and-spend table: a SpendCell per outcome class, present even
+ * when empty so the render's columns never shift per row. */
+interface TimeSpendRow {
+  role: string;
+  classes: Record<"landed" | "no_change" | "error", SpendCell>;
+}
+
+/** One ranked loss cause (PLANS.md, time-and-spend plan): either an error cluster — the
+ * digest's own clustering, applied to the ticks that burned time — or a role's total
+ * "no_change" spend, the quiet loss no cluster names. `example` is the first verbatim
+ * occurrence for a cluster, "" for a no_change cause. */
+interface LossCause {
+  kind: "error-cluster" | "no_change";
+  roles: string[]; // unique, sorted
+  example: string;
+  ticks: number;
+  ms: number;
+  costUsd: number;
+}
+
+/** A row's summed wall-clock span across its outcome classes — the sort key that puts the
+ * burning role first, the way the usage report ranks its cost lines. */
+function sumMs(classes: TimeSpendRow["classes"]): number {
+  return classes.landed.ms + classes.no_change.ms + classes.error.ms;
+}
+
+/** The loss-cause cut, like ERROR_TOP above: the five most expensive causes by time. */
+const LOSS_TOP = 5;
+
+/** The results whose loss attributes to a cluster — exactly the results the plan names:
+ * an error, an abort, or a quiet kill. Other error-class results (review_error,
+ * merge_conflict, …) price into the table's error-class column but have no message the
+ * clustering can own, so they stay out of the loss ranking rather than impersonating one. */
+const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed"]);
+
+/** A loss cause while collecting; `roles` is a set until the final sort. */
+interface LossDraft {
+  kind: "error-cluster" | "no_change";
+  roles: Set<string>;
+  example: string;
+  ticks: number;
+  ms: number;
+  costUsd: number;
 }
 
 /** One role's current-vs-preceding-window metrics. A zero side means the role had no ticks
@@ -92,6 +170,8 @@ export interface FailureReportData {
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
+  timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
+  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters and no_change roles
   errors: ClusterSection;
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
@@ -212,6 +292,87 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   return byRole;
 }
 
+/** The time a `tick_end` attests: its own `durationMs` when it carries one (every event
+ * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
+ * fallback ui/history.ts renders, so old events read their span the one way it can still be
+ * known. 0 when neither source has the start (rotation cut it); the fold prices no time it
+ * cannot attest but still counts the tick. */
+function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
+  const own = typeof ev.durationMs === "number" && Number.isFinite(ev.durationMs) && ev.durationMs >= 0
+    ? ev.durationMs
+    : null;
+  if (own !== null) return own;
+  const startTs = starts.get(`${ev.loop}#${ev.tick}`);
+  return startTs === undefined ? 0 : Math.max(0, ev.ts - startTs);
+}
+
+/** Fold the window's tick_ends into the time-and-spend table and the loss ranking. Pairing
+ * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
+ * in the preceding day and ended in the current one still gets its span. */
+function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
+  timeSpend: TimeSpendRow[];
+  lossCauses: LossCause[];
+} {
+  const starts = tickStartMap(allEvents);
+  const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
+  const byRole = new Map<string, Record<"landed" | "no_change" | "error", SpendCell>>();
+  const losses = new Map<string, LossDraft>();
+  const usage = (ev: HarnessEvent): number => {
+    const cost = typeof ev.costUsd === "number" && Number.isFinite(ev.costUsd) ? ev.costUsd : 0;
+    return cost;
+  };
+  for (const ev of tickEvents) {
+    const cls = OUTCOME_CLASS[ev.result as TickResult];
+    if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
+    const role = eventRole(ev);
+    const row = byRole.get(role) ?? { landed: emptyCell(), no_change: emptyCell(), error: emptyCell() };
+    byRole.set(role, row);
+    const cell = row[cls];
+    cell.ticks++;
+    cell.ms += tickDurationMs(ev, starts);
+    cell.costUsd += usage(ev);
+
+    // Loss causes: a clustered failure's cluster owns its time, a no_change's role does.
+    let key: string | null = null;
+    let example = "";
+    if (cls === "no_change") {
+      key = `no_change\u0000${role}`;
+    } else if (CLUSTERED_RESULTS.has(String(ev.result)) && typeof ev.error === "string" && ev.error !== "") {
+      key = normalizeClusterKey(ev.error);
+      example = ev.error.trim().slice(0, EXAMPLE_MAX);
+    }
+    if (key === null) continue;
+    const draft = losses.get(key) ?? {
+      kind: cls === "no_change" ? "no_change" : "error-cluster",
+      roles: new Set<string>(),
+      example,
+      ticks: 0,
+      ms: 0,
+      costUsd: 0,
+    };
+    draft.roles.add(role);
+    draft.ticks++;
+    draft.ms += tickDurationMs(ev, starts);
+    draft.costUsd += usage(ev);
+    losses.set(key, draft);
+  }
+  const timeSpend: TimeSpendRow[] = [...byRole.entries()]
+    .map(([role, classes]) => ({ role, classes }))
+    .sort((a, b) => sumMs(b.classes) - sumMs(a.classes) || a.role.localeCompare(b.role));
+  const lossCauses: LossCause[] = [...losses.values()]
+    .map((d) => ({
+      kind: d.kind,
+      roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
+      example: d.example,
+      ticks: d.ticks,
+      ms: d.ms,
+      costUsd: d.costUsd,
+    }))
+    .sort((a, b) => b.ms - a.ms || b.ticks - a.ticks || a.example.localeCompare(b.example))
+    .slice(0, LOSS_TOP);
+  return { timeSpend, lossCauses };
+}
+
 /** Collect the digest over the last `days` local calendar days, reading a 2×-long window once
  * and partitioning it in memory so the delta against the preceding equal window costs no
  * second tail read. */
@@ -245,6 +406,10 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .map(([role, counts]) => ({ role, counts }))
     .sort((a, b) => total(a.counts) - total(b.counts) || a.role.localeCompare(b.role))
     .reverse();
+
+  // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
+  // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
+  const { timeSpend, lossCauses } = timeAndSpend(tickEvents, events);
 
   // Deltas: current vs preceding window, per role.
   const curStats = roleStats(current);
@@ -375,6 +540,8 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     oldestEventDate,
     outcomes,
     deltas,
+    timeSpend,
+    lossCauses,
     errors,
     warnings,
     reviewFailures,

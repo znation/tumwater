@@ -3,8 +3,8 @@
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. */
 import type { TickResult } from "./tick-outcome.js";
-import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
-import { shortSha } from "./text.js";
+import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow, type SpendCell } from "./failure-data.js";
+import { shortSha, usd } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
 
@@ -82,9 +82,26 @@ function rate(errors: number, ticks: number): string {
   return `${Math.round((100 * errors) / ticks)}%`;
 }
 
+/** One time-and-spend cell: `x.x h · $y.yy`, or "—" when the role ended no tick on that
+ * class — an absence is not a zero cost, for the same reason the Deltas cells say "—".
+ * Hours carry one decimal: the digest prices agent-hours, and whole-hour rounding would
+ * erase the difference between ten 200-ms errors and one 30-minute timeout. */
+function spendCell(cell: SpendCell): string {
+  if (cell.ticks === 0) return "—";
+  return `${hoursPhrase(cell.ms)} · ${usd(cell.costUsd)}`;
+}
+
+/** A wall-clock span as agent-hours with one decimal — the digest's own time unit, distinct
+ * from shortSpanPhrase's minutes-or-seconds (an event-feed phrase), because a summed 8-hour
+ * timeout episode must not read as "480m". */
+function hoursPhrase(ms: number): string {
+  return `${(ms / 3_600_000).toFixed(1)} h`;
+}
+
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only
- * with the number of configured roles (fixed by config) and the RESULT_ORDER vocabulary (fixed
- * by src/tick-outcome.ts), and every free string is capped — cluster examples at 120 chars, landed
+ * with the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed
+ * by src/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed
+ * by the cut), and every free string is capped — cluster examples at 120 chars, landed
  * summaries at 100, a cluster's role list at 4 names plus a remainder count, and any loop id
  * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
  * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state
@@ -135,6 +152,38 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       lines.push(
         `| ${roleCell(row.role)} | ${cols.map((c) => row.counts[c] ?? 0).join(" | ")} |`,
       );
+    }
+  }
+
+  // The same ticks priced by what they cost, so a 30-minute timeout outranks ten 200-ms
+  // errors that the Outcome table above weighs equally. Two parts: the role × class table of
+  // hours and dollars, then the top loss causes by time (an error cluster, or a role's
+  // no_change total — the quiet loss no cluster names). Grows only with the role catalog
+  // (fixed by config) and the LOSS_TOP cut, so the byte bound argued above holds.
+  lines.push("");
+  lines.push("## Time and spend by outcome");
+  if (data.timeSpend.length === 0) {
+    lines.push("_no tick_end events in the window_");
+  } else {
+    lines.push("| role | landed | no_change | error-class |");
+    lines.push("| --- | --- | --- | --- |");
+    for (const row of data.timeSpend) {
+      lines.push(
+        `| ${roleCell(row.role)} | ${spendCell(row.classes.landed)} | ${spendCell(row.classes.no_change)} | ${spendCell(row.classes.error)} |`,
+      );
+    }
+    lines.push("");
+    lines.push("**Top loss causes by time:**");
+    if (data.lossCauses.length === 0) {
+      lines.push("_no loss to rank_");
+    } else {
+      for (const c of data.lossCauses) {
+        const cause =
+          c.kind === "no_change"
+            ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
+            : `${c.example} (${roleList(c.roles)})`;
+        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${c.ticks} ${c.ticks === 1 ? "tick" : "ticks"}: ${cause}`);
+      }
     }
   }
 

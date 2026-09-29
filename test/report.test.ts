@@ -657,15 +657,19 @@ test("report --json --since prints the window totals with the coverage proof", a
   assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
 });
 
-test("report --failures --json fails fast: the digest has no agreed JSON shape", async () => {
+test("report --failures --json prints the digest's collected data; --since --json stays legal", async () => {
   const root = makeRepo();
-  const refused = await runCli(root, "report", "--failures", "--json");
-  assert.notEqual(refused.code, 0);
-  assert.match(refused.out, /report --failures cannot be combined with --json/);
-  assert.match(refused.out, /no agreed JSON shape/);
+  // The digest's FailureReportData is the machine-readable form (the time-and-spend fold gave
+  // it a stable shape), so --failures --json prints the collector's own payload — the
+  // report --json and doctor --json precedent — instead of refusing the combination.
+  const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as {
+    ticks: number;
+    lossCauses: unknown[];
+  };
+  assert.equal(parsed.ticks, 0);
+  assert.deepEqual(parsed.lossCauses, []);
 
-  // --since --json stays legal: --json composes with both report shapes, only the digest
-  // refuses it — the failure names --failures, not the JSON flag alone.
+  // --since --json stays legal: --json composes with every report shape.
   const sinceJson = await runCli(root, "report", "--json", "--since", "6h");
   assert.equal(sinceJson.code, 0);
 });

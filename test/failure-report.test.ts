@@ -211,8 +211,9 @@ test("every digest table's separator has one delimiter cell per header cell", ()
     writeEvents(root, ticks.map((t) => ({ ts: at(0), type: "tick_end", ...t })));
     const md = renderFailureMarkdown(collectFailureReport(root, 1));
     const tables = markdownTables(md);
-    // Outcome by role and Deltas: a scan that finds no table would pass vacuously.
-    assert.equal(tables.length, 2, `${name}:\n${md}`);
+    // Outcome by role, Time and spend by outcome, and Deltas: a scan that finds no table
+    // would pass vacuously.
+    assert.equal(tables.length, 3, `${name}:\n${md}`);
     for (const t of tables) {
       assert.equal(t.separator.length, t.header.length, `${name}: ${t.header.join(" | ")}`);
       for (const c of t.separator) assert.match(c, /^:?-{3,}:?$/, `${name}: separator cell "${c}"`);
@@ -380,7 +381,10 @@ test("the digest renders under 6 KB however bad the window was", () => {
   lines.push({ ts: at(0), loop: "h".repeat(40), type: "config_changed", keys: Array.from({ length: 200 }, (_, i) => `a.very.deeply.nested.configuration.key.number.${i}`) });
   writeEvents(root, lines);
   const md = renderFailureMarkdown(collectFailureReport(root, 14));
-  assert.ok(Buffer.byteLength(md) < 6 * 1024, `rendered ${Buffer.byteLength(md)} bytes`);
+  // 7 KB: the 6 KB the digest bounded at before, plus the time-and-spend section's worst
+  // case — one 3-cell row per configured role and the LOSS_TOP loss-cause lines, both fixed
+  // by config and the top-N cut, never by how bad the window was.
+  assert.ok(Buffer.byteLength(md) < 7 * 1024, `rendered ${Buffer.byteLength(md)} bytes`);
 });
 
 test("the digest replays harness decisions so a wrong response is visible", () => {
@@ -592,4 +596,73 @@ test("tumwater report --failures prints the digest and shares the --days bound",
 
   const unknown = await runCli(root, "report", "--failure");
   assert.notEqual(unknown.code, 0);
+});
+
+test("time and spend: one 30-minute timeout outranks ten 1-second errors", () => {
+  const root = tmpdir();
+  const events: Array<Record<string, unknown>> = [
+    { ts: at(0), loop: "bugfix", type: "tick_end", tick: 1, result: "error", error: "Request timed out", durationMs: 1_800_000, costUsd: 0.5 },
+  ];
+  for (let i = 0; i < 10; i++) {
+    events.push({ ts: at(0), loop: "feature", type: "tick_end", tick: i + 2, result: "error", error: "pi exited 1", durationMs: 1_000, costUsd: 0.01 });
+  }
+  writeEvents(root, events);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.lossCauses.length, 2);
+  assert.equal(data.lossCauses[0]?.kind, "error-cluster");
+  assert.equal(data.lossCauses[0]?.example, "Request timed out", "the timeout ranks first by hours, not by count");
+  assert.equal(data.lossCauses[0]?.ms, 1_800_000);
+  assert.equal(data.lossCauses[1]?.ticks, 10, "the ten 1-second errors rank behind it");
+  assert.equal(data.lossCauses[1]?.ms, 10_000);
+  assert.equal((data.lossCauses[1]?.costUsd ?? 0).toFixed(2), "0.10", "the ten errors' summed cost");
+  const md = renderFailureMarkdown(data);
+  const lossBlock = md.slice(md.indexOf("Top loss causes by time:"));
+  assert.ok(
+    lossBlock.indexOf("Request timed out") < lossBlock.indexOf("pi exited 1"),
+    `the digest ranks the timeout first: ${lossBlock}`,
+  );
+  assert.match(md, /0\.5 h · \$0\.50 — 1 tick: Request timed out \(bugfix\)/);
+});
+
+test("time and spend folds role × outcome class, pairing old events with tick_start", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    // Old-style event: no durationMs on tick_end; the span comes from the tick_start pairing.
+    { ts: at(0, 11), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: at(0, 12), loop: "feature", type: "tick_end", tick: 1, result: "changed", costUsd: 0.2 },
+    // New-style event: the event's own durationMs wins over the pairing.
+    { ts: at(0, 11), loop: "bugfix", type: "tick_start", tick: 2 },
+    { ts: at(0, 12), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change", durationMs: 3_600_000, costUsd: 0.3 },
+    // An end whose start rotated out: the tick still counts, priced at 0 ms.
+    { ts: at(0), loop: "bugfix", type: "tick_end", tick: 3, result: "error", error: "boom" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const feature = data.timeSpend.find((r) => r.role === "feature");
+  assert.deepEqual(feature?.classes.landed, { ticks: 1, ms: 3_600_000, costUsd: 0.2 });
+  const bugfix = data.timeSpend.find((r) => r.role === "bugfix");
+  assert.deepEqual(bugfix?.classes.no_change, { ticks: 1, ms: 3_600_000, costUsd: 0.3 });
+  assert.deepEqual(bugfix?.classes.error, { ticks: 1, ms: 0, costUsd: 0 }, "unpaired: counted, not priced");
+  // A no_change role is a loss cause even with no error cluster.
+  assert.deepEqual(
+    data.lossCauses.map((c) => [c.kind, c.example]),
+    [["no_change", ""], ["error-cluster", "boom"]],
+    "no_change on bugfix outranks the unpriced error",
+  );
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /\| feature \| 1\.0 h · \$0\.20 \| — \| — \|/);
+  assert.match(md, /\| bugfix \| — \| 1\.0 h · \$0\.30 \| 0\.0 h · \$0\.00 \|/);
+  assert.match(md, /no_change on bugfix/);
+});
+
+test("report --failures --json prints the digest's collected data", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
+  ]);
+  const ok = await runCli(root, "report", "--failures", "--json");
+  assert.equal(ok.code, 0);
+  const parsed = JSON.parse(ok.out) as { ticks: number; timeSpend: unknown[]; lossCauses: unknown[] };
+  assert.equal(parsed.ticks, 1);
+  assert.ok(Array.isArray(parsed.timeSpend) && parsed.timeSpend.length === 1, "the time-and-spend table rides the JSON");
+  assert.ok(Array.isArray(parsed.lossCauses) && parsed.lossCauses.length === 1, "the loss ranking rides the JSON");
 });
