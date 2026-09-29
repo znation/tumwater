@@ -8,7 +8,7 @@
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
+import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
 import { eventDayKey, eventRole, type HarnessEvent } from "./events.js";
 import { fenceTracker, sectionLines } from "./backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
@@ -126,18 +126,11 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
     foldUsageEvent(acc, ev);
   }
-  // The retained log provably covers the window when either proof holds: the day-keyed reader
-  // saw a complete line older than the cutoff's day (coversFullWindow), or — the same-day case
-  // the day key cannot decide — the file's own oldest retained event predates the cutoff
-  // instant. An empty (or missing) log also proves coverage vacuously: with no retained events
-  // nothing can have rotated away, and printing a rotation note over a fresh install would
-  // claim a history that never existed. When neither proof holds, the oldest retained event
-  // lies inside the window and the render notes the possible truncation.
-  const oldest = raw.events[0];
-  const coversFullWindow =
-    raw.coversFullWindow ||
-    raw.events.length === 0 ||
-    (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
+  // The empty-window branch of the shared proof matters here: with no retained events nothing
+  // can have rotated away, and printing a rotation note over a fresh install would claim a
+  // history that never existed. When neither proof holds, the oldest retained event lies inside
+  // the window and the render notes the possible truncation.
+  const coversFullWindow = eventWindowCovers(raw, cutoff);
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),

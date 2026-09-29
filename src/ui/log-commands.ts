@@ -1,6 +1,6 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { dayKey } from "../datetime.js";
-import { LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
+import { eventWindowCovers, LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
 import { parseEventLine, readEvents, type HarnessEvent } from "../events.js";
 import { formatEvent } from "./event-format.js";
 import { statOrNull } from "../files.js";
@@ -83,15 +83,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     const cutoff = Date.now() - ms;
     const window = readWindowEvents(root, dayKey(cutoff));
     const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
-    // The retained log provably covers the window when either proof holds: the day-keyed
-    // reader saw a complete line older than the window's first day (coversFullWindow), or —
-    // the same-day case the day key cannot decide — the file's own oldest retained event
-    // predates the cutoff timestamp. When the read reached the file start without proving
-    // either, window.events holds every retained event, so its first one is the oldest.
-    const oldest = window.events[0];
-    const covered =
-      window.coversFullWindow ||
-      (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
+    // covered is only consulted below when the window has rows (an empty window returns
+    // earlier), so the helper's vacuous empty-log branch never reaches the note here.
+    const covered = eventWindowCovers(window, cutoff);
     if (events.length === 0) {
       // In JSON mode an empty window answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.
