@@ -214,6 +214,48 @@ test("gui --all-interfaces prints the reachable LAN URLs and serves until killed
   }
 });
 
+test("gui --all-interfaces --token prints the protected warning and token-bearing LAN URLs", async () => {
+  // The README's recommended exposure is exactly this pairing: --all-interfaces "so pair it
+  // with --token <secret>". Each half was covered alone (token-less all-interfaces prints the
+  // no-auth warning; token binds localhost only), so the token branch of the exposure warning
+  // and the tokenSuffix on the LAN URL lines had never executed: a swap of the warning's two
+  // branches, or a dropped tokenSuffix, would ship printed LAN links dead on arrival at the
+  // 401 gate without a single test failing.
+  const repo = makeRepo();
+  await initProject(repo, "cli gui token all interfaces");
+
+  const port = await freeTcpPort();
+  const gui = spawnCli(repo, ["gui", "--port", String(port), "--all-interfaces", "--token", "s3cret"]);
+  try {
+    // Wait for the LAST of the synchronous startup writes (the warning line), so every line
+    // is present before asserting — the same tail the token-less all-interfaces test waits on.
+    await gui.waitFor(
+      (out) =>
+        out.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`) &&
+        out.includes("listening on ALL interfaces"),
+      "the gui banner and exposure warning",
+      30_000,
+    );
+
+    // The protected warning replaces the no-auth one — checking both forms means a
+    // regression that prints one, the other, or both fails either way.
+    assert.match(
+      gui.out(),
+      /listening on ALL interfaces — token-protected; prompting the director requires the token/,
+    );
+    assert.ok(!gui.out().includes("no auth; anyone reaching it can prompt the director"));
+
+    // Every printed LAN URL must be openable: it carries the same token the gate demands,
+    // or the link lands on a bare 401 (vacuous on a machine with no LAN interface — the
+    // warning assertions above hold regardless).
+    const alsoLines = gui.out().split("\n").filter((l) => l.includes("also at http://"));
+    for (const line of alsoLines)
+      assert.match(line, /^\s*also at http:\/\/\S+:\d+\/\?token=s3cret$/);
+  } finally {
+    gui.kill();
+  }
+});
+
 /** The checkout this compiled test lives in: the only cwd whose gui child passes
  * isSelfHosted (the watch requires the served root to equal the dist stamp's root), so the
  * self-reload e2e below runs the CLI against this very checkout instead of a fixture repo.
