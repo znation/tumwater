@@ -15,6 +15,15 @@ interface KeyLike {
   meta?: boolean;
 }
 
+/** Clamp a cursor into `text` and snap a cursor that sits between a surrogate pair's halves
+ * to the pair's start — the single home of the edit-cursor invariant both applyKey and
+ * inputViewWindow enforce, so no edit or window ever anchors inside a pair (which an edit
+ * would cut in half, leaving a lone surrogate the terminal renders as garbage). */
+function snapCursor(text: string, cursor: number): number {
+  const clamp = Math.max(0, Math.min(cursor, text.length));
+  return cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
+}
+
 /** Apply one keypress to the prompt text (pure, so it is unit-testable without a TTY).
  * Printable characters insert at the cursor — including multi-character strings readline
  * delivers for IME-composed input, which advance the cursor by their full length; backspace
@@ -33,10 +42,7 @@ export function applyKey(
   str: string | undefined,
   key: KeyLike,
 ): { text: string; cursor: number } {
-  const clamp = Math.max(0, Math.min(cursor, text.length));
-  // Snap a cursor that sits between a pair's halves to the pair's start, so no edit can cut
-  // the pair in half.
-  const c = cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
+  const c = snapCursor(text, cursor);
   switch (key.name) {
     case "left": {
       const n = Math.max(0, c - 1);
@@ -152,8 +158,7 @@ export function inputViewWindow(
   cursor: number,
   room: number,
 ): { start: number; end: number } {
-  const clamp = Math.max(0, Math.min(cursor, text.length));
-  const c = cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
+  const c = snapCursor(text, cursor);
   // Per-character decomposition: where each code point starts (in units) and how many
   // terminal columns it renders as. The cursor is always on a character boundary (applyKey
   // snaps mid-pair cursors; BMP characters are one unit each), so it names a character.
