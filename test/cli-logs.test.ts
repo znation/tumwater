@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
-import { piLogPath } from "../src/paths.js";
+import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
@@ -37,6 +37,67 @@ test("logs -n validates its value instead of misbehaving", async () => {
   // A valid -n still works.
   const ok = await cli(repo, "logs", "-n", "3");
   assert.equal(ok.code, 0);
+});
+
+// --- logs --json (the event feed as machine-readable NDJSON) ---
+
+// Seed a chronological run of tick_start events directly (the -n view is newest-first).
+function seedTickEvents(repo: string, count: number): void {
+  const now = Date.now();
+  const file = eventsLogPath(repo);
+  ensureParentDir(file);
+  const events = Array.from({ length: count }, (_, i) => ({
+    ts: now - (count - i) * 1000,
+    loop: "clean",
+    type: "tick_start",
+    tick: i + 1,
+  }));
+  fs.writeFileSync(file, events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+}
+
+test("logs -n --json prints exactly the raw stored events, in the text view's order, one JSON object per line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json dump");
+  seedTickEvents(repo, 25);
+
+  const r = await cli(repo, "logs", "-n", "20", "--json");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.split("\n").filter(Boolean);
+  assert.equal(lines.length, 20, r.stdout);
+  // Each line parses as a JSON object with a type id and numeric ts — the canonical schema,
+  // not a paraphrase — and the objects are byte-for-byte the ones stored in the log.
+  const stored = fs.readFileSync(eventsLogPath(repo), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  for (const [i, line] of lines.entries()) {
+    const e = JSON.parse(line);
+    assert.equal(e.type, "tick_start", line);
+    assert.equal(typeof e.ts, "number", line);
+    assert.ok(stored.some((s) => JSON.stringify(s) === JSON.stringify(e)), `line ${i} matches a stored event`);
+  }
+  // Log order — the last 20 of 25 events, chronological — exactly the order the text view
+  // prints (readEvents returns the tail in file order, not reversed).
+  const ticks = lines.map((l) => JSON.parse(l).tick);
+  assert.deepEqual(ticks, Array.from({ length: 20 }, (_, i) => 6 + i));
+  // No rendered prose may leak into the JSON stream.
+  assert.ok(!r.stdout.includes("tick #"), r.stdout);
+});
+
+test("logs -f --json streams each newly landed event as a JSON line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json follow");
+  seedTickEvents(repo, 2);
+
+  const s = spawnCli(repo, ["logs", "-f", "--json"]);
+  try {
+    await s.waitFor((out) => out.includes('"tick":2'), "the initial window");
+
+    // An event appended while following must stream as JSON, not rendered prose (500ms poll).
+    const live = { ts: Date.now(), loop: "clean", type: "tick_start", tick: 99 };
+    fs.appendFileSync(eventsLogPath(repo), JSON.stringify(live) + "\n");
+    await s.waitFor((out) => out.includes('"tick":99'), "the live event as JSON");
+    assert.ok(!s.out().includes("tick #99"), `rendered prose in JSON follow:\n${s.out()}`);
+  } finally {
+    s.kill();
+  }
 });
 
 // --- logs --role (per-role pi transcript) ---

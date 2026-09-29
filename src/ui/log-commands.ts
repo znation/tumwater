@@ -41,6 +41,16 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // as that flag's value any more than it may be counted as the flag.
   const rest = grepFlag >= 0 ? args.filter((_, i) => i !== grepFlag + 1) : args;
   const follow = rest.includes("-f") || rest.includes("--follow");
+  // `--json` switches the feed from formatEvent rendering to one JSON.stringify(e) per line —
+  // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
+  // schema instead of parsing a rendering that changes shape whenever the formatter evolves.
+  // It composes with -n, --grep, --since and -f (the grep filter applies before serialization,
+  // the follow streams JSON lines as events land), but not with --role: that view is a pi
+  // transcript of human-oriented prose, not the event log (--prompt requires --role, so it is
+  // excluded with it).
+  const json = rest.includes("--json");
+  if (json && (rest.includes("--role") || rest.includes("--prompt")))
+    fail("logs --json cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
   if (grepRaw !== null) {
     if (rest.includes("--role") || rest.includes("--prompt"))
       fail("logs --grep cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)");
@@ -83,16 +93,18 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       window.coversFullWindow ||
       (oldest !== undefined && typeof oldest.ts === "number" && oldest.ts <= cutoff);
     if (events.length === 0) {
-      say(`no events in ${durationLabel(ms)}`);
+      // In JSON mode an empty window answers silently — an empty output IS the machine-readable
+      // answer, and prose would corrupt a consumer's NDJSON stream.
+      if (!json) say(`no events in ${durationLabel(ms)}`);
       return;
     }
-    for (const e of events) say(formatEvent(e));
+    for (const e of events) say(json ? JSON.stringify(e) : formatEvent(e));
     // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
     // The hedged phrasing stays true whenever it prints: the oldest retained event being inside
     // the window is exactly the unproven case, whether the cause is rotation or idleness.
-    if (!covered)
+    if (!covered && !json)
       say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
     return;
   }
@@ -112,9 +124,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const shown = grepLower
     ? readEvents(root, limit).filter((e) => matchesGrep(e, grepLower))
     : readEvents(root, limit);
-  for (const e of shown) say(formatEvent(e));
+  for (const e of shown) say(json ? JSON.stringify(e) : formatEvent(e));
   if (!follow) {
-    if (grepPattern !== null && shown.length === 0)
+    // The empty-match line is prose: in JSON mode the empty output is the answer.
+    if (grepPattern !== null && shown.length === 0 && !json)
       say(`no events matching "${grepPattern}"`);
     return;
   }
@@ -128,7 +141,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
       if (e && (grepLower === null || matchesGrep(e, grepLower)))
-        say(formatEvent(e));
+        say(json ? JSON.stringify(e) : formatEvent(e));
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.

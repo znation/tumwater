@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater logs --json` — the event feed as machine-readable NDJSON, completing the `--json` pattern (planned 2026-09-28)
+## Done
+
+### `tumwater logs --json` — the event feed as machine-readable NDJSON, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 
 **Goal.** `status --json`, `report --json`, `history --json` and `config` already emit
 machine-readable data so scripts can watch fleet state, spend and history without screen-scraping
@@ -19,7 +21,7 @@ streamable both as a one-shot dump and live in follow mode.
 rendering to `JSON.stringify(e)` per line — the raw `HarnessEvent` objects exactly as stored in
 the event log (`src/events.ts`), so scripts read the canonical schema, not a paraphrase.
 - **One-shot views:** the `-n` dump and the `--since` window print each event as one JSON line,
-  in the same order the text view uses (newest-first for `-n`, oldest-first for `--since`).
+  in the same order the text view uses (log order for `-n` — the tail is chronological, not reversed — oldest-first for `--since`).
 - **Filtering composes:** `--grep` filters before serialization (same `matchesGrep` rule), so
   `logs --json -n 200 --grep land_failed` returns only matching JSON lines.
 - **Follow mode streams:** with `-f --json`, each event parsed from the tail prints its JSON
@@ -59,7 +61,15 @@ the event log (`src/events.ts`), so scripts read the canonical schema, not a par
    `cli-logs*` tests.
 6. `npm run test` passes with the new assertions added.
 
-## Done
+**Landed 2026-09-28.** Implemented exactly as planned in `src/cli.ts` (the `--json` flag in
+`logs`' `rejectUnknownArgs` list), `src/ui/log-commands.ts` (serialization in the `-n`, `--since`
+and follow paths; `--role`/`--prompt` rejection; prose suppression in JSON mode), `src/help.ts`,
+and README.md's check-state row. Tests in `test/cli-logs.test.ts` (dump order and follow streaming)
+and `test/cli-logs-filtering.test.ts` (grep composition, empty-window silence, `--since` order, role
+rejection, help). One correction: the plan's parenthetical claimed `-n` prints newest-first, but the
+text view's `-n` has always printed its tail in log order — `--json` matches the text view, as the
+criterion "same order the text view uses" intends, so the parenthetical above is fixed in place.
+
 
 ### `tumwater history --json` — the per-tick history as machine-readable data, completing the `--json` pattern (planned 2026-09-28, done 2026-09-28)
 

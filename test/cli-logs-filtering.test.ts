@@ -317,3 +317,82 @@ test("tumwater help logs documents --grep and the scan-window note", async () =>
   assert.match(r.stdout, /case-insensitively/);
   assert.match(r.stdout, /-n bounds the scanned window/);
 });
+
+// --- logs --json (the event feed as machine-readable NDJSON) ---
+
+test("logs --grep --json filters before serialization", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json grep");
+  seedMixedLog(repo);
+
+  const r = await cli(repo, "logs", "--json", "--grep", "land_failed");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.split("\n").filter(Boolean);
+  assert.equal(lines.length, 2, r.stdout); // The two land_failed events, nothing else.
+  for (const line of lines) {
+    const e = JSON.parse(line);
+    assert.equal(e.type, "land_failed", line);
+    assert.equal(typeof e.ts, "number", line);
+  }
+  // Rendered prose never leaks into the JSON stream — the paraphrase "review rejected" is
+  // exactly what a text-scraping script would have to match, and must not appear here.
+  assert.ok(!r.stdout.includes("did not land"), r.stdout);
+});
+
+test("logs --json --grep with no matches prints nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json empty");
+  seedMixedLog(repo);
+
+  // In JSON mode the empty output IS the machine-readable answer: no "no events matching"
+  // prose line to corrupt a consumer's NDJSON stream.
+  const r = await cli(repo, "logs", "--json", "--grep", "nosuchthing");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, "", r.stdout);
+});
+
+test("logs --since --json prints the window as oldest-first NDJSON", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json since");
+  seedEvents(repo, [2 * 86_400_000, 90 * 60_000, 45 * 60_000, 10 * 60_000]);
+
+  const r = await cli(repo, "logs", "--since", "1h", "--json");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.split("\n").filter(Boolean);
+  assert.deepEqual(lines.map((l) => JSON.parse(l).tick), [3, 4], r.stdout);
+  // No rotation-note prose, and no rendered lines, in the JSON stream.
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+  assert.ok(!r.stdout.includes("tick #"), r.stdout);
+});
+
+test("logs --since --json over an empty window prints nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json since empty");
+
+  const r = await cli(repo, "logs", "--since", "5m", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, "", r.stdout); // No "no events in 5m" prose.
+});
+
+test("logs --role --json fails, naming both flags", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json role");
+
+  let r = await cli(repo, "logs", "--role", "clean", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json .*--role/);
+
+  // --prompt requires --role, so it is excluded with it.
+  r = await cli(repo, "logs", "--json", "--prompt");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json .*--prompt/);
+});
+
+test("tumwater help logs documents --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs json help");
+  const r = await cli(repo, "help", "logs");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /--json/);
+  assert.match(r.stdout, /NDJSON/);
+});
