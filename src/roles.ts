@@ -142,7 +142,9 @@ overly clever constructs, missing or wrong doc comments on public surfaces, or i
 ${searchGuidance("clean")}
 Grep is your detector: an exported name with a single hit across the tree is dead; commented-out
 code matches \`^\\s*//\\s*(const|let|if|return|import) \`; TODO/FIXME markers show where someone
-stopped. Clean that one thing without changing behavior. Keep the diff tight.`,
+stopped. Clean that one thing without changing behavior. Keep the diff tight.
+Internal-only exports are caught by test/exports.test.ts in the suite, so do not spend a tick
+on them.`,
   },
   {
     id: "dry",

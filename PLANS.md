@@ -61,19 +61,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 **Acceptance criteria.** The readme prompt no longer mentions a freshness stamp or `<stamped sha>`. `status --json` carries `mainCheck` with the newest merge-scope check's sha, status, and counts (absent before any check). The status header renders it. README.md has no `Current main (` line. `npm run test` passes.
 
-### A deterministic unused-export check in the suite (planned 2026-09-29)
-
-**Goal.** 28 of clean's 67 commits from 2026-09-22 to 09-29 un-exported a symbol that nothing outside its own file uses. Each costs a tick, a gate check, and a landing slot, for about 4 changed lines ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). tsconfig's `noUnusedLocals` does not cover exports. A test that fails on such an export catches it in the *author's* gate check, before it lands, and clean never needs a tick for it. PRINCIPLES.md allows no runtime dependencies (the TypeScript toolchain is the only dev-time exception), so the check is in-house.
-
-**Approach.**
-- New test/exports.test.ts: walk `src/**/*.ts`, collect top-level `export function|const|let|class|interface|type|enum <Name>` declarations, and fail when a name appears as a whole word in no *other* file under src/, test/, or scripts/. Tests count as users: exported-for-test is legitimate. Name each offender as `src/file.ts: Name` in the assertion message, with the fix ("drop `export`, or use it elsewhere"). A short, commented allowlist covers genuine entry points (e.g. the CLI's exported `main`, if any).
-- The tree has **zero** violations on main `53745873` (checked by the same scan), so the test lands green and acts as a regression guard.
-- src/roles.ts `clean`: add one line saying internal-only exports are caught by test/exports.test.ts, so do not spend a tick on them. Update the clean prompt pin if one exists.
-
-**Files touched:** test/exports.test.ts (new), src/roles.ts, test/prompt.test.ts (if clean's text is pinned).
-
-**Acceptance criteria.** Adding `export` to a file-local helper makes `npm run test` fail with that file and name. The current tree passes. The scan ignores `export` inside comments and template strings (at minimum, a line comment `// export const x` is not a declaration). The clean prompt names the check. `npm run test` passes.
-
 ### Plan just in time: stop refining while plans wait, and anchor plans on symbols (planned 2026-09-29)
 
 **Goal.** 113 of plan's 193 commits all time, and 16 of 45 from 2026-09-22 to 09-29, re-audit or refine a waiting plan because landings moved its anchors ("re-audit … after 95 landings of drift"). The role prompt invites this ("if PLANS.md already has several unimplemented plans, prefer refining the weakest existing plan"). The plans also cite line numbers (`src/cli.ts, the doctor case (lines 132-140)`), which drift on nearly every landing, although feature greps for symbols anyway ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)).
@@ -120,6 +107,19 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.** The new regex classifies the listed connection/5xx/model-load texts and does not claim 429 texts. `fold` stamps `lastBackendFailure` only when the run ended on it, with the kind and no retry hint. Two distinct roles ending on the same backend kind within `RATE_LIMIT_STORM_WINDOW_MS` open a hold carrying that kind; two roles on *different* kinds, or two hits from one role, do not. A relapse of the same kind escalates and caps at `RATE_LIMIT_HOLD_CAP_MS`; a different kind after a hold re-opens starts at the base. A 429 storm behaves byte-for-byte as today (same hold math, same event wording). The `rate_limit_hold` event carries `kind`, rendered with backend wording in the feed and the digest. The director is not held. `npm run test` passes.
 
 ## Done
+
+### A deterministic unused-export check in the suite (planned 2026-09-29, done 2026-09-29)
+
+**Goal.** 28 of clean's 67 commits from 2026-09-22 to 09-29 un-exported a symbol that nothing outside its own file uses. Each costs a tick, a gate check, and a landing slot, for about 4 changed lines ([docs/commit-history-analysis.md](docs/commit-history-analysis.md)). tsconfig's `noUnusedLocals` does not cover exports. A test that fails on such an export catches it in the *author's* gate check, before it lands, and clean never needs a tick for it. PRINCIPLES.md allows no runtime dependencies (the TypeScript toolchain is the only dev-time exception), so the check is in-house.
+
+**Approach.**
+- New test/exports.test.ts: walk `src/**/*.ts`, collect top-level `export function|const|let|class|interface|type|enum <Name>` declarations, and fail when a name appears as a whole word in no *other* file under src/, test/, or scripts/. Tests count as users: exported-for-test is legitimate. Name each offender as `src/file.ts: Name` in the assertion message, with the fix ("drop `export`, or use it elsewhere"). A short, commented allowlist covers genuine entry points (e.g. the CLI's exported `main`, if any).
+- The tree has **zero** violations on main `53745873` (checked by the same scan), so the test lands green and acts as a regression guard.
+- src/roles.ts `clean`: add one line saying internal-only exports are caught by test/exports.test.ts, so do not spend a tick on them. Update the clean prompt pin if one exists.
+
+**Files touched:** test/exports.test.ts (new), src/roles.ts, test/prompt.test.ts (if clean's text is pinned).
+
+**Acceptance criteria.** Adding `export` to a file-local helper makes `npm run test` fail with that file and name. The current tree passes. The scan ignores `export` inside comments and template strings (at minimum, a line comment `// export const x` is not a declaration). The clean prompt names the check. `npm run test` passes.
 
 ### Cancel a queued prompt from the dashboard — the GUI's queued-prompts rows get a per-row cancel control, backed by a file-addressed `/api/prompt-cancel` (planned 2026-09-29, done 2026-09-29)
 

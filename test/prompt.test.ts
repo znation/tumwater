@@ -1000,6 +1000,14 @@ test("every role prompt ends with the reply contract: plain text last, no announ
   assert.ok(prompt.trimEnd().endsWith("write none when nothing was run>"), "the SUMMARY block closes the prompt");
 });
 
+test("the clean role names the suite's unused-export check instead of hunting internal-only exports", () => {
+  const role = roleById("clean");
+  assert.ok(role);
+  const find = oneLine(role.find);
+  assert.match(find, /test\/exports\.test\.ts/);
+  assert.match(find, /do not spend a tick/);
+});
+
 test("the backlog-free roles carry the shared search guidance with a role-specific git log filter", () => {
   for (const id of ["organize", "clean", "dry", "perf", "improve"]) {
     const role = roleById(id);
