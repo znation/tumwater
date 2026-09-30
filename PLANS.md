@@ -27,7 +27,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 Size: one run, ~120 lines of source plus ~6 tests. The gate change is pure. The runner method reuses the existing abort path.
 
-### `npm run test:coverage`: a coverage report through the suite's own runner, so coverage ticks stop hand-building raw `node --test` runs (planned 2026-09-30)
+## Done
+
+### `npm run test:coverage`: a coverage report through the suite's own runner, so coverage ticks stop hand-building raw `node --test` runs (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** The coverage role's prompt (src/roles.ts) says to "run the test runner's coverage report when it has one (Node: `node --experimental-test-coverage --test …`)". tumwater's runner has none, so coverage ticks improvise one. On 2026-09-30, tick 410 copied part of `suiteEnv` by hand (`env -u TUMWATER_PI_BIN -u TUMWATER_SUPERVISED GIT_TEMPLATE_DIR=… GIT_CONFIG_*`), compiled to `/tmp` with `--outDir`, and ran the unit files with raw `node --test`. It then retried per file under `timeout 240`, but `timeout` is not installed on macOS. The tick took 131 turns and 101 minutes, and the out-of-tree build ran real pi agents on oMLX (BUGS.md, the dangling-script-shim entry). Give the runner a coverage mode so the correct path is also the cheapest one, and put it where the agent looked: it grepped package.json's `"test"` line first.
 
@@ -48,7 +50,7 @@ Size: one run, ~120 lines of source plus ~6 tests. The gate change is pure. The 
 
 Size: one run. ~40 lines in the runner (mostly the extracted args builder), one script line, two DEVELOPMENT.md lines, ~4 tests.
 
-## Done
+Done 2026-09-30 by feature: implemented as planned (`splitCoverageArgv` and `nodeSupportsTestCoverageExclude` exported as the pure split and version predicates the criteria name). A spawned-runner test runs `dist/test/test-runner.js --coverage json-object` and pins the table (kept to src by the exclude flag on node 26) and the untouched durations ledger; a full `npm run test:coverage -- json-object` run confirmed the script composes with a filter.
 
 ### `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30, done 2026-09-30)
 

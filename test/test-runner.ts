@@ -26,7 +26,9 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
  * selection and ordering logic is pure and exported (selectTestFiles, orderByDuration) so
  * test/test-runner.test.ts pins its rules without spawning anything; the spawn lives in main()
  * behind an import guard, because this module is imported by that very test file and a
- * top-level run would recurse into node --test. The whole run sits under a hard ceiling
+ * top-level run would recurse into node --test. A --coverage mode (npm run test:coverage) runs
+ * the same selection with node's coverage table and skips the durations ledger: instrumentation
+ * slows every file, and recording those skewed times would skew later runs' ordering. The whole run sits under a hard ceiling
  * (SUITE_TIMEOUT_MS) enforced by spawnSync's own timeout, so a hung or never-exiting suite
  * fails the gate instead of holding it forever. */
 
@@ -288,8 +290,58 @@ export function noNameMatchReason(tapPath: string): string | null {
   return 'no test name matches the "#name" filter — the selected file(s) ran empty; check the spelling after "#"';
 }
 
+/** Split the runner's argv into its filters and its coverage mode: `--coverage` selects the
+ * mode wherever it appears and is removed from the filters, so it composes with every filter
+ * form (`--coverage loop`, `loop --coverage`, `--coverage 'loop#resume'`). Exported for
+ * test/test-runner.test.ts to pin the split without spawning the runner. */
+export function splitCoverageArgv(argv: readonly string[]): { filters: string[]; coverage: boolean } {
+  return { filters: argv.filter((a) => a !== "--coverage"), coverage: argv.includes("--coverage") };
+}
+
+/** Whether this node knows `--test-coverage-exclude`: the flag arrived in v22.5.0, above the
+ * package's >=20.3 engines floor, so a supported node must never be handed it. Exported for
+ * test/test-runner.test.ts to pin the boundary. */
+export function nodeSupportsTestCoverageExclude(version: string = process.versions.node): boolean {
+  const [major, minor] = version.split(".").map((p) => Number.parseInt(p, 10));
+  if (major === undefined || minor === undefined) return false;
+  return major > 22 || (major === 22 && minor >= 5);
+}
+
+/** The node --test argv main() spawns, built from a selection: node's default spec reporter to
+ * stdout (named explicitly because a second reporter would otherwise replace it), the durations
+ * reporter into `fresh`, the #name pattern and its TAP side-channel reporter when the selection
+ * carries a name pattern, the files themselves in the caller's order, and — under `coverage` —
+ * node's coverage flags, so the run ends with the coverage table. Exported pure so
+ * test/test-runner.test.ts pins the flags without spawning a suite. */
+export function buildNodeTestArgs(
+  sel: { files: readonly string[]; namePattern?: string },
+  opts: { reporter: string; fresh: string; tap?: string; coverage?: boolean },
+): string[] {
+  return [
+    "--test",
+    "--test-reporter=spec",
+    "--test-reporter-destination=stdout",
+    `--test-reporter=${opts.reporter}`,
+    `--test-reporter-destination=${opts.fresh}`,
+    // Only with a #name filter: a third reporter whose TAP output backs the empty-match
+    // guard in main() (the spec output cannot be read there — it streams to the developer).
+    ...(sel.namePattern
+      ? ["--test-name-pattern=" + sel.namePattern, "--test-reporter=tap", `--test-reporter-destination=${opts.tap}`]
+      : []),
+    ...(opts.coverage
+      ? [
+          "--experimental-test-coverage",
+          // Once node can keep the table on src, the test files — most of the lines under
+          // instrumentation — drop out of it.
+          ...(nodeSupportsTestCoverageExclude() ? ["--test-coverage-exclude=**/test/**"] : []),
+        ]
+      : []),
+    ...sel.files,
+  ];
+}
+
 function main(): void {
-  const filters = process.argv.slice(2);
+  const { filters, coverage } = splitCoverageArgv(process.argv.slice(2));
   const distDir = defaultDistDir();
   const sel = selectTestFiles(filters, distDir);
   if (sel.error) {
@@ -306,30 +358,20 @@ function main(): void {
   const fresh = path.join(scratch, "durations.json");
   const tap = path.join(scratch, "tap.out");
   const reporter = fileURLToPath(new URL("./test-durations-reporter.js", import.meta.url));
-  const files = orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {});
   let status: number;
   try {
-    // spec to stdout is node's default output, named explicitly because a second reporter
-    // (the durations one, into scratch) would otherwise replace it.
-    const args = [
-      "--test",
-      "--test-reporter=spec",
-      "--test-reporter-destination=stdout",
-      `--test-reporter=${reporter}`,
-      `--test-reporter-destination=${fresh}`,
-      // Only with a #name filter: a third reporter whose TAP output backs the empty-match
-      // guard below (the spec output cannot be read here — it streams to the developer).
-      ...(sel.namePattern
-        ? ["--test-name-pattern=" + sel.namePattern, "--test-reporter=tap", `--test-reporter-destination=${tap}`]
-        : []),
-      ...files,
-    ];
+    const args = buildNodeTestArgs(
+      { ...sel, files: orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {}) },
+      { reporter, fresh, tap, coverage },
+    );
     const r = spawnSync(process.execPath, args, { stdio: "inherit", env: suiteEnv(scratch), timeout: SUITE_TIMEOUT_MS });
     const killed = timedOutFailure(r);
     status = killed !== null ? 1 : (r.status ?? 1);
     if (killed !== null) process.stderr.write(`tumwater: ${killed}\n`);
     // A killed run leaves the durations file missing or partial — keep earlier runs' records.
-    else recordDurations(distDir, fresh);
+    // A coverage run skips the ledger: instrumentation slows every file, and recording the
+    // skewed times would skew later runs' ordering.
+    else if (!coverage) recordDurations(distDir, fresh);
     // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
     // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
     if (sel.namePattern && status === 0) {

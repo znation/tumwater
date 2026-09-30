@@ -7,10 +7,13 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import {
+  buildNodeTestArgs,
+  nodeSupportsTestCoverageExclude,
   noNameMatchReason,
   orderByDuration,
   parseFilter,
   selectTestFiles,
+  splitCoverageArgv,
   suiteEnv,
   suiteGitEnv,
   SUITE_TIMEOUT_MS,
@@ -147,6 +150,56 @@ test("files run longest-first by recorded duration; unrecorded files lead, ties 
   assert.deepEqual(orderByDuration(["/d/a.test.js", "/d/b.test.js"], torn), ["/d/a.test.js", "/d/b.test.js"]);
 });
 
+test("splitCoverageArgv lifts --coverage out of the filters wherever it appears", () => {
+  assert.deepEqual(splitCoverageArgv([]), { filters: [], coverage: false });
+  assert.deepEqual(splitCoverageArgv(["--coverage"]), { filters: [], coverage: true });
+  // Either position, and composed with filters and #name parts alike.
+  assert.deepEqual(splitCoverageArgv(["--coverage", "loop"]), { filters: ["loop"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["loop", "--coverage", "tui"]), { filters: ["loop", "tui"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["--coverage", "loop#resume"]), { filters: ["loop#resume"], coverage: true });
+  assert.deepEqual(splitCoverageArgv(["loop"]), { filters: ["loop"], coverage: false });
+});
+
+test("nodeSupportsTestCoverageExclude follows node 22.5, where the flag arrived", () => {
+  // The engines floor is >=20.3, so the predicate must hold for every node the package supports,
+  // not just current ones.
+  assert.equal(nodeSupportsTestCoverageExclude("20.3.0"), false);
+  assert.equal(nodeSupportsTestCoverageExclude("22.4.9"), false);
+  assert.equal(nodeSupportsTestCoverageExclude("22.5.0"), true);
+  assert.equal(nodeSupportsTestCoverageExclude("22.12.0"), true);
+  assert.equal(nodeSupportsTestCoverageExclude("24.7.0"), true);
+  // An unparsable version is not evidence of the flag.
+  assert.equal(nodeSupportsTestCoverageExclude(""), false);
+});
+
+test("buildNodeTestArgs adds the coverage flags only under coverage, and keeps the #name reporters", () => {
+  const sel = { files: ["/d/a.test.js"], namePattern: "resume" };
+  const base = { reporter: "rep.js", fresh: "/s/fresh.json", tap: "/s/tap.out" };
+  const plain = buildNodeTestArgs(sel, base);
+  assert.ok(plain.includes("--test"));
+  assert.ok(plain.includes("--test-reporter=rep.js"));
+  assert.ok(plain.includes("--test-name-pattern=resume"));
+  assert.ok(plain.includes("--test-reporter=tap"));
+  assert.ok(plain.every((a) => !a.startsWith("--experimental-test-coverage") && !a.startsWith("--test-coverage-exclude")));
+
+  const cov = buildNodeTestArgs(sel, { ...base, coverage: true });
+  assert.ok(cov.includes("--experimental-test-coverage"));
+  // The exclude flag only when this node knows it (v22.5+); the #name reporters survive either way.
+  assert.equal(
+    cov.includes("--test-coverage-exclude=**/test/**"),
+    nodeSupportsTestCoverageExclude(process.versions.node),
+  );
+  assert.ok(cov.includes("--test-name-pattern=resume"));
+  assert.ok(cov.includes("--test-reporter=tap"));
+  // The files come last, in the order the caller ordered them.
+  assert.deepEqual(cov.slice(-1), ["/d/a.test.js"]);
+
+  // Without a name pattern there is no TAP reporter, coverage or not.
+  const noPattern = buildNodeTestArgs({ files: ["/d/a.test.js"] }, { ...base, coverage: true });
+  assert.ok(noPattern.every((a) => !a.startsWith("--test-reporter=tap")));
+  assert.ok(noPattern.includes("--experimental-test-coverage"));
+});
+
 test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {
   assert.ok(SUITE_TIMEOUT_MS >= 20 * 60_000, "the ceiling must stay far above any healthy full-suite run");
   // A genuinely hung child, killed by spawnSync's own timeout — the exact shape main() gets back.
@@ -275,6 +328,26 @@ test("the spawned runner runs only the tests a #name filter matches, and fails a
   });
   assert.equal(bare.status, 1);
   assert.match(bare.stderr ?? "", /must be followed by the test name to run/);
+});
+
+test("the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone", () => {
+  const durationsPath = path.join(path.dirname(runnerPath), ".durations.json");
+  const before = fs.readFileSync(durationsPath, "utf8");
+  const r = spawnSync(process.execPath, [runnerPath, "--coverage", "json-object"], {
+    encoding: "utf8",
+    env: runnerEnv(),
+  });
+  assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+  // The filter composed: exactly the one file ran, and node's table followed the spec output.
+  assert.match(r.stdout ?? "", /^running 1 test file\(s\): json-object\.test\.ts$/m);
+  // The table rides the spec reporter (ℹ-prefixed) and keeps to source: the `**/test/**`
+  // exclude (node >= 22.5) keeps the test files out of it.
+  assert.match(r.stdout ?? "", /^ℹ file +\| line %/m);
+  assert.match(r.stdout ?? "", /^ℹ all files/m);
+  assert.doesNotMatch(r.stdout ?? "", /^ℹ test\//m);
+  // Coverage skips the ledger: instrumentation slows every file, and recording the skewed
+  // times would skew later runs' ordering.
+  assert.equal(fs.readFileSync(durationsPath, "utf8"), before);
 });
 
 test("the spawned runner exits 1 and lists candidates when a filter matches nothing", () => {

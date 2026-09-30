@@ -34,6 +34,7 @@
     "lint": "eslint . --cache",
     "test": "node scripts/live-checkout-guard.mjs && eslint . --cache && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
     "test:e2e": "node scripts/live-checkout-guard.mjs && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js e2e",
+    "test:coverage": "node scripts/live-checkout-guard.mjs && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js --coverage",
     "tumwater": "node scripts/tumwater.mjs"
   },
   "devDependencies": {
