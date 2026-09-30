@@ -63,6 +63,28 @@ function tickQueued(repo: string, role: string): boolean {
   return readEvents(repo).some((e) => e.type === "tick_end" && e.loop === role && e.result === "queued");
 }
 
+/** Seed what a crash between the role's commit and the landing's entry drop leaves behind:
+ * one real commit ahead of main — a child of main's head carrying the parent's full tree plus
+ * one new `file` (a one-entry mktree would delete every other file, and the ff-merge would
+ * rightly refuse to overwrite the operator's checkout) — pinned by `clean`'s landing ref, with
+ * its queue entry enqueued under `label`. The restart-drain and torn-head drain tests both
+ * construct this survivor; only the file and its label differ. Returns the pinned sha. */
+function seedSurvivorCommit(repo: string, file: string, label: string): string {
+  const gitIn = (args: string[], input: string) =>
+    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
+  const blob = gitIn(["hash-object", "-w", "--stdin"], `${label}\n`);
+  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
+  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\t${file}\n`);
+  const sha = gitIn(
+    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", `tumwater(feature): ${label}`],
+    "",
+  );
+  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
+  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
+  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: label, enqueuedAt: Date.now() });
+  return sha;
+}
+
 test("a user abort during a landing kills it and discards the pinned ref", async () => {
   const repo = makeRepo();
   await initProject(repo, "abort landing e2e test");
@@ -170,23 +192,9 @@ test("a queue entry surviving a restart drains through the gate on next start", 
     ].join("\n"),
   );
   // Seed exactly what a crash between commitAll and the landing's entry drop leaves behind:
-  // one commit (a child of main's head, same full tree plus one file) reachable from the
-  // role's branch, pinned by the landing ref, with its queue entry. The next start's drain
+  // one commit pinned by the landing ref, with its queue entry. The next start's drain
   // must land it through the gate.
-  const gitIn = (args: string[], input: string) =>
-    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
-  const blob = gitIn(["hash-object", "-w", "--stdin"], "crash survivor\n");
-  // The parent's full tree plus the new file — a one-entry mktree would DELETE every other
-  // file and the ff-merge would rightly refuse to overwrite the operator's checkout.
-  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
-  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\tcrash.txt\n`);
-  const sha = gitIn(
-    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", "tumwater(feature): crash survivor"],
-    "",
-  );
-  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
-  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
-  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "crash survivor", enqueuedAt: Date.now() });
+  seedSurvivorCommit(repo, "crash.txt", "crash survivor");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
@@ -303,20 +311,9 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
-  // One real commit ahead of main (a child of main's head, full tree plus one file),
-  // pinned and queued — the same construction the restart-drain test uses.
-  const gitIn = (args: string[], input: string) =>
-    execFileSync("git", args, { cwd: repo, encoding: "utf8", input }).trim();
-  const blob = gitIn(["hash-object", "-w", "--stdin"], "torn survivor\n");
-  const parentTree = sh(repo, "git", "ls-tree", "HEAD");
-  const tree = gitIn(["mktree"], `${parentTree}\n100644 blob ${blob}\ttorn.txt\n`);
-  const sha = gitIn(
-    ["commit-tree", tree, "-p", sh(repo, "git", "rev-parse", "HEAD"), "-m", "tumwater(feature): torn survivor"],
-    "",
-  );
-  sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
-  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
-  enqueueLanding(repo, { role: "clean", sha, tick: 1, summary: "torn survivor", enqueuedAt: Date.now() });
+  // One real commit ahead of main, pinned and queued — the same construction the
+  // restart-drain test uses.
+  seedSurvivorCommit(repo, "torn.txt", "torn survivor");
   // The torn file sorts BEFORE the live entry: an interrupted write of the same shape.
   fs.writeFileSync(path.join(landQueueDir(repo), "0000000000-000000-1.json"), '{"role": "clean", "sha": "abc');
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
