@@ -381,6 +381,37 @@ test("adapter bounds oversized bash results using pi's fullOutputPath", () => {
   assert.match(patched.content[0]!.text, /complete output in \/repo\/\.tumwater\/snapshot\.log/);
 });
 
+test("adapter persists the full output itself when pi's bash tool left no file", () => {
+  // pi's bash tool sets details.fullOutputPath only when IT truncates; a bash result that
+  // arrives oversized with no file is bounded here instead — the adapter's writer seam
+  // persists the complete text under the harness's tool-output directory, named by
+  // toolCallId (parallel tool mode interleaves results), and the marker points the model
+  // at it. Without this wiring an oversized result pi did not truncate was bounded with a
+  // marker pointing nowhere, and the omitted middle was gone for good.
+  const dir = tmpdir("bound-adapter-write-");
+  fs.mkdirSync(path.join(dir, ".tumwater"));
+  const wt = path.join(dir, "worktrees", "feature"); // finds the root three levels up
+  fs.mkdirSync(wt, { recursive: true });
+  const prevCwd = process.cwd();
+  process.chdir(wt); // the adapter's writer resolves the harness root from the process cwd
+  try {
+    const text = bigFileText(700);
+    const patched = captureHandler().handler({
+      toolName: "bash",
+      toolCallId: "call-7",
+      content: [{ type: "text", text }],
+    }) as { content: Array<{ type: string; text: string }> };
+    const file = path.join(dir, ".tumwater", "log", "tool-output", "call-7.log");
+    assert.equal(fs.readFileSync(file, "utf-8"), text, "the complete output was persisted under the tool call's id");
+    const bounded = patched.content[0]!.text;
+    assert.ok(cps(bounded) <= BASH_LIMIT_CHARS, `bounded to ${cps(bounded)} code points`);
+    assert.match(bounded, /complete output in /);
+    assert.match(bounded, /call-7\.log/, "the marker names the persisted full-output file");
+  } finally {
+    process.chdir(prevCwd); // leave the process where the other tests expect it
+  }
+});
+
 test("adapter leaves a non-array content payload untouched", () => {
   // pi tool results are normally block arrays, but a non-array content shape (a bare
   // string, an object) is not something this extension understands: it returns no patch
