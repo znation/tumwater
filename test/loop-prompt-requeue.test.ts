@@ -10,7 +10,7 @@ import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, makeMainRed, tmpdir } from "./repo-fixtures.js";
-import { fakePi, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
 // PLANS.md "Per-role prompts 1/2" criterion (b), red-gate arm: a per-role prompt is dequeued
@@ -51,7 +51,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
   // fulfilled nothing-to-do — the outcome that must consume the reclaimed prompt.
   const restore = fakePi(
     [
-      `printf '%s\\n' "$@" >> "${promptsFile}"; echo "===RUN===" >> "${promptsFile}"`,
+      logPromptsTo(promptsFile),
       `n=$(cat "${counter}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${counter}"`,
       `if [ "$n" = 1 ]; then ${TOUCH_SESSION}; printf '%s\\n' '${thinkingOnlyLine("cut off mid-task", { output: 16 })}'; else printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; fi`,
     ].join("\n"),
@@ -68,7 +68,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
 
     const second = await runner.tick();
     assert.equal(second.result, "no_change");
-    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 2);
     assert.match(runs[1]!, /--continue/, "tick 2 resumed the cut-off session");
     // The fulfilling resume consumed the requeued copy: nothing is left for a fresh tick to run
@@ -78,7 +78,7 @@ test("a cut-off tick's requeued role prompt is reclaimed by the resume, not run 
 
     const third = await runner.tick();
     assert.equal(third.result, "no_change");
-    const runs3 = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs3 = readPromptRuns(promptsFile);
     assert.equal(runs3.length, 3);
     assert.doesNotMatch(runs3[2]!, /--continue/, "tick 3 is fresh again");
     assert.doesNotMatch(runs3[2]!, /flubbernator/, "tick 3 does not re-run the fulfilled request");
@@ -94,7 +94,7 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
   // Run 1 (fresh) is cut off; run 2 (the resume) fails without changes; run 3 (fresh) retries.
   const restore = fakePi(
     [
-      `printf '%s\\n' "$@" >> "${promptsFile}"; echo "===RUN===" >> "${promptsFile}"`,
+      logPromptsTo(promptsFile),
       `n=$(cat "${counter}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${counter}"`,
       `if [ "$n" = 1 ]; then ${TOUCH_SESSION}; printf '%s\\n' '${thinkingOnlyLine("cut off mid-task", { output: 16 })}'; elif [ "$n" = 2 ]; then printf '%s\\n' '${errorLine("backend exploded")}'; else printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; fi`,
     ].join("\n"),
@@ -107,7 +107,7 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
     // The reclaim took the queue copy and the failed resume put it back: the request survives.
     assert.deepEqual(queuedRolePrompts(repo, "perf"), ["fix the flubbernator"], "the failed resume re-queued the prompt");
     assert.equal((await runner.tick()).result, "no_change");
-    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 3);
     assert.doesNotMatch(runs[1]!, /flubbernator/, "the resume bridge does not re-send the request text");
     assert.match(runs[2]!, /flubbernator/, "the fresh tick after the failed resume retries the request");

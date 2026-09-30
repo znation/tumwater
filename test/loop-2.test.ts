@@ -18,7 +18,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, firstRunThenIdle, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
 
@@ -266,7 +266,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const restore = fakePi(
     [
-      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      logPromptsTo(promptsFile),
       `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
     ].join("\n"),
   );
@@ -276,7 +276,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
     const runner = makeLoopRunner(repo, "perf");
     // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
     for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
-    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 5);
     assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh tick carries no cut-off text");
     // The resumes continue the compacted session: the bridge names the real cause, not a restart.
@@ -318,7 +318,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     // nothing-to-do finish, so the tick lands nothing and never reaches the review gate.
     restore = fakePi(
       [
-        `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+        logPromptsTo(promptsFile),
         `rm -f partial.txt`,
         `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
       ].join("\n"),

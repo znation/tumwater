@@ -15,7 +15,7 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { firstRunThenIdle, withPi } from "./fake-pi.js";
+import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 test("a rejected change rides along on the role's next tick prompt with its reasons", async () => {
   const repo = await initializedRepo();
@@ -28,7 +28,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
     `  printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule\n2. no regression test")}'`,
     `  exit 0;; esac; done`,
-    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+    logPromptsTo(promptsFile),
     ...firstRunThenIdle(marker, [
       `printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
       `echo bad > rejected.txt`,
@@ -55,7 +55,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi
     // session, so its full reasons must ride along on this tick's prompt.
     assert.equal((await runner.tick()).result, "no_change");
-    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     const second = runs[1] ?? "";

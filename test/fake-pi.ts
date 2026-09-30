@@ -1,4 +1,5 @@
 import type { PiRunResult } from "../src/pi.js";
+import fs from "node:fs";
 import { assistantLine } from "./pi-events.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -29,6 +30,24 @@ export const TOUCH_SESSION = `prev=""; for a in "$@"; do if [ "$prev" = "--sessi
  * a change to how the resume flags are observed cannot drift between the copies. */
 export function logFlagsTo(file: string): string {
   return `flags=""; for a in "$@"; do case "$a" in --continue|-n) flags="$flags $a";; esac; done; echo "run:$flags" >> "${file}"`;
+}
+
+/** A shell fragment for fake-pi scripts: append the run's full argv (the prompt is pi's last
+ * argument) to `file` as one `===RUN===`-delimited block per run. The loop, requeue, and
+ * review-precheck tests repeated this fragment verbatim — with two drifting spellings of the
+ * printf newline — so the prompt-capture technique is shared here, like logFlagsTo, and a
+ * change to how prompts are observed cannot drift between the copies. Pair with
+ * readPromptRuns to read the log back. */
+export function logPromptsTo(file: string): string {
+  return `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${file}"`;
+}
+
+/** Read back a prompt log written by logPromptsTo: one string per recorded pi run (its argv,
+ * newline-separated), blank blocks dropped. The loop, requeue, and review-precheck tests
+ * repeated this split-and-filter verbatim; shared with logPromptsTo so the capture format's
+ * single home covers both its writer and its reader. */
+export function readPromptRuns(file: string): string[] {
+  return fs.readFileSync(file, "utf8").split("===RUN===").filter((b) => b.trim());
 }
 
 /** Install a fake `pi` executable at the front of PATH for the duration of a test.

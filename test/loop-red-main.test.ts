@@ -15,7 +15,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, logPromptsTo } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
@@ -148,7 +148,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
   const marker = path.join(tmpdir(), "pi-invoked");
   const restore = fakePi(
     [
-      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      logPromptsTo(promptsFile),
       APPROVE_PI,
       `printf '%s\n' '${assistantLine("done\nSUMMARY: fix main", { tokens: 10, output: 10, cost: 0.01 })}'`,
       `echo hello > hello.txt`,

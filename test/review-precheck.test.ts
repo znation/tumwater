@@ -21,7 +21,7 @@ import { shortSha } from "../src/text.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, reviewerStub } from "./fake-pi.js";
+import { fakePi, logPromptsTo, readPromptRuns, reviewerStub } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 
@@ -378,14 +378,14 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
   );
   const prompts = path.join(tmpdir(), "prompts.log");
   const restore = fakePi(
-    `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${prompts}"\n${reviewerStub()}`,
+    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
   );
   try {
     const head = await headOf(wt, "HEAD");
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(result.run, "the reviewer ran, exactly as after a first-time pass");
-    const runs = fs.readFileSync(prompts, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(prompts);
     assert.equal(runs.length, 1, "the reviewer is the only pi run");
     assert.equal(await aheadOfMain(wt, "main"), 1, "the author's commit alone");
     assert.equal(result.verifiedHead, head, "the re-run's green verdict verifies the tree");
@@ -618,7 +618,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
   const prompts = path.join(tmpdir(), "prompts.log");
   // The fake pi records its argv (the prompt is the last argument) before answering.
   const restore = fakePi(
-    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${prompts}"\n${reviewerStub()}`,
+    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
   );
   try {
     const { result } = await reviewGate(root, wt);
@@ -635,7 +635,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
   const bare = await gateFixture();
   const barePrompts = path.join(tmpdir(), "prompts.log");
   const restoreBare = fakePi(
-    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${barePrompts}"\n${reviewerStub()}`,
+    `${logPromptsTo(barePrompts)}\n${reviewerStub()}`,
   );
   try {
     const { result } = await reviewGate(bare.root, bare.wt);

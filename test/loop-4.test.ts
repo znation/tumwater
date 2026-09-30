@@ -17,7 +17,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, firstRunThenIdle } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle, logPromptsTo, readPromptRuns } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
 
@@ -136,7 +136,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   const restore = fakePi(
     [
       APPROVE_PI,
-      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+      logPromptsTo(promptsFile),
       ...firstRunThenIdle(marker, [
         `printf '%s\n' '${assistantLine("did it\nSUMMARY: add broken code")}'`,
         `echo bad > broken.ts`,
@@ -155,7 +155,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     // tick starts a fresh pi session, so they must ride along on this tick's prompt. The
     // prompts log holds exactly the two author runs: the landing spent none.
     assert.equal((await runner.tick()).result, "no_change");
-    const runs = fs.readFileSync(promptsFile, "utf8").split("===RUN===").filter((b) => b.trim());
+    const runs = readPromptRuns(promptsFile);
     assert.equal(runs.length, 2, "two author runs and nothing from the landing");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
     const second = runs[1] ?? "";
