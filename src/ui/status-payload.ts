@@ -4,7 +4,8 @@ import { eventMessage, eventResult, formatEvent } from "../event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "../status-data.js";
-import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
+import { buildBadge, budgetBadge, landingBadge, mainCheckBadge } from "./badges.js";
+import { isActivePhase, loopRowCells, yieldMultiplierFor } from "./status-model.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
@@ -83,24 +84,24 @@ export function statusPayload(root: string): object {
     // The running harness's build stamp and staleness (src/build-info.ts); null when no
     // harness runs or its dist carries no stamp — machine-readable for `status --json`.
     build: snap.build,
-    // The header's build badge pre-formatted through status-model's buildBadge — the same
+    // The header's build badge pre-formatted through badges.ts's buildBadge — the same
     // string the TUI/status table renders. Sent display-ready (like phase and events) because
     // the page is browser JS that cannot import TypeScript, and this multi-branch text must
     // not be re-derived client-side where it could drift from the TUI header.
     buildBadge: buildBadge(snap.build),
-    // The header's daily-cost-budget badge preformatted through status-model's budgetBadge —
+    // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget),
     // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge
-    // preformatted through status-model's landingBadge, so the page cannot re-derive it.
+    // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
     landQueue: snap.landQueue,
     landingBadge: landingBadge(snap.landQueue),
     // Main's newest merge-scope check (PLANS.md "Retire the README freshness stamp"): the
     // raw block is machine-readable for `status --json`, and the header badge is
-    // preformatted through status-model's mainCheckBadge — the same string the TUI/status
+    // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status
     // header renders — so the page cannot re-derive the verdict client-side. Omitted (not
     // null) before any merge-scope check has run — the same omit-undefined idiom as
     // pausedUntil.

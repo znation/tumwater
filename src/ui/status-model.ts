@@ -6,26 +6,19 @@ import {
   QUIET_KILL_RESUME_LIMIT,
   yieldMultiplier,
 } from "../tick-outcome.js";
-import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
-import { compactTokens, shortSha, usd, usdCap } from "../text.js";
+import { fleetBudgetGate, humanSeconds } from "./badges.js";
+import { compactTokens } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
 
-/** The status DISPLAY MODEL: what a loop's cycle position is, what each header badge reads,
- * and the per-loop token metrics — derived from the status data (status.ts) and shared by BOTH
+/** The status DISPLAY MODEL: what a loop's cycle position is and its per-loop token metrics
+ * (the header badges live next door in badges.ts) — derived from the status data (status.ts)
+ * and shared by BOTH
  * observer surfaces: the terminal table (status-render.ts's renderStatus/stateCell) and the
  * JSON/GUI payload (status-payload.ts). Kept apart from status-render.ts so the GUI payload
  * depends on the shared model, not on the TUI table module — "what to show" (here) is separate
  * from "how a terminal lays it out" (status-render.ts). Depends on status.ts one way: deriving
  * reads the snapshot and never collects fleet state itself (live tick detail is display-only). */
-
-/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago and the sleeping-
- * remaining label so their s/m/h bucketing (thresholds and rounding) cannot drift. */
-export function humanSeconds(s: number): string {
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  return `${Math.round(s / 3600)}h`;
-}
 
 function duration(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -358,100 +351,4 @@ function displayTokenMetrics(
     generated: s.generatedTokens + (p?.outputTokens ?? 0),
     peakCtx: Math.max(s.peakContextTokens, p?.peakContextTokens ?? 0),
   };
-}
-
-/** The header's build fragment: which commit the running harness was compiled from and, when
- * main's build inputs have moved past it, how far — the fleet is then executing code main no
- * longer describes (auto-restart lands the new build; off, restart `tumwater run` by hand).
- * A stale build also says what auto-restart is doing about it: `restart pending` resolves
- * itself, `restart BLOCKED` never will until main moves, and telling them apart at a glance is
- * the whole point (see BuildStatus.restartBlocked). Empty when the dist carries no stamp.
- * Shared by the TUI/status header here and the GUI's. */
-export function buildBadge(build: StatusSnapshot["build"]): string {
-  if (!build) return "";
-  const stale = build.stale ? ` — STALE: main +${build.aheadCommits ?? 0} commit(s) since` : "";
-  const restart = build.restartBlocked
-    ? `; restart BLOCKED: ${build.restartBlocked}`
-    : build.restartPending
-      ? "; restart pending"
-      : "";
-  return `, build ${shortSha(build.sha)}${stale}${restart}`;
-}
-
-/** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
- * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
- * README stamp the readme role used to maintain. Empty when the snapshot carries no check
- * (none has run yet), so a quiet header stays byte-identical to a pre-check fleet. The
- * verdict maps passed→green, failed→red; anything else (a skipped scope check) renders its
- * raw word — an unverified tree must not read green. The counts fragment omits a zero-skip
- * parenthetical, matching the stamp wording the README carried. */
-export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
-  if (!mainCheck) return "";
-  const verdict = mainCheck.status === "passed" ? "green" : mainCheck.status === "failed" ? "red" : mainCheck.status;
-  const counts = mainCheck.counts
-    ? ` · ${mainCheck.counts.pass}/${mainCheck.counts.tests}${mainCheck.counts.skipped > 0 ? ` (${mainCheck.counts.skipped} skipped)` : ""}`
-    : "";
-  const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";
-  return ` · main ${sha}${verdict}${counts}`;
-}
-
-/** The fleet's current budget-gate state, derived from a snapshot's budget block — the one
- * home for the budgetReached + fallback-readiness wiring both observer surfaces share: the
- * TUI/status table needs the `paused` verdict for loopPhase, the JSON/GUI payload ships the
- * same one, and budgetBadge needs `fallback` — so the three-valued display rule cannot
- * drift between the surfaces. Module-private: loopPhase (via loopRowCells) and budgetBadge
- * are the only readers. */
-function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
-  return budgetGate(budgetReached(budget), budget.fallback !== null);
-}
-
-/** The header's daily-cost-budget fragment, standing in every cap state (the badge is also
- * the affordance for editing the cap, so a disabled fleet needs it too): `· budget: n/a`
- * for a fleet whose models are all free (spend can never accumulate against a cap that
- * cannot be reached — and no priced model means no daily spend to count, hence no "today"
- * — checked first, in every cap state), `· budget: $X.XX/$Y today` while enabled with
- * priced models, and `· budget: $X today · no cap` when disabled. One
- * home for the rule — renderStatus renders it in the TUI/status header and status-payload.ts
- * ships its output preformatted as `budgetBadge`, so the GUI page cannot drift from this
- * string. */
-export function budgetBadge(budget: StatusSnapshot["budget"]): string {
-  if (budget.free) return " · budget: n/a";
-  // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
-  // is spent, so the dollar figure alone would read like a stopped fleet. Naming the model
-  // answers the operator's next question — what is it running on now? Its cost is n/a by
-  // construction (the gate engages nothing else), so no second figure is shown. Off-gate the
-  // badge is byte-identical to before.
-  const fallback =
-    fleetBudgetGate(budget) === "fallback"
-      ? ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
-      : "";
-  if (budget.capUsd > 0)
-    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${fallback}`;
-  return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
-}
-
-/** The header's land-queue fragment (plans/merge-queue.md 4/5): `· land queue: N` while any
- * landing is queued or in flight, empty when the queue is idle — so an idle fleet keeps
- * every existing header byte intact. One home for the rule, like buildBadge and budgetBadge:
- * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
- * preformatted, so the GUI page cannot drift from this string. */
-export function landingBadge(landQueue: { depth: number }): string {
-  return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
-}
-
-/** The header's fleet timed-pause fragment: `· paused — auto-resumes in <duration>` while a
- * timed pause stands, empty otherwise — so an operator can tell at a glance whether a paused
- * fleet will come back on its own or needs a manual `resume` (the Timed pause plan left the
- * display out on purpose). The snapshot's `pausedUntil` is the FLEET marker's deadline (ms
- * epoch, plans/daily-cost-budget.md item 5), so the badge stands exactly when the fleet
- * itself is timed-paused: a role-only timed pause leaves the header unchanged, and an absent
- * or already-expired deadline renders nothing — the read side treats an expired marker as
- * unpaused, so the badge never claims a countdown that is over. The duration goes through
- * the shared humanSeconds so one helper owns duration phrasing. renderStatus renders it in
- * the TUI/status header after the budget badge; the GUI recomputes the ticking number
- * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
- * humanSeconds copy, pinned against this one by test. */
-export function pauseBadge(pausedUntil: number | undefined, now: number): string {
-  if (pausedUntil === undefined || pausedUntil <= now) return "";
-  return ` · paused — auto-resumes in ${humanSeconds(Math.round((pausedUntil - now) / 1000))}`;
 }

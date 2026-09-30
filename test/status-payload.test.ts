@@ -200,7 +200,7 @@ test("status payload carries queued prompt previews, fresh per poll", async () =
 });
 
 // The build badge on the GUI surface: /api/status carries it pre-formatted through
-// status-render's buildBadge — the same string the TUI header renders — so the page cannot
+// badges.ts's buildBadge — the same string the TUI header renders — so the page cannot
 // re-derive (and drift from) the multi-branch text client-side.
 
 test("status payload carries the build badge pre-formatted by buildBadge", async () => {
@@ -212,8 +212,8 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   assert.equal(payload.buildBadge, "", "no running harness: empty badge");
 
   // A live orchestrator (this process) publishing a stale stamp with a blocked restart:
-  // the payload's badge is exactly what status-model's buildBadge renders for that BuildStatus.
-  const { buildBadge } = await import("../src/ui/status-model.js");
+  // the payload's badge is exactly what badges.ts's buildBadge renders for that BuildStatus.
+  const { buildBadge } = await import("../src/ui/badges.js");
   const stamp = {
     sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 7,
     checkedHead: "b".repeat(40), restartBlocked: "main cccccccc is red",

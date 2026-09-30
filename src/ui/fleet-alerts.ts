@@ -1,14 +1,14 @@
 /** The fleet ALERT model: everything about the fleet that needs the operator — or that they
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
- * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop and badge derivation
- * this reads as input but does not share helpers with beyond humanSeconds; `tone` ranks an
+ * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
+ * as input but does not share helpers with beyond badges.ts's humanSeconds; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status-data.js";
-import { humanSeconds } from "./status-model.js";
+import { humanSeconds } from "./badges.js";
 import { plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 

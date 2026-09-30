@@ -5,16 +5,11 @@ import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
+import { buildBadge, budgetBadge, humanSeconds, landingBadge, mainCheckBadge, pauseBadge } from "./badges.js";
 import {
-  buildBadge,
-  budgetBadge,
-  humanSeconds,
   isActivePhase,
-  landingBadge,
   loopRowCells,
   progressOfTick,
-  mainCheckBadge,
-  pauseBadge,
   sortLoopsByState,
   yieldMultiplierFor,
 } from "./status-model.js";

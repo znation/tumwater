@@ -1,11 +1,13 @@
 /** The rendered status table suite: renderStatus and lastTickCell (src/ui/status-render.ts).
- * The status-model suite (loopPhase, workingDetail, the badges) lives beside it in
- * status-model.test.ts; the fixtures both assemble snapshots from are in status-fixtures.ts. */
+ * The status-model suite (loopPhase, workingDetail) lives beside it in status-model.test.ts,
+ * and the badges' in badges.test.ts; the fixtures both assemble snapshots from are in
+ * status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { displayWidth } from "../src/text.js";
-import { buildBadge, loopPhase } from "../src/ui/status-model.js";
+import { buildBadge } from "../src/ui/badges.js";
+import { loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/status-data.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
