@@ -11,6 +11,8 @@ import { startVet } from "../src/landing-vetting.js";
 import { headLanding } from "../src/landing-queue.js";
 import { Semaphore } from "../src/semaphore.js";
 import { loadLoopState } from "../src/loop-state.js";
+import { logEvent } from "../src/events.js";
+import { Redeployer, type RedeployDeps } from "../src/redeploy.js";
 import { LoopRunner } from "../src/loop.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -188,3 +190,68 @@ export async function landHead(
   if (result === undefined) throw new Error(`the landing of ${role} recorded no result`);
   return result;
 }
+
+/** A Redeployer whose effects are scripted: main is always stale and green, the compile succeeds
+ * at once, and the swap only records itself — so the orchestrator's half of the contract (hold,
+ * drain, abort, exit) is what these tests pin. `mainGreen` replaces the instant green verdict,
+ * for a test that needs the hold to last until something happens and then lift. */
+export function scriptedRedeployer(
+  repo: string,
+  opts: { drainMaxMs?: number; compileOk?: boolean; stale?: () => boolean; mainGreen?: () => Promise<boolean> } = {},
+) {
+  const swaps: string[] = [];
+  const deps: RedeployDeps = {
+    staleness: async () => ({ stale: opts.stale ? opts.stale() : true, aheadCommits: 4 }),
+    mainGreen: opts.mainGreen ?? (async () => true),
+    compile: async () => ({ ok: opts.compileOk ?? true, detail: opts.compileOk === false ? "tsc exited 2" : "" }),
+    swap: (h) => {
+      swaps.push(h);
+    },
+    bootProblem: async () => null,
+  };
+  // Events go to the repo's log exactly as cmdRun wires them, so the assertions below read the
+  // same events.jsonl an operator would.
+  const redeployer = new Redeployer(
+    { sha: "0".repeat(40), builtAt: 1, root: "/proj" },
+    true,
+    deps,
+    (e) => logEvent(repo, e),
+    opts.drainMaxMs,
+  );
+  return { redeployer, swaps };
+}
+
+/** The file's eight scripted-redeploy orchestrator runs in one place: the AbortController
+ * (armed with a hard self-abort deadline so a stalled drain cannot hang the suite — absent
+ * when the test stops the run itself and no fixed deadline fits its waits) plus the
+ * runOrchestrator call with this file's fixed seam values (config from disk, main, the fast
+ * poll, the redeployer). `stop` ends the run in finally — aborting (a no-op once the run has
+ * returned) and swallowing shutdown noise; the fake-pi restore stays at the call site, since
+ * each test's script differs. */
+export function startRedeployRun(
+  repo: string,
+  redeployer: Redeployer,
+  opts: { timeoutMs?: number; handoffLandingWindowMs?: number } = {},
+) {
+  const controller = new AbortController();
+  const timeout = opts.timeoutMs === undefined ? null : setTimeout(() => controller.abort(), opts.timeoutMs);
+  const run = runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal: controller.signal,
+    pollMs: FAST_POLL_MS,
+    redeploy: redeployer,
+    ...(opts.handoffLandingWindowMs ? { handoffLandingWindowMs: opts.handoffLandingWindowMs } : {}),
+  });
+  return {
+    run,
+    signal: controller.signal,
+    async stop() {
+      if (timeout !== null) clearTimeout(timeout);
+      controller.abort();
+      await run.catch(() => undefined);
+    },
+  };
+}
+
