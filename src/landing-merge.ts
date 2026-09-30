@@ -88,6 +88,19 @@ export async function mergeToMain(
   return tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
 }
 
+/** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before` —
+ * the capture-and-diff both merge paths record alongside their `merged` events (tryMerge and
+ * ffStackToMain). The capture (`openQuestions(root)` under the merge lock, before the ff) stays
+ * with the callers: the lock window is theirs to define, and the diff is only exact while the
+ * capture and this call share it. */
+function logNewQuestions(root: string, before: string[], role: string): void {
+  for (const question of openQuestions(root)) {
+    if (!before.includes(question)) {
+      logEvent(root, { loop: role, type: "question_posted", question });
+    }
+  }
+}
+
 async function tryMerge(
   ctx: MergeContext,
   wt: string,
@@ -115,11 +128,7 @@ async function tryMerge(
     if (!(await ffMainTo(ctx.root, await headOf(wt, "HEAD"), ctx.mainBranch))) return "merge_blocked";
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
-    for (const question of openQuestions(ctx.root)) {
-      if (!before.includes(question)) {
-        logEvent(ctx.root, { loop: ctx.role, type: "question_posted", question });
-      }
-    }
+    logNewQuestions(ctx.root, before, ctx.role);
     return "changed";
   });
 }
@@ -233,11 +242,7 @@ export async function ffStackToMain(
     for (const entry of landed) {
       logEvent(root, { loop: entry.role, type: "merged", commit: entry.sha, summary: entry.summary });
     }
-    for (const question of openQuestions(root)) {
-      if (!before.includes(question)) {
-        logEvent(root, { loop: landed[0]!.role, type: "question_posted", question });
-      }
-    }
+    logNewQuestions(root, before, landed[0]!.role);
     return "changed";
   });
 }
