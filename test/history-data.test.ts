@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events.js";
-import { readTickRowsSince } from "../src/history-data.js";
+import { readTickRowsSince, tickRows } from "../src/history-data.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeEvents } from "./log-fixtures.js";
 
@@ -15,6 +15,10 @@ import { writeEvents } from "./log-fixtures.js";
 
 const TWO_HOURS = 7_200_000;
 const MIN = 60_000;
+// The since-window the spanning-pin tests read through: one hour back from the reader's
+// own clock, so the cutoff sits mid-window and a few ms of drift between seeding and the
+// read cannot move an event across it.
+const SINCE = 60 * MIN;
 
 function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "tick_end", tick: 1, result: "changed", ...over } as HarnessEvent;
@@ -121,6 +125,61 @@ test("a queued tick resolves to its change's landing outcome — landed or land_
       [1, "changed", "work one"],
     ],
   );
+});
+
+test("a queued tick whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
+  const root = tmpdir();
+  // Tick 1 SPANS the cutoff: its tick_start and land_queued pin sit before it, its tick_end
+  // and landing outcome after it. The row set (ts-filtered at the cutoff) keeps the tick_end
+  // and the outcome but cuts the pin — so the join reads wider evidence (TICK_ROW_JOIN_BACK
+  // SLACK_MS) for the pins and claims them only while the row's tick block is whole there.
+  // Tick 2 sits fully inside the window; both changes land, so both rows must resolve.
+  const cutoff = Date.now() - SINCE;
+  const before = (mins: number) => cutoff - mins * MIN;
+  const after = (mins: number) => cutoff + mins * MIN;
+  writeEvents(root, [
+    { ts: before(6), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: before(5), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: after(1), loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "work one" },
+    { ts: after(2), loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+    { ts: after(3), loop: "feature", type: "tick_start", tick: 2 },
+    { ts: after(4), loop: "feature", type: "land_queued", commit: "sha2", summary: "work two" },
+    { ts: after(5), loop: "feature", type: "tick_end", tick: 2, result: "queued", summary: "work two" },
+    { ts: after(10), loop: "feature", type: "landed", commit: "sha2", result: "changed" },
+  ]);
+  const { rows } = readTickRowsSince(root, SINCE, null);
+  assert.deepEqual(
+    rows.map((r) => [r.tick, r.result, r.detail]),
+    [
+      [2, "changed", "work two"],
+      [1, "changed", "work one"],
+    ],
+  );
+});
+
+test("a queued row whose tick_start predates the join read's floor keeps the raw label", () => {
+  // The guard, unit-pinned on the pure collector: a row whose tick block is not whole in the
+  // join set (here the floor sits between the tick_start and the pin) cannot prove its own
+  // pin survived the read, and a pre-cutoff tick's pin IS in the join set — claiming it would
+  // join another change's landing. Conservative fallback: the raw label.
+  const events: HarnessEvent[] = [
+    { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 },
+    { ts: 1_100, loop: "feature", type: "land_queued", commit: "shaOld", summary: "old work" },
+    { ts: 1_200, loop: "feature", type: "tick_end", tick: 1, result: "no_change", summary: "old work" },
+    { ts: 2_000, loop: "feature", type: "tick_start", tick: 2 },
+    { ts: 2_100, loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: 2_200, loop: "feature", type: "tick_end", tick: 2, result: "queued", summary: "work one" },
+    { ts: 2_500, loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+  ];
+  // The row set is the ts-filtered tail the since scan would keep (tick 1 dropped as
+  // pre-cutoff); the join set is the unfiltered read, floor between tick 2's start and pin.
+  const rowEvents = events.filter((e) => e.ts >= 1_500);
+  const rows = tickRows(rowEvents, rowEvents.length, null, { events, floorTs: 2_050 });
+  assert.deepEqual(rows.map((r) => [r.tick, r.result]), [[2, "queued"]]);
+  // The same rows with a floor BELOW tick 2's start resolve normally: the guard only bites
+  // when the join read may have cut the tick's own block.
+  const resolved = tickRows(rowEvents, rowEvents.length, null, { events, floorTs: 1_500 });
+  assert.deepEqual(resolved.map((r) => [r.tick, r.result]), [[2, "changed"]]);
 });
 
 test("a queued tick whose landing is still in the pipeline keeps the raw label", () => {

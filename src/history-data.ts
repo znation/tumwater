@@ -30,6 +30,30 @@ const DETAIL_MAX = 72;
  * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. */
 const HISTORY_SCAN_MAX_EVENTS = 20_000;
 
+/** How far behind a since-shaped scan's cutoff the queued-row join reads its evidence: the
+ * row set is ts-filtered to the cutoff, but a queued tick whose tick SPANS the cutoff logged
+ * its `land_queued` pin before it (the pin is logged during the tick, the tick_end after it)
+ * — so the join evidence needs its own read reaching further back. Six hours outlasts any
+ * tick the harness runs (every stage inside a tick is timeout-bounded); a tick that somehow
+ * queued later than that keeps the raw label, the conservative fallback. The wider read costs
+ * one extra bounded backwards scan per `history --since` ask (a CLI command, not a poll
+ * loop), and its day-keyed scan never reaches past its own window's first day. */
+const TICK_ROW_JOIN_BACKSLACK_MS = 6 * 60 * 60 * 1000;
+
+/** Wider join evidence for a row set whose own window cut events the queued-row join needs
+ * (the `--since` path; the tail-count path needs none — see readTickRows). `events` is the
+ * cutoff-unfiltered read (a strict superset of the row set's events, oldest first);
+ * `floorTs` is that read's requested lower bound (epoch ms): a queued row whose tick_start
+ * sits before `floorTs` cannot trust the read around its pin (the day-keyed over-read can
+ * hold older ticks' pins below the floor while the row's own pin is gone), so it keeps the
+ * raw label rather than risk claiming another tick's pin — only the row's own tick block
+ * being whole above the floor makes the newest-pin-at-or-before-the-end rule pick the right
+ * one (resolveQueuedResult spells out why a missing start needs no guard). */
+interface TickRowJoin {
+  events: HarnessEvent[];
+  floorTs: number;
+}
+
 /** One completed tick, rendered. `durationMs` is null when the tick's `tick_start` is not in
  * the scanned window (log rotation, or a skipped tick that never started) — the row shows a
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
@@ -59,16 +83,32 @@ export interface TickRow {
  * the commit sha, and the later `landed`/`land_failed` event for the same loop+sha carries
  * the landing's final result. Rows are built newest-first, so each queued tick_end claims
  * the newest land_queued at or before its ts that no newer row has claimed — the one logged
- * during that tick. No outcome event (the landing still in the pipeline, or its event outside
- * the scanned window) leaves the raw label: the conservative fallback for a landing whose
- * verdict is simply not visible here. Returns the resolved result string, or null to keep
- * the tick_end's own. */
+ * during that tick. On a since-shaped scan the pins come from the WIDER join read (TickRowJoin):
+ * the row set's own cutoff can sit between a spanning tick's pin and its tick_end, and the
+ * claim rule is only sound while every row's own pin is actually present — a loop runs one
+ * tick at a time, so pins at or before a row's end from other ticks are all OLDER than its
+ * own, and a missing pin would claim one of those. The guard is the row's tick_start: one
+ * that sits BEFORE the join read's floor means the tick block crosses the read's lower bound,
+ * where the day-keyed over-read makes presence non-monotonic — the pin may be gone while
+ * older ticks' pins are still in the set — so the row keeps the raw label rather than
+ * mis-claim. A MISSING start is safe and joins: rotation drops a prefix, so every pin older
+ * than the lost start is lost with it and nothing can be mis-claimed (and a skipped tick has
+ * no start at all but is never queued).
+ * No outcome event (the landing still in the pipeline, or its event outside the join set)
+ * leaves the raw label too: the conservative fallback for a landing whose verdict is simply
+ * not visible here. Returns the resolved result string, or null to keep the tick_end's own. */
 function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
   outcomeByLoop: Map<string, HarnessEvent[]>,
   claimTop: Map<string, number>,
+  joinStarts: Map<string, number>,
+  floorTs: number | null,
 ): string | null {
+  if (floorTs !== null) {
+    const startTs = joinStarts.get(`${end.loop}#${end.tick}`);
+    if (startTs !== undefined && startTs < floorTs) return null;
+  }
   const queuedList = landQueuedByLoop.get(end.loop);
   if (!queuedList || queuedList.length === 0) return null;
   let top = claimTop.get(end.loop) ?? queuedList.length - 1;
@@ -88,7 +128,12 @@ function resolveQueuedResult(
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as
  * readEvents returns them), filtered to `role` when given, newest first. Pure: the CLI, the
  * GUI, and the tests share this collector, and none of them writes anything. */
-export function tickRows(events: HarnessEvent[], limit: number, role: string | null): TickRow[] {
+export function tickRows(
+  events: HarnessEvent[],
+  limit: number,
+  role: string | null,
+  join?: TickRowJoin,
+): TickRow[] {
   const scoped = role === null ? events : events.filter((e) => e.loop === role);
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
@@ -96,9 +141,19 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
   // The landing bookkeeping resolveQueuedResult joins over: per loop, the land_queued pins
   // (oldest first) and the landed/land_failed outcomes (oldest first). Both ride the role
   // filter with their tick, so the scoped events hold them exactly when they hold the row.
+  // A since-shaped scan hands a WIDER join read instead (readTickRowsSince): its cutoff cut
+  // the pins of ticks that span it, so the maps read the unfiltered-by-cutoff evidence and
+  // resolveQueuedResult guards each claim on the row's tick_start being whole in that read.
+  const joinScoped = join
+    ? role === null
+      ? join.events
+      : join.events.filter((e) => e.loop === role)
+    : scoped;
+  const joinStarts = join ? tickStartMap(joinScoped) : starts;
+  const floorTs = join ? join.floorTs : null;
   const landQueuedByLoop = new Map<string, HarnessEvent[]>();
   const outcomeByLoop = new Map<string, HarnessEvent[]>();
-  for (const e of scoped) {
+  for (const e of joinScoped) {
     if (e.type === "land_queued") {
       const list = landQueuedByLoop.get(e.loop) ?? [];
       list.push(e);
@@ -117,7 +172,8 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
     const rawResult = String(e.result);
     const result =
       rawResult === "queued"
-        ? resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop) ?? rawResult
+        ? resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop, joinStarts, floorTs) ??
+        rawResult
         : rawResult;
     const usage = eventUsage(e);
     rows.push({
@@ -177,10 +233,18 @@ export function readTickRows(root: string, limit: number, role: string | null): 
  * rotation-spanning day-keyed read with its at-most-one-day over-read, the ts filter, and the
  * exact coverage predicate cmdLogs consults) is event-window.ts's readEventsSince — the same
  * read `logs --since` runs — so neither windowed surface can claim coverage the other would
- * hedge or key its read differently. The rows reuse the pure tickRows with limit =
+ * hedge or key its read differently. The rows read the cutoff-filtered events, but their
+ * queued-row join reads WIDER evidence (TICK_ROW_JOIN_BACKSLACK_MS): a queued tick whose tick
+ * spans the cutoff logged its land_queued pin before the cutoff, and without the wider read
+ * the row would either keep "Queued to land" after its change landed or misclaim an older
+ * tick's pin (BUGS.md 2026-09-30). The rows reuse the pure tickRows with limit =
  * events.length, so pairing, role filtering, and the dash-on-unpaired rule stay exactly the
  * count view's. Pure over root: reads the event log, writes nothing. */
 export function readTickRowsSince(root: string, sinceMs: number, role: string | null): { rows: TickRow[]; covered: boolean } {
   const { events, covered } = readEventsSince(root, sinceMs);
-  return { rows: tickRows(events, events.length, role), covered };
+  const join = readEventsSince(root, sinceMs + TICK_ROW_JOIN_BACKSLACK_MS);
+  return {
+    rows: tickRows(events, events.length, role, { events: join.events, floorTs: join.cutoff }),
+    covered,
+  };
 }
