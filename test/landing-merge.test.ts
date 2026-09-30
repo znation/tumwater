@@ -681,6 +681,44 @@ test("a conflict resolution that files a new plan under a single ## Done is bloc
   assertWorktreeSettled(wt);
 });
 
+test("a code diff that duplicates ## Done is blocked by the structure check before any build check", async () => {
+  // The exempt path's duplicate-heading block is covered above; this pins the sibling block
+  // for CODE diffs, which must fire BEFORE runScopedBuildCheck so a conflict resolution that
+  // broke backlog structure reads as an explained block, never as an unexplained red check
+  // run on a tree that could never land.
+  const { root, wt } = await initializedWorktree();
+  // A deterministic red: if the structure block failed to fire, the landing would still be
+  // rejected — but as a failed build_check, so the absence of any build_check event below
+  // proves the structure block is what blocked this landing.
+  declareBuildCheck(root, wt, "exit 1");
+  // A code file makes the delta non-exempt (an .md-only delta would take the exempt block).
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  // initProject's template ships exactly one ## Done; a second one trips rule (a) — head
+  // count 2 exceeds the base's 1.
+  fs.appendFileSync(path.join(wt, "PLANS.md"), "## Done\n");
+  commitIn(wt, "code work");
+  // Advance main so the rebase is a real rebase: a no-op rebase with no gateCommand
+  // short-circuits before any structure check runs.
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const mainBefore = mainSha(root);
+  const { ctx } = makeCtx(root);
+
+  const result = await mergeToMain(ctx, wt, "code work");
+
+  assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
+  assert.equal(mainSha(root), mainBefore, "main is untouched");
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("PLANS.md") && m.includes('## Done')),
+    `the warning is the structure reason, not a check failure; got: ${JSON.stringify(warnings)}`,
+  );
+  assert.ok(
+    !readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing"),
+    "no landing build check ran — the structure block fires first",
+  );
+  assertWorktreeSettled(wt);
+});
+
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
 /** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then
