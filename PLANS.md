@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/2, the prompts
+### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/3, the prompts
 
 **Goal.** Stop loops from rewriting a backlog file's section headings when they move an entry.
 On 2026-09-25 the feature loop's `run --once` commit `52cbadd1` marked its plan done by
@@ -51,10 +51,10 @@ test/prompt.test.ts and test/gate-prompts.test.ts.
   beside the existing "combining the intent of BOTH sides" assertion.
 - test/prompt.test.ts pins the new feature and bugfix wording.
 - `npm run test` passes.
-- Part 2/2 (the deterministic check below) is the backstop; this part only makes the
+- Part 2/3 (the deterministic check below) is the backstop; this part only makes the
   failure rarer, so it lands first and on its own.
 
-### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/2, the backstop
+### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/3, the backstop
 
 **Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
 dropped `## ` section heading must not reach main. Today nothing checks backlog structure.
@@ -117,6 +117,65 @@ and one landing test beside the existing false-fix ones.
   the rebase conflicts and a fake conflict resolver keeps both sides. `verifyLanding`
   refuses (merge_blocked) and logs the warning; main is unchanged.
 - `npm run test` passes; the existing false-fix gate and landing tests are unchanged.
+
+### Stranded-plan detection: the clean loop re-files an open plan sitting under `## Done` (planned 2026-09-30) — part 3/3, the repair
+
+**Goal.** Parts 1/3 and 2/3 stop a duplicated `## Done` heading from landing, but a plan can
+be stranded without one. A conflict resolution or a misplaced insert can put a new
+`### … (planned YYYY-MM-DD)` entry just below the file's single `## Done` heading, and the
+set of `## ` headings is unchanged, so part 2's check passes it. The Planned reader
+(`plannedPlanEntries`, src/backlog.ts) then never lists it: the dashboards, `tumwater
+backlog`, and the plan loop's "two or more plans wait" rule all miss it. The feature loop only
+finds it if it reads past `## Done`. On 2026-09-25 the timed-pause plan sat like this from
+13:10 to 14:38. The clean loop repaired it (`b7ab97c7`), but only because it happened to
+look, since its prompt is about code. The reverse case is the same kind of error: an entry
+still under `## Planned` whose heading already carries a `done YYYY-MM-DD` was finished and
+never moved, so the feature loop may implement it again. Make detection deterministic and
+hand the repair to clean.
+
+**Approach.**
+- A pure detector, `strandedPlanEntries(md)`, in src/backlog-structure.ts (created by part
+  2/2; if this part lands first, create the module here and part 2 adds to it). It is
+  fence-aware through backlog.ts's `parseEntryDetails`, like every other backlog reader. It
+  returns the `### ` headings of:
+  (a) entries under `## Done` whose heading has a `(planned YYYY-MM-DD…)` parenthetical but
+  no `done YYYY-MM-DD`;
+  (b) entries under `## Planned` whose heading already carries `done YYYY-MM-DD`.
+  Scope is PLANS.md only. This repo's PLANS.md satisfies both rules today; every retained
+  Done heading carries a done date. BUGS.md does not: two retained Fixed-section headings
+  lack a `fixed YYYY-MM-DD` suffix, so a BUGS.md version would misfire and is out of scope.
+- src/tick-prompt.ts: for `role === "clean"`, read the primary checkout's PLANS.md (the
+  same `root` the telemetry digest and qa coverage blocks read) and, when the detector
+  returns anything, render a `<backlog-structure>` block listing each stranded heading with
+  its current section. Pass it through a new optional `TickPromptInput` field in src/prompt.ts,
+  following the `digest`/`coverage` precedent. An unreadable or clean file gives no block, so
+  the prompt is unchanged in the common case.
+- src/roles.ts, `clean` role `find` text: one sentence. When a `<backlog-structure>` block is
+  present, that repair is this tick's ONE task: move each listed entry to the section its
+  heading says it belongs in (cut and paste, under the existing heading, never adding a `## `
+  heading), and change nothing else.
+- `tumwater doctor` (src/doctor-checks.ts): a warn line naming each stranded heading on main,
+  beside part 2/3's optional duplicate-heading line if that has landed, so an operator sees
+  the state without waiting for a clean tick.
+- Not in scope: rejecting a stranding change at the gate. Rule (a) could also be a
+  deterministic gate rejection next to part 2/3's check. Leave that as a follow-up once
+  detection has run for a while, so a false positive shows up as a spurious clean tick, not a
+  blocked landing.
+
+**Files touched.** src/backlog-structure.ts (new or extended), src/tick-prompt.ts,
+src/prompt.ts, src/roles.ts, src/doctor-checks.ts; test/backlog-structure.test.ts,
+test/prompt.test.ts, one doctor test.
+
+**Acceptance criteria.**
+- Unit: a PLANS.md fixture that reproduces the 2026-09-25 shape (a `(planned 2026-09-25)`
+  entry directly under the only `## Done`) yields that heading; a `(planned …, done …)` entry
+  under Done yields nothing; an entry under Planned with a done date yields it; a stranded-
+  looking heading inside a fenced block is ignored; this repo's current PLANS.md yields
+  nothing.
+- The clean tick's prompt carries the `<backlog-structure>` block when the fixture root is
+  stranded and omits it otherwise; the clean `find` text names the block.
+- `tumwater doctor` warns on the stranded fixture and is silent on a clean one.
+- `npm run test` passes.
 
 ## Done
 
