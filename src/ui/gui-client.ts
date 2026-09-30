@@ -5,9 +5,7 @@
  * the composer that steers the director or one loop; and the fleet view — today's progress,
  * the loops grouped by what they are doing, the backlog, and the notable activity. The
  * drawer, the History/Usage/Failures views, the operator controls, and the Markdown renderer
- * the fleet view, the drawer, the History/Usage/Failures views, the operator controls, and
- * the Markdown renderer live in their own modules and are spliced in below; everything shares
- * one scope. The page
+ * live in their own modules and are spliced in below; everything shares one scope. The page
  * cannot import the harness modules, so it keeps its own copies of the few display rules it
  * needs (formatters, loop order), each pinned against its TypeScript twin by test. Written as
  * String.raw templates so the served script is exactly the text below — no double escaping. */
