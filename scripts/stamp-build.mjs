@@ -11,6 +11,12 @@
 // by the test runner — without pruning, a renamed or removed *.test.ts would keep running
 // as its stale .js forever. `npm run build` (the clean path) removes dist/ wholesale, so
 // the prune is a no-op there; it costs one directory walk either way.
+//
+// The bin chmod matters the same way: tsc emits dist/src/cli.js 0644 on every compile,
+// and the file carries a `#!/usr/bin/env node` shebang — without the exec bit back, a
+// developer's direct `./dist/src/cli.js status` dies with EACCES (npm's own link/install
+// re-marks bins, but the checkout itself never gains one). Both build paths end here, so
+// the bit is restored on every rebuild.
 import fs from "node:fs";
 import path from "node:path";
 import { stampBuild } from "../dist/src/build-info.js";
@@ -66,6 +72,21 @@ for (const e of fs.existsSync(distDir) ? fs.readdirSync(distDir, { withFileTypes
     }
   }
 }
+// The bin entry points at dist/src/cli.js (relative to the package root, as npm resolves
+// it); a string form and the { name: path } object form are both legal package.json.
+function binPaths(pkg) {
+  const bin = pkg?.bin;
+  if (typeof bin === "string") return [bin];
+  if (bin && typeof bin === "object") return Object.values(bin).filter((p) => typeof p === "string");
+  return [];
+}
+
+const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+for (const rel of binPaths(pkg)) {
+  const target = path.join(root, rel);
+  if (fs.existsSync(target)) fs.chmodSync(target, 0o755);
+}
+
 const info = await stampBuild(root, distDir);
 if (info) process.stdout.write(`stamped dist/ with ${info.sha.slice(0, 8)}\n`);
 else process.stdout.write("dist/ left unstamped (no git HEAD)\n");
