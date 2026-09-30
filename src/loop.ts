@@ -415,9 +415,13 @@ export class LoopRunner {
     // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
     // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
     // The tick's wall-clock span rides on tick_end too (PLANS.md, time-and-spend plan): the
-    // failure digest weighs a 30-minute timeout against a 200-ms error, which start/end pairing
-    // alone only gives it when both ends survive rotation. Same omit-when-zero convention as
-    // the usage fields — an instant skipped tick renders byte-identical to a pre-feature line.
+    // failure digest prices a tick by its own durationMs first (src/failure-data.ts
+    // tickDurationMs), so the field is ALWAYS present — a tick that ends within the same
+    // Date.now() millisecond it started (an instant early-abort error tick) or crosses a
+    // backward clock step still attests its 0 ms, where the old omit-when-zero convention
+    // dropped the field and broke the "every tick_end carries a span" contract (BUGS.md
+    // 2026-09-29). Unlike the usage fields, tick_end's renderer never prints the span, so an
+    // always-present 0 changes no rendered line.
     const tickDurationMs = Math.max(0, Date.now() - tickStartedAt);
     logEvent(this.root, {
       loop: this.role,
@@ -426,7 +430,7 @@ export class LoopRunner {
       result: outcome.result,
       summary: outcome.summary,
       error: s.lastError,
-      ...(tickDurationMs > 0 ? { durationMs: tickDurationMs } : {}),
+      durationMs: tickDurationMs,
       ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
       ...(this.usage.costUsd > 0 ? { costUsd: this.usage.costUsd } : {}),
     });

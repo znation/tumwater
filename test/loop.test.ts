@@ -521,6 +521,32 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.equal(runner.state.lastError, "raw failure value");
 });
 
+// Every tick_end carries its wall-clock span — the contract the failure digest's fold and the
+// error-tick assertions above both rely on. The old omit-when-zero convention dropped the
+// field whenever the tick ended within the Date.now() millisecond it started (an instant
+// early-abort error tick — the shape a loaded machine produced once per few full-suite runs,
+// turning this suite's own assertion flaky). Freezing the clock pins the same-millisecond
+// span deterministically: the field must survive a 0 ms tick.
+test("a tick_end carries durationMs even when the tick spans no measurable time", async (t) => {
+  const repo = await initializedRepo();
+  const runner = makeLoopRunner(repo, "clean");
+  (runner as unknown as { runTick: () => Promise<unknown> }).runTick = async () => {
+    throw new Error("simulated internal failure");
+  };
+  t.mock.timers.enable({ apis: ["Date"], now: 1_700_000_000_000 });
+  try {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "error");
+    const [end] = eventsOfType(repo, "tick_end");
+    assert.equal(end?.result, "error");
+    assert.match(String(end?.error), /simulated internal failure/);
+    assert.equal(typeof end?.durationMs, "number");
+    assert.equal(end?.durationMs, 0);
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
 test("director skips with an empty inbox and runs a queued prompt", async () => {
   const repo = await initializedRepo();
   const restore = fakePi(
