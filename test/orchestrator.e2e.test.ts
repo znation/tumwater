@@ -38,7 +38,7 @@ import {
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
+import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -552,14 +552,8 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     // Assert on what pi actually saw (its recorded argv), not on tick counts: a tick can be
     // scheduled before our file write lands, so only the argv evidence pins a run to a config.
     // The file is created by pi's first run; until then there are no runs.
-    const runs = (): string[] => {
-      try {
-        // recordingFakePi writes one `run model=… provider=…` line per pi invocation.
-        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
-      } catch {
-        return [];
-      }
-    };
+    // recordingFakePi writes one `run model=… provider=…` line per pi invocation.
+    const runs = (): string[] => readRunLines(argsFile);
     await waitFor(
       () => runs().length >= 1 && runs()[0]?.includes("model=good-model") === true,
       "first pi run",

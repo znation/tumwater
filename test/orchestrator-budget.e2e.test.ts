@@ -22,7 +22,7 @@ import { todayStamp } from "../src/budget.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, fastConfig, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, logFlagsTo, recordingFakePi, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -191,13 +191,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile, { cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
-  const runs = (): string[] => {
-    try {
-      return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
-    } catch {
-      return [];
-    }
-  };
+  const runs = (): string[] => readRunLines(argsFile);
   try {
     // The startup tick runs on the budgeted pair — including clean's own paid override — and
     // spends $1 >= $0.50.
@@ -399,13 +393,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
   const argsFile = path.join(tmpdir(), "handback-e2e-runs.log");
   const flagsFile = path.join(tmpdir(), "handback-e2e-flags.log");
   const marker = path.join(tmpdir(), "handback-e2e-inflight");
-  const runs = (): string[] => {
-    try {
-      return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
-    } catch {
-      return [];
-    }
-  };
+  const runs = (): string[] => readRunLines(argsFile);
   // The model/provider/session recorder the recordingFakePi shim writes, as a fragment: each
   // phase needs its own behavior around it, so the shim itself cannot be reused whole. It
   // shifts through the argv, so every other fragment (TOUCH_SESSION, logFlagsTo) must run

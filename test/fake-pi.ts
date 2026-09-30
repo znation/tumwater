@@ -161,6 +161,19 @@ export function recordingFakePi(argsFile: string, opts: { cost?: number } = {}):
   );
 }
 
+/** The `run: …` lines a fake pi has recorded so far — recordingFakePi appends one per pi
+ * invocation (hand-rolled recorder scripts write the same prefix), so this is what the pi
+ * process actually saw. Returns [] before pi's first run creates the file, so a caller can
+ * poll it from before the fleet starts. One home for the read/split/filter idiom five test
+ * modules hand-rolled. */
+export function readRunLines(argsFile: string): string[] {
+  try {
+    return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+  } catch {
+    return [];
+  }
+}
+
 /** A fully-neutral successful PiRunResult: every field the harness reads at its inert value,
  * overridden by whatever the test exercises (`piRunResult({ refused: true })`). One home for
  * the neutral defaults — six test modules each hand-rolled the full 17-field literal and had

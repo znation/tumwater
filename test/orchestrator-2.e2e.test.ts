@@ -22,7 +22,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, recordingFakePi } from "./fake-pi.js";
+import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
@@ -399,13 +399,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    const runs = (): string[] => {
-      try {
-        return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
-      } catch {
-        return [];
-      }
-    };
+    const runs = (): string[] => readRunLines(argsFile);
     const ofType = (type: string) => readEvents(repo).filter((e) => e.type === type);
     const warningsWith = (text: string) =>
       ofType("warning").filter((e) => ((e.message as string | undefined) ?? "").includes(text));

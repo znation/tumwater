@@ -20,7 +20,7 @@ import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo } from "./fake-pi.js";
+import { fakePi, logFlagsTo, readRunLines } from "./fake-pi.js";
 import { pathReplace } from "./fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -683,7 +683,7 @@ test("every tick starts a fresh pi session", async () => {
     const runner = makeLoopRunner(repo, "clean");
     await runner.tick();
     await runner.tick();
-    const runs = fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+    const runs = readRunLines(argsFile);
     assert.equal(runs.length, 2);
     for (const [i, run] of runs.entries()) {
       assert.ok(!run.includes("--continue"), `tick ${i + 1} must not resume a prior session`);
