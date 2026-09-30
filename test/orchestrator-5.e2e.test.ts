@@ -10,7 +10,7 @@ import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
 import { FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator } from "./orchestrator-fixtures.js";
-import { makeRepo, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -35,10 +35,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
   // bugfix keeps ticking every ~1s here; with an empty BUGS.md `## Open` it defers like a
   // maintenance role instead (deferTick), so the open bug keeps it on the every-wake schedule
   // the overlap observation below depends on.
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   const runDir = tmpdir();
   // Each run records how many pi processes were already in flight when it started. clean's
   // author makes a change (so its landing's reviewer actually runs and holds the slot ~3s);
@@ -102,10 +99,7 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
   // bugfix must become due again ~1s after its first no_change tick; with an empty BUGS.md
   // `## Open` it defers like a maintenance role instead (deferTick), so the open bug keeps it
   // on the every-wake schedule the jump-ahead assertion depends on.
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   const runDir = tmpdir();
   // Records each role's START (cwd is the role's worktree) so the wake order after clean's
   // first release is observable; ~2s holds keep bugfix due while clean is still in flight.

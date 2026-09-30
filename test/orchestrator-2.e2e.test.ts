@@ -23,7 +23,7 @@ import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { awaitSettledTick, fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator } from "./orchestrator-fixtures.js";
-import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
@@ -405,10 +405,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
   const cfg = fastConfig(["bugfix"], "kept-model");
   cfg.maxConcurrent = defaultConfig().maxConcurrent + 1;
   saveConfig(repo, cfg);
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   const argsFile = path.join(tmpdir(), "argv.log");
   const restore = recordingFakePi(argsFile);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);

@@ -150,6 +150,18 @@ export function writeBacklogFile(
   fs.writeFileSync(path.join(root, file), out.join("\n") + "\n");
 }
 
+/** Seed one open bug into BUGS.md's `## Open` placeholder: read-modify-write the file the
+ * orchestrator e2e scenarios stand on, swapping the section's `_None yet._` body for a single
+ * `### An open bug` heading. The section-anchored pattern hits only that placeholder, so
+ * `## Fixed` keeps its own. The single home of the copy-pasted block the four orchestrator
+ * e2e files used to hand-roll (7 sites). */
+export function seedOpenBug(repo: string): void {
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
+  );
+}
+
 /** A makeRepo'd repo (no package.json — nothing declares a build check) plus a linked
  * worktree for `role` at the real location, checked out to pristine main: the shape the
  * no-check-declared baseline tests need. `dir` is the repo path, created if missing. */

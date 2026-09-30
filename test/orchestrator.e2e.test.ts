@@ -35,7 +35,7 @@ import {
   startIdleOrchestrator,
   startLiveOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -332,10 +332,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
   const restore = recordingFakePi(argsFile);
   // Open the backlog: one entry under BUGS.md `## Open` (the section-anchored pattern hits
   // only that placeholder — `## Fixed` keeps its own).
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "seed the backlog");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -375,10 +372,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   const repo = await makeFastRepo("deferral cap test", ["organize"]);
   // Open the backlog: the deferral predicate's backlog term holds permanently, which before
   // the cap froze `lastResult` at no_change and silenced the role forever.
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "seed the backlog");
 
@@ -554,10 +548,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
   // `## Open` bugfix defers like a maintenance role (deferTick), and a deferred tick would
   // starve this test of the pi runs it asserts on.
   const repo = await makeFastRepo("live reload test", ["bugfix"], "good-model");
-  fs.writeFileSync(
-    path.join(repo, "BUGS.md"),
-    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8").replace("## Open\n\n_None yet._", "## Open\n\n### An open bug\n"),
-  );
+  seedOpenBug(repo);
   const argsFile = path.join(tmpdir(), "argv.log");
   fs.rmSync(argsFile, { force: true }); // A previous run's lines must not leak into this one.
   const restore = recordingFakePi(argsFile);
