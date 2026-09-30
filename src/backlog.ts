@@ -117,12 +117,8 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
  * its METADATA is matched for dates — never its body, so a body's "**Done 2026-…**" recap line
  * (or a prose cross-reference like "(done 2026-…)") cannot double-count. Fenced lines are
  * body content, never entry starts — an entry quoting a markdown template with a
- * `### … (fixed DATE)` heading inside must not count as a completion of its own. Metadata =
- * the start line plus, for `### ` headings only, continuation lines up to and including the
- * first line ending in `)` (capped at 3 lines) — wrapped headings carry their date on the
- * second line, while `- ` epitaphs are single-line by construction, so a bullet's own line is
- * its whole metadata (a following prose paragraph is body, never matched). Joining with a
- * space keeps "done\n2026-…" matchable. Entries without a parseable date are skipped.
+ * `### … (fixed DATE)` heading inside must not count as a completion of its own. Metadata is
+ * headingMetadata's join (below). Entries without a parseable date are skipped.
  *
  * A `- ` line needs more than a date to be an entry: the sections also hold body bullets (an
  * entry's repro steps, a plan's task breakdown), and a body bullet that merely mentions a
@@ -141,17 +137,7 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
     if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
-    const meta: string[] = [line];
-    let closed = line.endsWith(")");
-    let j = i + 1;
-    // Continuation is a heading-only concern (wrapped headings); bullets are single-line.
-    while (line.startsWith("### ") && meta.length < 3 && j < lines.length && !closed) {
-      const next = lines[j] ?? "";
-      if (next.startsWith("### ") || next.startsWith("- ")) break; // The entry ends at the next start.
-      meta.push(next);
-      j++;
-      closed = next.endsWith(")");
-    }
+    const meta = headingMetadata(lines, i);
     let date: string | null = null;
     if (line.startsWith("- ")) {
       // Epitaph guard (see the doc comment): the date must live in the line's trailing
@@ -162,12 +148,37 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
       const tail = trailingParenthetical(line);
       if (/\bcommits?\b/.test(tail)) date = lastDate(tail, dateRe);
     } else {
-      date = lastDate(meta.join(" "), dateRe);
+      date = lastDate(meta.text, dateRe);
     }
     if (date) dates.push(date);
-    i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
+    i = meta.next - 1; // The loop's ++ resumes at the first line not consumed as metadata.
   }
   return dates;
+}
+
+/** A `### `/`- ` entry start's METADATA, joined for matching: the start line plus, for `### `
+ * headings only, continuation lines up to and including the first line ending in `)` (capped
+ * at 3 lines) — wrapped headings carry their date on the second line, while `- ` epitaphs are
+ * single-line by construction, so a bullet's own line is its whole metadata (a following prose
+ * paragraph is body, never matched). Joining with a space keeps "done\n2026-…" matchable.
+ * Returns the joined text and the index of the first line NOT consumed as metadata, so a
+ * walker can resume its scan there. Extracted from entryDates (its only original caller) so
+ * the stranded-plan detector (src/backlog-structure.ts) matches dates against exactly the
+ * same joined text instead of growing a second, drifting copy of the join rule. */
+export function headingMetadata(lines: string[], start: number): { text: string; next: number } {
+  const line = lines[start] ?? "";
+  const meta: string[] = [line];
+  let closed = line.endsWith(")");
+  let j = start + 1;
+  // Continuation is a heading-only concern (wrapped headings); bullets are single-line.
+  while (line.startsWith("### ") && meta.length < 3 && j < lines.length && !closed) {
+    const next = lines[j] ?? "";
+    if (next.startsWith("### ") || next.startsWith("- ")) break; // The entry ends at the next start.
+    meta.push(next);
+    j++;
+    closed = next.endsWith(")");
+  }
+  return { text: meta.join(" "), next: j };
 }
 
 /** A `- ` line's trailing parenthetical's inner text, nesting-aware: a backward scan from the

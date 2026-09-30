@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { assembleTickPrompt } from "../src/tick-prompt.js";
 import { defaultConfig } from "../src/config.js";
-import { DIRECTOR_ROLE } from "../src/roles.js";
+import { DIRECTOR_ROLE, roleById } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
@@ -352,4 +352,51 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
   assert.ok(again);
   assert.equal(again.userPrompt, null);
   assert.ok(!again.prompt.includes("<user-request>"));
+});
+
+// The clean role's stranded-plan block (src/backlog-structure.ts, plans part 3/4): the repair
+// evidence rides in the tick prompt only when the primary checkout's PLANS.md is stranded.
+
+const STRANDED_PLANS = `# Plans
+
+## Planned
+
+_None yet._
+
+## Done
+
+### Timed pause support (planned 2026-09-25)
+
+**Goal.** It waited here for hours.
+`;
+
+test("a clean tick's prompt carries the <backlog-structure> block for a stranded PLANS.md", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), STRANDED_PLANS);
+  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "clean", state: state({ role: "clean" }) });
+  assert.ok(result);
+  assert.match(result.prompt, /<backlog-structure>\n-\s*\(now under ## Done\) Timed pause support \(planned 2026-09-25\)\n<\/backlog-structure>/);
+});
+
+test("a clean tick on a clean PLANS.md has no <backlog-structure> block", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)\n",
+  );
+  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "clean", state: state({ role: "clean" }) });
+  assert.ok(result);
+  // The role's find text names the block, so assert on the rendered block's evidence lines.
+  assert.ok(!result.prompt.includes("(now under ##"));
+});
+
+test("other roles never see the <backlog-structure> block, and the clean find text names it", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), STRANDED_PLANS);
+  const coverage = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "coverage", state: state({ role: "coverage" }) });
+  assert.ok(coverage);
+  assert.ok(!coverage.prompt.includes("(now under ##"));
+  const clean = roleById("clean");
+  assert.ok(clean);
+  assert.match(clean.find, /<backlog-structure>/);
 });

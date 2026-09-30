@@ -214,6 +214,9 @@ interface TickPromptInput {
   digest?: string;
   /** Rendered flow-coverage block (see qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
+  /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
+   * primary checkout's PLANS.md is missing, unreadable, or clean. */
+  backlogStructure?: string;
   extraInstructions?: string;
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`,
    * PLANS.md "Per-role prompts 1/2"), rendered as a labeled block near the top of the task text.
@@ -252,7 +255,7 @@ deadlines from it; never infer the date from the repo.`,
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, extraInstructions, check, briefFile, today, userRequest } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, extraInstructions, check, briefFile, today, userRequest } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt, today),
@@ -266,6 +269,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
     );
   if (coverage) parts.push(coverage);
   if (digest) parts.push(digestBlock(digest));
+  if (backlogStructure) parts.push(backlogStructure);
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(commonRules(check, briefFile).trim());

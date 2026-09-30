@@ -9,6 +9,7 @@ import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompt
 import { detectBuildCheck } from "./build-check-detect.js";
 import { telemetryDigest } from "./failure-report.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
+import { renderBacklogStructureBlock } from "./backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
@@ -79,12 +80,17 @@ export function assembleTickPrompt(
         coverage = undefined;
       }
     }
+    // The clean role's deterministic backlog repair: stranded plan headings in the primary
+    // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
+    // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
+    const backlogStructure = role === "clean" ? renderBacklogStructureBlock(root) : undefined;
     prompt = buildTickPrompt({
       role: resolved,
       initialPrompt,
       principles,
       digest,
       coverage,
+      backlogStructure,
       extraInstructions: config.roles[role]?.instructions,
       check,
       briefFile: brief,

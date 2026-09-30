@@ -9,6 +9,7 @@ import {
   checkBuildCheck,
   checkFallbackModel,
   checkFixClaims,
+  checkStrandedPlans,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -426,7 +427,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "build", "orphans", "mach ports"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "stranded plans", "build", "orphans", "mach ports"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -882,4 +883,34 @@ test("doctor rejects unknown arguments", async () => {
   const r = await cli(repo, "doctor", "--verbose");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --verbose/);
+});
+
+// checkStrandedPlans — the stranded-plan detector surfaced for the operator (plans part 3/4):
+// plan headings filed under the wrong PLANS.md section warn, naming the heading and section.
+
+test("checkStrandedPlans warns naming a stranded heading and stays silent on a clean file", () => {
+  const dir = tmpdir("doctor-stranded-");
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Timed pause support (planned 2026-09-25)\n`,
+  );
+  const warn = checkStrandedPlans(dir);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /stranded under ## Done: "Timed pause support \(planned 2026-09-25\)"/);
+  assert.match(warn.detail, /move it under ## Planned/);
+
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Landed (planned 2026-09-10, done 2026-09-11)\n`,
+  );
+  assert.deepEqual(checkStrandedPlans(dir), {
+    level: "ok",
+    detail: "no plan headings filed under the wrong PLANS.md section",
+  });
+
+  // No PLANS.md at all is a fine state too — nothing to verify.
+  assert.deepEqual(checkStrandedPlans(tmpdir("doctor-stranded-none-")), {
+    level: "ok",
+    detail: "no PLANS.md — nothing to verify",
+  });
 });

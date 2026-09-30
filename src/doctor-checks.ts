@@ -10,6 +10,7 @@ import {
 import { fallbackPair } from "./config-views.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
+import { strandedPlanEntries } from "./backlog-structure.js";
 import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
@@ -369,6 +370,39 @@ export function checkFixClaims(root: string): CheckOutcome {
     detail:
       `BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`,
+  };
+}
+
+/** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
+ * detector, src/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
+ * invisible to every Planned reader, and a done-dated heading still under `## Planned` invites
+ * a second implementation. The clean loop repairs these when it happens to tick; this makes
+ * the state visible to an operator without waiting for that tick. Reads the tree at `root` —
+ * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
+ * heading is operator signal, not a broken environment. */
+export function checkStrandedPlans(root: string): CheckOutcome {
+  const plansPath = path.join(root, "PLANS.md");
+  if (!fs.existsSync(plansPath)) return { level: "ok", detail: "no PLANS.md — nothing to verify" };
+  let doc: string;
+  try {
+    doc = fs.readFileSync(plansPath, "utf8");
+  } catch (err) {
+    return { level: "warn", detail: `cannot read PLANS.md — ${errorMessage(err)}` };
+  }
+  const stranded = strandedPlanEntries(doc);
+  if (stranded.length === 0)
+    return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
+  const [first, ...rest] = stranded;
+  if (!first) return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
+  const more =
+    rest.length > 0
+      ? ` (and ${rest.length} more: ${rest.map((e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`).join(", ")})`
+      : "";
+  return {
+    level: "warn",
+    detail:
+      `PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
+      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean loop repairs these)`,
   };
 }
 

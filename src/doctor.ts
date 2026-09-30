@@ -17,6 +17,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkStrandedPlans,
   type DoctorReport,
 } from "./doctor-checks.js";
 
@@ -62,6 +63,7 @@ export async function runDoctor(
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "project check", ...checkBuildCheck(root, config) },
     { name: "fix claims", ...checkFixClaims(root) },
+    { name: "stranded plans", ...checkStrandedPlans(root) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },

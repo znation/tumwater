@@ -155,7 +155,10 @@ Grep is your detector: an exported name with a single hit across the tree is dea
 code matches \`^\\s*//\\s*(const|let|if|return|import) \`; TODO/FIXME markers show where someone
 stopped. Clean that one thing without changing behavior. Keep the diff tight.
 Internal-only exports are caught by test/exports.test.ts in the suite, so do not spend a tick
-on them.`,
+on them. When a \`<backlog-structure>\` block is present in your prompt, that repair is instead
+this tick's ONE task: move each listed PLANS.md entry to the section its heading's dates say it
+belongs in (cut and paste, under the existing \`## \` heading — never add, remove, or rename a
+\`## \` heading), leave its text verbatim, and change nothing else.`,
   },
   {
     id: "dry",
