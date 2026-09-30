@@ -10,6 +10,20 @@
  * through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox.js";
 export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet status, budget and pause controls ----
+  // post-action:start
+  // Fire one POST and report its outcome in the flash bar — the derived success message, or
+  // "error: <reason>" when the server refused — then refresh so the page reflects the new
+  // state. The shape every fleet action button shares; message() derives the wording from the
+  // endpoint's answer (which can be null when it sent no JSON).
+  async function postAction(path, body, message) {
+    try {
+      showFlash(message(await postJson(path, body)));
+    } catch (e) {
+      showFlash("error: " + e.message);
+    }
+    refresh();
+  }
+  // post-action:end
   function landingTitle(q) {
     const f = q.inFlight;
     const now = f ? " Landing now: " + f.role + " — " + (f.summary || "") + (f.stage ? " (" + String(f.stage).replace("-", " ") + ")" : "") : "";
@@ -160,19 +174,15 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     confirmAbort = null;
     const path = action === "abort" ? "/api/abort" : action === "pause" || action === "resume" ? "/api/pause-role" : "/api/wake";
     const body = action === "pause" || action === "resume" ? { role, paused: action === "pause" } : { role };
-    try {
-      const d = await postJson(path, body);
+    await postAction(path, body, (d) => {
       let msg = d && typeof d.message === "string" ? d.message : role + ": done";
       if (action === "pause" || action === "resume") {
         msg = role + (d && d.changed
           ? (action === "pause" ? " paused — it starts no new ticks" : " resumed")
           : (action === "pause" ? " was already paused" : " was not paused"));
       }
-      showFlash(msg);
-    } catch (e) {
-      showFlash("error: " + e.message);
-    }
-    refresh();
+      return msg;
+    });
   }
   // row-actions:end
   // The status pill's second line: what the phase label carried, or when an idle loop runs next.
@@ -272,15 +282,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const tr = t.closest("tr[data-role]");
     if (tr) toggleLoop(tr.dataset.role);
   });
-  $("wakeall").addEventListener("click", async () => {
-    try {
-      const d = await postJson("/api/wake", {});
-      showFlash(d && typeof d.message === "string" ? d.message : "every loop woken");
-    } catch (e) {
-      showFlash("error: " + e.message);
-    }
-    refresh();
-  });
+  $("wakeall").addEventListener("click", () =>
+    postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every loop woken")));
 
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
@@ -330,15 +333,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (!t) return;
     const cancel = t.closest("button.rowaction[data-action='promptcancel']");
     if (cancel) {
-      try {
-        const d = await postJson("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file });
-        showFlash(d && d.status === "cancelled"
+      await postAction("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file }, (d) =>
+        d && d.status === "cancelled"
           ? "Cancelled: " + (d.preview || "")
           : "No longer queued — " + (cancel.dataset.role || "the director") + " already took it");
-      } catch (e) {
-        showFlash("error: " + e.message);
-      }
-      refresh();
       return;
     }
     const entry = t.closest(".backloglink");

@@ -199,7 +199,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
     "/api/abort": { ok: true, message: "abort requested for feature" },
   };
   const scope = clientScope<{ rowAction(action: string, role: string): Promise<void>; abortConfirming(role: string): boolean }>(
-    ["row-actions"], ["rowAction", "abortConfirming"], {
+    ["post-action", "row-actions"], ["rowAction", "abortConfirming"], {
       postJson: async (path: string, body: unknown) => {
         posts.push({ path, body });
         if (path === "/api/abort" && (body as { role: string }).role === "offline") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
