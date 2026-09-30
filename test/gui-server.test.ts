@@ -99,6 +99,36 @@ test("gui rejects a cross-origin POST with 403 while same-origin and Origin-less
   }
 });
 
+test("gui refuses a POST whose Origin header does not parse as a URL", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui malformed origin test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // An Origin the URL parser rejects (`http://[` — a malformed authority) cannot be
+    // compared against the request's Host, so it must be refused like every other origin
+    // the server cannot verify, never waved through and never a 500.
+    const malformed = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "http://[" },
+      body: JSON.stringify({ text: "unparseable origin" }),
+    });
+    assert.equal(malformed.status, 403);
+    assert.match(await malformed.text(), /cross-origin/);
+    assert.equal(inboxSize(repo), 0);
+
+    // The server stays healthy and still accepts a normal prompt afterwards.
+    const ok = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "still alive" }),
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
 test("gui answers 400 for an over-long prompt and queues nothing", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui long prompt test");
