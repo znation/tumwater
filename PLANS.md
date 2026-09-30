@@ -5,6 +5,49 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Hand in-flight fallback ticks back to the primary at `budget_resumed` (planned 2026-09-30)
+
+**Goal.** When local midnight reopens the budget, `pollBudgetGate` flips new ticks back to the primary, but a tick that started on the fallback keeps it until it ends ("In-flight ticks finish; only NEW ticks are gated", src/budget-gates.ts). On 2026-09-30, three ticks started under the 09-29 fallback held their permits on the slow local model after midnight: steward until 00:06, plan until 00:21, telemetry until 01:20 (a 12,588 s tick; that role's primary ticks take minutes). The fleet's fresh budget ran on no permits for the first 6 minutes (no role tick started between 00:00:01 and 00:06:01), one permit for the next 15, and two for the next hour, while oMLX stayed busy. The operator asked why oMLX was still running on a new day. Hand those ticks back: interrupt them resumably and let their next tick continue the same session on the primary.
+
+**Approach.**
+- src/loop.ts: capture the model a tick runs on. `runTick` already snapshots `cfg = configForRole(this.config, this.role)` at tick start; store its provider/model pair on the runner (transient, not persisted) and expose it (e.g. `tickModel(): { provider?: string; model?: string } | null`, null when no tick is running).
+- src/loop.ts: add `handBackTick()` beside `abortTick()`. Same guard (`state.running`), but it aborts `tickAbort` without setting `userAborted`. So `finishAbortedTick` takes its shutdown branch (pi session and worktree edits kept) and `applyTickOutcome`'s `"aborted"` arm sets `resumePending` and `nextRunAt = now`, the path redeploy's drain already exercises. Give the resume its own cause so the bridge prompt tells the truth: add `"budget-resumed"` to `LoopState.resumeCause` and to src/prompt.ts's `ResumeCause`/`buildResumePrompt`. Suggested wording: your run was moved from the local fallback to the primary model; your session and edits are intact, so continue where you left off.
+- src/budget-gates.ts: `BudgetGatePoll` gains `resumed: boolean`, true only on the poll whose transition logs `budget_resumed` (prevGate was `fallback` or `paused`, gate now `open`), plus the fallback pair it left (`fallbackPair(liveConfig)`, src/config-views.ts).
+- src/orchestrator.ts: on a `resumed` poll, call `handBackTick()` on every non-director runner whose `tickModel()` equals that pair. Log one `budget_handback` event `{ roles, provider, model }` so the digest and `logs` explain the resulting aborted ticks. Landings (the orchestrator's slot runs) and the director are untouched.
+- src/event-format.ts: render `budget_handback` in `logs`/the feed ("budget reopened: handed <roles> back to the primary").
+
+**Files touched.** src/loop.ts, src/budget-gates.ts, src/orchestrator.ts, src/prompt.ts, src/event-format.ts, src/loop-state.ts and src/tick-outcome.ts (both spell the `resumeCause` union), test/budget-gates.test.ts, test/loop.test.ts (or the loop test file that covers abortTick), test/prompt.test.ts.
+
+**Acceptance criteria.**
+1. `pollBudgetGate` returns `resumed: true` on exactly the fallback→open (and paused→open) poll and `false` on every other poll, pinned in test/budget-gates.test.ts.
+2. `handBackTick()` on a running loop ends its tick `aborted` with `resumePending: true`, `resumeCause: "budget-resumed"`, and the worktree's uncommitted edits intact. On an idle loop it is a no-op. The next tick passes `--continue` and the primary's `--provider/--model` (fake-pi argv capture).
+3. The orchestrator hands back only runners whose captured tick model is the fallback pair: a tick started on the primary (or the director) keeps running. It logs one `budget_handback` naming them.
+4. `buildResumePrompt(role, "budget-resumed")` names the model move; the existing causes' texts are unchanged.
+5. Manual check before calling it done: continue a real oMLX-started session with `pi --continue --provider huggingface --model <primary>` once, to confirm pi carries the history across providers. If it cannot, say so in Done and fall back to a fresh tick (drop `--continue` for this cause).
+
+Size: one run, ~120 lines of source plus ~6 tests. The gate change is pure. The runner method reuses the existing abort path.
+
+### `npm run test:coverage`: a coverage report through the suite's own runner, so coverage ticks stop hand-building raw `node --test` runs (planned 2026-09-30)
+
+**Goal.** The coverage role's prompt (src/roles.ts) says to "run the test runner's coverage report when it has one (Node: `node --experimental-test-coverage --test …`)". tumwater's runner has none, so coverage ticks improvise one. On 2026-09-30, tick 410 copied part of `suiteEnv` by hand (`env -u TUMWATER_PI_BIN -u TUMWATER_SUPERVISED GIT_TEMPLATE_DIR=… GIT_CONFIG_*`), compiled to `/tmp` with `--outDir`, and ran the unit files with raw `node --test`. It then retried per file under `timeout 240`, but `timeout` is not installed on macOS. The tick took 131 turns and 101 minutes, and the out-of-tree build ran real pi agents on oMLX (BUGS.md, the dangling-script-shim entry). Give the runner a coverage mode so the correct path is also the cheapest one, and put it where the agent looked: it grepped package.json's `"test"` line first.
+
+**Approach.**
+- test/test-runner.ts: extract the node argv that `main()` builds into an exported pure helper, e.g. `buildNodeTestArgs(sel, { reporter, fresh, tap, coverage })`, so the flag is unit-testable without running a suite. `main()` strips `--coverage` from `process.argv.slice(2)` before `selectTestFiles`, so it composes with every filter form (`--coverage loop`, `--coverage e2e`, `--coverage 'pi#resume'`). With it, the args gain `--experimental-test-coverage` (available on the `>=20.3` engines floor). When the running Node is at least 22.5, they also gain `--test-coverage-exclude=**/test/**`, so the table reports src rather than the test files. On older Node, the full table prints. `suiteEnv`, `SUITE_TIMEOUT_MS`, `orderByDuration`, and the empty-`#name` guard are unchanged.
+- Skip `recordDurations` under `--coverage`: instrumentation slows every file, and recording it would skew future `orderByDuration` ordering.
+- package.json: `"test:coverage": "node scripts/live-checkout-guard.mjs && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js --coverage"`. No eslint, since this is a report, not a gate. `npm run test:coverage -- <filter>` passes filters through.
+- DEVELOPMENT.md: one line in the command block (`npm run test:coverage [filter]  # the unit suite with node's coverage table`), and a sentence saying coverage runs go through the runner, never raw `node --test` or a tree compiled elsewhere. The fakes resolve their shim relative to `dist/` inside the checkout.
+
+**Files touched.** test/test-runner.ts, package.json, DEVELOPMENT.md, test/test-runner.test.ts.
+
+**Acceptance criteria.**
+1. `npm run test:coverage` runs the unit tier under `suiteEnv` and ends with node's coverage table. Its exit status follows the suite's, so a failing test still fails the run.
+2. `npm run test:coverage -- <filter>` selects exactly what `npm test -- <filter>` selects.
+3. A `--coverage` run leaves `dist/test/.durations.json` unchanged.
+4. test/test-runner.test.ts pins `buildNodeTestArgs`: `--experimental-test-coverage` appears only with `coverage: true`; the exclude flag appears only when the version predicate allows it; the `#name` reporters are still added under coverage. It also pins the argv split: `--coverage` is removed from the filters and composes with one.
+5. DEVELOPMENT.md names the command.
+
+Size: one run. ~40 lines in the runner (mostly the extracted args builder), one script line, two DEVELOPMENT.md lines, ~4 tests.
+
 ## Done
 
 ### `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30, done 2026-09-30)
