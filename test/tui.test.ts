@@ -24,7 +24,7 @@ import { writeLogLines, writeOrchestratorMarker } from "./log-fixtures.js";
  * captured as a frame, and setInterval/clearInterval are stubbed so a failed test cannot
  * leave a live render timer behind. The keypress handler runTui registers on stdin is
  * intercepted and replayed with synthetic keys. */
-function startTui(root: string) {
+function startTui(root: string, size?: { rows?: number; columns?: number }) {
   const frames: string[] = [];
   const rawModes: boolean[] = [];
   let clearCalls = 0;
@@ -39,6 +39,10 @@ function startTui(root: string) {
   (process.stdout as { isTTY?: boolean }).isTTY = true;
   (process.stdout as { columns?: number }).columns = 100;
   (process.stdout as { rows?: number }).rows = 40;
+  // Optional size override for degenerate-window tests: 0 is a real report (a pty with no
+  // TIOCSWINSZ), so the guard is `!== undefined`, not truthiness.
+  if (size?.columns !== undefined) (process.stdout as { columns?: number }).columns = size.columns;
+  if (size?.rows !== undefined) (process.stdout as { rows?: number }).rows = size.rows;
   process.stdout.write = ((chunk: string | Uint8Array) => {
     frames.push(String(chunk));
     return true;
@@ -121,6 +125,23 @@ test("runTui renders the fleet table and an empty activity pane on start", async
     // The one enabled loop is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
+  } finally {
+    await tui.quit();
+  }
+});
+
+// A pty whose window size was never set reports 0×0 (macOS `script`, some CI pty
+// allocators). A reported 0 must degrade to the same sane defaults an unset size gets —
+// under the old `??` fallbacks every line was width-clipped to empty and the operator
+// saw only the clear-screen and the bare prompt prefix.
+test("runTui degrades a reported 0×0 window to the default frame budget", async () => {
+  const repo = await makeTuiRepo();
+  const tui = startTui(repo, { rows: 0, columns: 0 });
+  try {
+    const frame = tui.lastFrame();
+    assert.match(frame, /\[Activity\]/); // the tab strip survives, not clipped to empty
+    assert.match(frame, /clean/); // the fleet table renders
+    assert.ok(frame.trim().split("\n").length > 2, "the frame carries dashboard content");
   } finally {
     await tui.quit();
   }

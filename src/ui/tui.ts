@@ -203,8 +203,11 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // nothing scrolls the table off the top.
 
   const render = () => {
-    const rows = stdout.rows ?? 40;
-    const width = stdout.columns ?? 120;
+    // A pty whose window size was never set reports 0×0 (macOS `script`, some CI pty
+    // allocators): `||` degrades that to the same sane defaults an unset size gets, while
+    // `??` would pass the reported 0 through as a real size and clip every line to empty.
+    const rows = stdout.rows || 40;
+    const width = stdout.columns || 120;
     const snap = snapshot(root);
     currentCapUsd = snap.budget.capUsd;
     currentBudgetFree = snap.budget.free;

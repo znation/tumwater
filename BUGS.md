@@ -13,35 +13,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Reproduce:** normalized warning cluster `rebuild of <sha> failed — staying on build <sha>: tsc exited ENOENT` (loop: harness), correlated merged commits 48835efc and 13a8a36b (post-pin fixes that cannot self-activate) against the pinned build 66afeacd; the day's landing build checks passing on the same machine is the control showing the failure is rebuild-specific.
 - **Fix sketch (one change per tick, (1) first):** (1) find and fix the spawn failure in the rebuild's compile context so one rebuild succeeds — that alone lets the fleet catch up and activates every landed fix; (2) make the sustained state visible and escapable: an escalating warning once staleness crosses a threshold (build >N commits or >H hours behind while every rebuild fails), and a redeploy fallback independent of the broken path (e.g. respawning from the last green landing build-check's output).
 
-### `tumwater tui` on a pty with no window size renders a wholly blank dashboard: the frame budget reads `stdout.rows ?? 40` / `stdout.columns ?? 120`, and `??` passes a *reported 0* through as a real size, so every width-clipped line collapses to empty and the operator sees only the clear-screen and the bare `director › ` prompt — no dashboard and no error (found by qa 2026-09-29)
-
-**Symptom.** Launching `tumwater tui` inside any pty whose window size was never set shows a
-clear screen, two dozen blank lines, and the prompt line's `director › ` prefix — nothing else.
-No header, no fleet table, no tab strip, no hint line, and no message explaining why.
-
-**Reproduce** (macOS, where `script` allocates its pty without a `TIOCSWINSZ`):
-
-```bash
-script -q /dev/null tumwater tui
-# observed: ESC[2J ESC[H, blank lines, then "director › " alone
-```
-
-Same build driven through a properly sized pty (python `pty.fork` + `TIOCSWINSZ` 40×120)
-renders the full dashboard — header, fleet table, tab strip, Ctrl+T cycling, Ctrl+C quit — so
-the defect is only the 0-size fallthrough, not the render pipeline.
-
-**Expected.** A degenerate terminal size degrades to a sane default (the `??` fallbacks the
-code already names: 40 rows × 120 columns) or fails loudly naming the problem, so a first-time
-user in a 0-size pty (macOS `script`, some CI pty allocators, a multiplexer pane before its
-first resize) sees a dashboard or a diagnostic, not a silent blank screen.
-
-**Actual.** `render()` in src/ui/tui.ts takes `const rows = stdout.rows ?? 40; const width =
-stdout.columns ?? 120;` — with a 0×0 pty both are 0, `toneLine`/`renderStatusSpans` clip every
-line to 0 columns, and the frame's only surviving text is the prompt prefix, which is pushed
-without clipping. `??` treats a *reported* 0 as a legitimate size; `||` would fall back.
-
-**Suspected cause.** The two `??` defaults in `render()` (src/ui/tui.ts ~line 207); the same
-0-vs-nullish shape may exist in the gui's size handling, worth a look when fixing.
 ### A tick_end event's durationMs comes up undefined once per few full-suite runs: the error-tick test's `typeof ends[0]?.durationMs === "number"` failed in one `npm run test` run (dist/test/loop.test.js:470, ERR_ASSERTION actual 'undefined' expected 'number') and passed on the two following full runs and the isolated rerun (found by bugfix loop 2026-09-29 while validating the followFile rotation-drain fix)
 
 - **Symptom:** once in a handful of full-suite runs, the loop runner's error-tick test fails because its single `tick_end` event carries no `durationMs` (or the asserted event is not the tick_end the tick just wrote) — a timing-dependent red that can hard-reset a green tick's work.
@@ -49,6 +20,13 @@ without clipping. `??` treats a *reported* 0 as a legitimate size; `||` would fa
 - **Suspected cause:** either a tick_end is logged without `durationMs` on some early-abort path, or the test's `eventsOfType(repo, "tick_end")` read raced a concurrent writer in another test sharing the repo fixture — the write of the event and the read of the log are in different processes only if the fixture leaks one.
 
 ## Fixed
+
+### `tumwater tui` on a pty with no window size renders a wholly blank dashboard: the frame budget read `stdout.rows ?? 40` / `stdout.columns ?? 120`, and `??` passed a *reported 0* through as a real size, so every width-clipped line collapsed to empty and the operator saw only the clear-screen and the bare `director › ` prompt (found by qa 2026-09-29, fixed 2026-09-29)
+
+- **Symptom:** launching `tumwater tui` inside any pty whose window size was never set (macOS `script -q /dev/null tumwater tui`, some CI pty allocators, a multiplexer pane before its first resize) showed a clear screen, two dozen blank lines, and only the `director › ` prompt prefix — no header, no fleet table, no tab strip, no hint line, no error.
+- **Cause:** `render()` in src/ui/tui.ts took the frame budget with `??`: a pty that reports 0×0 (no `TIOCSWINSZ` ever applied) passed both zeroes through as legitimate sizes, so `toneLine`/`renderStatusSpans` clipped every line to 0 columns and only the un-clipped prompt prefix survived. The gui reads sizes from the browser viewport, not a pty, and has no counterpart.
+- **Fixed 2026-09-29 by bugfix loop:** the two `??` fallbacks in `render()` became `||` (src/ui/tui.ts), so a reported 0 degrades to the same sane defaults an unset size gets (40 rows × 120 columns). The fake-TTY harness in test/tui.test.ts gained an optional size override (guarded by `!== undefined`, since 0 is a real report), and a regression test renders the dashboard with rows=0/columns=0 and asserts the tab strip and fleet table survive; it fails under the old `??` code and passes under the fix.
+- **Validation gap:** no-fake — confirming the fix needed a stdout that reports a 0×0 window, and the fake-TTY harness hard-coded 100×40 with no way to fake a degenerate report; the real-pty repro (macOS `script`) showed the symptom but could not run in the offline suite until the harness gained the size override.
 
 ### A rotation silently drops the lines a follow never consumed from the outgoing inode: `followFile` detects rotation by the dev/ino change, resets its offset to 0, and reads only the fresh file — but lines appended between its last poll and the rename sit in the renamed `<file>.1` archive at byte offsets the follow had not yet reached, so `logs -f` loses exactly the events written just before a 16 MB rotation, with no error or gap marker (found by bugfix loop 2026-09-29 latent-bug hunt over the same day's three follow-seeding fixes, fixed 2026-09-29)
 
