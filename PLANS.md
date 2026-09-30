@@ -5,7 +5,68 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None right now — the newest landed plan is below._
+### Count the landing slot's spend in the usage report: `landed`/`land_failed` usage folds into `tumwater report` totals, with a reviewer-and-conflict-resolution breakdown line (planned 2026-09-29)
+
+**Goal.** The usage report claims to answer "where did the money go", but it counts only
+`tick_end` events: `src/report-data.ts` `foldUsageEvent` handles `tick_end` and `merged` and
+nothing else, while the landing slot stamps the reviewer's and conflict-resolution runs'
+tokens and cost onto the `landed`/`land_failed` events it logs (`src/landing-slot.ts`
+`writeLandingOutcome`, `...(usage.tokens > 0 ? { tokens: usage.tokens } : {})` — the same
+`eventUsage`-compatible keys `tick_end` carries). Every landed change goes through the
+landing slot, so a busy fleet's reviewer spend — often a large share of total cost — is
+invisible in `tumwater report`, `report --since`, and their `--json` payloads, while the
+daily budget *does* charge those same runs (`src/tick-usage.ts` `fold` →
+`recordDailyCost`, reached via `src/loop.ts` `foldLandingUsage`). The operator sees a report
+smaller than the budget header's day spend with nothing explaining the difference. This plan
+folds landing usage into the report totals and shows it as its own line, so the report and
+the budget finally agree and the reviewer's share of spend is visible.
+
+**Approach.**
+
+1. **Collector (`src/report-data.ts`).** Extend `foldUsageEvent`: on `landed` or
+   `land_failed`, add `eventUsage(ev)`'s tokens/cost to two new accumulators on `UsageFold`
+   (`landingTokens`, `landingCostUsd`) — NOT to the existing totals fields, so the fold stays
+   one pass — and count events as `landingRuns` the way `ticks` counts `tick_end` (the day
+   collector passes `ticks: undefined`; mirror that with a `landingRuns?: number` field).
+   Then `collectReportSince` adds the three fields to `SinceReport`'s surface
+   (`landingRuns`, `landingTokens`, `landingCostUsd`) and `collectReport` folds them into each
+   `ReportDay` (`tokensOut`/`costUsd` per day grow by the landing amounts, keeping the day
+   series summing to totals) plus day-level `landingCostUsd` for the series bar context.
+   Totals semantics: `totals.tokensOut` and `totals.costUsd` INCLUDE landing spend from the
+   same events the budget charges, so report == budget; the separate landing fields say how
+   much of it was reviewer/conflict work. No double counting exists by construction: landing
+   runs fold after their tick's `tick_end` fired (the authoring tick ends `queued`), and the
+   landing accumulator only ever sees the slot's own pi runs.
+2. **Renderers (`src/ui/report.ts`).** `renderReportMarkdown` and
+   `renderSinceReportMarkdown` each gain one line under the Totals line, e.g.
+   `of which landing runs: 12 runs · 45.2k tokens · $0.84 (reviewer + conflict resolution)` —
+   omitted entirely when `landingRuns === 0` (the same zero-means-absent rule the cost-by-role
+   line follows), so a fleet with no landing spend renders exactly as today. The `--json`
+   payloads need no renderer work: they print the collector's object, which now carries the
+   new fields.
+3. **Docs (`src/help.ts`, `README.md`).** The `report`/`report --since` stanzas say "tokens
+   counts work ticks; totals also include landing runs (reviewer + conflict resolution)" in
+   one added sentence — the help text's existing habit of naming what a number counts
+   (`-n` bounds the scanned window, not the printed rows).
+
+**Files touched:** `src/report-data.ts`, `src/ui/report.ts`, `src/help.ts`, `README.md` (the
+usage table's report row), `test/report.test.ts`, `test/gui-report.test.ts` (only if it
+asserts the report payload's exact field set — the new fields are additive).
+
+**Acceptance criteria.**
+
+- A fixture log holding one `tick_end` (tokens A, cost a) and one `landed` (tokens B, cost b)
+  yields a report whose totals read A+B tokens and a+b cost, with the landing line showing
+  exactly B/b and 1 run; `land_failed` with usage folds identically; `merged` still counts
+  only as a commit.
+- `report --since` behaves identically over a trailing window, and both `--json` payloads
+  carry `landingRuns`/`landingTokens`/`landingCostUsd` (day series carries `landingCostUsd`).
+- A log with no `landed`/`land_failed` events renders byte-identical to today's output (no
+  landing line, totals unchanged).
+- The failure digest is deliberately untouched: its time-and-spend fold stays tick-shaped
+  (`tick_end` only) — a landing is not a tick, and its outcome table keys on tick results.
+- `npm run test` passes, including the updated report fixtures.
+
 
 ## Done
 
