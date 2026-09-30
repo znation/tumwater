@@ -553,6 +553,47 @@ test("a stalled tool call during review warns in the event feed while the watchd
   }
 });
 
+test("a stalled tool call during the verdict follow-up warns in the event feed too", async (t) => {
+  // The verdict follow-up is a second pi run on the reviewer's own session, and it carries
+  // the same stall watchdog wiring as the review run itself (requestVerdict's
+  // onToolCallStalled): a hung recovery turn must surface in the feed the same way, not sit
+  // silent until its quiet watchdog kills it. The first run replies verdict-less without
+  // ever starting a tool call, so any stall warning below can only come from the follow-up.
+  const { root, wt } = await gateFixture();
+  const restore = fakePi(
+    [
+      TOUCH_SESSION, // the reviewer's session exists, so the follow-up has one to continue
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
+      `  printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
+      `  exec sleep 60`, // exec so the kill signal reaches the sleeper directly
+      `  exit 0`,
+      `fi; done`,
+      `printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+    config.toolCallStallSeconds = 2; // ...but the warning lands first
+    // On logical time (watchdogClock, test/wait.ts): once the follow-up has named its call,
+    // move the watchdog past the stall threshold and then the quiet window.
+    const clock = watchdogClock(t);
+    const review = reviewGate(root, wt, { config });
+    await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
+    clock.advance(30_000);
+    const { result } = await review;
+    assert.equal(result.decision, "failed");
+    assert.ok(result.followUpRun); // the warned run's spend still folds into the totals
+    const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+      `the follow-up stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("gate exempts a doc-only diff without running pi", async () => {
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
