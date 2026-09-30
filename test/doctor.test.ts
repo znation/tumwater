@@ -27,9 +27,9 @@ import type { TumwaterConfig } from "../src/config-schema.js";
 import { gitOnlyBinDir, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { pathPrepend } from "./fake-commands.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
-import { fakeBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
+import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
@@ -776,7 +776,12 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
   fs.mkdirSync(lockDir, { recursive: true });
   fs.writeFileSync(path.join(lockDir, "pid"), String(2_000_000_000)); // beyond any pid space
 
-  const restore = fakePi("exit 0");
+  // The orphan scan reads a fake table, not the host's: a real orphan anywhere on the machine
+  // (a leaked test victim carrying a dead run's mark) would fail doctor's exit and with it
+  // this suite, naming an unrelated commit as the cause (BUGS.md 2026-09-30). The marker file
+  // pins the hermeticity below — a revert to the host probe fails here, not at the next leak.
+  const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const restore = pathPrepend(hermeticHostBins(psRan));
   try {
     const r = await cli(repo, "doctor");
     assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
@@ -795,6 +800,10 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
       assert.match(r.stdout, line);
     }
     assert.match(r.stdout, /ready to run/);
+    assert.ok(
+      fs.existsSync(psRan),
+      "the orphan scan never ran the fake ps — the CLI probe fell through to the host's real process table",
+    );
   } finally {
     restore();
   }
@@ -804,7 +813,10 @@ test("doctor --json prints the collector's own payload, matching the plain rende
   const repo = makeRepo();
   await initProject(repo, "cli doctor json");
 
-  const restore = fakePi("exit 0");
+  // Same hermetic PATH as the plain-render wiring test above: the orphan scan reads the fake
+  // empty table (psRan marks that it ran), never the host's real one (BUGS.md 2026-09-30).
+  const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const restore = pathPrepend(hermeticHostBins(psRan));
   try {
     const plain = await cli(repo, "doctor");
     assert.equal(plain.code, 0, `expected exit 0:\n${plain.stdout}\n${plain.stderr}`);
@@ -837,6 +849,10 @@ test("doctor --json prints the collector's own payload, matching the plain rende
 
     // The help topic derives from the same stanza and names the new flag.
     assert.match(helpTopic("doctor")!, /--json/);
+    assert.ok(
+      fs.existsSync(psRan),
+      "the orphan scan never ran the fake ps — the CLI probe fell through to the host's real process table",
+    );
   } finally {
     restore();
   }

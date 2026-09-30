@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ProcessProbe, ProcessRow } from "../src/process-table.js";
+import { writeScript } from "./fake-commands.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
 /** Fixtures shared by the doctor test files (doctor.test.ts, doctor-orphans.test.ts): a
@@ -23,6 +24,21 @@ export function readyRepo(): string {
   const root = makeRepo();
   writeConfig(root, {});
   return root;
+}
+
+/** The doctor CLI wiring tests' PATH entry: a fake `pi` (exit 0) and a fake `ps` that touches
+ * `psRan` and prints an empty process table. The CLI's orphan scan must never read the host's
+ * real table here — any PPID-1 carrier of a dead run's mark anywhere on the machine (a leak;
+ * they have happened, see the sweep entries in Fixed) would flip doctor's exit to 1 and fail
+ * every landing's build check while the failure names an unrelated commit (found 2026-09-30).
+ * The tests assert the marker file exists, so a revert to the host probe fails loudly in the
+ * suite instead of silently at the next real leak; the orphan check's own semantics stay
+ * covered in test/doctor-orphans.test.ts under fakeProbe. */
+export function hermeticHostBins(psRan: string): string {
+  const dir = tmpdir("doctor-host-bins-");
+  writeScript(path.join(dir, "pi"), "exit 0");
+  writeScript(path.join(dir, "ps"), `: > "${psRan}"\nexit 0\n`);
+  return dir;
 }
 
 /** An empty process table and a healthy launchservicesd: runDoctor's report tests pin every
