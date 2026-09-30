@@ -95,14 +95,15 @@ export interface HarnessEventInput {
  * A torn trailing line (a crash or power loss mid-append leaves the last line without its
  * newline) is terminated first: appended raw, the new event would glue onto the fragment and
  * both lines would fail JSON.parse forever — one complete event lost from every consumer
- * (report totals, feeds) until rotation. */
+ * (report totals, feeds) until rotation. The termination check re-reads the log's last byte,
+ * so it runs only when the file's shape differs from what this process's last append left —
+ * a steady stream of events costs one stat, not an fd cycle, per event. */
 export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   const full = { ts: Date.now(), ...event };
   const file = eventsLogPath(root);
   ensureParentDir(file);
   rotateIfLarge(file, EVENTS_MAX_BYTES);
-  terminateTornTail(file);
-  fs.appendFileSync(file, JSON.stringify(full) + "\n");
+  appendEventLine(file, JSON.stringify(full) + "\n");
   for (const listener of listeners) listener(full);
   return full;
 }
@@ -114,23 +115,56 @@ export function warnEvent(root: string, loop: string, message: string): HarnessE
   return logEvent(root, { loop, type: "warning", message });
 }
 
-/** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
- * the next append starts on its own line instead of gluing onto the fragment. No-op for a
- * missing, empty, or already-terminated file; never throws (a vanished file just means there
- * is nothing to terminate). Runs after rotateIfLarge: rotation moves any torn tail into the
- * unread `.1` archive and starts an empty file that needs no termination. */
-function terminateTornTail(file: string): void {
+/** The shape this process's last event append left a log in, per log path: while the file
+ * still stats exactly this way, its last byte is the newline our own append wrote, so the
+ * torn-tail check's open/fstat/last-byte read is redundant. Any other stat — an operator
+ * command's append from another process, a rotation's fresh inode, a crash-sibling's torn
+ * fragment — misses the memo and re-checks, so the safety property is unchanged. One entry
+ * per log path this process has appended to (a handful; no cap needed). */
+const appendedShape = new Map<string, { dev: number; ino: number; size: number }>();
+
+/** Append one complete event line to `file`, terminating a torn trailing line first unless
+ * the file's stat still matches the shape this process's last append left it in (see
+ * appendedShape). A first-ever append (no file yet) records no shape — the next call stats
+ * the new file and memoizes it. */
+function appendEventLine(file: string, line: string): void {
   const st = statOrNull(file);
-  if (!st || st.size === 0) return; // No log yet.
+  const memo = st ? appendedShape.get(file) : undefined;
+  const knownClean =
+    st !== null && memo !== undefined && memo.dev === st.dev && memo.ino === st.ino && memo.size === st.size;
+  const terminated = knownClean ? false : terminateTornTail(file, st);
+  fs.appendFileSync(file, line);
+  if (st) {
+    appendedShape.set(file, {
+      dev: st.dev,
+      ino: st.ino,
+      size: st.size + (terminated ? 1 : 0) + line.length,
+    });
+  } else {
+    appendedShape.delete(file);
+  }
+}
+
+/** Append a newline when `file`'s last byte is not one — terminating a torn trailing line so
+ * the next append starts on its own line instead of gluing onto the fragment. Returns whether
+ * a newline was appended (the caller folds it into the memoized post-append shape). No-op for
+ * a missing, empty, or already-terminated file; never throws (a vanished file just means there
+ * is nothing to terminate). `st` is the caller's fresh stat of `file`; the opened fd is still
+ * fstat'd for size — correct even if rotation renamed the file between the stat and the open.
+ * Runs after rotateIfLarge: rotation moves any torn tail into the unread `.1` archive and
+ * starts an empty file that needs no termination. */
+function terminateTornTail(file: string, st: { size: number } | null): boolean {
+  if (!st || st.size === 0) return false; // No log yet.
   const fd = openForRead(file);
-  if (fd === null) return; // Vanished between stat and open — nothing to terminate.
+  if (fd === null) return false; // Vanished between stat and open — nothing to terminate.
   try {
     const size = fs.fstatSync(fd).size; // fstat on the opened inode: correct even if rotation renamed the file mid-check.
-    if (size === 0) return;
+    if (size === 0) return false;
     const buf = Buffer.alloc(1);
     const got = fs.readSync(fd, buf, 0, 1, size - 1);
-    if (got !== 1 || (buf[0] ?? 0) === 10) return; // Already newline-terminated (or vanished).
+    if (got !== 1 || (buf[0] ?? 0) === 10) return false; // Already newline-terminated (or vanished).
     fs.appendFileSync(file, "\n");
+    return true;
   } finally {
     fs.closeSync(fd);
   }
