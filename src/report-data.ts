@@ -16,7 +16,13 @@ import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window
  * total (the trailing-window report); the per-day series derives it later by summing
- * ticksByRole, so a day carries no redundant counter. */
+ * ticksByRole, so a day carries no redundant counter. The landing fields mirror that split
+ * for the landing slot's own pi runs (reviewer + conflict resolution): their tokens/cost
+ * always accumulate into `landingTokens`/`landingCostUsd` — never into `tokensOut`/`costUsd`
+ * here, so each collector decides once how the landing share joins its surfaced totals (the
+ * budget charges these same events, so the totals must include it) — and `landingRuns` counts
+ * `landed`/`land_failed` events on every target: unlike ticks there is no per-role map a day
+ * could derive a run count from, so the day must fold it for the totals to sum. */
 interface UsageFold {
   ticks?: number;
   ticksByRole: Record<string, number>;
@@ -24,14 +30,19 @@ interface UsageFold {
   tokensOut: number;
   commits: number;
   costUsd: number;
+  landingRuns?: number;
+  landingTokens?: number;
+  landingCostUsd?: number;
 }
 
 /** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
  * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
  * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
  * omitted" rule true on the aggregation itself, not just at display time; merged events add
- * a commit. Both collectors fold through this one place, so the two windows' aggregation
- * rules cannot drift apart. */
+ * a commit; landed/land_failed events add a landing run and
+ * accumulate their tokens/cost into the landing fields only — costByRole stays a ticks-only
+ * breakdown, and the landing line is how the reviewer's share is named. Both collectors fold
+ * through this one place, so the two windows' aggregation rules cannot drift apart. */
 function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   if (ev.type === "tick_end") {
     const role = eventRole(ev);
@@ -43,6 +54,11 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (costUsd !== 0) target.costByRole[role] = (target.costByRole[role] ?? 0) + costUsd;
   } else if (ev.type === "merged") {
     target.commits++;
+  } else if (ev.type === "landed" || ev.type === "land_failed") {
+    target.landingRuns = (target.landingRuns ?? 0) + 1;
+    const { tokens, costUsd } = eventUsage(ev);
+    target.landingTokens = (target.landingTokens ?? 0) + tokens;
+    target.landingCostUsd = (target.landingCostUsd ?? 0) + costUsd;
   }
 }
 
@@ -50,7 +66,11 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
  * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
  * `costByRole` splits that same costUsd per loop id — sourced from the same tick_end events
- * (never a second pass), so its per-day sum equals the day's costUsd by construction. */
+ * (never a second pass), so its per-day sum equals the day's costUsd by construction.
+ * Landing usage (`landed`/`land_failed`) is sparse: the landing fields are absent until the
+ * day folds a landing event, and a day's tokensOut/costUsd already include the landing share
+ * by the time they are read (the collector folds it in right after the event pass), so the
+ * series keeps summing to the totals the budget also reports. */
 export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
@@ -60,6 +80,9 @@ export interface ReportDay {
   costUsd: number;
   featuresDone: number;
   bugsFixed: number;
+  landingRuns?: number; // landed/land_failed events this day folded (absent when none)
+  landingTokens?: number; // their output tokens, also included in tokensOut above
+  landingCostUsd?: number; // their cost, also included in costUsd above
 }
 
 /** Fleet usage over a window of exactly `days` local calendar days ending today. */
@@ -69,12 +92,15 @@ export interface ReportData {
   to: string; // day key of today
   series: ReportDay[]; // oldest → newest, zero-filled
   totals: {
-    tokensOut: number;
+    tokensOut: number; // includes landing spend — the same events the daily budget charges
     ticks: number;
     commits: number;
-    costUsd: number;
+    costUsd: number; // includes landing spend, so the report and the budget agree
     featuresDone: number;
     bugsFixed: number;
+    landingRuns: number; // the landing share of the above, named for itself
+    landingTokens: number;
+    landingCostUsd: number;
   };
 }
 
@@ -87,10 +113,13 @@ export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
   totals: {
-    tokensOut: number;
+    tokensOut: number; // includes landing spend — the same events the daily budget charges
     ticks: number;
     commits: number;
-    costUsd: number;
+    costUsd: number; // includes landing spend, so the report and the budget agree
+    landingRuns: number; // the landing share of the above, named for itself
+    landingTokens: number;
+    landingCostUsd: number;
   };
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
@@ -121,7 +150,17 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   // here too, matching collectReport (its day map only holds the window's days).
   const fromKey = dayKey(cutoff);
   const raw = readWindowEvents(root, fromKey);
-  const acc: UsageFold = { ticks: 0, ticksByRole: {}, costByRole: {}, tokensOut: 0, commits: 0, costUsd: 0 };
+  const acc: UsageFold = {
+    ticks: 0,
+    ticksByRole: {},
+    costByRole: {},
+    tokensOut: 0,
+    commits: 0,
+    costUsd: 0,
+    landingRuns: 0,
+    landingTokens: 0,
+    landingCostUsd: 0,
+  };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
     foldUsageEvent(acc, ev);
@@ -134,7 +173,15 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
-    totals: { tokensOut: acc.tokensOut, ticks: acc.ticks ?? 0, commits: acc.commits, costUsd: acc.costUsd },
+    totals: {
+      tokensOut: acc.tokensOut + (acc.landingTokens ?? 0),
+      ticks: acc.ticks ?? 0,
+      commits: acc.commits,
+      costUsd: acc.costUsd + (acc.landingCostUsd ?? 0),
+      landingRuns: acc.landingRuns ?? 0,
+      landingTokens: acc.landingTokens ?? 0,
+      landingCostUsd: acc.landingCostUsd ?? 0,
+    },
     ticksByRole: acc.ticksByRole,
     costByRole: acc.costByRole,
     coversFullWindow,
@@ -232,6 +279,14 @@ export function collectReport(root: string, days: number): ReportData {
     foldUsageEvent(day, ev);
   }
 
+  // The landing share joins its day's tokensOut/costUsd (the budget charges these same
+  // events, so the day series must sum to the totals the budget agrees with) while the
+  // landing fields keep the reviewer's part of it visible on its own.
+  for (const d of series) {
+    d.tokensOut += d.landingTokens ?? 0;
+    d.costUsd += d.landingCostUsd ?? 0;
+  }
+
   const countOn = (date: string, field: "featuresDone" | "bugsFixed"): void => {
     const day = byDate.get(date);
     if (day) day[field] += 1; // Out-of-window dates drop out here.
@@ -241,7 +296,17 @@ export function collectReport(root: string, days: number): ReportData {
   for (const d of entryDates(readMarkdown(path.join(root, "BUGS.md")), "Fixed", /\b(?:fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
     countOn(d, "bugsFixed");
 
-  const totals = { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 };
+  const totals = {
+    tokensOut: 0,
+    ticks: 0,
+    commits: 0,
+    costUsd: 0,
+    featuresDone: 0,
+    bugsFixed: 0,
+    landingRuns: 0,
+    landingTokens: 0,
+    landingCostUsd: 0,
+  };
   for (const d of series) {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.ticksByRole)) totals.ticks += n;
@@ -249,6 +314,9 @@ export function collectReport(root: string, days: number): ReportData {
     totals.costUsd += d.costUsd;
     totals.featuresDone += d.featuresDone;
     totals.bugsFixed += d.bugsFixed;
+    totals.landingRuns += d.landingRuns ?? 0;
+    totals.landingTokens += d.landingTokens ?? 0;
+    totals.landingCostUsd += d.landingCostUsd ?? 0;
   }
 
   return { days, from, to, series, totals };

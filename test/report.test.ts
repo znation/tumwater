@@ -68,6 +68,38 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(data.totals.bugsFixed, 0);
 });
 
+test("collectReport folds landed/land_failed usage into the day and totals, with the landing share named", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+  ]);
+  const data = collectReport(root, 3);
+  const today = data.series[2];
+  // The day's tokensOut/costUsd include the landing share (the budget charges these same
+  // events, so the day series must keep summing to the totals), while the landing fields
+  // name the reviewer's part of it: both landing events' tokens/cost, 2 runs.
+  assert.equal(today?.tokensOut, 45_600); // 100 tick tokens + 45,500 landing tokens
+  assert.ok(Math.abs((today?.costUsd ?? -1) - 0.95) < 1e-9);
+  assert.equal(today?.landingRuns, 2);
+  assert.equal(today?.landingTokens, 45_500);
+  assert.ok(Math.abs((today?.landingCostUsd ?? -1) - 0.85) < 1e-9);
+  assert.equal(data.totals.landingRuns, 2);
+  assert.equal(data.totals.landingTokens, 45_500);
+  assert.ok(Math.abs(data.totals.landingCostUsd - 0.85) < 1e-9);
+  assert.equal(data.totals.tokensOut, 45_600);
+  assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
+  assert.equal(data.totals.ticks, 1);
+  assert.equal(data.totals.commits, 1, "merged still counts only as a commit");
+  // costByRole stays a ticks-only breakdown — the landing line is how the reviewer's share
+  // is named, not a role entry.
+  assert.ok(Math.abs(Object.values(today?.costByRole ?? {}).reduce((a, b) => a + b, 0) - 0.1) < 1e-9);
+  // Landing fields are sparse: a day that folded no landing event carries none.
+  assert.ok(data.series.slice(0, 2).every((d) => !("landingCostUsd" in d)), "no landing keys on landing-free days");
+});
+
 test("collectReport reads a grown event log with bounded backwards I/O", () => {
   const root = tmpdir();
   // ~250 KB of out-of-window history (well past the 8 KB whole-read threshold) plus three
@@ -228,7 +260,17 @@ test("collectReport degrades to zeros when every source is missing", () => {
     assert.deepEqual(d.costByRole, {});
     assert.equal(d.tokensOut + d.commits + d.costUsd + d.featuresDone + d.bugsFixed, 0);
   }
-  assert.deepEqual(data.totals, { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
+  assert.deepEqual(data.totals, {
+    tokensOut: 0,
+    ticks: 0,
+    commits: 0,
+    costUsd: 0,
+    featuresDone: 0,
+    bugsFixed: 0,
+    landingRuns: 0,
+    landingTokens: 0,
+    landingCostUsd: 0,
+  });
 });
 
 test("renderReportMarkdown pins the header, totals, table shape, and role line", () => {
@@ -243,7 +285,7 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
       { date: "2026-09-09", tokensOut: 600_000, ticksByRole: { feature: 3, bugfix: 1 }, costByRole: {}, commits: 2, costUsd: 0.86, featuresDone: 1, bugsFixed: 0 },
       { date: "2026-09-10", tokensOut: 1_234_567, ticksByRole: { feature: 2 }, costByRole: {}, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
     ],
-    totals: { tokensOut: 1_834_567, ticks: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1 },
+    totals: { tokensOut: 1_834_567, ticks: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
   };
   const lines = renderReportMarkdown(data).split("\n");
 
@@ -271,6 +313,21 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[13], "**Cost by role:** -");
 });
 
+test("renderReportMarkdown shows the landing line under Totals only when landing ran", () => {
+  const base = collectReport(tmpdir(), 2);
+  // Zero landing runs: the line is omitted entirely, so a fleet with no landing spend
+  // renders byte-identically to the pre-landing-line shape.
+  assert.ok(!renderReportMarkdown(base).includes("landing runs"));
+  const data: ReportData = {
+    ...base,
+    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingTokens: 45_200, landingCostUsd: 0.84 },
+  };
+  assert.match(
+    renderReportMarkdown(data),
+    /of which landing runs: 12 runs · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/,
+  );
+});
+
 test("renderReportMarkdown renders token counts through the shared compactTokens rule", () => {
   const data: ReportData = {
     days: 1,
@@ -279,7 +336,7 @@ test("renderReportMarkdown renders token counts through the shared compactTokens
     series: [
       { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
   };
   const md = renderReportMarkdown(data);
   // compactTokens leaves values below 10k bare (the report's old private copy suffixed them at
@@ -296,7 +353,7 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
     series: [
       { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
   };
   assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB\)$/m);
 });
@@ -429,6 +486,26 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
   assert.equal(data.coversFullWindow, true, "the log's oldest event predates the cutoff");
 });
 
+test("collectReportSince folds landed/land_failed usage into the window totals", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
+    // Outside the 6h window: must not count.
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "landed", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }),
+  ]);
+  const data = collectReportSince(root, 6 * HOUR);
+  assert.equal(data.totals.landingRuns, 2);
+  assert.equal(data.totals.landingTokens, 45_500);
+  assert.ok(Math.abs(data.totals.landingCostUsd - 0.85) < 1e-9);
+  // The surfaced totals include the landing share — the same events the daily budget
+  // charges — so the report and the budget header agree.
+  assert.equal(data.totals.tokensOut, 45_600);
+  assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
+  assert.equal(data.totals.ticks, 1);
+});
+
 test("collectReportSince aggregation matches a same-seed collectReport slice", () => {
   const root = tmpdir();
   writeEvents(root, [
@@ -482,7 +559,15 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
 test("collectReportSince treats an empty or missing event log as fully covered, not truncated", () => {
   const empty = tmpdir(); // No events.jsonl at all — a fresh directory.
   const data = collectReportSince(empty, 6 * HOUR);
-  assert.deepEqual(data.totals, { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 });
+  assert.deepEqual(data.totals, {
+    tokensOut: 0,
+    ticks: 0,
+    commits: 0,
+    costUsd: 0,
+    landingRuns: 0,
+    landingTokens: 0,
+    landingCostUsd: 0,
+  });
   assert.deepEqual(data.ticksByRole, {});
   assert.deepEqual(data.costByRole, {});
   assert.equal(data.coversFullWindow, true, "nothing was ever logged, so nothing rotated away");
@@ -495,7 +580,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0 },
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
     ticksByRole: {},
     costByRole: {},
     coversFullWindow: true,
@@ -510,7 +595,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const data = renderSinceReportMarkdown({
     sinceMs: 90 * 60_000,
     fromIso: new Date(ago(90 * 60_000)).toISOString(),
-    totals: { tokensOut: 1500, ticks: 5, commits: 1, costUsd: 0.75 },
+    totals: { tokensOut: 1500, ticks: 5, commits: 1, costUsd: 0.75, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
     // Equal totals rank by name asc; a zero-cost role is omitted from the cost line.
     ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
@@ -521,6 +606,28 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /\*\*Ticks by role:\*\* bugfix — 2 · feature — 2 · clean — 1/);
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
   assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
+});
+
+test("renderSinceReportMarkdown shows the landing line under Totals only when landing ran", () => {
+  const zero = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    ticksByRole: {},
+    costByRole: {},
+    coversFullWindow: true,
+  });
+  assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
+
+  const data = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 1000, ticks: 2, commits: 0, costUsd: 0.5, landingRuns: 1, landingTokens: 900, landingCostUsd: 0.4 },
+    ticksByRole: { feature: 2 },
+    costByRole: { feature: 0.1 },
+    coversFullWindow: true,
+  });
+  assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
 });
 
 test("tumwater report --since prints the window totals and validates its flags", async () => {
@@ -655,6 +762,23 @@ test("report --json --since prints the window totals with the coverage proof", a
   assert.deepEqual(parsed.ticksByRole, { feature: 1 });
   assert.equal(parsed.coversFullWindow, true, "the log reaches back before the cutoff");
   assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
+});
+
+test("report --json carries the landing fields in totals and the day series", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const json = await runCli(root, "report", "--json", "--days", "2");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out);
+  assert.equal(parsed.totals.landingRuns, 1);
+  assert.equal(parsed.totals.landingTokens, 45_200);
+  assert.ok(Math.abs(parsed.totals.landingCostUsd - 0.84) < 1e-9);
+  const today = parsed.series[parsed.series.length - 1];
+  assert.equal(today.landingCostUsd, 0.84, "the day series carries landingCostUsd");
+  assert.ok(Math.abs(today.tokensOut - 45_300) < 1e-9, "the day's tokensOut includes the landing share");
 });
 
 test("report --failures --json prints the digest's collected data; --since --json stays legal", async () => {

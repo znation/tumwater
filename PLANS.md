@@ -5,7 +5,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Count the landing slot's spend in the usage report: `landed`/`land_failed` usage folds into `tumwater report` totals, with a reviewer-and-conflict-resolution breakdown line (planned 2026-09-29)
+_None yet._
+
+
+## Done
+
+### Count the landing slot's spend in the usage report: `landed`/`land_failed` usage folds into `tumwater report` totals, with a reviewer-and-conflict-resolution breakdown line (planned 2026-09-29, done 2026-09-29)
 
 **Goal.** The usage report claims to answer "where did the money go", but it counts only
 `tick_end` events: `src/report-data.ts` `foldUsageEvent` handles `tick_end` and `merged` and
@@ -49,9 +54,22 @@ the budget finally agree and the reviewer's share of spend is visible.
    one added sentence — the help text's existing habit of naming what a number counts
    (`-n` bounds the scanned window, not the printed rows).
 
+**Note 2026-09-29, feature run.** Landed with three deviations from the draft, none changing
+the acceptance criteria: (1) the day series carries `landingRuns` and `landingTokens` as well
+as `landingCostUsd` (all sparse — absent until the day folds a landing event), because the day
+report's totals line needs the run count and there is no per-role map a day could derive it
+from, unlike ticks/`ticksByRole` — so `foldUsageEvent` counts `landingRuns` on every fold
+target rather than gating it the way `ticks` is; (2) the day's `tokensOut`/`costUsd` grow by
+the landing amounts right after the event pass (the budget charges these same events, so the
+series keeps summing to the totals), while `collectReportSince` combines the landing
+accumulators into its surfaced totals itself; (3) the type-literal fallout ran wider than
+exact-field-set assertions: the `ReportData`/`SinceReport` literals in test/report.test.ts
+(totals gained the three required fields) and the one `ReportData` literal in
+test/gui-report.test.ts needed updating, so that file joins the touched list for real.
+
 **Files touched:** `src/report-data.ts`, `src/ui/report.ts`, `src/help.ts`, `README.md` (the
-usage table's report row), `test/report.test.ts`, `test/gui-report.test.ts` (only if it
-asserts the report payload's exact field set — the new fields are additive).
+usage table's report row), `test/report.test.ts`, `test/gui-report.test.ts` (its `ReportData`
+literal gained the totals fields).
 
 **Acceptance criteria.**
 
@@ -65,10 +83,8 @@ asserts the report payload's exact field set — the new fields are additive).
   landing line, totals unchanged).
 - The failure digest is deliberately untouched: its time-and-spend fold stays tick-shaped
   (`tick_end` only) — a landing is not a tick, and its outcome table keys on tick results.
-- `npm run test` passes, including the updated report fixtures.
+- `npm run test` passes, including the updated report fixtures. — All met (suite 2183/2184, 1 skipped).
 
-
-## Done
 
 ### Fleet-wide backend-failure hold: extend the 429 storm hold to connection, 5xx, and model-load failures (planned 2026-09-29, done 2026-09-29)
 

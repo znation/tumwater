@@ -59,6 +59,14 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // from day-granular backlog-file dates that cannot subdivide a sub-day window, so the final
   // line below states the omission instead of showing a day-rounded number.
   lines.push(`**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)}`);
+  // The landing share of those totals: the budget charges the landing slot's runs too, so the
+  // totals include them — this line says how much of the spend was reviewer + conflict
+  // resolution work. Omitted entirely when no landing ran (zero means absent, like the
+  // cost-by-role line), so a fleet with no landing spend renders exactly as before.
+  if (t.landingRuns > 0)
+    lines.push(
+      `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`,
+    );
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
@@ -89,6 +97,13 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(
     `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
   );
+  // The landing share of those totals, same voice and zero-means-absent rule as the --since
+  // render above: the reviewer's and conflict resolution's part of spend the budget already
+  // charges, shown only when landing runs actually folded into the window.
+  if (t.landingRuns > 0)
+    lines.push(
+      `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`,
+    );
   lines.push("");
   lines.push("| day | tokens out | ticks | commits | cost |");
   lines.push("| --- | ---: | ---: | ---: | ---: |");
