@@ -69,6 +69,18 @@ export class LoopRunner {
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
    * at the next tick start so a stale request can never leak into a later tick. */
   private userAborted = false;
+  /** Set by handBackTick() when a budget-reopened handback lands mid-tick: it aborts the
+   * tick WITHOUT the user-abort flag, so finishAbortedTick takes its shutdown branch (pi
+   * session and worktree edits kept) and the tick ends `aborted` — but with a named resume
+   * cause, so the resumed session's bridge prompt says the run moved back to the primary
+   * model instead of claiming a harness restart. Cleared at the next tick start, like
+   * userAborted. */
+  private handedBack = false;
+  /** The provider/model pair this tick's config resolved to at tick start (configForRole):
+   * what the in-flight tick is running on. The orchestrator's budget-gate poll reads it via
+   * tickModel() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30).
+   * Transient — never persisted — and captured fresh at every tick start. */
+  private tickPair?: { provider?: string; model?: string };
   /** The landing failure this tick's leftover recovery is retrying, if any (a retriable lander
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
@@ -160,6 +172,25 @@ export class LoopRunner {
     this.tickAbort.abort();
   }
 
+  /** Hand this loop's in-flight tick back to the primary model after the budget gate reopens
+   * (PLANS.md 2026-09-30): abort the per-tick controller WITHOUT the user-abort flag, so
+   * finishAbortedTick takes its shutdown branch — pi session and worktree edits kept — and
+   * the tick ends `aborted`, which applyTickOutcome schedules to resume promptly. The
+   * orchestrator calls this on every runner whose tickModel() still matches the fallback
+   * pair the gate just left; a tick started on the primary (and the director) keeps running.
+   * No-op when no tick is running, like abortTick. */
+  handBackTick(): void {
+    if (!this.state.running) return;
+    this.handedBack = true;
+    this.tickAbort.abort();
+  }
+
+  /** The provider/model pair the in-flight tick is running on (null when idle): the
+   * orchestrator's budget handback matches this against the fallback pair it just left. */
+  tickModel(): { provider?: string; model?: string } | null {
+    return this.state.running ? (this.tickPair ?? null) : null;
+  }
+
   /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user
    * abort (Node ≥ 20's AbortSignal.any). */
   private runSignal(): AbortSignal {
@@ -204,7 +235,9 @@ export class LoopRunner {
     // prompt rides the resume that follows (mid-review the fresh recovery dequeues it like any
     // other tick instead — the flag is cleared and never reclaimed there).
     this.pending.requeueForResume(this.state, userPrompt);
-    return { result: "aborted" };
+    // A budget handback is an interruption with a named cause: the resumed session's bridge
+    // prompt says the run was moved back to the primary model, not that the harness restarted.
+    return this.handedBack ? { result: "aborted", resumeCause: "budget-resumed" } : { result: "aborted" };
   }
 
   /** Land the worktree branch on main (see src/landing-merge.ts for the rebase → verify → ff-merge →
@@ -327,6 +360,11 @@ export class LoopRunner {
     // overrides): resolved once so every interval-based scheduling branch below honors a slow
     // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
     const cfg = configForRole(this.config, this.role);
+    // Capture what this tick runs on (the orchestrator's budget handback matches it against
+    // the fallback pair) and clear any stale handback flag: an abort request that lands while
+    // the loop is idle must not name a later tick's resume.
+    this.tickPair = { provider: cfg.provider, model: cfg.model };
+    this.handedBack = false;
     s.ticks += 1;
     // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
     // reset before the start-of-tick save so a working loop's columns grow live from 0 and
@@ -434,6 +472,9 @@ export class LoopRunner {
       ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
       ...(this.usage.costUsd > 0 ? { costUsd: this.usage.costUsd } : {}),
     });
+    // The tick is over: the captured pair must not outlive it (a later poll must never match
+    // an idle loop's stale pair against a resumed fallback).
+    this.tickPair = undefined;
     return outcome;
   }
 

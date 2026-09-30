@@ -14,6 +14,7 @@ import {
   rekeyFallbackBreaker,
 } from "./fallback-breaker.js";
 import { applyFallbackModel, fallbackPair } from "./config-views.js";
+import type { FallbackModelConfig } from "./config-schema.js";
 import { logEvent } from "./events.js";
 import { fallbackModelFree } from "./pi-models.js";
 import type { LoopState } from "./loop-state.js";
@@ -57,6 +58,34 @@ interface BudgetGatePoll {
   roleConfig: TumwaterConfig;
   spentUsd: number;
   capUsd: number;
+  /** True on exactly the poll whose transition logged `budget_resumed` (fallback or paused →
+   * open): the orchestrator hands the in-flight ticks still running on the fallback back to
+   * the primary (PLANS.md 2026-09-30) — new ticks are gated live, but a tick that started on
+   * the fallback keeps it until it ends, so the reopen alone would leave the fleet's fresh
+   * budget waiting on the slow local model. The fallback pair the gate just left (below)
+   * identifies those ticks. */
+  resumed: boolean;
+  /** The live config's fallback pair (fallbackPair), for matching the in-flight ticks the
+   * reopen should hand back: a tick whose captured model is this pair runs on the fallback. */
+  fallbackPair: FallbackModelConfig | null;
+}
+
+/** Does an in-flight tick's captured model pair (LoopRunner.tickModel()) match the fallback
+ * pair a reopening budget gate just left? The orchestrator hands back exactly those ticks
+ * (PLANS.md 2026-09-30): both sides must be present — no fallback pair means no tick ran on
+ * one, and an idle loop's null means there is nothing to hand back — and the provider/model
+ * fields must be equal, undefined matching undefined only when both sides truly lack them
+ * (which cannot happen here: a null pair is rejected before the field comparison). */
+export function tickOnPair(
+  tickModel: { provider?: string; model?: string } | null,
+  pair: FallbackModelConfig | null,
+): boolean {
+  return (
+    tickModel !== null &&
+    pair !== null &&
+    tickModel.provider === pair.provider &&
+    tickModel.model === pair.model
+  );
 }
 
 /** Poll the daily cost budget gate: once the fleet's spend for the local day has reached
@@ -64,7 +93,9 @@ interface BudgetGatePoll {
  * keep working, or — with no usable one — start no new ticks at all (scheduled, main-moved
  * wake, or startup). The director is outside both: an explicit human prompt outranks the
  * autonomous-spend cap, so it keeps its budgeted model and keeps ticking. In-flight ticks
- * finish; only NEW ticks are gated. Resume is live — raising/disabling the cap (reloaded
+ * finish; only NEW ticks are gated — and when the gate reopens, the orchestrator hands the
+ * ticks still running on the fallback back to the primary (the `budget_handback` event).
+ * Resume is live — raising/disabling the cap (reloaded
  * live each poll), fixing the fallback, or crossing local midnight re-evaluates this on the
  * next poll — and the one piece of state, the fallback breaker, is re-keyed by the same
  * inputs, so nothing can get stuck. */
@@ -92,6 +123,8 @@ export function pollBudgetGate(
     liveConfig.maxDailyCostUsd,
   );
   const gate = budgetGate(reached, fallbackReady, fallbackServing(state.breaker));
+  // Read before prevGate is advanced below: true on exactly the reopening transition.
+  const resumed = gate === "open" && (state.prevGate === "fallback" || state.prevGate === "paused");
   if (gate !== state.prevGate) {
     logEvent(root, {
       loop: "harness",
@@ -128,5 +161,7 @@ export function pollBudgetGate(
     roleConfig: onFallback ? state.fallbackConfig : liveConfig,
     spentUsd,
     capUsd,
+    resumed,
+    fallbackPair: pair,
   };
 }

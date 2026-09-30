@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { newBudgetGateState, pollBudgetGate } from "../src/budget-gates.js";
+import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/budget-gates.js";
 import { recordDailyCost } from "../src/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/fallback-breaker.js";
 import { defaultConfig } from "../src/config.js";
@@ -129,6 +129,53 @@ test("raising the cap resumes the gate: one budget_resumed event and the live co
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, raised); // the fallback view is dropped at once
   assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback", "budget_resumed"]);
+});
+
+test("resumed is true on exactly the reopening poll, with the fallback pair it left", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+
+  // Open → fallback: the engagement poll is not a resume, but it carries the pair.
+  const p0 = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p0.gate, "fallback");
+  assert.equal(p0.resumed, false);
+  assert.deepEqual(p0.fallbackPair, { provider: "free", model: "qwen-free" });
+
+  // Holding the fallback: still not a resume.
+  assert.equal(poll(root, state, cfg, models, [spent(10)]).resumed, false);
+
+  // fallback → open (cap raised): exactly the resume, naming the pair the gate just left.
+  const p2 = poll(root, state, configWith(100), models, [spent(10)]);
+  assert.equal(p2.gate, "open");
+  assert.equal(p2.resumed, true);
+  assert.deepEqual(p2.fallbackPair, { provider: "free", model: "qwen-free" });
+
+  // Staying open poll after poll: no further resumes.
+  assert.equal(poll(root, state, configWith(100), models, [spent(10)]).resumed, false);
+
+  // paused → open is a resume too: ticks parked on the fallback view while the breaker had
+  // the gate paused must be handed back exactly like fallback-held ones.
+  const paidOnlyDir = tmpdir("budget-gates-paid-");
+  const paidOnly = writeModels(paidOnlyDir, PAID_ONLY_JSON);
+  const state2 = newBudgetGateState(cfg);
+  assert.equal(poll(root, state2, cfg, paidOnly, [spent(10)]).gate, "paused");
+  const p5 = poll(root, state2, configWith(100), paidOnly, [spent(10)]);
+  assert.equal(p5.gate, "open");
+  assert.equal(p5.resumed, true);
+
+  // Open from the start (no transition at all): not a resume.
+  const state3 = newBudgetGateState(cfg);
+  assert.equal(poll(root, state3, cfg, models, [spent(5)]).resumed, false);
+});
+
+test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
+  const pair = { provider: "local", model: "local-free" };
+  assert.equal(tickOnPair({ provider: "local", model: "local-free" }, pair), true);
+  assert.equal(tickOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
+  assert.equal(tickOnPair(null, pair), false, "an idle loop has nothing to hand back");
+  assert.equal(tickOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
 });
 
 test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {

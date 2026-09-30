@@ -345,9 +345,11 @@ such a request is guidance to record per the routing rules, not an edit you can 
   return parts.join("\n\n");
 }
 
-/** Why a tick is being resumed: a harness restart interrupted it, or it ran out of context (the
- * harness resumes the compacted session — see LoopState.cutOffStreak). */
-type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout";
+/** Why a tick is being resumed: a harness restart interrupted it, it ran out of context (the
+ * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
+ * deadline killed a still-making-progress run, or the budget gate reopened mid-run and the
+ * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30). */
+type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
 
 /** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
  * the interrupted run — which already carries the full original prompt, all rules, and the work
@@ -378,7 +380,15 @@ worktree and this session and is continuing them now. Finish the SAME task, but 
 that same limit: make the smallest change that completes the task coherently, verify it, and
 stop. Do not restart broad exploration the first run already finished; trust the work so far
 and build on it.`
-          : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+          : cause === "budget-resumed"
+            ? `The fleet's daily budget has reopened, and your previous run as the "${roleId}" loop
+started on the fallback model — the harness has moved this session back to the primary model and
+is continuing it now. Your worktree is exactly as you left it, and this session carries everything
+you did so far.
+
+Continue the SAME task you were working on and finish it. If the work so far turns out to be
+unusable, redo it — but stay on this task rather than picking a new one.`
+            : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 

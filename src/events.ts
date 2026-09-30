@@ -64,6 +64,7 @@ export interface HarnessEvent {
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
     | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
+    | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model)
     | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)

@@ -160,6 +160,13 @@ export function eventMessage(e: HarnessEvent): string {
       return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
+    case "budget_handback": {
+      // Which ticks were handed back: the roles still running on the fallback when the budget
+      // reopened. Their ticks end `aborted` and resume promptly on the primary, so an operator
+      // reading the feed can connect the aborted ticks to this one line.
+      const roles = Array.isArray(e.roles) ? (e.roles as string[]).join(", ") : "?";
+      return `budget reopened: handed ${roles} back to the primary`;
+    }
     case "fleet_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `fleet paused — role loops stop starting new ticks (director keeps running)`;

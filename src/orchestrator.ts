@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
 import { enabledRoleIds } from "./config.js";
-import { newBudgetGateState, pollBudgetGate } from "./budget-gates.js";
+import { newBudgetGateState, pollBudgetGate, tickOnPair } from "./budget-gates.js";
 import { newLiveConfigReload } from "./config-live.js";
 import {
   deferTick,
@@ -294,7 +294,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
       // owns only the wiring — the demotion publish below and the per-runner assignment at
       // the bottom of this block.
-      const { gate, roleConfig, spentUsd, capUsd } = pollBudgetGate(budgetGateState, {
+      const { gate, roleConfig, spentUsd, capUsd, resumed: gateResumed, fallbackPair: leftPair } =
+        pollBudgetGate(budgetGateState, {
         root,
         states: runners.map((r) => r.state),
         liveConfig,
@@ -320,6 +321,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // created mid-gate, or one left behind by a broken-file poll that skipped the reload,
       // can never tick on the wrong model.
       for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
+
+      // The budget reopened: a tick that started on the fallback keeps it until it ends, so
+      // hand those ticks back — abort them resumably (session and worktree edits kept) and
+      // let their next tick continue the same session on the primary, whose config the
+      // assignment above already installed (PLANS.md 2026-09-30). A tick started on the
+      // primary keeps running, the director is exempt, and the landings (the slot's own runs)
+      // are untouched. One event names who was handed back, so the resulting aborted ticks
+      // read as the budget reopening, not as unexplained failures.
+      if (gateResumed && leftPair) {
+        const matching = runners.filter(
+          (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
+        );
+        if (matching.length > 0) {
+          logEvent(root, {
+            loop: "harness",
+            type: "budget_handback",
+            roles: matching.map((r) => r.role),
+            provider: leftPair.provider,
+            model: leftPair.model,
+          });
+          for (const r of matching) r.handBackTick();
+        }
+      }
 
       // The pause gates (src/pause-gates.ts owns the reads, the edge-triggered pause/resume
       // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role

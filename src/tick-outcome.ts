@@ -65,9 +65,11 @@ export interface TickOutcome {
   /** Why a resumed session's bridge prompt names its cause, when the resume's result itself is
    * not specific enough to derive it: a quiet_killed tick can be a hung tool call (the default
    * "hung-tool" bridge) or a tick timeout that fired on a run still making progress (a
-   * "timeout" bridge, which asks for the smallest finish against the same limit). Set only by
-   * those outcomes; every other resume cause is derived from state (cut-off streak, restart). */
-  resumeCause?: "hung-tool" | "timeout";
+   * "timeout" bridge, which asks for the smallest finish against the same limit); an aborted
+   * tick handed back at budget_resumed (PLANS.md 2026-09-30) carries "budget-resumed", whose
+   * bridge says the run moved back to the primary model. Set only by those outcomes; every
+   * other resume cause is derived from state (cut-off streak, restart). */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
   /** The tick ended on leftover recovery (src/leftover.ts) — the leftover went on the land queue
    * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
    * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
@@ -295,7 +297,12 @@ export function applyTickOutcome(
     // session and the worktree's uncommitted edits were left in place, so the next tick
     // picks up exactly where this one was interrupted (director ticks instead re-queue
     // their user prompt, which runs fresh).
-    if (role !== DIRECTOR_ROLE) s.resumePending = true;
+    if (role !== DIRECTOR_ROLE) {
+      s.resumePending = true;
+      // A budget handback names its own cause (the bridge prompt must say the model moved,
+      // not that the harness restarted); a plain shutdown's stays derived.
+      if (outcome.resumeCause) s.resumeCause = outcome.resumeCause;
+    }
     s.nextRunAt = Date.now();
   } else if (outcome.result === "quiet_killed") {
     // A hung tool call, not an idle verdict or a shutdown: the kill left the pi session and

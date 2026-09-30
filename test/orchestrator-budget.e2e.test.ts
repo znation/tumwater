@@ -22,7 +22,7 @@ import { todayStamp } from "../src/budget.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, fastConfig, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
+import { fakePi, fakePiIdle, logFlagsTo, recordingFakePi, TOUCH_SESSION } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -379,5 +379,98 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     restore();
     controller.abort();
     await done.catch(() => {});
+  }
+});
+
+// The budget handback (PLANS.md 2026-09-30): new ticks are gated live, but a tick that started
+// on the fallback keeps it until it ends — so a reopen at local midnight would leave the
+// fleet's fresh budget waiting on the slow local model. On the resuming poll the orchestrator
+// hands exactly those ticks back: one budget_handback event, the tick ends resumably, and its
+// resume continues the same session on the primary.
+test("budget_resumed hands the in-flight fallback ticks back to the primary", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget handback e2e test");
+  const config = fastConfig(["clean"]);
+  config.maxDailyCostUsd = 0.5;
+  config.provider = "paid";
+  config.model = "big-paid";
+  config.fallbackModel = { provider: "local", model: "local-free" };
+  saveConfig(repo, config);
+  const argsFile = path.join(tmpdir(), "handback-e2e-runs.log");
+  const flagsFile = path.join(tmpdir(), "handback-e2e-flags.log");
+  const marker = path.join(tmpdir(), "handback-e2e-inflight");
+  const runs = (): string[] => {
+    try {
+      return fs.readFileSync(argsFile, "utf8").split("\n").filter((l) => l.startsWith("run:"));
+    } catch {
+      return [];
+    }
+  };
+  // The model/provider/session recorder the recordingFakePi shim writes, as a fragment: each
+  // phase needs its own behavior around it, so the shim itself cannot be reused whole. It
+  // shifts through the argv, so every other fragment (TOUCH_SESSION, logFlagsTo) must run
+  // BEFORE it or it sees no arguments.
+  const rec =
+    `m=""; p=""; n=""; while [ $# -gt 0 ]; do case "$1" in --model) m="$2";; --provider) p="$2";; -n) n="$2";; esac; shift; done; ` +
+    `echo "run: model=$m provider=$p session=$n" >> "${argsFile}"`;
+  const idle = `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", { cost: 1 })}'`;
+
+  // Phase 1: the startup tick on the paid pair spends $1 >= $0.50 and trips the gate.
+  let restore = fakePi([TOUCH_SESSION, rec, idle].join("\n"));
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS, writeFallbackModels());
+  try {
+    await awaitSettledTick(repo, "clean", 1, "the startup tick");
+
+    // Phase 2: the next tick starts on the fallback pair and hangs mid-run — the shape the
+    // handback exists for. Installed before the reopen poll so no fallback tick can race the
+    // swap; the gate is already over cap, so the tick runs on the fallback view.
+    restore();
+    // TOUCH_SESSION and logFlagsTo must run BEFORE rec: the recorder shifts through the
+    // argv, so a fragment after it sees no arguments.
+    restore();
+    restore = fakePi([TOUCH_SESSION, logFlagsTo(flagsFile), rec, `touch "${marker}"`, `exec sleep 30`].join("\n"));
+    landWork(repo);
+    await waitFor(() => fs.existsSync(marker), "the in-flight fallback tick to start");
+    assert.equal(loadLoopState(repo, "clean").running, true);
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the budget_fallback event");
+
+    // Phase 3: raising the cap reopens the budget. The orchestrator hands the tick back:
+    // exactly one event naming the role and the pair, and the tick ends resumably.
+    saveConfig(repo, { ...config, maxDailyCostUsd: 100 });
+    await waitFor(() => readEvents(repo).some((e) => e.type === "budget_handback"), "the budget_handback event");
+    const hb = eventsOfType(repo, "budget_handback");
+    assert.equal(hb.length, 1, "one handback event per reopen");
+    assert.deepEqual(hb[0]?.roles, ["clean"]);
+    assert.equal(hb[0]?.provider, "local");
+    assert.equal(hb[0]?.model, "local-free");
+    await waitFor(() => {
+      const s = loadLoopState(repo, "clean");
+      return !s.running && s.resumePending === true && s.resumeCause === "budget-resumed";
+    }, "the handed-back tick to end resumably");
+
+    // The resume continues the SAME session (--continue) on the budgeted pair. A resumed
+    // run passes no -n, so its recorded session field is empty — wait on the flags file,
+    // which gains one line per run.
+    restore();
+    restore = fakePi([logFlagsTo(flagsFile), rec, idle].join("\n"));
+    await waitFor(() => {
+      try {
+        return fs.readFileSync(flagsFile, "utf8").trim().split("\n").length >= 2;
+      } catch {
+        return false;
+      }
+    }, "the resume tick's run");
+    assert.match(
+      runs()[2] ?? "",
+      /model=big-paid provider=paid/,
+      "the resume runs on the primary",
+    );
+    assert.doesNotMatch(runs()[2] ?? "", /session=tumwater/, "a resumed run starts no new session");
+    const flags = fs.readFileSync(flagsFile, "utf8").trim().split("\n");
+    assert.equal(flags.length, 2, JSON.stringify(flags));
+    assert.match(flags[1] ?? "", /--continue/, "the resume continues the handed-back session");
+    await awaitSettledTick(repo, "clean", 3, "the resume tick to settle");
+  } finally {
+    await stopOrchestrator(orch, restore);
   }
 });

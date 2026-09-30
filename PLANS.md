@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Hand in-flight fallback ticks back to the primary at `budget_resumed` (planned 2026-09-30)
+_None right now — the newest plan moved to Done below. Plan more in `## Planned`._
+
+## Done
+
+### Hand in-flight fallback ticks back to the primary at `budget_resumed` (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** When local midnight reopens the budget, `pollBudgetGate` flips new ticks back to the primary, but a tick that started on the fallback keeps it until it ends ("In-flight ticks finish; only NEW ticks are gated", src/budget-gates.ts). On 2026-09-30, three ticks started under the 09-29 fallback held their permits on the slow local model after midnight: steward until 00:06, plan until 00:21, telemetry until 01:20 (a 12,588 s tick; that role's primary ticks take minutes). The fleet's fresh budget ran on no permits for the first 6 minutes (no role tick started between 00:00:01 and 00:06:01), one permit for the next 15, and two for the next hour, while oMLX stayed busy. The operator asked why oMLX was still running on a new day. Hand those ticks back: interrupt them resumably and let their next tick continue the same session on the primary.
 
@@ -27,7 +31,20 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 Size: one run, ~120 lines of source plus ~6 tests. The gate change is pure. The runner method reuses the existing abort path.
 
-## Done
+Done 2026-09-30 by feature: implemented as planned. Deltas from the written approach: the
+pair-matching predicate is a small exported pure helper, `tickOnPair`, in src/budget-gates.ts
+(pinned in test/budget-gates.test.ts), so the orchestrator's handback wiring is one filter call;
+the loop e2e landed in test/loop-5.test.ts (the file that covers abortTick) and the fleet-level
+wiring is pinned end to end in test/orchestrator-budget.e2e.test.ts (in-flight fallback tick →
+budget_handback naming the role and pair → resumably aborted → resume with `--continue` on the
+budgeted pair), which the entry's files list did not name; test/event-format.test.ts pins the
+`budget_handback` rendering and docs/how-it-works.md's fallback bullet names the handback.
+Criterion 5's manual check — continuing a real oMLX-started session with the primary pair — was
+NOT run: a harness tick never calls a real model (PRINCIPLES.md), and no oMLX backend is
+guaranteed reachable here. The code keeps `--continue` for this cause (pi's session files are
+provider-independent on disk); if a real handback ever shows pi refusing a cross-provider
+continuation, the fallback is one line: map the "budget-resumed" cause to a fresh tick (skip
+`--continue`) in runTick's resume decision, and record that here.
 
 ### `npm run test:coverage`: a coverage report through the suite's own runner, so coverage ticks stop hand-building raw `node --test` runs (planned 2026-09-30, done 2026-09-30)
 

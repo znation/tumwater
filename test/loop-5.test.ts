@@ -20,7 +20,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo } from "./fake-pi.js";
+import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -375,6 +375,87 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
     assert.match(runner.state.lastError ?? "", /^timed out after 1s$/);
     assert.equal(mainSha(repo), before);
     assert.ok(runner.state.backoffSeconds > 0);
+  } finally {
+    restore();
+  }
+});
+
+// The budget handback (PLANS.md 2026-09-30): when the budget gate reopens, the orchestrator
+// hands the in-flight ticks still on the fallback back to the primary. handBackTick aborts
+// WITHOUT the user-abort flag, so the tick ends `aborted` with its session and worktree edits
+// kept (the shutdown branch, not the discard), and the resume carries its own cause so the
+// bridge prompt says the model moved. Contrast with the user-abort test above: same kill
+// plumbing, opposite fate for the work.
+test("a budget handback ends the tick resumably; the resume continues the session on the primary", async () => {
+  const repo = await initializedRepo();
+  const promptsFile = path.join(tmpdir(), "handback-prompts.log");
+  const script = (body: string) => [TOUCH_SESSION, logPromptsTo(promptsFile), body].join("\n");
+  // Tick 1 runs on the fallback view's pair (what the orchestrator assigns while the gate
+  // holds), writes a half-done edit, then hangs until the handback kills it.
+  let restore = fakePi(script(`echo partial > partial.txt\nexec sleep 30`));
+  try {
+    const fallback = defaultConfig();
+    fallback.provider = "local";
+    fallback.model = "local-free";
+    const runner = makeLoopRunner(repo, "improve", fallback);
+    const tick = runner.tick();
+    try {
+      await waitForFile(path.join(worktreePath(repo, "improve"), "partial.txt"));
+    } catch (err) {
+      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      throw err;
+    }
+    // The runner reports what the in-flight tick runs on — the pair the orchestrator matches
+    // against the fallback pair it just left.
+    assert.deepEqual(runner.tickModel(), { provider: "local", model: "local-free" });
+    runner.handBackTick();
+    const outcome = await tick;
+    assert.equal(outcome.result, "aborted");
+    assert.equal(outcome.resumeCause, "budget-resumed");
+
+    // Session and worktree edits kept, resume pending with the handback's own cause, and the
+    // loop scheduled to run again immediately — an interruption, not a verdict to back off on.
+    const s = loadLoopState(repo, "improve");
+    assert.ok(s.resumePending, "the interrupted session is kept for a resume");
+    assert.equal(s.resumeCause, "budget-resumed");
+    assert.ok(
+      fs.existsSync(path.join(worktreePath(repo, "improve"), "partial.txt")),
+      "the half-done edit is kept",
+    );
+    assert.ok((s.nextRunAt ?? 0) <= Date.now() + 50, "resumes promptly, no backoff");
+
+    // Idle: tickModel is null and a handback is a no-op.
+    assert.equal(runner.tickModel(), null);
+    runner.handBackTick();
+
+    // The resume tick continues the SAME session (--continue) on the primary's pair — the
+    // orchestrator assigns the live config before calling handBackTick; mirrored here.
+    restore();
+    restore = fakePi(script(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`));
+    const primary = defaultConfig();
+    primary.provider = "paid";
+    primary.model = "big-paid";
+    runner.config = primary;
+    const outcome2 = await runner.tick();
+    // The kept half-done edit is committed by the resume tick like any resumed session's
+    // leftover work — the point is the session and the model, not the file's fate.
+    assert.equal(outcome2.result, "queued");
+    const s2 = loadLoopState(repo, "improve");
+    assert.ok(!s2.resumePending, "the resume consumed the pending flag");
+    assert.equal(s2.resumeCause, undefined, "the cause rode the resume and was consumed");
+    const runs = readPromptRuns(promptsFile);
+    assert.ok(runs.length >= 2, JSON.stringify(runs).slice(0, 400));
+    // readPromptRuns joins each run's argv with newlines, so the pair matches with \s+.
+    assert.match(runs[0] ?? "", /--provider\s+local\s+--model\s+local-free/, "the first run was on the fallback");
+    assert.doesNotMatch(runs[0] ?? "", /--continue/, "the first run started fresh");
+    // The resume (and its SUMMARY follow-up, if the fake reply lacks the block): every
+    // post-handback run continues the session and carries the primary's pair.
+    assert.match(runs[1] ?? "", /--continue/, "the resume continues the interrupted session");
+    for (const run of runs.slice(1)) {
+      assert.match(run, /--continue/);
+      assert.match(run, /--provider\s+paid\s+--model\s+big-paid/, "the resume runs on the primary");
+      assert.doesNotMatch(run, /local-free/, "the fallback pair is gone from the resume");
+    }
   } finally {
     restore();
   }

@@ -61,9 +61,11 @@ export interface LoopState {
   resumePending?: boolean;
   /** Why a pending resume happened when it was not a cut-off: "hung-tool" when the quiet
    * watchdog killed a run on a stalled tool call, so the bridge prompt names that cause (and
-   * warns against re-running the hung command unchanged). Cleared with resumePending at tick
-   * start; absent for restart/cut-off resumes, whose causes are derived. */
-  resumeCause?: "hung-tool" | "timeout";
+   * warns against re-running the hung command unchanged); "budget-resumed" when the budget
+   * gate reopened and the in-flight fallback tick was handed back to the primary model
+   * (PLANS.md 2026-09-30). Cleared with resumePending at tick start; absent for restart/cut-off
+   * resumes, whose causes are derived. */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
   /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure

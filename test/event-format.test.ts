@@ -253,6 +253,18 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
+  // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback ticks were
+  // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
+  const handback = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_handback",
+    roles: ["steward", "plan"],
+  } as never);
+  assert.match(handback, /harness\s+budget reopened: handed steward, plan back to the primary/);
+  const bareHandback = formatEvent({ ts: 0, loop: "harness", type: "budget_handback" } as never);
+  assert.match(bareHandback, /budget reopened: handed \? back to the primary/);
+
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
   const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
   assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);

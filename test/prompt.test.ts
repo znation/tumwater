@@ -259,6 +259,30 @@ test("buildResumePrompt names a tick timeout and asks for a finish that fits the
   assert.ok(p.includes(NOTHING_TO_DO));
 });
 
+// The fifth resume cause — a run the budget gate reopened mid-flight on the fallback model,
+// handed back to the primary (PLANS.md 2026-09-30). Its bridge must name the model move (the
+// session continues on a different backend, which no other cause says) without claiming a
+// restart, and the four existing causes' texts must stay untouched.
+test("buildResumePrompt names a budget handback's move back to the primary", () => {
+  const p = buildResumePrompt("feature", "budget-resumed");
+  assert.match(p, /"feature"/);
+  assert.match(p, /budget has reopened/i);
+  assert.match(p, /fallback model/);
+  assert.match(p, /primary model/);
+  assert.doesNotMatch(p, /restarted/i);
+  assert.match(p, /worktree is exactly as you left it/i);
+  // Same task continues, same closing contract as every other bridge.
+  assert.match(p, /Continue the SAME task/);
+  assert.ok(p.includes(NOTHING_TO_DO));
+
+  // The new branch changed no existing cause's text: the default restart bridge mentions
+  // neither model, and the other named causes neither.
+  assert.doesNotMatch(buildResumePrompt("feature"), /fallback model|primary model/);
+  assert.doesNotMatch(buildResumePrompt("bugfix", "hung-tool"), /fallback model|primary model/);
+  assert.doesNotMatch(buildResumePrompt("coverage", "timeout"), /fallback model|primary model/);
+  assert.doesNotMatch(buildResumePrompt("clean", "cut-off"), /fallback model|primary model/);
+});
+
 test("the perf role hunts measured wins and refuses speculative micro-optimization", () => {
   const role = roleById("perf");
   assert.ok(role, "perf role exists");

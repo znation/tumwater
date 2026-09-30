@@ -107,7 +107,10 @@ discards a role's in-flight landing.
   Only a model pi's `models.json` prices at zero is accepted; anything else leaves the fleet
   paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
   role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
-  a cool-down of 5 minutes doubling to at most 30.
+  a cool-down of 5 minutes doubling to at most 30. When the gate reopens (the cap raised, or a
+  new local day), a tick that started on the fallback is handed back to the primary: it is
+  interrupted resumably — session and worktree edits kept — and its next tick continues the
+  same session on the budgeted model (`budget_handback` in the feed).
 - `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
