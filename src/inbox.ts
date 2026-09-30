@@ -138,12 +138,27 @@ export function takeQueuedFile(file: string): string | null {
 }
 
 
+/** Read one addressed queue file and turn it into a cancel outcome — the one home of the
+ * race-policy-and-event pairing both cancel paths go through: { status: "gone" } when the
+ * loop already dequeued or another cancel removed the file (takeQueuedFile's race policy,
+ * a normal race, never an error), else one prompt_cancelled event under that loop (preview
+ * via promptPreview, exactly like the prompt_enqueued sibling) logged only after a successful
+ * removal — a prompt the loop just dequeued ran, it was not cancelled — and
+ * { status: "cancelled", text }. Shared by cancelRolePrompt (position-addressed) and
+ * cancelQueuedFile (file-addressed), so the two cannot drift on the event, its preview
+ * width, or what counts as gone. */
+function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
+  const text = takeQueuedFile(file);
+  if (text === null) return { status: "gone" };
+  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
+  return { status: "cancelled", text };
+}
+
 /** Remove the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
  * and log one prompt_cancelled event under that loop (preview via promptPreview, exactly like
  * its prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
  * { status: "gone" } when the file disappears between listing and removal instead of throwing.
- * The event is logged only after a successful removal — a prompt the loop just dequeued ran,
- * it was not cancelled. */
+ * The race policy and event live in takeCancelledPrompt. */
 export function cancelRolePrompt(root: string, role: string, position: number): CancelOutcome {
   const files = queuedFiles(root, role);
   if (position < 1 || position > files.length) {
@@ -151,10 +166,7 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
   }
   const file = files[position - 1];
   if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
-  const text = takeQueuedFile(file);
-  if (text === null) return { status: "gone" };
-  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
-  return { status: "cancelled", text };
+  return takeCancelledPrompt(root, role, file);
 }
 
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
@@ -178,18 +190,13 @@ export function queueFileNameProblem(name: unknown): string | null {
 /** Remove one queued prompt addressed by its queue-file basename — the file-addressed twin of
  * cancelRolePrompt, for the dashboard's per-row cancel affordance (PLANS.md 2026-09-29): the
  * address is the file itself, so a stale poll's snapshot can never cancel the wrong entry.
- * Same race policy and event as cancelRolePrompt: { status: "gone" } when the loop already
- * dequeued or another cancel removed the file (a normal race, never an error), else one
- * prompt_cancelled event under that loop, logged only after a successful removal, and
- * { status: "cancelled", text }. Throws for a name failing queueFileNameProblem — the GUI
- * endpoint pre-checks the same guard and answers 400 before anything is touched on disk. */
+ * Same race policy and event as cancelRolePrompt, through the shared takeCancelledPrompt.
+ * Throws for a name failing queueFileNameProblem — the GUI endpoint pre-checks the same
+ * guard and answers 400 before anything is touched on disk. */
 export function cancelQueuedFile(root: string, role: string, name: string): CancelOutcome {
   const problem = queueFileNameProblem(name);
   if (problem) throw new Error(problem);
-  const text = takeQueuedFile(path.join(roleInboxDir(root, role), name));
-  if (text === null) return { status: "gone" };
-  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
-  return { status: "cancelled", text };
+  return takeCancelledPrompt(root, role, path.join(roleInboxDir(root, role), name));
 }
 
 /** Remove and return the oldest queued prompt, or null when empty — including when a
