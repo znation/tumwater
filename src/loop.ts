@@ -198,7 +198,6 @@ export class LoopRunner {
     return this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal;
   }
 
-  /** Decide the prompt for this tick, or null to skip (director with empty inbox). */
   /** Assemble this tick's prompt via src/tick-prompt.ts (the prompt-content concern lives
    * there); the dequeued user request — the director's, or a per-role one — rides back so the
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
