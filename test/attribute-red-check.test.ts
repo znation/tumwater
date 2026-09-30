@@ -9,7 +9,7 @@ import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/event-read.js";
 import { shortSha } from "../src/text.js";
 import type { BuildCheck } from "../src/build-check-detect.js";
-import type { BuildCheckOutcome } from "../src/build-check.js";
+import type { BuildCheckOutcome, BuildCheckRun } from "../src/build-check.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { baselineFixture } from "./loop-fixtures.js";
@@ -154,4 +154,68 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was deleted");
   const saved = loadLoopState(root, ROLE);
   assert.equal(saved.lastReview?.verdict, "reject", "the rejection was persisted");
+});
+
+// BUGS.md 2026-09-30: an unverified red — a run that spanned a host sleep past the tolerance,
+// the tree never judged — is not the change's failure and not a strike. Attribution asks
+// main's verdict only when the check produced one; here the ref stays for recovery's re-land
+// and the recorded reason names the sleep instead of a test failure. Both spellings of
+// "unverified" count: runScopedBuildCheck's explicit flag at the merge scopes, and a run
+// carrying its own sleep evidence (the gate-shaped outcome).
+test("attributeRedCheck keeps the ref and records no strike for an unverified red", async () => {
+  const { root } = baselineFixture(ROLE, "attr-unverified-marker");
+  const restore = fakeNpm("echo ok; exit 0");
+  try {
+    const head = mainSha(root);
+    await setRef(root, landingRefName(ROLE), head);
+    const state = seededState(root);
+    const flag: { check: BuildCheck; outcome: BuildCheckOutcome } = {
+      check: { kind: "npm", rootDir: process.cwd(), script: "test" },
+      outcome: {
+        status: "failed",
+        script: "test",
+        outputTail: ["batch build check ran while the host slept 119s mid-run; the tree is unverified"],
+        unverified: true,
+      },
+    };
+    const result = await attributeRedCheck(
+      { root, mainBranch: "main", config: defaultConfig() },
+      ROLE,
+      head,
+      "batch check",
+      flag,
+      state,
+    );
+    assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable landing");
+    assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
+    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref was not deleted");
+    assert.match(state.lastError ?? "", /host slept 119s mid-run/, "the sleep is what the state records");
+    assert.equal(reviewRejectedEvents(root).length, 0, "no rejection was logged");
+
+    // The other spelling: a plain failed outcome whose run carries the sleep evidence (the
+    // gate-scope shape, no flag) is unverified too.
+    const state2 = seededState(root);
+    const measured: { check: BuildCheck; outcome: BuildCheckOutcome } = {
+      check: { kind: "npm", rootDir: process.cwd(), script: "test" },
+      outcome: {
+        status: "failed",
+        script: "test",
+        outputTail: ["landing build check ran while the host slept 59s mid-run; the tree is unverified"],
+        run: { sleptMs: 59_000 } as BuildCheckRun,
+      },
+    };
+    const result2 = await attributeRedCheck(
+      { root, mainBranch: "main", config: defaultConfig() },
+      ROLE,
+      head,
+      "landing check",
+      measured,
+      state2,
+    );
+    assert.equal(result2, "merge_blocked");
+    assert.equal(state2.unreviewFailures, 3, "no strike here either");
+    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref still was not deleted");
+  } finally {
+    restore();
+  }
 });

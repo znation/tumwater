@@ -3,7 +3,7 @@ import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { failureHeadline } from "./build-check-report.js";
 import type { BuildCheckOutcome } from "./build-check.js";
-import { buildCheckEvent, buildCheckSkipWarning } from "./build-check-events.js";
+import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -84,7 +84,14 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
  * proceeded with, exactly like the review gate's pre-check) — otherwise the terminal
  * `main_red` outcome for the caller to return as-is. Never throws: git, detection, and
  * execution failures all resolve to "nothing blocks authoring" inside checkMainBaseline. */
-export async function mainRedGate(root: string, role: string, wt: string): Promise<TickOutcome | null> {
+export async function mainRedGate(
+  root: string,
+  role: string,
+  wt: string,
+  /** The sleep clock the baseline run measures host suspension with; defaults to the real
+   * sampleSleepClock. A test seam — production callers leave it unset. */
+  sampleSleep?: Parameters<typeof checkMainBaseline>[4],
+): Promise<TickOutcome | null> {
   // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
   // at the gate's pre-check — an authoring run would be pure waste. Customs come from tumwater.json,
@@ -92,7 +99,17 @@ export async function mainRedGate(root: string, role: string, wt: string): Promi
   // which know no customs).
   const cfg = loadConfigCached(root).config ?? defaultConfig();
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
-  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role));
+  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, sampleSleep);
+  if (baseline.unverified) {
+    // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md
+    // 2026-09-30). Warn-and-proceed, like a skip — the sleep is named, not a test failure.
+    warnEvent(
+      root,
+      role,
+      sleptPhrase("main baseline check", baseline.run?.sleptMs ?? 0, "proceeding with authoring unverified"),
+    );
+    return null;
+  }
   if (baseline.skipReason) {
     warnEvent(
       root,
@@ -178,7 +195,11 @@ async function verdictAtMainTip(
     }
     return {
       status: "unavailable",
-      why: check.skipReason ? `its check was skipped (${check.skipReason})` : "it declares no check",
+      why: check.skipReason
+        ? `its check was skipped (${check.skipReason})`
+        : check.unverified
+          ? "its check ran while the host slept mid-run"
+          : "it declares no check",
     };
   } catch (err) {
     return { status: "unavailable", why: errorMessage(err) };

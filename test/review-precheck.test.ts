@@ -24,6 +24,7 @@ import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { logPromptsTo, readPromptRuns, reviewerStub, withPi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
+import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
 
 
 // The gate's integration with the deterministic build pre-check (src/build-check.ts): a
@@ -637,4 +638,86 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     assert.ok(!fs.readFileSync(timedPrompts, "utf8").includes("Do not re-run"), "no verified result, no rule");
     assert.deepEqual(rerunWarnings(timed.root), [], "running the suite is the reviewer's job here");
   });
+});
+
+// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
+// twice (open, close), so a test can put a host sleep inside one attempt — no test can
+// suspend the real host.
+function scriptedSampler(samples: SleepSample[]): SleepSampler {
+  return () => {
+    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
+    return Promise.resolve(samples.shift()!);
+  };
+}
+const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
+
+// BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
+// about the tree. The gate attributes nothing — no main consultation, no strike, no
+// rejection — the commit stays for a re-land, and the warning names the sleep.
+test("a pre-check that sleeps and fails on every attempt keeps the commit and reports the sleep", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  const state = freshLoopState(ROLE);
+  state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
+  const head = await headOf(wt, "HEAD");
+  // runScopedBuildCheck retries a slept failure internally, so two attempts, four samples —
+  // each attempt opens awake and closes after a 119 s sleep.
+  // runScopedBuildCheck retries a slept failure internally, and the gate's own flake re-run
+  // then runs the same scoped check again — four attempts, eight samples, each opening awake
+  // and closing after a 119 s sleep.
+  const sampler = scriptedSampler([
+    woke(1_000), woke(121_000, 2_000),
+    woke(121_000), woke(241_000, 122_000),
+    woke(241_000), woke(361_000, 242_000),
+    woke(361_000), woke(481_000, 362_000),
+  ]);
+  const result = await reviewAheadOfMain({ ...gateCtx(root, wt), sampleSleep: sampler }, state);
+  assert.equal(result.decision, "failed");
+  assert.equal(result.unverified, true, "the failure is unverified, not the change's");
+  assert.equal(result.mainRed, undefined, "main was never consulted — the check made no verdict");
+  assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
+  assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
+  assert.equal(state.lastReview, undefined, "no rejection recorded against the author");
+  assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+  assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:failed", "gate:failed"], "each attempt is priced");
+  const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("gate check ran while the host slept 119s mid-run; the tree is unverified")),
+    `the warning names the sleep; got: ${JSON.stringify(warnings)}`,
+  );
+  assert.ok(!warnings.some((m) => m.includes("flaky")), "a sleep is never mislabeled a flaky test");
+  assert.ok(!warnings.some((m) => m.startsWith("build check failed")), "no test-failure headline");
+});
+
+// The pass-after-sleep wording: when the run that failed spanned a sleep and the re-run
+// passed, the tree is fine and the sleep is the story — not a flaky test (BUGS.md 2026-09-30).
+test("a slept pre-check failure that passes its re-run verifies the tree and names the sleep, not a flaky test", async () => {
+  const flag = path.join(tmpdir(), "slept-twice");
+  // Fails (with a sleep each time) until the second marker exists; the third attempt — the
+  // gate's flake re-run — passes clean.
+  const build = `if [ -f '${flag}-2' ]; then exit 0; fi; if [ -f '${flag}-1' ]; then touch '${flag}-2'; exit 1; fi; touch '${flag}-1'; exit 1`;
+  const { root, wt } = await gateBuildFixture(build);
+  const prompts = path.join(tmpdir(), "prompts.log");
+  await withPi(
+    `${logPromptsTo(prompts)}\n${reviewerStub()}`,
+    async () => {
+      const head = await headOf(wt, "HEAD");
+      const { result } = await reviewGate(root, wt, {
+        sampleSleep: scriptedSampler([
+          woke(1_000), woke(121_000, 2_000), // attempt 1: slept, failed
+          woke(121_000), woke(241_000, 122_000), // internal retry: slept too, failed
+          woke(241_000), woke(241_500), // the gate's re-run: clean pass
+        ]),
+      });
+      assert.equal(result.decision, "approved", "the clean re-run's pass verifies the tree");
+      assert.equal(result.verifiedHead, head, "verified like a first-time pass");
+      assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "gate:passed"]);
+      const warnings = readEvents(root).filter((e) => e.type === "warning").map((e) => String(e.message));
+      assert.deepEqual(warnings, [
+        "gate check ran while the host slept 119s mid-run; then passed on retry",
+      ]);
+    },
+  );
 });

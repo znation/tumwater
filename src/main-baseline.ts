@@ -4,6 +4,8 @@ import {
   type BuildSkipReason,
   runBuildCheck,
 } from "./build-check.js";
+import { SLEEP_SPAN_TOLERANCE_MS } from "./build-check-events.js";
+import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
@@ -55,8 +57,14 @@ interface MainBaselineCheck {
    * PATH, or a broken toolchain). */
   skipReason?: BuildSkipReason;
   /** A skipped run's timing (the bound it was armed with, and how late its deadline fired), so
-   * the caller's skip warning reports the bound actually enforced. */
+   * the caller's skip warning reports the bound actually enforced. Also set for an unverified
+   * run — the sleep evidence the caller's warning names. */
   run?: BuildCheckRun;
+  /** The run `failed` while the host slept past the sleep-span tolerance (BUGS.md 2026-09-30):
+   * it made no verdict about the tree, so nothing was cached and the caller warns-and-proceeds
+   * exactly as for a skip — a sleep-spanned failure must not become the fleet's authoritative
+   * red main. */
+  unverified?: boolean;
 }
 
 /** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
@@ -161,6 +169,9 @@ export async function checkMainBaseline(
    * strands the whole fleet on a stale build until main moves. A green from the re-run promotes
    * the SHA fleet-wide, which unblocks the role loops too. */
   reverifyRed = false,
+  /** The sleep clock the run measures host suspension with; defaults to the real
+   * sampleSleepClock. A test seam — production callers leave it unset. */
+  sampleSleep: SleepSampler = sampleSleepClock,
 ): Promise<MainBaselineCheck> {
   const sha = await gitTry(wt, "rev-parse", "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
@@ -180,7 +191,7 @@ export async function checkMainBaseline(
       // none.
       const { outcome, durationMs } = await withCheckPermit(config, CHECK_TIER.other, async () => {
         const startedAt = Date.now();
-        const run = await runBuildCheck(wt, check);
+        const run = await runBuildCheck(wt, check, undefined, undefined, sampleSleep);
         return { outcome: run, durationMs: Date.now() - startedAt };
       });
       onRun?.({ outcome, durationMs });
@@ -188,6 +199,14 @@ export async function checkMainBaseline(
         // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
         // never cache red for a skip.
         return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
+      }
+      if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {
+        // A failure the host slept through made no verdict about the tree either (BUGS.md
+        // 2026-09-30): the sleep expired a test's own wall-clock wait at the wake and the suite
+        // exited 1 inside the deadline. Caching it red would make sleep weather the fleet's
+        // authoritative red main, so nothing is cached — the next consult re-runs, and a clean
+        // verdict then settles the SHA exactly as before.
+        return { baseline: null, run: outcome.run, unverified: true };
       }
       const prior = baselineCache.get(sha);
       const priorRedFrom = prior?.status === "red" ? (prior.redFrom ?? []) : [];

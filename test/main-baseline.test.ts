@@ -11,6 +11,7 @@ import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { pathReplace, projManifest } from "./fake-commands.js";
+import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -347,4 +348,42 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
     "and the green promotes the SHA for every other gate, unblocking the role loops too",
   );
   assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
+});
+
+// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
+// twice (open, close), so a test can put a host sleep inside one attempt — no test can
+// suspend the real host.
+function scriptedSampler(samples: SleepSample[]): SleepSampler {
+  return () => {
+    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
+    return Promise.resolve(samples.shift()!);
+  };
+}
+const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
+
+// BUGS.md 2026-09-30: a FAILED baseline run the host slept through made no verdict about the
+// tree — the sleep expired a test's own wait and the suite exited 1 inside the deadline — so
+// it must not be cached as the fleet's authoritative red main.
+test("a baseline run the host slept through is unverified and never cached red", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { wt } = baselineFixture(ROLE,
+    `echo run >> ${counter}; if [ -f ./SLEEP_RED_MARKER ]; then echo env-failure; exit 1; fi; echo ok`,
+  );
+  fs.writeFileSync(path.join(wt, "SLEEP_RED_MARKER"), "");
+  // The one attempt opens awake and closes after a 119 s sleep.
+  const slept = scriptedSampler([woke(1_000), woke(121_000, 2_000)]);
+  const first = await checkMainBaseline(wt, CFG, undefined, false, slept);
+  assert.equal(first.baseline, null, "a slept run caches nothing");
+  assert.equal(first.unverified, true, "the caller is told the run was unverified, not skipped");
+  assert.equal(runsOf(counter), 1);
+
+  // The next consult re-runs (nothing was cached) and the clean attempt's verdict settles the
+  // SHA exactly as before — here green, which the cache then holds for everyone.
+  fs.unlinkSync(path.join(wt, "SLEEP_RED_MARKER"));
+  const clean = scriptedSampler([woke(1_000), woke(1_500)]);
+  const second = await checkMainBaseline(wt, CFG, undefined, false, clean);
+  assert.equal(second.baseline?.status, "green");
+  assert.equal(runsOf(counter), 2, "the slept failure did not latch the red into the cache");
+  assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");
+  assert.equal(runsOf(counter), 2, "the clean green is cached as always");
 });

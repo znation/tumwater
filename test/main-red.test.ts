@@ -10,6 +10,7 @@ import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -307,4 +308,37 @@ test("mainTipVerdict reports unavailable, without throwing, when main's ref dang
   const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
   assert.equal(verdict.status, "unavailable");
   assert.ok(verdict.status === "unavailable" && /invalid reference/.test(verdict.why), verdict.status === "unavailable" ? verdict.why : "");
+});
+
+// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
+// twice (open, close), so a test can put a host sleep inside one attempt.
+function scriptedSampler(samples: SleepSample[]): SleepSampler {
+  return () => {
+    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
+    return Promise.resolve(samples.shift()!);
+  };
+}
+const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
+
+// BUGS.md 2026-09-30: a FAILED baseline run the host slept through is no verdict about main —
+// the gate warns under the role, naming the sleep, and proceeds with authoring; nothing is
+// cached, so the next consult re-runs and a clean attempt settles the SHA.
+test("mainRedGate proceeds unverified when the baseline run spanned a host sleep", async () => {
+  const { root, wt } = baselineFixture(ROLE, "echo baseline-failure; exit 1");
+  const slept = scriptedSampler([woke(1_000), woke(121_000, 2_000)]);
+  assert.equal(await mainRedGate(root, ROLE, wt, slept), null, "a slept baseline run never blocks authoring");
+  const events = readEvents(root);
+  const check = events.find((e) => e.type === "build_check");
+  assert.equal(check?.status, "failed");
+  assert.equal(check?.sleptMs, 119_000, "the event carries the measured sleep");
+  const warning = events.find((e) => e.type === "warning" && e.loop === ROLE);
+  assert.match(
+    String(warning?.message ?? ""),
+    /main baseline check ran while the host slept 119s mid-run; proceeding with authoring unverified/,
+  );
+
+  // Nothing was cached from the slept run: the next gate re-runs, and the clean attempt's
+  // red is a real red — main_red, as always.
+  const clean = scriptedSampler([woke(1_000), woke(1_500)]);
+  assert.equal((await mainRedGate(root, ROLE, wt, clean))?.result, "main_red");
 });

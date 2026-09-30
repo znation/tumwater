@@ -17,6 +17,8 @@ import { shortSha } from "./text.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
+import { sleptPhrase, unverifiedTreeOutcome } from "./build-check-events.js";
+import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { backlogStructureReason } from "./backlog-structure.js";
@@ -43,6 +45,9 @@ interface ReviewContext {
   /** Cap for the deterministic build pre-check run; defaults to BUILD_CHECK_TIMEOUT_MS.
    * A test seam — production callers leave it unset. */
   buildCheckTimeoutMs?: number;
+  /** The sleep clock the pre-check measures host suspension with; defaults to the real
+   * sampleSleepClock. A test seam — production callers leave it unset. */
+  sampleSleep?: SleepSampler;
 }
 
 /** What the gate decided and what the caller should do next. "approved"/"exempt": safe to
@@ -68,6 +73,10 @@ export interface GateResult {
    * change's failure, so its landing reports `main_red` — pin kept, no strike, and none of the
    * error streak a dead reviewer backend feeds (the batch's own attribution says the same). */
   mainRed?: boolean;
+  /** The pre-check's every attempt spanned a host sleep, so nothing judged the tree
+   * ("failed"): not this change's failure either — its landing keeps the pin for a re-land
+   * with no strike, and the detail names the sleep (BUGS.md 2026-09-30). */
+  unverified?: boolean;
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
@@ -230,6 +239,7 @@ export async function reviewAheadOfMain(
       wt,
       config,
       ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+      ctx.sampleSleep ?? sampleSleepClock,
     );
   const preCheck = await runGateCheck();
   if (preCheck) {
@@ -246,12 +256,28 @@ export async function reviewAheadOfMain(
       // first failure stands.
       const retry = await runGateCheck();
       if (retry?.outcome.status === "passed") {
-        const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
-        warnEvent(root, role, `gate check failed then passed on retry — flaky: ${flaky}`);
+        // When the failed run spanned a host sleep, the pass says the tree is fine and the
+        // sleep is the story — not a flaky test (BUGS.md 2026-09-30): the digest clusters
+        // these warnings, and a sleep is weather, not an assertion to hunt.
+        if (unverifiedTreeOutcome(outcome)) {
+          warnEvent(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
+        } else {
+          const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
+          warnEvent(root, role, `gate check failed then passed on retry — flaky: ${flaky}`);
+        }
         outcome = retry.outcome;
       } else if (retry?.outcome.status === "failed") {
         outcome = retry.outcome;
       }
+    }
+    if (outcome.status === "failed" && unverifiedTreeOutcome(outcome)) {
+      // The run spanned a host sleep past the tolerance and no clean attempt judged the tree
+      // (runScopedBuildCheck already retried once): nothing here is the change's failure, so
+      // the gate attributes nothing — it keeps the commit and reports the sleep, and the
+      // landing path keeps the pin for a re-land (BUGS.md 2026-09-30).
+      const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, "the tree is unverified");
+      warnEvent(root, role, `${detail}; keeping the commit for a re-land`);
+      return { decision: "failed", detail, unverified: true };
     }
     if (outcome.status === "failed") {
       const reasons = checkFailureReasons(check, outcome);

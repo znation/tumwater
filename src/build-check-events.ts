@@ -94,6 +94,16 @@ export function sleptPhrase(label: string, sleptMs: number, proceeding: string):
   return `${label} ran while the host slept ${secs}s mid-run; ${proceeding}`;
 }
 
+/** Did this outcome make no verdict about the tree? runScopedBuildCheck records that verdict-
+ * less shape explicitly (`unverified: true`) at the merge scopes; a gate-scope failure carries
+ * only the run's own sleep evidence (BuildCheckRun.sleptMs), so both spellings count. The
+ * consumers that attribute a red — review.ts's gate, landing-core.ts's attribution, the
+ * red-main baseline — ask this instead of re-deriving the evidence, so the attribution policy
+ * cannot drift between them (BUGS.md 2026-09-30). */
+export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: BuildCheckRun }): boolean {
+  return outcome.unverified === true || (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+}
+
 /** The one-line warning for an environmental check skip, keyed on why the check could not run.
  * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
  * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in

@@ -8,6 +8,7 @@ import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
 import type { BuildCheckOutcome } from "./build-check.js";
+import { unverifiedTreeOutcome } from "./build-check-events.js";
 import { checkFailureReasons } from "./build-check-report.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { mainTipVerdict } from "./main-red.js";
@@ -285,6 +286,13 @@ async function landingCheckRed(
   wt: string,
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
 ): Promise<TickResult> {
+  // An unverified red made no verdict about the tree — the run spanned a host sleep (BUGS.md
+  // 2026-09-30) — so it is not a strike against the patch: the pin stays for the next attempt
+  // and the lastError names the sleep instead of a test failure.
+  if (unverifiedTreeOutcome(red.outcome)) {
+    ctx.state.lastError = `merge failed: ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    return "merge_blocked";
+  }
   const head = await headOf(wt, "HEAD");
   const patch = await patchId(wt, ctx.mainBranch, head);
   const prior = ctx.state.landingCheckFailures;
@@ -316,6 +324,15 @@ export async function attributeRedCheck(
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
   state: LoopState,
 ): Promise<TickResult> {
+  // An unverified red — a run that spanned a host sleep, the tree never judged — is not the
+  // change's failure and not a strike: keep the ref for recovery's re-land and name the sleep
+  // (BUGS.md 2026-09-30). Main's own verdict is beside the point: the attribution question is
+  // only live when the check produced a verdict.
+  if (unverifiedTreeOutcome(red.outcome)) {
+    state.lastError = `${label}: ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    saveLoopState(ctx.root, state);
+    return "merge_blocked";
+  }
   const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
   if (main.status === "red") {
     state.lastError = `${label} failed: main ${shortSha(main.sha)} is red — not this change's failure`;
