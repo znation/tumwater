@@ -21,8 +21,8 @@ import {
   currentBranch,
   gitTry,
   hasCommits,
+  branchesPhrase,
   isGitRepo,
-  listBranches,
   repoToplevel,
 } from "./git.js";
 import {
@@ -119,7 +119,7 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
   const configured = config?.baseBranch;
   if (configured !== undefined) {
     if (!(await branchExists(root, configured))) {
-      const existing = (await listBranches(root)).join(", ") || "none";
+      const existing = await branchesPhrase(root);
       return {
         level: "fail",
         detail: `repo at ${toplevel} — configured baseBranch ${configured} does not exist (branches: ${existing})`,

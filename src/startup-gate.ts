@@ -3,7 +3,7 @@ import path from "node:path";
 import { loadConfigSafe } from "./config.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { findOnPath } from "./files.js";
-import { GIT_MISSING_MESSAGE, branchExists, currentBranch, hasCommits, isGitRepo, listBranches } from "./git.js";
+import { GIT_MISSING_MESSAGE, branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "./git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -96,7 +96,7 @@ async function resolveMainBranch(
   const explicit = branchArg ?? config.baseBranch ?? null;
   if (explicit !== null) {
     if (!(await branchExists(root, explicit))) {
-      const existing = (await listBranches(root)).join(", ") || "none";
+      const existing = await branchesPhrase(root);
       return { problem: `branch ${explicit} does not exist (branches: ${existing})` };
     }
     return { mainBranch: explicit };

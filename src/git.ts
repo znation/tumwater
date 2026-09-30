@@ -196,6 +196,13 @@ export async function listBranches(root: string): Promise<string[]> {
   return gitLines(await gitTry(root, "for-each-ref", "--format=%(refname:short)", "refs/heads"));
 }
 
+/** The phrase a "branch does not exist" failure names: the repo's local branches joined with
+ * commas, or "none" when the repo has none. The one wording doctor's repo check and the
+ * startup gate's main-branch resolution share, so the fix they surface cannot drift. */
+export async function branchesPhrase(root: string): Promise<string> {
+  return (await listBranches(root)).join(", ") || "none";
+}
+
 /** The git directory backing `dir`'s checkout, resolved from files without spawning git:
  * a `.git` directory (primary checkout) or the target of a `gitdir: <path>` pointer file (a
  * linked worktree — the harness itself can run from one, as its own role worktrees do).

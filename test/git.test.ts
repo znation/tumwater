@@ -16,6 +16,7 @@ import {
   isDirty,
   isGitRepo,
   isMergedInto,
+  branchesPhrase,
   listBranches,
   patchId,
   readBranchHead,
@@ -768,6 +769,15 @@ test("branchExists and listBranches answer from the refs, not the checkout", asy
   const empty = tmpdir();
   sh(empty, "git", "init", "-b", "main");
   assert.deepEqual(await listBranches(empty), []);
+});
+
+test('branchesPhrase is the comma-joined list a failed branch lookup names, "none" when bare', async () => {
+  const bare = tmpdir();
+  sh(bare, "git", "init", "-b", "main");
+  assert.equal(await branchesPhrase(bare), "none", "no branches yet → the literal none");
+  const repo = makeRepo();
+  sh(repo, "git", "branch", "side");
+  assert.equal(await branchesPhrase(repo), "main, side");
 });
 
 test("concurrent ensureWorktree calls serialize: the queued call adopts the worktree the first made", async () => {
