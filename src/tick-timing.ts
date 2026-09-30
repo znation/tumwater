@@ -6,6 +6,7 @@ import type { LoopState } from "./loop-state.js";
 import type { InFlightLanding } from "./landing-pipeline.js";
 import { landingStatePath } from "./paths.js";
 import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
+import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { BackendFailureKind } from "./pi.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
@@ -193,6 +194,50 @@ export function pollErrorStorm(
       roles: next.roles,
       cause: next.key,
       ...(knob ? { knob } : {}),
+    });
+  }
+  return next;
+}
+
+/** One poll of the fleet-wide wide-shallow storm alarm (src/failure-spread.ts): gather each
+ * runner's latest provider-failure observations — the same two the fleet hold reads, the
+ * director's included, since its failures are the fleet's evidence too — step the pure
+ * reducer, and log exactly one warning per episode: on the quiet→active crossing (and again
+ * when a DIFFERENT kind becomes the episode while one is sounding, the reducer's new-episode
+ * rule), naming the failure count, the kind, the window, and the roles behind it. The wiring
+ * keys its log off active/kind, not object identity — `recent` moves almost every poll, so
+ * unlike the hold's poll there is no prev pass-through to compare. Exported as a unit-test
+ * seam, like pollFleetHold above. */
+export function pollFailureSpread(
+  root: string,
+  prev: FailureSpread,
+  runners: readonly HoldInputs[],
+  now: number,
+): FailureSpread {
+  const observations: HoldObservation[] = runners.flatMap((r) => [
+    ...(r.lastRateLimit
+      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at }]
+      : []),
+    ...(r.lastBackendFailure
+      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      : []),
+  ]);
+  const next = failureSpread(prev, observations, now);
+  if (next.active && (!prev.active || next.kind !== prev.kind)) {
+    const episode = next.recent.filter((o) => o.kind === next.kind);
+    const roles = [...new Set(episode.map((o) => o.role))].sort();
+    logEvent(root, {
+      loop: "harness",
+      type: "warning",
+      message:
+        `failure spread — ${episode.length} provider failures of one kind (${next.kind}) within ` +
+        `${Math.round(FAILURE_SPREAD_WINDOW_MS / 60_000)} min across ${roles.length} roles ` +
+        `(wide-shallow storm: no role's streak and no close coincidence explains it) — ` +
+        roles.join(", "),
+      kind: next.kind,
+      roles,
+      windowMs: FAILURE_SPREAD_WINDOW_MS,
+      count: episode.length,
     });
   }
   return next;

@@ -41,6 +41,7 @@ import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeploy.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure-spread.js";
 import type { LaunchServicesWatch } from "./launch-services.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
@@ -49,6 +50,7 @@ import {
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
   pollErrorStorm,
+  pollFailureSpread,
   pollFleetHold,
   runTimedRoleTick,
   sleepInterruptible,
@@ -214,6 +216,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // storm's shared cause and roles, like the failure hold's own memory. In memory only: a restart
   // mid-storm can re-log at most one warning.
   let errorStormState: ErrorStorm = ERROR_STORM_QUIET;
+  // The fleet-wide wide-shallow storm alarm's state across polls (src/failure-spread.ts) —
+  // the window's recent failures and whether the alarm is sounding, like the two states
+  // above. In memory only: a restart mid-storm can re-log at most one warning.
+  let failureSpreadState: FailureSpread = FAILURE_SPREAD_QUIET;
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
   // resolved its target branch at startup, and a human checking out something else mid-run
   // must not silently change what the fleet merges into — every role worktree is based on
@@ -339,6 +345,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // to diff 14 streak lines. Observational only: it gates nothing, so unlike the failure
       // hold above there is no re-open event — the members' own recoveries tell that story.
       errorStormState = pollErrorStorm(root, errorStormState, runners);
+
+      // Fleet-wide wide-shallow storm alarm (src/failure-spread.ts): when many roles each
+      // fail a few times on one provider failure kind, the streak bar needs one role deep,
+      // the error storm needs several roles deep, and the hold needs the failures close
+      // together — this counts raw failures of one kind across roles in a rolling window,
+      // so a degraded backend that fails the fleet widely and shallowly still names itself.
+      // Observational only, like the error storm: it gates nothing.
+      failureSpreadState = pollFailureSpread(root, failureSpreadState, runners, now);
 
       // Self-redeploy (src/redeploy.ts): with main's head in hand, let the policy observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's
