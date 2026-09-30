@@ -178,34 +178,68 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     ].join("");
   }
 
+  // view-scaffold:start
   // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
   function viewHead(title, blurb, pickerId, choices, current, refreshId) {
-    return "<div class='view-head'><div><h1>" + esc(title) + "</h1><p>" + esc(blurb) + "</p></div><div class='toolbar'>" +
+    // A dropped blurb renders as no subtitle at all, never the string "undefined".
+    return "<div class='view-head'><div><h1>" + esc(title) + "</h1>" +
+      (blurb ? "<p>" + esc(blurb) + "</p>" : "") + "</div><div class='toolbar'>" +
       "<div class='seg' id='" + pickerId + "'>" + choices.map((n) => "<button type='button' data-days='" + n + "' class='" +
         (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + "</div>" +
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
   }
-  function markWindow(pickerId, current) {
-    markActive($(pickerId), "days", current);
+  // One day-window view, the shape Usage and Failures share: a lazily built panel (shared head
+  // with a window picker and Refresh, body holding a Loading… placeholder until the first
+  // render), the picker's active choice re-marked on every fetch, a GET of the view's endpoint
+  // at ?days=<days> rendered into the body — with an error panel naming the view on failure —
+  // optional 60-second throttling (Usage's event-driven refetch), and click wiring for the
+  // picker's data-days buttons (persisted through recall/store) and the Refresh button. The
+  // views differ only in endpoint, body renderer, and titles.
+  function windowView(o) {
+    let days = Number(recall(o.key)) || o.defaultDays;
+    let fetchedAt = 0;
+    async function fetchView(throttled) {
+      if (throttled && Date.now() - fetchedAt < 60000) return;
+      fetchedAt = Date.now();
+      const panel = $(o.panelId);
+      if (!panel.dataset.built) {
+        panel.dataset.built = "1";
+        panel.innerHTML = viewHead(o.title, o.blurb, o.pickerId, o.choices, days, o.refreshId) +
+          "<div id='" + o.bodyId + "'><div class='empty'>Loading…</div></div>";
+      }
+      markActive($(o.pickerId), "days", days);
+      try {
+        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days)));
+      } catch (e) {
+        // Name the view, status, and server error rather than a bare "unavailable".
+        $(o.bodyId).innerHTML = errorPanel(o.errorTitle, e, "card empty");
+      }
+    }
+    function wireClicks(container) {
+      container.addEventListener("click", (ev) => {
+        const b = clickClosest(ev, "[data-days]");
+        if (b) {
+          days = Number(b.dataset.days);
+          store(o.key, String(days));
+          fetchView();
+          return;
+        }
+        if (clickClosest(ev, "#" + o.refreshId)) fetchView();
+      });
+    }
+    return { fetch: fetchView, wireClicks };
   }
 
-  let usageDays = Number(recall("usage-days")) || 14;
-  let usageFetchedAt = 0;
-  async function fetchReport(throttled) {
-    if (throttled && Date.now() - usageFetchedAt < 60000) return;
-    usageFetchedAt = Date.now();
-    const panel = $("report");
-    if (!panel.dataset.built) {
-      panel.dataset.built = "1";
-      panel.innerHTML = viewHead("Usage", "What the fleet produced and what it cost, per day and per loop.", "usagewindow", [7, 14, 30, 90], usageDays, "usagerefresh") +
-        "<div id='usagebody'><div class='empty'>Loading…</div></div>";
-    }
-    markWindow("usagewindow", usageDays);
-    try {
-      const d = await getJson("/api/report?days=" + usageDays);
+  const usage = windowView({
+    panelId: "report", title: "Usage", bodyId: "usagebody",
+    blurb: "What the fleet produced and what it cost, per day and per loop.",
+    pickerId: "usagewindow", choices: [7, 14, 30, 90], refreshId: "usagerefresh",
+    key: "usage-days", defaultDays: 14, errorTitle: "Usage report unavailable",
+    endpoint: (days) => "/api/report?days=" + days,
+    render: (d) => {
       const block = (title, svg) => "<section class='card chart-card'><header class='card-head'><h2>" + esc(title) +
         "</h2><span class='muted'>per day</span></header><div class='chart'>" + svg + "</div></section>";
-      $("usagebody").innerHTML = "<div class='stats six'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
+      return "<div class='stats six'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
         // The truncation note rides the window caption, hedged the same way the CLI and TUI
@@ -213,51 +247,30 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         // the window, so the sentence stays true whenever it prints.
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
           (!d.coversFullWindow ? " · oldest retained event lies inside this window; older events may have rotated out" : "") + "</p>" : "");
-    } catch (e) {
-      // Name the endpoint, status, and server error rather than a bare "unavailable".
-      $("usagebody").innerHTML = errorPanel("Usage report unavailable", e, "card empty");
-    }
-  }
+    },
+  });
 
-  let failDays = Number(recall("fail-days")) || 14;
-  async function fetchFailures() {
-    const panel = $("failures");
-    if (!panel.dataset.built) {
-      panel.dataset.built = "1";
-      panel.innerHTML = viewHead("Failures", "What went wrong, where, and how often — the digest the telemetry loop reads.", "failwindow", [7, 14, 30], failDays, "failrefresh") +
-        "<div id='failbody'><div class='empty'>Loading…</div></div>";
-    }
-    markWindow("failwindow", failDays);
-    try {
-      const d = await getJson("/api/failures?days=" + failDays);
+  const failures = windowView({
+    panelId: "failures", title: "Failures", bodyId: "failbody",
+    blurb: "What went wrong, where, and how often — the digest the telemetry loop reads.",
+    pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
+    key: "fail-days", defaultDays: 14, errorTitle: "Failure digest unavailable",
+    endpoint: (days) => "/api/failures?days=" + days,
+    render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");
-      $("failbody").innerHTML = md.trim()
+      return md.trim()
         ? "<article class='card md'>" + renderMarkdown(md, true) + "</article>"
         : "<div class='card empty'><strong>No failure digest</strong>Nothing has been recorded in this window.</div>";
-    } catch (e) {
-      $("failbody").innerHTML = errorPanel("Failure digest unavailable", e, "card empty");
-    }
-  }
+    },
+  });
 
-  document.getElementById("report").addEventListener("click", (ev) => {
-    const b = clickClosest(ev, "[data-days]");
-    if (b) {
-      usageDays = Number(b.dataset.days);
-      store("usage-days", String(usageDays));
-      fetchReport();
-      return;
-    }
-    if (clickClosest(ev, "#usagerefresh")) fetchReport();
-  });
-  document.getElementById("failures").addEventListener("click", (ev) => {
-    const b = clickClosest(ev, "[data-days]");
-    if (b) {
-      failDays = Number(b.dataset.days);
-      store("fail-days", String(failDays));
-      fetchFailures();
-      return;
-    }
-    if (clickClosest(ev, "#failrefresh")) fetchFailures();
-  });
+  usage.wireClicks(document.getElementById("report"));
+  failures.wireClicks(document.getElementById("failures"));
+
+  // Named delegates gui-client-boot.ts's view routing calls — its tests inject stand-ins for
+  // exactly these names, so the cross-chunk seam stays "these two functions exist".
+  function fetchReport(throttled) { return usage.fetch(throttled); }
+  function fetchFailures() { return failures.fetch(); }
+  // view-scaffold:end
 `;

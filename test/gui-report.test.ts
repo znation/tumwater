@@ -12,7 +12,7 @@ import { atLocalTs as atNoon, dayKey } from "./oracles.js";
 import { withGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { clientScope } from "./gui-client-scope.js";
+import { clientScope, iconStub } from "./gui-client-scope.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -133,8 +133,8 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   // Both views have a container and a sidebar link; the window pickers choose the days.
   assert.match(GUI_PAGE, /<section id="report" class="view" aria-label="Usage" hidden><\/section>/);
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
-  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=" \+ usageDays\)/);
-  assert.match(GUI_PAGE, /getJson\("\/api\/failures\?days=" \+ failDays\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days\) => "\/api\/report\?days=" \+ days/);
+  assert.match(GUI_PAGE, /endpoint: \(days\) => "\/api\/failures\?days=" \+ days/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The fleet view's "today" tiles read a one-day report, refreshed on new events.
@@ -274,4 +274,46 @@ test("the dashboard page abbreviates millions with M, in lockstep with compactTo
   for (const n of [0, 500, 9_999, 10_000, 12_345, 999_999, 1_000_000, 13_820_300]) {
     assert.equal(fmtTokens(n), compactTokens(n), `page and compactTokens agree on ${n}`);
   }
+});
+
+test("the lazily built Usage/Failures heads carry their blurbs — a dropped blurb never renders as \"undefined\"", async () => {
+  // Regression (2026-09-30): the windowView configs initially omitted blurb, so the lazy-built
+  // view heads rendered "<p>undefined</p>" where main showed their descriptive subtitles. The
+  // delegates are driven here against a stub DOM so the built head is observed, not guessed.
+  const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
+  for (const id of ["report", "failures", "usagebody", "failbody", "usagewindow", "failwindow"]) {
+    els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+  }
+  const scope = clientScope<{ fetchReport(throttled?: boolean): Promise<void>; fetchFailures(): Promise<void>; viewHead(title: string, blurb?: string, pickerId?: string, choices?: number[], current?: number, refreshId?: string): string }>(
+    ["view-scaffold"], ["fetchReport", "fetchFailures", "viewHead"], {
+      document: { getElementById: (id: string) => els[id] ?? null },
+      $: (id: string) => els[id] ?? null,
+      markActive: () => {},
+      recall: () => null,
+      store: () => {},
+      // The fetch itself rejects: the head is built before the body renders, so the assertion
+      // sees the lazy-built head while the failure path exercises errorPanel wiring too.
+      getJson: async () => { throw new Error("/api/report failed: HTTP 503"); },
+      errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+      clickClosest: () => null,
+      renderMarkdown: (md: string) => md,
+      icon: iconStub,
+    });
+
+  await scope.fetchReport();
+  assert.match(els.report!.innerHTML, /What the fleet produced and what it cost, per day and per loop\./,
+    "the Usage head's subtitle survives the windowView extraction");
+  assert.doesNotMatch(els.report!.innerHTML, /undefined/);
+  assert.match(els.usagebody!.innerHTML, /Usage report unavailable/, "the error path still names the view");
+
+  await scope.fetchFailures();
+  assert.match(els.failures!.innerHTML, /What went wrong, where, and how often — the digest the telemetry loop reads\./,
+    "the Failures head's subtitle survives the windowView extraction");
+  assert.doesNotMatch(els.failures!.innerHTML, /undefined/);
+
+  // And viewHead itself renders a dropped blurb as no subtitle at all, never the string.
+  const head = scope.viewHead("T", undefined, "p", [7], 7, "r");
+  assert.doesNotMatch(head, /undefined/);
+  assert.doesNotMatch(head, /<p>/, "no blurb means no subtitle element");
+  assert.match(scope.viewHead("T", "b", "p", [7], 7, "r"), /<p>b<\/p>/);
 });
