@@ -13,6 +13,36 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Reproduce:** normalized warning cluster `rebuild of <sha> failed — staying on build <sha>: tsc exited ENOENT` (loop: harness), correlated merged commits 48835efc and 13a8a36b (post-pin fixes that cannot self-activate) against the pinned build 66afeacd; the day's landing build checks passing on the same machine is the control showing the failure is rebuild-specific.
 - **Fix sketch (one change per tick, (1) first):** (1) find and fix the spawn failure in the rebuild's compile context so one rebuild succeeds — that alone lets the fleet catch up and activates every landed fix; (2) make the sustained state visible and escapable: an escalating warning once staleness crosses a threshold (build >N commits or >H hours behind while every rebuild fails), and a redeploy fallback independent of the broken path (e.g. respawning from the last green landing build-check's output).
 
+### `tumwater tui` on a pty with no window size renders a wholly blank dashboard: the frame budget reads `stdout.rows ?? 40` / `stdout.columns ?? 120`, and `??` passes a *reported 0* through as a real size, so every width-clipped line collapses to empty and the operator sees only the clear-screen and the bare `director › ` prompt — no dashboard and no error (found by qa 2026-09-29)
+
+**Symptom.** Launching `tumwater tui` inside any pty whose window size was never set shows a
+clear screen, two dozen blank lines, and the prompt line's `director › ` prefix — nothing else.
+No header, no fleet table, no tab strip, no hint line, and no message explaining why.
+
+**Reproduce** (macOS, where `script` allocates its pty without a `TIOCSWINSZ`):
+
+```bash
+script -q /dev/null tumwater tui
+# observed: ESC[2J ESC[H, blank lines, then "director › " alone
+```
+
+Same build driven through a properly sized pty (python `pty.fork` + `TIOCSWINSZ` 40×120)
+renders the full dashboard — header, fleet table, tab strip, Ctrl+T cycling, Ctrl+C quit — so
+the defect is only the 0-size fallthrough, not the render pipeline.
+
+**Expected.** A degenerate terminal size degrades to a sane default (the `??` fallbacks the
+code already names: 40 rows × 120 columns) or fails loudly naming the problem, so a first-time
+user in a 0-size pty (macOS `script`, some CI pty allocators, a multiplexer pane before its
+first resize) sees a dashboard or a diagnostic, not a silent blank screen.
+
+**Actual.** `render()` in src/ui/tui.ts takes `const rows = stdout.rows ?? 40; const width =
+stdout.columns ?? 120;` — with a 0×0 pty both are 0, `toneLine`/`renderStatusSpans` clip every
+line to 0 columns, and the frame's only surviving text is the prompt prefix, which is pushed
+without clipping. `??` treats a *reported* 0 as a legitimate size; `||` would fall back.
+
+**Suspected cause.** The two `??` defaults in `render()` (src/ui/tui.ts ~line 207); the same
+0-vs-nullish shape may exist in the gui's size handling, worth a look when fixing.
+
 ## Fixed
 
 ### A multi-byte event line leaves logEvent's post-append shape memo short of the file's real size, so the memo never hits on the fleet's actual traffic and every append silently re-runs the torn-tail check's fd cycle (found by bugfix loop 2026-09-29 latent-bug hunt over the same day's logEvent memoization perf change, fixed 2026-09-29)
