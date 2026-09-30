@@ -43,9 +43,10 @@ The same scripts, with the same definitions, measured all three.
 4. **Comments are twice the OSS density in production code and about ten times it in tests,**
    for both authors: 42% (Tumwater) and 39% (Claude) of core production lines, against 19.5%.
 5. **Testing is at the level of the strictest baselines.** There are 2.4 test lines per
-   production line. Coverage is 99.7–99.9% of lines, 96.3–96.7% of branches and 97.8% of functions,
-   reached without a single coverage-ignore comment. graphql-js, the one baseline that enforces
-   100%, uses 67.
+   production line. Node's coverage table reports 99.65% of lines, 96.3% of branches and 97.8% of
+   functions, reached without a single coverage-ignore comment. graphql-js, the one baseline that
+   enforces 100%, uses 67. Node sometimes reads higher (99.90 / 96.7%), but that reading counts
+   code no process executed. Split by author, coverage is identical in every passing run.
 6. **Both authors commit in bigger pieces than human teams do.** The median commit changes 46
    lines for Tumwater and 100 for Claude, against 20.5 for the OSS baseline. Commit titles run
    about twice as long.
@@ -207,36 +208,53 @@ These measures cover the whole repository, because files and docs have no single
 
 Across the whole tumwater repository there are 2.42 test lines per production line.
 
-**Coverage of tumwater** comes from the unit tier (`npm run test:coverage`, 2,427 tests: 2,426
-passed and 1 skipped), run twice on `48213ce7`.
+**Coverage of tumwater** comes from the unit tier (`npm run test:coverage`, 2,427 tests) on
+`48213ce7`'s code. It was run ten times in a row with `run.sh --coverage=10` on 2026-09-30,
+with host load between 10 and 43. Two more runs kept their raw dumps for the check below.
 
-- **Node's own coverage table** reported 99.90% lines, 96.69% branches and 97.82% functions on the
-  first run, and 99.65 / 96.29 / 97.82% on the second.
-  - **The difference is almost entirely `orchestrator.js`:** 98.7% of its lines and 62.5% of its
-    branches on the first run, 87.2% and 32.3% on the second. Which of its paths run depends on
-    timing.
-  - **Node's line figure counts comment and blank lines inside code that ran as covered,** so it
-    reads high. Treat branches as the meaningful figure.
-- **By author**, from the second run's raw V8 data, merged across all 768 processes and mapped to
-  TypeScript lines through source maps (see [Method](#method)):
+- **Two of the ten runs failed,** both after the host's load average passed 40 (XProtect scanning,
+  a VM and the live fleet). Failed runs exercise different paths, so they're excluded from the
+  averages.
+  - In run 9, two lander tests hung for about 580 s each.
+  - In run 10, a failing `tumwater run` test leaked its orchestrator, which held the test file
+    open until the leaked process was killed. That's the `spawnCli().kill()` bug in BUGS.md.
+- **Per-author coverage doesn't vary between runs.** Across the 8 passing runs, every executable
+  line was covered in all of them or in none (zero lines flip), and no per-author percentage moves
+  by more than 0.01 points. Merged across all ~770 processes of each run and mapped to TypeScript
+  lines through source maps (see [Method](#method)):
 
   | | Tumwater | Claude |
   |---|---|---|
-  | Executable code lines covered | 99.2% | 99.5% |
-  | Branches covered | 95.6% | 95.1% |
-  | Functions covered | 98.0% | 97.4% |
-  | Core only: lines / branches / functions | 99.1 / 95.3 / 98.0% | 99.4 / 95.5 / 97.0% |
-  | `src/ui/` only: lines / branches / functions | 99.9 / 96.5 / 98.0% | 99.6 / 93.8 / 98.9% |
+  | Executable code lines covered | 99.22% | 99.47% |
+  | Branches covered | 95.57% | 95.11% |
+  | Functions covered | 97.99% | 97.39% |
+  | Core only: lines / branches / functions | 99.07 / 95.34 / 98.00% | 99.44 / 95.49 / 96.99% |
+  | `src/ui/` only: lines / branches / functions | 99.95 / 96.53 / 97.96% | 99.57 / 93.79 / 98.88% |
 
-  - **The merged totals agree with node's table.** They come to 99.38% of mapped lines, 95.45% of
-    branches and 97.82% of functions. Function coverage matches node exactly, and branches come in
-    under a point lower because the two merge processes differently.
-  - **`orchestrator.ts` is the largest source of uncovered lines for both authors** (61 of
-    Tumwater's 84, 13 of Claude's 20), inflated by the second run's timing.
-  - **Claude's weakest code is the new dashboard code.** `status-render.ts` and `fleet-alerts.ts`
-    account for most of its missed `src/ui/` branches; they landed the day before.
-  - **The weakest files overall are the entry points.** In node's table, `cli.js` has 53% branch
-    coverage, `orchestrator.js` 58% function coverage, and `cli-run.js` 74% branch coverage.
+- **Node's own table does vary, and its higher reading is wrong.** It alternates between two
+  readings; functions stay at 97.82% in both.
+  - **Low:** 99.65% lines and 96.28–96.29% branches, in 3 of the 8 passing runs.
+  - **High:** 99.90% lines and 96.70–96.72% branches, in the other 5.
+  - **The difference is `orchestrator.js`:** 87.2% of its lines and 32.3% of its branches in the
+    low reading, 98.7% and 62.5% in the high one.
+  - **The raw dumps show the high reading counts code that never ran.** I kept the dumps for one
+    run of each kind. In neither run did any process execute the lines the low reading lists as
+    uncovered (for example JS lines 190–194 and 240–252). The high reading counts them as covered
+    anyway, which points to the way node merges ~770 per-process dumps. The low reading matches the
+    raw data.
+- **Node's line figure also counts comment and blank lines inside code that ran.** Even its low
+  reading therefore sits above the 99.38% of executable lines that the merge above finds.
+  Branches are the more meaningful figure: 95.45% by that merge against node's 96.29%, because
+  the two merge processes differently. Function coverage matches node exactly.
+- **`orchestrator.ts` is the largest gap for both authors,** in every run: 61 of Tumwater's 84
+  uncovered code lines and 13 of Claude's 20. The unit tier doesn't reach those paths. The
+  live-orchestrator e2e tier, which isn't measured here, runs them.
+- **Claude's weakest code is the new dashboard code.** `status-render.ts` and `fleet-alerts.ts`
+  account for most of its missed `src/ui/` branches; they landed the day before.
+- **The weakest files overall are the entry points.** In node's low reading:
+  - `cli.js` has 53% branch coverage.
+  - `orchestrator.js` has 32% branch coverage and 58% function coverage.
+  - `cli-run.js` has 74% branch coverage.
 - **No coverage-ignore comments exist in tumwater's `src/`.**
 
 **Coverage of the baselines** wasn't measured, because that would mean installing and running
@@ -298,8 +316,9 @@ median of 40 contributors.
 - **This isn't a controlled comparison of models.** Claude sessions were a person steering on
   specific harness problems, while Tumwater's loops include maintenance roles.
 - **Tumwater's history is 41 days against the baselines' two years,** and its authors are software.
-- **Coverage varies between runs** (see `orchestrator.js` above), and the baselines' coverage is
-  declared, not measured.
+- **Node's coverage table alternates between two readings,** and the higher one is an artifact
+  (see [Testing and coverage](#testing-and-coverage)). Two of ten coverage runs failed under host
+  load and are excluded. The baselines' coverage is declared, not measured.
 
 ## Method
 
@@ -315,11 +334,12 @@ Everything above comes from [docs/code-metrics/run.sh](code-metrics/run.sh). To 
 2. Run the pipeline against it:
 
    ```bash
-   docs/code-metrics/run.sh .claude/worktrees/metrics-48213ce7 <data-dir> --coverage
+   docs/code-metrics/run.sh .claude/worktrees/metrics-48213ce7 <data-dir> --coverage=10
    ```
 
-   - `--coverage` runs the unit suite under `NODE_V8_COVERAGE`, which takes about a minute. The
-     suite refuses to run in a checkout that a live fleet runs from.
+   - `--coverage=10` runs the unit suite ten times, one after another, under `NODE_V8_COVERAGE`.
+     Each run takes about a minute. The suite refuses to run in a checkout that a live fleet runs
+     from.
    - The baselines in [oss-repos.tsv](code-metrics/oss-repos.tsv) are cloned (about 630 MB) and
      pinned by commit.
    - Nothing from the baselines is installed or executed; they are only parsed and read with
@@ -333,7 +353,8 @@ The stages:
 | [summary.cjs](code-metrics/summary.cjs) | the repository breakdown |
 | [eslint-complexity.config.mjs](code-metrics/eslint-complexity.config.mjs) + [eslint-cc.cjs](code-metrics/eslint-cc.cjs) | the ESLint cross-check |
 | [blame.py](code-metrics/blame.py) | per-line authorship and commit classes |
-| [coverage.cjs](code-metrics/coverage.cjs) | per-TypeScript-line coverage from raw V8 data |
+| [coverage.cjs](code-metrics/coverage.cjs) | per-TypeScript-line coverage from one run's raw V8 data |
+| [coverage-runs.cjs](code-metrics/coverage-runs.cjs) | the per-author coverage split for each run, averaged across runs |
 | [authors.cjs](code-metrics/authors.cjs) | the Tumwater / Claude split (`SRC_SCOPE=all\|core\|ui`) |
 | [history.py](code-metrics/history.py) | commit-history metrics, tumwater and baselines |
 | [compare.cjs](code-metrics/compare.cjs) | the three-way tables and branch points by kind |
@@ -368,6 +389,7 @@ Definitions:
   - The raw V8 dumps of every process in one suite run are merged. A block counts as covered if,
     in any process, the innermost range containing it has a nonzero count.
   - Lines follow c8's semantics, branches and functions node's.
+  - Only runs whose suite passed are averaged.
   - JavaScript positions map to TypeScript lines through source maps compiled separately. That
     output is byte-identical to `dist/` apart from the trailing map comment.
 - **Baseline paths:**

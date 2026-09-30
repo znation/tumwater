@@ -2,9 +2,9 @@
 // (human-directed Claude Code sessions), per blame.py.
 //
 // Usage: SRC_SCOPE=all|core|ui node authors.cjs <data-dir>
-//   reads <data-dir>/metrics.json (analyze.cjs), blame.json (blame.py), and — if present —
-//   coverage-ts.json (coverage.cjs). SRC_SCOPE picks the production code compared: all of src/,
-//   core (src/ without src/ui/), or ui (src/ui/ only, where much of Claude's share is CSS).
+//   reads <data-dir>/metrics.json (analyze.cjs) and blame.json (blame.py). SRC_SCOPE picks the
+//   production code compared: all of src/, core (src/ without src/ui/), or ui (src/ui/ only,
+//   where much of Claude's share is CSS). The coverage split is coverage-runs.cjs.
 //
 // Lines and per-line markers go to the line's author. A function goes to the author of the
 // majority of the code lines in its span; "pure" functions are >= 90% one author.
@@ -14,8 +14,6 @@ const crypto = require("crypto");
 const DATA = path.resolve(process.argv[2]);
 const M = JSON.parse(fs.readFileSync(path.join(DATA, "metrics.json"), "utf8"));
 const BL = JSON.parse(fs.readFileSync(path.join(DATA, "blame.json"), "utf8")).files;
-const covPath = path.join(DATA, "coverage-ts.json");
-const COV = fs.existsSync(covPath) ? JSON.parse(fs.readFileSync(covPath, "utf8")) : null;
 const who = (c) => (c === "tumwater" ? "tumwater" : c.startsWith("claude") ? "claude" : "human");
 const A = ["tumwater", "claude"];
 const authorOf = (file, line) => { const b = BL[file]; return b && b.cls[line] ? who(b.cls[line]) : "unknown"; };
@@ -111,25 +109,6 @@ for (const f of srcFiles) {
 }
 console.log(`  src files ≥80% tumwater ${own.tumwater}, ≥80% claude ${own.claude}, mixed ${own.mixed}`);
 console.log("  most-Claude src files:", fileOwn.filter((x) => x[2] > 100).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([f, s, n]) => `${f}(${pc(s * n, n)} of ${n})`).join(" "));
-
-// ---------- coverage ----------
-if (COV) {
-  hdr("Coverage of src, by author of the line (merged V8, source-mapped)");
-  const cv = Object.fromEntries(A.map((a) => [a, { l: 0, lc: 0, b: 0, bc: 0, fn: 0, fc: 0 }]));
-  const missL = { tumwater: {}, claude: {} }, missB = { tumwater: {}, claude: {} };
-  for (const [file, c] of Object.entries(COV)) {
-    const f = fileIdx.get(file);
-    if (!f || !inScope(f.cat)) continue;
-    for (const [ln, covd] of c.lines) { if (f.cls[ln] !== "c") continue; const a = authorOf(file, ln); if (!cv[a]) continue; cv[a].l++; if (covd) cv[a].lc++; else missL[a][file] = (missL[a][file] || 0) + 1; }
-    for (const [ln, covd] of c.branches) { if (ln == null) continue; const a = authorOf(file, ln); if (!cv[a]) continue; cv[a].b++; if (covd) cv[a].bc++; else missB[a][file] = (missB[a][file] || 0) + 1; }
-    for (const [ln, covd] of c.funcs) { if (ln == null) continue; const a = authorOf(file, ln); if (!cv[a]) continue; cv[a].fn++; if (covd) cv[a].fc++; }
-  }
-  row("executable TS code lines covered", A.map((a) => `${pc(cv[a].lc, cv[a].l)} (${cv[a].l - cv[a].lc} miss)`));
-  row("branches covered", A.map((a) => `${pc(cv[a].bc, cv[a].b)} (${cv[a].b - cv[a].bc} miss)`));
-  row("functions covered", A.map((a) => `${pc(cv[a].fc, cv[a].fn)} (${cv[a].fn - cv[a].fc} miss)`));
-  const top = (m) => Object.entries(m).sort((x, y) => y[1] - x[1]).slice(0, 6).map(([k, v]) => `${k}(${v})`).join(" ");
-  for (const a of A) console.log(`  uncovered ${a} lines: ${top(missL[a])}\n  uncovered ${a} branches: ${top(missB[a])}`);
-}
 
 // ---------- duplication ----------
 hdr("Duplicated code lines (exact 50-token windows spanning ≥5 lines)");

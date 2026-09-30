@@ -107,7 +107,9 @@ def oss(clones, tsv, out):
         name, _url, _tag, sha, prod_root = line.rstrip("\n").split("\t")
         root = f"{clones}/{name}"
         t = int(subprocess.run(["git", "-C", root, "log", "-1", "--format=%at", sha], capture_output=True, text=True, check=True).stdout)
-        since = D.datetime.fromtimestamp(t - 2 * 365 * 86400).strftime("%Y-%m-%d")
+        # an exact timestamp: a bare date makes git fill in the current time of day, so the window
+        # (and the counts) would shift with when the script runs
+        since = D.datetime.fromtimestamp(t - 2 * 365 * 86400, D.timezone.utc).strftime("%Y-%m-%d %H:%M:%S +0000")
 
         def kind(f, prod_root=prod_root):
             if EXCLUDE.search(f) or f.endswith(".d.ts") or not CODE.search(f):
@@ -117,7 +119,7 @@ def oss(clones, tsv, out):
             return "prod" if f.startswith(prod_root) and re.search(r"\.([cm]?ts|tsx)$", f) else None
         commits = [c for c in read_log(root, since) if not BOT.search(c["an"] + " " + c["ae"])]
         res[name] = shape(commits, kind)
-        res[name]["window"] = f"{since} → {D.datetime.fromtimestamp(t).strftime('%Y-%m-%d')}"
+        res[name]["window"] = f"{since} → {D.datetime.fromtimestamp(t, D.timezone.utc).strftime('%Y-%m-%d %H:%M:%S +0000')}"
     json.dump(res, open(out, "w"), indent=1)
     return res
 

@@ -7,7 +7,7 @@ projects pinned in [oss-repos.tsv](oss-repos.tsv).
 
 ```bash
 git worktree add --detach .claude/worktrees/metrics-48213ce7 48213ce7
-docs/code-metrics/run.sh .claude/worktrees/metrics-48213ce7 <data-dir> --coverage
+docs/code-metrics/run.sh .claude/worktrees/metrics-48213ce7 <data-dir> --coverage=10
 ```
 
 `run.sh` documents its arguments, and each script's header gives its inputs, outputs and
