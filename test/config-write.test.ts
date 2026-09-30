@@ -5,7 +5,7 @@ import path from "node:path";
 import { applyConfigRequest, setDailyBudgetUsd } from "../src/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 
 // Tests for src/config-write.ts — the harness-mediated write paths split out of src/config.ts
 // (the budget setter behind both dashboards, and the director's config request file). Tests for
@@ -64,8 +64,7 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
 // byte-for-byte intact, and the atomic writer's tmp file does not linger. Skipped under root,
 // where chmod cannot stop the write (the success path already covers the ordinary case).
 test("setDailyBudgetUsd reports a failed write and leaves the config untouched", (t) => {
-  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
-  if (asRoot) {
+  if (runningAsRoot()) {
     t.skip("chmod cannot stop a root process");
     return;
   }
@@ -217,8 +216,7 @@ test("applyConfigRequest survives structurally malformed requests without throwi
 // commitAll's `git add -A` and reach a review gate), and the file is still there for a retry.
 // Skipped under root, where chmod cannot stop the unlink (the success path already covers it).
 test("a request whose unlink fails is still applied, with the failed deletion surfaced as the error", (t) => {
-  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
-  if (asRoot) {
+  if (runningAsRoot()) {
     t.skip("chmod cannot stop a root process");
     return;
   }
@@ -242,8 +240,7 @@ test("a request whose unlink fails is still applied, with the failed deletion su
 // The ??= precedence: a request that failed validation AND could not be deleted reports the
 // validation problem — the reason the caller acts on — never the cleanup noise.
 test("a validation failure outranks a failed deletion in the surfaced error", (t) => {
-  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
-  if (asRoot) {
+  if (runningAsRoot()) {
     t.skip("chmod cannot stop a root process");
     return;
   }

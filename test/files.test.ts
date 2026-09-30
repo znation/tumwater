@@ -11,7 +11,7 @@ import {
   statOrNull,
   writeTextAtomic,
 } from "../src/files.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { failRenameSyncOn, vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
@@ -185,7 +185,7 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   // A read-only directory makes rmSync fail with EACCES; the walk must skip that file,
   // still prune what it can, and count only what was actually removed. Under root the
   // permission is bypassed — then the file IS pruned, which also satisfies "no crash".
-  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  const asRoot = runningAsRoot();
   const dir = tmpdir();
   const lockedDir = path.join(dir, "locked");
   fs.mkdirSync(lockedDir);

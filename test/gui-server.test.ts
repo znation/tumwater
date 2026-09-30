@@ -15,7 +15,7 @@ import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/ui/gui.js";
 import { startLocalGui } from "./gui-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
@@ -153,7 +153,7 @@ test("gui answers 400 for an over-long prompt and queues nothing", async () => {
 
 test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving", async () => {
   // Skip under root, where chmod cannot stop the write and submitPrompt would succeed.
-  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
 
   const repo = makeRepo();
   await initProject(repo, "gui handler error test");

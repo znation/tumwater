@@ -8,7 +8,7 @@ import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
 import { lanAddresses } from "../src/ui/gui.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { cli, spawnCli } from "./cli-harness.js";
@@ -151,7 +151,7 @@ test("gui passes a permission error through with the raw message", async () => {
   // Privileged ports need root; as an unprivileged user this deterministically yields
   // EACCES, which the CLI must not swallow into the port-in-use hint. Skipped under root,
   // where port 80 would bind and serve forever.
-  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
   const repo = makeRepo();
   await initProject(repo, "cli gui eacces");
 

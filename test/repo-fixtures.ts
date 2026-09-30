@@ -43,6 +43,13 @@ export function tmpdir(prefix = "tumwater-test-"): string {
   return fs.mkdtempSync(path.join(testRunRoot(), prefix));
 }
 
+/** True when the test process runs as root (getuid() is 0) — the one spelling of that probe,
+ * shared by every permission-fixture test (chmod cannot stop a root process, so those tests
+ * skip or branch on the predicate instead of asserting a failure that cannot fire). */
+export function runningAsRoot(): boolean {
+  return process.getuid?.() === 0;
+}
+
 export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }

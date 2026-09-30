@@ -13,7 +13,7 @@ import {
   terminateChild,
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
@@ -56,8 +56,7 @@ test("pidAlive follows a real child across its whole lifetime", async () => {
 });
 
 test("pidAlive reads a live foreign process as NOT alive (EPERM)", (t) => {
-  const uid = typeof process.getuid === "function" ? process.getuid() : null;
-  if (uid === 0) {
+  if (runningAsRoot()) {
     t.skip("running as root: signal-0 to pid 1 is permitted, so the EPERM branch is unreachable");
     return;
   }

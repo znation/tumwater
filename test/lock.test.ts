@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/lock.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
@@ -187,7 +187,7 @@ test("withLock does not break a fresh lock that has no pid file yet", async () =
 
 test("withLock swallows a failed cleanup of a stale lock and waits instead of crashing", async () => {
   // Skip under root, where chmod cannot stop the removal and removeTree would succeed.
-  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
 
   // A stale lock whose dir cannot be removed (the parent is read-only, so removeTree's rmdir
   // fails with EACCES): rmLockDir must ignore that error and fall back to the ordinary wait,
@@ -222,7 +222,7 @@ test("withLock swallows a failed cleanup of a stale lock and waits instead of cr
 
 test("withLock fails fast on a filesystem error that waiting cannot fix", async () => {
   // Skip under root, where chmod cannot make the parent unwritable.
-  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
 
   // A lock path whose PARENT is read-only and whose dir does NOT exist: mkdir fails EACCES,
   // not the contention EEXIST. Waiting cannot help, so the acquire must report the real error

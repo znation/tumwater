@@ -26,7 +26,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -374,7 +374,7 @@ test("checkStateDir accepts an absent dir and proves writability without leaving
 
 test("checkStateDir fails with the OS error when .tumwater is not writable", () => {
   // Skip under root, where chmod cannot stop the write and the probe would succeed.
-  if (typeof process.getuid === "function" && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
 
   const root = makeRepo();
   const stateDir = path.join(root, ".tumwater");

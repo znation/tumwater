@@ -14,7 +14,7 @@ import {
 } from "../src/fix-claim.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 
@@ -208,7 +208,7 @@ test("sourceHaystack skips node_modules and dist trees at any depth but keeps ot
 
 test("sourceHaystack tolerates unreadable files and stays usable", () => {
   // Root reads anything, so the permission failure these branches exist for cannot fire.
-  if (process.getuid && process.getuid() === 0) return;
+  if (runningAsRoot()) return;
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.writeFileSync(path.join(root, "src", "ok.ts"), "const okMarker = 1;\n");
