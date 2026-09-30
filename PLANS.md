@@ -247,6 +247,37 @@ test and one landing test next to part 2/4's.
   check, not a suite test: it reads this repo's history, not a fixture.
 - `npm run test` passes.
 
+### Image drag-and-drop into the GUI composer: dropped or pasted images are saved beside the queued prompt and the prompt text points the loop at them (planned 2026-09-30)
+
+**Goal.** Dropping image files onto the "Tell the fleet what to do next…" textarea in the GUI (and pasting an image from the clipboard) attaches them to the queued prompt: each image is stored on disk and the prompt text gains one `[image attached: <absolute path>]` line per image, so the receiving loop's pi agent can view the file with its read tool (pi renders images). Works for both the director target and a per-role target. The CLI `tumwater prompt` stays text-only — out of scope.
+
+**Approach.**
+
+1. New module `src/inbox-attachments.ts`:
+   - `PROMPT_IMAGE_EXTENSIONS: readonly string[]` = png, jpg, jpeg, gif, webp, bmp (exactly what pi's read tool renders); `PROMPT_IMAGE_MAX_BYTES = 5 * 1024 * 1024` per image; `PROMPT_IMAGES_MAX_COUNT = 4` per prompt.
+   - `savePromptImages(root, role, images): { paths: string[] } | { problem: string }` — validates `images` (an array of `{ name, dataBase64 }`, at most `PROMPT_IMAGES_MAX_COUNT`, each name's extension in `PROMPT_IMAGE_EXTENSIONS`, each decoded size within `PROMPT_IMAGE_MAX_BYTES`), sanitizes each name to `[A-Za-z0-9._-]` (default `image.png`, basename only), and writes each file into `roleInboxDir(root, role)` with the **same stem as the queue file it will belong to**: the caller enqueues the prompt's `.md` with `queueFileName(...)` first, then images are written as `<stamp>-<seq>-<pid>.<ext>` beside it (image extensions never collide with the `.md` filter in `listQueueFiles`). Returns the absolute paths in order.
+   - `imageReferenceLines(paths: string[]): string` — the text to append: `"\n\n"` then one `"[image attached: <absolute path>]"` line per path.
+2. `src/ui/gui-endpoints.ts` — extend `handlePrompt` and `handlePromptRole` with an optional `images` body field: after `requirePromptText`, call `savePromptImages`; a `problem` answers 400 with that reason and writes nothing; success enqueues `text + imageReferenceLines(paths)` through the existing `submitPrompt` / `submitRolePromptAndWake`. The existing length rule (`promptLengthProblem`) applies to the final text including the reference lines — fine, they are short. `promptPreview` naturally shows the first reference line if the prompt is short; no change needed there.
+3. Attachment cleanup: in `src/inbox.ts`'s `takeQueuedFile`, after removing the queue `.md`, also remove same-stem siblings in the same directory (any file whose name equals the `.md`'s stem plus an extension) — ENOENT-tolerant like `removeQueueFile`. This covers both dequeue (the loop's tick picks the prompt up) and cancel (`cancelQueuedFile`, `cancelRolePrompt`), so images never outlive their prompt.
+4. `src/ui/http-body.ts` — raise `MAX_BODY_BYTES` from 64 KiB to `32 * 1024 * 1024` (32 MiB): 4 images × 5 MiB × ⁴⁄₃ base64 ≈ 27 MiB must fit one POST. The cap exists to bound memory on a local dashboard; update its comment to say so, and update any test pinning the old cap or the "body too large" message (grep test/ for `body too large`).
+5. Client `src/ui/gui-client-fleet.ts`:
+   - A single pending-image list shared across targets (not per-target like `drafts`), cleared only on a successful submit or manual removal.
+   - `dragover` (preventDefault + a highlight class) / `drop` on `#prompt`, and a `paste` listener that collects `clipboardData.files` items whose type is an image; ignore anything that is not an image.
+   - Render one chip per pending image (name, size, a remove ×) into a new `<div id="promptimages">` container inside `#promptform` in `src/ui/gui-page.ts`; an empty container stays hidden.
+   - In the `promptform` submit handler: read each pending `File` as a data URL (`FileReader.readAsDataURL`, strip the `data:...;base64,` prefix), include them as `images: [{ name, dataBase64 }]` in the `sendPrompt` body (both `/api/prompt` and `/api/prompt-role`), clear the list only on success — a rejected submit keeps text and images so it can be fixed and resent, matching today's text behavior. Flash message names the attachment count when images rode along.
+
+**Files touched:** `src/inbox-attachments.ts` (new, ~90 lines), `src/inbox.ts`, `src/ui/gui-endpoints.ts`, `src/ui/http-body.ts`, `src/ui/gui-client-fleet.ts`, `src/ui/gui-page.ts`, tests (`test/inbox-attachments.test.ts` new; `test/cli-gui.test.ts` endpoint e2e; the http-body 413 test).
+
+**Acceptance criteria.**
+
+1. A POST to `/api/prompt` (or `/api/prompt-role`) with `images` writes each image beside the queue `.md` under the same stem, and the queued prompt's text ends with one `[image attached: <absolute path>]` line per image pointing at a file that exists on disk.
+2. A non-image extension, more than `PROMPT_IMAGES_MAX_COUNT` images, a `dataBase64` that does not decode, or a decoded image over `PROMPT_IMAGE_MAX_BYTES` answers 400 naming the rule, with no queue file and no image written.
+3. Dequeuing the prompt (unit-level: `dequeueRolePrompt`) and cancelling it (`cancelQueuedFile`) remove the `.md` **and** its same-stem image files; a vanished sibling is tolerated.
+4. The 32 MiB body cap holds: an oversized body still answers 413 with the updated message; the existing per-endpoint 400/413 discipline is unchanged for text-only submits.
+5. Client behavior (drop, paste, chips, clear-on-success, keep-on-failure) is implemented in the served client script and covered by the endpoint e2e for its server half; `npm run test` passes.
+
+Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoints/inbox, ~80 client, ~180 tests. No sub-plans needed.
+
 ## Done
 
 ### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30, done 2026-09-30)
