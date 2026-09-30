@@ -50,9 +50,13 @@ interface SpawnedCli {
 }
 
 /** How long kill() lets the graceful stop run before the group SIGKILL: long enough for the
- * supervisor to forward SIGTERM and the fleet's stop path to finish against the fake shims,
- * short enough that a wedged stop cannot hang a test file. */
-const KILL_GRACE_MS = 3_000;
+ * supervisor to forward SIGTERM and the fleet's stop path to finish against the fake shims —
+ * under full-suite load too, where the same stop that takes ~1 s alone ran past a 3 s grace
+ * and the early SIGKILL killed the supervisor mid-shutdown, turning its clean exit 0 into a
+ * signal death the teardown test reads as exit code null (BUGS.md 2026-09-30) — and short
+ * enough that a wedged stop cannot hang a test file. Matches the SIGTERM → SIGKILL escalation
+ * grace the product itself uses (KILL_GRACE_MS in src/process-group.ts). */
+const KILL_GRACE_MS = 10_000;
 
 export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {
   const env = { ...process.env };
@@ -103,7 +107,12 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
         groupKill();
         return;
       }
-      const t = setTimeout(groupKill, KILL_GRACE_MS);
+      const t = setTimeout(() => {
+        // A close that raced this callback means the graceful stop finished: sweeping then
+        // would only convert the supervisor's clean exit into a signal death.
+        if (child.exitCode !== null || child.signalCode !== null) return;
+        groupKill();
+      }, KILL_GRACE_MS);
       child.once("close", () => clearTimeout(t));
     },
   };
