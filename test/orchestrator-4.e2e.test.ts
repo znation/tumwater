@@ -8,7 +8,7 @@ import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { fastConfig, readSamples, startLiveOrchestrator } from "./orchestrator-fixtures.js";
+import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -110,7 +110,6 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
       ],
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });

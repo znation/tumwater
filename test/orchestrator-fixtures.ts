@@ -108,6 +108,20 @@ export function startIdleOrchestrator(repo: string): {
   return { restore, orch };
 }
 
+/** The shutdown tail every live-orchestrator test runs from its finally: put the fake pi's
+ * PATH shim away (restore) and stop the orchestrator it drove — in that order, exactly as the
+ * 45 copy-pasted `restore(); await orch.stop();` pairs ran, so the teardown contract (always
+ * both halves, restore first, and the stop swallowing shutdown noise — startLiveOrchestrator)
+ * lives in one place instead of drifting per file. `orch` is the start/startIdle return, so
+ * the call sites cannot stop a different run than the one whose shim they restore. */
+export async function stopOrchestrator(
+  orch: ReturnType<typeof startLiveOrchestrator>,
+  restore: () => void,
+): Promise<void> {
+  restore();
+  await orch.stop();
+}
+
 /** Poll until `role`'s persisted loop state has completed at least `n` ticks and is idle
  * (not mid-tick) — the live-orchestrator e2e tests' shared "a tick finished" gate, the
  * `waitFor(() => loadLoopState(repo, role).ticks >= n && !loadLoopState(repo, role).running,

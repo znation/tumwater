@@ -34,6 +34,7 @@ import {
   makeFastRepo,
   startIdleOrchestrator,
   startLiveOrchestrator,
+  stopOrchestrator,
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
@@ -280,8 +281,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
       ],
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -319,8 +319,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     const deferred = eventsOfType(repo, "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -363,8 +362,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     const deferred = eventsOfType(repo, "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -392,8 +390,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   try {
     await awaitSettledTick(repo, "organize", 2, "the cap-forced tick to run");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -444,8 +441,7 @@ test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator
     assert.ok(fs.existsSync(session), "a 30-day-old session survives when retention is 0");
     assert.equal(pruneWarnings(repo), 0, "no prune warning when pruning is disabled");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -463,8 +459,7 @@ test("a positive sessionRetentionDays still prunes old sessions at startup", asy
     assert.ok(!fs.existsSync(toolOutput), "the old full-tool-output file is pruned too");
     assert.equal(pruneWarnings(repo), 1, "one prune warning for the deleted files");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -534,8 +529,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
       ],
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -592,8 +586,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     await waitFor(() => runs().at(-1)?.includes("model=fixed-model") === true, "pi run with the fixed model");
     assert.equal(warnings().length, 1, "no new warnings once the file is fixed");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -636,8 +629,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "clean");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -682,8 +674,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
     assert.equal(resets.length, 1);
     assert.equal(resets[0]?.loop, "clean");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -725,7 +716,6 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
       "a second warning after re-arming",
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });

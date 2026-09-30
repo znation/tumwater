@@ -9,7 +9,7 @@ import path from "node:path";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events.js";
-import { FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -81,8 +81,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
       `a landing and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -122,8 +121,7 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
       `bugfix became due while clean was in flight and must jump ahead of parked dry (${order})`,
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 

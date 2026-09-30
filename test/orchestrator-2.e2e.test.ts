@@ -22,7 +22,7 @@ import { todayStamp } from "../src/budget.js";
 import { branchName, pausedPath, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
-import { awaitSettledTick, fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator } from "./orchestrator-fixtures.js";
+import { awaitSettledTick, fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -64,8 +64,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
     assert.equal(resets[0]?.loop, "harness");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -93,8 +92,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     assert.equal(resets[0]?.loop, "harness", "a superset reset is filed harness-level with the roles list");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -131,8 +129,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
     assert.equal(wakes[0]?.loop, "clean");
     assert.equal(wakes[0]?.reason, "operator");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -172,8 +169,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the woken tick");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -209,8 +205,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the tick");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -252,8 +247,7 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(loadLoopState(repo, "feature").ticks, 2, "the gap window re-arms after the woken tick");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -291,8 +285,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     );
     for (const e of wakes) assert.equal(e.reason, "operator");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -344,8 +337,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     await waitFor(() => loadLoopState(repo, "dry").ticks > dryTicks, "re-enabled role to tick again");
     assert.ok(messages().some((m) => m.includes("role dry enabled — starting ticks")), "re-enable transition logged");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -387,8 +379,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
     await waitFor(() => changeds().length === 2, "the roles.<id> event");
     assert.deepEqual(changeds()[1]!.keys, ["roles.clean"]);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -451,8 +442,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
     assert.equal(ofType("max_concurrent_changed").length, 0);
     assert.equal(warningsWith("tumwater.json missing").length, 1, "no further missing warnings");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -542,8 +532,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     assert.deepEqual(order.slice(-2), ["perf-hunter", "docs-auditor"]);
     assert.ok(order.indexOf("clean") < order.indexOf("perf-hunter"), "built-ins keep their place ahead of customs");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -603,8 +592,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(eventsOfType(repo, "budget_paused").length, 1);
     assert.equal(eventsOfType(repo, "budget_resumed").length, 1);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -639,8 +627,7 @@ test("startup with spend already at the cap starts no role ticks", async () => {
     assert.equal(paused[0]?.capUsd, 1);
     assert.equal(paused[0]?.spentUsd, 1);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -668,8 +655,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -770,8 +756,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
       "back on the budgeted model, role override restored",
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -802,8 +787,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a refused fallback leaves the fleet paused");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -949,8 +933,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
     assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
     assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -988,8 +971,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
     assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
     assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -1035,8 +1017,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
     await new Promise((r) => setTimeout(r, 600));
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -1083,7 +1064,6 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     assert.equal(resumed[0]?.loop, "harness");
     assert.equal(resumed[0]?.role, "clean");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });

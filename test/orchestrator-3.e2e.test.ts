@@ -33,6 +33,7 @@ import {
   landHead,
   makeFastRepo,
   startLiveOrchestrator,
+  stopOrchestrator,
 } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
@@ -113,8 +114,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     assert.equal(eventsOfType(repo, "tick_aborted").length, 0);
     assert.equal(loadLoopState(repo, "clean").ticks, 1);
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -158,8 +158,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
     );
     assert.equal(queueDepth(repo), 0, "the entry drops with the aborted landing");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -216,8 +215,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
     }
     assert.ok(refGone, "the pin is deleted with a successful landing");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -260,8 +258,7 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       "the dedup drop logs no failure",
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -290,8 +287,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
       "the deduped entry ran no landing",
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -347,8 +343,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
       "one harness warning for the torn head drop",
     );
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -449,8 +444,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     );
     assert.equal(aborted().length, 1, "no event for a role with no runner");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -857,8 +851,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     assert.equal(loadLoopState(repo, "dry").ticks, 0);
   } finally {
     fs.writeFileSync(release, ""); // never leave a review parked
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -913,8 +906,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
     );
   } finally {
     fs.writeFileSync(release, ""); // never leave dry's review parked
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -953,8 +945,7 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
     assert.equal(Math.max(...samples), 3, `the three reviews overlapped (in flight at each start: ${samples})`);
     assert.equal(eventsOfType(repo, "merged").length, 3, "every change merged");
   } finally {
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
@@ -1014,8 +1005,7 @@ test("a lander worktree that can no longer be created is contained: the healthy 
   } finally {
     // Restore before stopping: shutdown and later ticks must be able to create worktrees.
     fs.chmodSync(worktrees, 0o755);
-    restore();
-    await orch.stop();
+    await stopOrchestrator(orch, restore);
   }
 });
 
