@@ -31,6 +31,11 @@ Rules for this run:
 - Read only the conflicted files and what they directly reference (\`grep -n '<<<<<<<' FILE\`
   finds each marker; read around it in ranges) — not the codebase at large.
 - Never touch the .tumwater directory or tumwater.json.
+- When a conflicted file is a markdown backlog file (PLANS.md, BUGS.md, QUESTIONS.md), its
+  \`## \` section headings are structure, not text: the result keeps exactly one of each
+  \`## \` heading, and every \`### \` entry sits under the section its own side put it in —
+  a newly planned feature stays under \`## Planned\` even when the other side moved entries
+  around it.
 - When every marker is resolved and the project is consistent, just stop.`;
 }
 

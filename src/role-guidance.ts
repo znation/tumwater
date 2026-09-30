@@ -12,6 +12,21 @@ decomposes into independent subparts (separate features, or separate bugs). If i
 each part as its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick
 them up independently; if the parts are not truly independent, keep a single entry.`;
 
+/** Shared instruction for closing a backlog entry (the feature loop moving a plan to Done,
+ * the bugfix loop moving a bug to Fixed). Written against the observed failure (PLANS.md
+ * 2026-09-30, part 1/3): "move it to a Done section" reads as "create a section", and five
+ * commits left PLANS.md with two `## Done` headings — so the wording names the file's EXISTING
+ * resolved heading, forbids touching `## ` structure, and gives the verifiable invariant
+ * (the same headings before and after). Takes the file and section names so the feature and
+ * bugfix texts cannot drift apart; lives here with the other shared fragments. */
+export function backlogMoveGuidance(file: string, openSection: string, resolvedSection: string): string {
+  return `cut the entry out of \`${openSection}\` and paste it, with the closing date added to
+its \`### \` heading, as the first entry under the file's existing \`${resolvedSection}\`
+heading — never add, remove, or rename a \`## \` heading, and when the moved entry was the last
+one under \`${openSection}\`, leave a \`_None yet._\` placeholder under it;
+\`grep -n '^## ' ${file}\` must list the same headings before and after the edit`;
+}
+
 /** Shared sizing rule for anyone writing a plan (the plan role and the director): the feature
  * loop is one mid-sized local model working alone in one run, and the review gate rejects a
  * change that lands less than its entry promises — so a plan must fit that run. Oversized plans

@@ -689,6 +689,27 @@ test("the feature role maps PLANS.md by heading, matches the reviewer's plan che
   assert.match(find, /correct the entry in the same change instead of refusing/);
 });
 
+test("the feature find text moves a done plan under the EXISTING ## Done heading", () => {
+  const find = oneLine(roleById("feature")!.find);
+  // The failure this pins (PLANS.md 2026-09-30, part 1/3): "move it to a Done section" read
+  // as "create a section", and five commits left PLANS.md with two `## Done` headings.
+  assert.match(find, /cut the entry out of `## Planned` and paste it/);
+  assert.match(find, /first entry under the file's existing `## Done` heading/);
+  assert.match(find, /never add, remove, or rename a `## ` heading/);
+  assert.match(find, /leave a `_None yet\._` placeholder under it/);
+  assert.match(find, /`grep -n '\^## ' PLANS\.md` must list the same headings before and after/);
+  assert.ok(!/Done section/.test(find), "the 'create a section' wording is gone");
+});
+
+test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading", () => {
+  const find = oneLine(roleById("bugfix")!.find);
+  assert.match(find, /cut the entry out of `## Open` and paste it/);
+  assert.match(find, /first entry under the file's existing `## Fixed` heading/);
+  assert.match(find, /never add, remove, or rename a `## ` heading/);
+  assert.match(find, /`grep -n '\^## ' BUGS\.md` must list the same headings before and after/);
+  assert.ok(!/Fixed section/.test(find), "the 'create a section' wording is gone");
+});
+
 test("the plan role prioritizes a Needs review plan, clears the note after splitting, and stops while plans wait", () => {
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");

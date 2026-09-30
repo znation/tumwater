@@ -3,6 +3,7 @@
  * import-only downward, so prompt assembly depends on both without a cycle). */
 
 import {
+  backlogMoveGuidance,
   DECOMPOSITION_GUIDANCE,
   NEEDS_REVIEW_NOTE,
   PLAN_SIZING,
@@ -57,7 +58,7 @@ ${NEEDS_REVIEW_NOTE}
 under its heading, skip it, and implement the next available plan that fits — you may mark
 several oversized entries while scanning, but land exactly one plan. Skip entries already
 carrying a **Needs review …** note, alongside the Refused-note skip. Then update PLANS.md to mark
-the plan you implemented done (move it to a Done section with the date). A plan that resists
+the plan you implemented done (${backlogMoveGuidance("PLANS.md", "## Planned", "## Done")}). A plan that resists
 implementation is a finding: refuse it with the objection recorded rather than forcing it. Skip
 plans whose entry carries a Refused note. If PLANS.md is empty or everything is done, there is
 nothing to do.`,
@@ -67,7 +68,7 @@ nothing to do.`,
     title: "bug fixer",
     find: `Open BUGS.md and pick the SINGLE most important open bug (\`grep -n '^##' BUGS.md\` lists
 the headings; read only that entry's line range). Reproduce it if possible, fix it, add a
-regression test, and update BUGS.md to mark it fixed (move it to a Fixed section with the date),
+regression test, and update BUGS.md to mark it fixed (${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed")}),
 recording the required validation-gap trace line. ${VALIDATION_GAP_GUIDANCE}
 If you discover a new bug while investigating but cannot fix it in this run, record it in
 BUGS.md instead. ${DECOMPOSITION_GUIDANCE}

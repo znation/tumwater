@@ -5,55 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/4, the prompts
-
-**Goal.** Stop loops from rewriting a backlog file's section headings when they move an entry.
-On 2026-09-25 the feature loop's `run --once` commit `52cbadd1` marked its plan done by
-rewriting the top of PLANS.md in place (`## Planned` / `### X` became `## Planned` /
-`_None yet._` / `## Done` / `### X (…, done …)`) and never touched the existing `## Done`
-further down. That left PLANS.md with two `## Done` headings. The next three feature commits
-(`761af2b7`, `758e6de1`, `f91ed2b2`) repeated the shortcut, each adding one heading and
-removing one, so the count stayed at two. Then the timed-pause plan's landing (`9eaae5ac`)
-hit a rebase conflict. The conflict-resolution run stripped the markers and kept both
-sides, so the new plan ended up after a Done entry, under the first `## Done`, and the
-file had three `## Done` headings. The plan sat outside `## Planned` until the clean loop
-re-filed it (`b7ab97c7`, 14:38). The root cause is the wording: the feature prompt says
-"move it to a Done section with the date" and bugfix says "move it to a Fixed section".
-Both read as "create a section", and nothing says the heading already exists.
-
-**Approach.**
-- src/roles.ts, `feature` role `find` text: replace "(move it to a Done section with the
-  date)" with wording that says to cut the entry out of `## Planned`, paste it as the first
-  entry under the file's existing `## Done` heading with the done date in its heading, and
-  never add, remove, or rename a `## ` heading. When the moved entry was the last one under
-  Planned, `## Planned` keeps a `_None yet._` placeholder. `grep -n '^## ' PLANS.md` should
-  list the same headings before and after the edit.
-- src/roles.ts, `bugfix` role `find` text: the same fix for "(move it to a Fixed section with
-  the date)", naming `## Open` → the existing `## Fixed`.
-- src/gate-prompts.ts `buildConflictPrompt`: add one rule for backlog files. When a
-  conflicted file is PLANS.md, BUGS.md, or QUESTIONS.md, resolve section headings as
-  structure, not text: the result keeps exactly one of each `## ` heading, and every
-  `### ` entry sits under the section its own side put it in (a new plan stays under
-  `## Planned` even when main's side moved entries around it). Keep this generic, e.g. "for
-  markdown backlog files, the `## ` section headings are structure: never duplicate one" —
-  the prompt must not grow file-specific branches for every name.
-- Keep wording shared, not repeated: if the two role strings end up with the same
-  sentence, extract a helper in src/role-guidance.ts (the home of `PLAN_SIZING` and the
-  other shared role clauses) that takes the section names.
-
-**Files touched.** src/roles.ts, src/gate-prompts.ts, possibly src/role-guidance.ts;
-test/prompt.test.ts and test/gate-prompts.test.ts.
-
-**Acceptance criteria.**
-- The feature and bugfix prompts name the existing `## Done` / `## Fixed` heading and forbid
-  adding a second one; neither says "a Done section" or "a Fixed section" anymore.
-- `buildConflictPrompt` carries the backlog-heading rule; test/gate-prompts.test.ts pins it
-  beside the existing "combining the intent of BOTH sides" assertion.
-- test/prompt.test.ts pins the new feature and bugfix wording.
-- `npm run test` passes.
-- Part 2/4 (the deterministic check below) is the backstop; this part only makes the
-  failure rarer, so it lands first and on its own.
-
 ### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/4, the backstop
 
 **Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
@@ -135,7 +86,7 @@ hand the repair to clean.
 
 **Approach.**
 - A pure detector, `strandedPlanEntries(md)`, in src/backlog-structure.ts (created by part
-  2/2; if this part lands first, create the module here and part 2 adds to it). It is
+  2/4; if this part lands first, create the module here and part 2 adds to it). It is
   fence-aware through backlog.ts's `parseEntryDetails`, like every other backlog reader. It
   returns the `### ` headings of:
   (a) entries under `## Done` whose heading has a `(planned YYYY-MM-DD…)` parenthetical but
@@ -301,6 +252,57 @@ Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoint
 Sizing: one run — ~95 lines across three client/server files plus styles, ~120 test lines. No sub-plans needed.
 
 ## Done
+
+### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30, done 2026-09-30) — part 1/4, the prompts
+
+**Goal.** Stop loops from rewriting a backlog file's section headings when they move an entry.
+On 2026-09-25 the feature loop's `run --once` commit `52cbadd1` marked its plan done by
+rewriting the top of PLANS.md in place (`## Planned` / `### X` became `## Planned` /
+`_None yet._` / `## Done` / `### X (…, done …)`) and never touched the existing `## Done`
+further down. That left PLANS.md with two `## Done` headings. The next three feature commits
+(`761af2b7`, `758e6de1`, `f91ed2b2`) repeated the shortcut, each adding one heading and
+removing one, so the count stayed at two. Then the timed-pause plan's landing (`9eaae5ac`)
+hit a rebase conflict. The conflict-resolution run stripped the markers and kept both
+sides, so the new plan ended up after a Done entry, under the first `## Done`, and the
+file had three `## Done` headings. The plan sat outside `## Planned` until the clean loop
+re-filed it (`b7ab97c7`, 14:38). The root cause is the wording: the feature prompt says
+"move it to a Done section with the date" and bugfix says "move it to a Fixed section".
+Both read as "create a section", and nothing says the heading already exists.
+
+**Approach.**
+- src/roles.ts, `feature` role `find` text: replace "(move it to a Done section with the
+  date)" with wording that says to cut the entry out of `## Planned`, paste it as the first
+  entry under the file's existing `## Done` heading with the done date in its heading, and
+  never add, remove, or rename a `## ` heading. When the moved entry was the last one under
+  Planned, `## Planned` keeps a `_None yet._` placeholder. `grep -n '^## ' PLANS.md` should
+  list the same headings before and after the edit.
+- src/roles.ts, `bugfix` role `find` text: the same fix for "(move it to a Fixed section with
+  the date)", naming `## Open` → the existing `## Fixed`.
+- src/gate-prompts.ts `buildConflictPrompt`: add one rule for backlog files. When a
+  conflicted file is PLANS.md, BUGS.md, or QUESTIONS.md, resolve section headings as
+  structure, not text: the result keeps exactly one of each `## ` heading, and every
+  `### ` entry sits under the section its own side put it in (a new plan stays under
+  `## Planned` even when main's side moved entries around it). Keep this generic, e.g. "for
+  markdown backlog files, the `## ` section headings are structure: never duplicate one" —
+  the prompt must not grow file-specific branches for every name.
+- Keep wording shared, not repeated: if the two role strings end up with the same
+  sentence, extract a helper in src/role-guidance.ts (the home of `PLAN_SIZING` and the
+  other shared role clauses) that takes the section names.
+
+**Files touched.** src/roles.ts, src/gate-prompts.ts, possibly src/role-guidance.ts;
+test/prompt.test.ts and test/gate-prompts.test.ts.
+
+**Acceptance criteria.**
+- The feature and bugfix prompts name the existing `## Done` / `## Fixed` heading and forbid
+  adding a second one; neither says "a Done section" or "a Fixed section" anymore.
+- `buildConflictPrompt` carries the backlog-heading rule; test/gate-prompts.test.ts pins it
+  beside the existing "combining the intent of BOTH sides" assertion.
+- test/prompt.test.ts pins the new feature and bugfix wording.
+- `npm run test` passes.
+- Part 2/4 (the deterministic check below) is the backstop; this part only makes the
+  failure rarer, so it lands first and on its own.
+
+**Done 2026-09-30 by feature:** the prompts landed as specified — a shared `backlogMoveGuidance(file, open, resolved)` helper in src/role-guidance.ts embedded by the feature and bugfix find texts, and the backlog-heading rule in `buildConflictPrompt` (src/gate-prompts.ts), pinned in test/prompt.test.ts and test/gate-prompts.test.ts. The acceptance criteria's "neither says 'a Done section' or 'a Fixed section'" holds for both find texts.
 
 ### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30, done 2026-09-30)
 

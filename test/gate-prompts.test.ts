@@ -42,6 +42,17 @@ test("buildConflictPrompt defines ours/theirs and asks for a combined resolution
   assert.match(p, /combining the intent of BOTH sides/i);
 });
 
+test("buildConflictPrompt treats backlog section headings as structure, not text", () => {
+  const p = buildConflictPrompt("feature", ["PLANS.md", "src/git.ts"]);
+  // The failure this pins (PLANS.md 2026-09-30, part 1/3): a conflict resolution kept both
+  // sides' `## Done` headings, and a new plan landed under the first one, outside Planned.
+  assert.match(p, /markdown backlog file \(PLANS\.md, BUGS\.md, QUESTIONS\.md\)/);
+  assert.match(p, /section headings are structure, not text/);
+  assert.match(p, /exactly one of each\n  \`## \` heading/);
+  assert.match(p, /every \`### \` entry sits under the section its own side put it in/);
+  assert.match(p, /stays under \`## Planned\` even when the other side moved entries/);
+});
+
 test("buildConflictPrompt forbids state-changing git commands (harness concludes the rebase)", () => {
   const p = buildConflictPrompt("clean", ["a.txt"]);
   // If pi committed or continued the rebase itself, the harness's continueRebase would
