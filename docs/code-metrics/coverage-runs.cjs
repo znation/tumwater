@@ -8,9 +8,9 @@
 //   the test tally); writes <data-dir>/coverage-runs.json and prints the summary.
 //
 // Only runs whose suite passed (fail 0, node's table printed) enter the averages: a run that fails
-// mid-way — on a loaded host a timing-sensitive test can, and a failed `tumwater run` e2e test can
-// leak its orchestrator and hang the file until the runner's 30-minute timeout — exercises a
-// different set of paths. Excluded runs are listed with their own numbers.
+// mid-way exercises a different set of paths. A host that sleeps mid-run expires every wall-clock
+// wait in flight, and a failed `tumwater run` e2e test can then leak its orchestrator and hold its
+// file open until the runner's 30-minute timeout. Excluded runs are listed with their own numbers.
 //
 // Attribution matches authors.cjs: an executable code line, a branch, or a function goes to the
 // author of the TS line it starts on. Per run, per scope (all of src/, core = src/ without

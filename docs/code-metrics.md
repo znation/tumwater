@@ -209,15 +209,17 @@ These measures cover the whole repository, because files and docs have no single
 Across the whole tumwater repository there are 2.42 test lines per production line.
 
 **Coverage of tumwater** comes from the unit tier (`npm run test:coverage`, 2,427 tests) on
-`48213ce7`'s code. It was run ten times in a row with `run.sh --coverage=10` on 2026-09-30,
-with host load between 10 and 43. Two more runs kept their raw dumps for the check below.
+`48213ce7`'s code. It was run ten times in a row with `run.sh --coverage=10` on 2026-09-30.
+Two more runs kept their raw dumps for the check below.
 
-- **Two of the ten runs failed,** both after the host's load average passed 40 (XProtect scanning,
-  a VM and the live fleet). Failed runs exercise different paths, so they're excluded from the
-  averages.
-  - In run 9, two lander tests hung for about 580 s each.
-  - In run 10, a failing `tumwater run` test leaked its orchestrator, which held the test file
-    open until the leaked process was killed. That's the `spawnCli().kill()` bug in BUGS.md.
+- **Two of the ten runs failed because the Mac slept mid-run.** The lid closed at 06:45, and the
+  power log (`pmset -g log`) shows sleeps of 579 s, 904 s and 918 s after that. Every failing test
+  ran for almost exactly one of those lengths: five tests at 577–581 s in run 9, and eight at
+  902–918 s in run 10. Frozen through the sleep, they woke with their wall-clock deadlines already
+  expired. Failed runs exercise different paths, so they're excluded from the averages.
+  - One of run 10's failures was a `tumwater run` test. It then leaked its orchestrator, which
+    held the test file open until the leaked process was killed. That's the `spawnCli().kill()`
+    bug in BUGS.md.
 - **Per-author coverage doesn't vary between runs.** Across the 8 passing runs, every executable
   line was covered in all of them or in none (zero lines flip), and no per-author percentage moves
   by more than 0.01 points. Merged across all ~770 processes of each run and mapped to TypeScript
@@ -317,8 +319,8 @@ median of 40 contributors.
   specific harness problems, while Tumwater's loops include maintenance roles.
 - **Tumwater's history is 41 days against the baselines' two years,** and its authors are software.
 - **Node's coverage table alternates between two readings,** and the higher one is an artifact
-  (see [Testing and coverage](#testing-and-coverage)). Two of ten coverage runs failed under host
-  load and are excluded. The baselines' coverage is declared, not measured.
+  (see [Testing and coverage](#testing-and-coverage)). Two of ten coverage runs failed because the
+  host slept mid-run, and are excluded. The baselines' coverage is declared, not measured.
 
 ## Method
 
