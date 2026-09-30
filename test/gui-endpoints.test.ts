@@ -12,6 +12,7 @@ import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { startLocalGui } from "./gui-fixtures.js";
 
 // The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -178,6 +179,41 @@ test("handleRestart with no fleet running writes the marker harmlessly and says 
   assert.equal((data as { ok: boolean }).ok, true);
   assert.match((data as { message: string }).message, /no harness is running/);
   assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker waits for the next run's first poll");
+});
+
+// The live server's dispatch arm for POST /api/restart. The tests above drive handleRestart
+// directly with a fake req, so the routing branch in gui.ts's request dispatcher — the
+// method+path match that turns the build-stale alert's refresh button into a handler call —
+// had no coverage: a renamed path or a dropped else-if would leave every endpoint test green
+// while the button 404s. This pins the wiring through a real listening server.
+test("the live server routes POST /api/restart to the handler and refuses other methods", async () => {
+  const root = tmpdir();
+  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
+  const { server, base } = await startLocalGui(root);
+  try {
+    const res = await fetch(base + "/api/restart", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { ok: boolean; message: string };
+    assert.equal(data.ok, true);
+    assert.match(data.message, /restart requested/);
+    assert.equal(
+      fs.existsSync(restartRequestPath(root)),
+      true,
+      "the handler the router reached wrote the marker",
+    );
+
+    // The method gate: a GET on the same path falls through the dispatcher's POST-only arm
+    // to the 404 else — it must never reach the handler, so a stray GET writes no marker.
+    const get = await fetch(base + "/api/restart");
+    assert.equal(get.status, 404);
+    assert.equal(fs.existsSync(restartRequestPath(root)), true, "the earlier POST's marker stands");
+  } finally {
+    server.close();
+  }
 });
 
 test("consumeRestartRequest forces the redeployer once and removes the marker", () => {
