@@ -9,14 +9,13 @@ import {
   type ReloadSpawn,
 } from "../src/ui/self-reload.js";
 import { ExitError } from "./exit-capture.js";
+import { sleep } from "./wait.js";
 
 // The dashboards' auto-reload (src/ui/self-reload.ts): decide staleness from the process's own
 // startup stamp versus the on-disk stamp, then re-exec the same command once. All seams are
 // injected so these tests launch no process, run no git, and touch no dist.
 
 const stamp = (sha: string): BuildInfo => ({ sha, builtAt: 1, root: "/r" });
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test("shouldReload is true only when both stamps exist and name different commits", () => {
   const a = stamp("a");

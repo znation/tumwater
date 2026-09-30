@@ -8,7 +8,12 @@ import fs from "node:fs";
  * mock timers — so the wait helpers below keep polling in real time under a test that mocks
  * setTimeout itself (watchdogClock with `timeouts`). */
 const realSetTimeout = globalThis.setTimeout;
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
+
+/** A plain real-time sleep, exported because tests outside this module need the same gap
+ * primitive (a measurable interval between two wall-clock stamps): it always uses the captured
+ * real setTimeout, so it keeps sleeping in real time under a test that mocks the timer APIs
+ * (watchdogClock) — a test wanting mockable time should advance the mock clock instead. */
+export const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only

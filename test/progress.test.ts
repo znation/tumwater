@@ -12,6 +12,7 @@ import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
+import { sleep } from "./wait.js";
 
 function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
@@ -20,10 +21,6 @@ function toolStart(toolName: string, args: unknown): string {
 function toolUpdate(toolCallId: string, partialResult: unknown): string {
   return JSON.stringify({ type: "tool_execution_update", toolCallId, partialResult });
 }
-
-/** Wall-clock gap in ms — readLiveProgress stamps activity at Date.now(), so two observations
- * separated by a measurable gap can prove (or disprove) that a line moved the activity clock. */
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 
