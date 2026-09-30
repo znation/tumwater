@@ -13,26 +13,12 @@ import {
   RUN_FLAG_SPECS,
 } from "../src/cli-args.js";
 import { allRoleIds } from "../src/roles.js";
-import { attempt } from "./exit-capture.js";
+import { expectFail, expectOk } from "./exit-capture.js";
 
 // src/cli-args.ts's shared parsers, driven in-process (like test/cli-command-args.test.ts
 // drives the command parsers) to cover branches the e2e path never exercises — duplicate
 // flags (rejected with "may only be given once"), trailing valued flags (now a gate-level
 // "needs a value" error), and the bare `--` token.
-
-/** Assert fn fails via fail(): exit code 1 and the captured stderr message. */
-function expectFail(fn: () => unknown): { code: number; stderr: string } {
-  const out = attempt(fn);
-  if (!out.exited) assert.fail(`expected process.exit, but the call returned ${JSON.stringify(out.value)}`);
-  return { code: out.code, stderr: out.stderr };
-}
-
-/** Assert fn succeeds (no fail): its return value. */
-function expectOk<T>(fn: () => T): T {
-  const out = attempt(fn);
-  if (out.exited) assert.fail(`expected success, but process.exit(${out.code}) with:\n${out.stderr}`);
-  return out.value;
-}
 
 // --- parseCountFlag ---
 

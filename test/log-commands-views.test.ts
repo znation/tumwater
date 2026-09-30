@@ -7,7 +7,7 @@ import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
-import { attemptAsync, captureStdout } from "./exit-capture.js";
+import { captureStdout, expectFailAsync } from "./exit-capture.js";
 
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked
 // timers). These tests cover the one-shot views the follow tests never reach: the -n dump,
@@ -15,13 +15,6 @@ import { attemptAsync, captureStdout } from "./exit-capture.js";
 // --role transcript without -f, and every mutually-exclusive-flag failure that guards the
 // rival shapes. All failures are caught in-process with a process.exit stub (the shared
 // stub in test/exit-capture.ts), so no spawned child is needed.
-
-async function expectFail(fn: () => Promise<unknown>): Promise<string> {
-  const out = await attemptAsync(fn);
-  if (!out.exited) assert.fail(`expected process.exit, but the call returned normally`);
-  assert.equal(out.code, 1);
-  return out.stderr;
-}
 
 /** A repo with three distinct tick events logged, in order. */
 function repoWithEvents(): string {
@@ -159,15 +152,15 @@ test("logs --prompt with --role shows the exact prompt text in the transcript vi
 test("logs rejects rival flag shapes, naming both flags in each failure", async () => {
   const repo = makeRepo();
   // --grep pairs
-  assert.match(await expectFail(() => cmdLogs(repo, ["--grep", "x", "--role", "clean"])), /--grep cannot be combined with --role/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--grep", "x", "--since", "1h"])), /--grep cannot be combined with --since/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--grep"])), /--grep needs a pattern/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--grep", ""])), /--grep needs a pattern/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--role", "clean"])), /--grep cannot be combined with --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--since", "1h"])), /--grep cannot be combined with --since/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep"])), /--grep needs a pattern/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", ""])), /--grep needs a pattern/);
   // --since pairs
-  assert.match(await expectFail(() => cmdLogs(repo, ["--since", "1h", "-f"])), /--since cannot be combined with -f\/--follow/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--since", "1h", "-n", "5"])), /--since cannot be combined with -n/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--since", "1h", "--role", "clean"])), /--since cannot be combined with --role/);
-  assert.match(await expectFail(() => cmdLogs(repo, ["--since", "30d"])), /capped at 7d/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "-f"])), /--since cannot be combined with -f\/--follow/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "-n", "5"])), /--since cannot be combined with -n/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "1h", "--role", "clean"])), /--since cannot be combined with --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--since", "30d"])), /capped at 7d/);
   // --prompt needs a role: a transcript, not the event log, is what could show prompts.
-  assert.match(await expectFail(() => cmdLogs(repo, ["--prompt"])), /--prompt needs --role/);
+  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--prompt"])), /--prompt needs --role/);
 });

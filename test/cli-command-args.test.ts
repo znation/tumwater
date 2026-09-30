@@ -9,21 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseInitArgs, parsePromptArgs } from "../src/cli-command-args.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { attempt } from "./exit-capture.js";
-
-/** Assert fn fails via fail(): exit code 1 and the captured stderr message. */
-function expectFail(fn: () => unknown): { code: number; stderr: string } {
-  const out = attempt(fn);
-  if (!out.exited) assert.fail(`expected process.exit, but the call returned ${JSON.stringify(out.value)}`);
-  return { code: out.code, stderr: out.stderr };
-}
-
-/** Assert fn succeeds (no fail): its return value. */
-function expectOk<T>(fn: () => T): T {
-  const out = attempt(fn);
-  if (out.exited) assert.fail(`expected success, but process.exit(${out.code}) with:\n${out.stderr}`);
-  return out.value;
-}
+import { expectFail, expectOk } from "./exit-capture.js";
 
 // --- parseInitArgs ---
 

@@ -17,6 +17,7 @@
  * which only read files). Verified broken: cmdInit (spawns git). Test the spawning commands
  * through the CLI child process instead — runCli/spawnCli from test/cli-harness.ts, as
  * test/cli.test.ts does — where capture is the child's own pipe and costs nothing. */
+import assert from "node:assert/strict";
 
 /** Sentinel thrown by the process.exit stub so the exit is catchable in-process. */
 export class ExitError extends Error {
@@ -84,6 +85,28 @@ export async function attemptAsync<T>(fn: () => Promise<T>): Promise<Outcome<T>>
   } finally {
     io.restore();
   }
+}
+
+/** Assert fn fails via fail(): exit code 1 and the captured stderr message. */
+export function expectFail(fn: () => unknown): { code: number; stderr: string } {
+  const out = attempt(fn);
+  if (!out.exited) assert.fail(`expected process.exit, but the call returned ${JSON.stringify(out.value)}`);
+  return { code: out.code, stderr: out.stderr };
+}
+
+/** Assert fn succeeds (no fail): its return value. */
+export function expectOk<T>(fn: () => T): T {
+  const out = attempt(fn);
+  if (out.exited) assert.fail(`expected success, but process.exit(${out.code}) with:\n${out.stderr}`);
+  return out.value;
+}
+
+/** The attemptAsync twin of expectFail: asserts the exit code is 1 and returns the stderr. */
+export async function expectFailAsync(fn: () => Promise<unknown>): Promise<string> {
+  const out = await attemptAsync(fn);
+  if (!out.exited) assert.fail(`expected process.exit, but the call returned normally`);
+  assert.equal(out.code, 1);
+  return out.stderr;
 }
 
 /** Intercept process.stdout.write for the duration of a test; restore() must run in finally. */
