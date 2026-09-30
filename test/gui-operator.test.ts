@@ -9,7 +9,7 @@ import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, paused
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
-import { startLocalGui } from "./gui-fixtures.js";
+import { withGui } from "./gui-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -188,66 +188,63 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
 test("POST /api/budget persists a valid cap and rejects invalid bodies without touching the file", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget edit test"); // defaultConfig: maxDailyCostUsd 50
-  const { server, base } = await startLocalGui(repo);
+  await withGui(repo, async ({ base }) => {
   const configFile = path.join(repo, "tumwater.json");
-  try {
-    // Whole dollars persist and come back in the response.
-    let res = await fetch(base + "/api/budget", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ maxDailyCostUsd: 25 }),
-    });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
-    let onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
-    assert.equal(onDisk.maxDailyCostUsd, 25);
+  // Whole dollars persist and come back in the response.
+  let res = await fetch(base + "/api/budget", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ maxDailyCostUsd: 25 }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
+  let onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  assert.equal(onDisk.maxDailyCostUsd, 25);
 
-    // Fractional dollars keep their cents (the badge renders them).
-    res = await fetch(base + "/api/budget", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ maxDailyCostUsd: 12.34 }),
-    });
-    assert.equal(res.status, 200);
-    onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
-    assert.equal(onDisk.maxDailyCostUsd, 12.34);
+  // Fractional dollars keep their cents (the badge renders them).
+  res = await fetch(base + "/api/budget", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ maxDailyCostUsd: 12.34 }),
+  });
+  assert.equal(res.status, 200);
+  onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  assert.equal(onDisk.maxDailyCostUsd, 12.34);
 
-    // Zero disables the cap — a valid value, not an error.
-    res = await fetch(base + "/api/budget", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ maxDailyCostUsd: 0 }),
-    });
-    assert.equal(res.status, 200);
-    onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
-    assert.equal(onDisk.maxDailyCostUsd, 0);
+  // Zero disables the cap — a valid value, not an error.
+  res = await fetch(base + "/api/budget", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ maxDailyCostUsd: 0 }),
+  });
+  assert.equal(res.status, 200);
+  onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  assert.equal(onDisk.maxDailyCostUsd, 0);
 
-    // The save preserved every other key: diff the file minus that one key against a fresh
-    // load of the same config (initProject's defaults plus nothing else changed).
-    const raw = JSON.parse(fs.readFileSync(configFile, "utf8")) as Record<string, unknown>;
-    delete raw.maxDailyCostUsd;
-    const { maxDailyCostUsd: _ignored, ...rest } = loadConfig(repo) as unknown as Record<string, unknown> & {
-      maxDailyCostUsd: number;
-    };
-    assert.deepEqual(raw, rest, "only maxDailyCostUsd differs from the loaded config");
+  // The save preserved every other key: diff the file minus that one key against a fresh
+  // load of the same config (initProject's defaults plus nothing else changed).
+  const raw = JSON.parse(fs.readFileSync(configFile, "utf8")) as Record<string, unknown>;
+  delete raw.maxDailyCostUsd;
+  const { maxDailyCostUsd: _ignored, ...rest } = loadConfig(repo) as unknown as Record<string, unknown> & {
+    maxDailyCostUsd: number;
+  };
+  assert.deepEqual(raw, rest, "only maxDailyCostUsd differs from the loaded config");
 
-    // Invalid bodies get 400 with an actionable message and leave the file untouched.
-    const before = fs.readFileSync(configFile, "utf8");
-    for (const body of ["{}", '{"maxDailyCostUsd": -1}', '{"maxDailyCostUsd": NaN}', '{"maxDailyCostUsd": "25"}', 'not json', "null", "[0]"]) {
-      res = await fetch(base + "/api/budget", { method: "POST", body });
-      assert.equal(res.status, 400, body);
-      const err = (await res.json()) as { error: string };
-      assert.ok(err.error.length > 0, `actionable message for ${body}`);
-    }
-    assert.match((await postJson<{ error: string }>(base, "/api/budget", '{"maxDailyCostUsd": -1}')).error, /-1/);
-    assert.equal(fs.readFileSync(configFile, "utf8"), before, "rejected bodies change nothing");
-
-    // No tmp remnant from any of the writes above.
-    const leftovers = fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-"));
-    assert.deepEqual(leftovers, [], "no tmp file left behind");
-  } finally {
-    server.close();
+  // Invalid bodies get 400 with an actionable message and leave the file untouched.
+  const before = fs.readFileSync(configFile, "utf8");
+  for (const body of ["{}", '{"maxDailyCostUsd": -1}', '{"maxDailyCostUsd": NaN}', '{"maxDailyCostUsd": "25"}', 'not json', "null", "[0]"]) {
+    res = await fetch(base + "/api/budget", { method: "POST", body });
+    assert.equal(res.status, 400, body);
+    const err = (await res.json()) as { error: string };
+    assert.ok(err.error.length > 0, `actionable message for ${body}`);
   }
+  assert.match((await postJson<{ error: string }>(base, "/api/budget", '{"maxDailyCostUsd": -1}')).error, /-1/);
+  assert.equal(fs.readFileSync(configFile, "utf8"), before, "rejected bodies change nothing");
+
+  // No tmp remnant from any of the writes above.
+  const leftovers = fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-"));
+  assert.deepEqual(leftovers, [], "no tmp file left behind");
+  });
 });
 
 // The 500 half of /api/budget: a VALID value that fails server-side (broken tumwater.json)
@@ -260,27 +257,24 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   // Corrupt the config after init: loadConfig throws on it, so setDailyBudgetUsd — which
   // deliberately reads fresh and never overwrites a broken file with defaults — reports an error.
   fs.writeFileSync(configFile, "{ still editing");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    const res = await fetch(base + "/api/budget", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ maxDailyCostUsd: 25 }), // valid value — the failure is server-side
-    });
-    assert.equal(res.status, 500);
-    const err = (await res.json()) as { error: string };
-    assert.match(err.error, /not valid JSON/);
-    // The broken file survives untouched — a failed save must not clobber it with defaults + cap.
-    assert.equal(fs.readFileSync(configFile, "utf8"), "{ still editing");
-    // And the atomic write's tmp half left no remnant behind.
-    assert.deepEqual(
-      fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-")),
-      [],
-      "no tmp file left behind",
-    );
-  } finally {
-    server.close();
-  }
+  await withGui(repo, async ({ base }) => {
+  const res = await fetch(base + "/api/budget", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ maxDailyCostUsd: 25 }), // valid value — the failure is server-side
+  });
+  assert.equal(res.status, 500);
+  const err = (await res.json()) as { error: string };
+  assert.match(err.error, /not valid JSON/);
+  // The broken file survives untouched — a failed save must not clobber it with defaults + cap.
+  assert.equal(fs.readFileSync(configFile, "utf8"), "{ still editing");
+  // And the atomic write's tmp half left no remnant behind.
+  assert.deepEqual(
+    fs.readdirSync(repo).filter((f) => f.startsWith("tumwater.json.tmp-")),
+    [],
+    "no tmp file left behind",
+  );
+  });
 });
 
 // POST /api/pause — the dashboard header's pause/resume toggle: the same shared fleet-state.ts
@@ -289,55 +283,52 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
 test("POST /api/pause writes and removes the fleet pause marker and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause route test");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // Pausing writes the persistent marker and reports the new state; a repeat is idempotent.
-    let res = await fetch(base + "/api/pause", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paused: true }),
-    });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, paused: true });
-    assert.ok(fs.existsSync(pausedPath(repo)), "the pause marker exists");
-    res = await fetch(base + "/api/pause", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paused: true }),
-    });
-    assert.equal(res.status, 200);
-    assert.ok(fs.existsSync(pausedPath(repo)), "a repeat pause leaves the marker in place");
+  await withGui(repo, async ({ base }) => {
+  // Pausing writes the persistent marker and reports the new state; a repeat is idempotent.
+  let res = await fetch(base + "/api/pause", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paused: true }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, paused: true });
+  assert.ok(fs.existsSync(pausedPath(repo)), "the pause marker exists");
+  res = await fetch(base + "/api/pause", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paused: true }),
+  });
+  assert.equal(res.status, 200);
+  assert.ok(fs.existsSync(pausedPath(repo)), "a repeat pause leaves the marker in place");
 
-    // Resuming removes it.
-    res = await fetch(base + "/api/pause", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paused: false }),
-    });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, paused: false });
-    assert.equal(fs.existsSync(pausedPath(repo)), false, "the pause marker is gone");
+  // Resuming removes it.
+  res = await fetch(base + "/api/pause", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paused: false }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, paused: false });
+  assert.equal(fs.existsSync(pausedPath(repo)), false, "the pause marker is gone");
 
-    // Missing / non-boolean / malformed / non-object bodies all get 400 and change nothing.
-    for (const body of ["{}", '{"paused": "true"}', '{"paused": 1}', '{"paused": null}', "not json", "null", "[true]"]) {
-      res = await fetch(base + "/api/pause", { method: "POST", body });
-      assert.equal(res.status, 400, body);
-      const err = (await res.json()) as { error: string };
-      assert.ok(err.error.length > 0, `actionable message for ${body}`);
-    }
-    assert.equal(fs.existsSync(pausedPath(repo)), false, "rejected bodies leave the marker untouched");
-    assert.match((await postJson<{ error: string }>(base, "/api/pause", '{"paused": "true"}')).error, /boolean/);
-
-    // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
-    res = await fetch(base + "/api/pause", {
-      method: "POST",
-      body: JSON.stringify({ paused: true, pad: "x".repeat(70000) }),
-    });
-    assert.equal(res.status, 413);
-    assert.equal(fs.existsSync(pausedPath(repo)), false, "an oversized body leaves the marker untouched");
-  } finally {
-    server.close();
+  // Missing / non-boolean / malformed / non-object bodies all get 400 and change nothing.
+  for (const body of ["{}", '{"paused": "true"}', '{"paused": 1}', '{"paused": null}', "not json", "null", "[true]"]) {
+    res = await fetch(base + "/api/pause", { method: "POST", body });
+    assert.equal(res.status, 400, body);
+    const err = (await res.json()) as { error: string };
+    assert.ok(err.error.length > 0, `actionable message for ${body}`);
   }
+  assert.equal(fs.existsSync(pausedPath(repo)), false, "rejected bodies leave the marker untouched");
+  assert.match((await postJson<{ error: string }>(base, "/api/pause", '{"paused": "true"}')).error, /boolean/);
+
+  // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
+  res = await fetch(base + "/api/pause", {
+    method: "POST",
+    body: JSON.stringify({ paused: true, pad: "x".repeat(70000) }),
+  });
+  assert.equal(res.status, 413);
+  assert.equal(fs.existsSync(pausedPath(repo)), false, "an oversized body leaves the marker untouched");
+  });
 });
 
 // The dashboard's pause menu offers timed pauses: /api/pause takes an optional forSeconds and
@@ -345,43 +336,40 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
 test("POST /api/pause with forSeconds writes a timed pause and rejects bad durations", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui timed pause test");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    const before = Date.now();
-    let res = await fetch(base + "/api/pause", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paused: true, forSeconds: 1800 }),
-    });
-    assert.equal(res.status, 200);
-    const answer = (await res.json()) as { ok: boolean; paused: boolean; until: number };
-    assert.equal(answer.paused, true);
-    const marker = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number };
-    assert.equal(marker.until, answer.until, "the answer names the deadline the marker holds");
-    assert.ok(marker.until >= before + 1_800_000 && marker.until <= Date.now() + 1_800_000, "30 minutes from now");
-    assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
+  await withGui(repo, async ({ base }) => {
+  const before = Date.now();
+  let res = await fetch(base + "/api/pause", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ paused: true, forSeconds: 1800 }),
+  });
+  assert.equal(res.status, 200);
+  const answer = (await res.json()) as { ok: boolean; paused: boolean; until: number };
+  assert.equal(answer.paused, true);
+  const marker = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number };
+  assert.equal(marker.until, answer.until, "the answer names the deadline the marker holds");
+  assert.ok(marker.until >= before + 1_800_000 && marker.until <= Date.now() + 1_800_000, "30 minutes from now");
+  assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
 
-    // A deadline only makes sense when pausing; a non-positive, non-numeric, or over-cap one is a
-    // client error that leaves the marker alone.
-    for (const body of [
-      { paused: false, forSeconds: 60 },
-      { paused: true, forSeconds: 0 },
-      { paused: true, forSeconds: -5 },
-      { paused: true, forSeconds: "3600" },
-      { paused: true, forSeconds: 91 * 86_400 },
-    ]) {
-      res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify(body) });
-      assert.equal(res.status, 400, JSON.stringify(body));
-      assert.match(((await res.json()) as { error: string }).error, /forSeconds/);
-    }
-    assert.equal((JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
-
-    // A pause without forSeconds is a standing one, as before.
-    res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify({ paused: true }) });
-    assert.deepEqual(await res.json(), { ok: true, paused: true });
-  } finally {
-    server.close();
+  // A deadline only makes sense when pausing; a non-positive, non-numeric, or over-cap one is a
+  // client error that leaves the marker alone.
+  for (const body of [
+    { paused: false, forSeconds: 60 },
+    { paused: true, forSeconds: 0 },
+    { paused: true, forSeconds: -5 },
+    { paused: true, forSeconds: "3600" },
+    { paused: true, forSeconds: 91 * 86_400 },
+  ]) {
+    res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify(body) });
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.match(((await res.json()) as { error: string }).error, /forSeconds/);
   }
+  assert.equal((JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
+
+  // A pause without forSeconds is a standing one, as before.
+  res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify({ paused: true }) });
+  assert.deepEqual(await res.json(), { ok: true, paused: true });
+  });
 });
 
 // --- POST /api/wake and POST /api/abort — the dashboard's per-row controls, backed by the
@@ -396,99 +384,93 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   const s = freshLoopState("feature");
   s.backoffSeconds = 15;
   saveLoopState(repo, s);
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // One named role: the row's wake link. The message is the CLI's own confirmation text
-    // (no harness here, so the not-live form), and the marker + state-file edits match.
-    let res = await fetch(base + "/api/wake", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role: "feature" }),
-    });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), {
-      ok: true,
-      message: "wake requested for feature — takes effect on the next `tumwater run` (no harness is running)",
-    });
-    const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
-    assert.deepEqual(marker.roles, ["feature"]);
-    assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
+  await withGui(repo, async ({ base }) => {
+  // One named role: the row's wake link. The message is the CLI's own confirmation text
+  // (no harness here, so the not-live form), and the marker + state-file edits match.
+  let res = await fetch(base + "/api/wake", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ role: "feature" }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    ok: true,
+    message: "wake requested for feature — takes effect on the next `tumwater run` (no harness is running)",
+  });
+  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  assert.deepEqual(marker.roles, ["feature"]);
+  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
 
-    // `{}` — the empty/missing-role body targets every configured role, like the CLI's
-    // all-roles default.
-    fs.rmSync(wakeRequestPath(repo));
-    res = await fetch(base + "/api/wake", { method: "POST", body: "{}" });
-    assert.equal(res.status, 200);
-    const fleetMarker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
-    assert.deepEqual([...fleetMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
+  // `{}` — the empty/missing-role body targets every configured role, like the CLI's
+  // all-roles default.
+  fs.rmSync(wakeRequestPath(repo));
+  res = await fetch(base + "/api/wake", { method: "POST", body: "{}" });
+  assert.equal(res.status, 200);
+  const fleetMarker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  assert.deepEqual([...fleetMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 
-    // Unknown / non-string roles get the transcript endpoint's 400 wording, and change nothing.
-    for (const body of ['{"role": "bogus"}', '{"role": 7}']) {
-      const bad = await fetch(base + "/api/wake", { method: "POST", body });
-      assert.equal(bad.status, 400, body);
-      assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
-    }
-    fs.rmSync(wakeRequestPath(repo));
-    // Malformed / non-object bodies get readJsonObject's shared 400, and an oversized body 413.
-    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", pad: "x".repeat(70000) })]) {
-      const bad = await fetch(base + "/api/wake", { method: "POST", body });
-      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
-    }
-    assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "rejected bodies leave the marker untouched");
-  } finally {
-    server.close();
+  // Unknown / non-string roles get the transcript endpoint's 400 wording, and change nothing.
+  for (const body of ['{"role": "bogus"}', '{"role": 7}']) {
+    const bad = await fetch(base + "/api/wake", { method: "POST", body });
+    assert.equal(bad.status, 400, body);
+    assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
   }
+  fs.rmSync(wakeRequestPath(repo));
+  // Malformed / non-object bodies get readJsonObject's shared 400, and an oversized body 413.
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", pad: "x".repeat(70000) })]) {
+    const bad = await fetch(base + "/api/wake", { method: "POST", body });
+    assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+  }
+  assert.equal(fs.existsSync(wakeRequestPath(repo)), false, "rejected bodies leave the marker untouched");
+  });
 });
 
 test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 400 for bad roles", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui abort test");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // No harness running: the marker is valid but nothing can consume it — a conflict, not a
-    // client error, so the CLI's not-live error rides out as 409 and nothing is written.
-    let res = await fetch(base + "/api/abort", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role: "feature" }),
-    });
-    assert.equal(res.status, 409);
-    assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater run` first" });
-    assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "not-live writes no marker");
+  await withGui(repo, async ({ base }) => {
+  // No harness running: the marker is valid but nothing can consume it — a conflict, not a
+  // client error, so the CLI's not-live error rides out as 409 and nothing is written.
+  let res = await fetch(base + "/api/abort", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ role: "feature" }),
+  });
+  assert.equal(res.status, 409);
+  assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater run` first" });
+  assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "not-live writes no marker");
 
-    // Record this test process as the running orchestrator (it is alive): now the request
-    // drops the marker and reports the CLI's confirmation text verbatim.
-    writeOrchestratorMarker(repo, ["feature"]);
-    res = await fetch(base + "/api/abort", {
-      method: "POST",
-      body: JSON.stringify({ role: "feature" }),
-    });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), {
-      ok: true,
-      message: "abort requested for feature — a running fleet applies it within ~2s",
-    });
-    const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as { at: number };
-    assert.ok(marker.at > 0);
+  // Record this test process as the running orchestrator (it is alive): now the request
+  // drops the marker and reports the CLI's confirmation text verbatim.
+  writeOrchestratorMarker(repo, ["feature"]);
+  res = await fetch(base + "/api/abort", {
+    method: "POST",
+    body: JSON.stringify({ role: "feature" }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    ok: true,
+    message: "abort requested for feature — a running fleet applies it within ~2s",
+  });
+  const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as { at: number };
+  assert.ok(marker.at > 0);
 
-    // The director variant's message names the discarded prompt, like the CLI's does.
-    res = await fetch(base + "/api/abort", { method: "POST", body: JSON.stringify({ role: "director" }) });
-    assert.equal(res.status, 200);
-    assert.match(((await res.json()) as { message: string }).message, /prompt will be discarded/);
+  // The director variant's message names the discarded prompt, like the CLI's does.
+  res = await fetch(base + "/api/abort", { method: "POST", body: JSON.stringify({ role: "director" }) });
+  assert.equal(res.status, 200);
+  assert.match(((await res.json()) as { message: string }).message, /prompt will be discarded/);
 
-    // Missing / unknown / non-string roles get 400 naming the accepted ids; malformed
-    // bodies get readJsonObject's shape 400 instead (both touch nothing).
-    for (const body of ["{}", '{"role": "bogus"}', '{"role": null}', '{"role": 1}']) {
-      const bad = await fetch(base + "/api/abort", { method: "POST", body });
-      assert.equal(bad.status, 400, body);
-      assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
-    }
-    const malformed = await fetch(base + "/api/abort", { method: "POST", body: "not json" });
-    assert.equal(malformed.status, 400);
-    assert.match(((await malformed.json()) as { error: string }).error, /JSON object/);
-  } finally {
-    server.close();
+  // Missing / unknown / non-string roles get 400 naming the accepted ids; malformed
+  // bodies get readJsonObject's shape 400 instead (both touch nothing).
+  for (const body of ["{}", '{"role": "bogus"}', '{"role": null}', '{"role": 1}']) {
+    const bad = await fetch(base + "/api/abort", { method: "POST", body });
+    assert.equal(bad.status, 400, body);
+    assert.match(((await bad.json()) as { error: string }).error, /valid ids: feature, bugfix/);
   }
+  const malformed = await fetch(base + "/api/abort", { method: "POST", body: "not json" });
+  assert.equal(malformed.status, 400);
+  assert.match(((await malformed.json()) as { error: string }).error, /JSON object/);
+  });
 });
 
 // POST /api/pause-role — the dashboard's per-row pause/resume toggle, backed by the same
@@ -498,65 +480,62 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
 test("POST /api/pause-role writes the per-role marker, is idempotent, and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui pause-role test");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // Pause one named role: the marker records it, and a repeat is idempotent (changed false).
-    const post = (payload: unknown) =>
-      fetch(base + "/api/pause-role", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    let res = await post({ role: "feature", paused: true });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, changed: true, paused: true });
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
-      ["feature"],
-    );
-    res = await post({ role: "feature", paused: true });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, changed: false, paused: true }, "re-pausing is idempotent");
-    assert.deepEqual(
-      JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
-      ["feature"],
-      "the idempotent repeat leaves one marker entry",
-    );
+  await withGui(repo, async ({ base }) => {
+  // Pause one named role: the marker records it, and a repeat is idempotent (changed false).
+  const post = (payload: unknown) =>
+    fetch(base + "/api/pause-role", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  let res = await post({ role: "feature", paused: true });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, changed: true, paused: true });
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+    ["feature"],
+  );
+  res = await post({ role: "feature", paused: true });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, changed: false, paused: true }, "re-pausing is idempotent");
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+    ["feature"],
+    "the idempotent repeat leaves one marker entry",
+  );
 
-    // Resume: the role leaves the marker, and a fully-resumed fleet leaves no file behind.
-    res = await post({ role: "feature", paused: false });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, changed: true, paused: false });
-    assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "the last removal deletes the marker");
-    res = await post({ role: "feature", paused: false });
-    assert.equal(res.status, 200);
-    assert.deepEqual(await res.json(), { ok: true, changed: false, paused: false }, "resuming an unpaused role is idempotent");
+  // Resume: the role leaves the marker, and a fully-resumed fleet leaves no file behind.
+  res = await post({ role: "feature", paused: false });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, changed: true, paused: false });
+  assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "the last removal deletes the marker");
+  res = await post({ role: "feature", paused: false });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, changed: false, paused: false }, "resuming an unpaused role is idempotent");
 
-    // Unknown / missing / non-string roles get the shared rejectBadRole 400 wording, and a
-    // non-boolean paused gets the /api/pause wording — none of them writes a marker.
-    for (const body of [
-      { role: "bogus", paused: true },
-      { role: 7, paused: true },
-      { paused: true },
-      { role: "feature" },
-      { role: "feature", paused: "true" },
-    ]) {
-      const bad = await post(body);
-      assert.equal(bad.status, 400, JSON.stringify(body));
-      const err = ((await bad.json()) as { error: string }).error;
-      if ("role" in body && body.role !== "feature") assert.match(err, /valid ids: feature, bugfix/);
-      else if (!("role" in body)) assert.match(err, /role required/);
-      else assert.match(err, /paused must be a boolean/);
-    }
-    // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
-    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", paused: true, pad: "x".repeat(70000) })]) {
-      const bad = await fetch(base + "/api/pause-role", { method: "POST", body });
-      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
-    }
-    assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "rejected bodies leave the marker untouched");
-  } finally {
-    server.close();
+  // Unknown / missing / non-string roles get the shared rejectBadRole 400 wording, and a
+  // non-boolean paused gets the /api/pause wording — none of them writes a marker.
+  for (const body of [
+    { role: "bogus", paused: true },
+    { role: 7, paused: true },
+    { paused: true },
+    { role: "feature" },
+    { role: "feature", paused: "true" },
+  ]) {
+    const bad = await post(body);
+    assert.equal(bad.status, 400, JSON.stringify(body));
+    const err = ((await bad.json()) as { error: string }).error;
+    if ("role" in body && body.role !== "feature") assert.match(err, /valid ids: feature, bugfix/);
+    else if (!("role" in body)) assert.match(err, /role required/);
+    else assert.match(err, /paused must be a boolean/);
   }
+  // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", paused: true, pad: "x".repeat(70000) })]) {
+    const bad = await fetch(base + "/api/pause-role", { method: "POST", body });
+    assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+  }
+  assert.equal(fs.existsSync(pausedRolesPath(repo)), false, "rejected bodies leave the marker untouched");
+  });
 });
 
 // POST /api/prompt-role — the dashboard's per-row prompt control, backed by the same submit
@@ -566,49 +545,46 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
 test("POST /api/prompt-role queues for the named loop and rejects bad bodies like its peers", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui prompt-role test");
-  const { server, base } = await startLocalGui(repo);
-  try {
-    const post = (payload: unknown) =>
-      fetch(base + "/api/prompt-role", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    const res = await post({ role: "feature", text: "  tighten the docs  " });
-    assert.equal(res.status, 200);
-    const body = (await res.json()) as { ok: boolean; message: string };
-    assert.equal(body.ok, true);
-    assert.match(body.message, /wake requested for feature/);
-    // The queue holds the trimmed text — the same files `tumwater prompt --list --role` reads.
-    assert.deepEqual(queuedRolePrompts(repo, "feature"), ["tighten the docs"]);
-    // The wake marker names just that loop.
-    assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["feature"]);
+  await withGui(repo, async ({ base }) => {
+  const post = (payload: unknown) =>
+    fetch(base + "/api/prompt-role", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  const res = await post({ role: "feature", text: "  tighten the docs  " });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { ok: boolean; message: string };
+  assert.equal(body.ok, true);
+  assert.match(body.message, /wake requested for feature/);
+  // The queue holds the trimmed text — the same files `tumwater prompt --list --role` reads.
+  assert.deepEqual(queuedRolePrompts(repo, "feature"), ["tighten the docs"]);
+  // The wake marker names just that loop.
+  assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["feature"]);
 
-    // An unknown role reads the same error text /api/transcript answers with (the shared
-    // rejectBadRole wording), and the text rules match /api/prompt's.
-    const transcriptRes = await fetch(base + "/api/transcript?role=bogus&n=5");
-    const transcriptErr = ((await transcriptRes.json()) as { error: string }).error;
-    const unknown = await post({ role: "bogus", text: "hi" });
-    assert.equal(unknown.status, 400);
-    assert.equal(((await unknown.json()) as { error: string }).error, transcriptErr);
-    for (const payload of [
-      { role: "feature" },
-      { role: "feature", text: 7 },
-      { role: "feature", text: "   " },
-      { role: "feature", text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) },
-    ]) {
-      const bad = await post(payload);
-      assert.equal(bad.status, 400, JSON.stringify(payload).slice(0, 60));
-      assert.equal(queuedRolePrompts(repo, "feature").length, 1, "the rejected body queued nothing");
-    }
-    // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
-    for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", text: "x", pad: "y".repeat(70000) })]) {
-      const bad = await fetch(base + "/api/prompt-role", { method: "POST", body });
-      assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
-    }
-  } finally {
-    server.close();
+  // An unknown role reads the same error text /api/transcript answers with (the shared
+  // rejectBadRole wording), and the text rules match /api/prompt's.
+  const transcriptRes = await fetch(base + "/api/transcript?role=bogus&n=5");
+  const transcriptErr = ((await transcriptRes.json()) as { error: string }).error;
+  const unknown = await post({ role: "bogus", text: "hi" });
+  assert.equal(unknown.status, 400);
+  assert.equal(((await unknown.json()) as { error: string }).error, transcriptErr);
+  for (const payload of [
+    { role: "feature" },
+    { role: "feature", text: 7 },
+    { role: "feature", text: "   " },
+    { role: "feature", text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) },
+  ]) {
+    const bad = await post(payload);
+    assert.equal(bad.status, 400, JSON.stringify(payload).slice(0, 60));
+    assert.equal(queuedRolePrompts(repo, "feature").length, 1, "the rejected body queued nothing");
   }
+  // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", text: "x", pad: "y".repeat(70000) })]) {
+    const bad = await fetch(base + "/api/prompt-role", { method: "POST", body });
+    assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
+  }
+  });
 });
 
 // The payload's roleInbox: per-role queue counts for every enabled loop except the director

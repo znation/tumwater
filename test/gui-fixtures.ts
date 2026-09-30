@@ -19,3 +19,21 @@ export async function startLocalGui(
   assert.ok(addr && typeof addr === "object");
   return { server, base: `http://127.0.0.1:${addr.port}`, port: addr.port };
 }
+
+/** Run `body` against a freshly started local GUI server and close the server either way —
+ * the try/finally (`server.close()` in the finally, so a throwing body can never leak a
+ * listening server into the next test) every startLocalGui call site hand-rolls, as one
+ * call. `body` receives the base URL and port and destructures what it uses; `token`
+ * starts a token-protected server for the auth-gate tests. */
+export async function withGui<T>(
+  root: string,
+  body: (gui: { base: string; port: number }) => Promise<T>,
+  token = "",
+): Promise<T> {
+  const { server, base, port } = await startLocalGui(root, token);
+  try {
+    return await body({ base, port });
+  } finally {
+    server.close();
+  }
+}

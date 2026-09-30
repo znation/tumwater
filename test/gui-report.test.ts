@@ -9,7 +9,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
 import { atLocalTs as atNoon, dayKey } from "./oracles.js";
-import { startLocalGui } from "./gui-fixtures.js";
+import { withGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { clientScope } from "./gui-client-scope.js";
@@ -44,47 +44,44 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
     `# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### A fixed bug (found by qa loop ${today}, fixed ${today})\n`,
   );
 
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // Default window: the JSON equals collectReport's output for the same root/days.
-    const res = await fetch(base + "/api/report");
-    assert.equal(res.status, 200);
-    const d = (await res.json()) as ReturnType<typeof collectReport>;
-    assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
-    // costByRole rides along in the JSON — split from the same tick_end events as costUsd.
-    const spendDay = d.series.find((x) => x.date === dayKey(atNoon(3)));
-    assert.deepEqual(spendDay?.costByRole, { feature: 0.25 }, "/api/report carries costByRole per role");
-    const todayTick = d.series.find((x) => x.date === dayKey(atNoon(0)));
-    assert.deepEqual(todayTick?.costByRole, { steward: 1.5 });
-    assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
-    assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
+  await withGui(repo, async ({ base }) => {
+  // Default window: the JSON equals collectReport's output for the same root/days.
+  const res = await fetch(base + "/api/report");
+  assert.equal(res.status, 200);
+  const d = (await res.json()) as ReturnType<typeof collectReport>;
+  assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
+  // costByRole rides along in the JSON — split from the same tick_end events as costUsd.
+  const spendDay = d.series.find((x) => x.date === dayKey(atNoon(3)));
+  assert.deepEqual(spendDay?.costByRole, { feature: 0.25 }, "/api/report carries costByRole per role");
+  const todayTick = d.series.find((x) => x.date === dayKey(atNoon(0)));
+  assert.deepEqual(todayTick?.costByRole, { steward: 1.5 });
+  assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
+  assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
 
-    // days: missing or non-decimal → default 14; out-of-range clamped to 1..90 — never an
-    // error. Non-decimal follows the shared plain-digit rule (text.parseNonNegativeInt):
-    // hex/scientific/signed/padded spellings are not counts, so they get the default instead
-    // of a coerced value (raw Number.parseInt read "1e3" as 1 and "0x10" as 0).
-    const cases: Array<[string, number]> = [
-      ["days=14", 14],
-      ["days=", 14],
-      ["days=abc", 14],
-      ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
-      ["days=1e3", 14], // scientific spelling likewise
-      ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
-      ["days=%207", 14], // whitespace-padded spelling is not a count
-      ["days=0", 1],
-      ["days=91", 90],
-      ["days=900", 90],
-    ];
-    for (const [q, expected] of cases) {
-      const r = await fetch(base + "/api/report?" + q);
-      assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
-      const dd = (await r.json()) as { days: number; series: unknown[] };
-      assert.equal(dd.days, expected, `${q} → ${expected}`);
-      assert.equal(dd.series.length, expected, `series length follows the clamped window`);
-    }
-  } finally {
-    server.close();
+  // days: missing or non-decimal → default 14; out-of-range clamped to 1..90 — never an
+  // error. Non-decimal follows the shared plain-digit rule (text.parseNonNegativeInt):
+  // hex/scientific/signed/padded spellings are not counts, so they get the default instead
+  // of a coerced value (raw Number.parseInt read "1e3" as 1 and "0x10" as 0).
+  const cases: Array<[string, number]> = [
+    ["days=14", 14],
+    ["days=", 14],
+    ["days=abc", 14],
+    ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
+    ["days=1e3", 14], // scientific spelling likewise
+    ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
+    ["days=%207", 14], // whitespace-padded spelling is not a count
+    ["days=0", 1],
+    ["days=91", 90],
+    ["days=900", 90],
+  ];
+  for (const [q, expected] of cases) {
+    const r = await fetch(base + "/api/report?" + q);
+    assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
+    const dd = (await r.json()) as { days: number; series: unknown[] };
+    assert.equal(dd.days, expected, `${q} → ${expected}`);
+    assert.equal(dd.series.length, expected, `series length follows the clamped window`);
   }
+  });
 });
 
 test("gui /api/failures serves the rendered digest and clamps days instead of erroring", async () => {
@@ -100,38 +97,35 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
       JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change" }),
     ]);
 
-  const { server, base } = await startLocalGui(repo);
-  try {
-    // Default window: the markdown equals the pure renderer's output for the same root/days.
-    const res = await fetch(base + "/api/failures");
-    assert.equal(res.status, 200);
-    const d = (await res.json()) as { markdown: string };
-    assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
-    assert.match(d.markdown, /^# tumwater failure digest/, "the tab renders the digest's heading first");
+  await withGui(repo, async ({ base }) => {
+  // Default window: the markdown equals the pure renderer's output for the same root/days.
+  const res = await fetch(base + "/api/failures");
+  assert.equal(res.status, 200);
+  const d = (await res.json()) as { markdown: string };
+  assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
+  assert.match(d.markdown, /^# tumwater failure digest/, "the tab renders the digest's heading first");
 
-    // days follows /api/report's exact rule: missing/non-decimal → 14; out-of-range clamped to
-    // 1..90 — never an error. Compare each against the digest rendered for the clamped count.
-    const cases: Array<[string, number]> = [
-      ["days=14", 14],
-      ["days=", 14],
-      ["days=abc", 14],
-      ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
-      ["days=1e3", 14], // scientific spelling likewise
-      ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
-      ["days=%207", 14], // whitespace-padded spelling is not a count
-      ["days=0", 1],
-      ["days=91", 90],
-      ["days=900", 90],
-    ];
-    for (const [q, expected] of cases) {
-      const r = await fetch(base + "/api/failures?" + q);
-      assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
-      const dd = (await r.json()) as { markdown: string };
-      assert.equal(dd.markdown, renderFailureMarkdown(collectFailureReport(repo, expected)), `${q} → ${expected}`);
-    }
-  } finally {
-    server.close();
+  // days follows /api/report's exact rule: missing/non-decimal → 14; out-of-range clamped to
+  // 1..90 — never an error. Compare each against the digest rendered for the clamped count.
+  const cases: Array<[string, number]> = [
+    ["days=14", 14],
+    ["days=", 14],
+    ["days=abc", 14],
+    ["days=-5", 14], // signed spelling is not a count — default, not clamped coercion
+    ["days=1e3", 14], // scientific spelling likewise
+    ["days=0x10", 14], // hex prefix: raw parseInt stopped at "x" and coerced to 0 → 1 day
+    ["days=%207", 14], // whitespace-padded spelling is not a count
+    ["days=0", 1],
+    ["days=91", 90],
+    ["days=900", 90],
+  ];
+  for (const [q, expected] of cases) {
+    const r = await fetch(base + "/api/failures?" + q);
+    assert.equal(r.status, 200, `${q} → 200 (a URL typo degrades to a window, not an error)`);
+    const dd = (await r.json()) as { markdown: string };
+    assert.equal(dd.markdown, renderFailureMarkdown(collectFailureReport(repo, expected)), `${q} → ${expected}`);
   }
+  });
 });
 
 test("the Usage and Failures views fetch their window on activation, never on a timer", async () => {
