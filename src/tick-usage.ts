@@ -5,7 +5,7 @@ import { recordDailyCost } from "./budget.js";
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
  * commit trailer reads turns, the tick_end event reads costUsd, and the orchestrator's fleet-wide
- * hold reads lastRateLimit and lastBackendFailure (src/fleet-hold.ts, src/tick-timing.ts).
+ * hold reads lastRateLimit and lastBackendFailure (src/fleet-hold.ts, src/fleet-polls.ts).
  *
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
  * retry, conflict resolution, landing runs via foldLandingUsage — lands here exactly once, so

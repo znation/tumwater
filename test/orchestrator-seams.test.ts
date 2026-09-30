@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import {
   awaitLandingForHandoff,
   p75TickDurationMs,
-  pollFleetHold,
   runTimedRoleTick,
   sleepInterruptible,
-  type HoldInputs,
 } from "../src/tick-timing.js";
+import { pollFleetHold, type HoldInputs } from "../src/fleet-polls.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
 import { FLEET_OPEN, HOLD_BASE_MS } from "../src/fleet-hold.js";
@@ -311,7 +310,7 @@ test("pollFleetHold trips on two roles' same-kind backend failures and names the
   const now = 1_000_000_000;
   const holdEvents = () =>
     readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
-  // The poll's structural runner shape (src/tick-timing.ts HoldInputs), mutable so the test
+  // The poll's structural runner shape (src/fleet-polls.ts HoldInputs), mutable so the test
   // moves the observations as the fleet's runs would (the runner's own getters are readonly).
   const runners: HoldInputs[] = [
     { role: "bugfix", lastRateLimit: undefined, lastBackendFailure: { at: now - 3_000, kind: "connection" } },

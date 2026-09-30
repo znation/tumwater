@@ -41,7 +41,7 @@ export class LoopRunner {
   config: TumwaterConfig;
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
    * src/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
-   * runner (src/tick-timing.ts), so the field keeps its place on the runner's surface. */
+   * runner (src/fleet-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
     return this.usage.lastRateLimit;
   }

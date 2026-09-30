@@ -7,7 +7,7 @@ import {
   errorStormKnob,
   type ErrorStormObservation,
 } from "../src/error-storm.js";
-import { pollErrorStorm } from "../src/tick-timing.js";
+import { pollErrorStorm } from "../src/fleet-polls.js";
 import { readEvents } from "../src/events.js";
 import { tmpdir } from "./repo-fixtures.js";
 

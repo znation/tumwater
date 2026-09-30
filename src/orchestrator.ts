@@ -49,12 +49,10 @@ import {
   drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
-  pollErrorStorm,
-  pollFailureSpread,
-  pollFleetHold,
   runTimedRoleTick,
   sleepInterruptible,
 } from "./tick-timing.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold } from "./fleet-polls.js";
 
 const POLL_MS = 2000;
 
