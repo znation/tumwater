@@ -13,8 +13,10 @@ import { branchName, worktreePath } from "./paths.js";
  * and resolvable via rev-parse. The shared usability probe of both ensure* functions below;
  * a directory that fails it (pointer lost, or admin-side registration under <root>/.git/
  * worktrees/ pruned by outside git maintenance) is rebuilt from scratch instead of failing
- * every tick. */
-async function isUsableWorktree(dir: string): Promise<boolean> {
+ * every tick. Also exported for read-only viewers that must classify a worktree as absent
+ * rather than fail (ui/change-preview.ts's collectRoleChange), so the probe's exact
+ * conditions live in one place. */
+export async function isUsableWorktree(dir: string): Promise<boolean> {
   return fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null;
 }
 

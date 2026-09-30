@@ -5,12 +5,12 @@
  * this module only wires the pieces into one operator view, degrading like `report` does
  * when the fleet (or just this role's worktree) does not exist yet. */
 
-import fs from "node:fs";
 import { knownRoleIdsCached, loadConfigSafe } from "../config.js";
 import { plural } from "../text.js";
 import { aheadOfMain, branchExists, currentBranch, gitTry } from "../git.js";
 import { aheadOfMainDiff, changedFiles } from "../git-diff.js";
 import { branchName, worktreePath } from "../paths.js";
+import { isUsableWorktree } from "../worktree.js";
 
 /** One unlanded commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {
@@ -134,10 +134,9 @@ export async function collectRoleChange(root: string, role: string): Promise<Rol
   if (!(await branchExists(root, mainBranch))) return { ...empty, state: "no-base" };
   const wt = worktreePath(root, role);
   // A missing directory or a dead worktree registration (pruned, half-deleted) is the same
-  // operator situation: this loop holds nothing inspectable yet.
-  if (!fs.existsSync(wt) || (await gitTry(wt, "rev-parse", "--git-dir")) === null) {
-    return { ...empty, state: "absent" };
-  }
+  // operator situation: this loop holds nothing inspectable yet — worktree.ts's shared
+  // usability probe answers both with one predicate.
+  if (!(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
   const ahead = await aheadOfMain(wt, mainBranch);
   const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`));
   const diff = ahead === 0 ? "" : await aheadOfMainDiff(wt, mainBranch);
