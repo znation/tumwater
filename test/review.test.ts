@@ -16,7 +16,7 @@ import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logFlagsTo, reviewerStub, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, reviewGate, ROLE } from "./gate-fixtures.js";
@@ -609,7 +609,7 @@ test("a review's session is named by its role and tick", async () => {
   const argsFile = path.join(tmpdir(), "pi-args");
   const restore = fakePi(
     `printf '%s\\n' "$@" > '${argsFile}'\n` +
-      `printf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+      `${reviewerStub()}`,
   );
   try {
     await reviewGate(root, wt); // tick 1 gate run
@@ -622,7 +622,7 @@ test("a review's session is named by its role and tick", async () => {
 
 test("gate fails closed on an aborted run without bookkeeping", async () => {
   const { root, wt } = await gateFixture();
-  const restore = fakePi(`sleep 5\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`sleep 5\n${reviewerStub()}`);
   try {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
@@ -662,7 +662,7 @@ test("gate pre-check compiles the worktree against the root install — a health
   sh(wt, "git", "commit", "-m", "wip change");
 
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
@@ -713,7 +713,7 @@ test("the gate's green pre-check attests the runner's counts in the event and th
   const promptFile = path.join(tmpdir(), "review-prompt");
   const restore = fakePi(
     `for a in "$@"; do printf '%s' "$a" >> '${promptFile}'; done\n` +
-      `printf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+      `${reviewerStub()}`,
   );
   try {
     const { result } = await reviewGate(root, wt);
@@ -803,7 +803,7 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
 
   // Any pi run at all touches the marker: none may start — not a fix run, not the reviewer.
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -836,7 +836,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
   seedGreenMain(root);
 
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -882,7 +882,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   seedGreenMain(root);
 
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -909,7 +909,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
   );
   const movedMainSha = uniqueMain(root);
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const state = freshLoopState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
@@ -960,7 +960,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     },
   };
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
@@ -989,7 +989,7 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
   );
   const prompts = path.join(tmpdir(), "prompts.log");
   const restore = fakePi(
-    `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${prompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+    `{ printf '%s\\n' "$@"; echo "===RUN==="; } >> "${prompts}"\n${reviewerStub()}`,
   );
   try {
     const head = await headOf(wt, "HEAD");
@@ -1030,7 +1030,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
 
   // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
   const marker = path.join(tmpdir(), "pi-ran-command-check");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
@@ -1077,7 +1077,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   );
   uniqueMain(root);
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
@@ -1096,7 +1096,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
 test("gate pre-check timeout warns and still proceeds to the model review", async () => {
   const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
   const marker = path.join(tmpdir(), "pi-ran");
-  const restore = fakePi(`touch '${marker}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub(marker)}`);
   try {
     const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
@@ -1116,7 +1116,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 // absent even when the model approves (asserted in the timeout test above).
 test("a green pre-check hands its verified head to the landing path", async () => {
   const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
-  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub()}`);
   try {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
@@ -1179,7 +1179,7 @@ test("an approved change cleanly rebased onto a moved main reuses its approval: 
 test("a rebase that changes the patch is re-reviewed", async () => {
   const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n");
   const runs = path.join(tmpdir(), "pi-runs");
-  const restore = fakePi(`echo run >> '${runs}'\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`echo run >> '${runs}'\n${reviewerStub()}`);
   try {
     const state = freshLoopState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
@@ -1203,7 +1203,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
   // approval covers the diff's review, never the check.
   const red = path.join(tmpdir(), "red");
   const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`);
-  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+  const restore = fakePi(`${reviewerStub()}`);
   try {
     const state = freshLoopState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
@@ -1229,7 +1229,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
   const prompts = path.join(tmpdir(), "prompts.log");
   // The fake pi records its argv (the prompt is the last argument) before answering.
   const restore = fakePi(
-    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${prompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${prompts}"\n${reviewerStub()}`,
   );
   try {
     const { result } = await reviewGate(root, wt);
@@ -1246,7 +1246,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
   const bare = await gateFixture();
   const barePrompts = path.join(tmpdir(), "prompts.log");
   const restoreBare = fakePi(
-    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${barePrompts}"\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${barePrompts}"\n${reviewerStub()}`,
   );
   try {
     const { result } = await reviewGate(bare.root, bare.wt);
@@ -1275,7 +1275,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     .map((event) => `printf '%s\n' '${JSON.stringify(event)}'`)
     .join("\n");
   const reviewer = (prompts: string) =>
-    fakePi(`printf '%s\n' "$@" >> "${prompts}"\n${toolCalls}\nprintf '%s\n' '${assistantLine("VERDICT: approve")}'`);
+    fakePi(`printf '%s\n' "$@" >> "${prompts}"\n${toolCalls}\n${reviewerStub()}`);
   const rerunWarnings = (root: string) =>
     readEvents(root)
       .filter((e) => e.type === "warning")

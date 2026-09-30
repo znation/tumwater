@@ -48,6 +48,17 @@ export function fakePiIdle(opts: { cost?: number } = {}): () => void {
   return fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`);
 }
 
+/** The review tests' standard reviewer stub: a fake-pi script that creates `marker` (when
+ * given — the test's proof the review run actually happened, asserted with existsSync) and
+ * prints "VERDICT: approve" as the review run's one assistant turn. The single home of the
+ * touch+printf script review.test.ts hand-rolled at nineteen call sites, so the marker
+ * idiom and the printf wrapper cannot drift per test; tests pinning a different verdict or
+ * usage numbers still hand their own reply to pi-events.ts's assistantLine directly. */
+export function reviewerStub(marker?: string): string {
+  const reply = `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`;
+  return marker === undefined ? reply : `touch '${marker}'\n${reply}`;
+}
+
 /** A shell fragment list for fake-pi scripts: the phase gate the loop tests use to make a
  * fake pi do real work on its first run and idle on every later one — create `marker`, run
  * the `firstRun` lines, and on every later invocation emit the standard
