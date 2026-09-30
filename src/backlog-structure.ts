@@ -98,13 +98,20 @@ function sectionTitles(md: string): string[] {
   return titles;
 }
 
+/** How many times each `## ` title appears in `md` — the tally `duplicateHeadings` reports
+ * repeats from and `backlogStructureReason` compares head against base for both backlog
+ * files, so the three sites count sections through one helper and cannot drift apart. */
+function sectionTitleCounts(md: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const title of sectionTitles(md)) counts.set(title, (counts.get(title) ?? 0) + 1);
+  return counts;
+}
+
 /** The `## ` titles of `md` that appear more than once, in first-appearance order — the
  * duplicate-heading signal `checkBacklogHeadings` reports for main and
  * `backlogStructureReason` checks on a tree being landed. */
 export function duplicateHeadings(md: string): string[] {
-  const counts = new Map<string, number>();
-  for (const title of sectionTitles(md)) counts.set(title, (counts.get(title) ?? 0) + 1);
-  return [...counts].filter(([, n]) => n > 1).map(([title]) => title);
+  return [...sectionTitleCounts(md)].filter(([, n]) => n > 1).map(([title]) => title);
 }
 
 /** The first structural fault a diff landing on `mainBranch` leaves in a backlog file, or
@@ -140,10 +147,8 @@ export async function backlogStructureReason(
     // A deleted file reads as empty: every heading the base had is gone — rule (b).
     const head = readTextOrNull(path.join(wt, file)) ?? "";
     const base = (await gitTry(wt, "show", `${baseRev}:${file}`)) ?? "";
-    const headCounts = new Map<string, number>();
-    for (const title of sectionTitles(head)) headCounts.set(title, (headCounts.get(title) ?? 0) + 1);
-    const baseCounts = new Map<string, number>();
-    for (const title of sectionTitles(base)) baseCounts.set(title, (baseCounts.get(title) ?? 0) + 1);
+    const headCounts = sectionTitleCounts(head);
+    const baseCounts = sectionTitleCounts(base);
     for (const [title, count] of headCounts)
       if (count > 1 && count > (baseCounts.get(title) ?? 0))
         return (
