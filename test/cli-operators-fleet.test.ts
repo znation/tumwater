@@ -325,21 +325,81 @@ test("config fails with validateConfig's message and prints no JSON for an inval
   assert.equal(r.stdout, "");
 });
 
-test("config takes no flags, is repo-gated, and appears in the help table", async () => {
+test("config get/set arg shapes, repo gating, and the help table", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli config args");
 
-  const r = await cli(repo, "config", "--anything");
+  // Anything that is not get/set fails with the usage, whatever the arity.
+  let r = await cli(repo, "config", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /tumwater config takes no arguments/);
+  assert.match(r.stderr, /usage: tumwater config \[get <key> \| set <key> <value>\]/);
+  r = await cli(repo, "config", "show");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config/);
+
+  // get takes exactly one arg; set exactly two.
+  r = await cli(repo, "config", "get");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config get <key>/);
+  r = await cli(repo, "config", "get", "model", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config get <key>/);
+  r = await cli(repo, "config", "set", "model");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config set <key> <value>/);
+  r = await cli(repo, "config", "set", "model", "gpt-5", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /usage: tumwater config set <key> <value>/);
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater config\s+Show the effective config/);
+  assert.match(help.stdout, /tumwater config \[get <key> \| set <key> <value>\]\s+Show the effective config/);
 
   // Outside an initialized repo the ready-repo gate fires before any config is read.
   const bare = makeRepo();
   const b = await cli(bare, "config");
   assert.equal(b.code, 1);
   assert.match(b.stderr, /not initialized/);
+});
+
+test("config get/set roundtrip: set persists, get reads the resolved value", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config roundtrip");
+
+  let r = await cli(repo, "config", "set", "minTickIntervalSeconds", "45");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /set minTickIntervalSeconds to 45/);
+  assert.equal(loadConfig(repo).minTickIntervalSeconds, 45);
+
+  r = await cli(repo, "config", "get", "minTickIntervalSeconds");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^45\n?$/);
+
+  // A non-JSON value lands as the literal string.
+  r = await cli(repo, "config", "set", "model", "gpt-5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /set model to "gpt-5"/);
+  assert.equal(loadConfig(repo).model, "gpt-5");
+  r = await cli(repo, "config", "get", "model");
+  assert.match(r.stdout, /^"gpt-5"\n?$/);
+});
+
+test("config set rejects unknown and type-invalid edits, leaving tumwater.json byte-identical", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli config rejects");
+  const before = fs.readFileSync(`${repo}/tumwater.json`, "utf8");
+
+  // An unknown key is rejected with the valid-keys list and nothing is written.
+  let r = await cli(repo, "config", "set", "modle", "x");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown config key "modle" \(valid top-level keys: /);
+  assert.ok(r.stderr.includes("maxDailyCostUsd"), "the valid list names a real key");
+  assert.equal(fs.readFileSync(`${repo}/tumwater.json`, "utf8"), before);
+
+  // A type-invalid value fails with validateConfig's own message; no tmp remnant.
+  r = await cli(repo, "config", "set", "minTickIntervalSeconds", '"45"');
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /minTickIntervalSeconds must be a number of 0 or more/);
+  assert.equal(fs.readFileSync(`${repo}/tumwater.json`, "utf8"), before);
+  assert.deepEqual(fs.readdirSync(repo).filter((f) => f.includes("tumwater.json")), ["tumwater.json"]);
 });

@@ -38,7 +38,7 @@ function typeName(v: unknown): string {
  * silently ignored at runtime — the intended setting falls back to its default with no
  * warning — so it fails fast here instead (e.g. `tickTimeoutSecondss` does nothing).
  * Keep in sync with TumwaterConfig/BackoffConfig/RoleConfig in config-schema.ts. */
-const TOP_LEVEL_KEYS = [
+export const TOP_LEVEL_KEYS = [
   "provider",
   "model",
   "thinking",

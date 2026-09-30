@@ -9,6 +9,8 @@ import {
   queuedRolePrompts,
 } from "./inbox.js";
 import { errorMessage } from "./text.js";
+import { TOP_LEVEL_KEYS } from "./config-validation.js";
+import { setConfigKey } from "./config-write.js";
 import { errCode } from "./errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
 import { pauseFleet, pauseRole, pausedRoles, readOrchestratorInfo, resumeFleet, resumeRole } from "./fleet-state.js";
@@ -189,14 +191,39 @@ export async function cmdStop(root: string): Promise<void> {
     say("the orchestrator exited before the stop signal landed — nothing is running");
 }
 
-/** `tumwater config`: print the effective merged config — exactly what `loadConfig(root)`
- * returns — as pretty JSON, so an operator debugging scheduling or custom-loop wiring sees
- * what the fleet would actually load instead of overlaying defaults onto tumwater.json by
- * hand. A query, not a writer: no redaction (the config holds no secrets — provider keys
- * belong to pi's own env) and no transformation, including the per-role entries custom loops
- * merge into. A malformed or invalid tumwater.json fails with validateConfig's actionable
- * message and prints no JSON — the same surfacing doctor's config check produces. */
-export async function cmdConfig(root: string): Promise<void> {
+/** `tumwater config [get <key> | set <key> <value>]`: with no arguments, print the effective
+ * merged config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
+ * debugging scheduling or custom-loop wiring sees what the fleet would actually load instead
+ * of overlaying defaults onto tumwater.json by hand. A query, not a writer: no redaction (the
+ * config holds no secrets — provider keys belong to pi's own env) and no transformation,
+ * including the per-role entries custom loops merge into. `get <key>` prints that one key's
+ * resolved value (defaults merged in, exactly what the no-arg dump prints) as JSON, failing
+ * with the valid top-level keys on an unknown one. `set <key> <value>` writes one top-level
+ * key through setConfigKey and prints one confirmation line naming the key and its new value;
+ * a running fleet picks the change up on its next ~2 s config poll (newLiveConfigReload).
+ * A malformed or invalid tumwater.json fails with validateConfig's actionable message and
+ * prints no JSON — the same surfacing doctor's config check produces. */
+export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
+  const [sub, key, ...rest] = args;
+  if (sub === "get") {
+    const k = key ?? "";
+    if (!(TOP_LEVEL_KEYS as readonly string[]).includes(k))
+      fail(`unknown config key "${k}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})`);
+    const { config, error } = loadConfigSafe(root);
+    if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
+    say(JSON.stringify((config as unknown as Record<string, unknown>)[k]));
+    return;
+  }
+  if (sub === "set") {
+    const result = setConfigKey(root, key ?? "", rest[0] ?? "");
+    if (!result.ok) fail(result.error);
+    say(`set ${key} to ${JSON.stringify((result as { value: unknown }).value)}`);
+    return;
+  }
+  // Bare config, or anything else: the whole-config dump is the default, and cli.ts's arity
+  // check has already rejected a malformed get/set — this usage line is the defensive tail.
+  if (sub !== undefined)
+    fail("usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)");
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
   say(JSON.stringify(config, null, 2));

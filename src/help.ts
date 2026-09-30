@@ -34,7 +34,8 @@ Usage:
   tumwater report --since <duration> [--json]
                                    Totals over a trailing window (capped at 7d) — tokens/ticks/commits/cost since a point in time; totals also include landing runs (reviewer + conflict resolution); not combinable with --days or --failures
   tumwater doctor [--json]         Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1; --json prints the report object — header, the checks array with level, name, and detail, and verdict)
-  tumwater config                 Show the effective config (defaults + tumwater.json) as JSON
+  tumwater config [get <key> | set <key> <value>]
+                                   Show the effective config (defaults + tumwater.json) as JSON; get one key's resolved value as JSON; set one top-level key (JSON-parsed when parseable, else a literal string) and confirm it
   tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows

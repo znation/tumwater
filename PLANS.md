@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater config get <key>` / `tumwater config set <key> <value>` — read and edit top-level settings from the terminal (planned 2026-09-30)
+_None yet._
+
+## Done
+
+### `tumwater config get <key>` / `tumwater config set <key> <value>` — read and edit top-level settings from the terminal (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** Today the only ways to change a setting are hand-editing tumwater.json or the two
 narrow in-harness editors (TUI Ctrl+B, GUI /api/budget — both just the budget cap, via
@@ -62,9 +66,11 @@ src/cli.ts, src/help.ts, test/cli-operators-fleet.test.ts, test/config-write.tes
 - Bare `tumwater config` behaves exactly as today; `npm run test` green including the updated
   arg-shape test.
 
-_Size: ~120–150 lines including tests — one run._
-
-## Done
+Done 2026-09-30 by feature. As planned, plus one small shape note: `setConfigKey`'s success
+value also carries the parsed value (`{ ok: true; value; oldValue }`) so `cmdConfig`'s
+confirmation line names the parsed value exactly (`set model to "gpt-5"`), not the raw text.
+The shared helper is `writeConfigMutation` in src/config-write.ts; `setDailyBudgetUsd` and
+`setConfigKey` both sit on it.
 
 ### Hand in-flight fallback ticks back to the primary at `budget_resumed` (planned 2026-09-30, done 2026-09-30)
 

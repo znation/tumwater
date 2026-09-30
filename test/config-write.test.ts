@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { applyConfigRequest, setDailyBudgetUsd } from "../src/config-write.js";
+import { applyConfigRequest, setConfigKey, setDailyBudgetUsd } from "../src/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
@@ -88,6 +88,52 @@ test("setDailyBudgetUsd reports a failed write and leaves the config untouched",
   } finally {
     fs.chmodSync(dir, 0o755); // restore so temp-dir cleanup can remove it
   }
+});
+
+// setConfigKey — `tumwater config set`'s engine: one top-level key, the value JSON-parsed
+// when parseable and the literal string otherwise, the whole merged candidate validated
+// before any write.
+test("setConfigKey parses JSON values, keeps literal strings, and preserves other keys", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.maxConcurrent = 3;
+  saveConfig(dir, base);
+
+  // A JSON-parseable value keeps its parsed type: numbers stay numbers, quoted text strings.
+  let r = setConfigKey(dir, "minTickIntervalSeconds", "45");
+  assert.deepEqual(r, { ok: true, value: 45, oldValue: defaultConfig().minTickIntervalSeconds });
+  let raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  assert.strictEqual(raw.minTickIntervalSeconds, 45);
+  assert.strictEqual(raw.maxConcurrent, 3, "other keys preserved");
+
+  r = setConfigKey(dir, "model", '"gpt-5"');
+  assert.ok(r.ok && r.value === "gpt-5");
+
+  // A non-JSON value lands as the literal string — `set model gpt-5` needs no quotes.
+  r = setConfigKey(dir, "model", "gpt-5");
+  assert.ok(r.ok && r.value === "gpt-5" && r.oldValue === "gpt-5");
+  raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  assert.strictEqual(raw.model, "gpt-5");
+});
+
+test("setConfigKey rejects an unknown key and a type-invalid value, leaving the file untouched", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+
+  // An unknown key: the error names the valid keys (the same list checkKnownKeys enforces).
+  let r = setConfigKey(dir, "modle", "x");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /unknown config key "modle" \(valid top-level keys: .+\)/);
+
+  // A type-invalid value fails with validateConfig's own message.
+  r = setConfigKey(dir, "minTickIntervalSeconds", '"45"');
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /minTickIntervalSeconds must be a number of 0 or more/);
+
+  // Both failures left tumwater.json byte-identical.
+  assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 
 // Harness-mediated config writes (plans/portability.md §3/7): the director leaves a request

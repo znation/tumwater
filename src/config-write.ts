@@ -10,7 +10,7 @@ import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
-import { show, validateConfig } from "./config-validation.js";
+import { show, TOP_LEVEL_KEYS, validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
@@ -23,33 +23,85 @@ export function checkDailyBudgetUsd(value: unknown): string | null {
   return null;
 }
 
-/** Set the daily cost budget cap in tumwater.json: fresh loadConfig (no stat cache — a
- * writer must see the latest file), validate the value, mutate ONLY that key, and write
- * atomically (writeJsonAtomic: tmp file + rename) because this is the first in-harness
- * WRITER of the config while readers poll it every ~2 s and two dashboards could save
- * concurrently. A broken or missing-on-disk config surfaces as an error string instead of
- * throwing, so both UIs can flash it; on any failure the file (and no tmp remnant) is left
- * untouched. */
-export function setDailyBudgetUsd(
+/** The one load → mutate → validate → atomic-write idiom every top-level config writer
+ * shares (setDailyBudgetUsd, setConfigKey): a fresh loadConfig that bypasses config.ts's
+ * stat cache (a writer must see the latest file), the caller's mutation applied in memory,
+ * validateConfig over the whole merged candidate, then writeJsonAtomic (tmp file + rename)
+ * because readers poll tumwater.json every ~2 s and two writers could race. On any
+ * failure — a broken on-disk file, a type-invalid candidate, a failed write — the file is
+ * left untouched (and no tmp remnant is left behind); the error surfaces as a string so
+ * callers (both dashboards, the CLI) can print it without try/catch plumbing. */
+function writeConfigMutation(
   root: string,
-  value: number,
+  mutate: (cfg: TumwaterConfig) => TumwaterConfig,
 ): { ok: true } | { ok: false; error: string } {
-  const problem = checkDailyBudgetUsd(value);
-  if (problem) return { ok: false, error: problem };
   let cfg: TumwaterConfig;
   try {
     cfg = loadConfig(root); // fresh — bypasses the stat cache on purpose
   } catch (err) {
     return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
   }
-  const file = configPath(root);
+  const candidate = mutate(cfg);
+  try {
+    validateConfig(candidate); // throws listing every problem — nothing is written on failure
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
   try {
     // The trailing newline is tumwater.json's convention (POSIX text file).
-    writeJsonAtomic(file, { ...cfg, maxDailyCostUsd: value }, true);
+    writeJsonAtomic(configPath(root), candidate, true);
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
   return { ok: true };
+}
+
+/** Set the daily cost budget cap in tumwater.json through the shared writer idiom (see
+ * writeConfigMutation), after checkDailyBudgetUsd has screened the value with its own
+ * actionable message — the one both dashboards flash. */
+export function setDailyBudgetUsd(
+  root: string,
+  value: number,
+): { ok: true } | { ok: false; error: string } {
+  const problem = checkDailyBudgetUsd(value);
+  if (problem) return { ok: false, error: problem };
+  return writeConfigMutation(root, (cfg) => ({ ...cfg, maxDailyCostUsd: value }));
+}
+
+/** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
+ * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
+ * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
+ * silently ignore — and the value is JSON.parse(rawValue) when that parses, else the literal
+ * string (so `set maxDailyCostUsd 20` is the number 20 and `set model gpt-5` is the string
+ * "gpt-5"; the whole merged candidate is then validated, so a type mismatch like
+ * `set maxDailyCostUsd "20"` fails with validateConfig's own message and the file stays
+ * byte-identical). Top-level keys only: nested sections (roles, review, check, idleBackoff,
+ * fallbackModel) are replaced wholesale when named, and finer edits stay file-edited — one
+ * op per run. Returns the parsed value and the previous one so the caller can confirm the
+ * change; on any failure the file is untouched (see writeConfigMutation). */
+export function setConfigKey(
+  root: string,
+  key: string,
+  rawValue: string,
+): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
+  if (!(TOP_LEVEL_KEYS as readonly string[]).includes(key))
+    return {
+      ok: false,
+      error: `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})`,
+    };
+  let value: unknown;
+  try {
+    value = JSON.parse(rawValue);
+  } catch {
+    value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
+  }
+  let oldValue: unknown;
+  const result = writeConfigMutation(root, (cfg) => {
+    oldValue = (cfg as unknown as Record<string, unknown>)[key];
+    return { ...cfg, [key]: value };
+  });
+  if (!result.ok) return result;
+  return { ok: true, value, oldValue };
 }
 
 /** Consume the director's config-write request file (plans/portability.md §3/7). After its pi
