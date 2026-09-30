@@ -44,6 +44,18 @@ test("applyKey moves the cursor with left/right and clamps at both ends", () => 
   assert.deepEqual(applyKey("abc", 3, undefined, key("right")), { text: "abc", cursor: 3 });
 });
 
+test("applyKey jumps to the text's start and end with home/end", () => {
+  // Readline delivers the Home and End keys as name "home"/"end"; the TUI binds nothing
+  // else to them, so they belong to the line editor like left/right.
+  assert.deepEqual(applyKey("hello world", 6, undefined, key("home")), { text: "hello world", cursor: 0 });
+  assert.deepEqual(applyKey("hello world", 6, undefined, key("end")), { text: "hello world", cursor: 11 });
+  // No-ops at the ends they already sit on.
+  assert.deepEqual(applyKey("abc", 0, undefined, key("home")), { text: "abc", cursor: 0 });
+  assert.deepEqual(applyKey("abc", 3, undefined, key("end")), { text: "abc", cursor: 3 });
+  // A stale out-of-range cursor still lands on a real boundary.
+  assert.deepEqual(applyKey("abc", 9, undefined, key("end")), { text: "abc", cursor: 3 });
+});
+
 test("applyKey backspace deletes before the cursor; delete after it", () => {
   assert.deepEqual(applyKey("hello", 5, undefined, key("backspace")), { text: "hell", cursor: 4 });
   assert.deepEqual(applyKey("hello world", 6, undefined, key("backspace")), { text: "helloworld", cursor: 5 });
