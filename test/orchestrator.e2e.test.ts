@@ -16,7 +16,7 @@ import { runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt, submitRolePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";
 import {
   freshLoopState,
@@ -319,6 +319,49 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     // episode only after its 1s backoff — outside this assertion window.)
     const deferred = eventsOfType(repo, "tick_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+
+test("a queued prompt ends a deferral episode, so the next deferral is announced again", async () => {
+  // The episode bookkeeping behind tick_deferred is edge-triggered: the event fires on the
+  // transition into a deferral episode, not on every deferred poll. An inbox run (a queued
+  // per-role prompt) must end the episode as it takes over — otherwise the flag survives the
+  // prompt's tick and the NEXT deferral transition is swallowed: the operator sees one
+  // tick_deferred forever, even though the role keeps deferring between its prompt-driven
+  // runs. With the default idle backoff the not-due window after each tick already ends the
+  // episode, so this test zeroes it: after a no_change tick the role is due again on the very
+  // next poll, and the inbox run's own episode reset is the only boundary left between two
+  // due-deferred stretches. Episode 1 defers, a queued prompt ticks the role, episode 2 must
+  // log its own event.
+  const repo = await makeFastRepo("deferral episode reset test", ["organize"]);
+  const cfg = loadConfig(repo);
+  cfg.idleBackoff = { initialSeconds: 0, factor: 1, maxSeconds: 0 };
+  saveConfig(repo, cfg);
+  const restore = recordingFakePi(path.join(tmpdir(), "pi-args-episode.txt"));
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
+
+    // Episode 1: due again immediately after the startup tick, the no_change role defers —
+    // announced once.
+    await waitFor(() => eventsOfType(repo, "tick_deferred").length === 1, "the first deferral event");
+
+    // The queued prompt pulls the role in on its own due-ness (reason inbox, outside the
+    // deferral block) and the tick runs to completion.
+    submitRolePrompt(repo, "organize", "check the deferral episode reset");
+    await awaitSettledTick(repo, "organize", 2, "the prompt-driven tick to finish");
+
+    // Episode 2: due again on the next poll, still no_change, still no work landed — and
+    // deferring a second time is announced again because the inbox run ended the first
+    // episode.
+    await waitFor(() => eventsOfType(repo, "tick_deferred").length === 2, "the second deferral event");
+    const deferred = eventsOfType(repo, "tick_deferred").filter((d) => d.loop === "organize");
+    assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
+    // And the second episode still defers: no third tick while it holds.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(loadLoopState(repo, "organize").ticks, 2, "the second episode defers, it does not tick");
   } finally {
     await stopOrchestrator(orch, restore);
   }
