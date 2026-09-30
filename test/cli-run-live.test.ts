@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
+import type { TumwaterConfig } from "../src/config-schema.js";
 import { readEvents } from "../src/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
@@ -78,23 +79,45 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
   }
 });
 
-test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli run lifecycle");
-
-  // One enabled role keeps the startup burst small; a no-op pi ends every tick as
-  // no_change so nothing is committed while we observe the harness itself.
+/** Write the config every full-run lifecycle test shares: only the clean role enabled. One
+ * enabled role keeps the startup burst small; a no-op pi ends every tick as no_change so
+ * nothing is committed while the test observes the harness. `mutate` adjusts the config
+ * before it is written (the agentBin test sets the agent binary there). */
+function onlyCleanRole(repo: string, mutate?: (cfg: TumwaterConfig) => void): void {
   const cfg = defaultConfig();
   for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  mutate?.(cfg);
   writeConfig(repo, cfg);
+}
 
-  const restore = fakePi("exit 0");
+/** The shape every spawned `run` lifecycle test shares: start the fleet against `restore`'s
+ * environment (fakePi, pathReplace), wait for the banner + orchestrator-started event, run
+ * the body, then always kill() the whole tree and undo the environment — in that order, so a
+ * thrown assertion still reaps the generation its pipes are holding (BUGS.md 2026-09-30). */
+async function withRunningFleet(
+  repo: string,
+  restore: () => void,
+  body: (s: ReturnType<typeof spawnCli>) => Promise<void>,
+): Promise<void> {
   const s = spawnCli(repo, ["run"]);
   try {
     await s.waitFor(
       (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
       "the run banner and orchestrator event",
     );
+    await body(s);
+  } finally {
+    s.kill();
+    restore();
+  }
+}
+
+test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run lifecycle");
+
+  onlyCleanRole(repo);
+  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     assert.match(s.out(), /loops: clean/);
 
     // The top-level process is the supervisor (src/supervisor.ts), not the orchestrator:
@@ -114,10 +137,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
     // Graceful shutdown removed the info file: a stale marker would make every later
     // `tumwater run` refuse to start.
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
-  } finally {
-    s.kill();
-    restore();
-  }
+  });
 });
 
 // BUGS.md 2026-09-30: kill() is the cleanup every spawnCli test's finally relies on, including
@@ -129,18 +149,9 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
 test("kill() alone tears down the whole run tree: the pipes close, nothing is orphaned", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run kill teardown");
-  const cfg = defaultConfig();
-  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  writeConfig(repo, cfg);
+  onlyCleanRole(repo);
 
-  const restore = fakePi("exit 0");
-  const s = spawnCli(repo, ["run"]);
-  try {
-    await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
-      "the run banner and orchestrator event",
-    );
-
+  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     // No SIGTERM here — kill() is the only stop, the exact shape of a finally after a failed
     // assertion. The supervisor gets SIGTERM and forwards it (graceful stop); anything still
     // alive after the grace gets the process-group SIGKILL. Either way the generation dies
@@ -159,10 +170,7 @@ test("kill() alone tears down the whole run tree: the pipes close, nothing is or
     const code = await exitCode(s.child);
     await eof;
     assert.equal(code, 0, `expected a clean supervisor exit; output so far:\n${s.out()}`);
-  } finally {
-    s.kill();
-    restore();
-  }
+  });
 });
 
 // Criterion 1 of plans/portability.md §5/7: with pi absent from PATH but agentBin set to an
@@ -172,33 +180,20 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
   const repo = makeRepo();
   await initProject(repo, "cli run agentBin lifecycle");
 
-  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
-  const cfg = defaultConfig();
-  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-
   // A bin dir with git (the repo checks and every git call need it) and the agent stub —
   // and no pi anywhere on PATH.
   const binDir = gitOnlyBinDir();
   const stub = path.join(binDir, "agent-stub");
   writeScript(stub, "exit 0");
-  cfg.agentBin = stub;
-  writeConfig(repo, cfg);
+  onlyCleanRole(repo, (cfg) => (cfg.agentBin = stub));
 
-  const restorePath = pathReplace(binDir); // spawnCli copies process.env, so the child sees this PATH
-  const s = spawnCli(repo, ["run"]);
-  try {
-    await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
-      "the run banner and orchestrator event",
-    );
+  // spawnCli copies process.env, so the child sees this PATH.
+  await withRunningFleet(repo, pathReplace(binDir), async (s) => {
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
-  } finally {
-    s.kill();
-    restorePath();
-  }
+  });
 });
 
 // Ctrl+C from a terminal reaches BOTH processes (same foreground group), so the supervisor's
@@ -209,19 +204,8 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   const repo = makeRepo();
   await initProject(repo, "cli run sigint");
 
-  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
-  const cfg = defaultConfig();
-  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  writeConfig(repo, cfg);
-
-  const restore = fakePi("exit 0");
-  const s = spawnCli(repo, ["run"]);
-  try {
-    await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
-      "the run banner and orchestrator event",
-    );
-
+  onlyCleanRole(repo);
+  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     // SIGINT to the supervisor alone: it marks stopping but must not touch the child.
     s.child.kill("SIGINT");
     await new Promise((r) => setTimeout(r, 3000)); // past a poll cycle; a forwarding regression would be done by now
@@ -245,10 +229,7 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
     assert.match(s.out(), /stopping — waiting for in-flight ticks/);
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
-  } finally {
-    s.kill();
-    restore();
-  }
+  });
 });
 
 // Ctrl+C from a terminal also reaches the orchestrator generation itself (same foreground
@@ -261,18 +242,8 @@ test("a SIGINT reaching the orchestrator generation stops the fleet cleanly", as
   const repo = makeRepo();
   await initProject(repo, "cli run child sigint");
 
-  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
-  const cfg = defaultConfig();
-  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  writeConfig(repo, cfg);
-
-  const restore = fakePi("exit 0");
-  const s = spawnCli(repo, ["run"]);
-  try {
-    await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
-      "the run banner and orchestrator event",
-    );
+  onlyCleanRole(repo);
+  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
 
     // SIGINT straight to the orchestrator generation: the graceful stop path (announce, abort).
@@ -285,27 +256,15 @@ test("a SIGINT reaching the orchestrator generation stops the fleet cleanly", as
     // A stop the operator asked for is not the fleet dying: no supervisor_exit trace.
     assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,
       `a clean Ctrl+C must not be recorded as a fleet death:\n${JSON.stringify(readEvents(repo))}`);
-  } finally {
-    s.kill();
-    restore();
-  }
+  });
 });
 
 test("a second Ctrl+C forces the orchestrator generation out at once", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run double sigint");
 
-  const cfg = defaultConfig();
-  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
-  writeConfig(repo, cfg);
-
-  const restore = fakePi("exit 0");
-  const s = spawnCli(repo, ["run"]);
-  try {
-    await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
-      "the run banner and orchestrator event",
-    );
+  onlyCleanRole(repo);
+  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
 
     // The first Ctrl+C starts the graceful stop; the second must not queue behind it —
@@ -320,10 +279,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
     const down = eventsOfType(repo, "supervisor_exit");
     assert.equal(down.length, 1, `expected one supervisor_exit event:\n${JSON.stringify(readEvents(repo))}`);
     assert.equal(down[0]?.code, 130);
-  } finally {
-    s.kill();
-    restore();
-  }
+  });
 });
 
 // The `--role` guards of `run` (cmdRun): scoping is a once-round concept, the filter is
