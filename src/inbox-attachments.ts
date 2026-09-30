@@ -60,20 +60,16 @@ export function promptImagesProblem(images: unknown): string | null {
   return null;
 }
 
-/** Sanitize a client-supplied image name down to a safe basename of [A-Za-z0-9._-]
- * characters (directory components and anything else are stripped), with `image.png` as the
- * fallback when nothing survives. */
-function safeImageName(name: string): string {
-  const base = path.basename(name).replace(/[^A-Za-z0-9._-]/g, "");
-  return base === "" || base === "." || base === ".." ? "image.png" : base;
-}
-
 /** Save already-validated images beside a queued prompt's queue file — one file per image,
  * named with the queue file's stem plus the image's extension (`<stem>.png`); same-extension
- * images after the first get a `-<n>` suffix so they cannot overwrite each other. Client
- * names are sanitized to a safe basename first. Returns the absolute paths in order, for
- * imageReferenceLines. Fails closed: promptImagesProblem runs again here, so a caller that
- * skipped it gets { problem } and nothing written. */
+ * images after the first get a `-<n>` suffix so they cannot overwrite each other. The client's
+ * name is never used as a file name — only its extension, which promptImagesProblem already
+ * validated against PROMPT_IMAGE_EXTENSIONS on the raw name, so the extension survives any
+ * basename (a name whose safe characters are all stripped, like a non-ASCII `截图.png`, keeps
+ * its extension instead of collapsing to an extension-less file the dequeue cleanup could
+ * never match). Returns the absolute paths in order, for imageReferenceLines. Fails closed:
+ * promptImagesProblem runs again here, so a caller that skipped it gets { problem } and
+ * nothing written. */
 export function savePromptImages(
   root: string,
   role: string,
@@ -87,7 +83,7 @@ export function savePromptImages(
   const taken = new Set<string>();
   const paths: string[] = [];
   for (const image of images) {
-    const ext = path.extname(safeImageName(image.name)).toLowerCase();
+    const ext = path.extname(image.name).toLowerCase();
     let name = `${stem}${ext}`;
     for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
     taken.add(name);

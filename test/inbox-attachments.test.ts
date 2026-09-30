@@ -72,6 +72,28 @@ test("savePromptImages writes beside the queue file under the same stem, sanitiz
   assert.deepEqual(fs.readdirSync(dir), before);
 });
 
+test("savePromptImages keeps the validated extension when the client name's safe characters all strip away", () => {
+  // `截图.png` validates (raw extname .png) but its basename sanitizes to ".png", whose
+  // extname is "" — the saved file once landed extension-less, which pi's read tool cannot
+  // render as an image and removeSameStemSiblings cannot match for cleanup (its next char
+  // after the stem is neither "." nor "-"), orphaning the image in the queue dir forever.
+  const root = tmpdir();
+  const queueFile = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", queueFile, [
+    { name: "截图.png", dataBase64: PNG.toString("base64") },
+    { name: "Bildschirmfoto.jpeg", dataBase64: PNG.toString("base64") },
+  ]);
+  assert.ok("paths" in saved);
+  const dir = roleInboxDir(root, "qa");
+  const stem = path.basename(queueFile, ".md");
+  assert.equal(path.basename(saved.paths[0]!), `${stem}.png`, "non-ASCII basename keeps its extension");
+  assert.equal(path.basename(saved.paths[1]!), `${stem}.jpeg`, "so does a mixed-script one");
+  for (const p of saved.paths) assert.ok(fs.existsSync(p) && !fs.existsSync(p + ".md"));
+  // And the dequeue-side cleanup takes them with the prompt, as it does every extension'd image.
+  assert.equal(dequeueRolePrompt(root, "qa"), "look");
+  assert.deepEqual(fs.readdirSync(dir), [], "no orphaned image survives the dequeue");
+});
+
 test("imageReferenceLines appends one absolute-path line per image", () => {
   assert.equal(imageReferenceLines([]), "");
   const lines = imageReferenceLines(["/tmp/a.png", "/tmp/b.png"]);
