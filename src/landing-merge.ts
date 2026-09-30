@@ -135,6 +135,17 @@ async function tryMerge(
   });
 }
 
+/** The backlog-structure cross-check both verifyLanding paths run (exempt and code diffs
+ * alike): when the tree ahead of main duplicates or drops a `## ` section heading, warn on the
+ * role's feed with the one "landing blocked:" phrasing and report the landing as blocked.
+ * Shared so the wording and the block action cannot drift between the two paths. */
+async function structureBlocked(ctx: MergeContext, wt: string, files: string[]): Promise<boolean> {
+  const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
+  if (!structure) return false;
+  warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
+  return true;
+}
+
 /** Verify the exact tree about to land on main — the post-rebase head (BUGS.md 2026-09-08: the
  * gate's pre-check ran outside this lock against a head the rebase may have rewritten, so the
  * bytes that become main were never run through a check). Returns false when the tree is
@@ -176,21 +187,13 @@ async function verifyLanding(
     // site that catches what the gate cannot see: a conflict resolution happens AFTER the
     // gate, inside this lock, so a resolution that kept both sides of a `## Done` conflict and
     // duplicated the heading lands here or not at all (PLANS.md 2026-09-25, 9eaae5ac).
-    const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
-    if (structure) {
-      warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
-      return false;
-    }
+    if (await structureBlocked(ctx, wt, files)) return false;
     return !(await falseFixReason(wt, ctx.mainBranch, files));
   }
   // The heading check for code diffs too, before the build check: a conflict resolution that
   // broke backlog structure reads as an explained block on the dashboards, not as an
   // unexplained red check run on a tree that could never land.
-  const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
-  if (structure) {
-    warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
-    return false;
-  }
+  if (await structureBlocked(ctx, wt, files)) return false;
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check.
   const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt, ctx.config);
