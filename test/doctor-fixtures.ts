@@ -4,7 +4,8 @@ import type { ProcessProbe, ProcessRow } from "../src/process-table.js";
 import { writeScript } from "./fake-commands.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
-/** Fixtures shared by the doctor test files (doctor.test.ts, doctor-orphans.test.ts): a
+/** Fixtures shared by the doctor test files (doctor.test.ts, doctor-checks.test.ts,
+ * doctor-orphans.test.ts): a
  * deterministic PATH for the binary checks, a ready repo, and a fake process table so the
  * orphan and report checks never read the host's real state. */
 

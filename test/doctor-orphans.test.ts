@@ -11,7 +11,7 @@ import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./doctor-fixtures.j
 // Unit coverage for the orphaned-worktree-process check (src/doctor-orphans.ts): every leak
 // shape below is a real leak the fleet produced, driven through a fake process table — no
 // orphan is ever spawned. The real ps/lsof reader is smoked in test/process.test.ts; the
-// other doctor checks' unit coverage lives in test/doctor.test.ts.
+// other doctor checks' unit coverage lives in test/doctor-checks.test.ts.
 
 test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, tree and command", async () => {
   const root = readyRepo();
