@@ -251,7 +251,7 @@ export async function currentBranch(root: string): Promise<string | null> {
 
 /** The branch a read-only surface treats as the fleet's main: a configured `baseBranch` wins
  * (`run --branch` is per-invocation and invisible to a later query), else whatever the primary
- * checkout has checked out, else the literal "main". change-preview's collectRoleChange (async,
+ * checkout has checked out, else the literal "main". change-data's collectRoleChange (async,
  * via currentBranch) and status-data's mainCheck derivation (sync, via currentBranchFromHeadFile
  * — a per-second snapshot cannot await) both render through this one precedence rule, so the
  * dashboard and the status table cannot disagree on what "main" is. doctor's checkRepo and the
