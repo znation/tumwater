@@ -33,6 +33,7 @@ import { errorMessage, shortSha } from "./text.js";
  * event instead of trading a running fleet for a child that exits on its first line (BUGS.md
  * 2026-09-23). Every tick a restart interrupts resumes on the new build through the same resume
  * machinery a Ctrl+C uses, so a restart loses no work. */
+
 /** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" — EX_TEMPFAIL,
  * distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;

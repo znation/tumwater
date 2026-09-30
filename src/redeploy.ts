@@ -19,6 +19,7 @@ import {
  * compile run in, the baseline check that reads the live config per call, the staged compile,
  * and the dist swap — plus the completed-restart record's small state file and the
  * createRedeployer composition the run boot (cli-run.ts) builds. */
+
 /** The production AutoRestartRecord: one JSON file under .tumwater/state/. A missing or torn
  * file reads as "no completed restart yet" — the same no-data policy as every other state reader. */
 export function autoRestartRecord(root: string): AutoRestartRecord {

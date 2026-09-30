@@ -13,6 +13,7 @@ import type { TickOutcome } from "./tick-outcome.js";
  * with — so the loop reads as control flow over these named steps. The fleet-health polls (the
  * fleet hold, the error-storm warning, the failure-spread alarm) are their own family in
  * src/fleet-polls.ts. */
+
 /** How many completed role-tick samples the p75 needs before it is trusted as the drain window.
  * Below this the orchestrator reports no p75 and poll keeps the cold-start constant. */
 const DRAIN_P75_MIN_SAMPLES = 10;

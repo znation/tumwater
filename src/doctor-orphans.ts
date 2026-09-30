@@ -11,6 +11,7 @@ import type { CheckOutcome } from "./doctor-checks.js";
  * tree) rather than the repo's own files, so it carries a different shape of logic — path
  * spelling matching, worktree-name resolution, descendant counting — from the environment
  * checks that stay in doctor.ts. */
+
 /** How many orphans the doctor line itemizes before counting the rest: a check is one line,
  * and the 2026-09-21 incident this check exists for had five. */
 const ORPHANS_LISTED_MAX = 8;
