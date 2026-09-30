@@ -70,16 +70,10 @@ export function belowNodeFloor(version: string, floor: string): boolean {
   if (!spec || !ver) return false;
   const floorParts = [1, 2, 3].map((i) => Number(spec[i] ?? 0));
   const verParts = [1, 2, 3].map((i) => Number(ver[i] ?? 0));
-  for (const [v, f] of zipParts(verParts, floorParts)) {
-    if (v !== f) return v < f;
+  for (let i = 0; i < 3; i++) {
+    if (verParts[i] !== floorParts[i]) return verParts[i]! < floorParts[i]!;
   }
   return false;
-}
-
-/** Pair the two parsed component lists position by position (all three lengths are 3 by
- * construction above); extracted so the comparison loop holds one name for each side. */
-function* zipParts(a: readonly number[], b: readonly number[]): Generator<[number, number]> {
-  for (let i = 0; i < a.length; i++) yield [a[i]!, b[i]!] as [number, number];
 }
 
 /** The CLI startup gate's message when the running Node is below the declared floor —
