@@ -10,7 +10,7 @@ import { logEvent } from "./events.js";
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
  * instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the
  * first poll after it, and the marker keeps gating regardless. */
-interface PauseGateState {
+export interface PauseGateState {
   prevUserPaused: boolean;
   prevPausedRoles: Set<string>;
 }

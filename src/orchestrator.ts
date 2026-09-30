@@ -1,25 +1,20 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
 import { enabledRoleIds } from "./config.js";
-import { newBudgetGateState, pollBudgetGate, tickOnPair } from "./budget-gates.js";
 import { newLiveConfigReload } from "./config-live.js";
 import {
   deferTick,
   fairOrder,
   isEligible,
 } from "./scheduling.js";
-import { newPauseGateState, pollPauseGates } from "./pause-gates.js";
-import { newQuietHoursGateState, pollQuietHoursGate } from "./quiet-hours.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
-  fallbackDemotion,
   fallbackProbeDue,
   abandonFallbackProbe,
   recordFallbackTick,
   startFallbackProbe,
 } from "./fallback-breaker.js";
-import { FLEET_OPEN, type FleetHold } from "./fleet-hold.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
@@ -42,8 +37,6 @@ import { piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeploy-policy.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure-spread.js";
 import type { LaunchServicesWatch } from "./launch-services.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
@@ -54,7 +47,7 @@ import {
   runTimedRoleTick,
   sleepInterruptible,
 } from "./tick-timing.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold } from "./fleet-polls.js";
+import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gate-polls.js";
 
 const POLL_MS = 2000;
 
@@ -197,34 +190,22 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // settle reasons, and the quiet-poll exit rule — lives in src/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 
-  // The daily cost budget gate's cross-poll memory (src/budget-gates.ts owns the whole
-  // concern): the previous gate value for the edge-triggered events, the fallback breaker,
-  // and the derived fallback view. In memory only — a restart re-trusts the fallback and
-  // re-trips it within failureLimit ticks.
-  const budgetGateState = newBudgetGateState(config);
+  // The fleet-wide gates' and alarms' cross-poll memory (src/gate-polls.ts owns the family's
+  // wiring — budget, pause, quiet hours, failure hold, and the two storm alarms): the gates'
+  // previous values for the edge-triggered events, the fallback breaker, and the hold's own
+  // memory (deadline, kind, relapse count). In memory only — a restart re-trusts the
+  // fallback, starts with the hold open, and can re-log at most one event per gate. The
+  // budget gate's breaker is also the fallback ticks' evidence sink: the start pass below
+  // records every tick's outcome into it and runs its probe (src/fallback-breaker.ts), and
+  // the start gate reads gateStates.fleetHold at permit time, so its closures always see
+  // the latest poll's hold verdict rather than the poll that created them.
+  const gateStates: FleetGateStates = newFleetGateStates(config);
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore, roleFilter: opts.roleFilter });
   // The pause gates (src/pause-gates.ts owns the concern): the operator pause's and the
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
-  const pauseGateState = newPauseGateState();
-  // The quiet-hours gate's cross-poll memory (src/quiet-hours.ts): the previous poll's
-  // in-window boolean for the edge-triggered events. In memory only — a restart mid-window
-  // logs one quiet_hours_started on the first poll after it, like the pause gate.
-  const quietHoursGateState = newQuietHoursGateState();
-  // The fleet-wide failure hold's state across polls (src/fleet-hold.ts) — unlike the
-  // budget gate's prevGate it is the gate's own memory (deadline, kind, relapse count), not
-  // just the last value for edge-triggered events. In memory only: a restart starts open.
-  let fleetHold: FleetHold = FLEET_OPEN;
-  // The fleet-wide error-storm warning's state across polls (src/error-storm.ts) — the active
-  // storm's shared cause and roles, like the failure hold's own memory. In memory only: a restart
-  // mid-storm can re-log at most one warning.
-  let errorStormState: ErrorStorm = ERROR_STORM_QUIET;
-  // The fleet-wide wide-shallow storm alarm's state across polls (src/failure-spread.ts) —
-  // the window's recent failures and whether the alarm is sounding, like the two states
-  // above. In memory only: a restart mid-storm can re-log at most one warning.
-  let failureSpreadState: FailureSpread = FAILURE_SPREAD_QUIET;
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
   // resolved its target branch at startup, and a human checking out something else mid-run
   // must not silently change what the fleet merges into — every role worktree is based on
@@ -298,110 +279,26 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       const now = Date.now();
 
-      // Daily cost budget gate (src/budget-gates.ts owns the reads, the edge-triggered
-      // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
-      // owns only the wiring — the demotion publish below and the per-runner assignment at
-      // the bottom of this block.
-      const { gate, roleConfig, spentUsd, capUsd, resumed: gateResumed, fallbackPair: leftPair } =
-        pollBudgetGate(budgetGateState, {
+      // The fleet's gates and alarms, one poll of the family (src/gate-polls.ts): the daily
+      // budget gate — with its derived-state publish and the fallback handback to the
+      // primary — the operator and per-role pause gates, quiet hours, the fleet-wide failure
+      // hold, and the two observational storm alarms. The family's cross-poll memory lives
+      // in gateStates, advanced in place; this returns this poll's verdicts for the
+      // scheduling and start passes. The failure hold is deliberately not among them — the
+      // start gate and the landings' startHeld read the LATEST poll's verdict at permit
+      // time from gateStates.fleetHold, so a waiter granted its permit after later polls
+      // ran meets the hold as it stands then, not as this poll left it.
+      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, quietNow } =
+        pollFleetGates(gateStates, {
         root,
-        states: runners.map((r) => r.state),
+        runners,
         liveConfig,
         modelsPath,
+        now,
+        info,
+        infoFile,
       });
-      // Publish what observers cannot derive themselves: the demotion (the dashboards' gate
-      // and `tumwater doctor` would otherwise read the price alone and advertise a dead
-      // fallback) and the gate's own spend/cap pair — summed over the runners' live states,
-      // which every persisted-file reader lags by the in-flight runs' charges. Both rewritten
-      // only when they change, like the build status below; the exit removes the whole file,
-      // so no stale pair survives a stop.
-      const demotion = fallbackDemotion(budgetGateState.breaker);
-      const budget = { spentUsd, capUsd };
-      const demotionChanged = JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted);
-      const budgetChanged = JSON.stringify(budget) !== JSON.stringify(info.budget);
-      if (demotionChanged || budgetChanged) {
-        if (demotionChanged) info.fallbackDemoted = demotion;
-        if (budgetChanged) info.budget = budget;
-        writeJsonFile(infoFile, info);
-      }
-      // The director keeps the live config — an explicit human prompt outranks the
-      // autonomous-spend cap. Assigned every poll (not only on transitions) so a runner
-      // created mid-gate, or one left behind by a broken-file poll that skipped the reload,
-      // can never tick on the wrong model.
-      for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
-
-      // The budget reopened: a tick that started on the fallback keeps it until it ends, so
-      // hand those ticks back — abort them resumably (session and worktree edits kept) and
-      // let their next tick continue the same session on the primary, whose config the
-      // assignment above already installed (PLANS.md 2026-09-30). A tick started on the
-      // primary keeps running, the director is exempt, and the landings (the slot's own runs)
-      // are untouched. One event names who was handed back, so the resulting aborted ticks
-      // read as the budget reopening, not as unexplained failures.
-      if (gateResumed && leftPair) {
-        const matching = runners.filter(
-          (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
-        );
-        if (matching.length > 0) {
-          logEvent(root, {
-            loop: "harness",
-            type: "budget_handback",
-            roles: matching.map((r) => r.role),
-            provider: leftPair.provider,
-            model: leftPair.model,
-          });
-          for (const r of matching) r.handBackTick();
-        }
-      }
-
-      // The pause gates (src/pause-gates.ts owns the reads, the edge-triggered pause/resume
-      // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role
-      // pause's set, both read fresh per cycle so a marker change lands on the next poll.
-      const { userPaused, pausedRoles: pausedRolesSet } = pollPauseGates(root, pauseGateState);
-
-      // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
-      // which role loops start no new ticks — the operator pause's semantics on a schedule.
-      // The config value is read fresh per cycle, so a live edit applies on the next poll;
-      // exactly one quiet_hours_started/ended event per crossing. In-flight ticks finish;
-      // the gate folds into the same hold site as the pause gates below.
-      const quietNow = pollQuietHoursGate(
-        root,
-        liveConfig.quietHours,
-        quietHoursGateState,
-        new Date(now),
-      );
-
-      // Fleet-wide failure hold (src/fleet-hold.ts): once two roles' runs have ended on
-      // the SAME provider failure kind within a short window — 429s, or a connection, timeout,
-      // 5xx, or model-load backend failure — role loops start no new ticks — and the land
-      // queue starts no new vet (the director's included), whose reviewer run has no retry
-      // and would spend a review strike on the storm — until the hold re-opens at its own
-      // deadline (Retry-After honoured on the rate-limit kind, doubling on a relapse, capped).
-      // The director's ticks are exempt, as under the budget gate and the operator pause: an
-      // explicit human prompt outranks an autonomous gate, one director run is not the
-      // concurrency that sustains a storm, its 429 runs keep the per-run transient retry
-      // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfil
-      // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
-      // both siblings, and a role tick already parked in the semaphore meets the same hold at
-      // its permit (the start gate below) and hands its reservation back instead of starting
-      // into the storm.
-      fleetHold = pollFleetHold(root, fleetHold, runners, now);
-      const held = fleetHold.until !== null;
-
-      // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks
-      // fail consecutively on one shared cause, each role's own "consecutive tick failures"
-      // warning still fires alone — this adds the one fleet-level warning that names the
-      // cause (and the config knob, when the cause has one) instead of leaving the operator
-      // to diff 14 streak lines. Observational only: it gates nothing, so unlike the failure
-      // hold above there is no re-open event — the members' own recoveries tell that story.
-      errorStormState = pollErrorStorm(root, errorStormState, runners);
-
-      // Fleet-wide wide-shallow storm alarm (src/failure-spread.ts): when many roles each
-      // fail a few times on one provider failure kind, the streak bar needs one role deep,
-      // the error storm needs several roles deep, and the hold needs the failures close
-      // together — this counts raw failures of one kind across roles in a rolling window,
-      // so a degraded backend that fails the fleet widely and shallowly still names itself.
-      // Observational only, like the error storm: it gates nothing.
-      failureSpreadState = pollFailureSpread(root, failureSpreadState, runners, now);
+      const held = gateStates.fleetHold.until !== null;
 
       // Self-redeploy (src/redeploy-policy.ts): with main's head in hand, let the policy observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's
@@ -459,7 +356,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             runners,
             liveConfig,
             roleConfig,
-            startHeld: () => tickStartHeld() || fleetHold.until !== null,
+            startHeld: () => tickStartHeld() || gateStates.fleetHold.until !== null,
           },
           landings,
         );
@@ -485,7 +382,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // A demoted fallback's half-open window: its role ticks may pass the `paused` budget gate
       // here, and the start pass below admits exactly one of them as the probe. Never past an
       // operator pause — human intent outranks the breaker's curiosity.
-      const probeDue = fallbackProbeDue(budgetGateState.breaker, now);
+      const probeDue = fallbackProbeDue(gateStates.budget.breaker, now);
       // The fleet gates' block predicate (the director exempt — an explicit human prompt
       // outranks any autonomous gate, quiet hours included): the once-mode settle below and
       // the start gate must agree on exactly when a fleet gate holds, so the compound lives
@@ -589,8 +486,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // verdict (startFallbackProbe marks it in flight, so the rest of this pass skips).
         let probe = false;
         if (probeDue && runner.role !== DIRECTOR_ROLE) {
-          if (budgetGateState.breaker.probing) continue;
-          budgetGateState.breaker = startFallbackProbe(budgetGateState.breaker);
+          if (gateStates.budget.breaker.probing) continue;
+          gateStates.budget.breaker = startFallbackProbe(gateStates.budget.breaker);
           probe = true;
         }
         const reason = reasons.get(runner);
@@ -640,13 +537,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
               // the breaker's evidence. Read at tick start, not at admission: a tick parked in
               // the semaphore starts on whatever the gate says by then. A tick that ended on
               // leftover recovery ran no model, so it folds as `skipped` — no evidence either way.
-              const ranOn = runner.role === DIRECTOR_ROLE ? null : budgetGateState.breaker;
+              const ranOn = runner.role === DIRECTOR_ROLE ? null : gateStates.budget.breaker;
               const outcome = await runner.tick();
               if (ranOn?.pair) {
                 const at = Date.now();
                 const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
-                budgetGateState.breaker = recordFallbackTick(
-                  budgetGateState.breaker,
+                gateStates.budget.breaker = recordFallbackTick(
+                  gateStates.budget.breaker,
                   ranOn,
                   evidence,
                   probe,
@@ -660,7 +557,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             // The restart start gate, plus the failure hold for role ticks (the director is
             // exempt, as at scheduling): a waiter granted its permit mid-storm must not start
             // into it.
-            () => tickStartHeld() || (usesSlot && fleetHold.until !== null),
+            () => tickStartHeld() || (usesSlot && gateStates.fleetHold.until !== null),
           );
           // A reservation whose tick never started hands itself back, so the role re-schedules
           // once the hold lifts (or on the new build) instead of sitting `running` forever with
@@ -670,7 +567,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           if (!started) runner.state.running = false;
           // A probe turned away the same way answered nothing: hand its claim back (see
           // abandonFallbackProbe) so the next poll can admit a probe that actually runs.
-          if (!started && probe) budgetGateState.breaker = abandonFallbackProbe(budgetGateState.breaker);
+          if (!started && probe) gateStates.budget.breaker = abandonFallbackProbe(gateStates.budget.breaker);
         })();
         const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
         bucket.add(task);

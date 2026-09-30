@@ -87,7 +87,7 @@ export function inQuietHours(window: QuietHoursWindow, date: Date): boolean {
 /** The previous poll's in-window boolean, so each window entry/exit logs exactly one event
  * instead of once per ~2s poll. In memory only: a restart mid-window logs one
  * `quiet_hours_started` on the first poll after it, and the config keeps gating regardless. */
-interface QuietHoursGateState {
+export interface QuietHoursGateState {
   prevIn: boolean;
 }
 
