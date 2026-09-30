@@ -24,8 +24,9 @@ export const ERROR_STORM_ROLES = 3;
  * (LoopState.consecutiveErrors/lastError — the same fields the per-role warning reads). */
 export interface ErrorStormObservation {
   role: string;
-  /** The role's consecutive tick failures; 0 when it is healthy. */
-  consecutiveErrors: number;
+  /** The role's consecutive tick failures; 0 when it is healthy, and absent when a torn or
+   * older state read omits it — the reducer reads a missing streak as healthy. */
+  consecutiveErrors?: number;
   /** The last error's message, when the streak is live. */
   lastError?: string;
 }

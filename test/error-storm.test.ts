@@ -155,13 +155,15 @@ test("a streak at the bar with no error message counts toward no storm", () => {
 });
 
 test("an observation with no streak at all reads as healthy", () => {
-  // consecutiveErrors is optional at the observation seam (a torn or older state read may
+  // consecutiveErrors is optional in ErrorStormObservation (a torn or older state read may
   // omit it); the `?? 0` treats a missing streak as healthy, so such a role adds no weight
   // to any cause — garbage state must never trip the fleet-wide warning by itself. All
   // three members must share one real cause for the mutation to show: a lone streakless
   // role beside a real storm adds no weight either way, so only an all-streakless trio on
   // one cause distinguishes the guard from its absence.
-  const noStreak = (role: string) => ({ role, lastError: "timed out after 1800s" }) as ErrorStormObservation;
+  // No cast: the optional field keeps this literal type-honest, so if the interface ever
+  // widens the field back to required, tsc — not a runtime assertion — flags the drift.
+  const noStreak = (role: string) => ({ role, lastError: "timed out after 1800s" });
   assert.equal(
     errorStorm(ERROR_STORM_QUIET, [noStreak("clean"), noStreak("coverage"), noStreak("dry")]).key,
     null,
