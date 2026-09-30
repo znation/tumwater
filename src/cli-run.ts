@@ -15,7 +15,7 @@ import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
 import { plural } from "./text.js";
-import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
+import { fleetDownEvent, spawnRunChild, startParentDeathWatch, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init.ts does the
@@ -93,6 +93,13 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
+  // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
+  // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
+  // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
+  // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
+  // supervisor takes its fleet down with it (BUGS.md 2026-09-30). Everything below runs only in
+  // the supervised generation: an unsupervised `run` became the supervisor above and returned.
+  startParentDeathWatch(stop);
   const enabled = enabledRoleIds(config);
   // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
   const roles = roleFilter !== null ? [roleFilter] : enabled;

@@ -1,7 +1,9 @@
+import { spawn } from "node:child_process";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { RESTART_EXIT_CODE } from "../src/redeploy.js";
 import {
   type ChildExit,
@@ -9,6 +11,7 @@ import {
   fleetDownEvent,
   MAX_RAPID_RESPAWNS,
   RESPAWN_WINDOW_MS,
+  startParentDeathWatch,
   SUPERVISED_ENV,
   spawnRunChild,
   superviseRun,
@@ -270,6 +273,71 @@ test("aborting the signal terminates a live child with SIGTERM", async () => {
       const exit = await within(pending, 15_000);
       assert.deepEqual(exit, { code: null, signal: "SIGTERM" });
     });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The parent-death watch (the supervised generation's answer to a supervisor killed outright —
+// SIGKILL cannot be trapped or forwarded). The injected-ppid test pins the policy without
+// processes; the real-process test proves the shape the injection cannot: a SIGKILLed middle
+// process reparents the grandchild, whose watch then fires.
+
+test("startParentDeathWatch fires exactly once when the parent pid changes", async () => {
+  let ppid = 4242;
+  let gone = 0;
+  const timer = startParentDeathWatch(() => {
+    gone += 1;
+  }, { ppid: () => ppid, intervalMs: 10 });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(gone, 0, "an unchanged parent pid never fires the watch");
+    ppid = 1; // reparented — the supervisor died without forwarding
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(gone, 1, "a changed parent pid fires the watch");
+    ppid = 999;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(gone, 1, "the watch clears itself after firing");
+  } finally {
+    clearInterval(timer);
+  }
+});
+
+test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it", async () => {
+  const dir = tmpdir();
+  try {
+    // The grandchild imports the same compiled module the production generation runs, so the
+    // watch under test is the shipped code, not a reimplementation.
+    const supervisorUrl = fileURLToPath(new URL("../src/supervisor.js", import.meta.url));
+    const grandchild = path.join(dir, "grandchild.mjs");
+    fs.writeFileSync(
+      grandchild,
+      `import { startParentDeathWatch } from ${JSON.stringify(supervisorUrl)};\n` +
+        `import fs from "node:fs";\n` +
+        `const [started, gone] = process.argv.slice(2);\n` +
+        `fs.writeFileSync(started, String(process.pid));\n` +
+        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, { intervalMs: 250 });\n` +
+        `setInterval(() => {}, 10_000);\n` +
+        `setTimeout(() => process.exit(1), 15_000);\n`,
+    );
+    const middle = path.join(dir, "middle.mjs");
+    fs.writeFileSync(
+      middle,
+      `import { spawn } from "node:child_process";\n` +
+        `spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4]], { stdio: "ignore" }).unref();\n` +
+        `setInterval(() => {}, 10_000);\n` +
+        `setTimeout(() => process.exit(1), 20_000);\n`,
+    );
+    const started = path.join(dir, "started");
+    const gone = path.join(dir, "gone");
+    const supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
+    for (let i = 0; i < 100 && !fs.existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
+    // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
+    // just vanishes and the grandchild reparents.
+    process.kill(supervisor.pid!, "SIGKILL");
+    for (let i = 0; i < 60 && !fs.existsSync(gone); i++) await new Promise((r) => setTimeout(r, 250));
+    assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

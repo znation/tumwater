@@ -15,6 +15,38 @@ import { RESTART_EXIT_CODE } from "./redeploy.js";
 /** Marks the child: `tumwater run` with this set runs the orchestrator instead of supervising. */
 export const SUPERVISED_ENV = "TUMWATER_SUPERVISED";
 
+/** How often the supervised generation checks that its supervisor still lives (ms). */
+const PARENT_POLL_MS = 5_000;
+
+interface ParentDeathWatchOptions {
+  /** The parent-pid source; defaults to `process.ppid`. Tests inject a fake so the watch fires
+   * without reparenting a real process. */
+  ppid?: () => number;
+  /** The poll interval; defaults to PARENT_POLL_MS. */
+  intervalMs?: number;
+}
+
+/** Parent-death watch for the supervised generation. The supervisor forwards only SIGTERM —
+ * SIGKILL (the OOM killer, `kill -9`) cannot be trapped or forwarded, and an uncaught supervisor
+ * crash forwards nothing either — so a supervisor that dies outright leaves the generation
+ * reparented (on macOS to launchd) and ticking the fleet unattended, with nothing left to sweep
+ * it. The watch polls the parent pid on an interval: once it changes, the supervisor is gone
+ * without having stopped the fleet, and `onGone` runs the same graceful stop a forwarded SIGTERM
+ * would have run — a killed supervisor takes its fleet down with it. The timer is unref'd so it
+ * never holds the generation's event loop open past its real work. */
+export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): NodeJS.Timeout {
+  const ppid = opts.ppid ?? (() => process.ppid);
+  const original = ppid();
+  const timer = setInterval(() => {
+    if (ppid() !== original) {
+      clearInterval(timer);
+      onGone();
+    }
+  }, opts.intervalMs ?? PARENT_POLL_MS);
+  timer.unref();
+  return timer;
+}
+
 /** Respawns within this window count toward the crash-loop guard. */
 export const RESPAWN_WINDOW_MS = 60_000;
 /** More rapid respawns than this in one window and the supervisor gives up (exit 1) — a new
