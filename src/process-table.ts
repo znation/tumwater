@@ -162,10 +162,7 @@ export const systemProcessProbe: ProcessProbe = {
       return marks;
     }
     try {
-      const { stdout } = await execFileAsync("ps", ["-wwE", "-A", "-o", "pid=,command="], {
-        timeout: PROBE_TIMEOUT_MS,
-      });
-      const marks = runMarkersInPs(stdout);
+      const marks = runMarkersInPs(await psEnvironTable());
       return new Map(pids.flatMap((p): Array<[number, string[]]> => (marks.has(p) ? [[p, marks.get(p) as string[]]] : [])));
     } catch {
       // No ps, a wedged table: a miss, never a failed doctor — the argv/cwd half still ran.
@@ -234,12 +231,27 @@ export function runMarkersInEnviron(entries: string[]): string[] {
   return values;
 }
 
-/** The `TUMWATER_RUN` markers per pid in `ps -wwE -A -o pid=,command=` output — with `-E`,
- * ps appends each process's launch environment to the command column, so one pass reads
- * every same-user environment. The sweep's reader (pidsMarkedInPs) is membership-only in one
- * marker; the orphan check needs the values themselves, to judge each mark's harness. The
- * reader's own pid is never reported — it holds the mark's birthplace in memory, not in its
- * environment. */
+/** The `TUMWATER_RUN=…` assignments in one `ps -E` command column: with `-E`, ps appends
+ * each process's launch environment to the command column, so one pass reads every
+ * same-user environment. */
+function psMarkerAssignments(command: string): string[] {
+  return command.match(new RegExp(`${RUN_MARKER_VAR}=\\S*`, "g")) ?? [];
+}
+
+/** One `ps -wwE -A -o pid=,command=` pass: `-E` appends each process's launch environment
+ * to the command column (the marker readers parse it from there), `-ww` keeps argv
+ * untruncated, `-A` covers every same-user process. */
+async function psEnvironTable(): Promise<string> {
+  const { stdout } = await execFileAsync("ps", ["-wwE", "-A", "-o", "pid=,command="], {
+    timeout: PROBE_TIMEOUT_MS,
+  });
+  return stdout;
+}
+
+/** The `TUMWATER_RUN` markers per pid in `ps -wwE -A -o pid=,command=` output. The sweep's
+ * reader (pidsMarkedInPs) is membership-only in one marker; the orphan check needs the
+ * values themselves, to judge each mark's harness. The reader's own pid is never reported —
+ * it holds the mark's birthplace in memory, not in its environment. */
 export function runMarkersInPs(stdout: string, ownPid = process.pid): Map<number, string[]> {
   const marks = new Map<number, string[]>();
   for (const line of stdout.split("\n")) {
@@ -247,36 +259,17 @@ export function runMarkersInPs(stdout: string, ownPid = process.pid): Map<number
     if (!m) continue;
     const pid = Number(m[1]);
     if (pid === ownPid) continue;
-    const values: string[] = [];
-    for (const assignment of (m[2] ?? "").match(new RegExp(`${RUN_MARKER_VAR}=\\S*`, "g")) ?? []) {
-      for (const marker of assignment.slice(RUN_MARKER_VAR.length + 1).split(",")) {
-        if (marker !== "" && !values.includes(marker)) values.push(marker);
-      }
-    }
+    const values = runMarkersInEnviron(psMarkerAssignments(m[2] ?? ""));
     if (values.length > 0) marks.set(pid, values);
   }
   return marks;
 }
 
-/** The pids in `ps -wwE -A -o pid=,command=` output whose environment names `marker`: with
- * `-E`, ps appends each process's launch environment to the command column, so one pass
- * reads every same-user environment. The harness's own pid is never a victim — it holds the
+/** The pids in `ps -wwE -A -o pid=,command=` output whose environment names `marker`, via
+ * runMarkersInPs's one-pass parse. The harness's own pid is never a victim — it holds the
  * marker's birthplace in memory, not in its environment. */
 export function pidsMarkedInPs(stdout: string, marker: string, ownPid = process.pid): number[] {
-  const pids: number[] = [];
-  for (const line of stdout.split("\n")) {
-    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (!m) continue;
-    const pid = Number(m[1]);
-    if (pid === ownPid) continue;
-    for (const assignment of (m[2] ?? "").match(new RegExp(`${RUN_MARKER_VAR}=\\S*`, "g")) ?? []) {
-      if (markerValueCarries(assignment.slice(RUN_MARKER_VAR.length + 1), marker)) {
-        pids.push(pid);
-        break;
-      }
-    }
-  }
-  return pids;
+  return [...runMarkersInPs(stdout, ownPid)].flatMap(([pid, values]) => (values.includes(marker) ? [pid] : []));
 }
 
 /** True when a `/proc/<pid>/environ` entry list (NUL-separated `VAR=value` strings) names
@@ -308,10 +301,7 @@ async function findMarkedPids(marker: string): Promise<number[]> {
     }
     return pids;
   }
-  const { stdout } = await execFileAsync("ps", ["-wwE", "-A", "-o", "pid=,command="], {
-    timeout: PROBE_TIMEOUT_MS,
-  });
-  return pidsMarkedInPs(stdout, marker);
+  return pidsMarkedInPs(await psEnvironTable(), marker);
 }
 
 /** SIGTERM every same-user process whose environment names `marker`, escalating to SIGKILL
