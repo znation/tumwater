@@ -136,6 +136,32 @@ test("setConfigKey rejects an unknown key and a type-invalid value, leaving the 
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 
+test("setConfigKey writes and clears quietHours; a malformed window fails untouched", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+
+  // A valid window persists as the literal string (no JSON quotes needed).
+  let r = setConfigKey(dir, "quietHours", "23:00-07:00");
+  assert.ok(r.ok && r.value === "23:00-07:00");
+  let raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  assert.strictEqual(raw.quietHours, "23:00-07:00");
+
+  // An empty string is the documented off.
+  r = setConfigKey(dir, "quietHours", "");
+  assert.ok(r.ok && r.value === "");
+  raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  assert.strictEqual(raw.quietHours, "");
+
+  // A malformed window fails with checkQuietHours's own actionable message, and the file is
+  // byte-identical — the per-key validator screens it before writeConfigMutation runs.
+  const before = fs.readFileSync(file, "utf8");
+  r = setConfigKey(dir, "quietHours", "25:00-07:00");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /quietHours times must be 24-hour/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
 // Harness-mediated config writes (plans/portability.md §3/7): the director leaves a request
 // file in its worktree; applyConfigRequest validates, applies only customLoops, and deletes
 // the request on EVERY path — so custom-loop management works with the config tracked,

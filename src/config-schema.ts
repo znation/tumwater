@@ -186,6 +186,12 @@ export interface TumwaterConfig {
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
   maxDailyCostUsd: number;
+  /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
+   * which role loops start no new ticks (in-flight ticks finish; a tick due inside the
+   * window starts at window end). A window may wrap midnight (start > end); an empty string
+   * or an absent key means off. The director is exempt — a human steering outranks a
+   * schedule, exactly as under the budget gate and the operator pause. */
+  quietHours?: string;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free

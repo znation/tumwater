@@ -9,6 +9,7 @@ import {
   isEligible,
 } from "./scheduling.js";
 import { newPauseGateState, pollPauseGates } from "./pause-gates.js";
+import { newQuietHoursGateState, pollQuietHoursGate } from "./quiet-hours.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
@@ -206,6 +207,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
   const pauseGateState = newPauseGateState();
+  // The quiet-hours gate's cross-poll memory (src/quiet-hours.ts): the previous poll's
+  // in-window boolean for the edge-triggered events. In memory only — a restart mid-window
+  // logs one quiet_hours_started on the first poll after it, like the pause gate.
+  const quietHoursGateState = newQuietHoursGateState();
   // The fleet-wide failure hold's state across polls (src/fleet-hold.ts) — unlike the
   // budget gate's prevGate it is the gate's own memory (deadline, kind, relapse count), not
   // just the last value for edge-triggered events. In memory only: a restart starts open.
@@ -350,6 +355,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // pause's set, both read fresh per cycle so a marker change lands on the next poll.
       const { userPaused, pausedRoles: pausedRolesSet } = pollPauseGates(root, pauseGateState);
 
+      // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
+      // which role loops start no new ticks — the operator pause's semantics on a schedule.
+      // The config value is read fresh per cycle, so a live edit applies on the next poll;
+      // exactly one quiet_hours_started/ended event per crossing. In-flight ticks finish;
+      // the gate folds into the same hold site as the pause gates below.
+      const quietNow = pollQuietHoursGate(
+        root,
+        liveConfig.quietHours,
+        quietHoursGateState,
+        new Date(now),
+      );
+
       // Fleet-wide failure hold (src/fleet-hold.ts): once two roles' runs have ended on
       // the SAME provider failure kind within a short window — 429s, or a connection, timeout,
       // 5xx, or model-load backend failure — role loops start no new ticks — and the land
@@ -466,11 +483,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // here, and the start pass below admits exactly one of them as the probe. Never past an
       // operator pause — human intent outranks the breaker's curiosity.
       const probeDue = fallbackProbeDue(budgetGateState.breaker, now);
-      // The operator pause's block predicate (the director exempt — an explicit human prompt
-      // outranks an autonomous gate): the once-mode settle below and the start gate must agree
-      // on exactly when a fleet pause holds, so the compound lives here once.
+      // The fleet gates' block predicate (the director exempt — an explicit human prompt
+      // outranks any autonomous gate, quiet hours included): the once-mode settle below and
+      // the start gate must agree on exactly when a fleet gate holds, so the compound lives
+      // here once. Quiet hours fold in beside the operator pause and the budget gate — the
+      // schedule is not probe-worthy the way a paused budget is, so no probeDue exception.
       const operatorPauseBlocks = (role: string): boolean =>
-        (userPaused || (gate === "paused" && !probeDue)) && role !== DIRECTOR_ROLE;
+        (userPaused || quietNow || (gate === "paused" && !probeDue)) && role !== DIRECTOR_ROLE;
       for (const runner of runners) {
         // Once mode: a paused role runs no tick this round and must be reported as skipped,
         // so it settles here — before the gates that would otherwise skip it silently (a

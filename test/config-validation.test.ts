@@ -59,6 +59,29 @@ test("validateConfig accepts defaults and fully valid overrides", () => {
   );
 });
 
+test("validateConfig accepts a valid quietHours window and rejects a malformed one", () => {
+  // A valid window (same-day, wrapping, or the off values) passes; the empty string is the
+  // documented off, not an error.
+  for (const quietHours of ["23:00-07:00", "09:00-17:00", ""])
+    assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), quietHours }));
+
+  // Malformed values fail with parseQuietHours's message: the type, the format, and the
+  // zero-length window each name what to fix.
+  assert.match(validationError({ ...defaultConfig(), quietHours: 7 }), /quietHours must be a string/);
+  assert.match(
+    validationError({ ...defaultConfig(), quietHours: "25:00-07:00" }),
+    /quietHours times must be 24-hour/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), quietHours: "23:00" }),
+    /quietHours must be "HH:MM-HH:MM"/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), quietHours: "23:00-23:00" }),
+    /zero-length/,
+  );
+});
+
 test("model-triple fields reject empty strings but instructions may be empty", () => {
   // pi.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
   // is silently ignored and the fleet quietly uses pi's default — reject it instead. This

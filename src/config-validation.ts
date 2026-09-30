@@ -1,6 +1,7 @@
 import { allRoleIds } from "./roles.js";
 import { isJsonObject } from "./json-object.js";
 import { truncate } from "./text.js";
+import { parseQuietHours } from "./quiet-hours.js";
 
 /** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
  * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
@@ -56,6 +57,7 @@ export const TOP_LEVEL_KEYS = [
   "logMaxBytes",
   "sessionRetentionDays",
   "maxDailyCostUsd",
+  "quietHours",
   "fallbackModel",
   "thrashTurns",
   "thrashMinutes",
@@ -282,6 +284,14 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 
   checkBoolean(r, "", "autoRestart");
+
+  // Quiet hours (src/quiet-hours.ts): the value is off when empty or absent, and otherwise
+  // must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable wording,
+  // so validateConfig and `config set` cannot drift apart on what a valid window is.
+  if ("quietHours" in r) {
+    const parsed = parseQuietHours(r.quietHours);
+    if (!parsed.ok) problems.push(parsed.error);
+  }
 
   // The project's own verification command (plans/portability.md §6/7): a blank command is the
   // same silent-ignore class as a blank agentBin — the operator named a check, so an empty or

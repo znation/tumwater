@@ -12,6 +12,7 @@ import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
 import { show, TOP_LEVEL_KEYS, validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
+import { parseQuietHours } from "./quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an
@@ -22,6 +23,22 @@ export function checkDailyBudgetUsd(value: unknown): string | null {
     return `maxDailyCostUsd must be a number of 0 or more, 0 disables (got ${show(value)})`;
   return null;
 }
+
+/** One definition of "a valid quietHours window" (src/quiet-hours.ts owns the format):
+ * "HH:MM-HH:MM" in local time, wrapping permitted, empty means off. parseQuietHours's
+ * message is the one wording every surface (validateConfig, `config set`, the TUI/GUI
+ * editors) shows, so they cannot drift apart on what a valid window is. */
+export function checkQuietHours(value: unknown): string | null {
+  const parsed = parseQuietHours(value);
+  return parsed.ok ? null : parsed.error;
+}
+
+/** Per-key value validators `config set` (and the dashboard editors that call it) run
+ * BEFORE the write, so a malformed value fails with its own actionable message instead of
+ * waiting for validateConfig's whole-file report. */
+const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | null> = {
+  quietHours: checkQuietHours,
+};
 
 /** The one load → mutate → validate → atomic-write idiom every top-level config writer
  * shares (setDailyBudgetUsd, setConfigKey): a fresh loadConfig that bypasses config.ts's
@@ -94,6 +111,11 @@ export function setConfigKey(
     value = JSON.parse(rawValue);
   } catch {
     value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
+  }
+  const perKeyValidator = PER_KEY_VALIDATORS[key];
+  if (perKeyValidator) {
+    const problem = perKeyValidator(value);
+    if (problem) return { ok: false, error: problem };
   }
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
