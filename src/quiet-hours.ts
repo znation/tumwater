@@ -122,6 +122,16 @@ export function pollQuietHoursGate(
   return inNow;
 }
 
+/** The window's end time exactly as the operator wrote it — the text after the dash, trimmed —
+ * for the surfaces that say "quiet until <end>" (badges.ts's quietBadge, fleet-alerts' quiet
+ * alert). parseQuietHours enforces exactly one dash, so reading the end back out of the string
+ * is well-defined and preserves the operator's spelling instead of reformatting parsed
+ * minutes. The GUI page's client-side script re-derives the same text from the payload's raw
+ * quietHours field (gui-client-fleet.ts), since browser code cannot import this module. */
+export function quietWindowEnd(quietHours: string): string {
+  return quietHours.split("-")[1]?.trim() ?? "";
+}
+
 /** What the dashboards show for one `quietHours` config value at `now` (plans: "Quiet hours
  * … part 2/2, observability"): the operator's own window string while it parses to a real
  * window (trimmed — the schedule as written, not a canonical reformat), null when unset,

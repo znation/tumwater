@@ -8,6 +8,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status-data.js";
+import { quietWindowEnd } from "../quiet-hours.js";
 import { humanSeconds } from "./badges.js";
 import { plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
@@ -150,10 +151,10 @@ export function fleetAlerts(
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the fleet holding to a schedule is not a problem, but an operator watching idle loops
   // inside the window needs the same explanation the pause alert gives a paused fleet —
-  // why nothing ticks, and when it starts again. The window end is read back out of the
-  // window string (the text after the dash), the same rule quietBadge uses for the header.
+  // why nothing ticks, and when it starts again. The window end comes from quiet-hours.ts's
+  // quietWindowEnd, the same helper quietBadge uses for the header.
   if (snap.inQuietHours && snap.quietHours) {
-    const end = snap.quietHours.split("-")[1]?.trim() ?? "";
+    const end = quietWindowEnd(snap.quietHours);
     out.push({
       key: "quiet",
       tone: "blue",

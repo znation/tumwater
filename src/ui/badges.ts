@@ -1,5 +1,6 @@
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
+import { quietWindowEnd } from "../quiet-hours.js";
 import { shortSha, usd, usdCap } from "../text.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
@@ -120,13 +121,14 @@ export function pauseBadge(pausedUntil: number | undefined, now: number): string
  * the local clock sits inside the window (the active reading answers "why are the loops
  * idle?" with when they start again) and `· quiet 23:00-07:00` otherwise — and empty when
  * the snapshot carries no window, so a fleet without the schedule keeps its header
- * byte-identical. The window end is read back out of the window string (the text after the
- * dash), not re-parsed into minutes: the badge renders the operator's own spelling.
+ * byte-identical. The window end comes from quiet-hours.ts's quietWindowEnd — read back out of
+ * the window string, not re-parsed into minutes — so the badge renders the operator's own
+ * spelling.
  * renderStatus renders it in the TUI/status header after the pause badge; the GUI page
  * renders its sidebar chip from the payload's raw fields and its active indicator from
  * fleet-alerts' quiet alert, so both dashboards say the same thing. */
 export function quietBadge(quietHours: string | undefined, inQuietHours: boolean): string {
   if (!quietHours) return "";
-  const end = quietHours.split("-")[1]?.trim() ?? "";
+  const end = quietWindowEnd(quietHours);
   return inQuietHours ? ` · quiet until ${end}` : ` · quiet ${quietHours}`;
 }
