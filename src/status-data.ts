@@ -8,7 +8,7 @@ import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { queuedRolePromptCount, queuedRolePromptEntries } from "./inbox.js";
 import { readEvents } from "./events.js";
-import { currentBranchFromHeadFile, readBranchHead } from "./git.js";
+import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "./git.js";
 import { statePath } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { freshLoopState, loadLoopState } from "./loop-state.js";
@@ -204,7 +204,7 @@ function mainCheckForPoll(root: string, cfg: TumwaterConfig): StatusSnapshot["ma
     if (e.ts > check.ts) landedAfter = e;
     else landedBefore = e;
   }
-  const branch = cfg.baseBranch ?? currentBranchFromHeadFile(root) ?? "main";
+  const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
   const sha =
     (typeof landedAfter?.commit === "string" ? landedAfter.commit : undefined) ??
     readBranchHead(root, branch) ??

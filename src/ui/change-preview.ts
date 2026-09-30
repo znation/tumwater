@@ -7,7 +7,7 @@
 
 import { knownRoleIdsCached, loadConfigSafe } from "../config.js";
 import { plural } from "../text.js";
-import { aheadOfMain, branchExists, currentBranch, gitTry } from "../git.js";
+import { aheadOfMain, branchExists, currentBranch, gitTry, targetBranch } from "../git.js";
 import { aheadOfMainDiff, changedFiles } from "../git-diff.js";
 import { branchName, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "../worktree.js";
@@ -80,8 +80,8 @@ export async function collectFleetChanges(root: string): Promise<FleetChangeView
       return fleet;
     }),
   );
-  // mainBranch is fleet-wide: resolveMainBranch resolves it once per role the same way, so
-  // the first entry's value is every entry's value.
+  // mainBranch is fleet-wide: collectRoleChange resolves it once per role through the same
+  // targetBranch call, so the first entry's value is every entry's value.
   return { mainBranch: roles[0]?.mainBranch ?? "main", roles };
 }
 
@@ -107,20 +107,13 @@ export function renderFleetChange(view: FleetChangeView): string {
  * half of the view can print unbounded text. */
 const DIFF_MAX_BYTES = 200_000;
 
-/** The branch the fleet targets, for read-only views: configured `baseBranch`, else the
- * primary checkout's current branch, else "main" — doctor's checkRepo resolution with
- * status.ts's detached-HEAD fallback, so every dashboard answers "what is main?" alike. */
-async function resolveMainBranch(root: string): Promise<string> {
-  const { config } = loadConfigSafe(root);
-  return config?.baseBranch ?? (await currentBranch(root)) ?? "main";
-}
-
 /** Collect the change the role's loop holds: both halves of the view, or a degraded state
  * when the worktree or the base branch is missing. Never throws on a degraded fleet — a
  * query about a loop that has not run yet must answer, not fail (report's rationale). */
 export async function collectRoleChange(root: string, role: string): Promise<RoleChangeView> {
   const branch = branchName(role);
-  const mainBranch = await resolveMainBranch(root);
+  const { config } = loadConfigSafe(root);
+  const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
   const empty: Omit<RoleChangeView, "state"> = {
     role,
     branch,

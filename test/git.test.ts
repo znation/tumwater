@@ -25,6 +25,7 @@ import {
   runGit,
   setRef,
   subjectsBetween,
+  targetBranch,
 } from "../src/git.js";
 import {
   abortSync,
@@ -835,6 +836,13 @@ test("abortSync survives a worktree pointer whose target is not a directory", as
     "a file, not a gitdir\n",
     "the fallback aborts touched nothing",
   );
+});
+
+test("targetBranch applies the shared read-only precedence: baseBranch, checkout, main", () => {
+  assert.equal(targetBranch("trunk", "feature"), "trunk", "a configured baseBranch wins");
+  assert.equal(targetBranch(undefined, "feature"), "feature", "else the checked-out branch");
+  assert.equal(targetBranch(undefined, null), "main", "detached HEAD degrades to the literal main");
+  assert.equal(targetBranch(undefined, undefined), "main", "an unreadable HEAD degrades too");
 });
 
 test("commitMessage returns the full message and null for an unknown sha", async () => {
