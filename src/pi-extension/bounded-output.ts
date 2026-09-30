@@ -159,10 +159,11 @@ export function boundBashResult(
   return boundText(text, limitChars, fullPath);
 }
 
-/** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Role
- * worktrees (`.tumwater/worktrees/<role>`) and lander worktrees reach it two levels up;
- * a harness root carries it directly. Returns null when no ancestor has one, so a bare
- * pi run outside the harness writes nothing. Exported for tests. */
+/** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
+ * under it (`.tumwater/worktrees/<role>`, lander, gate alike) reach it three levels up
+ * (`../../..`, the repo checkout that owns `.tumwater/`); a harness root carries it directly.
+ * Returns null when no ancestor has one, so a bare pi run outside the harness writes nothing.
+ * Exported for tests. */
 export function findTumwaterRoot(startDir: string = process.cwd()): string | null {
   let dir = startDir;
   for (let depth = 0; depth < 64; depth += 1) {
