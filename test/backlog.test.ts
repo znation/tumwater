@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  entryDates,
   fenceTracker,
   openBugEntries,
   openBugs,
@@ -431,4 +432,20 @@ test("openQuestions reads fresh: answering a question drops it from the list", (
   assert.deepEqual(openQuestions(root), [
     "Should reset-counters also clear the event log? (asked 2026-08-27 by improve)",
   ]);
+});
+
+test("entryDates drops an epitaph whose trailing parenthetical never closes", () => {
+  // The unbalanced-parenthetical edge of the epitaph guard: a Fixed bullet whose closing
+  // parenthesis was mangled by a bad edit must contribute NO date — the nesting-aware
+  // backward scan finds no matching "(" and yields "", so the commit-word guard treats the
+  // line as body text. Neither crash nor a date stolen from elsewhere in the line, and the
+  // malformed entry must not stop the healthy entries around it from counting.
+  const fixedRe = /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/;
+  const md = `## Fixed
+
+- a bullet with no open paren at all, fixed 2026-09-28)
+- a bullet whose trailing group is closed twice (fixed 2026-09-29))
+- a healthy epitaph (fixed 2026-09-30; commit abc1234)
+`;
+  assert.deepEqual(entryDates(md, "Fixed", fixedRe), ["2026-09-30"]);
 });
