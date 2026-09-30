@@ -5,22 +5,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   NO_LAUNCH_SERVICES_CHECK_IN,
+  pidAlive,
+  signalTree,
+  terminateChild,
+  withoutLaunchServicesCheckIn,
+} from "../src/process.js";
+import {
   makeRunMarker,
   parseLsofCwds,
   parsePsOutput,
   parseTopPorts,
-  pidAlive,
   pidsMarkedInPs,
   procEnvironCarriesMarker,
   runMarkerEnv,
   runMarkersInEnviron,
   runMarkersInPs,
-  signalTree,
   sweepRunMarker,
   systemProcessProbe,
-  terminateChild,
-  withoutLaunchServicesCheckIn,
-} from "../src/process.js";
+} from "../src/process-table.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";

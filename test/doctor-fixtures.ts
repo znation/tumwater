@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProcessProbe, ProcessRow } from "../src/process.js";
+import type { ProcessProbe, ProcessRow } from "../src/process-table.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
 /** Fixtures shared by the doctor test files (doctor.test.ts, doctor-orphans.test.ts): a

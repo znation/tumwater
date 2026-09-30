@@ -10,7 +10,7 @@
 
 import type { CheckOutcome } from "./doctor-checks.js";
 import { warnEvent } from "./events.js";
-import { type ProcessProbe, systemProcessProbe } from "./process.js";
+import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
 import { compactTokens } from "./text.js";
 
 /** Where the kernel killed launchservicesd on 2026-09-25 (termination reason OS_REASON_PORT_SPACE

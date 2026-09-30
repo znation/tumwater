@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "./paths.js";
-import { type ProcessProbe, type ProcessRow, pidAlive, systemProcessProbe } from "./process.js";
+import { pidAlive } from "./process.js";
+import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "./process-table.js";
 import { errorMessage, plural, truncate } from "./text.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 

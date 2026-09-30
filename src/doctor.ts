@@ -37,7 +37,7 @@ import {
 import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
 import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
-import { type ProcessProbe, systemProcessProbe } from "./process.js";
+import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "./launch-services.js";
 import { errorMessage, plural, shortSha, truncate } from "./text.js";

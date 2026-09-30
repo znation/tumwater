@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkOrphans } from "../src/doctor-orphans.js";
 import { runDoctor } from "../src/doctor.js";
-import type { ProcessProbe } from "../src/process.js";
+import type { ProcessProbe } from "../src/process-table.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./doctor-fixtures.js";
 

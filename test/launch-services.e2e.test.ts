@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { loadConfig } from "../src/config.js";
 import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-services.js";
-import type { ProcessProbe } from "../src/process.js";
+import type { ProcessProbe } from "../src/process-table.js";
 import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
