@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, reviewPinnedChange } from "../src/lander.js";
+import { LANDING_CHECK_FAILURE_LIMIT, landApprovedChange, reviewPinnedChange } from "../src/landing-core.js";
 import type { BatchRoleWiring } from "../src/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
@@ -34,7 +34,7 @@ import {
 } from "./lander-fixtures.js";
 
 // Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
-// _land-<role>, rebase onto main, lander.ts's review gate) and landVetted (the merge: one change
+// _land-<role>, rebase onto main, landing-core.ts's review gate) and landVetted (the merge: one change
 // through landApprovedChange, or a stack with one check, one fast-forward, the re-stack, 3d's
 // prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
 // landing pipeline runs them (landing-drain.ts). The reviewer run is a real pi subprocess behind

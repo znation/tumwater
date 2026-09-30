@@ -52,7 +52,7 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
  * fleet's deterministic verification are priced in the feed. The one logger for every baseline
  * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's
- * tip check (which review.ts's gate and lander.ts's attributeRedCheck reach through it) —
+ * tip check (which review.ts's gate and landing-core.ts's attributeRedCheck reach through it) —
  * so the event's shape cannot drift between them. */
 function baselineCheckLogger(
   root: string,

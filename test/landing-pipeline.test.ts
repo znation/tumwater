@@ -411,7 +411,7 @@ test("a landing whose role has no live runner vets and lands through a throwaway
 // ── An abort whose pin is already gone ──────────────────────────────────────────────────
 // discardPinnedRefs's documented edge: a pin that is already gone is not an error. The ref
 // can vanish between the operator's abort and the settle — the gate itself deletes a pin at
-// its rejection verdict (lander.ts), and an outside cleanup can drop tumwater refs — so the
+// its rejection verdict (landing-core.ts), and an outside cleanup can drop tumwater refs — so the
 // settle that discards an aborted vetted change must tolerate a missing ref end to end:
 // deleteRef's gitTry swallows the absent-ref failure, and the drain's own catch stands
 // behind it for any other plumbing failure. No test pinned the settle against a vanished

@@ -3,7 +3,7 @@
  * and the merge (landVetted) its one merge slot runs over the vetted ones — a stack of two or
  * more sharing a single build check, with a per-change fallback. The shared review gate
  * (reviewPinnedChange) and the one-change landing (landApprovedChange) live beside it in
- * lander.ts. */
+ * landing-core.ts. */
 
 import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
@@ -20,7 +20,7 @@ import {
   syncPinToMain,
   type LandRequest,
   type LanderContext,
-} from "./lander.js";
+} from "./landing-core.js";
 import { errorMessage } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
@@ -270,7 +270,7 @@ async function landStack(ctx: BatchContext, wtPath: string, entries: readonly St
  * the first half of the ones the last red check ran over — so every prefix that lands, lands on
  * its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
  * the red run is bisected next; a red one is halved. The one change a red check ran over alone
- * is attributed through main's own baseline (lander.ts's attributeRedCheck): main green → rejected with the
+ * is attributed through main's own baseline (landing-core.ts's attributeRedCheck): main green → rejected with the
  * check's reasons, no pi run; main red → "main_red", pin kept. Its red is the second one observed
  * with it in the tree, so a single flaky run never rejects a change. The changes after it stay
  * unattempted for the next merge. A stack of N with one broken change costs about log2(N) + 1

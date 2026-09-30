@@ -26,7 +26,7 @@ interface TickFlow {
 /** The shared loop wiring a changed worktree's staging needs (src/loop.ts): the per-tick
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
  * the summary follow-up run, the landing-ref pin, and the abort finalizer. Mirrors the
- * context-object shapes of leftover.ts, refusal.ts, and lander.ts. */
+ * context-object shapes of leftover.ts, refusal.ts, and landing-core.ts. */
 interface TickStageContext {
   root: string;
   role: string;

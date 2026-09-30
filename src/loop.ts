@@ -15,7 +15,7 @@ import { LoopPi } from "./loop-pi.js";
 
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
-import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
+import { RETRIABLE_LANDING_RESULTS } from "./landing-core.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";

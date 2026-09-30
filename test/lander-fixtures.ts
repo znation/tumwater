@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LandRequest, LanderContext } from "../src/lander.js";
+import type { LandRequest, LanderContext } from "../src/landing-core.js";
 import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../src/landing-batch.js";
 import { setRef } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";

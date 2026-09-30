@@ -13,7 +13,7 @@ import type { LoopRunner } from "./loop.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the
- * landing mechanics themselves (lander.ts and landing-batch.ts: review gate, rebase, stack,
+ * landing mechanics themselves (landing-core.ts and landing-batch.ts: review gate, rebase, stack,
  * ff-merge). This module owns the 4/5 in-flight marker — one record per change being vetted,
  * vetted, or merged — the per-landing usage accounting, and the write-back that folds every
  * outcome into the authoring role's state and drops its queue entry. A landing's pi runs charge
@@ -194,7 +194,7 @@ export function removeLandingChange(root: string, role: string): void {
 }
 
 /** Advance a landing's stage — called by the landing path at each transition: review.ts before
- * its pre-check (`build-check`) and before its reviewer run (`reviewing`), lander.ts's
+ * its pre-check (`build-check`) and before its reviewer run (`reviewing`), landing-core.ts's
  * reviewPinnedChange once the gate returns (`merging`, whatever it decided — a finished
  * reviewer's last turns must not sit in the cell accruing a false `no pi output` flag while the
  * change waits for its merge), and landing-batch.ts around a stack's shared check. It stages
