@@ -6,7 +6,7 @@ import {
   QUIET_KILL_RESUME_LIMIT,
   yieldMultiplier,
 } from "../tick-outcome.js";
-import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress.js";
+import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
 import { fleetBudgetGate, humanSeconds } from "./badges.js";
 import { compactTokens } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
@@ -78,7 +78,7 @@ function inFlightDetail(head: string, p: LiveProgress | null): string {
   return parts.join(" · ");
 }
 
-/** Which pi run kind (progress.ts's ProgressRunKind) a loop's in-flight cells should read:
+/** Which pi run kind (progress-data.ts's ProgressRunKind) a loop's in-flight cells should read:
  * the review gate's reviewer run ("gate") while the tick is under review — its `session`
  * event is the log's newest and its counts are what "reviewing" describes — the author's
  * own run ("author") for every other in-flight phase. One home for the rule so the TUI

@@ -251,7 +251,7 @@ export class PiStreamParser {
     // Open-tool-call tracking for the stall warning: a call that sits open and silent is
     // surfaced by name while the quiet watchdog still counts down. The start/update/end state
     // machine lives in applyToolExecutionEvent, shared with the dashboards' live flag
-    // (progress.ts); only the label is surface-specific — the warning names the command even
+    // (progress-data.ts); only the label is surface-specific — the warning names the command even
     // when pi omits a toolName, where progress falls back to "tool".
     if (
       event.type === "tool_execution_start" ||
@@ -269,7 +269,7 @@ export class PiStreamParser {
         event.toolCallId,
         event.partialResult,
         // A nameless call with no recognizable arg still names something — the same "tool"
-        // fallback progress.ts uses for its stall flag.
+        // fallback progress-data.ts uses for its stall flag.
         describeToolCall(event.toolName ?? "", event.args) || "tool",
         command,
       );

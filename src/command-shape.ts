@@ -10,7 +10,7 @@
  * parse — a skipped warning for `echo "a > b"` costs far less than the cry-wolf the false
  * alarms cause. Its two consumers must classify identically or one surface cries wolf while
  * the other stays silent (BUGS.md 2026-09-28): src/pi.ts's runPi stall warning and
- * src/ui/progress.ts's in-flight stall flag. Extracted from src/pi.ts on 2026-09-30 — a pure
+ * src/progress-data.ts's in-flight stall flag. Extracted from src/pi.ts on 2026-09-30 — a pure
  * string classifier the UI should not need the process spawner for. */
 export function commandBuffersOutput(command: string): boolean {
   if (command.includes("|")) return true; // a pipeline stage buffers until its upstream exits

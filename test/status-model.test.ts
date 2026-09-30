@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
+import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
 import { loopPhase, loopRowCells, workingDetail } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";

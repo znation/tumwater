@@ -349,7 +349,7 @@ test("a start without toolName still names the command (or 'tool') in the open-c
     ["sleep 999"],
     "no toolName — the label is the bare command, not ' sleep 999' or ''",
   );
-  // No name and no recognizable arg falls back to 'tool', like progress.ts's stall flag.
+  // No name and no recognizable arg falls back to 'tool', like progress-data.ts's stall flag.
   parser.feed(JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", args: {} }) + "\n");
   assert.deepEqual(parser.openToolCalls.map((c) => c.label), ["sleep 999", "tool"]);
 });

@@ -1,7 +1,7 @@
 /** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs) and
  * whose PiStreamParser in pi-stream.ts folds those lines into a run result — because these are
- * shared by every observer that folds raw pi log lines into per-type state (progress.ts's live
+ * shared by every observer that folds raw pi log lines into per-type state (progress-data.ts's live
  * tail, transcript.ts's renderer), and those display modules should not import from the
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
@@ -28,7 +28,7 @@ export function piEventType(line: string): string | null {
  * piEventType fast path) all yield null. A line whose prefix does not match pi's compact shape
  * still gets a full parse — the pre-filter can only ever skip lines whose type is verifiably
  * uninteresting, never lose output. Shared by every observer that folds raw pi log lines into
- * per-type state (progress.ts's live tail, transcript.ts's renderer), so the trim → pre-filter →
+ * per-type state (progress-data.ts's live tail, transcript.ts's renderer), so the trim → pre-filter →
  * parse preamble and its skip-without-failing policy live in one place instead of drifting
  * between consumers of the identical log — worth it because pi logs are ~97% streaming delta
  * lines (message_update) that every consumer discards after parsing them. */
@@ -49,7 +49,7 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
 
 /** True when a tool_execution_update's partialResult carries new output content. bash emits
  * one empty-content update right after start, and only updates with real text prove the command
- * is alive — so stalled-tool-call tracking (src/pi.ts's warning, src/ui/progress.ts's flag)
+ * is alive — so stalled-tool-call tracking (src/pi.ts's warning, src/progress-data.ts's flag)
  * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
  * message_update deltas cannot reset the quiet watchdog. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {
@@ -68,7 +68,7 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
 /** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human
  * label and the wall-clock time of its start or last content-bearing update. The shared shape
  * behind both open-call trackers: runPi's stall warning (src/pi.ts) and the dashboards' live
- * flag (src/ui/progress.ts). */
+ * flag (src/progress-data.ts). */
 export interface OpenToolCall {
   id: string;
   label: string;
@@ -83,7 +83,7 @@ export interface OpenToolCall {
 
 /** The call's full raw command text from a tool-execution event's args (bash-like tools name
  * it `command`, some `cmd`; other tools yield ""). The two open-call trackers (src/pi.ts's
- * stall warning, src/ui/progress.ts's dashboard flag) store this beside the display label
+ * stall warning, src/progress-data.ts's dashboard flag) store this beside the display label
  * because anything that inspects the command's shape must see the raw text: the label
  * truncates at 32 chars, so an operator past that point would be invisible there. */
 export function toolCallCommand(args: unknown): string {

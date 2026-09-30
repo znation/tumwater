@@ -7,7 +7,7 @@ import {
   readLiveProgress,
   stalledToolLabel,
   toolCallStallMs,
-} from "../src/ui/progress.js";
+} from "../src/progress-data.js";
 import { landWorktreePath, piLogPath, worktreePath } from "../src/paths.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
