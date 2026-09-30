@@ -23,6 +23,7 @@ function portsProbe(...counts: Array<number | null>): ProcessProbe & { reads: nu
     reads: 0,
     list: async () => [],
     cwds: async () => new Map<number, string>(),
+    runMarkers: async () => new Map<number, string[]>(),
     launchServicesPorts: async () => counts[Math.min(probe.reads++, counts.length - 1)] ?? null,
   };
   return probe;
@@ -99,6 +100,7 @@ test("the watch never overlaps samples and stays quiet on an unreadable count", 
   const probe: ProcessProbe = {
     list: async () => [],
     cwds: async () => new Map(),
+    runMarkers: async () => new Map(),
     launchServicesPorts: () => {
       reads++;
       return new Promise((resolve) => (release = resolve));

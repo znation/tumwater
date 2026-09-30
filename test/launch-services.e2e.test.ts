@@ -20,6 +20,7 @@ function countingProbe(ports: number): ProcessProbe & { reads: number } {
     reads: 0,
     list: async () => [],
     cwds: async () => new Map<number, string>(),
+    runMarkers: async () => new Map<number, string[]>(),
     launchServicesPorts: async () => {
       probe.reads++;
       return ports;

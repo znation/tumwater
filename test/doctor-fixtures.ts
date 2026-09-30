@@ -32,15 +32,19 @@ export function readyRepo(): string {
 export const noProcesses: ProcessProbe = {
   list: async () => [],
   cwds: async () => new Map(),
+  runMarkers: async () => new Map(),
   launchServicesPorts: async () => 1_000,
 };
 
 /** A fake process table for checkOrphans: each row defaults to a parentless (PPID 1) process
- * of this user, and `cwds` answers from the given map. `asked` records every cwd lookup, so a
- * test can pin that only parentless candidates reach lsof. No real process is spawned. */
+ * of this user, `cwds` answers from the given map, and `marks` gives each pid's raw
+ * `TUMWATER_RUN` environment value (comma-separated markers) for the run-mark half of the
+ * check. `asked` records every cwd lookup, so a test can pin that only parentless candidates
+ * reach lsof. No real process is spawned. */
 export function fakeProbe(
   rows: Array<Partial<ProcessRow> & { pid: number; command: string }>,
   cwds: Record<number, string> = {},
+  marks: Record<number, string> = {},
 ): { probe: ProcessProbe; asked: number[][] } {
   const asked: number[][] = [];
   const uid = process.getuid?.() ?? 0;
@@ -50,6 +54,12 @@ export function fakeProbe(
       asked.push(pids);
       return new Map(pids.flatMap((p): Array<[number, string]> => (cwds[p] !== undefined ? [[p, cwds[p]]] : [])));
     },
+    runMarkers: async (pids) =>
+      new Map(
+        pids.flatMap((p): Array<[number, string[]]> =>
+          marks[p] !== undefined ? [[p, marks[p].split(",")]] : [],
+        ),
+      ),
     launchServicesPorts: async () => null,
   };
   return { probe, asked };

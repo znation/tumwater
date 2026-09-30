@@ -13,6 +13,8 @@ import {
   pidsMarkedInPs,
   procEnvironCarriesMarker,
   runMarkerEnv,
+  runMarkersInEnviron,
+  runMarkersInPs,
   signalTree,
   sweepRunMarker,
   systemProcessProbe,
@@ -127,6 +129,39 @@ test("parseLsofCwds maps each pid to its cwd and leaves out a process lsof could
     [101, "/Users/z/repo/.tumwater/worktrees/bugfix"],
     [103, "/tmp/with space"],
   ]);
+});
+
+test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
+  assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
+  assert.deepEqual(runMarkersInEnviron(["TUMWATER_RUN=100-aa"]), ["100-aa"]);
+  assert.deepEqual(runMarkersInEnviron(["OTHER=1", ""]), []);
+  const marks = runMarkersInPs(
+    [
+      "  4242 node server.js TUMWATER_RUN=100-aa,222-bb PATH=/bin",
+      `  ${process.pid} node dist/src/cli.js run TUMWATER_RUN=777-self`,
+      "  500 sshd: /usr/sbin/sshd (sshd-server)",
+      "",
+    ].join("\n"),
+  );
+  assert.deepEqual([...marks], [[4242, ["100-aa", "222-bb"]]]);
+});
+
+test("systemProcessProbe.runMarkers reads a live child's mark and skips vanished pids", async () => {
+  assert.deepEqual(await systemProcessProbe.runMarkers([]), new Map());
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    env: { ...process.env, TUMWATER_RUN: "999999123-cafe" },
+    stdio: "ignore",
+  });
+  try {
+    let marks = new Map<number, string[]>();
+    for (let i = 0; i < 50 && marks.size === 0; i++) {
+      marks = await systemProcessProbe.runMarkers([child.pid as number, 2_000_000_000]);
+      if (marks.size === 0) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.deepEqual([...marks], [[child.pid as number, ["999999123-cafe"]]]);
+  } finally {
+    child.kill("SIGKILL");
+  }
 });
 
 test("systemProcessProbe lists this process with its parent and reads its cwd past a vanished pid", async () => {

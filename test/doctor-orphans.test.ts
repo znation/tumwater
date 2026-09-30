@@ -39,7 +39,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
   assert.deepEqual(await checkOrphans(root, probe), {
     level: "fail",
     detail:
-      "3 orphaned worktree processes (PPID 1): " +
+      "3 orphaned processes (PPID 1): " +
       "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
       "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
       "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
@@ -79,8 +79,70 @@ test("checkOrphans leaves the live fleet and other checkouts' orphans alone", as
   );
   assert.deepEqual(await checkOrphans(root, probe), {
     level: "ok",
-    detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/",
+    detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks",
   });
+});
+
+test("checkOrphans catches a marked leak outside the worktrees once its harness is gone", async () => {
+  const root = readyRepo();
+  const dead = 999_999_999; // No live pid is this large on either platform.
+  const { probe } = fakeProbe(
+    [
+      // The straggler a sweep missed (BUGS.md 2026-09-30, part 2/2): it lives in a scratch
+      // dir the prompts send agents to — its argv and cwd name no worktree at all.
+      { pid: 3100, etime: "11:22:33", time: "1:02.30", command: "node /tmp/twprobe/server.js" },
+    ],
+    { 3100: "/tmp/twprobe" },
+    { 3100: `${dead}-deadbeef` },
+  );
+  assert.deepEqual(await checkOrphans(root, probe), {
+    level: "fail",
+    detail:
+      "1 orphaned process (PPID 1): " +
+      `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; harness ${dead} exited)` +
+      " — nothing reaps these; kill each with its descendants",
+  });
+});
+
+test("checkOrphans leaves a marked straggler whose harness is alive — that run's sweep will reap it", async () => {
+  const root = readyRepo();
+  const live = process.pid; // This test process is alive by definition.
+  const { probe } = fakeProbe(
+    [
+      { pid: 3200, command: "node /tmp/twprobe/server.js" },
+      // A nested-run straggler: the outer harness died, but the inner one is alive and its
+      // sweep kills everything carrying the inner mark when its run folds.
+      { pid: 3201, command: `node ${root}/dist/src/cli.js run` },
+      // A mark without a `<pid>-` prefix judges nothing — a torn or foreign value is not
+      // evidence of a dead harness.
+      { pid: 3202, command: "sleep 100" },
+    ],
+    {},
+    { 3200: `${live}-aaaa`, 3201: `999999998-gone,${live}-bbbb`, 3202: "garbage" },
+  );
+  assert.deepEqual(await checkOrphans(root, probe), {
+    level: "ok",
+    detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks",
+  });
+});
+
+test("checkOrphans counts a marked orphan once even when its cwd also matches, and one dead-and-alive mark set is not an orphan", async () => {
+  const root = readyRepo();
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa");
+  const dead = 999_999_997;
+  const { probe, asked } = fakeProbe(
+    [
+      // Argv matches AND the mark is dead: counted once, and no cwd lookup is needed for it.
+      { pid: 3300, command: `node ${root}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
+    ],
+    { 3300: wt },
+    { 3300: `${dead}-cc` },
+  );
+  const r = await checkOrphans(root, probe);
+  assert.equal(r.level, "fail");
+  assert.match(r.detail, /^1 orphaned process \(PPID 1\): pid 3300/);
+  assert.deepEqual(asked, []);
 });
 
 test("checkOrphans asks cwds only of parentless processes this user can inspect", async (t) => {
@@ -103,7 +165,7 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
   assert.deepEqual(await checkOrphans(root, probe), {
     level: "fail",
     detail:
-      "1 orphaned worktree process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
+      "1 orphaned process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
       " — nothing reaps these; kill each with its descendants",
   });
   assert.deepEqual(asked, [[10]]);
@@ -116,6 +178,7 @@ test("checkOrphans degrades instead of crashing doctor: no table warns, unreadab
       throw new Error("spawn ps ENOENT");
     },
     cwds: async () => new Map(),
+    runMarkers: async () => new Map(),
     launchServicesPorts: async () => null,
   };
   assert.deepEqual(await checkOrphans(root, noPs), {
@@ -142,7 +205,7 @@ test("checkOrphans degrades instead of crashing doctor: no table warns, unreadab
     ]),
   );
   assert.equal(found.level, "fail");
-  assert.match(found.detail, /^1 orphaned worktree process \(PPID 1\): pid 21 /);
+  assert.match(found.detail, /^1 orphaned process \(PPID 1\): pid 21 /);
   assert.match(found.detail, /\(process cwds unreadable — spawn lsof ENOENT; argv matched only\)$/);
 });
 
@@ -154,7 +217,7 @@ test("checkOrphans itemizes at most eight orphans and trims each command, keepin
   const { probe } = fakeProbe(rows, Object.fromEntries(rows.map((r) => [r.pid, wt])));
   const r = await checkOrphans(root, probe);
   assert.equal(r.level, "fail");
-  assert.match(r.detail, /^10 orphaned worktree processes \(PPID 1\): /);
+  assert.match(r.detail, /^10 orphaned processes \(PPID 1\): /);
   assert.equal(r.detail.match(/pid \d+ \(age/g)?.length, 8);
   assert.match(r.detail, /; and 2 more — nothing reaps these/);
   // The root is cut first, then the command is trimmed to 80 characters with an ellipsis.
@@ -178,7 +241,7 @@ test("checkOrphans matches orphans through a root spelled as a symlink, alive or
   ]);
   const given = await checkOrphans(dangling, probe);
   assert.equal(given.level, "fail", "an orphan naming the given spelling is still this repo's");
-  assert.match(given.detail, /^1 orphaned worktree process \(PPID 1\): pid 700 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
+  assert.match(given.detail, /^1 orphaned process \(PPID 1\): pid 700 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
 
   // A root given through a live symlink must also match orphans spelled with the RESOLVED
   // path — lsof and /proc report a resolved cwd, and macOS's /var is /private/var — and the
@@ -190,7 +253,7 @@ test("checkOrphans matches orphans through a root spelled as a symlink, alive or
   ]);
   const through = await checkOrphans(link, resolvedProbe);
   assert.equal(through.level, "fail", "an orphan naming the resolved spelling is still this repo's");
-  assert.match(through.detail, /^1 orphaned worktree process \(PPID 1\): pid 701 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
+  assert.match(through.detail, /^1 orphaned process \(PPID 1\): pid 701 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
 });
 
 test("runDoctor fails the verdict on an orphan — the exit code a scripted doctor keys off", async () => {

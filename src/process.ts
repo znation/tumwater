@@ -73,6 +73,16 @@ export interface ProcessProbe {
    * that exited meanwhile, or that this user may not inspect, are simply absent; rejects only
    * when no lookup could run at all. */
   cwds(pids: number[]): Promise<Map<number, string>>;
+  /** The `TUMWATER_RUN` marks each given pid's environment carries, as the comma-separated
+   * list of `<harness pid>-<nonce>` markers a run stamps (`runMarkerEnv`). Pids that exited
+   * meanwhile, or that this user may not inspect, are simply absent; the reader's own pid is
+   * never reported. On macOS `ps -E` hides platform binaries' environments (sleep, sh), so a
+   * marked leak of those goes unseen — the same limit the sweep's scan carries; the leaks
+   * that matter (servers, test workers) are userland binaries ps -E does report. Best-effort
+   * by contract: a scan that cannot run at all answers an empty map rather than rejecting,
+   * because the orphan check's argv/cwd evidence stands on its own and a dead environment
+   * reader must not turn doctor red on its own. */
+  runMarkers(pids: number[]): Promise<Map<number, string[]>>;
   /** How many Mach ports macOS's launchservicesd holds (see src/launch-services.ts). Null off
    * macOS, and when the count cannot be read; never rejects. */
   launchServicesPorts(): Promise<number | null>;
@@ -171,6 +181,32 @@ export const systemProcessProbe: ProcessProbe = {
       const e = err as { code?: unknown; stdout?: unknown };
       if (typeof e.code === "number" && typeof e.stdout === "string") return parseLsofCwds(e.stdout);
       throw err;
+    }
+  },
+  async runMarkers(pids) {
+    if (pids.length === 0) return new Map();
+    if (process.platform === "linux") {
+      const marks = new Map<number, string[]>();
+      for (const pid of pids) {
+        if (pid === process.pid) continue;
+        try {
+          const values = runMarkersInEnviron(fs.readFileSync(`/proc/${pid}/environ`).toString("utf8").split("\0"));
+          if (values.length > 0) marks.set(pid, values);
+        } catch {
+          // Exited meanwhile, or another user's process: absent, per the contract.
+        }
+      }
+      return marks;
+    }
+    try {
+      const { stdout } = await execFileAsync("ps", ["-wwE", "-A", "-o", "pid=,command="], {
+        timeout: PROBE_TIMEOUT_MS,
+      });
+      const marks = runMarkersInPs(stdout);
+      return new Map(pids.flatMap((p): Array<[number, string[]]> => (marks.has(p) ? [[p, marks.get(p) as string[]]] : [])));
+    } catch {
+      // No ps, a wedged table: a miss, never a failed doctor — the argv/cwd half still ran.
+      return new Map();
     }
   },
   async launchServicesPorts() {
@@ -299,6 +335,45 @@ export function runMarkerEnv(base: NodeJS.ProcessEnv, marker: string): NodeJS.Pr
 /** True when a `TUMWATER_RUN=` value names `marker` as one of its comma-separated runs. */
 function markerValueCarries(value: string, marker: string): boolean {
   return value.split(",").includes(marker);
+}
+
+/** The `TUMWATER_RUN` markers in an environment-entry list (NUL-separated `VAR=value`
+ * strings), each value split into its comma-separated marks and duplicates dropped — the
+ * reader half of the run mark, for anything that must see WHICH runs a process belongs to
+ * rather than sweep by one (doctor's orphan check judges a mark's harness liveness). */
+export function runMarkersInEnviron(entries: string[]): string[] {
+  const values: string[] = [];
+  for (const entry of entries) {
+    if (!entry.startsWith(`${RUN_MARKER_VAR}=`)) continue;
+    for (const marker of entry.slice(RUN_MARKER_VAR.length + 1).split(",")) {
+      if (marker !== "" && !values.includes(marker)) values.push(marker);
+    }
+  }
+  return values;
+}
+
+/** The `TUMWATER_RUN` markers per pid in `ps -wwE -A -o pid=,command=` output — with `-E`,
+ * ps appends each process's launch environment to the command column, so one pass reads
+ * every same-user environment. The sweep's reader (pidsMarkedInPs) is membership-only in one
+ * marker; the orphan check needs the values themselves, to judge each mark's harness. The
+ * reader's own pid is never reported — it holds the mark's birthplace in memory, not in its
+ * environment. */
+export function runMarkersInPs(stdout: string, ownPid = process.pid): Map<number, string[]> {
+  const marks = new Map<number, string[]>();
+  for (const line of stdout.split("\n")) {
+    const m = /^\s*(\d+)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    if (pid === ownPid) continue;
+    const values: string[] = [];
+    for (const assignment of (m[2] ?? "").match(new RegExp(`${RUN_MARKER_VAR}=\\S*`, "g")) ?? []) {
+      for (const marker of assignment.slice(RUN_MARKER_VAR.length + 1).split(",")) {
+        if (marker !== "" && !values.includes(marker)) values.push(marker);
+      }
+    }
+    if (values.length > 0) marks.set(pid, values);
+  }
+  return marks;
 }
 
 /** The pids in `ps -wwE -A -o pid=,command=` output whose environment names `marker`: with

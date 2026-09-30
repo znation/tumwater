@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "./paths.js";
-import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "./process.js";
+import { type ProcessProbe, type ProcessRow, pidAlive, systemProcessProbe } from "./process.js";
 import { errorMessage, truncate } from "./text.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
@@ -101,6 +101,19 @@ function descendantCount(children: Map<number, number[]>, pid: number): number {
  * subreaper — `systemd --user` in a desktop session — is reparented to that instead, and is
  * not seen here.)
  *
+ * A second kind of evidence closes the gap the 2026-09-30 sweep fix left (BUGS.md, part
+ * 2/2): every process a run starts carries `TUMWATER_RUN=<harness pid>-<nonce>` in its
+ * environment (appended to any inherited mark), wherever its cwd is — exactly where the
+ * prompts send agents (scratch dirs under the system temp). A parentless process whose
+ * every mark names a harness pid that is no longer alive is this fleet's orphan: nothing
+ * will reap it, because the run sweep that would have dies with its harness. A mark naming
+ * ANY live harness is not reported — that harness's own sweep kills everything carrying the
+ * mark when its run folds. A pid that died and was recycled by an unrelated process reads
+ * as live (pidAlive cannot tell), so such a straggler stays unseen here — the same limit the
+ * merge lock's stale-holder check carries. An unparseable mark (a torn or foreign value
+ * without a `<pid>-` prefix) judges nothing; on macOS ps -E hides platform binaries'
+ * environments, so a marked sleep/sh leak stays unseen there, as the sweep's own scan does.
+ *
  * Cheap by construction: one `ps`, then one cwd lookup covering only the parentless
  * processes argv did not already settle (and only those this user can inspect — lsof and
  * /proc cannot read anyone else's, root reads all). An unreadable table degrades to a warn,
@@ -135,8 +148,28 @@ export async function checkOrphans(
       cwdProblem = errorMessage(err);
     }
   }
+  let marks = new Map<number, string[]>();
+  if (ask.length > 0) {
+    try {
+      marks = await probe.runMarkers(ask);
+    } catch {
+      // Best-effort per the probe contract: argv and cwd still carry the check alone.
+    }
+  }
+  /** A mark's harness is dead (true), alive (false), or the mark names no harness (null —
+   * a torn or foreign value judges nothing rather than counting as dead). */
+  const harnessGone = (marker: string): boolean | null => {
+    const m = /^(\d+)-/.exec(marker);
+    return m ? !pidAlive(Number(m[1])) : null;
+  };
+  const byMark = new Set<number>();
+  for (const r of parentless) {
+    if (byArgv.has(r.pid)) continue;
+    const verdicts = (marks.get(r.pid) ?? []).map(harnessGone);
+    if (verdicts.length > 0 && verdicts.every((v) => v === true)) byMark.add(r.pid);
+  }
   const orphans = parentless.filter((r) => {
-    if (byArgv.has(r.pid)) return true;
+    if (byArgv.has(r.pid) || byMark.has(r.pid)) return true;
     const cwd = cwds.get(r.pid);
     return (cwd !== undefined && isUnder(cwd, dirs)) || relativeArgvIsOurs(r.command, cwd, root, dirs);
   });
@@ -146,7 +179,10 @@ export async function checkOrphans(
         level: "warn",
         detail: `none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`,
       };
-    return { level: "ok", detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/" };
+    return {
+      level: "ok",
+      detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks",
+    };
   }
   const children = new Map<number, number[]>();
   for (const r of rows) {
@@ -161,10 +197,14 @@ export async function checkOrphans(
     const n = descendantCount(children, r.pid);
     const tree = n > 0 ? `, +${n} descendant${n > 1 ? "s" : ""}` : "";
     const command = cut.reduce((c, rt) => c.split(`${rt}/`).join(""), r.command);
-    return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${truncate(command, ORPHAN_COMMAND_MAX)}`;
+    // A mark-caught orphan says which run marked it: the operator killing it wants to know
+    // nothing else will, and the dead harness's pid is the evidence argv and cwd lacked.
+    const mark = (marks.get(r.pid) ?? []).find((m) => harnessGone(m) === true);
+    const marked = mark !== undefined ? ` (run ${mark}; harness ${mark.split("-")[0]} exited)` : "";
+    return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${truncate(command, ORPHAN_COMMAND_MAX)}${marked}`;
   });
   const more = orphans.length - listed.length;
-  const count = `${orphans.length} orphaned worktree process${orphans.length > 1 ? "es" : ""} (PPID 1)`;
+  const count = `${orphans.length} orphaned process${orphans.length > 1 ? "es" : ""} (PPID 1)`;
   return {
     level: "fail",
     detail:
