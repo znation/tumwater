@@ -1,31 +1,13 @@
 /** Rendering half of the failure digest: turn a collected `FailureReportData` (failure-data.ts)
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
- * reads — so the byte bound argued at collection holds here unchanged. */
+ * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
+ * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
 import type { TickResult } from "./tick-outcome.js";
-import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow, type SpendCell } from "./failure-data.js";
+import { type ClusterSection, type FailureReportData, type OutcomeRow, type SpendCell } from "./failure-data.js";
 import { plural, shortSha, usd } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
-
-/** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
- * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster
- * re-surfaces only while it is live. The 2×-window read below still spans two days, which is
- * what makes the delta line meaningful. Kept here, not in the role, so 2/2 can import it. */
-export const TELEMETRY_DIGEST_DAYS = 1;
-
-/** The `telemetry` role's tick-time evidence: the failure digest rendered over its own
- * one-day window. A missing or corrupt log omits the block (undefined) and never fails the
- * tick — an observer must not break on bookkeeping (plans/telemetry-role.md). The window and
- * the swallow-errors policy live with the digest, not in the tick lifecycle that injects it. */
-export function telemetryDigest(root: string): string | undefined {
-  try {
-    return renderFailureMarkdown(collectFailureReport(root, TELEMETRY_DIGEST_DAYS));
-  } catch {
-    return undefined;
-  }
-}
-
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;

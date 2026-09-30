@@ -7,7 +7,7 @@ import { buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.j
 import { buildCutOffNote } from "./prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
 import { detectBuildCheck } from "./build-check-detect.js";
-import { telemetryDigest } from "./failure-report.js";
+import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { renderBacklogStructureBlock } from "./backlog-structure.js";
 
@@ -67,7 +67,7 @@ export function assembleTickPrompt(
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     const dequeued = dequeueRolePrompt(root, role);
     // The telemetry role's evidence is the harness's own event log, one level outside this
-    // worktree, so the report module renders it (telemetryDigest) and the tick injects it.
+    // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
     const digest = role === "telemetry" ? telemetryDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
