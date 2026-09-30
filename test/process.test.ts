@@ -661,3 +661,73 @@ test("terminateChild takes a live process group down promptly with the SIGTERM l
   if (outcome === "timeout") assert.fail("the child was left running after terminateChild");
   assert.equal(outcome.signal, "SIGTERM", "the SIGTERM leg did the killing");
 });
+
+test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", async (t) => {
+  // The escalation half of the sweep: a victim that traps SIGTERM and ignores it must still
+  // be taken down when the 10 s escalation timer fires — the sweep's whole point is that the
+  // run's leftover tool processes do not outlive it. The timer is fire-and-forget and unref'd,
+  // so a real 10 s wait would race the test process's own exit: mock timers capture the
+  // schedule instead and fire the escalation on demand (the victims are spawned and recorded
+  // BEFORE the mocks are enabled, so their own startup waits on real time).
+  //
+  // Two victims share the run-shaped marker: one compliant (dies on the SIGTERM leg) and one
+  // stubborn (a SIGTERM handler that ignores the signal). The escalation then exercises both
+  // of its arms: the SIGKILL that finishes the survivor, and the already-gone kill that the
+  // sweep must absorb without throwing (a compliant victim exits well before the timer).
+  const dir = tmpdir();
+  const recordPid = "require('node:fs').writeFileSync(process.argv[1], String(process.pid));";
+  const marker = makeRunMarker();
+  const spawnMarked = (file: string, script: string) => {
+    const child = spawn(process.execPath, ["-e", script, path.join(dir, file)], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, TUMWATER_RUN: marker },
+    });
+    child.unref();
+    return child;
+  };
+  const compliant = spawnMarked(
+    "compliant.pid",
+    `${recordPid}setInterval(() => {}, 1 << 30)`, // no SIGTERM handler: the leg kills it
+  );
+  spawnMarked(
+    "stubborn.pid",
+    `${recordPid}process.on('SIGTERM', () => {});setInterval(() => {}, 1 << 30)`,
+  );
+  const readPid = (file: string) => {
+    try {
+      return Number(fs.readFileSync(path.join(dir, file), "utf8").trim()) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const recordDeadline = Date.now() + 10_000;
+  while ((!readPid("compliant.pid") || !readPid("stubborn.pid")) && Date.now() < recordDeadline)
+    await new Promise((r) => setTimeout(r, 25));
+  const compliantPid = readPid("compliant.pid");
+  const stubbornPid = readPid("stubborn.pid");
+  assert.ok(compliantPid > 0 && stubbornPid > 0, "both orphans recorded their pids");
+  // Safety net: whatever the sweep does, this test must not leave a live orphan behind.
+  t.after(() => {
+    for (const pid of [compliantPid, stubbornPid]) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone — the expected outcome.
+      }
+    }
+  });
+
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const signaled = await sweepRunMarker(marker);
+  assert.equal(signaled, 2, "the sweep signaled both marked victims");
+  // The compliant victim dies on the leg; the escalation must then find it already gone.
+  await new Promise<void>((resolve) => compliant.once("exit", () => resolve()));
+  t.mock.timers.tick(10_000); // fire the escalation: SIGKILL every victim
+  t.mock.timers.reset();
+
+  const goneDeadline = Date.now() + 10_000;
+  while (pidAlive(stubbornPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pidAlive(stubbornPid), false, "the SIGTERM-proof victim was SIGKILLed by the escalation");
+  assert.equal(pidAlive(compliantPid), false, "the compliant victim stayed down");
+});
