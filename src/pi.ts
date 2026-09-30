@@ -141,10 +141,11 @@ export interface PiRunOptions {
   config: TumwaterConfig;
   sessionDir: string;
   sessionName: string;
-  /** Resume the most recent session in sessionDir instead of starting fresh. Used ONLY
-   * for the within-tick transient retry (so the retry keeps the first attempt's partial
-   * progress); every tick otherwise starts a fresh session, so context never accumulates
-   * across ticks. */
+  /** Resume the most recent session in sessionDir instead of starting fresh. Two users, both
+   * within-tick: the transient retry (so the retry keeps the first attempt's partial progress)
+   * and the review gate's verdict-recovery follow-up, which continues the just-finished
+   * review's session to ask for a missing VERDICT line (src/review.ts, BUGS.md 2026-09-29).
+   * Every tick otherwise starts a fresh session, so context never accumulates across ticks. */
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */
   rawLogFile: string;

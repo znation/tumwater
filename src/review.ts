@@ -7,9 +7,9 @@ import { git, headOf, patchId } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
-import { runPi } from "./pi.js";
+import { hasResumableSession, runPi } from "./pi.js";
 import { readPrinciples } from "./prompt.js";
-import { buildReviewPrompt } from "./gate-prompts.js";
+import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
@@ -72,6 +72,47 @@ export interface GateResult {
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
    * ran (gate disabled, exempt diff, or an already-approved HEAD or patch). */
   run?: PiRunResult;
+  /** The follow-up turn that recovered (or failed to recover) a missing VERDICT line, when
+   * one ran — folded into the loop totals by the caller right after `run`. Absent when the
+   * reviewer's own reply parsed (no follow-up needed) or there was no session to continue. */
+  followUpRun?: PiRunResult;
+}
+
+/** Hard caps on the VERDICT follow-up turn: it should take one short reply on a warm session,
+ * so it never gets the review run's own budget (mirrors LoopPi's SUMMARY-request caps). */
+const VERDICT_REQUEST_TIMEOUT_S = 900;
+const VERDICT_REQUEST_QUIET_S = 300;
+
+/** Ask the reviewer's own session (--continue) for the missing VERDICT line: one tightly
+ * bounded turn on the just-finished review's session, mirroring LoopPi.requestSummary on the
+ * author side (BUGS.md 2026-09-29). Null when there is no session to continue — the caller
+ * then counts the strike exactly as before. The run is returned even when it failed so the
+ * caller can honor a shutdown abort and fold the spend. */
+async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | null> {
+  const sessionDir = reviewSessionDir(ctx.root, ctx.role);
+  if (!hasResumableSession(sessionDir)) return null;
+  const cfg = reviewRunConfig(ctx.config);
+  return runPi({
+    cwd: ctx.wt,
+    prompt: buildVerdictRequestPrompt(),
+    config: {
+      ...cfg,
+      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
+      quietTimeoutSeconds:
+        cfg.quietTimeoutSeconds > 0
+          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
+          : VERDICT_REQUEST_QUIET_S,
+    },
+    sessionDir,
+    // The whole point: continue the just-finished review's session, which already holds
+    // everything the reviewer read and concluded.
+    continueSession: true,
+    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-verdict`,
+    rawLogFile: piLogPath(ctx.root, ctx.role),
+    label: "review-verdict",
+    signal: ctx.signal,
+    onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
+  });
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
@@ -87,8 +128,11 @@ export interface GateResult {
  * - reject → reset the branch to main, record reasons in state.lastReview (injected into the
  *   role's next tick prompt), log review_rejected;
  * - fail with an unparseable reply (the reviewer ran to completion but emitted no VERDICT) →
- *   leave the commit on the branch for the next tick's re-review, counting consecutive
- *   failures per HEAD; past REVIEW_FAILURE_LIMIT discard the leftover with a warning.
+ *   one capped follow-up turn on the reviewer's own session asks for the missing line
+ *   (mirroring requestSummary — BUGS.md 2026-09-29); only a follow-up that also yields
+ *   nothing counts the strike. Leave the commit on the branch for the next tick's re-review,
+ *   counting consecutive failures per HEAD; past REVIEW_FAILURE_LIMIT discard the leftover
+ *   with a warning.
  * - fail because the run itself failed (transport/spawn/timeout, pi.ok false) → leave the
  *   commit and do NOT advance the count: the reviewer never judged the diff, so the failure
  *   is evidence about the backend, never about the commit (BUGS.md 2026-09-20).
@@ -319,16 +363,31 @@ export async function reviewAheadOfMain(
     return { decision: "failed", aborted: true, run: pi };
   }
 
-  const verdict = parseVerdict(pi.verdictText ?? "");
+  let verdict = parseVerdict(pi.verdictText ?? "");
+  // A run that FAILED (`ok` false: transport error, failed spawn, timeout) produced no reply,
+  // so no follow-up is attempted — it is evidence about the backend, and the strike-free
+  // branch below keeps it that way (BUGS.md 2026-09-20). Only a run that completed and
+  // replied without a parseable VERDICT earns the recovery turn: that is evidence about the
+  // reviewer's output format, not about the diff, and it is as recoverable as the author
+  // side's missing SUMMARY (BUGS.md 2026-09-29).
+  let followUp: PiRunResult | null = null;
+  if (!verdict && pi.ok) {
+    followUp = await requestVerdict(ctx);
+    if (followUp?.aborted) return { decision: "failed", aborted: true, run: pi, followUpRun: followUp };
+    const recovered = followUp ? parseVerdict(followUp.verdictText ?? "") : null;
+    if (recovered) {
+      verdict = recovered;
+      warnEvent(root, role, "the reviewer's reply had no VERDICT line — recovered it with a follow-up turn on its own session");
+    }
+  }
   if (!verdict) {
-    const message = pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply";
+    const message =
+      pi.errorMessage ??
+      `no parseable VERDICT line in the reviewer's reply${followUp ? ", even after a follow-up turn on its session" : ""}`;
     logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
-    // A run that FAILED (`ok` false: transport error, failed spawn, timeout) produced no
-    // reply, so it is evidence about the backend, not about the diff. Leave the commit for
-    // the next tick's re-review and do not advance the per-HEAD discard counter — a dead
-    // reviewer must never destroy committed work (BUGS.md 2026-09-20). Only a run that
-    // completed and replied without a parseable VERDICT is a strike against this HEAD.
     if (!pi.ok) {
+      // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the
+      // commit for the next tick's re-review and do not advance the per-HEAD discard counter.
       recordReview(state, "failed", [message], head);
       return { decision: "failed", detail: message, run: pi };
     }
@@ -345,12 +404,18 @@ export async function reviewAheadOfMain(
       discarded = true;
       warnEvent(root, role, `discarding unreviewed leftover after ${REVIEW_FAILURE_LIMIT} failed reviews (${shortSha(head)})`);
     }
-    return { decision: "failed", detail: message, run: pi, ...(discarded ? { discarded: true } : {}) };
+    return {
+      decision: "failed",
+      detail: message,
+      run: pi,
+      ...(followUp ? { followUpRun: followUp } : {}),
+      ...(discarded ? { discarded: true } : {}),
+    };
   }
 
   if (verdict.verdict === "reject") {
     const rejected = await reject(verdict.reasons, Date.now() - reviewStartedAt);
-    return { ...rejected, run: pi };
+    return { ...rejected, run: pi, ...(followUp ? { followUpRun: followUp } : {}) };
   }
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
@@ -368,5 +433,5 @@ export async function reviewAheadOfMain(
     reason: verdict.reasons[0],
     durationMs: Date.now() - reviewStartedAt,
   });
-  return { decision: "approved", run: pi, verifiedHead };
+  return { decision: "approved", run: pi, verifiedHead, ...(followUp ? { followUpRun: followUp } : {}) };
 }

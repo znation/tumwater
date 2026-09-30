@@ -16,7 +16,7 @@ import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, reviewGate, ROLE } from "./gate-fixtures.js";
@@ -348,6 +348,69 @@ test("gate fails closed on a verdict-less reply: commit kept for re-review", asy
     assert.equal(state.unreviewFailures, 1);
     assert.equal(state.lastReview?.verdict, "failed");
     assert.equal(state.lastApprovedHead, undefined);
+  } finally {
+    restore();
+  }
+});
+
+test("a verdict-less completed reply is recovered with one follow-up turn, not a strike", async () => {
+  // The reviewer ran to completion and replied, but without a VERDICT line — a formatting
+  // slip, not a verdict about the diff. Before the fix (BUGS.md 2026-09-29) that counted
+  // straight onto the strike ladder toward `reset --hard` over a finished commit; now the
+  // gate first asks the reviewer's own session (--continue) for the missing line, mirroring
+  // requestSummary on the author side.
+  const { root, wt, head } = await gateFixture();
+  const flags = path.join(tmpdir(), "verdict-followup-flags");
+  const restore = fakePi(
+    [
+      TOUCH_SESSION, // the reviewer's session exists, so the follow-up has one to continue
+      logFlagsTo(flags),
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
+      `  printf '%s\n' '${assistantLine("VERDICT: approve\n1. recovered the verdict on the follow-up")}'`,
+      `  exit 0`,
+      `fi; done`,
+      `printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
+    ].join("\n"),
+  );
+  try {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.equal(state.unreviewFailures, 0); // a recovered verdict is a successful review
+    assert.equal(state.lastApprovedHead, head);
+    assert.equal(await aheadOfMain(wt, "main"), 1);
+    // Both runs ride back for usage folding into the loop totals.
+    assert.ok(result.run);
+    assert.ok(result.followUpRun);
+    assert.equal(eventsOfType(root, "review_failed").length, 0);
+    assert.equal(eventsOfType(root, "review_verdict").length, 1);
+    // The recovery is observable in the event feed.
+    const warnings = readEvents(root).filter((e) => e.type === "warning");
+    assert.ok(warnings.some((e) => /follow-up turn/.test(String(e.message))));
+    // Exactly one --continue run happened, after the fresh review run.
+    const lines = fs.readFileSync(flags, "utf8").trim().split("\n");
+    assert.equal(lines.length, 2);
+    assert.match(lines[0]!, /^run: -n/);
+    assert.match(lines[1]!, /^run: --continue$/);
+  } finally {
+    restore();
+  }
+});
+
+test("a follow-up turn that also yields no verdict still counts the strike against the HEAD", async () => {
+  const { root, wt } = await gateFixture();
+  // The session exists (TOUCH_SESSION), so the follow-up runs — and replies without a
+  // VERDICT line again, like the first run. Only now does the strike ladder engage.
+  const restore = fakePi(`
+    ${TOUCH_SESSION}
+    printf '%s\n' '${assistantLine("still no verdict here")}'
+  `);
+  try {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "failed");
+    assert.match(result.detail ?? "", /even after a follow-up turn/);
+    assert.equal(state.unreviewFailures, 1);
+    assert.equal(await aheadOfMain(wt, "main"), 1); // still kept under the limit
+    assert.ok(result.followUpRun); // the follow-up's usage rides back for folding
   } finally {
     restore();
   }

@@ -162,6 +162,9 @@ export async function reviewPinnedChange(
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveLoopState(root, state);
   if (gate.run) foldUsage(gate.run);
+  // The verdict-recovery follow-up (review.ts) charges to the same role totals as the run
+  // that produced it — one more line here, because a GateResult carries two runs now.
+  if (gate.followUpRun) foldUsage(gate.followUpRun);
 
   // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
   // The caller routes "aborted" through its own abort handling (which discards the pin too when

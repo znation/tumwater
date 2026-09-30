@@ -137,6 +137,21 @@ Rules for this run:
   return parts.join("\n\n");
 }
 
+/** The one-turn follow-up sent into the REVIEWER's own session (--continue) when its run
+ * completed but the reply carried no parseable VERDICT line — the review-gate sibling of
+ * prompt.ts's buildSummaryRequestPrompt. The session already holds the full review, so one
+ * short reply recovers the verdict the gate needs without paying a second full review run;
+ * the caller bounds the run tightly and counts the strike against the HEAD only when this
+ * too yields nothing (BUGS.md 2026-09-29). Like the review prompt's closing rule it names
+ * both accepted forms, so the reply contract cannot drift between the two prompts. */
+export function buildVerdictRequestPrompt(): string {
+  return `Your review reply above did not include the verdict line the harness parses, so
+your judgment was lost. Reply now with ONLY the closing block — no tool calls, no other text:
+one line in this form:
+  VERDICT: approve   or   VERDICT: reject
+followed by numbered reasons (for an approval, state what you checked and why it holds).`;
+}
+
 /** The note injected into a role's next tick prompt after its previous change was rejected in
  * review. Every tick starts a fresh pi session, so this is the only cross-tick memory of what
  * was built and why it failed — it carries the full reasons, not a summary of them. The whole
