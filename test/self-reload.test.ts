@@ -117,13 +117,19 @@ test("createReloadWatch fires exactly once when a newer disk build appears", asy
   }
 });
 
-test("createReloadWatch never fires for a non-self-hosted install", async () => {
+test("createReloadWatch never polls for a build compiled from another root", async () => {
+  // A tumwater installed elsewhere and pointed at this project: its stamp names the install's
+  // own root, so no disk change here is ever this process's redeploy.
   let fired = 0;
+  let gateCalls = 0;
   const watch = createReloadWatch({
     root: "/r",
-    startupInfo: stamp("a"),
+    startupInfo: { sha: "a", builtAt: 1, root: "/installed/tumwater" },
     readDisk: () => stamp("b"),
-    isSelfHostedImpl: async () => false,
+    isSelfHostedImpl: async () => {
+      gateCalls++;
+      return false;
+    },
     intervalMs: 5,
     onTrigger: () => {
       fired++;
@@ -133,6 +139,71 @@ test("createReloadWatch never fires for a non-self-hosted install", async () => 
     await watch.start();
     await sleep(30);
     assert.equal(fired, 0);
+    assert.equal(gateCalls, 1, "only the startup gate asked: no interval ever ran");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("createReloadWatch never reloads onto a stamp naming no commit here, and asks git once per stamp", async () => {
+  // BUGS.md 2026-09-29: a test wrote a fake "eeee…" stamp into a live checkout's dist, the
+  // dashboard re-exec'd onto it, and the new process — whose startup stamp resolved to no
+  // commit — never watched again. A bogus stamp must not be reloaded onto at all.
+  let disk: BuildInfo | null = stamp("a");
+  let fired = 0;
+  const asked: string[] = [];
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => disk,
+    isSelfHostedImpl: async (_root, info) => {
+      asked.push(info.sha);
+      return info.sha !== "bogus";
+    },
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start();
+    disk = stamp("bogus");
+    await sleep(40);
+    assert.equal(fired, 0, "a stamp naming no commit of this repo is not a build to reload onto");
+    assert.deepEqual(asked, ["a", "bogus"], "the bogus stamp is asked about once, not on every poll");
+    disk = stamp("b");
+    await sleep(30);
+    assert.equal(fired, 1, "the next real build still reloads");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("createReloadWatch recovers from an unresolvable startup stamp compiled in this root", async () => {
+  // The other half of the same incident: a process already started on a bogus stamp of this
+  // checkout keeps watching, so the next real build — not an operator restart — brings it back.
+  let disk: BuildInfo | null = stamp("eeee");
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("eeee"),
+    readDisk: () => disk,
+    isSelfHostedImpl: async (_root, info) => info.sha !== "eeee" && info.sha !== "ffff",
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start();
+    await sleep(20);
+    assert.equal(fired, 0, "an unchanged stamp stays quiet");
+    disk = stamp("ffff");
+    await sleep(30);
+    assert.equal(fired, 0, "another bogus stamp is still no build to reload onto");
+    disk = stamp("b");
+    await sleep(30);
+    assert.equal(fired, 1, "a real build of this checkout ends the stuck state");
   } finally {
     watch.stop();
   }

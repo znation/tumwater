@@ -135,6 +135,11 @@ is green, compiles it, drains in-flight ticks, swaps the new build into `dist/`,
 most once every 12 hours. A red main or failed compile keeps the old build running and shows
 `restart BLOCKED: <reason>`.
 
+`tumwater tui` and `tumwater gui` follow the swap: each re-execs onto the new `dist/` within a
+second, and only onto a build stamped with a real commit of the repo. Because the fleet executes
+its checkout's own `dist/`, `npm test` refuses to run in that checkout while the fleet is up (the
+suite's first steps recompile and restamp `dist/`), so run suites in a worktree.
+
 ## Prompts
 
 Every tick carries PRINCIPLES.md, which only the director and steward edit. Prompts are written

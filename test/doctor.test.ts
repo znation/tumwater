@@ -1066,14 +1066,12 @@ test("doctor --json prints the collector's own payload, matching the plain rende
     // The two forms cannot drift: the JSON tuples equal, in order, the check lines the
     // plain render prints for the same fixture — rendering the parsed payload must match
     // the plain run's prose byte-for-byte (header, every check line in order, verdict),
-    // with say()'s final newline added. Two details are host- or suite-volatile between two
-    // back-to-back invocations — the build stamp (the gui-reload test swaps
-    // dist/build-info.json mid-suite) and the mach-port count — so they are masked before
-    // the comparison; every other byte must agree.
-    const maskVolatile = (text: string): string =>
-      text
-        .replace(/harness build [0-9a-f]+/g, "harness build <sha>")
-        .replace(/holds \d+/g, "holds <n>");
+    // with say()'s final newline added. One detail is host-volatile between two back-to-back
+    // invocations — the mach-port count — so it is masked before the comparison; every other
+    // byte must agree, the harness build stamp included: no test writes the running
+    // checkout's dist/build-info.json any more (the gui-reload test used to swap it
+    // mid-suite; BUGS.md 2026-09-29).
+    const maskVolatile = (text: string): string => text.replace(/holds \d+/g, "holds <n>");
     assert.equal(maskVolatile(renderDoctor(report) + "\n"), maskVolatile(plain.stdout));
 
     // The help topic derives from the same stanza and names the new flag.

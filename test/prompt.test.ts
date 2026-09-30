@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   PRINCIPLES_MAX_CHARS,
+  ROOT_FROM_WORKTREE,
   buildCutOffNote,
   buildDirectorPrompt,
   buildResumePrompt,
@@ -11,6 +12,7 @@ import {
   buildTickPrompt,
   readPrinciples,
 } from "../src/prompt.js";
+import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gate-prompts.js";
 import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
@@ -41,20 +43,28 @@ test("every catalog role produces a prompt mentioning its id", () => {
 // BUGS.md 2026-09-12 (fixed 2026-09-13): an unmatched `find /` issued from inside a
 // node_modules-less worktree ran for ~20 min with no output, blocking the whole tick until it
 // was killed by hand. The rule names the class (unbounded scans above the worktree) and the
-// remedy (the borrowed install lives at the repo root, two levels up).
-test("every tick prompt forbids scanning outside the worktree", () => {
+// remedy (the borrowed install lives at the repo root). BUGS.md 2026-09-29: the rule also
+// keeps every command — the suite above all — out of the primary checkout, whose relative
+// path must actually be the repo root (the old "two levels up" named .tumwater/ instead).
+test("every tick prompt keeps its commands inside the worktree and out of the primary checkout", () => {
   const role = roleById("bugfix");
   assert.ok(role);
   // An npm check: the node_modules borrowing sentence is only true of an npm project — it
-  // names the remedy's location (the install at the repo root, two levels up).
+  // names the remedy's location (the install at the repo root).
   const prompt = buildTickPrompt({
     role,
     initialPrompt: "",
     check: { kind: "npm", rootDir: ".", script: "test" },
   });
-  assert.match(prompt, /Stay inside your worktree/);
+  assert.match(prompt, /Stay inside your worktree: run commands from it/);
+  // Scratch directories stay allowed (qa follows the README in one, bugfix reproduces there).
+  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
+  assert.match(oneLine(prompt), /its dist\/ is the code the running fleet executes — never build, test, or edit files in that checkout/);
   assert.match(prompt, /find \/\`/);
-  assert.match(prompt, /\.\.\/\.\.\/node_modules/);
+  assert.ok(prompt.includes("(`../../../node_modules`)"), "the install's path from the worktree");
+  assert.ok(!prompt.includes("`../../node_modules`"), "not the old path, which named .tumwater/");
+  const root = "/home/op/project";
+  assert.equal(path.resolve(worktreePath(root, "bugfix"), ROOT_FROM_WORKTREE), root, "the relative root is the repo root");
 
   // A configured check names the command verbatim, and the npm-only sentence disappears —
   // in a repo with no node_modules anywhere it is false and actively misleading.

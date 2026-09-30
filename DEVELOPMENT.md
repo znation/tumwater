@@ -16,6 +16,13 @@ new variable the harness honors there too. The e2e tier stays out of the gating 
 wall-clock waits are not load-proof. Non-npm projects can replace the gate's check with
 `check.command` in tumwater.json (`command`, optional `cwd` and `timeoutSeconds`).
 
+Both suite scripts start with `scripts/live-checkout-guard.mjs`, which refuses to run in a
+checkout a live fleet runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
+suite's first steps recompile and restamp the `dist/` that fleet executes and its dashboards
+watch. Run suites in a worktree. For the same reason a test never writes the running checkout's
+own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` serves a copy of
+`dist/src` from a fixture repo instead.
+
 ## Keeping the suite fast
 
 The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes

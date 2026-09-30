@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { type BuildInfo, isSelfHosted, readBuildInfo } from "../build-info.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
@@ -56,7 +57,9 @@ export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
 
 /** Everything createReloadWatch needs; all seams injectable so tests need no real timers, git,
  * or dist. `readDisk` defaults to this process's own dist (`readBuildInfo`), which a redeploy
- * swap or a manual `npm run build` replaces in place. */
+ * swap or a manual `npm run build` replaces in place. `isSelfHostedImpl` answers both of the
+ * watch's provenance questions: is the startup build this checkout's own, and does a changed
+ * disk stamp name a real commit of it. */
 interface ReloadWatchOptions {
   root: string;
   startupInfo: BuildInfo | null;
@@ -67,8 +70,9 @@ interface ReloadWatchOptions {
 }
 
 interface ReloadWatch {
-  /** Resolves once the one-time gate settles: a stampless startup or a non-self-hosted install
-   * never starts the interval (and `stop` is then a no-op); only a self-hosted process polls. */
+  /** Resolves once the one-time gate settles: a stampless startup or a build compiled from
+   * another root never starts the interval (and `stop` is then a no-op); only this checkout's
+   * own build polls. */
   start(): Promise<void>;
   stop(): void;
 }
@@ -80,8 +84,16 @@ export type ReloadWatchSeams = Pick<ReloadWatchOptions, "readDisk" | "isSelfHost
 
 /** Watch for a newer compiled tree on disk and fire `onTrigger` at most once. The gate: null
  * `startupInfo` ⇒ never reload (checked before `isSelfHosted`, which takes a non-null
- * BuildInfo); not self-hosted ⇒ never reload. Only then does the interval re-read the disk
- * stamp and call `onTrigger` when `shouldReload` holds. */
+ * BuildInfo); a build compiled from another root ⇒ never reload. A startup build compiled
+ * from THIS root still watches when the repo cannot resolve its commit (a hand-written or test
+ * stamp, rewritten history): the code running is this checkout's all the same, and the next
+ * real build must reach it — on 2026-09-29 a dashboard re-exec'd onto a test's fake stamp and,
+ * refused a watch, served its old page through every redeploy after (BUGS.md).
+ *
+ * The interval re-reads the disk stamp and fires only onto a changed stamp that names a real
+ * commit of this repo (isSelfHosted): re-exec'ing onto a bogus one would hand the new process
+ * exactly that unknown provenance. The check is one git call, made once per new stamp — at
+ * most one in flight, and a stamp found bogus is not asked about again while it stays. */
 export function createReloadWatch(opts: ReloadWatchOptions): ReloadWatch {
   const {
     root,
@@ -94,6 +106,8 @@ export function createReloadWatch(opts: ReloadWatchOptions): ReloadWatch {
   let timer: ReturnType<typeof setInterval> | null = null;
   let stopped = false;
   let fired = false;
+  let checking = false;
+  let rejectedSha: string | null = null;
 
   function stop(): void {
     stopped = true;
@@ -104,17 +118,33 @@ export function createReloadWatch(opts: ReloadWatchOptions): ReloadWatch {
   }
 
   function check(): void {
-    if (stopped || fired) return;
-    if (!shouldReload(startupInfo, readDisk())) return;
-    fired = true;
-    stop();
-    onTrigger();
+    if (stopped || fired || checking) return;
+    const disk = readDisk();
+    if (disk === null || !shouldReload(startupInfo, disk) || disk.sha === rejectedSha) return;
+    checking = true;
+    void isSelfHostedImpl(root, disk).then(
+      (real) => {
+        checking = false;
+        if (stopped || fired) return;
+        if (!real) {
+          rejectedSha = disk.sha;
+          return;
+        }
+        fired = true;
+        stop();
+        onTrigger();
+      },
+      () => {
+        checking = false; // The check could not run: ask again on the next poll.
+      },
+    );
   }
 
   return {
     async start(): Promise<void> {
       if (startupInfo === null) return;
-      if (!(await isSelfHostedImpl(root, startupInfo))) return;
+      // Self-hosted, or at least compiled from this root (the unresolvable-commit case above).
+      if (!(await isSelfHostedImpl(root, startupInfo)) && path.resolve(root) !== startupInfo.root) return;
       if (stopped || fired) return;
       timer = setInterval(check, intervalMs);
     },

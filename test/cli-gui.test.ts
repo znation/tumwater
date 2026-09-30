@@ -5,14 +5,13 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { distDir, buildInfoPath, readBuildInfo } from "../src/build-info.js";
-import { saveConfig, seedConfig } from "../src/config.js";
+import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
 import { lanAddresses } from "../src/ui/gui.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, sh } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
-import { CLI, cli, spawnCli } from "./cli-harness.js";
+import { cli, spawnCli } from "./cli-harness.js";
 
 // `tumwater gui` through the real CLI entry point: argument validation, the serve loop
 // (banner, --token gate, --all-interfaces LAN URLs), and the failure paths (port in use,
@@ -256,43 +255,39 @@ test("gui --all-interfaces --token prints the protected warning and token-bearin
   }
 });
 
-/** The checkout this compiled test lives in: the only cwd whose gui child passes
- * isSelfHosted (the watch requires the served root to equal the dist stamp's root), so the
- * self-reload e2e below runs the CLI against this very checkout instead of a fixture repo.
- * Derived from the compiled dist's own stamp module (dist/src → dist → the checkout), so it
- * is right whether the test file runs from test/ or dist/test/. */
-const THIS_CHECKOUT = path.resolve(distDir(), "..");
-
-test("the gui reloads onto a newer build: closes, re-execs, and re-binds the same port", async (t) => {
+test("the gui reloads onto a newer build: closes, re-execs, and re-binds the same port", async () => {
   // startGui's reload glue (`server.close(); reexecSelf();`) is the one part of the
   // self-reload story with no injected seam: self-reload.test.ts pins the watch and the
   // re-exec against fakes, but nothing proves the dashboard actually survives a redeploy —
   // a glue that skipped server.close() or re-exec'd with the wrong argv would leave every
   // operator's dashboard dead (or EADDRINUSE-crashing) after the fleet's first self-redeploy.
-  // This runs the real CLI from THIS checkout — the only root the watch accepts — swaps
-  // dist's build stamp the way redeploy.ts does, and requires the same port to come back
-  // serving the new stamp. The stamp write is confined to dist/ (gitignored) and restored in
-  // finally; no test asserts the live stamp's exact value, so a parallel test file that
-  // reads it mid-swap only ever sees a well-formed stamp.
-  const dist = distDir();
-  const stampPath = buildInfoPath(dist);
-  const startup = readBuildInfo(dist);
-  if (!startup) return t.skip("this checkout's dist carries no build stamp (npm test stamps it)");
-  const originalStamp = fs.readFileSync(stampPath, "utf8");
-
-  // The gui's ready-repo gate needs tumwater.json in cwd; this checkout normally has none,
-  // so seed the defaults and remove it afterwards. Both paths keep it out of git (.gitignore).
-  const configPath = path.join(THIS_CHECKOUT, "tumwater.json");
-  const hadConfig = fs.existsSync(configPath);
-  if (!hadConfig) saveConfig(THIS_CHECKOUT, seedConfig(THIS_CHECKOUT));
+  // The watch arms only for a build compiled from the checkout it serves, so this stands up a
+  // scratch self-hosted install — a fixture repo whose dist/ is a copy of this build's
+  // compiled tree, stamped with the fixture's own commit — runs the real CLI from that copy,
+  // restamps the copy with a second real commit the way redeploy.ts's swap does, and requires
+  // the same port to come back serving the new stamp.
+  //
+  // Never this checkout's own dist/: a suite run in the checkout a live `tumwater gui` serves
+  // from re-exec'd that dashboard onto whatever the test wrote there (BUGS.md 2026-09-29).
+  const repo = makeRepo();
+  await initProject(repo, "cli gui self-reload");
+  // The CLI serves the repo's toplevel as git spells it (realpath: /private/var/… on macOS),
+  // and the watch compares the stamp's root against exactly that.
+  const root = sh(repo, "git", "rev-parse", "--show-toplevel");
+  const dist = path.join(root, "dist");
+  fs.cpSync(path.join(distDir(), "src"), path.join(dist, "src"), { recursive: true });
+  const stampDist = (sha: string) =>
+    fs.writeFileSync(buildInfoPath(dist), JSON.stringify({ sha, builtAt: Date.now(), root }));
+  const startupSha = sh(repo, "git", "rev-parse", "HEAD");
+  stampDist(startupSha);
 
   // Detached so the kill below reaches the whole tree: the re-exec'd server is a child of
   // the first one (which exits only after it), and both share the spawned process group.
   const port = await freeTcpPort();
   const env = { ...process.env };
   delete env[SUPERVISED_ENV];
-  const child = spawn(process.execPath, [CLI, "gui", "--port", String(port)], {
-    cwd: THIS_CHECKOUT,
+  const child = spawn(process.execPath, [path.join(dist, "src", "cli.js"), "gui", "--port", String(port)], {
+    cwd: root,
     env,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -302,17 +297,17 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
   child.stderr?.on("data", (d) => (out += d));
   const banners = () => out.split(`tumwater gui at http://127.0.0.1:${port}`).length - 1;
 
-  // The stamped sha the re-exec'd server must report: a fake commit-id that is not any real
-  // commit, so the new server's own watch stays quiet (a sha no repo member can resolve).
-  const reloadedSha = "e".repeat(40);
   try {
     await waitFor(() => banners() >= 1, "the first gui banner");
     const first = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
-    assert.equal(first.serverBuildSha, startup.sha, "the first server reports the startup stamp");
+    assert.equal(first.serverBuildSha, startupSha, "the first server reports the startup stamp");
 
-    // The redeploy: swap the stamp, like redeploy.ts does just before draining. The watch
-    // polls within a second of the swap, then the glue closes and re-execs.
-    fs.writeFileSync(stampPath, JSON.stringify({ sha: reloadedSha, builtAt: Date.now(), root: THIS_CHECKOUT }));
+    // The redeploy: main moves and its build is stamped into dist/ in place, like redeploy.ts's
+    // swap. The watch polls within a second, confirms the stamp names a commit of this repo,
+    // then the glue closes and re-execs.
+    sh(repo, "git", "commit", "--allow-empty", "-q", "-m", "the next build");
+    const reloadedSha = sh(repo, "git", "rev-parse", "HEAD");
+    stampDist(reloadedSha);
     await waitFor(() => banners() >= 2, "the re-exec'd server's banner on the same port");
     let reloaded: { serverBuildSha?: string | null } | undefined;
     for (let i = 0; i < 50; i++) {
@@ -340,7 +335,5 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
       // Already gone (or no longer a group leader) — the direct kill below still applies.
     }
     child.kill("SIGKILL");
-    fs.writeFileSync(stampPath, originalStamp);
-    if (!hadConfig) fs.rmSync(configPath, { force: true });
   }
 });

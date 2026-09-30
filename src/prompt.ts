@@ -6,6 +6,7 @@ import { type Role } from "./roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "./role-guidance.js";
 import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 import { todayStamp } from "./budget.js";
+import { worktreePath } from "./paths.js";
 
 /** Prompt construction for the role loops' pi runs (tick, director, resume, summary recovery),
  * declaring in prose the reply contract those runs must follow:
@@ -79,6 +80,13 @@ export function dateLine(today: string = todayStamp()): string {
   return `Today's date is ${today} (local time).`;
 }
 
+/** The repo root as a loop's worktree reaches it (`../../..`, out of .tumwater/worktrees/<role>),
+ * derived from worktreePath so the prompt cannot drift from the layout: the hand-written "two
+ * levels up (`../../node_modules`)" it replaced pointed at .tumwater/ itself, and on 2026-09-29
+ * a bugfix run that followed it (`cd ../..`, git output empty there) fell back to the primary
+ * checkout's absolute path and ran the suite in the live fleet's own checkout (BUGS.md). */
+export const ROOT_FROM_WORKTREE = path.relative(worktreePath("/", "role"), "/");
+
 /** The rules every loop prompt carries — tick and director alike, so the two cannot drift.
  * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
  * verification command in the Leave-the-project-working rule instead of asserting npm, and
@@ -94,7 +102,7 @@ function commonRules(check?: BuildCheck, briefFile: string = "README.md"): strin
   const modules =
     check?.kind === "npm"
       ? ` Your worktree has no node_modules of its own; it borrows the install at the repo
-  root, two levels up (\`../../node_modules\`). To inspect a dependency's types or source,
+  root (\`${ROOT_FROM_WORKTREE}/node_modules\`). To inspect a dependency's types or source,
   read that directory directly instead of widening the search outward.`
       : "";
   return `
@@ -118,10 +126,14 @@ Scope:
   Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
   need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
   run — take a smaller one.
-- Stay inside your worktree: never run an unbounded scan or write above it (\`find /\`,
-  \`grep -r /\`, any recursive search rooted outside the repo) — an unmatched full-disk scan runs
-  for tens of minutes with no output and blocks your whole tick until the harness kills it as
-  hung.${modules}
+- Stay inside your worktree: run commands from it — the directory you start in, where
+  \`git log\` and \`git show\` work just the same — or from a scratch directory under the system
+  temp. Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which the
+  harness lands main into while you work, and when this project is the harness itself its
+  dist/ is the code the running fleet executes — never build, test, or edit files in that
+  checkout. Never run an unbounded scan either (\`find /\`, \`grep -r /\`, any recursive search
+  rooted outside the repo) — an unmatched full-disk scan runs for tens of minutes with no
+  output and blocks your whole tick until the harness kills it as hung.${modules}
 ${CONTEXT_BUDGET_RULE}
 - Leave the project working: ${verify} Pipe its output through \`tail\` — only the failures matter.
 
