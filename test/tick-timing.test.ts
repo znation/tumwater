@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { drainInFlightWork } from "../src/tick-timing.js";
 import { readEvents } from "../src/events.js";
 import { writeLandingMarker, readLandingMarker } from "../src/landing-slot.js";
-import type { InFlightLanding } from "../src/landing-drain.js";
+import type { InFlightLanding } from "../src/landing-pipeline.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the

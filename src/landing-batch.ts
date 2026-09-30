@@ -1,5 +1,5 @@
 /** The two halves of a landing (plans/merge-queue.md 5/5, PLANS.md land-queue speed 2c): the
- * per-change vet (vetRequest) that landing-drain.ts's vetting stage runs for every queued change,
+ * per-change vet (vetRequest) that landing-vetting.ts's vetting stage runs for every queued change,
  * and the merge (landVetted) its one merge slot runs over the vetted ones — a stack of two or
  * more sharing a single build check, with a per-change fallback. The shared review gate
  * (reviewPinnedChange) and the one-change landing (landApprovedChange) live beside it in

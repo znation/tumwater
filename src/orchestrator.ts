@@ -24,13 +24,8 @@ import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch } from "./git.js";
 import { queuedLandingFiles } from "./landing-queue.js";
-import {
-  abortableLandings,
-  drainLandings,
-  landingTasks,
-  newLandingPipeline,
-  settleAbortedVetted,
-} from "./landing-drain.js";
+import { drainLandings, settleAbortedVetted } from "./landing-drain.js";
+import { abortableLandings, landingTasks, newLandingPipeline } from "./landing-pipeline.js";
 import { logEvent, warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";

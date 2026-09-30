@@ -3,7 +3,7 @@ import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent, warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
 import type { LoopState } from "./loop-state.js";
-import type { InFlightLanding } from "./landing-drain.js";
+import type { InFlightLanding } from "./landing-pipeline.js";
 import { landingStatePath } from "./paths.js";
 import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import type { BackendFailureKind } from "./pi.js";

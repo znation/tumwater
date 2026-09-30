@@ -2,14 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { drainLandings, settleAbortedVetted } from "../src/landing-drain.js";
 import {
   abortableLandings,
-  drainLandings,
   landingTasks,
-  settleAbortedVetted,
-  vetLimit,
   type InFlightLanding,
-} from "../src/landing-drain.js";
+} from "../src/landing-pipeline.js";
+import { vetLimit } from "../src/landing-vetting.js";
 import { consumeAbortRequests } from "../src/operator-requests.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";

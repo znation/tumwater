@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import { drainLandings } from "../src/landing-drain.js";
 import {
-  drainLandings,
   landingTasks,
   newLandingPipeline,
   type InFlightLanding,
   type LandingPipeline,
   type LandingPipelineContext,
-} from "../src/landing-drain.js";
+} from "../src/landing-pipeline.js";
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth } from "../src/landing-queue.js";
 import { landingRefName } from "../src/paths.js";

@@ -74,7 +74,7 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
-/** The in-flight landing marker (landing-drain.ts, merge queue 4/5): the orchestrator's drain task
+/** The in-flight landing marker (landing-vetting.ts, merge queue 4/5): the orchestrator's drain task
  * writes it when a landing starts and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */

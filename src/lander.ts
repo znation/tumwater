@@ -30,7 +30,7 @@ export const LANDING_CHECK_FAILURE_LIMIT = 2;
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,
  * resets that worktree to main, and queues the sha for the ORCHESTRATOR's landing pipeline
- * (landing-drain.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached in
+ * (landing-vetting.ts, merge queue 3/5 and land-queue speed 2c), which checks it out detached in
  * the role's own `_land-<role>` worktree and runs it through the review gate here
  * (reviewPinnedChange, from landing-batch.ts's vetRequest) and then the landing
  * (landApprovedChange, from its merge) — so no diff reaches main unreviewed (invariant 1) and
