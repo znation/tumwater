@@ -144,6 +144,8 @@ function pushYieldOutcome(s: LoopState, result: TickResult): void {
   s.recentOutcomes = ((s.recentOutcomes ?? "") + ch).slice(-YIELD_RING);
 }
 
+const YIELD_MAX = 8;
+
 /** The multiplier on a scalable role's minTickIntervalSeconds gap its recent yield earns:
  * 1 while any of the last 10 counted ticks landed, otherwise doubling per 5 further empty
  * ticks — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8. `recent` is the ring's chars, oldest
@@ -151,7 +153,6 @@ function pushYieldOutcome(s: LoopState, result: TickResult): void {
  * A landing inside the last 10 resets the multiplier to 1 even when older empties remain in
  * the ring: one landing is the evidence the role's clock should trust, and the ring's older
  * half only matters once the landing has aged out of the recent window. */
-const YIELD_MAX = 8;
 export function yieldMultiplier(recent: string[]): number {
   if (recent.slice(-10).includes(YIELD_LAND)) return 1;
   const empty = recent.filter((c) => c !== YIELD_LAND).length;
