@@ -4,7 +4,7 @@ import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import { HOLD_BASE_MS } from "./fleet-hold.js";
 import { backendKindPhrase } from "./text.js";
 import { configForRole } from "./config-views.js";
-import { buildSummaryRequestPrompt } from "./prompt.js";
+import { buildSummaryRequestPrompt } from "./prompt-followup.js";
 import { piLogPath, sessionDir } from "./paths.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint

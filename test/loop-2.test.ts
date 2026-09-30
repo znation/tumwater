@@ -239,8 +239,8 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
   assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped tick");
 });
 
-// Context-ceiling memory across ticks (src/prompt.ts buildCutOffNote / buildResumePrompt's
-// cut-off cause): a cut-off resume must be told what actually happened, and a fresh tick after
+// Context-ceiling memory across ticks (src/prompt-followup.ts buildCutOffNote /
+// buildResumePrompt's cut-off cause): a cut-off resume must be told what actually happened, and a fresh tick after
 // the loop gave up resuming must be told its last attempts were too big for the window.
 test("a cut-off resume is bridged as a cut-off, and the fresh tick after the limit carries the note", async () => {
   const repo = await initializedRepo();

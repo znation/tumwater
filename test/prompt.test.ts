@@ -5,13 +5,11 @@ import path from "node:path";
 import {
   PRINCIPLES_MAX_CHARS,
   ROOT_FROM_WORKTREE,
-  buildCutOffNote,
   buildDirectorPrompt,
-  buildResumePrompt,
-  buildSummaryRequestPrompt,
   buildTickPrompt,
   readPrinciples,
 } from "../src/prompt.js";
+import { buildResumePrompt } from "../src/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gate-prompts.js";
 import { todayStamp } from "../src/budget.js";
@@ -583,33 +581,6 @@ test("every run carries the context-budget rule", () => {
   assert.match(buildResumePrompt("clean"), /context window is finite/);
 });
 
-test("buildCutOffNote counts the failed runs and offers nothing-to-do as the honest exit", () => {
-  const one = buildCutOffNote(1);
-  assert.match(one, /^Your previous run as this loop ran out of context before landing anything/);
-  assert.match(one, /grep first, read in ranges, cap\s+command output/);
-  assert.ok(one.includes(NOTHING_TO_DO));
-  assert.match(buildCutOffNote(3), /^Your previous 3 runs as this loop/);
-});
-
-test("buildSummaryRequestPrompt asks for exactly the closing block and nothing else", () => {
-  // The follow-up for a changed tick whose reply lacked SUMMARY (src/loop.ts requestSummary):
-  // it must name every label the commit-message parser reads and forbid further tool use.
-  const p = buildSummaryRequestPrompt();
-  assert.match(p, /did not include the required closing block/);
-  assert.match(p, /no tool calls, no other text/);
-  for (const label of ["SUMMARY:", "WHY:", "RISK:", "VERIFIED:"]) assert.ok(p.includes(label), label);
-  assert.doesNotMatch(p, /VERDICT/, "must never read as a reviewer run");
-});
-
-// The harness attests the suite counts (PLANS.md 2026-09-29), so the VERIFIED line asks for
-// what was run and observed beyond the total and no longer models a count ("182 pass") —
-// authors restating counts was the top record-claim rejection at the review gate.
-test("the VERIFIED line asks for observations beyond the suite total, not a count", () => {
-  const p = buildSummaryRequestPrompt();
-  assert.match(p, /beyond the suite total \(the harness attests the counts\)/);
-  assert.match(p, /repro script showed X before, Y after/);
-  assert.doesNotMatch(p, /182 pass/, "the count example is gone");
-});
 
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
 // the fleet's transcripts showed roles with no backlog reading the codebase file by file (30+

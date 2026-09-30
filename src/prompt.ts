@@ -8,10 +8,11 @@ import { NOTHING_TO_DO, REFUSED_SENTINEL } from "./reply-contract.js";
 import { todayStamp } from "./budget.js";
 import { worktreePath } from "./paths.js";
 
-/** Prompt construction for the role loops' pi runs (tick, director, resume, summary recovery),
- * declaring in prose the reply contract those runs must follow:
+/** Prompt construction for the role loops' pi runs (tick and director), declaring in prose the
+ * reply contract those runs must follow:
  * the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, and the SUMMARY/WHY/RISK/VERIFIED
- * block format. The landing gate's pi runs (conflict resolution, build fix, review) build their
+ * block format. The follow-up prompts that pick a session back up — the resume bridge, the
+ * missing-summary recovery, and the fresh-tick cut-off note — live in prompt-followup.ts. The landing gate's pi runs (conflict resolution, build fix, review) build their
  * prompts in gate-prompts.ts; the machine-detectable half of the contract — constants and detection
  * for parsing pi's replies — lives in reply-contract.ts; assembling a reply into the tick's commit
  * message lives in commit-message.ts.
@@ -29,17 +30,17 @@ export const PRINCIPLES_MAX_CHARS = 4000;
 
 /** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
  * closing contract, shared verbatim by SUMMARY_RULE (tick/director prompts) and
- * buildSummaryRequestPrompt (the follow-up that recovers a missing block), so the two cannot
- * drift (sibling of the NOTHING_TO_DO sentinel in reply-contract.ts). */
-const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
+ * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
+ * so the two cannot drift (sibling of the NOTHING_TO_DO sentinel in reply-contract.ts). */
+export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
 
 /** The rule every loop prompt states for ending a run that made changes — the exact
  * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.
- * Stated once so the tick/director rules and the resume bridge cannot drift. */
-const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
+ * Stated once so the tick/director rules and prompt-followup.ts's resume bridge cannot drift. */
+export const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
 ${SUMMARY_BLOCK}`;
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
@@ -49,10 +50,10 @@ ${SUMMARY_BLOCK}`;
  * ones in the bugfix/improve/clean logs). The 258k window absorbs that pattern instead of cutting
  * it off, but every token read is prefill at ~100 tok/s and dilutes the model's attention, so the
  * rule now states the cost in numbers and the one habit that prevents it: check size, then read in
- * ranges. Stated once so the tick rules, the resume bridge, and the cut-off note cannot drift.
- * Must not contain the phrase "ran out of context" — the loop tests use it to tell a fresh tick
- * from a cut-off resume. */
-const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you read stays in it until the run ends: a
+ * ranges. Stated once so the tick rules and prompt-followup.ts's resume bridge and cut-off note
+ * cannot drift. Must not contain the phrase "ran out of context" — the loop tests use it to tell
+ * a fresh tick from a cut-off resume. */
+export const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you read stays in it until the run ends: a
   whole-file read of a 500-line module costs ~5k tokens, and a run that fills the window ends
   without landing anything. Work economically: check size before reading (\`wc -l\`) and read
   files over ~300 lines in ranges (\`sed -n 'A,Bp'\`, or the read tool's offset/limit) around the
@@ -343,88 +344,5 @@ the request and applies only its customLoops array; a request that also names an
 such a request is guidance to record per the routing rules, not an edit you can make.`,
   );
   return parts.join("\n\n");
-}
-
-/** Why a tick is being resumed: a harness restart interrupted it, it ran out of context (the
- * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
- * deadline killed a still-making-progress run, or the budget gate reopened mid-run and the
- * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30). */
-type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
-
-/** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
- * the interrupted run — which already carries the full original prompt, all rules, and the work
- * so far — so it only needs to bridge the gap. The bridge names the real cause: a run cut off at
- * the context ceiling needs to finish with the smallest change and read almost nothing more, not
- * to verify a half-finished tool call. The cut-off bridge carries a numeric re-reading budget
- * because the observed post-compaction behavior was the opposite of "read almost nothing": the
- * model re-read the whole tree and repeated identical reads of one file nine times. */
-export function buildResumePrompt(roleId: string, cause: ResumeCause = "restart"): string {
-  const opening =
-    cause === "cut-off"
-      ? `Your previous run as the "${roleId}" loop ran out of context before it could finish, so the
-harness compacted the session and is continuing it now. Your worktree is exactly as you left it;
-what you did so far is summarized above. Do NOT re-read the codebase: trust the summary and
-re-check only what you must, in ranges — at most ~10 tool calls of re-reading, and never the same
-file twice. Finish the SAME task with the smallest change that completes it. If it cannot be
-finished within a fraction of the window, scope it down to what is already complete and coherent,
-leave the project working, and stop.`
-      : cause === "hung-tool"
-        ? `The harness killed your previous run as the "${roleId}" loop because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
-
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`
-        : cause === "timeout"
-          ? `Your previous run as the "${roleId}" loop reached the harness's tick time limit while
-it was still making progress — a slow run, not a failed one — so the harness preserved your
-worktree and this session and is continuing them now. Finish the SAME task, but budget against
-that same limit: make the smallest change that completes the task coherently, verify it, and
-stop. Do not restart broad exploration the first run already finished; trust the work so far
-and build on it.`
-          : cause === "budget-resumed"
-            ? `The fleet's daily budget has reopened, and your previous run as the "${roleId}" loop
-started on the fallback model — the harness has moved this session back to the primary model and
-is continuing it now. Your worktree is exactly as you left it, and this session carries everything
-you did so far.
-
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`
-            : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
-is exactly as you left it, and this session carries everything you did so far. A tool call that
-was executing when the restart hit may not have finished — verify its effect before relying on it.
-
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`;
-  return `${opening} All the original rules
-still apply, in particular:
-- Do exactly ONE focused task, then stop.
-${CONTEXT_BUDGET_RULE}
-- Never create, amend, or revert git commits — the harness handles all git operations.
-- Your last message is plain text — never a tool call or an announcement of a next step.
-- If you end up making no changes, reply with the single line ${NOTHING_TO_DO}.
-${SUMMARY_RULE}`;
-}
-
-/** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files
- * but its reply carried no SUMMARY line — 73 of the first 670 commits landed as "<role> tick N"
- * because of that, most of them the largest diffs in the repo. The session still holds everything
- * the run did, so one short reply recovers the subject and body the commit deserves; the caller
- * bounds the run tightly and falls back to a diff-derived subject if this too yields nothing. */
-export function buildSummaryRequestPrompt(): string {
-  return `Your run changed files in the worktree, but your final reply
-did not include the required closing block, so the harness cannot describe the commit it is about
-to make. Reply now with ONLY that block — no tool calls, no other text, one line each:
-${SUMMARY_BLOCK}`;
-}
-
-/** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
- * off at the context ceiling without landing anything (the loop gave up resuming — see
- * tick-outcome.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
- * cross-tick memory that the last attempt was too big for the window. */
-export function buildCutOffNote(streak: number): string {
-  const runs = streak === 1 ? "run" : `${streak} runs`;
-  return `Your previous ${runs} as this loop ran out of context before landing anything. Pick a
-smaller, more targeted task this time and budget your reading: grep first, read in ranges, cap
-command output. If the smallest useful task still needs most of the codebase in view, reply
-${NOTHING_TO_DO} instead of starting it.`;
 }
 

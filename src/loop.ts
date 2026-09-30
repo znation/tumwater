@@ -8,7 +8,7 @@ import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
 import { hasResumableSession } from "./pi.js";
 import { extractSummary } from "./commit-message.js";
-import { buildResumePrompt } from "./prompt.js";
+import { buildResumePrompt } from "./prompt-followup.js";
 import { assembleTickPrompt } from "./tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";

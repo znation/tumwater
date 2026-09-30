@@ -139,7 +139,7 @@ Rules for this run:
 
 /** The one-turn follow-up sent into the REVIEWER's own session (--continue) when its run
  * completed but the reply carried no parseable VERDICT line — the review-gate sibling of
- * prompt.ts's buildSummaryRequestPrompt. The session already holds the full review, so one
+ * prompt-followup.ts's buildSummaryRequestPrompt. The session already holds the full review, so one
  * short reply recovers the verdict the gate needs without paying a second full review run;
  * the caller bounds the run tightly and counts the strike against the HEAD only when this
  * too yields nothing (BUGS.md 2026-09-29). Like the review prompt's closing rule it names
