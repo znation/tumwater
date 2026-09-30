@@ -13,6 +13,8 @@ const ALL_COMMANDS = [
   "doctor",
   "config",
   "logs",
+  "history",
+  "diff",
   "backlog",
   "prompt",
   "reset-counters",

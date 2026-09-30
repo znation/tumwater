@@ -62,6 +62,27 @@ test("a mistyped help topic suggests the closest command too", async () => {
   assert.match(r.stderr, /no help topic: statu — did you mean `status`\?/);
 });
 
+test("<command> --help prints that command's help topic", async () => {
+  const dir = tmpdir();
+  // Both spellings, and --help riding alongside other flags (help wins, like every CLI).
+  // No ready repo is needed: the topic is answered before status's startup gate, so the
+  // same invocation outside a git repo still prints usage instead of refusing.
+  for (const args of [["status", "--help"], ["pause", "-h"], ["diff", "--role", "x", "--help"]]) {
+    const r = await cli(dir, ...args);
+    assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
+    assert.match(r.stdout, new RegExp(`tumwater ${args[0]}`));
+  }
+  const bare = await cli(tmpdir(), "status", "--help");
+  assert.equal(bare.code, 0);
+  assert.doesNotMatch(bare.stderr, /not a git repository/);
+});
+
+test("--help does not rescue an unknown command", async () => {
+  const r = await cli(tmpdir(), "frobnicate", "--help");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown command: frobnicate/);
+});
+
 test("status refuses repos that are not ready", async () => {
   // Not a git repo.
   let r = await cli(tmpdir(), "status");

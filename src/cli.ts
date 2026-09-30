@@ -84,6 +84,25 @@ async function main(): Promise<void> {
     const problem = nodeFloorProblem(process.versions.node, floor);
     if (problem !== undefined) fail(problem);
   }
+  // `tumwater <command> --help` (or `-h`) prints that command's help topic — the same text
+  // `tumwater help <command>` derives from the full listing — and exits 0. Intercepted once
+  // here, before any command parses its arguments or gates on a ready repo, so the flag
+  // cannot collide with a command's real flags (a command's arg gate never sees it) and every
+  // command gains the convention at once; a command with no topic falls through to its
+  // ordinary dispatch, where an unknown argument is still named.
+  if (
+    command !== undefined &&
+    command !== "help" &&
+    command !== "--help" &&
+    command !== "-h" &&
+    (args.includes("--help") || args.includes("-h"))
+  ) {
+    const topic = helpTopic(command);
+    if (topic !== null) {
+      say(topic);
+      return;
+    }
+  }
   // The repo root, not the cwd: every command must behave identically from any subdirectory
   // of the repo it targets (.tumwater/ and tumwater.json live at the toplevel, and
   // readBranchHead's ref-file fast path needs a root that actually holds .git). Outside a
