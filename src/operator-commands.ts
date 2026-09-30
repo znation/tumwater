@@ -1,5 +1,5 @@
-import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "../config.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "../cli-args.js";
+import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "./config.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
 import {
   type CancelOutcome,
   cancelRolePrompt,
@@ -7,13 +7,13 @@ import {
   queuedPrompts,
   queuedRolePrompts,
   submitRolePrompt,
-} from "../inbox.js";
-import { formatTime } from "../datetime.js";
-import { errorMessage } from "../text.js";
-import { errCode } from "../errno.js";
-import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "../roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../loop-state.js";
-import { clearBackoff } from "../tick-outcome.js";
+} from "./inbox.js";
+import { formatTime } from "./datetime.js";
+import { errorMessage } from "./text.js";
+import { errCode } from "./errno.js";
+import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
+import { clearBackoff } from "./tick-outcome.js";
 import {
   isFleetPaused,
   orchestratorAlive,
@@ -23,10 +23,10 @@ import {
   readOrchestratorInfo,
   resumeFleet,
   resumeRole,
-} from "../fleet-state.js";
-import { pidAlive } from "../process.js";
-import { writeJsonFile } from "../json-files.js";
-import { abortRequestPath, resetRequestPath, wakeRequestPath } from "../paths.js";
+} from "./fleet-state.js";
+import { pidAlive } from "./process.js";
+import { writeJsonFile } from "./json-files.js";
+import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
 
 /** The CLI half of the operator-intent protocol (the consumer half is src/operator-requests.ts):
  * `reset-counters`, `wake`, `abort`, `pause`, and `resume` write the on-disk markers the fleet

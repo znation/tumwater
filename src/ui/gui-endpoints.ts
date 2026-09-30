@@ -21,7 +21,7 @@ import {
 import { knownRoleIdsCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "./operator-commands.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "../operator-commands.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { collectReport } from "../report-data.js";

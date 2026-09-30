@@ -126,7 +126,7 @@ function withPausedRolesLock<T>(root: string, fn: () => T): T {
  * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
  * marker must survive config edits, which is why callers resolve built-in ids without
- * touching tumwater.json (namedRole in src/ui/operator-commands.ts). */
+ * touching tumwater.json (namedRole in src/operator-commands.ts). */
 export function pauseRole(root: string, role: string, untilMs?: number): boolean {
   return withPausedRolesLock(root, () => {
     const path = pausedRolesPath(root);

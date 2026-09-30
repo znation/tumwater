@@ -6,7 +6,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { signalOrchestrator } from "../src/ui/operator-commands.js";
+import { signalOrchestrator } from "../src/operator-commands.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
