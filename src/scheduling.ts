@@ -18,7 +18,7 @@ import {
   roleTier,
   yieldScaledRole,
 } from "./roles.js";
-import { yieldMultiplier } from "./tick-outcome.js";
+import { yieldMultiplier } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
@@ -87,7 +87,7 @@ export function isEligible(
   // too, which is where the cost actually comes from (the gap check above runs first, so a
   // scaled role inside its stretched gap neither ticks on schedule nor on a main move).
   // One landing in the last ten counted ticks restores the plain gap; error-class results
-  // never enter the ring (tick-outcome.ts), so a failing backend does not stretch anything;
+  // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldScaledRole(runner.role)
     ? yieldMultiplier((runner.state.recentOutcomes ?? "").split(""))

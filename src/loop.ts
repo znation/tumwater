@@ -19,7 +19,7 @@ import { RETRIABLE_LANDING_RESULTS } from "./landing-core.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "./tick-outcome.js";
+import { clearBackoff } from "./backoff.js";
 import { finalizeTick } from "./tick-finalize.js";
 import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";

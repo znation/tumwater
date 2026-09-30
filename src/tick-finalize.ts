@@ -3,12 +3,8 @@ import type { LoopState } from "./loop-state.js";
 import { saveLoopState } from "./loop-state.js";
 import { branchHead } from "./git.js";
 import { logEvent, warnEvent } from "./events.js";
-import {
-  ERROR_STREAK_WARN,
-  QUIET_KILL_RESUME_LIMIT,
-  applyTickOutcome,
-  restoreMidTickWake,
-} from "./tick-outcome.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-outcome.js";
+import { restoreMidTickWake } from "./backoff.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { TickUsage } from "./tick-usage.js";
 

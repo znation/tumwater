@@ -310,7 +310,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * a commit, and for which `no_change` means "checked, all well" rather than "found nothing to
  * do". The idle ladder's premise — a loop that keeps finding nothing stops burning model time
  * — does not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and
- * leaves `backoffSeconds` at 0 (src/tick-outcome.ts). The error ladder still applies in full, and they
+ * leaves `backoffSeconds` at 0 (src/backoff.ts). The error ladder still applies in full, and they
  * are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `telemetry`) is not a function of whether main moved. */
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
@@ -347,7 +347,7 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
  * clock's: ten consecutive empty ticks are empty-yield evidence however many bugs are
  * recorded). Never the work roles whose ticks follow demand — feature, plan, director — a
  * role with a queued prompt or a fresh wake bypasses the gap entirely (isEligible), and the
- * multiplier is computed from counted results only (tick-outcome.ts), so feature's errors
+ * multiplier is computed from counted results only (backoff.ts), so feature's errors
  * and quiet kills never stretch anything. */
 export function yieldScaledRole(role: string): boolean {
   return DEFERRABLE_ROLES.has(role) || OBSERVER_ROLES.has(role) || role === BUGFIX_ROLE;

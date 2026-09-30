@@ -24,7 +24,7 @@ import {
   saveLoopState,
   zeroCounters,
 } from "../src/loop-state.js";
-import { nextBackoffSeconds } from "../src/tick-outcome.js";
+import { nextBackoffSeconds } from "../src/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";

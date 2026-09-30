@@ -5,8 +5,9 @@ import { statePath } from "./paths.js";
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic
  * save, and zeroCounters. The scheduling POLICY that mutates this state from tick outcomes
- * and operator wakes — backoff ladders, resume limits, applyTickOutcome/applyLandingOutcome —
- * lives in tick-outcome.ts; the generic file helpers are files.ts and the JSON convention
+ * and operator wakes — the outcome application and resume limits in tick-outcome.ts, the
+ * clock arithmetic (backoff ladders, wakes, yield ring) in backoff.ts; the generic file
+ * helpers are files.ts and the JSON convention
  * itself is json-files.ts. */
 
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
@@ -24,7 +25,7 @@ export interface LoopState {
    * (a `changed`/`queued` tick) and `n` for a counted empty tick — every result except the
    * error class (`error`/`aborted`/`quiet_killed`, which are no evidence of yield either
    * way) and the ring keeps the last YIELD_RING entries. Read by yieldMultiplier
-   * (tick-outcome.ts) to stretch the role's min-tick gap while it keeps finding nothing;
+   * (backoff.ts) to stretch the role's min-tick gap while it keeps finding nothing;
    * persisted because the gap decision must survive a restart like the rest of the
    * schedule. Absent on states written before the field existed — reads as an empty ring,
    * multiplier 1. */

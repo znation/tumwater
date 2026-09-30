@@ -5,7 +5,7 @@ import { submitRolePrompt } from "./inbox.js";
 import type { PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "./tick-outcome.js";
+import { clearBackoff } from "./backoff.js";
 import { writeJsonFile } from "./json-files.js";
 import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "./paths.js";
 

@@ -1,23 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
 import {
-  applyLandingOutcome,
-  applyTickOutcome,
   clearBackoff,
   nextBackoffSeconds,
   restoreMidTickWake,
   YIELD_RING,
   yieldMultiplier,
-} from "../src/tick-outcome.js";
+} from "../src/backoff.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { defaultConfig } from "../src/config.js";
 import { OBSERVER_ROLES } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 
-/** The per-loop scheduling policy's tests (src/tick-outcome.ts): what a finished tick or
- * landing does to the loop's clock — the wake semantics, the backoff ladders, the bounded
- * cut-off/quiet-kill resume streaks — and the review-verdict record. Moved out of
+/** The per-loop scheduling policy's tests (src/tick-outcome.ts for the outcome application,
+ * src/backoff.ts for the clock): what a finished tick or landing does to the loop's state and
+ * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
+ * streaks — and the review-verdict record. Moved out of
  * loop-state.test.ts when the policy split out of loop-state.ts, whose own tests (load/save,
  * zeroCounters) stayed there. */
 
