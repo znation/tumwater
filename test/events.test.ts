@@ -32,6 +32,35 @@ test("logEvent appends and readEvents tails in order", () => {
   assert.deepEqual(readEvents(dir, 1).map((e) => e.type), ["tick_end"]);
 });
 
+// The memo's contract: after this process's own append, the next append stats a file exactly
+// the recorded shape and skips the torn-tail check's fd cycle. The recorded growth is written
+// in UTF-8 bytes, so it must be counted with Buffer.byteLength — line.length (code units)
+// leaves the memo short for any event line with multi-byte text, and every later append
+// silently re-opens the file (the "one stat, not an fd cycle" win the memo exists for dies
+// on the fleet's real traffic, which is full of em dashes).
+test("logEvent's post-append shape memo counts UTF-8 bytes, so a multi-byte event's next append skips the torn-tail fd cycle", (t) => {
+  const dir = tmpdir();
+  // First append: no file yet, nothing to terminate, no shape recorded. Second: appends from
+  // an existing file, so the post-append shape is memoized — byte-exact only when the growth
+  // is counted in bytes. Both lines carry multi-byte text (an em dash writes 3 bytes).
+  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1, message: "timed out — 30s over" });
+  logEvent(dir, { loop: "clean", type: "tick_end", tick: 1, result: "error", message: "em dash — rides along" });
+  const open = t.mock.method(fs, "openSync");
+  logEvent(dir, { loop: "clean", type: "tick_end", tick: 2, result: "error" });
+  assert.equal(open.mock.calls.length, 0); // Memo hit: the stat matched the recorded byte shape.
+  // Safety stays: a shape this process did not leave (an external append) misses the memo,
+  // and the torn-tail check opens the file exactly once — and terminates nothing, because
+  // the external line ended in a newline.
+  fs.appendFileSync(eventsLogPath(dir), '{"ts":1,"loop":"x"}\n');
+  logEvent(dir, { loop: "clean", type: "tick_end", tick: 2, result: "error" });
+  assert.equal(open.mock.calls.length, 1);
+  // The three logged tick_end events survive the external append and read back in order.
+  assert.deepEqual(
+    readEvents(dir).filter((e) => e.type === "tick_end").map((e) => e.tick),
+    [1, 2, 2],
+  );
+});
+
 // The seam `tumwater logs -f` follows from: the tail read reports the byte end it covered, so
 // a follow seeded from that same read cannot skip an event appended after the read but before
 // the follow starts — the both-neither gap a fresh `statOrNull(file).size` seed carried.

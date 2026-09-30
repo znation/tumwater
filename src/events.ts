@@ -138,7 +138,11 @@ function appendEventLine(file: string, line: string): void {
     appendedShape.set(file, {
       dev: st.dev,
       ino: st.ino,
-      size: st.size + (terminated ? 1 : 0) + line.length,
+      // The append writes UTF-8 BYTES, so the growth is Buffer.byteLength, not the string's
+      // code-unit length: a multi-byte event line (an em dash in an agent's message is enough)
+      // would otherwise leave the memo short of the file's real size, every later stat would
+      // miss it, and the memo would silently never hit on the fleet's actual traffic.
+      size: st.size + (terminated ? 1 : 0) + Buffer.byteLength(line, "utf8"),
     });
   } else {
     appendedShape.delete(file);
