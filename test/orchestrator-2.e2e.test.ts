@@ -20,6 +20,7 @@ import { clearBackoff } from "../src/tick-outcome.js";
 import { branchName, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
+import { seedCounters } from "./loop-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
@@ -28,15 +29,6 @@ import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
 
 const FAST_POLL_MS = 100;
-
-function seedCounters(repo: string, ...roles: string[]): void {
-  for (const role of roles) {
-    const s = freshLoopState(role);
-    s.ticks = 7;
-    s.generatedTokens = 424_242;
-    saveLoopState(repo, s);
-  }
-}
 
 test("a multi-role reset request zeroes every listed runner and logs one harness-level event", async () => {
   const repo = await makeFastRepo("multi role reset test", ["clean", "dry"]);

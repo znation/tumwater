@@ -76,8 +76,13 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   return { root, wt };
 }
 
-/** Seed a role's state file with non-zero counters plus scheduling fields. */
-export function seedCounters(repo: string, role: string): void {
+/** Seed each role's state file with non-zero counters plus scheduling fields. Variadic so a
+ * multi-role test seeds all its runners through this one home (the reset tests do). */
+export function seedCounters(repo: string, ...roles: string[]): void {
+  for (const role of roles) seedOneCounter(repo, role);
+}
+
+function seedOneCounter(repo: string, role: string): void {
   const s = freshLoopState(role);
   s.ticks = 7;
   s.commits = 3;
