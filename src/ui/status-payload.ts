@@ -1,7 +1,7 @@
-import path from "node:path";
 import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents, type HarnessEvent } from "../events.js";
 import { eventMessage, eventResult, formatEvent } from "../event-format.js";
+import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
 import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
@@ -76,8 +76,8 @@ export function statusPayload(root: string): object {
     };
   });
   return {
-    // The project directory's name — the dashboards' title (the TUI header's `tumwater · <name>`).
-    project: path.basename(path.resolve(root)),
+    // The project's display name (project-name.ts) — the dashboards' title.
+    project: projectName(root),
     running: snap.running,
     pid: snap.pid,
     // The running harness's build stamp and staleness (src/build-info.ts); null when no

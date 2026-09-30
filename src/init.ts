@@ -13,6 +13,7 @@ import {
   readmeTemplate,
 } from "./readme.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
+import { projectName } from "./project-name.js";
 
 const PLANS_TEMPLATE = `# Plans
 
@@ -243,12 +244,12 @@ export async function initProject(
   // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
   // duplicate prompt + status block that readInitialPrompt never reaches and the readme role
   // never maintains.
-  const projectName = path.basename(path.resolve(root));
+  const name = projectName(root);
   if (brief !== null) leftAlone.push(brief);
   else if (adopted) {
     if (readmeExists) leftAlone.push("README.md");
-    write("TUMWATER.md", briefTemplate(projectName, initialPrompt));
-  } else write("README.md", readmeTemplate(projectName, initialPrompt));
+    write("TUMWATER.md", briefTemplate(name, initialPrompt));
+  } else write("README.md", readmeTemplate(name, initialPrompt));
   write("PLANS.md", PLANS_TEMPLATE);
   write("BUGS.md", BUGS_TEMPLATE);
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);

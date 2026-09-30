@@ -1,10 +1,10 @@
-import path from "node:path";
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "./status.js";
 import { dailyCost, fleetDailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
+import { projectName } from "../project-name.js";
 import {
   buildBadge,
   budgetBadge,
@@ -171,7 +171,7 @@ export function renderStatusSpans(
   snap: StatusSnapshot,
   maxWidth?: number,
 ): { lines: StatusLine[]; loops: StatusLoopRow[] } {
-  const name = path.basename(path.resolve(root));
+  const name = projectName(root);
   const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's
   // next-run cell — a per-site Date.now() could tick over between them and disagree with
