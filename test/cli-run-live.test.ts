@@ -120,6 +120,51 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   }
 });
 
+// BUGS.md 2026-09-30: kill() is the cleanup every spawnCli test's finally relies on, including
+// after a failed assertion that never reached the test's own SIGTERM step. It used to SIGKILL
+// the supervisor alone, leaving the stdio-inherited orchestrator generation alive with the
+// test's pipes — the file never exited and a `node … | tail` tool call hung the tick. The
+// generation's death is what closes the pipes, so stdout reaching EOF after kill() alone is
+// the observable that the whole tree is gone.
+test("kill() alone tears down the whole run tree: the pipes close, nothing is orphaned", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run kill teardown");
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  writeConfig(repo, cfg);
+
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
+
+    // No SIGTERM here — kill() is the only stop, the exact shape of a finally after a failed
+    // assertion. The supervisor gets SIGTERM and forwards it (graceful stop); anything still
+    // alive after the grace gets the process-group SIGKILL. Either way the generation dies
+    // and the pipes close.
+    s.kill();
+    const eof = new Promise<void>((resolve, reject) => {
+      const t = setTimeout(
+        () => reject(new Error(`stdout never closed — a generation still holds the pipes; output:\n${s.out()}`)),
+        15_000,
+      );
+      s.child.stdout?.once("close", () => {
+        clearTimeout(t);
+        resolve();
+      });
+    });
+    const code = await exitCode(s.child);
+    await eof;
+    assert.equal(code, 0, `expected a clean supervisor exit; output so far:\n${s.out()}`);
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
 // Criterion 1 of plans/portability.md §5/7: with pi absent from PATH but agentBin set to an
 // absolute path, the fleet starts and ticks normally. The lifecycle mirrors the SIGTERM test
 // above, but PATH holds only git — the agent binary comes from tumwater.json alone.

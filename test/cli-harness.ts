@@ -49,10 +49,18 @@ interface SpawnedCli {
   kill(): void;
 }
 
+/** How long kill() lets the graceful stop run before the group SIGKILL: long enough for the
+ * supervisor to forward SIGTERM and the fleet's stop path to finish against the fake shims,
+ * short enough that a wedged stop cannot hang a test file. */
+const KILL_GRACE_MS = 3_000;
+
 export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {
   const env = { ...process.env };
   delete env[SUPERVISED_ENV]; // same hermeticity as cliWithEnv: `run` must take the supervisor path
-  const child = spawn(process.execPath, [CLI, ...args], { cwd, env });
+  // detached so the child leads its own process group: kill()'s fallback can then signal the
+  // whole tree, including the stdio-inherited orchestrator generation a `run` starts below the
+  // supervisor (BUGS.md 2026-09-30).
+  const child = spawn(process.execPath, [CLI, ...args], { cwd, env, detached: true });
   let buffer = "";
   child.stdout?.on("data", (d) => (buffer += d));
   return {
@@ -73,11 +81,30 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
       });
     },
     kill: () => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        // Already exited.
+      const groupKill = (): void => {
+        if (child.pid === undefined) return;
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {
+          // The group is already gone.
+        }
+      };
+      if (child.exitCode !== null || child.signalCode !== null) {
+        groupKill(); // already exited; sweep the group in case something outlived it
+        return;
       }
+      // SIGTERM first: the supervisor forwards it and the fleet takes the graceful stop path,
+      // and a command with no grandchild (gui, logs -f) dies on the default disposition. Only
+      // SIGKILLing the supervisor alone left that generation running on the test's own pipes,
+      // so the file never exited (BUGS.md 2026-09-30).
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        groupKill();
+        return;
+      }
+      const t = setTimeout(groupKill, KILL_GRACE_MS);
+      child.once("close", () => clearTimeout(t));
     },
   };
 }
