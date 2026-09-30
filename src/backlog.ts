@@ -160,18 +160,9 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
       // branch: a decomposition cross-reference ("decomposed from the sibling bug fixed
       // <date>, fixed <date>") precedes the entry's own completion record.
       const tail = trailingParenthetical(line);
-      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
-      const all = [...tail.matchAll(global)];
-      const m = all[all.length - 1] ?? null;
-      if (m?.[1] && /\bcommits?\b/.test(tail)) date = m[1];
+      if (/\bcommits?\b/.test(tail)) date = lastDate(tail, dateRe);
     } else {
-      // The entry's completion is its heading meta's LAST dated verb, not the first: found-by,
-      // decomposition, and sibling mentions ("decomposed from the X bug fixed <date>") all
-      // precede the completion record, so first-match let a sibling's date steal the entry's
-      // count onto the wrong day (BUGS.md 2026-09-29).
-      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
-      const all = [...meta.join(" ").matchAll(global)];
-      date = all[all.length - 1]?.[1] ?? null;
+      date = lastDate(meta.join(" "), dateRe);
     }
     if (date) dates.push(date);
     i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
@@ -195,6 +186,18 @@ function trailingParenthetical(line: string): string {
     else if (ch === "(" && --depth === 0) return line.slice(i + 1, -1);
   }
   return "";
+}
+
+/** A text's LAST `<dateRe>` capture — the completion rule both branches of entryDates share:
+ * an entry's completion is its LAST dated verb, not the first, because found-by,
+ * decomposition, and sibling mentions ("decomposed from the X bug fixed <date>") all precede
+ * the completion record, so first-match let a sibling's date steal the entry's count onto the
+ * wrong day (BUGS.md 2026-09-29). dateRe is cloned with the g flag so matchAll sees every
+ * date; a text with no date yields null. */
+function lastDate(text: string, dateRe: RegExp): string | null {
+  const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+  const all = [...text.matchAll(global)];
+  return all[all.length - 1]?.[1] ?? null;
 }
 
 /** Parsed sections keyed by file + section title (a future reader of a second section from the
