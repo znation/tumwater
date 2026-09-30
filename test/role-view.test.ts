@@ -1,0 +1,177 @@
+// Unit coverage for src/role-view.ts (the collector behind `tumwater role <id>`) and
+// src/ui/role-report.ts (its Markdown renderer). The collector reads only persisted state —
+// tumwater.json, the loop's state file, the queue directories, the pause marker — so every
+// test runs against a bare fixture dir with no fleet, which is also the degradation claim
+// under test: a missing read yields its empty answer, never a throw.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { rolePayload } from "../src/role-view.js";
+import { renderRoleMarkdown } from "../src/ui/role-report.js";
+import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
+import { pausedRolesPath } from "../src/paths.js";
+import { readmeTemplate } from "../src/readme.js";
+import { writeConfig, tmpdir } from "./repo-fixtures.js";
+
+const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
+
+function root(): string {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a tiny thing.\n"));
+  return dir;
+}
+
+function pauseRoles(dir: string, roles: string[]): void {
+  fs.mkdirSync(path.dirname(pausedRolesPath(dir)), { recursive: true });
+  fs.writeFileSync(pausedRolesPath(dir), JSON.stringify({ roles, at: Date.now() }));
+}
+
+test("a built-in role's payload resolves identity, tier, defaults, and its find text", () => {
+  const dir = root();
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.id, "feature");
+  assert.equal(p.title, "feature implementer");
+  assert.equal(p.custom, false);
+  assert.equal(p.enabled, true); // no config file: the defaults enable every built-in
+  assert.equal(p.paused, false);
+  assert.equal(p.tier, 0); // a work role
+  assert.equal(p.instructions, null); // no override configured
+  assert.match(p.find ?? "", /Open PLANS.md/); // the find text, verbatim
+  assert.equal(p.inboxCount, 0);
+  assert.match(p.nextPrompt ?? "", /You are the "feature" loop \(feature implementer\)/);
+  assert.match(p.nextPrompt ?? "", /Open PLANS.md/); // the find text rides in the preview
+});
+
+test("the config file's role overrides resolve: instructions, model pair, interval, disabled", () => {
+  const dir = root();
+  writeConfig(dir, {
+    provider: "prov-a",
+    model: "model-a",
+    roles: {
+      feature: {
+        enabled: false,
+        instructions: "Be terse.",
+        provider: "prov-b",
+        model: "model-b",
+        thinking: "high",
+        minTickIntervalSeconds: 300,
+      },
+    },
+  });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.enabled, false);
+  assert.equal(p.instructions, "Be terse.");
+  assert.equal(p.provider, "prov-b"); // the role override, not the top-level value
+  assert.equal(p.model, "model-b");
+  assert.equal(p.thinking, "high");
+  assert.equal(p.minTickIntervalSeconds, 300);
+  // A role without overrides resolves to the top-level pair and the global interval
+  // (bugfix carries no clock override of its own in the defaults).
+  const bugfix = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal(bugfix.provider, "prov-a");
+  assert.equal(bugfix.model, "model-a");
+  assert.equal(bugfix.instructions, null);
+  assert.equal(bugfix.minTickIntervalSeconds, 20); // defaultConfig's global value
+});
+
+test("a configured fallback pair is reported, with its freeness verdict from pi's definitions", () => {
+  const dir = root();
+  writeConfig(dir, { fallbackModel: { provider: "free-prov", model: "free-model" } });
+  const p = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.deepEqual(p.fallback, { provider: "free-prov", model: "free-model" });
+  assert.equal(p.fallbackFree, false); // no definitions file: not provably free
+  // No fallback configured: null pair, and the definitions file is never consulted.
+  const bare = rolePayload(root(), "bugfix", NO_MODELS);
+  assert.equal(bare.fallback, null);
+  assert.equal(bare.fallbackFree, false);
+});
+
+test("a custom loop's task is its find text, and it reads as enabled and custom", () => {
+  const dir = root();
+  writeConfig(dir, { customLoops: [{ name: "greeter", task: "Say hello to the project." }] });
+  const p = rolePayload(dir, "greeter", NO_MODELS);
+  assert.equal(p.custom, true);
+  assert.equal(p.title, "user-defined loop");
+  assert.equal(p.find, "Say hello to the project.");
+  assert.equal(p.enabled, true); // a custom absent from `roles` stays enabled
+  assert.equal(p.tier, 1); // customs are not catalog work roles
+});
+
+test("the director is special-cased: no find text, and its inbox is its queue", () => {
+  const dir = root();
+  const idle = rolePayload(dir, "director", NO_MODELS);
+  assert.equal(idle.find, null);
+  assert.equal(idle.inboxCount, 0);
+  assert.equal(idle.nextPrompt, null); // empty inbox: nothing to run, like the tick itself
+  enqueuePrompt(dir, "add a changelog");
+  const busy = rolePayload(dir, "director", NO_MODELS);
+  assert.equal(busy.inboxCount, 1);
+  assert.match(busy.nextPrompt ?? "", /"director" loop/);
+  assert.match(busy.nextPrompt ?? "", /add a changelog/);
+});
+
+test("a queued per-role prompt appears in the preview and stays queued", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, "qa", "exercise the gui composer");
+  const p = rolePayload(dir, "qa", NO_MODELS);
+  assert.equal(p.inboxCount, 1);
+  assert.match(p.nextPrompt ?? "", /<user-request>\nexercise the gui composer\n<\/user-request>/);
+  // The peek never consumed: a second collection reads the same queue.
+  assert.equal(rolePayload(dir, "qa", NO_MODELS).inboxCount, 1);
+});
+
+test("a paused role reads as paused; the pause marker is read, not required", () => {
+  const dir = root();
+  pauseRoles(dir, ["telemetry"]);
+  assert.equal(rolePayload(dir, "telemetry", NO_MODELS).paused, true);
+  assert.equal(rolePayload(dir, "qa", NO_MODELS).paused, false);
+});
+
+test("an unknown role throws the shared unknownRoleMessage wording", () => {
+  assert.throws(() => rolePayload(root(), "bogus", NO_MODELS), /unknown role: bogus \(valid ids: /);
+});
+
+// --- the renderer ---
+
+test("renderRoleMarkdown renders the payload's sections, with verbatim text fenced", () => {
+  const dir = root();
+  writeConfig(dir, {
+    provider: "prov-a",
+    model: "model-a",
+    fallbackModel: { provider: "fp", model: "fm" },
+    roles: { feature: { instructions: "Be terse.\nThen terser." } },
+  });
+  enqueueRolePrompt(dir, "feature", "check the scheduler first");
+  const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.match(md, /^# tumwater role: feature$/m);
+  assert.match(md, /- Loop: "feature" \(feature implementer\)$/m);
+  assert.match(md, /- State: enabled, not paused/);
+  assert.match(md, /- Scheduling tier: 0 \(work\)/);
+  assert.match(md, /- Model: prov-a\/model-a$/m);
+  assert.match(md, /- Budget fallback: fp\/fm \(priced\)/); // no definitions file in the fixture
+  assert.match(md, /- Min tick interval: 20s/);
+  assert.match(md, /- Queued prompts: 1/);
+  assert.match(md, /## Instructions override\n\n```\nBe terse\.\nThen terser\.\n```/); // verbatim, fenced
+  assert.match(md, /## Find text/);
+  assert.match(md, /check the scheduler first/); // the queued prompt rides in the preview
+  assert.match(md, /## Next tick prompt/);
+});
+
+test("unset things render as explicit placeholder lines, not omissions", () => {
+  const dir = root();
+  const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
+  assert.match(md, /- Model: pi default$/m);
+  assert.ok(!md.includes("Budget fallback")); // no fallback configured: no line at all
+  assert.match(md, /## Instructions override\n\n_\(none\)_/);
+  assert.match(md, /_\(none — the director is driven by its queued prompts, not a find text\)_/);
+  assert.match(md, /## Next tick prompt\n\n_\(nothing to run this tick\)_/);
+});
+
+test("a fenced block grows past any backtick run in the verbatim text", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { feature: { instructions: "use ```md fences\nin docs" } } });
+  const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.match(md, /````\nuse ```md fences\nin docs\n````/); // four backticks close the block
+});

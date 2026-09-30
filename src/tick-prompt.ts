@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState } from "./loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "./roles.js";
-import { dequeuePrompt, dequeueRolePrompt } from "./inbox.js";
+import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "./inbox.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.js";
 import { buildCutOffNote } from "./prompt-followup.js";
@@ -18,6 +18,10 @@ export interface TickPromptInput {
   config: TumwaterConfig;
   role: string;
   state: LoopState;
+  /** Preview mode (`tumwater role <id>`'s next-prompt view): the queued prompt is peeked at,
+   * not dequeued, so assembling a preview can never consume a queued request. Everything
+   * else — brief, principles, check, the state-derived notes — is assembled identically. */
+  preview?: boolean;
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
@@ -27,7 +31,7 @@ export interface TickPromptInput {
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
  * re-queue it if the tick leaves it unfulfilled. */
 export function assembleTickPrompt(
-  { root, config, role, state }: TickPromptInput,
+  { root, config, role, state, preview = false }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null } | null {
   const initialPrompt = readInitialPrompt(root);
   // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
@@ -45,7 +49,7 @@ export function assembleTickPrompt(
   let prompt: string;
   let userPrompt: string | null = null;
   if (role === DIRECTOR_ROLE) {
-    const dequeued = dequeuePrompt(root);
+    const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
     if (!dequeued) return null;
     userPrompt = dequeued;
     prompt = buildDirectorPrompt(dequeued, initialPrompt, principles, check, brief);
@@ -65,7 +69,7 @@ export function assembleTickPrompt(
     // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
     // in the tick's prompt; loop.ts's runner records it as pending and re-queues it on every
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
-    const dequeued = dequeueRolePrompt(root, role);
+    const dequeued = preview ? peekRolePrompt(root, role) : dequeueRolePrompt(root, role);
     // The telemetry role's evidence is the harness's own event log, one level outside this
     // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
     const digest = role === "telemetry" ? telemetryDigest(root) : undefined;

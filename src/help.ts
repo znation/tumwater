@@ -73,6 +73,13 @@ Usage:
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
                                    same data the Markdown view renders
+  tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
+                                   find text, the roles.<id>.instructions override, the resolved
+                                   provider/model (naming the budget fallback pair when one is
+                                   configured), the min-tick interval, enabled/paused state, and
+                                   the next tick's assembled prompt (queued prompts appear in it
+                                   and are NOT consumed); --json prints the collector's payload
+                                   as machine-readable data
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)
   tumwater prompt --list           Show queued prompts, numbered, grouped by loop

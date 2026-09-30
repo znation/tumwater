@@ -250,6 +250,21 @@ export function dequeueRolePrompt(root: string, role: string): string | null {
   return takeQueuedFile(oldest);
 }
 
+/** Full text of the oldest prompt queued for one loop, read WITHOUT consuming it — the
+ * preview seam behind `tumwater role <id>`'s next-prompt view. Same reader, listing order,
+ * and race policy as queuedRolePrompts (a file that vanishes mid-listing is skipped, not
+ * thrown), but the queue file is never unlinked: a preview can never cost a queued prompt
+ * its tick, which is the property test/tick-prompt.test.ts pins through the preview seam.
+ * A missing queue directory reads as null, like dequeueRolePrompt. */
+export function peekRolePrompt(root: string, role: string): string | null {
+  return queuedRolePrompts(root, role)[0] ?? null;
+}
+
+/** The oldest prompt queued for the director, unread and unconsumed; see peekRolePrompt. */
+export function peekPrompt(root: string): string | null {
+  return peekRolePrompt(root, DIRECTOR_ROLE);
+}
+
 /** Cap on a submitted prompt's length: the same ceiling for every loop's queue, director and
  * role alike, because every prompt rides into its target tick's prefill — a megabyte pasted
  * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise

@@ -4,6 +4,7 @@ import {
   say,
   sayJson,
   sayJsonOrRender,
+  flagValue,
   DURATION_FLAG,
   grepFlagSpec,
   N_FLAG,
@@ -24,6 +25,8 @@ import { repoNotReady } from "./startup-gate.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
+import { renderRoleMarkdown } from "./ui/role-report.js";
+import { rolePayload } from "./role-view.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./ui/history.js";
 import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./status-data.js";
@@ -47,6 +50,31 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
 async function requireReadyRepo(root: string): Promise<void> {
   const notReady = await repoNotReady(root);
   if (notReady !== null) fail(notReady);
+}
+
+/** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
+ * neither a flag nor the value of a --role flag. Returns the id (null when absent) and the
+ * remaining arguments — flags only, ready for rejectUnknownArgs and sayJsonOrRender. The
+ * id may also arrive as --role <id>, the flag spelling every other role-targeting command
+ * shares; the collector's caller rejects both spellings at once rather than silently
+ * picking one. Lives in cli.ts because it exists only for this one command's mixed
+ * positional/flag vocabulary. */
+function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
+  const roleIdx = args.indexOf("--role");
+  let id: string | null = null;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
+    // A non-flag token that is not a --role flag's value is the positional, taken once;
+    // everything else — flags and their values alike — rides in rest for rejectUnknownArgs
+    // and flagValue to claim.
+    if (!arg.startsWith("-") && id === null && !(roleIdx >= 0 && i === roleIdx + 1)) {
+      id = arg;
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { id, rest };
 }
 
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
@@ -266,6 +294,25 @@ async function main(): Promise<void> {
       // thunk, so whichever branch runs reads the three entry files exactly once — the
       // Markdown renderer consumes the same arrays the JSON document prints.
       sayJsonOrRender(args, () => backlogPayload(root), renderBacklogMarkdown);
+      break;
+    }
+    case "role": {
+      // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
+      // fresh defaults, a missing queue directory an empty inbox), so the command inspects
+      // a repo the fleet never started in — and a torn one — instead of refusing.
+      const { id: positional, rest } = peelRolePositional(args);
+      rejectUnknownArgs("role", rest, [ROLE_FLAG, { names: ["--json"] }]);
+      // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
+      // spelling every other role-targeting command shares). Both at once is a mistake, not
+      // a silent pick of one.
+      const flagId = flagValue(rest, "--role") ?? null;
+      const id = positional ?? flagId;
+      if (!id) fail("tumwater role needs a role id");
+      if (positional !== null && flagId !== null && flagId !== positional)
+        fail("give the role id once — as the positional or as --role <id>, not both");
+      // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the
+      // collector; here the id just has to be non-null for the thunk's types.
+      sayJsonOrRender(rest, () => rolePayload(root, id), renderRoleMarkdown);
       break;
     }
     case "prompt":

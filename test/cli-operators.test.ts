@@ -12,6 +12,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
+import { queuedRolePromptCount } from "../src/inbox.js";
 import { cli } from "./cli-harness.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 
@@ -303,3 +304,73 @@ test("pause and resume accept --role to gate one loop, with per-role wording and
   assert.ok(!fs.existsSync(marker));
 });
 
+
+// --- role <id>: one loop's standing prompt and resolved settings (read-only) ---
+// Like backlog, the command gates on nothing: its collector degrades to empty answers on a
+// missing read, so it works with the fleet stopped. The queue-survival assertion here is the
+// end-to-end half of the preview seam's contract (test/role-view.test.ts and
+// test/tick-prompt.test.ts pin the unit halves): an inspection must never consume a queued
+// prompt.
+
+test("role prints one loop's standing prompt, and a queued prompt survives inspection", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role inspection");
+
+  let r = await cli(repo, "role", "feature");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /# tumwater role: feature/);
+  assert.match(r.stdout, /Open PLANS.md/); // the find text, verbatim
+  assert.match(r.stdout, /## Next tick prompt/);
+
+  // A queued per-role prompt appears inside the previewed next prompt AND survives — two
+  // inspections in a row both show it, and the queue file count is unchanged.
+  r = await cli(repo, "prompt", "--role", "feature", "check the scheduler first");
+  assert.equal(r.code, 0);
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /check the scheduler first/);
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /check the scheduler first/);
+  assert.equal(queuedRolePromptCount(repo, "feature"), 1);
+
+  // --json prints the collector's own payload as one JSON document, not a re-parse of the
+  // render — the same shape the Markdown branch consumed.
+  r = await cli(repo, "role", "feature", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { id: string; nextPrompt: string; title: string };
+  assert.equal(payload.id, "feature");
+  assert.equal(payload.title, "feature implementer");
+  assert.match(payload.nextPrompt, /check the scheduler first/);
+});
+
+test("role validates its arguments like every other command", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role validation");
+
+  // No id at all.
+  let r = await cli(repo, "role");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater role needs a role id/);
+
+  // Unknown role: the shared unknownRoleMessage wording, exit 1.
+  r = await cli(repo, "role", "bogus");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
+
+  // Unknown flags and stray positionals are rejected like every other command.
+  r = await cli(repo, "role", "--rol", "feature");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --rol/);
+  r = await cli(repo, "role", "feature", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: extra/);
+
+  // Both spellings at once is a mistake, not a silent pick of one.
+  r = await cli(repo, "role", "feature", "--role", "qa");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /give the role id once/);
+
+  // The --role spelling every other role-targeting command shares works too.
+  r = await cli(repo, "role", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /# tumwater role: qa/);
+});

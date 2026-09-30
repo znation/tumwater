@@ -6,7 +6,7 @@ import { assembleTickPrompt } from "../src/tick-prompt.js";
 import { defaultConfig } from "../src/config.js";
 import { DIRECTOR_ROLE, roleById } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
-import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
+import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath } from "../src/paths.js";
 import type { LoopState } from "../src/loop-state.js";
@@ -399,4 +399,42 @@ test("other roles never see the <backlog-structure> block, and the clean find te
   const clean = roleById("clean");
   assert.ok(clean);
   assert.match(clean.find, /<backlog-structure>/);
+});
+
+// --- the preview seam (`tumwater role <id>`'s next-prompt view) ---
+// A preview must assemble the same prompt a real tick would run on — queued user request,
+// state-derived notes, everything — while provably consuming nothing: the queued prompt is
+// peeked (read, never unlinked), so an inspection can never cost a loop its queued work.
+
+test("preview mode assembles the queued prompt without consuming it", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, "coverage", "please look at the cache module");
+  const input = { root: dir, config: defaultConfig(), role: "coverage", state: state({ role: "coverage" }) };
+  const first = assembleTickPrompt({ ...input, preview: true });
+  const second = assembleTickPrompt({ ...input, preview: true });
+  assert.ok(first && second);
+  assert.match(first.prompt, /<user-request>\nplease look at the cache module\n<\/user-request>/);
+  // Two previews read the same queue: identical prompts, and the queue file still there.
+  assert.equal(first.prompt, second.prompt);
+  assert.equal(inboxSize(dir, "coverage"), 1);
+  // The real dequeue still consumes — the preview path is the only thing that changed.
+  const real = assembleTickPrompt(input);
+  assert.ok(real);
+  assert.match(real.prompt, /please look at the cache module/);
+  assert.equal(inboxSize(dir, "coverage"), 0);
+});
+
+test("a director preview peeks its inbox and an empty inbox still assembles to null", () => {
+  const dir = root();
+  enqueuePrompt(dir, "add a changelog");
+  const input = { root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }) };
+  const preview = assembleTickPrompt({ ...input, preview: true });
+  assert.ok(preview);
+  assert.match(preview.prompt, /add a changelog/);
+  assert.equal(inboxSize(dir, DIRECTOR_ROLE), 1); // peeked, not dequeued
+  // An empty inbox (here: the whole state dir removed) assembles to null in both modes —
+  // preview changes the read, never the nothing-to-run answer.
+  fs.rmSync(path.join(dir, ".tumwater"), { recursive: true, force: true });
+  assert.equal(assembleTickPrompt({ ...input, preview: true }), null);
+  assert.equal(assembleTickPrompt(input), null);
 });
