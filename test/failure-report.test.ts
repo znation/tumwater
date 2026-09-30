@@ -149,6 +149,22 @@ test("a window longer than the retained log is reported as partial", () => {
   assert.match(renderFailureMarkdown(data), /^partial: retained log starts \d{4}-\d{2}-\d{2}$/m);
 });
 
+test("a prior window the retained log cannot prove is reported as partial too — the deltas read it", () => {
+  // The digest reads 2× `days` so its delta table has a baseline: the oldest retained event here
+  // sits inside the PRIOR window (day 5 of a 5+5-day read), so the current window is provably
+  // covered — but the delta baseline's start is not, and the note must say so instead of
+  // silently presenting skewed deltas as a real trend.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(5), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+  ]);
+  const data = collectFailureReport(root, 5);
+  assert.equal(data.partial, true, "the oldest retained event does not predate the read window's start");
+  assert.equal(data.oldestEventDate, dayKey(at(5)));
+  assert.match(renderFailureMarkdown(data), /^partial: retained log starts \d{4}-\d{2}-\d{2}$/m);
+});
+
 test("a log retaining only events outside the read span says so, not 'no events retained'", () => {
   const root = tmpdir();
   writeEvents(root, [{ ts: at(30), loop: "feature", type: "tick_end", result: "changed" }]);

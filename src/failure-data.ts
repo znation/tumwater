@@ -157,7 +157,7 @@ export interface FailureReportData {
   ticks: number; // tick_end events in the current window
   hasEvents: boolean; // any event at all in the read (2× window)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
-  partial: boolean; // the current window starts before the retained log does
+  partial: boolean; // the read window (both halves) starts before the retained log does
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
@@ -443,10 +443,14 @@ export function collectFailureReport(root: string, days: number): FailureReportD
 
   const hasEvents = events.length > 0;
   const oldestEventDate = hasEvents ? eventDayKey(events[0]!) : null;
-  // Complete when the log reaches back before the current window (either the early-stop proved
-  // it, or the oldest retained event predates the window start). Only then can a short window be
-  // trusted as idle rather than truncated by rotation.
-  const windowComplete = coversFullWindow || (oldestEventDate !== null && oldestEventDate < from);
+  // Complete only when the reader proves the whole read window (priorFrom..to) is covered:
+  // coversFullWindow fires when the oldest retained line predates priorFrom, so both the delta
+  // baseline and the current window reach their starts. Every retained event's day is >= priorFrom
+  // (the reader filters on it), so an event-side comparison can never strengthen that proof — the
+  // former `oldestEventDate < from` arm declared the digest complete while the prior half was still
+  // truncated, leaving the delta table to present a skewed baseline as a real trend. Only a proven
+  // window can be trusted as idle rather than truncated by rotation.
+  const windowComplete = coversFullWindow;
 
   return {
     days,
