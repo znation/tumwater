@@ -381,15 +381,20 @@ export async function reviewAheadOfMain(
     }
   }
   if (!verdict) {
+    const followUpError = followUp && !followUp.ok ? followUp.errorMessage : undefined;
     const message =
+      followUpError ??
       pi.errorMessage ??
       `no parseable VERDICT line in the reviewer's reply${followUp ? ", even after a follow-up turn on its session" : ""}`;
     logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
-    if (!pi.ok) {
-      // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the
-      // commit for the next tick's re-review and do not advance the per-HEAD discard counter.
+    // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
+    // for the next tick's re-review and do not advance the per-HEAD discard counter. That
+    // holds for the review run itself (BUGS.md 2026-09-20) AND for the verdict-recovery
+    // follow-up (BUGS.md 2026-09-29): the follow-up's death is the backend failing after the
+    // reviewer had already judged nothing — evidence about the world, never about the diff.
+    if (!pi.ok || (followUp && !followUp.ok)) {
       recordReview(state, "failed", [message], head);
-      return { decision: "failed", detail: message, run: pi };
+      return { decision: "failed", detail: message, run: pi, ...(followUp ? { followUpRun: followUp } : {}) };
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.

@@ -416,6 +416,30 @@ test("a follow-up turn that also yields no verdict still counts the strike again
   }
 });
 
+test("a follow-up turn that itself fails (backend dies) is strike-free, like the review run's own failure", async () => {
+  // The reviewer completed and replied without a VERDICT line, but the recovery turn then ran
+  // into a dead backend (ok false: transport error, failed spawn, timeout). Before the fix
+  // (BUGS.md 2026-09-29) the strike was decided by the ORIGINAL run's ok flag alone, so that
+  // backend death counted against the HEAD — three of them discarded a finished, tested
+  // commit, exactly what the strike-free branch exists to prevent (BUGS.md 2026-09-20).
+  const { root, wt } = await gateFixture();
+  const restore = fakePi(`
+    ${TOUCH_SESSION}
+    for a in "$@"; do if [ "$a" = "--continue" ]; then exit 1; fi; done
+    printf '%s\n' '${assistantLine("still no verdict here")}'
+  `);
+  try {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "failed");
+    assert.match(result.detail ?? "", /pi exited 1/); // the follow-up's own failure is named
+    assert.equal(state.unreviewFailures ?? 0, 0); // backend evidence, never a strike against the HEAD
+    assert.equal(await aheadOfMain(wt, "main"), 1); // the commit survives for the next re-review
+    assert.ok(result.followUpRun); // the failed follow-up's spend still folds into the totals
+  } finally {
+    restore();
+  }
+});
+
 test("gate discards the leftover after three failed reviews of one HEAD", async () => {
   const { root, wt } = await gateFixture();
   const restore = fakePi(`printf '%s\n' '${assistantLine("still no verdict here")}'`);
