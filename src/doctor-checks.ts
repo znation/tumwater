@@ -324,6 +324,19 @@ const FIX_CLAIMS_CHECKED = 10;
  * the first is named in full, the rest only enough to find them in BUGS.md. */
 const FIX_CLAIM_HEADING_MAX = 60;
 
+/** The `(and N more …)` suffix three one-line doctor details append after naming their first
+ * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
+ * shortened, since a doctor check renders one line. `render` makes each extra item's short
+ * form — the fix-claim and stranded-plan sites quote a heading trimmed to
+ * FIX_CLAIM_HEADING_MAX, the duplicate-headings site passes its items through as built;
+ * `noun` names what the extras are ("record(s)" for fix claims, empty for the other two).
+ * Empty string when there are no extras. */
+function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""): string {
+  return rest.length > 0
+    ? ` (and ${rest.length} more${noun ? ` ${noun}` : ""}: ${rest.map(render).join(", ")})`
+    : "";
+}
+
 /** Fix claims — the standalone half of the landing gate's false-fix check (src/fix-claim.ts):
  * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
  * that reached main any other way (landed before the gate existed, or through a path it never
@@ -361,10 +374,7 @@ export function checkFixClaims(root: string): CheckOutcome {
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
   // Every other suspect is still named, shortened: a doctor check is one line.
-  const more =
-    rest.length > 0
-      ? ` (and ${rest.length} more record(s): ${rest.map((p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`).join(", ")})`
-      : "";
+  const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
   return {
     level: "warn",
     detail:
@@ -394,10 +404,7 @@ export function checkStrandedPlans(root: string): CheckOutcome {
     return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
   const [first, ...rest] = stranded;
   if (!first) return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
-  const more =
-    rest.length > 0
-      ? ` (and ${rest.length} more: ${rest.map((e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`).join(", ")})`
-      : "";
+  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
   return {
     level: "warn",
     detail:
@@ -432,10 +439,7 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
   if (duplicates.length === 0)
     return { level: "ok", detail: "no duplicated ## section headings in the backlog files" };
   const [first, ...rest] = duplicates;
-  const more =
-    rest.length > 0
-      ? ` (and ${rest.length} more: ${rest.join(", ")})`
-      : "";
+  const more = andMore(rest, (d) => d);
   return {
     level: "warn",
     detail:
