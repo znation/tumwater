@@ -88,6 +88,28 @@ test("help --help prints the help command's own topic", async () => {
   }
 });
 
+test("help <command> prints that command's topic without a ready repo", async () => {
+  // The dispatch itself (cli.ts's `help` case), not just the topic parser: README documents
+  // `tumwater help <command>` as the way to read one command's usage, so the primary spelling
+  // must answer like `--help` does — same topic text, exit 0, and no ready-repo gate (help is
+  // how an operator diagnoses a repo that is not ready in the first place).
+  const dir = tmpdir();
+  for (const name of ["status", "report", "help"]) {
+    const r = await cli(dir, "help", name);
+    assert.equal(r.code, 0, `help ${name}: ${r.stderr}`);
+    assert.match(r.stdout, new RegExp(`tumwater ${name}`));
+    assert.doesNotMatch(r.stderr, /not a git repository/);
+  }
+});
+
+test("help takes at most one command name", async () => {
+  // Two tokens are never a topic: the arity failure must come from the help dispatcher
+  // itself, before any topic lookup could misread the second token as a flag of the first.
+  const r = await cli(tmpdir(), "help", "status", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /help takes at most one command name/);
+});
+
 test("--help does not rescue an unknown command", async () => {
   const r = await cli(tmpdir(), "frobnicate", "--help");
   assert.equal(r.code, 1);
