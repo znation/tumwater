@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "./json-object.js";
+import { readJsonFile } from "./json-files.js";
 import type { CheckConfigSlice } from "./config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the
@@ -64,17 +65,13 @@ function hasInstall(dir: string): boolean {
  * `test` subsumes `build`: its script runs `npm run build && node --test …`, so one gate run
  * verifies both. */
 function buildCheckFrom(dir: string): BuildCheck | null {
-  let pkg: unknown;
-  try {
-    pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
-  } catch {
-    return null; // Missing/unreadable/malformed — no check.
-  }
-  // JSON.parse("null") SUCCEEDS and yields null, and reading `.scripts` off null throws a
-  // TypeError straight out of detection — which every caller's contract (detectBuildCheck,
-  // checkMainBaseline, runScopedBuildCheck) promises cannot happen. A scalar or array is the
-  // same "not a package.json" case: it declares no scripts either way.
-  if (!isJsonObject(pkg)) return null;
+  // The read routes through readJsonFile's tolerant no-data policy — a missing, unreadable, or
+  // malformed file, and a scalar, `null`, or array (a "not a package.json" file declares no
+  // scripts either way), all read as no data — so detection's contract (detectBuildCheck,
+  // checkMainBaseline, runScopedBuildCheck never throw) leans on that one policy home rather
+  // than a hand-rolled copy of the try/catch-plus-object-check idiom.
+  const pkg = readJsonFile<Record<string, unknown>>(path.join(dir, "package.json"));
+  if (pkg === null) return null;
   const scripts = pkg.scripts;
   if (!isJsonObject(scripts)) return null;
   const s = scripts;
