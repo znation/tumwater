@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
+import { readBuildInfo } from "../src/build-info.js";
 import { mainIsGreen } from "../src/main-baseline.js";
-import { autoRestartRecord, redeployDeps } from "../src/redeploy.js";
+import { autoRestartRecord, createRedeployer, redeployDeps } from "../src/redeploy.js";
 import {
   type AutoRestartRecord,
   type RedeployDeps,
+  Redeployer,
   RESTART_COOLDOWN_MS,
   RESTART_URGENT_COOLDOWN_MS,
   RESTART_EXIT_CODE,
@@ -856,6 +858,53 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
     baselineCountAfterWarm + 1,
     "no second suite run",
   );
+});
+
+test("createRedeployer composes the production Redeployer from the running build's own stamp", async () => {
+  // The composition itself (redeploy.ts's createRedeployer) had never run under test: the unit
+  // tier drove Redeployer with scripted deps while the real boot executed only inside a live
+  // `tumwater run`. The stamp exists in the test process's dist (stamp-build ran before the
+  // suite), so the composition is exercised here against a fixture repo — which never reads as
+  // self-hosted, so the wired Redeployer proves inert while still being the production object.
+  const root = makeRepo();
+  const events: HarnessEventInput[] = [];
+  let bootAsks = 0;
+  const r = await createRedeployer(root, (e) => events.push(e), async () => {
+    bootAsks += 1;
+    return null;
+  });
+  assert.ok(r, "the running dist carries a build stamp during tests");
+  assert.ok(r instanceof Redeployer, "the production class, not a test double");
+  assert.equal(r.build.sha, readBuildInfo()?.sha, "the stamp read is the running build's own");
+  assert.equal(r.selfHosted, false, "a fixture repo is never the build's own repo");
+
+  // Through the real wiring, a non-self-hosted build takes no action on any main move — and
+  // never asks the successor's startup gate or writes the restart record, which only a
+  // restart decision touches.
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  assert.equal(await r.poll(head, IDLE, true), "none");
+  assert.equal(await r.poll(head, IDLE, true), "none", "the inert verdict is not a one-poll accident");
+  assert.deepEqual(events, [], "no build_stale, no restart events");
+  assert.deepEqual(
+    r.status(),
+    { sha: r.build.sha, builtAt: r.build.builtAt },
+    "no staleness verdict is ever computed for a foreign repo",
+  );
+  assert.equal(bootAsks, 0, "the successor's startup gate is asked only on a restart decision");
+  assert.ok(!fs.existsSync(autoRestartStampPath(root)), "the restart record is only written by an actual restart");
+});
+
+test("buildRed with no declared check answers unknown (null), not not-red", async () => {
+  // The urgency carve-out's third verdict: a repo whose check detection finds nothing gives
+  // the baseline no verdict at all. The caller must read null as "cannot decide" — reading it
+  // as false ("main is green") would drop a red-build deferral on a project whose checks are
+  // simply undeclared, restarting onto a build nobody ever verified.
+  const root = makeRepo(); // no package.json, no declared check anywhere
+  const events: HarnessEventInput[] = [];
+  const deps = redeployDeps(root, { sha: "stale", builtAt: 1, root }, (e) => events.push(e), async () => null);
+  const head = sh(root, "git", "rev-parse", "HEAD");
+  assert.equal(await deps.buildRed(head), null, "no check means no verdict, not a green one");
+  assert.deepEqual(events, [], "a null verdict costs no suite run and logs no build_check");
 });
 
 test("a toolchain-broken suite leaves no latched block: the skip reads as green and the restart proceeds", async () => {
