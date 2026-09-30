@@ -55,6 +55,12 @@ test("checkNodeVersion reports this runtime as ok and warns below the declared f
   const odd = checkNodeVersion("not-a-version");
   assert.equal(odd.level, "warn");
   assert.match(odd.detail, /unrecognized Node version/);
+
+  // A string that parses fine but to a non-positive major (a "0.x" runtime) is unrecognized
+  // too — the integer check alone would bless it and then compare 0 against the floor.
+  const zero = checkNodeVersion("0.1.0");
+  assert.equal(zero.level, "warn");
+  assert.match(zero.detail, /unrecognized Node version "0\.1\.0"/);
 });
 
 test("checkGitBinary resolves git from the given PATH and fails with the shared message when absent", () => {
@@ -76,6 +82,22 @@ test("checkAgentBinary resolves the default pi from the given PATH and fails wit
   const missing = checkAgentBinary(root, "");
   assert.equal(missing.level, "fail");
   assert.match(missing.detail, /install it/);
+});
+
+// The PATH parameter defaults to `process.env.PATH ?? ""` — a PATH deleted from the
+// environment entirely must hit the same empty-PATH fail as an explicitly empty one, not
+// read `undefined` as a search path.
+test("checkGitBinary and checkAgentBinary treat an unset PATH as empty", () => {
+  const hadPath = process.env.PATH;
+  delete process.env.PATH;
+  try {
+    assert.deepEqual(checkGitBinary(), { level: "fail", detail: GIT_MISSING_MESSAGE });
+    const agent = checkAgentBinary(readyRepo());
+    assert.equal(agent.level, "fail");
+    assert.match(agent.detail, /install it/);
+  } finally {
+    if (hadPath !== undefined) process.env.PATH = hadPath;
+  }
 });
 
 // plans/portability.md §5/7: a configured agent binary must be reported with its source, so
@@ -292,6 +314,15 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   assert.match(demoted.detail, /demoted it after 3 consecutive failed ticks, so role loops pause at the cap/);
   assert.match(demoted.detail, /one probe tick retries it from 23:10:56$/);
 
+  // A pair naming only one half falls through to pi's own default and can never be free —
+  // the warning names the half-resolved pair instead of rendering a bare "?/model".
+  const half = readyRepo();
+  writeConfig(half, { fallbackModel: { model: "solo-model" } });
+  const halfWarn = checkFallbackModel(half, models);
+  assert.equal(halfWarn.level, "warn");
+  assert.match(halfWarn.detail, /^a half-resolved pair is not priced at zero/);
+  assert.match(halfWarn.detail, /role loops pause instead of switching/);
+
   // A priced or unknown id would be refused by the gate, so role loops would pause at the cap
   // instead of switching — warn before the day's budget is spent on discovering it.
   const paid = readyRepo();
@@ -424,6 +455,12 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   const fresh = await checkBuild(repo, here, head);
   assert.equal(fresh.level, "ok");
   assert.match(fresh.detail, /matches main/);
+
+  // A main head that cannot be resolved (git failed, or the caller had none) is not evidence
+  // of staleness: the check stays ok and reports the build it did see.
+  const noHead = await checkBuild(repo, here, null);
+  assert.equal(noHead.level, "ok");
+  assert.match(noHead.detail, /^dist\/ from [0-9a-f]{8}$/);
 
   // Two commits later, one touching src/: stale — a warning (the fleet runs, just old code), never a fail.
   fs.writeFileSync(path.join(repo, "README.md"), "docs\n");
@@ -608,6 +645,18 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
     level: "ok",
     detail: "no plan headings filed under the wrong PLANS.md section",
   });
+
+  // The mirror direction: a done-stamped heading still sitting under ## Planned — finished
+  // work the feature loop may implement again. The remedy names the other section.
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n### Old feature (planned 2026-09-01, done 2026-09-02)\n\n### Second stranded (planned 2026-09-03, done 2026-09-04)\n\n## Done\n\n_None yet._\n`,
+  );
+  const mirror = checkStrandedPlans(dir);
+  assert.equal(mirror.level, "warn");
+  assert.match(mirror.detail, /stranded under ## Planned: "Old feature \(planned 2026-09-01, done 2026-09-02\)"/);
+  assert.match(mirror.detail, /\(and 1 more: "Second stranded \(planned 2026-09-03, done 2026-09-04\)"\)/);
+  assert.match(mirror.detail, /move it under ## Done/);
 
   // No PLANS.md at all is a fine state too — nothing to verify.
   assert.deepEqual(checkStrandedPlans(tmpdir("doctor-stranded-none-")), {
