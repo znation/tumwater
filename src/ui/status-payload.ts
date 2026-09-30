@@ -5,7 +5,7 @@ import { eventMessage, eventResult, formatEvent } from "../event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "../status-data.js";
-import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, quietBadge } from "./badges.js";
+import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, yieldMultiplierFor } from "./status-model.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 
@@ -108,6 +108,11 @@ export function statusPayload(root: string): object {
     // pausedUntil.
     ...(snap.mainCheck ? { mainCheck: snap.mainCheck } : {}),
     mainCheckBadge: mainCheckBadge(snap.mainCheck),
+    // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
+    // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and
+    // drift from) it — the sidebar's "Main green · …" row reads this field, not the raw
+    // counts. Empty when no check has run or the check carries no counts.
+    mainCounts: mainCountsFragment(snap.mainCheck?.counts),
     inbox: snap.inbox,
     // Previews of the queued director prompts in execution order (truncated server-side —
     // see StatusSnapshot.inboxPrompts); the page lists them in its project status panel.

@@ -763,9 +763,12 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(landed!.at, base + 1000);
   // The JSON payload carries the raw block plus its preformatted badge (GUI parity with the
   // TUI header — the badge is built once in status-model, both surfaces render it).
-  const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string };
+  const payload = statusPayload(repo) as { mainCheck: unknown; mainCheckBadge: string; mainCounts: string };
   assert.deepEqual(payload.mainCheck, landed);
   assert.match(payload.mainCheckBadge, / · main a{8}: green · 9\/10 \(1 skipped\)/);
+  // The sidebar's counts fragment ships preformatted too (badges.ts's mainCountsFragment) —
+  // the GUI must not re-derive pass/tests from the raw counts and drift (BUGS.md 2026-09-30).
+  assert.equal(payload.mainCounts, "9/10 (1 skipped)");
 
   // A newer baseline check with no landed event after it: the check ran ON main's tip, so the
   // sha is main's current head. A gate-scope check never displaces a merge-scope one.

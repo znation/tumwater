@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, landingBadge, pauseBadge } from "../src/ui/badges.js";
+import { budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge } from "../src/ui/badges.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -68,4 +68,24 @@ test("pauseBadge counts down a standing fleet timed pause and stays empty otherw
   assert.equal(pauseBadge(now + 45_000, now), " · paused — auto-resumes in 45s", "sub-minute reads seconds");
   assert.equal(pauseBadge(now + 12 * 60_000, now), " · paused — auto-resumes in 12m", "sub-hour reads minutes");
   assert.equal(pauseBadge(now + 3 * 3_600_000, now), " · paused — auto-resumes in 3h", "hours read hours");
+});
+
+// The counts fragment both main-check surfaces render (BUGS.md 2026-09-30: the GUI sidebar
+// re-derived `pass/tests` and dropped the skipped count, so a fully green suite with one
+// skip read like one failure). Every non-passing count is named explicitly; zero counts add
+// no parenthetical, matching the stamp wording the README carried.
+test("mainCountsFragment names the skipped and failed counts the pass ratio would fold away", () => {
+  assert.equal(mainCountsFragment({ tests: 2430, pass: 2429, fail: 0, skipped: 1 }), "2429/2430 (1 skipped)", "a skip is named, not folded into the ratio");
+  assert.equal(mainCountsFragment({ tests: 2430, pass: 2427, fail: 2, skipped: 1 }), "2427/2430 (2 failed · 1 skipped)", "fail and skip both read, fail first");
+  assert.equal(mainCountsFragment({ tests: 2430, pass: 2428, fail: 2, skipped: 0 }), "2428/2430 (2 failed)", "a failure is named even with no skip");
+  assert.equal(mainCountsFragment({ tests: 2430, pass: 2430, fail: 0, skipped: 0 }), "2430/2430", "a fully green suite stays bare");
+  assert.equal(mainCountsFragment(undefined), "", "a check without counts renders nothing");
+});
+
+test("mainCheckBadge renders the shared counts fragment", () => {
+  assert.equal(
+    mainCheckBadge({ sha: "a".repeat(40), status: "passed", counts: { tests: 10, pass: 9, fail: 0, skipped: 1 }, at: 0 }),
+    " · main aaaaaaaa: green · 9/10 (1 skipped)",
+  );
+  assert.equal(mainCheckBadge(undefined), "", "no check: no badge");
 });

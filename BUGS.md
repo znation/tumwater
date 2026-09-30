@@ -5,14 +5,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The GUI sidebar's "Main green · 2429/2430" drops the skipped count, so a fully green suite with one skipped test reads like one failure; the TUI/status header badge for the same check says `2429/2430 (1 skipped)` (found by human-directed investigation 2026-09-30)
+## Fixed
+
+### The GUI sidebar's "Main green · 2429/2430" drops the skipped count, so a fully green suite with one skipped test reads like one failure; the TUI/status header badge for the same check says `2429/2430 (1 skipped)` (found by human-directed investigation 2026-09-30, fixed 2026-09-30 by bugfix loop)
 
 - **Symptom:** with main's newest check at `{tests: 2430, pass: 2429, fail: 0, skipped: 1}`, the GUI sidebar row reads "Main green · 2429/2430". An operator reading it next to a red "main is red" banner (see the entry above) took the missing test for a failure. The skip is visible only in the row's hover tooltip.
 - **Reproduce:** open the GUI Fleet page on any fleet whose latest merge-scope check has `skipped > 0` and compare the sidebar "Main …" row with `tumwater status`'s header badge.
-- **Cause:** src/ui/gui-client-fleet.ts:54 builds its own counts string (`" · " + c.counts.pass + "/" + c.counts.tests`) instead of reusing the wording of `mainCheckBadge` (src/ui/badges.ts:48), which appends `(N skipped)` when `skipped > 0`. That's the drift between the two observer surfaces that badges.ts exists to prevent.
-- **Fix sketch:** render the sidebar row's counts with the same rule as `mainCheckBadge`, either `2429/2430 (1 skipped)` or `2429 passed · 1 skipped`, ideally shipping the counts fragment preformatted in the status payload so the client can't drift again. When `fail > 0`, show it explicitly too.
-
-## Fixed
+- **Cause:** src/ui/gui-client-fleet.ts built its own counts string (`" · " + c.counts.pass + "/" + c.counts.tests`) instead of reusing the wording of `mainCheckBadge` (src/ui/badges.ts), which appends `(N skipped)` when `skipped > 0`. That's the drift between the two observer surfaces that badges.ts exists to prevent.
+- **Fixed 2026-09-30 by bugfix loop:** the counts fragment is phrased once in badges.ts's new `mainCountsFragment` — `pass/tests` with a parenthetical naming every non-passing count, `(2 failed · 1 skipped)`, so a failure reads explicitly too — and ships preformatted as the payload's new `mainCounts` field (status-payload.ts, same omit-re-derivation idiom as `mainCheckBadge`); the sidebar row renders it verbatim. `mainCheckBadge` now builds its counts from the same helper, so the TUI header picks up the explicit-failed wording too. Regression tests: test/badges.test.ts pins `mainCountsFragment`'s wording (skip named, fail named, zero counts bare, no counts empty) and `mainCheckBadge`; test/status.test.ts pins `mainCounts` in the payload; test/gui-client-sidebar.test.ts executes the sidebar's newly marked `// sidebar:` region under the clientScope stub harness and asserts the rendered row carries the skip and fail counts.
+- **Validation gap:** no-fake — the sidebar's browser script is one served blob with no offline execution path (its region was unmarked and undriven, so only a live GUI page showed the drift); the fix marked the region and ran it under the existing clientScope stub harness, which is what now confirms it — the closest tag, since the shim itself existed but nothing had wired this surface to it.
 
 ### A loop's `main red` phase outlives main's recovery: the dashboard raises "main is red — 1 loop is blocked" while the sidebar right under it reads "Main green", because the phase comes from the loop's own last tick result and nothing compares it with main's newer green check (found by human-directed investigation 2026-09-30, fixed 2026-09-30 by bugfix loop)
 

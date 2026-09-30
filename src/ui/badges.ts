@@ -1,3 +1,4 @@
+import type { TestCounts } from "../build-check.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
@@ -38,19 +39,33 @@ export function buildBadge(build: StatusSnapshot["build"]): string {
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
 
+/** The counts fragment of main's check, phrased once for every surface that renders it:
+ * `2429/2430`, appending a parenthetical for each non-passing count the block carries —
+ * `(2 failed · 1 skipped)` — so a skip or failure is never silently folded into the pass
+ * ratio (a fully green `2429/2430` with one skip must not read like one failure). Empty
+ * when the block carries no counts. mainCheckBadge and the JSON payload's mainCounts field
+ * (status-payload.ts) are the readers; the GUI sidebar renders this fragment verbatim
+ * instead of re-deriving it, which is the drift this one-home rule exists to prevent. */
+export function mainCountsFragment(counts: TestCounts | undefined): string {
+  if (!counts) return "";
+  const notes: string[] = [];
+  if (counts.fail > 0) notes.push(`${counts.fail} failed`);
+  if (counts.skipped > 0) notes.push(`${counts.skipped} skipped`);
+  return `${counts.pass}/${counts.tests}${notes.length > 0 ? ` (${notes.join(" · ")})` : ""}`;
+}
+
 /** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
  * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
  * README stamp the readme role used to maintain. Empty when the snapshot carries no check
  * (none has run yet), so a quiet header stays byte-identical to a pre-check fleet. The
  * verdict maps passed→green, failed→red; anything else (a skipped scope check) renders its
- * raw word — an unverified tree must not read green. The counts fragment omits a zero-skip
- * parenthetical, matching the stamp wording the README carried. */
+ * raw word — an unverified tree must not read green. The counts fragment (mainCountsFragment)
+ * omits parentheticals for zero counts, matching the stamp wording the README carried. */
 export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
   if (!mainCheck) return "";
   const verdict = mainCheck.status === "passed" ? "green" : mainCheck.status === "failed" ? "red" : mainCheck.status;
-  const counts = mainCheck.counts
-    ? ` · ${mainCheck.counts.pass}/${mainCheck.counts.tests}${mainCheck.counts.skipped > 0 ? ` (${mainCheck.counts.skipped} skipped)` : ""}`
-    : "";
+  const fragment = mainCountsFragment(mainCheck.counts);
+  const counts = fragment ? ` · ${fragment}` : "";
   const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";
   return ` · main ${sha}${verdict}${counts}`;
 }

@@ -29,6 +29,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const now = f ? " Landing now: " + f.role + " — " + (f.summary || "") + (f.stage ? " (" + String(f.stage).replace("-", " ") + ")" : "") : "";
     return plural(q.depth, "change") + " in the land queue." + now;
   }
+  // sidebar:start
   function renderSidebar(d) {
     const project = $("project");
     const name = d && d.project ? d.project : "";
@@ -51,7 +52,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         // Main's newest merge-scope check (status-model's mainCheckBadge): green, red, or — a
         // skipped check — unverified.
         const c = d.mainCheck;
-        const counts = c.counts ? " · " + c.counts.pass + "/" + c.counts.tests : "";
+        // The counts fragment ships preformatted (payload's mainCounts, built by the same
+        // badges.ts rule as the header badge): pass/tests with the skip and fail counts
+        // named in a parenthetical, so a skip never reads like a failure here.
+        const counts = d.mainCounts ? " · " + esc(d.mainCounts) : "";
         const verdict = c.status === "passed" ? "green" : c.status === "failed" ? "red" : c.status;
         rows += row(c.status === "passed" ? "green" : c.status === "failed" ? "red" : "amber", icon(c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info"),
           "Main " + verdict + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
@@ -75,6 +79,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     renderBudgetBadge(d);
     renderPauseBadge(d);
   }
+  // sidebar:end
 
   // ---- alerts ----
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
