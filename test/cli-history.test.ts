@@ -319,6 +319,125 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--json\]/);
+  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--json\]/);
   assert.match(help.stdout, /machine-readable history data/);
+});
+
+// --- --since <duration>: the window-shaped view (the sibling of logs --since / report --since)
+
+/** Seed tick pairs at fixed ages before `now` (the pattern cli-logs-filtering.ts uses for
+ * --since): one 2-day-old tick_end outside any sane window, then a clean tick (start 50m,
+ * end 45m) and a feature tick (start 30m, end 10m) inside a 1h window. */
+function seedWindowedHistory(repo: string, now = Date.now()): void {
+  const age = (ms: number) => now - ms;
+  writeEvents(repo, [
+    { ts: age(2 * 86_400_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "old work" },
+    { ts: age(50 * 60_000), loop: "clean", type: "tick_start", tick: 2 },
+    { ts: age(45 * 60_000), loop: "clean", type: "tick_end", tick: 2, result: "no_change", summary: "tidied" },
+    { ts: age(30 * 60_000), loop: "feature", type: "tick_start", tick: 3 },
+    { ts: age(10 * 60_000), loop: "feature", type: "tick_end", tick: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
+  ]);
+}
+
+test("history --since returns exactly the ticks of the window, newest first, with durations where starts survive", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history since window");
+  seedWindowedHistory(repo);
+
+  const r = await cli(repo, "history", "--since", "1h");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 2, r.stdout);
+  // Newest first; the 2-day-old tick is outside the window on both the day key and ts.
+  assert.match(lines[0]!, /feature\s+#3\s+changed\s+20m\s+1200 tok · \$0\.01\s+new work/);
+  assert.match(lines[1]!, /clean\s+#2\s+no_change\s+5m\s+tidied/);
+  assert.ok(!r.stdout.includes("old work"), r.stdout);
+  // The log's oldest retained event (2d) predates the cutoff, so the window is provably
+  // covered: no rotation note.
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+
+  // --role composes with --since: history's --role is a row filter, not a rival view.
+  const scoped = await cli(repo, "history", "--since", "1h", "--role", "clean");
+  assert.equal(scoped.code, 0);
+  assert.equal(scoped.stdout.trim().split("\n").length, 1);
+  assert.match(scoped.stdout, /clean\s+#2/);
+  assert.ok(!scoped.stdout.includes("feature"), scoped.stdout);
+});
+
+test("history --since --json emits the window's rows raw and an empty document for an empty window", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history since json");
+  seedWindowedHistory(repo);
+
+  const r = await cli(repo, "history", "--since", "1h", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { rows: Array<Record<string, unknown>> };
+  assert.deepEqual(payload.rows.map((row) => [row.loop, row.tick]), [["feature", 3], ["clean", 2]]);
+  // Raw epoch ms, not the rendered time: within a second of the seeded 10m-ago tick_end.
+  const expected = JSON.parse(r.stdout).rows[0].ts as number;
+  assert.ok(Math.abs(expected - (Date.now() - 10 * 60_000)) < 5000, `ts ${expected} sits at the 10m-ago instant`);
+  assert.equal(payload.rows[0]!["tokens"], 1200);
+  assert.equal(payload.rows[0]!["costUsd"], 0.01);
+  // The note never touches JSON output — a parsing consumer reads rows only.
+  assert.ok(!r.stdout.includes("note:"), r.stdout);
+
+  // A window holding no tick_end answers as an empty document, never prose.
+  const empty = await cli(repo, "history", "--since", "1s", "--json");
+  assert.equal(empty.code, 0);
+  assert.deepEqual(JSON.parse(empty.stdout), { rows: [] });
+});
+
+test("history --since prints the hedged rotation note after the table, table mode only", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history since note");
+  // Every event lies inside the 1h window, so the oldest retained event cannot prove the
+  // window's coverage (rotation or idleness — the hedged phrasing stays true either way).
+  const now = Date.now();
+  writeEvents(repo, [
+    { ts: now - 10 * 60_000, loop: "clean", type: "tick_start", tick: 1 },
+    { ts: now - 5 * 60_000, loop: "clean", type: "tick_end", tick: 1, result: "no_change", summary: "tidied" },
+  ]);
+
+  const r = await cli(repo, "history", "--since", "1h");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 2, r.stdout);
+  assert.match(lines[0]!, /clean\s+#1/);
+  assert.equal(
+    lines[1],
+    "note: the log's oldest retained event lies inside this window; older events may have rotated out",
+    "the note rides the table's end, cmdLogs' wording verbatim",
+  );
+
+  const json = await cli(repo, "history", "--since", "1h", "--json");
+  assert.equal(json.code, 0);
+  assert.ok(!json.stdout.includes("note:"), json.stdout);
+});
+
+test("history --since refuses the rival shape and validates through the shared duration helpers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history since validation");
+
+  const rival = await cli(repo, "history", "--since", "1h", "-n", "5");
+  assert.equal(rival.code, 1);
+  assert.match(rival.stderr, /--since .*-n/);
+  assert.match(rival.stderr, /rival shapes/);
+
+  const overCap = await cli(repo, "history", "--since", "8d");
+  assert.equal(overCap.code, 1);
+  assert.match(overCap.stderr, /history --since is capped at 7d \(got 8d\)/);
+
+  const malformed = await cli(repo, "history", "--since", "45x");
+  assert.equal(malformed.code, 1);
+  assert.match(malformed.stderr, /--since needs a duration like 45s, 90m, 2h, or 1d/);
+
+  const valueless = await cli(repo, "history", "--since");
+  assert.equal(valueless.code, 1);
+  assert.match(valueless.stderr, /--since needs a value/);
+
+  // Table mode's empty-window prose: `no ticks in <duration>`, durationLabel's phrasing.
+  seedWindowedHistory(repo);
+  const empty = await cli(repo, "history", "--since", "1s");
+  assert.equal(empty.code, 0);
+  assert.equal(empty.stdout, "no ticks in 1s\n");
 });

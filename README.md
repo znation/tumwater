@@ -34,7 +34,7 @@ Then, from another terminal:
 | To | Run |
 | --- | --- |
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
-| Watch per-tick history | `tumwater history [--role <id>] [-n N]`, or `tumwater history --json` for the rows as JSON |
+| Watch per-tick history | `tumwater history [--role <id>] [-n N] [--since <duration>]`, or `tumwater history --json` for the rows as JSON |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --json` (the event feed as NDJSON, for scripts), `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown), `tumwater backlog --json` (the backlog as JSON, for scripts) |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick |
 | Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |

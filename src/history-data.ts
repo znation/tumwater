@@ -7,6 +7,8 @@
  * and keeps core data collection out of the presentation layer, so a core consumer (as the
  * GUI's /api/history already is) never forces a core→ui import. */
 import { eventUsage, readEvents, tickStartMap, type HarnessEvent } from "./events.js";
+import { dayKey } from "./datetime.js";
+import { eventWindowCovers, readWindowEvents } from "./event-window.js";
 import { formatTimestamp } from "./datetime.js";
 import { collapseWhitespace, truncate } from "./text.js";
 import { usageText } from "./event-format.js";
@@ -110,4 +112,20 @@ export function readTickRows(root: string, limit: number, role: string | null): 
     rows = tickRows(events, limit, role);
   }
   return rows;
+}
+
+/** The window-shaped sibling of readTickRows: the completed ticks of the last `sinceMs`, not
+ * the last N — the collector behind `history --since`, mirroring cmdLogs' since path so the
+ * two windowed surfaces cannot disagree. The read is the shared rotation-spanning
+ * readWindowEvents keyed on the cutoff's local calendar day (the archive events.jsonl.1 is
+ * covered for free), over-read at most one day's events that the ts filter removes; the rows
+ * reuse the pure tickRows with limit = events.length, so pairing, role filtering, and the
+ * dash-on-unpaired rule stay exactly the count view's. `covered` is the exact predicate
+ * cmdLogs consults (eventWindowCovers), so neither surface can claim coverage the other
+ * would hedge. Pure over root: reads the event log, writes nothing. */
+export function readTickRowsSince(root: string, sinceMs: number, role: string | null): { rows: TickRow[]; covered: boolean } {
+  const cutoff = Date.now() - sinceMs;
+  const window = readWindowEvents(root, dayKey(cutoff));
+  const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
+  return { rows: tickRows(events, events.length, role), covered: eventWindowCovers(window, cutoff) };
 }

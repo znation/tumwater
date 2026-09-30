@@ -46,12 +46,14 @@ Usage:
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
-  tumwater history [--role <id>] [-n N] [--json]
+  tumwater history [--role <id>] [-n N] [--since <duration>] [--json]
                                    One row per completed tick, newest first — time, loop,
                                    tick number, result, duration, tokens/cost, and the
-                                   summary (or error), each row one line (--json prints
-                                   machine-readable history data — the same rows with ts,
-                                   tokens, and costUsd kept raw, the GUI's /api/history payload)
+                                   summary (or error), each row one line; --since <duration>
+                                   shows the window's ticks instead of the last N (capped at
+                                   7d, like logs --since); --json prints the rows as
+                                   machine-readable history data — ts, tokens, and costUsd
+                                   kept raw, the GUI's /api/history payload
   tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the

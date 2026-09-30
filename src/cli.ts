@@ -169,6 +169,7 @@ async function main(): Promise<void> {
     case "history":
       rejectUnknownArgs("history", args, [
         { names: ["-n"], value: true, valueName: "<count>" },
+        { names: ["--since"], value: true, valueName: "<duration>" },
         { names: ["--json"] },
         ROLE_FLAG,
       ]);

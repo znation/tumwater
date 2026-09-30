@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater history --since <duration>` — window-shaped tick history, completing the `--since` pattern (planned 2026-09-29)
+## Done
+
+### `tumwater history --since <duration>` — window-shaped tick history, completing the `--since` pattern (planned 2026-09-29, done 2026-09-29)
 
 - **Goal.** `tumwater history` answers "the last N ticks" only: an operator auditing "what
   happened since the last failed landing" or "over the last hour" must guess a count. The two
@@ -40,6 +42,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - **Files touched.** src/history-data.ts (+~35), src/ui/history.ts (+~25), src/cli.ts (+2),
   src/help.ts (+1 line of help text), test/history-data.test.ts and test/ui-history.test.ts
   (new window cases, ~80 total).
+- **Done 2026-09-29 by feature, as planned.** Two deviations from the entry as written:
+  the project consolidated history's tests into test/cli-history.test.ts (there are no
+  test/history-data.test.ts or test/ui-history.test.ts files — the new window cases live
+  there, ~100 lines), and the README's per-tick-history usage row was updated to show the
+  new flag so the doc stays accurate. Help-text line wrapping keeps "machine-readable
+  history data" on one line so the existing help-stanza pin keeps matching.
 - **Acceptance criteria.**
   1. A seeded log spanning several days: `history --since 2h` returns exactly the tick_end
      events at or after the cutoff (role filter composes), newest first, with paired durations
@@ -52,8 +60,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   4. No `--since`: behavior is byte-identical to today (default 20 rows, `-n` ceiling 200,
      existing tests pass unchanged).
   5. `npm run test` green.
-
-## Done
 
 ### Windowed event reads span the rotation boundary: `readWindowEvents` continues into `events.jsonl.1` (planned 2026-09-29, done 2026-09-29)
 
