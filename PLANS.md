@@ -4,8 +4,11 @@ Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
 ## Planned
+_None yet._
 
-### Reject a change that files a new plan directly under `## Done` (planned 2026-09-30) — part 4/4, the gate rule
+## Done
+
+### Reject a change that files a new plan directly under `## Done` (planned 2026-09-30, done 2026-09-30) — part 4/4, the gate rule
 
 **Goal.** Part 3/4 repairs a stranded plan after it lands; this part stops the most common
 stranding from landing at all. The case is a change that ADDS a new PLANS.md entry and puts it
@@ -73,7 +76,12 @@ test and one landing test next to part 2/4's.
   check, not a suite test: it reads this repo's history, not a fixture.
 - `npm run test` passes.
 
-## Done
+**Landed 2026-09-30 by feature.** The rule lives in `backlogStructureReason` (PLANS.md only),
+so both call sites got it with no new wiring, as planned. Two notes for the record: the
+part 2/4 duplicate fixture ("passes when the base already had the duplicate") previously
+added a planned-only `### C` under Done — that entry now carries a done date, since the new
+rule correctly rejects it; and the history replay over 402 first-parent commits fired on
+exactly `9eaae5ac`, as expected.
 
 ### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30, done 2026-09-30) — part 2/4, the backstop
 

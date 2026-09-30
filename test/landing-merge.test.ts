@@ -639,6 +639,48 @@ test("a conflict resolution that duplicates ## Done is blocked with a warning, m
   );
 });
 
+test("a conflict resolution that files a new plan under a single ## Done is blocked with a warning", async () => {
+  // The other 2026-09-25 shape (plans part 4/4): ONE ## Done on main, so the duplicate-heading
+  // rule cannot see it. A resolver that keeps main's Done section and places the branch's new
+  // plan below it strands the plan where no Planned reader looks. The in-lock re-check is the
+  // site that catches conflict resolutions, so it must catch this one too.
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    "## Planned\n\n### Feature A (planned 2026-09-25)\n\n**Goal.** Work in progress.\n",
+  );
+  commitIn(wt, "seed the backlog");
+  // Main moves Feature A to Done — the file keeps a single ## Done heading.
+  advanceMain(
+    root,
+    "PLANS.md",
+    "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n",
+  );
+  const mainBefore = mainSha(root);
+  const { ctx } = makeCtx(root, async (w) => {
+    // The resolver keeps a Planned section (so the heading set is sound) but files the
+    // branch's new plan below the ## Done heading, with no done date.
+    fs.writeFileSync(
+      path.join(w, "PLANS.md"),
+      "## Planned\n\n_Nothing yet._\n\n## Done\n\n" +
+        "### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n\n" +
+        "### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+    );
+    return piResult();
+  });
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "merge_blocked", "the misfiled new plan blocks the landing");
+  assert.equal(mainSha(root), mainBefore, "main is untouched");
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("PLANS.md") && m.includes("## Planned")),
+    `the warning names the file and where the plan belongs; got: ${JSON.stringify(warnings)}`,
+  );
+  assertWorktreeSettled(wt);
+});
+
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
 /** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then

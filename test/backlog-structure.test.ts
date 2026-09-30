@@ -206,10 +206,12 @@ test("backlogStructureReason ignores a heading quoted inside a fenced block", as
 });
 
 test("backlogStructureReason passes when the base already had the duplicate and it stays", async () => {
+  // The new entry carries a done date deliberately: a planned-only entry under ## Done is the
+  // new-plan rule's (part 4/4) rejection now, and this test pins the heading-set rule only.
   const wt = await structureFixture(
     "PLANS.md",
     "## Done\n\n### A\n\n## Done\n\n### B\n",
-    "## Done\n\n### A\n\n## Done\n\n### B\n\n### C (planned 2026-09-25)\n",
+    "## Done\n\n### A\n\n## Done\n\n### B\n\n### C (planned 2026-09-25, done 2026-09-26)\n",
   );
   assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
 });
@@ -240,6 +242,77 @@ test("backlogStructureReason passes a first-time backlog file whose headings the
 
 test("backlogStructureReason ignores files outside the backlog set", async () => {
   assert.equal(await backlogStructureReason(".", "main", ["docs/notes.md", "src/foo.ts"]), undefined);
+});
+
+// ── backlogStructureReason — the new-plan-under-Done rule (plans, part 4/4) ─────────────
+// A change that ADDS a plan entry directly under the only `## Done` — the most common
+// stranding (PLANS.md 9eaae5ac) — is rejected at the gate and the landing re-check alike.
+
+test("backlogStructureReason rejects a head that files a new plan directly under the only ## Done", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+  );
+  const reason = await backlogStructureReason(wt, "main", ["PLANS.md"]);
+  assert.match(reason!, /^PLANS\.md files "Feature B \(planned 2026-09-26\)"/);
+  assert.match(reason!, /file it under "## Planned"/);
+});
+
+test("backlogStructureReason passes the same new plan filed under ## Planned", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a Planned → Done move that keeps only its (planned …) date", async () => {
+  // The cd31355e shape: through mid-September entries moved without gaining a done date.
+  // A move is not a stranding — the base already carried the entry's key.
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### Pre-flight environment check (planned 2026-09-05)\n",
+    "## Planned\n\n## Done\n\n### Pre-flight environment check (planned 2026-09-05)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a new Done entry whose done date wraps to the heading's second line", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26,\ndone 2026-09-27)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a new entry filed directly as done", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26, done 2026-09-27)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a heading quoted inside a fenced block", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n```md\n## Done\n\n### Feature B (planned 2026-09-26)\n```\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a pre-existing stranded entry — the clean loop's repair owns those", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n## Done\n\n### Old plan (planned 2026-09-01)\n",
+    "## Planned\n\n### Fresh (planned 2026-09-26)\n\n## Done\n\n### Old plan (planned 2026-09-01)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
 });
 
 test("duplicateHeadings lists each title that appears more than once, fence-aware", () => {

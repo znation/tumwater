@@ -601,6 +601,32 @@ test("gate exempts a doc-only diff without running pi", async () => {
   }
 });
 
+test("gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
+  // The 2026-09-25 shape (PLANS.md 9eaae5ac, plans part 4/4): a plan written straight into
+  // the done section. The heading-set check cannot see it — one ## Done, heading set unchanged
+  // — so the new-plan-under-Done rule is what rejects it, deterministically, before any
+  // reviewer run.
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    "## Planned\n\n## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "misfiled plan");
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.match(result.detail!, /PLANS\.md files "Feature B \(planned 2026-09-26\)"/);
+    assert.match(result.detail!, /file it under "## Planned"/);
+    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  } finally {
+    restore();
+  }
+});
+
 test("gate is a no-op when review.enabled is false", async () => {
   const { root, wt } = await gateFixture(); // code change — would be reviewed if enabled
   const marker = path.join(tmpdir(), "pi-ran");

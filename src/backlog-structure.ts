@@ -8,8 +8,10 @@ import { gitTry } from "./git.js";
  * entry filed under the wrong `## ` section. This module holds PLANS.md's stranding rules
  * (plans: "Stranded-plan detection", part 3/4): a `(planned …)` heading sitting under `## Done`
  * never entered a reader's section, and a `done`-dated heading still sitting under
- * `## Planned` invites re-implementation. Detection is pure markdown reading — no pi, no git —
- * so the clean loop's tick prompt and `tumwater doctor` can both afford it every time. */
+ * `## Planned` invites re-implementation. It also holds the gate-side companion (part 4/4):
+ * a change that ADDS a new plan directly under `## Done` is rejected before it can land.
+ * Detection is pure markdown reading — no pi, no git — so the clean loop's tick prompt,
+ * `tumwater doctor`, and every landing check can all afford it every time. */
 
 /** A `### ` heading the detector found filed under the wrong `## ` section of PLANS.md:
  * `title` is the full heading text (verbatim, dates and all), `section` the section it sits
@@ -58,6 +60,28 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
   return stranded;
 }
 
+/** A `### ` heading's comparison key: the heading text before its first ` (`, whitespace-
+ * normalized — the same cross-move comparison normalizeFixedHeading (src/fix-claim.ts) makes
+ * for BUGS.md headings, so an entry that moved between sections with its dates intact keys
+ * equal on both sides of a diff. */
+function planHeadingKey(title: string): string {
+  const cut = title.indexOf(" (");
+  return (cut === -1 ? title : title.slice(0, cut)).replace(/\s+/g, " ").trim();
+}
+
+/** The comparison keys of every `### ` heading in `md`, in ANY `## ` section, fence-aware
+ * (backlog.ts's shared tracker). The base-side set for the new-plan-under-Done rule: an entry
+ * whose key the base already carried is a move between sections, never a stranding. */
+function planHeadingKeys(md: string): Set<string> {
+  const fenced = fenceTracker();
+  const keys = new Set<string>();
+  for (const line of md.split("\n")) {
+    if (fenced.inside(line)) continue;
+    if (line.startsWith("### ")) keys.add(planHeadingKey(line.slice(4).trim()));
+  }
+  return keys;
+}
+
 /** The backlog files every structural check covers — the tracked markdown loops edit and
  * readers parse by `## ` section. */
 const BACKLOG_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"];
@@ -93,7 +117,15 @@ export function duplicateHeadings(md: string): string[] {
  * names: a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh repo seeded
  * from src/init.ts's templates passes unchanged. A base that already carries a duplicate never
  * blocks unrelated edits — rule (a) fires only when the head's count EXCEEDS the base's, so a
- * change that removes a duplicate always passes. Detection is deterministic markdown reading —
+ * change that removes a duplicate always passes. For PLANS.md there is a third rule
+ * (part 4/4): a head that ADDS a `### ` entry directly under `## Done` whose joined heading
+ * metadata carries `(planned YYYY-MM-DD` but no `done YYYY-MM-DD`, and whose key the base's
+ * PLANS.md never carried in ANY section, is a plan filed into the wrong section — rejected with
+ * a reason naming the entry and the one-line fix. Judged against the merge-base (the same base
+ * the heading rules use), so a Planned → Done move of an entry the base already had passes, a
+ * stacked batch is measured change by change, and a pre-existing stranded entry (whose key the
+ * base has) never blocks unrelated landings — the clean loop's repair (part 3/4) owns those.
+ * Detection is deterministic markdown reading —
  * no pi — so both the review gate (exempt and code diffs alike) and the in-lock landing
  * re-check can afford it on every landing (plans: "Backlog structure check", part 2/4). */
 export async function backlogStructureReason(
@@ -124,6 +156,22 @@ export async function backlogStructureReason(
           `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
           `be invisible to every section reader; restore "## ${title}"`
         );
+    // Part 4/4's rule, PLANS.md only (see this function's doc comment): a NEW plan filed
+    // directly under ## Done with no done date. strandedPlanEntries already does the
+    // fence-aware, joined-metadata reading the first two conditions need; the base's key set
+    // supplies the third.
+    if (file === "PLANS.md") {
+      const baseKeys = planHeadingKeys(base);
+      const newcomer = strandedPlanEntries(head).find(
+        (e) => e.section === "Done" && !baseKeys.has(planHeadingKey(e.title)),
+      );
+      if (newcomer)
+        return (
+          `PLANS.md files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
+          `written into the done section is invisible to every Planned reader; file it under ` +
+          `"## Planned" instead`
+        );
+    }
   }
   return undefined;
 }
