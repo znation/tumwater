@@ -20,11 +20,18 @@ export interface Cluster {
 }
 
 /** A cluster key is the message with the volatile parts replaced, rules applied in this order:
-
- * rule carries a negative lookbehind so the exit status after `exited ` survives — `pi exited
- * 1` and `pi exited null` must stay distinct; the code is semantic. The result is trimmed to
- * 120 chars. Deliberately conservative: over-clustering hides a real second failure mode,
- * while under-clustering merely costs a row. Exported for its own unit tests. */
+ *
+ * - hex git SHAs (7–40 chars) → `<sha>`
+ * - slash-delimited paths → `<path>`
+ * - timestamps (`YYYY-MM-DD`, optionally with time and zone) → `<ts>`
+ * - durations (`12ms`, `3s`, `5m`) → `<dur>`
+ * - every remaining bare integer → `<n>`; this last rule carries a negative lookbehind so the
+ *   exit status after `exited ` survives — `pi exited 1` and `pi exited null` must stay
+ *   distinct; the code is semantic.
+ *
+ * The result is trimmed to 120 chars. Deliberately conservative: over-clustering hides a real
+ * second failure mode, while under-clustering merely costs a row. Exported for its own unit
+ * tests. */
 export function normalizeClusterKey(message: string): string {
   const normalized = message
     .replace(/\b[0-9a-f]{7,40}\b/g, "<sha>")
