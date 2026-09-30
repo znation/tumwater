@@ -423,6 +423,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // here, and the start pass below admits exactly one of them as the probe. Never past an
       // operator pause — human intent outranks the breaker's curiosity.
       const probeDue = fallbackProbeDue(budgetGateState.breaker, now);
+      // The operator pause's block predicate (the director exempt — an explicit human prompt
+      // outranks an autonomous gate): the once-mode settle below and the start gate must agree
+      // on exactly when a fleet pause holds, so the compound lives here once.
+      const operatorPauseBlocks = (role: string): boolean =>
+        (userPaused || (gate === "paused" && !probeDue)) && role !== DIRECTOR_ROLE;
       for (const runner of runners) {
         // Once mode: a paused role runs no tick this round and must be reported as skipped,
         // so it settles here — before the gates that would otherwise skip it silently (a
@@ -432,8 +437,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           once.active &&
           !once.isSettled(runner) &&
           !runner.state.running &&
-          (pausedRolesSet.has(runner.role) ||
-            ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE))
+          (pausedRolesSet.has(runner.role) || operatorPauseBlocks(runner.role))
         ) {
           once.settle(runner.role, "paused");
         }
@@ -448,7 +452,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
         // included (the operator named that one loop deliberately).
         if (pausedRolesSet.has(runner.role)) continue;
-        if ((userPaused || (gate === "paused" && !probeDue)) && runner.role !== DIRECTOR_ROLE)
+        if (operatorPauseBlocks(runner.role))
           continue; // no new role ticks while either gate holds
         if (held && runner.role !== DIRECTOR_ROLE) continue; // nor while a failure storm holds
         // The loop's OWN queue decides inbox due-ness: the director counts its historical
