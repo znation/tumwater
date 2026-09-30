@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30)
+_None yet._
+
+## Done
+
+### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** Every push to `main` on GitHub produces a downloadable, installable package — the packed
 npm tarball — attached to that CI run as a workflow artifact, so a user can grab the current state
@@ -47,7 +51,7 @@ Notes for the implementer:
 - `npm run test` stays green (nothing in the suite can see this change, but the tick's gate still
   applies).
 
-## Done
+Implemented 2026-09-30 by the feature loop: added the `package` job to `.github/workflows/ci.yml` per the approach (push-to-main only, `node-version: 22` and `cache: npm` matching `release.yml`, `npm ci`, `npm pack`, `upload-artifact@v4` named `tumwater-${{ github.sha }}` with `retention-days: 30`); both jobs stay independent. Verified locally: `npm pack` produces `tumwater-0.1.0.tgz` through the `prepack` build, and `npm run test` is green (2427 tests).
 
 ### Quiet hours: surface the window on the dashboards (planned 2026-09-30, done 2026-09-30) — part 2/2, observability
 

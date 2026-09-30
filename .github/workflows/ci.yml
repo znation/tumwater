@@ -18,3 +18,25 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run test:e2e
+
+  package:
+    # Only main pushes carry a downloadable package; PRs and branches run just the test job.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # No git identity here: the suite's fixtures only matter when tests run, and the
+      # test job already sets one.
+      - run: npm ci
+      # prepack runs npm run build, so the tarball carries a freshly stamped dist/.
+      # The test job already gates the run; do not duplicate it here.
+      - run: npm pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tumwater-${{ github.sha }}
+          path: tumwater-*.tgz
+          retention-days: 30
