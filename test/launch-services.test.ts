@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -10,6 +11,7 @@ import {
   nextLaunchServicesWarning,
 } from "../src/launch-services.js";
 import type { ProcessProbe } from "../src/process-table.js";
+import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { harnessWarnings } from "./log-fixtures.js";
 
@@ -113,4 +115,36 @@ test("the watch never overlaps samples and stays quiet on an unreadable count", 
   release(null);
   await first;
   assert.equal(harnessWarnings(root).length, 0, "an unreadable count warns nothing");
+});
+
+// The poll's never-rejects contract (the orchestrator fires poll() without awaiting it, so a
+// rejection would surface as an unhandled one): a probe that rejects and a warning that
+// cannot be written both settle inside poll() — nothing escapes to the caller, and the
+// in-flight flag resets so the next due poll still samples.
+test("a poll that cannot warn — a rejecting probe, an unwritable events log — still resolves", async () => {
+  const t0 = 1_000_000;
+  // A probe that rejects: the catch swallows it, and the watch stays usable.
+  const exploding = portsProbe(120_000);
+  exploding.launchServicesPorts = async () => {
+    exploding.reads++;
+    throw new Error("ps exploded");
+  };
+  const broken = new LaunchServicesWatch(tmpdir(), exploding);
+  await broken.poll(t0);
+  assert.equal(exploding.reads, 1, "the rejecting probe was consulted");
+  await broken.poll(t0 + LAUNCH_SERVICES_SAMPLE_MS);
+  assert.equal(exploding.reads, 2, "a failed sample resets the in-flight flag, so the next due poll samples");
+
+  // A warning that cannot be written: the events log path occupied by a directory — the
+  // class of filesystem damage a crash or a stray tool leaves behind (the same fixture
+  // failure-report.test.ts uses). The warnEvent append throws; poll() must absorb it.
+  const root = tmpdir();
+  fs.mkdirSync(eventsLogPath(root), { recursive: true }); // the log path is a directory now
+  const probe = portsProbe(120_000, 120_000);
+  const watch = new LaunchServicesWatch(root, probe);
+  await watch.poll(t0);
+  assert.equal(probe.reads, 1, "the sample ran; only its warning write failed");
+  await watch.poll(t0 + LAUNCH_SERVICES_SAMPLE_MS);
+  assert.equal(probe.reads, 2, "the failed warning also left the watch sampling on schedule");
+  assert.equal(harnessWarnings(root).length, 0, "nothing was logged where the log cannot be written");
 });
