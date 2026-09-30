@@ -1,9 +1,8 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { dayKey } from "../datetime.js";
 import { eventWindowCovers, LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
-import { parseEventLine, readEvents, type HarnessEvent } from "../events.js";
+import { parseEventLine, readEventsTailWithEnd, type HarnessEvent } from "../events.js";
 import { formatEvent } from "../event-format.js";
-import { statOrNull } from "../files.js";
 import { followFile } from "../tail.js";
 import { createTranscriptRenderer } from "./transcript.js";
 import { readTranscriptTail } from "./transcript-tail.js";
@@ -126,10 +125,11 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     return;
   }
   // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
-  // appears, so `-n 200 --grep land_failed` may print 3 rows from 200 scanned.
-  const shown = grepLower
-    ? readEvents(root, limit).filter((e) => matchesGrep(e, grepLower))
-    : readEvents(root, limit);
+  // appears, so `-n 200 --grep land_failed` may print 3 rows from 200 scanned. The read is
+  // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
+  // from the byte end this very read covered instead of a later stat of the file.
+  const tail = readEventsTailWithEnd(root, limit);
+  const shown = grepLower ? tail.events.filter((e) => matchesGrep(e, grepLower)) : tail.events;
   for (const e of shown) say(json ? JSON.stringify(e) : formatEvent(e));
   if (!follow) {
     // The empty-match line is prose: in JSON mode the empty output is the answer.
@@ -138,10 +138,15 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     return;
   }
   const file = eventsLogPath(root);
-  // Seed the offset from what is on disk without creating anything: followFile tolerates a
-  // missing file (its poll re-stats every interval), so a read-only command never leaves a
-  // harness state file behind — the module contract above promises writes to stdout only.
-  followFile(file, statOrNull(file)?.size ?? 0, (lines) => {
+  // Seed the follow from the byte end the initial read covered (tail.coveredEnd), mirroring
+  // cmdLogsTranscript's tail.end seed: an event appended between the read and the follow's
+  // start lies past the printed window but at or above this offset, so the follow's first
+  // poll delivers it — seeding from a fresh statOrNull(file).size instead would start past
+  // it and silently drop exactly the event an operator watching a failure needs. A missing
+  // log scans to coveredEnd 0, and followFile tolerates a missing file (its poll re-stats
+  // every interval), so a read-only command never leaves a harness state file behind — the
+  // module contract above promises writes to stdout only.
+  followFile(file, tail.coveredEnd, (lines) => {
     for (const line of lines.filter(Boolean)) {
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through

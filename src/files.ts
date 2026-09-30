@@ -95,14 +95,21 @@ const TAIL_CHUNK_BYTES = 8 * 1024;
  * hand. Files at or under TAIL_SCAN_THRESHOLD are delivered whole as a single chunk; a missing
  * or empty file delivers nothing. Per-call I/O is bounded by the caller's stop condition, not
  * the log's size. Callers that accumulate the chunks into one decoded string should use
- * readTailText, the shared collection loop built on this. */
-export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boolean): void {
+ * readTailText, the shared collection loop built on this. Each delivered chunk arrives with
+ * `coveredEnd`, the byte offset the scan covers through — the file's size at scan time (the
+ * whole-file delivery reports the bytes actually read, the chunked one the opened inode's
+ * fstat size) — so a caller can position a follow at exactly where its read stopped. */
+export function forEachTailChunk(
+  file: string,
+  onChunk: (chunk: Buffer, coveredEnd: number) => boolean,
+): void {
   const st = statOrNull(file);
   if (!st || st.size === 0) return; // No log yet.
   let size = st.size;
   if (size <= TAIL_SCAN_THRESHOLD) {
     try {
-      onChunk(fs.readFileSync(file));
+      const whole = fs.readFileSync(file);
+      onChunk(whole, whole.length); // Read covers through the bytes actually read.
     } catch {
       return; // Rotated away between stat and read — no data, the same policy as a missing file.
     }
@@ -120,7 +127,7 @@ export function forEachTailChunk(file: string, onChunk: (chunk: Buffer) => boole
       const buf = Buffer.alloc(len);
       const got = fs.readSync(fd, buf, 0, len, end - len);
       if (got === 0) break; // File shrank under us; use what we have.
-      if (onChunk(buf.subarray(0, got))) break; // Early stop: the caller has enough bytes in hand.
+      if (onChunk(buf.subarray(0, got), size)) break; // Early stop: the caller has enough bytes in hand.
       end -= got;
     }
   } finally {
@@ -139,12 +146,28 @@ export function readTailText(
   file: string,
   onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
 ): string {
+  return readTailTextWithEnd(file, onChunk).text;
+}
+
+/** readTailText, plus the byte offset the scan covered through (forEachTailChunk's
+ * `coveredEnd`): the file's size at read time, so a caller that seeds a follow from it cannot
+ * skip an event appended between this read and a later stat — the race a fresh
+ * `statOrNull(file).size` seed carries. Early stops and mid-scan appends leave the covered
+ * region contiguous through `coveredEnd` either way: chunks are delivered newest-first from
+ * the size the scan measured, so everything below that offset up to the delivered total was
+ * read, and everything at or above it was not. */
+export function readTailTextWithEnd(
+  file: string,
+  onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
+): { text: string; coveredEnd: number } {
   const parts: Buffer[] = [];
-  forEachTailChunk(file, (chunk) => {
+  let coveredEnd = 0;
+  forEachTailChunk(file, (chunk, end) => {
+    coveredEnd = end;
     parts.unshift(chunk);
     return onChunk(chunk, parts);
   });
-  return Buffer.concat(parts).toString("utf8");
+  return { text: Buffer.concat(parts).toString("utf8"), coveredEnd };
 }
 
 /** Ensure `dir` exists (created recursively if needed), so a write into it cannot fail on a

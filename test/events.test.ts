@@ -7,8 +7,10 @@ import {
   logEvent,
   parseEventLine,
   readEvents,
+  readEventsTailWithEnd,
   subscribeEvents,
 } from "../src/events.js";
+import { followFile } from "../src/tail.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 
@@ -28,6 +30,39 @@ test("logEvent appends and readEvents tails in order", () => {
   assert.equal(events[0]?.type, "tick_start");
   assert.equal(events[1]?.type, "tick_end");
   assert.deepEqual(readEvents(dir, 1).map((e) => e.type), ["tick_end"]);
+});
+
+// The seam `tumwater logs -f` follows from: the tail read reports the byte end it covered, so
+// a follow seeded from that same read cannot skip an event appended after the read but before
+// the follow starts — the both-neither gap a fresh `statOrNull(file).size` seed carried.
+test("readEventsTailWithEnd reports the covered byte end, so a follow seeded from it delivers an event appended after the read", () => {
+  const dir = tmpdir();
+  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1 });
+  logEvent(dir, { loop: "clean", type: "tick_end", tick: 1, result: "no_change" });
+  const file = eventsLogPath(dir);
+
+  const { events, coveredEnd } = readEventsTailWithEnd(dir, 50);
+  assert.equal(events.length, 2);
+  // The read covers through EOF as of the read itself — the invariant the follow seed needs.
+  assert.equal(coveredEnd, fs.statSync(file).size);
+
+  // The race, replayed deterministically: an event lands AFTER the read (the old code's seed
+  // stat, taken later, measured a size past it, so the event was printed by neither view).
+  logEvent(dir, { loop: "clean", type: "tick_start", tick: 2 });
+
+  // followFile's first poll runs synchronously, so the appended event must arrive immediately.
+  const delivered: string[] = [];
+  const stop = followFile(file, coveredEnd, (lines) => delivered.push(...lines));
+  stop();
+  assert.equal(delivered.length, 1, `exactly the appended event, not the read's window:\n${JSON.stringify(delivered)}`);
+  assert.match(delivered[0] ?? "", /"tick":2/);
+});
+
+// And the boundary the seed must sit on exactly: coveredEnd is the read's EOF, so re-following
+// from it after the read re-delivers nothing already read.
+test("readEventsTailWithEnd on a missing log scans to nothing with coveredEnd 0", () => {
+  const dir = tmpdir();
+  assert.deepEqual(readEventsTailWithEnd(dir, 10), { events: [], coveredEnd: 0 });
 });
 
 test("readEvents skips corrupt lines", () => {

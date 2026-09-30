@@ -6,7 +6,7 @@ import { parseJsonObject } from "./json-object.js";
 import {
   ensureParentDir,
   openForRead,
-  readTailText,
+  readTailTextWithEnd,
   rotateIfLarge,
   statOrNull,
 } from "./files.js";
@@ -262,10 +262,12 @@ export function readEvents(root: string, limit = 200): HarnessEvent[] {
 const tailCache = new Map<string, StatKeyedValue<HarnessEvent[]>>();
 
 /** The backwards tail scan readEvents caches: read just enough bytes from the end to cover
- * `limit` lines, parse them, keep the newest `limit` complete ones. */
-function scanEventTail(file: string, limit: number): HarnessEvent[] {
+ * `limit` lines, parse them, keep the newest `limit` complete ones. Also reports the byte end
+ * the scan covered through (files.readTailTextWithEnd) for callers that seed a follow from
+ * the same read. */
+function scanEventTailWithEnd(file: string, limit: number): { events: HarnessEvent[]; coveredEnd: number } {
   let newlines = 0;
-  const text = readTailText(file, (chunk) => {
+  const { text, coveredEnd } = readTailTextWithEnd(file, (chunk) => {
     for (let i = 0; i < chunk.length; i++) if (chunk[i] === 10) newlines++;
     // limit+1 newlines guarantees `limit` complete lines after the first one
     // (the partial leading line, if any, is unparseable and skipped below).
@@ -283,7 +285,23 @@ function scanEventTail(file: string, limit: number): HarnessEvent[] {
     const ev = parseEventLine(line);
     if (ev) events.push(ev);
   }
-  return events;
+  return { events, coveredEnd };
+}
+
+/** The cached scan's uncached twin, for one-shot callers that also need the covered byte end:
+ * `tumwater logs -f` seeds its follow from the read that produced the printed window, so an
+ * event appended between that read and the follow's start is delivered by the follow's first
+ * poll instead of falling into the both-neither gap a fresh stat seed leaves. It skips the
+ * stat-keyed cache because the cache carries only the parsed events — the covered end is not
+ * part of the cached value — and this runs once per command invocation, not per poll. */
+export function readEventsTailWithEnd(root: string, limit: number): { events: HarnessEvent[]; coveredEnd: number } {
+  if (!(limit > 0)) return { events: [], coveredEnd: 0 }; // Same non-positive guard as readEvents.
+  return scanEventTailWithEnd(eventsLogPath(root), limit);
+}
+
+/** The cached tail scan readEvents builds on: identical result, end dropped. */
+function scanEventTail(file: string, limit: number): HarnessEvent[] {
+  return scanEventTailWithEnd(file, limit).events;
 }
 
 // Human-facing formatting of events lives in event-format.ts, beside this module because
