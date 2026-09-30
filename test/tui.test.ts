@@ -14,12 +14,11 @@ import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { makeTuiRepo, startTui } from "./tui-fixtures.js";
+import { makeTuiRepo, startTui, withTui } from "./tui-fixtures.js";
 
 test("runTui renders the fleet table and an empty activity pane on start", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     const frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/); // default view: recent events
     assert.match(frame, /\(no events yet\)/);
@@ -27,9 +26,7 @@ test("runTui renders the fleet table and an empty activity pane on start", async
     // The one enabled loop is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // A pty whose window size was never set reports 0×0 (macOS `script`, some CI pty
@@ -38,15 +35,12 @@ test("runTui renders the fleet table and an empty activity pane on start", async
 // saw only the clear-screen and the bare prompt prefix.
 test("runTui degrades a reported 0×0 window to the default frame budget", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo, { rows: 0, columns: 0 });
-  try {
+  await withTui(repo, async (tui) => {
     const frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/); // the tab strip survives, not clipped to empty
     assert.match(frame, /clean/); // the fleet table renders
     assert.ok(frame.trim().split("\n").length > 2, "the frame carries dashboard content");
-  } finally {
-    await tui.quit();
-  }
+  }, { rows: 0, columns: 0 });
 });
 
 // Repaint-on-change: a re-render whose composed frame is byte-identical to the last one
@@ -57,8 +51,7 @@ test("runTui degrades a reported 0×0 window to the default frame budget", async
 // skip without any state change; a following content-changing keypress still repaints.
 test("runTui skips the terminal write when a re-render composes an identical frame", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     const initial = tui.lastFrame();
     const writes = tui.frames.length;
     tui.key(undefined, "f1"); // inert keypress: same state, same frame — no write
@@ -67,9 +60,7 @@ test("runTui skips the terminal write when a re-render composes an identical fra
     tui.key("h", "h"); // typing changes the prompt line: a new frame is written
     assert.equal(tui.frames.length, writes + 1, "changed frame is written");
     assert.match(tui.lastFrame(), /director › h$/m);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // NO_COLOR: a set, non-empty variable suppresses the bold and dim attributes (the
@@ -122,28 +113,21 @@ test("runTui shows the land queue badge in the header while a landing is queued"
     summary: "tidy something",
     enqueuedAt: Date.now(),
   });
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     assert.match(tui.lastFrame(), /· land queue: 1/);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("runTui shows no land queue badge when the queue is idle", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     assert.doesNotMatch(tui.lastFrame(), /land queue/);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("typing edits the prompt line; Enter queues it for the director", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     for (const ch of "fix the bug") tui.key(ch, ch);
     assert.equal(tui.lines().at(-1), "director › fix the bug");
 
@@ -168,9 +152,7 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
     // An empty Enter queues nothing more.
     tui.key(undefined, "return");
     assert.equal(fs.readdirSync(inbox).filter((f) => f.endsWith(".md")).length, 1);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("a failed prompt submit keeps the text and flashes the error instead of losing it", async () => {
@@ -236,8 +218,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures",
       JSON.stringify({ ts: atNoon(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
     ]);
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     assert.match(tui.lastFrame(), /\[Activity\]/);
 
     tui.key(undefined, "t", { ctrl: true });
@@ -283,9 +264,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures",
 
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Activity\]/); // wraps back to Activity
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("project status browses entries in full with up/down and resets on Ctrl+T", async () => {
@@ -305,8 +284,7 @@ A second body line, kept verbatim.`,
   ]);
   seedEntry(repo, "BUGS.md", "### Crashes on empty input");
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "t", { ctrl: true }); // → project status
     let frame = tui.lastFrame();
@@ -341,9 +319,7 @@ A second body line, kept verbatim.`,
     frame = tui.lastFrame();
     assert.match(frame, /\[Backlog\]/); // list mode restored…
     assert.doesNotMatch(frame, /Machine-readable status output/); // …body no longer shown
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 /** The "body line NN" numbers currently shown in the pane (ANSI codes ignored). */
@@ -367,8 +343,7 @@ ${Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0
     { heading: "## Done" },
   ]);
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "t", { ctrl: true }); // → project status
     tui.key(undefined, "down"); // open the plan's full body
@@ -404,17 +379,14 @@ ${Array.from({ length: 80 }, (_, i) => `body line ${String(i + 1).padStart(2, "0
     const headFrame = frame;
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("PgUp/PgDn are ignored in project-status list mode (no entry selected)", async () => {
   const repo = await makeTuiRepo();
   seedEntry(repo, "PLANS.md", "### Add a --json flag"); // something to show in the list
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "t", { ctrl: true }); // → project status (list mode)
     assert.match(tui.lastFrame(), /plans \(1\):/);
@@ -424,9 +396,7 @@ test("PgUp/PgDn are ignored in project-status list mode (no entry selected)", as
     assert.equal(tui.lastFrame(), listFrame, "PgDn with no selection re-renders the same list");
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), listFrame, "…and so does PgUp");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("a stale entry selection falls back to the empty list when entries disappear", async () => {
@@ -436,8 +406,7 @@ test("a stale entry selection falls back to the empty list when entries disappea
     { heading: "## Done" },
   ]);
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "t", { ctrl: true }); // → project status
     tui.key(undefined, "down"); // open the plan's body (selection now active)
@@ -452,15 +421,12 @@ test("a stale entry selection falls back to the empty list when entries disappea
     assert.match(frame, /\[Backlog\]/); // list-mode header restored
     assert.match(frame, /\(no planned features, open bugs, or open questions\)/);
     assert.doesNotMatch(frame, /Machine-readable status output/); // …and the body is gone
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("open questions raise an attention line under the header", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     assert.doesNotMatch(tui.lastFrame(), /needs your answer/); // seeded QUESTIONS.md is empty
 
     // Post a question under ## Open (the first "_None yet._" placeholder).
@@ -472,9 +438,7 @@ test("open questions raise an attention line under the header", async () => {
     const ls = tui.lines();
     assert.match(ls[0] ?? "", /· questions: 1/);
     assert.equal(ls[1], "? 1 question needs your answer — Q1: which database?");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 test("queued prompts render numbered above the activity pane and shrink its budget", async () => {
   const repo = await makeTuiRepo();
@@ -482,8 +446,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
   // shrinking budget visibly drops body lines instead of just showing fewer than it could.
   for (let i = 1; i <= 30; i++) logEvent(repo, { loop: "clean", type: "tick_start", tick: i });
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     // Nothing queued → no numbered lines anywhere in the frame.
     assert.doesNotMatch(tui.lastFrame(), /^\d+\. /m);
 
@@ -520,9 +483,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
       assert.ok(line !== undefined && line.length <= 60, `queue line fits the width: ${JSON.stringify(line)}`);
     }
     (process.stdout as { columns?: number }).columns = 100;
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("runTui refuses to start without an interactive terminal", async () => {
@@ -560,8 +521,7 @@ test("Ctrl+C exits cleanly: raw mode off, stdin paused, render timer cleared", a
 // saves through the shared setter (which writes tumwater.json), Esc/Ctrl+T restore the draft.
 test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ctrl+T exit", async () => {
   const repo = await makeTuiRepo(); // defaultConfig: maxDailyCostUsd 50 (enabled)
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     // A draft prompt first — leaving budget mode must restore it byte-for-byte.
     for (const ch of "draft prompt") tui.key(ch, ch);
 
@@ -613,9 +573,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Transcript: clean/);
     assert.equal(tui.lines().at(-1), "director › draft prompt");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // Free-state budget (BUGS.md, 2026-09-14): a fleet whose models are all free has no spend
@@ -638,17 +596,14 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
   const oldHome = process.env.HOME;
   process.env.HOME = home; // must be set before the first render so Ctrl+B reads the free flag
   try {
-    const tui = startTui(repo);
-    try {
+    await withTui(repo, async (tui) => {
       // A draft prompt — the notice must leave it byte-for-byte intact.
       for (const ch of "draft prompt") tui.key(ch, ch);
       tui.key(undefined, "b", { ctrl: true });
       assert.match(tui.lastFrame(), /budget n\/a — all models free/);
       assert.equal(tui.lines().at(-1), "director › draft prompt", "the editor never opened — prompt untouched");
       assert.match(tui.lastFrame(), /Ctrl\+B daily cap/, "the footer hint is unchanged");
-    } finally {
-      await tui.quit();
-    }
+    });
   } finally {
     if (oldHome === undefined) delete process.env.HOME;
     else process.env.HOME = oldHome;
@@ -660,8 +615,7 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
 // re-fills the cap. Esc and Ctrl+T exits are pinned above; this pins the third exit.
 test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     for (const ch of "keep me") tui.key(ch, ch);
     tui.key(undefined, "b", { ctrl: true }); // enter: pre-filled with the current cap
     assert.equal(tui.lines().at(-1), "daily cap $ 50");
@@ -676,9 +630,7 @@ test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", a
     assert.equal(tui.lines().at(-1), "daily cap $ 50");
     tui.key(undefined, "escape");
     assert.equal(tui.lines().at(-1), "director › keep me");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // PgDn/PgUp in the usage-report view page the cached
@@ -690,8 +642,7 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
   const repo = await makeTuiRepo();
   for (let i = 1; i <= 12; i++) submitPrompt(repo, `prompt ${i}`);
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "t", { ctrl: true }); // → project status
     tui.key(undefined, "t", { ctrl: true }); // → usage report
@@ -718,9 +669,7 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     const headFrame = frame;
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // The failures pane (the view after usage report) reuses the same cached-Markdown machinery.
@@ -730,8 +679,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
   const repo = await makeTuiRepo();
   for (let i = 1; i <= 12; i++) submitPrompt(repo, `prompt ${i}`);
 
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "t", { ctrl: true }); // → project status
     tui.key(undefined, "t", { ctrl: true }); // → usage report
@@ -761,9 +709,7 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
 
     tui.key(undefined, "pageup");
     assert.match(tui.lastFrame(), /# tumwater failure digest/, "PgUp at the head is a no-op");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // Enter in budget-edit mode saves through setDailyBudgetUsd, which reads the config FRESH
@@ -774,8 +720,8 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
   const repo = await makeTuiRepo();
   const cfgPath = path.join(repo, "tumwater.json");
   const original = fs.readFileSync(cfgPath, "utf8");
-  const tui = startTui(repo); // first render: the display caches this last-known-good config
-  try {
+  // The first render caches this last-known-good config.
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "b", { ctrl: true });
     assert.equal(tui.lines().at(-1), "daily cap $ 50");
 
@@ -798,15 +744,12 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     assert.equal(tui.lines().at(-1), "director › ");
     const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 30);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and wakes it", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
     assert.match(tui.lastFrame(), /Ctrl\+R prompt clean/); // the hint names the viewed loop
 
@@ -831,15 +774,12 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     assert.match(tui.lastFrame(), /prompt text is empty/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.equal(tui.lines().at(-1), "clean ›  "); // the space stayed: the editor is still open
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("a throwing role-prompt submit flashes the error and keeps the editor open", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → the one enabled role's transcript
     tui.key(undefined, "r", { ctrl: true }); // role-prompt mode for clean
 
@@ -864,15 +804,12 @@ test("a throwing role-prompt submit flashes the error and keeps the editor open"
     tui.key(undefined, "return");
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.match(tui.lastFrame(), /queued for the clean loop/);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R restore byte-for-byte", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     for (const ch of "director draft") tui.key(ch, ch);
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "r", { ctrl: true });
@@ -904,9 +841,7 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     tui.key(undefined, "return");
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["queued text"]);
     assert.equal(tui.lines().at(-1), "director › director draft");
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 // --- `tui` through the real CLI entry point: main()'s tui case (arg rejection -> readiness

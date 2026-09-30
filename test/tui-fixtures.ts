@@ -98,6 +98,23 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   return { key: press, lastFrame, rawFrame, lines, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
 }
 
+/** Runs body against a started fake TUI and quits it in a finally even when body throws —
+ * the single home of the startTui/quit pairing the topic tests repeat, so a failing
+ * assertion can never leak the patched stdout/stdin/readline globals into the next test.
+ * size passes through to startTui for the degenerate-window and widened-terminal tests. */
+export async function withTui<R>(
+  repo: string,
+  body: (tui: ReturnType<typeof startTui>) => Promise<R> | R,
+  size?: { rows?: number; columns?: number },
+): Promise<R> {
+  const tui = startTui(repo, size);
+  try {
+    return await body(tui);
+  } finally {
+    await tui.quit();
+  }
+}
+
 /** A fresh initialized repo with exactly one non-director role enabled, so the Ctrl+T
  * view cycle (events → transcript → project status) is short and deterministic. */
 export async function makeTuiRepo(): Promise<string> {

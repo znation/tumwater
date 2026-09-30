@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeTuiRepo, startTui } from "./tui-fixtures.js";
+import { makeTuiRepo, withTui } from "./tui-fixtures.js";
 
 // PLANS.md "TUI per-loop controls": Ctrl+P/Ctrl+A/Ctrl+W act on the loop whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two
@@ -19,8 +19,7 @@ import { makeTuiRepo, startTui } from "./tui-fixtures.js";
 // roleResumeMessage in src/operator-intent.ts are the shared single writer of the wording).
 test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wording", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     assert.match(tui.lastFrame(), /Ctrl\+P pause\/resume · Ctrl\+W wake · Ctrl\+A abort/); // header hint
 
@@ -36,19 +35,16 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
     assert.match(tui.lastFrame(), /role clean resumed — it starts ticking again/);
     // No fleet pause is active, so the interplay note stays out of the flash.
     assert.doesNotMatch(tui.lastFrame(), /fleet pause is still active/);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fleet is paused", async () => {
   const repo = await makeTuiRepo();
   pauseFleet(repo); // the stronger gate: a resumed role still starts no ticks under it
-  const tui = startTui(repo);
-  // The interplay note makes the resume flash longer than the default fake 100 columns, and
-  // every rendered line is clipped to the width — widen the fake terminal so the note fits.
-  (process.stdout as { columns?: number }).columns = 220;
-  try {
+  await withTui(repo, async (tui) => {
+    // The interplay note makes the resume flash longer than the default fake 100 columns, and
+    // every rendered line is clipped to the width — widen the fake terminal so the note fits.
+    (process.stdout as { columns?: number }).columns = 220;
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "p", { ctrl: true }); // pause the role under the fleet pause
     assert.match(tui.lastFrame(), /role clean paused/);
@@ -58,15 +54,12 @@ test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fle
       tui.lastFrame(),
       /role clean resumed[^]*\(the fleet pause is still active — `tumwater resume` lifts it\)/,
     );
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("Ctrl+A flashes the abort confirmation with a live harness and the liveness error without", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "a", { ctrl: true });
     // No harness: the liveness gate rejects before any marker is written, and the failure
@@ -80,28 +73,22 @@ test("Ctrl+A flashes the abort confirmation with a live harness and the liveness
     tui.key(undefined, "a", { ctrl: true });
     assert.match(tui.lastFrame(), /abort requested for clean — a running fleet applies it within ~2s/);
     assert.equal(fs.existsSync(abortRequestPath(repo, "clean")), true);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("Ctrl+W flashes the wake confirmation and drops the wake marker for the viewed role", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "w", { ctrl: true });
     assert.match(tui.lastFrame(), /wake requested for clean/);
     assert.equal(fs.existsSync(wakeRequestPath(repo)), true);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
 test("the per-loop keys are inert outside transcript views, in budget mode, and on failure flash an error", async () => {
   const repo = await makeTuiRepo();
-  const tui = startTui(repo);
-  try {
+  await withTui(repo, async (tui) => {
     // Events view (no transcript on screen): all three keys write nothing and flash nothing.
     tui.key(undefined, "p", { ctrl: true });
     tui.key(undefined, "a", { ctrl: true });
@@ -127,8 +114,6 @@ test("the per-loop keys are inert outside transcript views, in budget mode, and 
     fs.mkdirSync(pausedRolesPath(repo), { recursive: true });
     tui.key(undefined, "p", { ctrl: true });
     assert.match(tui.lastFrame(), /error: /);
-  } finally {
-    await tui.quit();
-  }
+  });
 });
 
