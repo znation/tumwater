@@ -4,7 +4,34 @@ Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
 ## Planned
-_None yet._
+
+### An error-streak circuit breaker: a loop that keeps failing gets paused, not just warned (planned 2026-09-30 by plan loop)
+
+**Goal.** A role whose ticks fail consecutively is warned at 3 (`ERROR_STREAK_WARN`, src/tick-outcome.ts) and the fleet-wide storm alarm names shared causes (src/error-storm.ts) — but both only *talk*. A single loop failing on its own cause (a broken worktree, a cursed task, a wrong per-role model) keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and spend on a loop that cannot succeed. Give the harness a third act-on-it gate beside the budget gate (src/budget-gates.ts) and the pause gates (src/pause-gates.ts): after `ERROR_STREAK_BREAKER = 10` consecutive failed ticks, the harness auto-pauses that role by writing it into the same per-role pause marker the operator's `tumwater pause --role` uses, so the scheduler's existing `pausedRolesSet.has(runner.role)` skip (src/orchestrator.ts) blocks new ticks with zero scheduler changes. The director is not exempt: a failing director cannot process prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row toggle) lifts it, as today.
+
+**Approach.**
+
+- **Constant** — `ERROR_STREAK_BREAKER = 10` in src/tick-outcome.ts beside `ERROR_STREAK_WARN` (3). At the warn bar the failure is already clearly not transient; the ladder has doubled three times by tick 4, so 10 consecutive failures is ~45+ minutes of a role failing on the slowest rung — long enough to ride out genuine transience, short enough to act well before the hours-long storms the 2026-09-22 meltdown showed. One sensible default, no config knob.
+- **New module `src/streak-gate.ts`** — sibling of pause-gates.ts/budget-gates.ts: `newStreakGateState()` and `pollStreakGate(root, state, runners, pausedRoles)`. The pure trip rule lives here (unit-testable without a fleet, like error-storm.ts's reducer); the module owns the only event emission. Per-role bookkeeping in the in-memory state, an `acked: Map<role, number>`:
+  - **Trip**: for each runner whose `LoopState.consecutiveErrors` (via the same `r.state` pick pollErrorStorm uses) is ≥ `ERROR_STREAK_BREAKER + (acked.get(role) ?? 0)` and whose role is **not** in `pausedRoles`: call `pauseRole(root, role)` (src/fleet-state.ts — the shared marker, lock, and idempotence come free) and log one event `role_streak_paused` carrying `role`, `streak`, and `lastError`.
+  - **Ack while paused**: every poll, for each role present in `pausedRoles`, set `acked` to its current streak. The marker itself is the ack carrier, so no separate resume detection is needed: after the operator resumes a breaker-paused role, re-tripping requires ten *more* consecutive failures, not one. This also covers the operator-paused-then-resumed failing role (no instant re-trip) and a harness restart mid-pause (state is lost; the marker freezes the ack on the first poll after restart).
+  - A role whose streak resets to 0 through its own success needs no special case — the bar arithmetic simply never trips again until a fresh streak climbs to 10.
+- **Orchestrator wiring** — one call beside `pollPauseGates` in runOrchestrator's poll (src/orchestrator.ts, where pauseGateState is stepped): `pollStreakGate(root, streakGateState, runners, pausedRolesSet)`. In-flight ticks finish; only new ticks are blocked, like every gate.
+- **Event plumbing** — add `"role_streak_paused"` to the `HarnessEvent["type"]` union (src/events.ts) with a comment naming the trigger, and a renderer case in src/event-format.ts beside `role_paused`: `role <id> paused — 10 ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`. Treated as routine-with-explanation like `rate_limit_hold`, not a `warning` — the pause IS the harness handling the failure.
+- **Accepted behavior** (state it in the module doc, do not fix here): the dashboards' "failing tick after tick" alert (src/ui/fleet-alerts.ts) reads `consecutiveErrors` regardless of pause, so it keeps listing a breaker-paused role until the streak clears; the loop cell's paused badge explains why it is not ticking, and the `role_streak_paused` event tells the operator why.
+- **Docs** — one sentence in docs/how-it-works.md's gate enumeration if it lists the fleet gates (the same list the pause-gates.ts doc comment points at).
+
+**Files touched.** src/tick-outcome.ts (constant), src/streak-gate.ts (new, ~90 lines), src/orchestrator.ts (one call site + state init), src/events.ts (union entry), src/event-format.ts (renderer case), docs/how-it-works.md (one sentence, if applicable); tests: test/streak-gate.test.ts (new) plus a renderer case in test/event-format.test.ts.
+
+**Acceptance criteria.**
+
+1. A runner state with `consecutiveErrors: 10` and a role absent from the paused-roles marker gets paused by one `pollStreakGate` call: `pauseRole` wrote the marker, exactly one `role_streak_paused` event (with role, streak, lastError) is in the log.
+2. Repeated polls while the role stays paused log nothing more (idempotent), and a streak that keeps climbing while paused does not re-log or re-write the marker.
+3. A streak of 9 does not trip; a streak that resets to 0 and climbs to 10 again trips normally.
+4. After a trip at streak S, an operator resume (role removed from the marker) plus a poll does not re-trip until the streak reaches S + 10; an operator-paused failing role that is resumed does not trip on its pre-pause streak.
+5. An orchestrator restart mid-pause logs nothing while the marker stands (the first poll re-acks), and if the operator had already resumed before the restart, a still-live streak ≥ 10 re-trips once (durable cause, one event).
+6. The director's streak trips the breaker like any role's.
+7. `npm run test` passes with the new test file green; the new event renders in `tumwater logs` output via the event-format case.
 
 ## Done
 
