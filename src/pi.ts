@@ -7,7 +7,7 @@ import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./r
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./process-table.js";
 import { piArgs } from "./pi-args.js";
-import { PiStreamParser, type BackendFailureKind } from "./pi-stream.js";
+import { PiStreamParser, STREAM_SEVERED, type BackendFailureKind } from "./pi-stream.js";
 import { commandBuffersOutput } from "./command-shape.js";
 export type { BackendFailureKind } from "./pi-stream.js";
 
@@ -80,9 +80,10 @@ export interface PiRunResult {
    * retry covers it instead of discarding the tick's work. */
   transientRateLimit: boolean;
   /** True when any event reported a provider-wide failure that is not rate limiting — the
-   * connection down, a 5xx, the model failing to load (src/pi-stream.ts TRANSIENT_BACKEND).
-   * A transient failure of the world like the 429 flag, but with no Retry-After hint to wait
-   * out: the fleet-wide hold (src/fleet-hold.ts), not the per-run retry, answers it. */
+   * connection down, a 5xx, the model failing to load, the stream severed mid-run
+   * (src/pi-stream.ts TRANSIENT_BACKEND). A transient failure of the world like the 429 flag,
+   * but with no Retry-After hint to wait out: the fleet-wide hold (src/fleet-hold.ts) and —
+   * for the stream-severed kind only — the per-run retry answer it. */
   transientBackend: boolean;
   /** Which kind of backend failure the run ended on (src/pi-stream.ts backendKind's
    * classification) — the fleet-wide hold groups its storms by kind. Undefined when
@@ -432,10 +433,20 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // chunk: transient, retryable with --continue (the loop decides). Never set for a run the
       // harness itself killed — those have their own cause.
       const crashed = !aborted && !timedOut && !quietKilled && code !== 0 && TRANSIENT_PI_CRASH.test(stderr);
+      // The provider severing the in-flight HTTP stream — undici's bare "terminated" — can
+      // arrive on pi's stderr (pi dying on the cut, nonzero exit) as well as in a pi event
+      // errorMessage (pi catching it): classify the stderr spelling through the same anchored
+      // pattern, so either shape gets the same transientBackend treatment. Never on a run the
+      // harness itself killed, and never when the JSON-parse crash pattern already named the
+      // cause — one exit has one cause (BUGS.md 2026-09-30).
+      const streamSevered =
+        !aborted && !timedOut && !quietKilled && !crashed && STREAM_SEVERED.test(stderr.trim());
       finish(
         resultFromParser({
           ok: !failed,
           transientPiCrash: crashed,
+          transientBackend: parser.transientBackend || streamSevered,
+          backendKind: parser.backendFailureKind ?? (streamSevered ? "stream-severed" : undefined),
           errorMessage: aborted
             ? "aborted by harness shutdown"
             : quietKilled

@@ -300,6 +300,7 @@ test("backendKindPhrase names each backend-failure kind and falls back on an unr
   assert.equal(backendKindPhrase("timeout"), "request timed out");
   assert.equal(backendKindPhrase("server"), "server error");
   assert.equal(backendKindPhrase("model-load"), "model load failure");
+  assert.equal(backendKindPhrase("stream-severed"), "stream severed");
   assert.equal(backendKindPhrase("gateway-noon"), "backend failure");
   assert.equal(backendKindPhrase(undefined), "backend failure");
 });

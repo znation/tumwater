@@ -231,6 +231,29 @@ test("a backend-kind failure the retry does not cover warns once and earns no re
   }
 });
 
+test("a severed stream (terminated) warns and earns the one retry like the other transient kinds", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // undici's bare word when the provider cuts the HTTP stream mid-run (BUGS.md 2026-09-30):
+    // the session on disk is intact, so this is a transient of the world, not of the session.
+    firstRun: `printf '%s\\n' '${errorLine("terminated")}'`,
+  });
+  try {
+    const { loopPi, warns, usage } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-8-author");
+    assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
+    assert.equal(runArgs(args).length, 2, "the severed-stream run is retried once");
+    assert.equal(usage.length, 2, "both attempts fold — the failed one before the wait");
+    assert.ok(
+      warns.some((w) => /severed the in-flight stream \(terminated\)/.test(w)),
+      `the warning names the severing: ${warns.join(" | ")}`,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("a successful run that merely saw a backend error mid-stream stays silent", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

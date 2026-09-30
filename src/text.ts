@@ -302,6 +302,8 @@ export function backendKindPhrase(kind: unknown): string {
       return "server error";
     case "model-load":
       return "model load failure";
+    case "stream-severed":
+      return "stream severed";
     default:
       return "backend failure";
   }

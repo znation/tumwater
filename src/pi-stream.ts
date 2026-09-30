@@ -76,18 +76,37 @@ const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
  * fleet-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
  * two hitting different kinds is not — so the observation carries the kind instead of
  * re-matching the text later. Defined beside the classifier that produces it. */
-export type BackendFailureKind = "connection" | "timeout" | "server" | "model-load";
+export type BackendFailureKind =
+  | "connection"
+  | "timeout"
+  | "server"
+  | "model-load"
+  | "stream-severed";
+
+/** undici's spelling of a severed HTTP stream: the provider (or its own idle timeout) cuts
+ * the request while pi is still reading it, and undici's fetch rejects with the bare word
+ * "terminated" — the 2026-08-22 idle-timeout diagnosis. Anchored to the END of the error text
+ * on purpose: the real message is the bare word, optionally behind a prefix and closing
+ * punctuation, while an unrelated error that merely contains the word ("worker terminated
+ * with exit code 1") must not read as a backend failure. Exported because the same spelling
+ * can arrive on pi's stderr without any pi event for it (src/pi.ts's close handler). */
+export const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
 
 /** The backend-failure error texts pi actually surfaces, matched against every error text
  * feedLine sees — the same shapes as the rate-limit regex's various renderings: pi renders the
  * provider's status and message variously (fetch-level "Connection error.", OpenAI-style
- * "Request timed out" and 5xx status texts, oMLX's model-server "Failed to load model").
+ * "Request timed out" and 5xx status texts, oMLX's model-server "Failed to load model",
+ * undici's bare stream-cut "terminated").
  * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
  * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
- * and never counts as a backend failure. Module-private: only PiStreamParser.feedLine matches
- * it; backendKind below classifies which phrase matched. */
-const TRANSIENT_BACKEND =
-  /connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|failed to load model/i;
+ * and never counts as a backend failure. Composed so the stream-severed spelling lives in
+ * STREAM_SEVERED alone — src/pi.ts classifies stderr through the same one regex. Only
+ * PiStreamParser.feedLine matches the result; backendKind below classifies which phrase
+ * matched. */
+const TRANSIENT_BACKEND = new RegExp(
+  `connection error|connection refused|connection reset|econn(refused|reset)|request timed out|internal server error|bad gateway|service unavailable|gateway timeout|failed to load model|${STREAM_SEVERED.source}`,
+  "i",
+);
 
 /** Which backend-failure kind an error text belongs to — pure, exported so the parser's
  * classification is unit-testable without a stream (pi-parser.test.ts feeds the texts
@@ -96,6 +115,7 @@ export function backendKind(text: string): BackendFailureKind {
   if (/connection error|connection refused|connection reset|econn(refused|reset)/i.test(text)) return "connection";
   if (/request timed out/i.test(text)) return "timeout";
   if (/internal server error|bad gateway|service unavailable|gateway timeout/i.test(text)) return "server";
+  if (STREAM_SEVERED.test(text)) return "stream-severed";
   return "model-load";
 }
 

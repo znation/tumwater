@@ -58,7 +58,13 @@ export const HOLD_RELAPSE_MS = 5 * 60_000;
 
 /** The failure kinds a hold can be about: the rate-limit kind for 429 storms, and the
  * backend-failure kinds src/pi-stream.ts's classifier produces for the non-429 texts. */
-export type HoldKind = "rate-limit" | "connection" | "timeout" | "server" | "model-load";
+export type HoldKind =
+  | "rate-limit"
+  | "connection"
+  | "timeout"
+  | "server"
+  | "model-load"
+  | "stream-severed";
 
 /** One role's most recent pi run that ended on a provider failure (LoopRunner.lastRateLimit
  * for the "rate-limit" kind, LoopRunner.lastBackendFailure for the backend kinds). Only the

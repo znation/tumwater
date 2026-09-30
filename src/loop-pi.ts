@@ -99,8 +99,10 @@ export class LoopPi {
   /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
    * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
    * earn exactly one retry that continues the same session — the model server timing out an
-   * idle predict stream, pi itself crashing on a torn server chunk (a JSON.parse failure
-   * on its stderr), and the provider rate-limiting the request with HTTP 429 (where the
+   * idle predict stream, the provider severing that stream outright (undici's bare
+   * "terminated", the stream-severed backend kind), pi itself crashing on a torn server chunk
+   * (a JSON.parse failure on its stderr), and the provider rate-limiting the request with
+   * HTTP 429 (where the
    * provider's Retry-After hint, when sent, is waited out first — capped, so one provider's
    * generosity cannot eat the tick's own run budget). A harness-killed or quiet-killed run
    * never takes the transient-retry path:
@@ -114,7 +116,10 @@ export class LoopPi {
       !pi.aborted &&
       !pi.timedOut &&
       !pi.quietKilled &&
-      (pi.transientServerTimeout || pi.transientPiCrash || pi.transientRateLimit) &&
+      (pi.transientServerTimeout ||
+        pi.transientPiCrash ||
+        pi.transientRateLimit ||
+        (pi.transientBackend && pi.backendKind === "stream-severed")) &&
       !pi.ok
     ) {
       this.host.warn(
@@ -122,7 +127,9 @@ export class LoopPi {
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
           : pi.transientRateLimit
             ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the pi run once`
-            : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+            : pi.backendKind === "stream-severed"
+              ? "provider severed the in-flight stream (terminated) — retrying the pi run once"
+              : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and

@@ -874,3 +874,21 @@ test("runPi does not flag ordinary crashes or harness kills as transient pi cras
   }
   assert.equal(TRANSIENT_PI_CRASH.test("Error: spawn ENOENT"), false);
 });
+
+// The provider severing the in-flight HTTP stream: undici rejects with the bare word
+// "terminated", and pi can die on it with that word as its only stderr — the 2026-09-30
+// digest's #2 loss cause, which fell through every transient layer because the word matched
+// none of them (BUGS.md 2026-09-30). The stderr spelling classifies like the pi-event one.
+test("runPi flags undici's bare terminated on stderr as a stream-severed backend failure", async () => {
+  const r = await runFakePi(`echo terminated >&2\nexit 1`);
+  assert.equal(r.ok, false);
+  assert.equal(r.transientBackend, true);
+  assert.equal(r.backendKind, "stream-severed");
+  assert.equal(r.transientPiCrash, false, "one exit has one cause — this is not the JSON-parse crash");
+  assert.equal(r.errorMessage, "terminated");
+  // End-anchored on purpose: an unrelated error that merely contains the word must not
+  // read as a severed stream.
+  const unrelated = await runFakePi(`echo 'worker terminated with exit code 1' >&2\nexit 1`);
+  assert.equal(unrelated.transientBackend, false);
+  assert.equal(unrelated.backendKind, undefined);
+});

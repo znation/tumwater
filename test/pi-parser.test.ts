@@ -454,7 +454,7 @@ test("onToolCallStart observes each tool call once, at its start, with pi's name
 // set transientBackend with the kind the fleet-wide hold groups storms by, while 429 texts
 // stay rate-limit-only (rate-limit is matched first, so a 429 is never also a backend
 // failure).
-test("parser classifies backend-failure error texts into the four kinds", () => {
+test("parser classifies backend-failure error texts into the five kinds", () => {
   const cases: Array<[string, string]> = [
     ["Connection error.", "connection"],
     ["fetch failed: connect ECONNREFUSED 127.0.0.1:11434", "connection"],
@@ -466,6 +466,12 @@ test("parser classifies backend-failure error texts into the four kinds", () => 
     ["503 Service Unavailable", "server"],
     ["504 Gateway Timeout", "server"],
     ["Failed to load model: llama-3-70b", "model-load"],
+    // undici's bare word when it cuts the HTTP stream — the 2026-09-30 digest's #2 loss
+    // cause, silent before this classification (BUGS.md 2026-09-30). With prefix and
+    // punctuation too, as pi renders wrapped provider errors.
+    ["terminated", "stream-severed"],
+    ["terminated.", "stream-severed"],
+    ["Error: terminated", "stream-severed"],
   ];
   for (const [text, kind] of cases) {
     const parser = new PiStreamParser();
@@ -494,4 +500,10 @@ test("parser leaves the backend flags alone on unrelated errors", () => {
   parser.feed(errorLine("context size has been exceeded") + "\n");
   assert.equal(parser.transientBackend, false);
   assert.equal(parser.backendFailureKind, undefined);
+  // The stream-severed pattern is end-anchored on purpose: an unrelated error that merely
+  // CONTAINS the word must not read as a severed stream (BUGS.md 2026-09-30's fix sketch).
+  const mentions = new PiStreamParser();
+  mentions.feed(errorLine("worker terminated with exit code 1") + "\n");
+  assert.equal(mentions.transientBackend, false);
+  assert.equal(mentions.backendFailureKind, undefined);
 });
