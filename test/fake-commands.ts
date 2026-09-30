@@ -14,6 +14,21 @@ import path from "node:path";
  * test installs through writeScript is a symlink to it. Resolved from the source tree, which
  * sits beside dist/ whenever the compiled tests run. */
 const SCRIPT_SHIM = fileURLToPath(new URL("../../test/fixtures/script-shim", import.meta.url));
+// The shim path is relative to the compiled file, so it only exists when the compiled tests
+// sit inside the checkout (dist/test beside the repo's test/). A tree compiled elsewhere
+// (an --outDir under /tmp) resolves it to a path that is not there, and every writeScript
+// fake becomes a dangling symlink: PATH lookups skip dangling entries and fall through to
+// the REAL binaries — the suite reaches real agents, git, and npm (BUGS.md 2026-09-30: a
+// coverage loop's /tmp build ran 291 real `pi` agents against a live backend this way).
+// Fail on the first import with the rule, instead of quietly disabling every fake.
+if (!fs.existsSync(SCRIPT_SHIM)) {
+  throw new Error(
+    `test fixtures not found at ${SCRIPT_SHIM}\n` +
+      "compiled tests must run from a dist/ inside the checkout (the fixture path resolves " +
+      "relative to the compiled file); an --outDir elsewhere leaves every fake command a " +
+      "dangling symlink that falls through to the real binary on PATH",
+  );
+}
 // Read-only, so a test that writes to a fake's path (instead of calling writeScript again)
 // fails on EACCES right there, rather than writing through the symlink and silently turning
 // every other fake in the run into its body. Git records only the executable bit, so this
