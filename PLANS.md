@@ -5,7 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/3, the prompts
+### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/4, the prompts
 
 **Goal.** Stop loops from rewriting a backlog file's section headings when they move an entry.
 On 2026-09-25 the feature loop's `run --once` commit `52cbadd1` marked its plan done by
@@ -51,10 +51,10 @@ test/prompt.test.ts and test/gate-prompts.test.ts.
   beside the existing "combining the intent of BOTH sides" assertion.
 - test/prompt.test.ts pins the new feature and bugfix wording.
 - `npm run test` passes.
-- Part 2/3 (the deterministic check below) is the backstop; this part only makes the
+- Part 2/4 (the deterministic check below) is the backstop; this part only makes the
   failure rarer, so it lands first and on its own.
 
-### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/3, the backstop
+### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/4, the backstop
 
 **Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
 dropped `## ` section heading must not reach main. Today nothing checks backlog structure.
@@ -118,9 +118,9 @@ and one landing test beside the existing false-fix ones.
   refuses (merge_blocked) and logs the warning; main is unchanged.
 - `npm run test` passes; the existing false-fix gate and landing tests are unchanged.
 
-### Stranded-plan detection: the clean loop re-files an open plan sitting under `## Done` (planned 2026-09-30) — part 3/3, the repair
+### Stranded-plan detection: the clean loop re-files an open plan sitting under `## Done` (planned 2026-09-30) — part 3/4, the repair
 
-**Goal.** Parts 1/3 and 2/3 stop a duplicated `## Done` heading from landing, but a plan can
+**Goal.** Parts 1/4 and 2/4 stop a duplicated `## Done` heading from landing, but a plan can
 be stranded without one. A conflict resolution or a misplaced insert can put a new
 `### … (planned YYYY-MM-DD)` entry just below the file's single `## Done` heading, and the
 set of `## ` headings is unchanged, so part 2's check passes it. The Planned reader
@@ -155,12 +155,14 @@ hand the repair to clean.
   heading says it belongs in (cut and paste, under the existing heading, never adding a `## `
   heading), and change nothing else.
 - `tumwater doctor` (src/doctor-checks.ts): a warn line naming each stranded heading on main,
-  beside part 2/3's optional duplicate-heading line if that has landed, so an operator sees
+  beside part 2/4's optional duplicate-heading line if that has landed, so an operator sees
   the state without waiting for a clean tick.
-- Not in scope: rejecting a stranding change at the gate. Rule (a) could also be a
-  deterministic gate rejection next to part 2/3's check. Leave that as a follow-up once
-  detection has run for a while, so a false positive shows up as a spurious clean tick, not a
-  blocked landing.
+- Read each heading with its wrapped continuation lines joined. Many headings wrap their
+  parenthetical onto a second line (`(planned 2026-09-02, done` / `2026-09-03)`), and
+  `parseEntryDetails` titles keep only the first line, so matching titles alone reports those
+  as missing a done date. `entryDates` in the same file already joins heading metadata up to
+  the closing `)`; extract that join into a shared helper rather than writing a second one.
+- Rejecting a stranding change at the gate is part 4/4, not this part.
 
 **Files touched.** src/backlog-structure.ts (new or extended), src/tick-prompt.ts,
 src/prompt.ts, src/roles.ts, src/doctor-checks.ts; test/backlog-structure.test.ts,
@@ -169,12 +171,80 @@ test/prompt.test.ts, one doctor test.
 **Acceptance criteria.**
 - Unit: a PLANS.md fixture that reproduces the 2026-09-25 shape (a `(planned 2026-09-25)`
   entry directly under the only `## Done`) yields that heading; a `(planned …, done …)` entry
-  under Done yields nothing; an entry under Planned with a done date yields it; a stranded-
-  looking heading inside a fenced block is ignored; this repo's current PLANS.md yields
-  nothing.
+  under Done yields nothing, and neither does one whose done date sits on a wrapped second
+  heading line; an entry under Planned with a done date yields it; a stranded-looking
+  heading inside a fenced block is ignored; this repo's current PLANS.md yields nothing.
 - The clean tick's prompt carries the `<backlog-structure>` block when the fixture root is
   stranded and omits it otherwise; the clean `find` text names the block.
 - `tumwater doctor` warns on the stranded fixture and is silent on a clean one.
+- `npm run test` passes.
+
+### Reject a change that files a new plan directly under `## Done` (planned 2026-09-30) — part 4/4, the gate rule
+
+**Goal.** Part 3/4 repairs a stranded plan after it lands; this part stops the most common
+stranding from landing at all. The case is a change that ADDS a new PLANS.md entry and puts it
+under `## Done` with no done date: a plan written into the wrong section, or a conflict
+resolution that keeps both sides and puts the new plan on the Done side of a heading
+(2026-09-25, `9eaae5ac`). Part 2/4's heading check cannot see this when the file has a single
+`## Done`, because the heading set is unchanged.
+
+**Evidence the rule is safe to enforce now (measured 2026-09-30).** Replaying the rule below
+over all 390 versions of PLANS.md on main's first-parent history (`git log --first-parent
+main -- PLANS.md`) fires on exactly one commit: `9eaae5ac`, the real stranding. A naive rule
+("any `(planned …)` entry under Done without a done date") fires on 22 commits, 21 of them
+false. Those false hits have two shapes, and the rule has to avoid both:
+- **Wrapped headings.** The done date sits on the heading's second line (`(planned
+  2026-09-02, done` / `2026-09-03)`). Join heading continuation lines first, with part 3/4's
+  shared helper.
+- **Legitimate moves under the older convention.** Through mid-September, entries were moved
+  Planned → Done without adding a done date to the heading (e.g. `Pre-flight environment
+  check — tumwater doctor (planned 2026-09-05)` at `cd31355e`). A move is not a stranding:
+  the entry already existed on the base.
+
+**Approach.**
+- In src/backlog-structure.ts (from 2/4 and 3/4), add the rule to the gate-side check that
+  part 2/4's `backlogStructureReason` runs, so both call sites get it with no new wiring.
+  Those call sites are the review gate in src/review.ts (md-only and code diffs alike, as a
+  deterministic `reject`) and `verifyLanding` in src/landing-merge.ts after the rebase
+  (→ `merge_blocked` plus a `warning` event). The second one is the site that catches a
+  conflict resolution. The rule applies to PLANS.md only. Reject when the head has a
+  `### ` entry under `## Done` that meets all three conditions:
+  (1) its joined heading metadata has a `(planned YYYY-MM-DD` parenthetical;
+  (2) it has no `done YYYY-MM-DD`;
+  (3) its key does not appear as a `### ` heading ANYWHERE in the base's PLANS.md (any
+  section). The key is the heading text before its first ` (`, whitespace-normalized; this
+  matches how `normalizeFixedHeading` in src/fix-claim.ts compares headings across a move.
+  The reason names the entry and says to file it under `## Planned`, so the author's next
+  tick (or a retry of the leftover) knows the one-line fix.
+- The base is the diff's merge-base, the same one part 2/4 and `falseFixReason` use. A
+  stacked batch where one change adds a plan and a later change stamps it done is then
+  measured change by change, not against main's tip.
+- Deliberately not gated: part 3/4's reverse case (a done-dated entry still under
+  `## Planned`) and any pre-existing stranded entry. Both stay part 3/4's repair job, so an
+  old mistake never blocks unrelated landings.
+
+**Files touched.** src/backlog-structure.ts; test/backlog-structure.test.ts, plus one gate
+test and one landing test next to part 2/4's.
+
+**Acceptance criteria.**
+- Unit: rejects a head that adds `### X (planned 2026-09-25)` directly under the only
+  `## Done`. Passes all of these:
+  - the same entry under `## Planned`;
+  - a Planned → Done move whose heading keeps only its `(planned …)` date (the `cd31355e`
+    shape);
+  - a new entry under Done whose done date is on a wrapped second heading line;
+  - a new entry filed directly as done (`(planned …, done …)`), as hand commits recording
+    finished work do;
+  - a heading inside a fenced block.
+- Gate: an md-only plan-loop diff shaped like `9eaae5ac` is rejected with the reason and
+  spends no pi run.
+- Landing: in part 2/4's conflict fixture with ONE `## Done` heading on main, a fake resolver
+  that places the branch's new plan below that heading makes `verifyLanding` refuse
+  (merge_blocked) and log the warning; main is unchanged.
+- The implementing tick re-runs the history replay once and records the hit count in its
+  commit body's VERIFIED line. The expected hit is only `9eaae5ac`; a second hit means
+  the rule is wrong, not that history has another stranding to excuse. This is a one-off
+  check, not a suite test: it reads this repo's history, not a fixture.
 - `npm run test` passes.
 
 ## Done
