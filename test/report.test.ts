@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince, type ReportData } from "../src/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/ui/report.js";
+import { REPORT_SINCE_MAX_MS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
@@ -557,6 +558,25 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
   const t = collectReportSince(truncated, 6 * HOUR);
   assert.equal(t.coversFullWindow, false);
   assert.match(renderSinceReportMarkdown(t), /the log's oldest retained event lies inside this window/);
+});
+
+test("collectReportSince rejects an out-of-range window and accepts the exact cap", () => {
+  // The window length is the collector's contract with its callers (the CLI validates --since
+  // before calling, but every future caller inherits this guard): zero, negative, and
+  // past-the-cap windows are refused with the offending value named — never silently
+  // truncated into a report that reads as complete.
+  const root = tmpdir();
+  assert.throws(() => collectReportSince(root, 0), /sinceMs must be between 1 and REPORT_SINCE_MAX_MS \(got 0\)/);
+  assert.throws(() => collectReportSince(root, -HOUR), /\(got -3600000\)/);
+  assert.throws(
+    () => collectReportSince(root, REPORT_SINCE_MAX_MS + 1),
+    new RegExp(`\\(got ${REPORT_SINCE_MAX_MS + 1}\\)`),
+  );
+  // The cap itself is a valid window — exactly 7 days ends the legal range (an empty log,
+  // so zero totals fall out of the same call).
+  const data = collectReportSince(root, REPORT_SINCE_MAX_MS);
+  assert.equal(data.sinceMs, REPORT_SINCE_MAX_MS);
+  assert.equal(data.totals.ticks, 0);
 });
 
 test("collectReportSince treats an empty or missing event log as fully covered, not truncated", () => {
