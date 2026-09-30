@@ -278,6 +278,33 @@ And a closing note.
   assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1); // the epitaph only
 });
 
+test("a Fixed heading whose completion is recorded as re-landed counts on that date; an undated fixed mention counts nowhere", () => {
+  // The bugfix prompt pins the completion DATE, not the verb: an entry whose first landing was
+  // rejected in review is completed by the re-land, and its epitaph says "re-landed <date>" —
+  // the real BUGS.md entry this reproduces. Before the fix the collector's verb list
+  // (fixed|closed|resolved) matched nothing in that heading and the day's bug count came up one
+  // short, silently. A heading that mentions "was fixed" with no dated verb still counts
+  // nowhere — the date must ride a completion verb.
+  const root = tmpdir();
+  const d1 = dayKey(at(2));
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `### The rebuild's compile spawn failing (found by telemetry loop ${d1}; decomposed when the sustained-pin half was fixed; the spawn-classification half re-landed ${d1} after a review objection was addressed)
+
+Body prose.
+
+### Never dated as completed (found by qa loop ${d1}; the fix was attempted but never finished)
+
+Body prose.`,
+    },
+  ]);
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 1);
+});
+
 test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);

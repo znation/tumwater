@@ -302,7 +302,13 @@ export function collectReport(root: string, days: number): ReportData {
   };
   for (const d of entryDates(readMarkdown(path.join(root, "PLANS.md")), "Done", /done (\d{4}-\d{2}-\d{2})/))
     countOn(d, "featuresDone");
-  for (const d of entryDates(readMarkdown(path.join(root, "BUGS.md")), "Fixed", /\b(?:fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
+  // The completion verbs track the phrasing the harness's own loops actually write: the
+  // bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
+  // "re-landed <date>" on an entry whose first landing was rejected in review — is a
+  // completion the report must count (a rejected landing is not a fix, the re-land is).
+  // Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
+  // stays out: headings mention sibling landings, and a sibling's date is not this entry's.
+  for (const d of entryDates(readMarkdown(path.join(root, "BUGS.md")), "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
     countOn(d, "bugsFixed");
 
   const totals = {
