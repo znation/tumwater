@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { readJsonFile } from "./json-files.js";
 import { errorMessage } from "./text.js";
 
 /** The running harness's own version, read from its package.json — the one bare JSON read
@@ -46,15 +47,11 @@ export function packageVersion(file: string): PackageVersion {
  * a missing, unreadable, or malformed file and a missing or non-string engines.node return
  * null, and the gate stands down rather than blocking every command on a floor it cannot
  * evaluate (npm already warned about the mismatch at install time; a broken install is the
- * version command's story, not a runtime verdict). */
+ * version command's story, not a runtime verdict). The read routes through readJsonFile so
+ * the tolerant read/parse/no-data policy has one home; unlike packageVersion below it needs
+ * no distinction between the failure modes, so it needs no error of its own. */
 export function packageEnginesNode(file: string): string | null {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  } catch {
-    return null;
-  }
-  const node = (raw as { engines?: { node?: unknown } } | null)?.engines?.node;
+  const node = readJsonFile<{ engines?: { node?: unknown } }>(file)?.engines?.node;
   return typeof node === "string" && node !== "" ? node : null;
 }
 
