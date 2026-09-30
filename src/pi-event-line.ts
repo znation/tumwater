@@ -1,5 +1,5 @@
 /** Parsing one line of pi's JSONL event stream — pure string functions with no subprocess or
- * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs) and
+ * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi) and
  * whose PiStreamParser in pi-stream.ts folds those lines into a run result — because these are
  * shared by every observer that folds raw pi log lines into per-type state (progress-data.ts's live
  * tail, transcript.ts's renderer), and those display modules should not import from the

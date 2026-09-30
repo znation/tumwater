@@ -390,6 +390,6 @@ test("adapter leaves a non-array content payload untouched", () => {
   assert.equal(handler({ toolName: "bash", toolCallId: "t7", content: { type: "text", text: "big" } }), undefined);
 });
 // The piArgs wiring tests (extension flag placement, non-pi agent skip) live in
-// test/pi.test.ts beside the rest of the piArgs suite — they were duplicated here
+// test/pi-args.test.ts beside the rest of the piArgs suite — they were duplicated here
 // and in pi.test.ts since the feature landed (2026-09-23), and pi.test.ts's copies
 // carry the stronger exact-dist-path assertion.

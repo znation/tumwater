@@ -10,7 +10,7 @@ import { describeToolCall } from "./text.js";
 import { parseJsonObject } from "./json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
- * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi, piArgs,
+ * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,
  * hasResumableSession, and the stderr crash signature) — so the parser can be unit-tested and
  * reasoned about without spawning a process, the same separation pi-event-line.ts gives the
  * per-line parse and reply-contract.ts the sentinel/verdict text. */

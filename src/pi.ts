@@ -1,13 +1,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig } from "./config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./process-table.js";
+import { piArgs } from "./pi-args.js";
 import { PiStreamParser, type BackendFailureKind } from "./pi-stream.js";
 import { commandBuffersOutput } from "./command-shape.js";
 export type { BackendFailureKind } from "./pi-stream.js";
@@ -134,37 +133,6 @@ export interface PiRunOptions {
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
    * full-suite re-run the harness's green pre-check made redundant. */
   onToolCallStart?: (toolName: string, args: unknown) => void;
-}
-
-/** Path to the bundled bounded-output pi extension, resolved from this module's own
- * location so staged builds (.tumwater/build/<sha>) load their own copy. */
-function boundedOutputExtensionPath(): string {
-  return fileURLToPath(new URL("./pi-extension/bounded-output.js", import.meta.url));
-}
-
-/** Build the pi argv for one tick. Exported for tests. */
-export function piArgs(
-  opts: Pick<PiRunOptions, "config" | "sessionDir" | "sessionName" | "continueSession"> & {
-    /** The resolved agent binary (from resolveAgentBin); defaults to "pi". A non-pi
-     * agent gets no `-e` flag — the bundled extension is pi-specific. */
-    agentBin?: string;
-  },
-): string[] {
-  const { config } = opts;
-  const args = ["--print", "--mode", "json", "--session-dir", opts.sessionDir];
-  // Each role has its own session dir, so --continue resumes that role's session.
-  if (opts.continueSession) args.push("--continue");
-  else args.push("-n", opts.sessionName);
-  if (config.provider) args.push("--provider", config.provider);
-  if (config.model) args.push("--model", config.model);
-  if (config.thinking) args.push("--thinking", config.thinking);
-  // Bound oversized tool results in-session (PLANS.md "Bound tool output head+tail with a
-  // tumwater pi extension"). Loaded before config.piArgs so a user flag still wins.
-  if (path.basename(opts.agentBin ?? "pi") === "pi") {
-    args.push("-e", boundedOutputExtensionPath());
-  }
-  args.push(...config.piArgs);
-  return args;
 }
 
 /** True when `sessionDir` holds at least one pi session file for --continue to resume.

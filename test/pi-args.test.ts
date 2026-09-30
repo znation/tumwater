@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { piArgs } from "../src/pi.js";
+import { piArgs } from "../src/pi-args.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { configForRole } from "../src/config-views.js";
 import { tmpdir } from "./repo-fixtures.js";
