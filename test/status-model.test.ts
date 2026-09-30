@@ -6,11 +6,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress.js";
-import { budgetBadge, landingBadge, loopPhase, pauseBadge, workingDetail } from "../src/ui/status-model.js";
+import { budgetBadge, landingBadge, loopPhase, loopRowCells, pauseBadge, workingDetail } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
-import { GATE_SESSION, SESSION, toolStart, writePiLog } from "./status-fixtures.js";
+import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./status-fixtures.js";
 
 test("workingDetail without a pi log shows only the elapsed time", () => {
   const root = tmpdir();
@@ -57,6 +57,56 @@ test("workingDetail flags a stalled run only after at least five minutes of sile
   const sixMinAgo = new Date(Date.now() - 6 * 60_000);
   fs.utimesSync(file, sixMinAgo, sixMinAgo);
   assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
+});
+
+test("a tick's baseline check shows no previous run's detail and no false quiet alarm", () => {
+  const root = tmpdir();
+  // The log's newest write is the PREVIOUS run's: 29 minutes old — past the five-minute
+  // stall threshold — carrying that run's turn count, context, and last tool call.
+  const file = writePiLog(root, "clean", [
+    SESSION,
+    assistantLine("the earlier tick's work", { tokens: 44_200 }),
+    toolStart("read", { path: "src/change-preview.ts" }),
+  ]);
+  const stale = new Date(Date.now() - 29 * 60_000);
+  fs.utimesSync(file, stale, stale);
+  // A new tick started 99s ago and is still in its baseline check: pi has written nothing yet.
+  const s = freshLoopState("clean");
+  s.running = true;
+  s.lastTickStartedAt = Date.now() - 99_000;
+  // The cell carries nothing of the earlier run — and no quiet time measured from before the
+  // tick started, which fleetAlerts' STALL pattern would read as "looks stuck".
+  assert.equal(workingDetail(root, s), "working 1m39s");
+  // The same rule drives the phase string the alert pattern-matches (and the GUI payload reads).
+  assert.equal(loopPhase(s, true, root), "working 1m39s");
+  // Once this tick's pi run writes its first line, the live detail returns.
+  fs.appendFileSync(file, SESSION + "\n" + assistantLine("this tick's first words", { tokens: 4_100 }) + "\n");
+  assert.match(workingDetail(root, s), /^working 1m(39|40|41)s · turn 2 · ctx 4100$/, workingDetail(root, s));
+});
+
+test("a quiet tail predating the tick never reaches the token metrics either", async () => {
+  const repo = tmpdir();
+  // Same shape as the payload's combined-metrics fixture: persisted totals from completed
+  // ticks plus a live tail. Here the tail is the PREVIOUS run's (29 minutes old) and the
+  // new tick's baseline is still running — the previous run's output must not ride into
+  // this tick's `generated` figure a second time.
+  const file = writePiLog(repo, "feature", [
+    SESSION,
+    assistantLine("the earlier run", { tokens: 12_000, output: 800 }),
+  ]);
+  const stale = new Date(Date.now() - 29 * 60_000);
+  fs.utimesSync(file, stale, stale);
+  const s = freshLoopState("feature");
+  s.generatedTokens = 1_000;
+  s.peakContextTokens = 6_000;
+  s.running = true;
+  s.lastTickStartedAt = Date.now() - 99_000;
+  const snap = snapshotWith([{ role: "feature", running: true, lastTickStartedAt: s.lastTickStartedAt }]);
+  snap.running = true; // the orchestrator is up, so loopRowCells renders the live phase
+  const cells = loopRowCells(snap, repo, s);
+  assert.equal(cells.generated, 1_000, "only the persisted total — the stale tail contributes nothing");
+  assert.equal(cells.peakCtx, 6_000);
+  assert.equal(cells.phase, "working 1m39s");
 });
 
 // The stall flag (BUGS.md 2026-09-13 sibling): a tool call open and silent past the threshold

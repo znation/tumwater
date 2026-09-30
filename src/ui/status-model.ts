@@ -44,6 +44,28 @@ function inFlightLabel(s: LoopState, label: string): string {
   return `${label} ${elapsed}`.trim();
 }
 
+/** One rule for whether a log tail's progress describes THIS tick: the log's newest write
+ * (quietMs is measured from the raw log's mtime) must have happened after the tick started.
+ * Until this tick's pi run writes its first line, the log's tail is the PREVIOUS run — the
+ * baseline check (worktree reset plus suite) can take 30–130 s, and a tick waking after 5+
+ * minutes idle would otherwise show the earlier run's turn/context/tool and a "no pi output"
+ * quiet time measured from before the tick even began, tripping the STALL alert on every
+ * such tick's baseline (BUGS.md 2026-09-30). Once the run writes, its mtime is inside the
+ * tick, so quietMs can never exceed the tick's own age and the honest quiet measure survives.
+ * Applied by every status-model reader (workingDetail, the reviewing branch of loopPhase,
+ * the token metrics, loopRowCells' precomputed tail) and by status-render's state cell via
+ * this export, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
+ * no recorded start (a stale `running` flag after a crash) cannot be judged and keeps the
+ * tail as before. `p` may be undefined (the caller's "no tail fetched" sentinel) or null
+ * ("no log"); both read as no progress. */
+export function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveProgress | null {
+  if (!p) return null;
+  if (s.lastTickStartedAt === undefined) return p;
+  const elapsed = Math.max(0, Date.now() - s.lastTickStartedAt);
+  if (p.quietMs > elapsed) return null; // Newest write predates this tick: a previous run's tail.
+  return { ...p, quietMs: Math.min(p.quietMs, elapsed) };
+}
+
 /** The shared parts assembly for an in-flight state cell: `head` (the phase label with its
  * own elapsed — inFlightLabel for a tick, the landing branch's own for a landing) plus turn,
  * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is
@@ -89,7 +111,7 @@ export function yieldMultiplierFor(s: LoopState): number {
  * threads it through every helper) — to avoid re-reading the log; without it, this reads on
  * its own for standalone callers. */
 export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
-  const p = live === undefined ? readLiveProgress(root, s.role) : live;
+  const p = progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live);
   return inFlightDetail(inFlightLabel(s, "working"), p);
 }
 
@@ -187,7 +209,7 @@ export function loopPhase(
     // its worktree), so read the GATE accumulator here — the author one still holds the
     // finished authoring run (BUGS.md 2026-09-22).
     if (s.phase === "review") {
-      const p = root ? (live === undefined ? readLiveProgress(root, s.role, "gate") : live) : null;
+      const p = root ? progressOfTick(s, live === undefined ? readLiveProgress(root, s.role, "gate") : live) : null;
       return inFlightDetail(inFlightLabel(s, "reviewing"), p);
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
@@ -251,7 +273,9 @@ export function loopRowCells(
   root: string,
   s: LoopState,
 ): { live: LiveProgress | null; generated: number; peakCtx: number; phase: string } {
-  const live = s.running && !s.parkedSince ? readLiveProgress(root, s.role, progressKind(s)) : null;
+  const live = s.running && !s.parkedSince
+    ? progressOfTick(s, readLiveProgress(root, s.role, progressKind(s)))
+    : null;
   const m = displayTokenMetrics(root, s, live);
   const phase = loopPhase(
     s,
@@ -327,7 +351,9 @@ function displayTokenMetrics(
   s: LoopState,
   live?: LiveProgress | null,
 ): { generated: number; peakCtx: number } {
-  const p = s.running && !s.parkedSince ? (live === undefined ? readLiveProgress(root, s.role) : live) : null;
+  const p = s.running && !s.parkedSince
+    ? progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live)
+    : null;
   return {
     generated: s.generatedTokens + (p?.outputTokens ?? 0),
     peakCtx: Math.max(s.peakContextTokens, p?.peakContextTokens ?? 0),

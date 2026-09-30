@@ -12,6 +12,7 @@ import {
   isActivePhase,
   landingBadge,
   loopRowCells,
+  progressOfTick,
   mainCheckBadge,
   pauseBadge,
   sortLoopsByState,
@@ -84,7 +85,7 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
   // phase ("landing <elapsed> · <stage>", with the reviewer's live detail while it reviews)
   // is returned without a work-item prefix.
   if (!s.running || s.parkedSince || s.phase === "review") return phase;
-  const p = live === undefined ? readLiveProgress(root, s.role) : live;
+  const p = progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live);
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
 }
