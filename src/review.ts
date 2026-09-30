@@ -205,14 +205,19 @@ export async function reviewAheadOfMain(
   // pre-check, its one re-run, and any attribution check behind them are the gate's first
   // long phase.
   setLandingStage(root, role, "build-check");
-  const preCheck = await runScopedBuildCheck(
-    root,
-    role,
-    "gate",
-    wt,
-    config,
-    ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
-  );
+  // The gate's one check invocation — the pre-check and its one flake re-run below are the
+  // same run in the same scope, worktree, and config with the same resolved timeout, so the
+  // scope and timeout resolution live here once and cannot drift between the two calls.
+  const runGateCheck = () =>
+    runScopedBuildCheck(
+      root,
+      role,
+      "gate",
+      wt,
+      config,
+      ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
+    );
+  const preCheck = await runGateCheck();
   if (preCheck) {
     const { check } = preCheck;
     let { outcome } = preCheck;
@@ -225,14 +230,7 @@ export async function reviewAheadOfMain(
       // digest, so telemetry and bugfix can go after the flaky test). A re-run that fails
       // again goes to attribution below; a skipped one says nothing about the tree, so the
       // first failure stands.
-      const retry = await runScopedBuildCheck(
-        root,
-        role,
-        "gate",
-        wt,
-        config,
-        ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
-      );
+      const retry = await runGateCheck();
       if (retry?.outcome.status === "passed") {
         const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
         warnEvent(root, role, `gate check failed then passed on retry — flaky: ${flaky}`);
