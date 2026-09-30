@@ -5,7 +5,29 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### A build check that spans a host sleep but finishes inside its deadline reads as a real red: runBuildCheck records no sleep evidence unless the harness's own deadline fired late, so a single-change batch or landing attributes the sleep-expired tests to the change and rejects it, the gate's flake re-run files the sleep as a "flaky" test, and a baseline ends a tick `main_red` (found by human-directed investigation 2026-09-30)
+
+- **Symptom:** at 2026-09-30 11:59 PDT, readme's change 8f39eb4d was rejected with `build check failed (npm run test): AssertionError [ERR_ASSERTION]: expected exit 0 on a ready repo:`. The change was 7 lines of docs/how-it-works.md and no code. Its scope-`batch` check ran from 11:54:39 to 11:59:14 (275 s, 7 of 2,499 tests failed). `pmset -g log` has the host in Maintenance Sleep from 11:54:43 to 11:58:23 and from 11:58:33 to 11:59:05, which is 252 s of those 275. improve's batch check had passed on the same main at 11:54:39 (2,498 pass). The rejection reasons went into readme's next tick as readme's own failure. The power log reaches back to 2026-09-27 03:56 and records 569 sleeps. Over that span, 10 of 1,146 build_check events finished `failed` while the host slept through most of the run:
+  - **organize's baseline, 09-28 12:50:** it slept 187 of its 209 s, and the tick ended `main_red`.
+  - **bugfix's gate, 09-28 13:03:** it slept 65 of its 89 s. The re-run passed, and the warning read `gate check failed then passed on retry — flaky: AssertionError …`. That points the digest (and telemetry and bugfix after it) at a test that isn't flaky.
+  - **coverage's gate, 09-30 09:38:** it slept 59 of its 116 s. Its re-run failed without a sleep, so that rejection may be genuine.
+  - **dry's gate, 09-28 09:20:** it slept 168 of its 188 s and was rejected. Its first run had already failed in 22 s without a sleep, so that rejection may be genuine too.
+  - **Two baselines:** improve's at 09-28 10:11 slept 85 of 103 s, and the `harness` baseline at 09-30 13:38 slept 115 of 140 s. Neither left a follow-up event.
+  - **The other three** (feature's landing 09-28 04:11, bugfix's batch 09-28 11:22, improve's batch 09-30 11:47) timed out with late deadlines, the already-fixed path (BUGS.md 2026-09-21, 2026-09-28).
+- **Reproduce:**
+  1. With the Mac on AC, start `npm test` in a worktree.
+  2. About 20 s in, sleep the host for 90–200 s (`pmset sleepnow`, or close the lid).
+  3. On wake, the run finishes red well inside 300 s, with the tests that were mid-wait failing. Coverage runs 9 and 10 on 2026-09-30 (docs/code-metrics.md) failed exactly this way: every failing test's duration equals one pmset sleep.
+
+  At the harness level, point `check.command` at a stub that records `Date.now()`, exits 1 if more than 60 s of wall time passed, and is slept through as above. runScopedBuildCheck then returns `failed` with no `deadlineLateMs`.
+- **Cause:** runBuildCheck (src/build-check.ts) maps every nonzero exit to `failed`, "a deterministic failure of the build itself", unless the output names a broken toolchain. The only sleep evidence it records is BuildCheckRun.deadlineLateMs, which is set only when the harness's own deadline timer fires late. A sleep can be shorter than the check's remaining deadline but longer than a test's own wall-clock waits. Those waits then expire at the next wake, the suite exits 1 inside the deadline, and the run carries no mark of the sleep. Each caller treats that as a verdict:
+  - **A `batch` of one, or `landing` at LANDING_CHECK_FAILURE_LIMIT:** goes to attributeRedCheck (src/landing-core.ts). Main's cached verdict is green, so the change is `rejected` and its ref deleted.
+  - **`gate`:** the one flake re-run (src/review.ts) absorbs a single sleep but reports it as a flaky test. Clamshell maintenance sleep recurs every few minutes; on 09-30 from 06:45 to 07:48 the host slept 579, 218, 904, 918 and 753 s between dark wakes of about 10 s. A re-run that also spans a sleep goes to attribution and rejects.
+  - **Baseline (src/main-baseline.ts):** a sleep-caused red is provisional, but the tick still ends `main_red`. If a second worktree also sleeps through its confirmation run, the red becomes authoritative until main moves.
+- **Expected:** a `failed` run that spanned a host sleep gets the treatment a late-deadline timeout already gets. That means one clean retry at every scope. A retry that also slept is recorded as unverified: it isn't attributed to the change or cached as a red baseline, and the gate's warning says the run spanned a sleep instead of naming a flaky test. This needs a measured `sleptMs` on every BuildCheckRun, not only on a late deadline:
+  - **macOS:** the kernel's last wake time (`sysctl -n kern.waketime`) moving past `spawnedAt` means the host slept during the check. `pmset -g log` has the exact intervals.
+  - **Linux:** `/proc/uptime` (CLOCK_BOOTTIME) advancing faster than a monotonic clock measures time suspended.
+  - **Why not a monotonic clock on macOS:** libuv's clock there counts time asleep (see the BuildCheckRun docblock), so it can't tell.
 
 ## Fixed
 
