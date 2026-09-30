@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { BuildCheck } from "../src/build-check-detect.js";
 import type { BuildCheckOutcome } from "../src/build-check.js";
-import { checkFailureReasons } from "../src/build-check-report.js";
+import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build-check-report.js";
 
 // build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine
 // text every rejecting gate hands its author — the reason lines injected into the next-tick
@@ -78,4 +78,129 @@ test("an unverified red with an empty tail still says why the tree is unverified
   // lines must not degrade to an empty reason list — the safe default names the check.
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ unverified: true, outputTail: [] }));
   assert.deepEqual(reasons, ["build check failed (`npm run test`)"]);
+});
+
+// --- The clipBuildTail/failureHeadline unit coverage, moved here from build-check.test.ts
+// (2026-09-30) so each build-check module's tests live in its own topic-named file:
+// build-check.test.ts keeps only src/build-check.ts's own run/classification tests.
+// --- clipBuildTail: what of a chatty build's output survives into persisted state and the
+// reviewer-injected note — blanks and npm's own banners must not count against the ten-line cap.
+
+test("clipBuildTail keeps only the last ten meaningful lines, dropping blanks and npm banners", () => {
+  const noise = Array.from({ length: 30 }, (_, i) => `error line ${i}`);
+  const output = ["> proj@1.0.0 build", "> tsc --noEmit", "", ...noise.slice(0, 5), "   ", ...noise.slice(5)].join("\n");
+  const tail = clipBuildTail(output);
+  assert.equal(tail.length, 10, "capped at ten lines");
+  assert.deepEqual(tail, noise.slice(-10), "the LAST ten meaningful lines survive");
+});
+
+test("clipBuildTail clips each surviving line to the reason cap with an ellipsis", () => {
+  const long = "x".repeat(400);
+  const tail = clipBuildTail(`ok\n${long}\nshort`);
+  assert.equal(tail.length, 3);
+  const clipped = tail[1] ?? "";
+  assert.equal(clipped.length, 300, "clipped to MAX_REASON_CHARS");
+  assert.ok(clipped.endsWith("…"), "marked with the ellipsis");
+  assert.equal(tail[2], "short", "lines that fit are unchanged");
+});
+
+test("clipBuildTail yields no lines for empty or whitespace-only output", () => {
+  assert.deepEqual(clipBuildTail(""), []);
+  assert.deepEqual(clipBuildTail("\n   \n\t\n"), []);
+});
+
+test("clipBuildTail keeps the error message when the ten-line window cuts it off above a long stack", () => {
+  // Node prints an unhandled error's message ABOVE its stack and property dump (verified
+  // against node 26): a deep stack pushes the message out of the last-ten window, so without
+  // this it is lost and the headline becomes a frame or `errno: -2,` (BUGS.md 2026-09-19).
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
+  const output = [
+    "Error: ENOENT: no such file or directory, open '/nope'",
+    ...frames,
+    "{",
+    "errno: -2,",
+    "code: 'ENOENT',",
+    "syscall: 'open',",
+    "path: '/nope'",
+    "}",
+  ].join("\n");
+  const tail = clipBuildTail(output);
+  assert.equal(tail[0], "Error: ENOENT: no such file or directory, open '/nope'", "the naming line, not a frame");
+  assert.equal(tail.length, 11, "the ten-line window plus the rescued message");
+});
+
+test("clipBuildTail never mistakes an error property for the message", () => {
+  // `actual:`/`expected:`/`diff:` are real assertion-diff content, not noise to skip: with no
+  // message shape in the prefix, the plain ten-line window is returned unchanged.
+  const lines = [
+    "actual: 1,",
+    "expected: 2,",
+    "operator: '==',",
+    "diff: 'simple'",
+    ...Array.from({ length: 8 }, (_, i) => `at f${i} (x:1:1)`),
+  ];
+  assert.deepEqual(clipBuildTail(lines.join("\n")), lines.slice(-10));
+});
+
+// --- failureHeadline: which line of a clipped tail becomes the one-line headline, so a red
+// names what broke rather than the stack frame it broke in.
+
+test("failureHeadline names what broke, not the frame it broke in", () => {
+  // clipBuildTail keeps the LAST ten lines, so an unhandled rejection's tail opens mid-stack.
+  assert.equal(
+    failureHeadline([
+      "at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "at async Promise.all (index 0)",
+      "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+    ]),
+    "AssertionError [ERR_ASSERTION]: actual: 'quiet_killed', expected: 'no_change'",
+  );
+  assert.equal(failureHeadline(["at a (f:1:1)", "at b (f:2:2)"]), "at a (f:1:1)", "all frames: print something");
+  assert.equal(failureHeadline([]), undefined);
+  assert.equal(failureHeadline(undefined), undefined);
+});
+
+test("failureHeadline names an unhandled error whose message the tail window would otherwise cut", () => {
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
+  const tail = clipBuildTail(
+    [
+      "Error: ENOENT: no such file or directory, open '/nope'",
+      ...frames,
+      "errno: -2,",
+      "code: 'ENOENT',",
+      "syscall: 'open',",
+      "path: '/nope'",
+    ].join("\n"),
+  );
+  assert.equal(
+    failureHeadline(tail),
+    "Error: ENOENT: no such file or directory, open '/nope'",
+    "the message, not `errno: -2,`",
+  );
+});
+
+test("failureHeadline skips node:test's summary block, not the failure it frames", () => {
+  // node --test's spec reporter ends a failing run with the summary THEN the detail; when both
+  // fit in the ten-line window the first non-frame line was `ℹ todo 0` and two real rejections
+  // surfaced as `build check failed (test): ℹ todo 0` (BUGS.md 2026-09-22). Output is real
+  // spec-reporter shape (reproduced with a test that throws a plain string).
+  const tail = clipBuildTail(
+    [
+      "ℹ pass 0",
+      "ℹ fail 1",
+      "ℹ cancelled 0",
+      "ℹ skipped 0",
+      "ℹ todo 0",
+      "ℹ duration_ms 73.78325",
+      "✖ failing tests:",
+      "test at a.test.js:2:1",
+      "✖ the interlock held: no tick ever started (0.348625ms)",
+      "  'the interlock held: no tick ever started'",
+    ].join("\n"),
+  );
+  assert.equal(
+    failureHeadline(tail),
+    "✖ the interlock held: no tick ever started (0.348625ms)",
+    "the failure's own message, not `ℹ fail 1` or the `test at` marker",
+  );
 });
