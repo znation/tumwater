@@ -209,7 +209,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       $("usagebody").innerHTML = "<div class='stats six'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
-        (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) + "</p>" : "");
+        // The truncation note rides the window caption, hedged the same way the CLI and TUI
+        // renders phrase it: covered is false only when the oldest retained event lies inside
+        // the window, so the sentence stays true whenever it prints.
+        (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
+          (!d.coversFullWindow ? " · oldest retained event lies inside this window; older events may have rotated out" : "") + "</p>" : "");
     } catch (e) {
       // Name the endpoint, status, and server error rather than a bare "unavailable".
       $("usagebody").innerHTML = "<div class='card empty'><strong>Usage report unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";

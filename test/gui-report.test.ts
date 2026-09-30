@@ -196,6 +196,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   const data: ReportData = {
     days: 14, from: series[0]!.date, to: series[13]!.date, series,
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
   };
   const parseRects = (svg: string) =>
     [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' rx='2' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(

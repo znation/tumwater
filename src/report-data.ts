@@ -102,6 +102,14 @@ export interface ReportData {
     landingTokens: number;
     landingCostUsd: number;
   };
+  /** True when the report provably reflects every event the window could have contained:
+   * the day-keyed read proved the log reaches back before the window's first day, or the
+   * retained log holds no events at all — nothing ever existed that could have rotated away.
+   * False means events were aggregated from a log whose oldest event lies inside the window
+   * with no proof that older data was not rotated away (two or more 16 MB rotations inside a
+   * long window outrun the one kept archive generation) — the renders say so, exactly as the
+   * --since report and the failure digest already do. */
+  coversFullWindow: boolean;
 }
 
 /** Fleet usage over a trailing window of `sinceMs` ending now: the same tick_end/merged
@@ -272,7 +280,8 @@ export function collectReport(root: string, days: number): ReportData {
   const byDate = new Map<string, ReportDay>();
   for (const d of series) byDate.set(d.date, d);
 
-  for (const ev of readWindowEvents(root, from).events) {
+  const raw = readWindowEvents(root, from);
+  for (const ev of raw.events) {
     const dayKey = eventDayKey(ev);
     const day = dayKey === null ? undefined : byDate.get(dayKey);
     if (!day) continue; // Outside [from, to] — also guards future-dated events.
@@ -319,5 +328,12 @@ export function collectReport(root: string, days: number): ReportData {
     totals.landingCostUsd += d.landingCostUsd ?? 0;
   }
 
-  return { days, from, to, series, totals };
+  // The shared coverage proof (event-window.ts), with the window's first local midnight as
+  // the cutoff: an event at that instant is the earliest the window could contain, so the
+  // same-day arm degenerates harmlessly. Without this field the day report was the one
+  // windowed consumer that could undercount in silence — the --since report and the failure
+  // digest both carry the note, and a silent number invites an operator to trust a truncated
+  // window as an idle fleet.
+  const coversFullWindow = eventWindowCovers(raw, dayAt(days - 1, now).getTime());
+  return { days, from, to, series, totals, coversFullWindow };
 }

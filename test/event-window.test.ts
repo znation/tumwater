@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
 import { collectReport } from "../src/report-data.js";
+import { renderReportMarkdown } from "../src/ui/report.js";
 import { atLocalTs as tsDaysAgo } from "./oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -193,6 +194,27 @@ test("coversFullWindow is false when even the archive starts inside the window",
   // Both files' oldest events lie inside the window: the note must still warn that older
   // events rotated out.
   assert.equal(coversFullWindow, false);
+});
+
+test("the day report says so when even the archive starts inside the window", () => {
+  // collectReport was the one windowed consumer without a truncation note: the --since report
+  // and the failure digest both carry one, but the day report could undercount a window that
+  // outran the single kept archive generation in silence.
+  const root = tmpdir();
+  writeArchive(root, [eventLine(tsDaysAgo(3), { tick: 1, loop: "feature", tokens: 10 })]);
+  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
+  const report = collectReport(root, 5);
+  assert.equal(report.coversFullWindow, false, "both files' oldest events lie inside the window");
+  assert.match(renderReportMarkdown(report), /older events may have rotated out/);
+});
+
+test("the day report stays silent when the archive proves the window's coverage", () => {
+  const root = tmpdir();
+  writeArchive(root, [eventLine(tsDaysAgo(6), { tick: 1, loop: "feature", tokens: 10 })]);
+  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 2, loop: "feature", tokens: 20 })]);
+  const report = collectReport(root, 5);
+  assert.equal(report.coversFullWindow, true, "the archive's day-6 event predates the window's first day");
+  assert.ok(!renderReportMarkdown(report).includes("rotated out"), "a fully covered window claims no truncation");
 });
 
 test("a missing or empty archive leaves the live file's window behavior unchanged", () => {

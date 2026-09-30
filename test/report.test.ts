@@ -286,6 +286,7 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
       { date: "2026-09-10", tokensOut: 1_234_567, ticksByRole: { feature: 2 }, costByRole: {}, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
     ],
     totals: { tokensOut: 1_834_567, ticks: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
   };
   const lines = renderReportMarkdown(data).split("\n");
 
@@ -337,6 +338,7 @@ test("renderReportMarkdown renders token counts through the shared compactTokens
       { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
   };
   const md = renderReportMarkdown(data);
   // compactTokens leaves values below 10k bare (the report's old private copy suffixed them at
@@ -354,6 +356,7 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
       { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB\)$/m);
 });

@@ -121,6 +121,12 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
+  // The same truncation note the --since render prints (one voice across the report's two
+  // windows): covered is false only when events were aggregated from a log whose oldest
+  // retained event lies inside the window, so the hedged sentence stays true whenever it
+  // prints — an empty or fully covered log never claims a history it cannot see.
+  if (!data.coversFullWindow)
+    lines.push("", "note: the log's oldest retained event lies inside this window; older events may have rotated out");
   return lines.join("\n");
 }
 
