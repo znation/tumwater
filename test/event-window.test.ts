@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readWindowEvents } from "../src/event-window.js";
+import { readEventsSince, readWindowEvents } from "../src/event-window.js";
 import { collectReport } from "../src/report-data.js";
 import { renderReportMarkdown } from "../src/ui/report.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";
@@ -267,4 +267,75 @@ test("the archive follows the live file's skip policy, and a covered window neve
     [1, 2],
   );
   assert.equal(spanned.coversFullWindow, false);
+});
+
+// readEventsSince is the duration-shaped window read `logs --since` and `history --since`
+// share: the cutoff is now − sinceMs, the day-keyed read may over-read earlier hours of the
+// cutoff's own day, and the ts filter removes them — so these tests pin the instant filter's
+// margins with Date.now()-relative timestamps (noon fixtures would straddle the cutoff
+// depending on when the suite runs), and the coverage verdict with the same local-noon
+// fixtures readWindowEvents' tests above use.
+
+test("readEventsSince filters the day-keyed over-read by the cutoff instant", () => {
+  const root = tmpdir();
+  const t0 = Date.now();
+  writeLog(root, [
+    eventLine(t0 - 120_000, { tick: 1 }), // before the cutoff: the ts filter drops it (it sits
+    // inside the cutoff's local day for every run except one within 2 minutes of midnight,
+    // where the day key drops it instead — the assertion holds either way)
+    JSON.stringify({ ts: "not a number", loop: "feature", type: "tick_end" }), // no numeric ts
+    eventLine(t0 - 30_000, { tick: 2 }), // inside the window
+    eventLine(t0, { tick: 3 }),
+  ]);
+  const { cutoff, events, covered } = readEventsSince(root, 60_000);
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [2, 3],
+  );
+  // The cutoff is the read's own now − sinceMs; within seconds of the fixture's t0.
+  assert.ok(Math.abs(cutoff - (t0 - 60_000)) < 5_000, `cutoff ${cutoff} vs ${t0 - 60_000}`);
+  // Covered: the day-keyed read hands back the 2-min-ago event too, and its being at-or-before
+  // the cutoff proves nothing older could have rotated away — even though the ts filter then
+  // drops it from the returned events. Coverage is judged on the window's oldest retained
+  // event, not on the filtered result's.
+  assert.equal(covered, true);
+});
+
+test("an empty window reads as covered — an idle fleet prints no rotation note", () => {
+  const root = tmpdir();
+  writeLog(root, []);
+  const { events, covered } = readEventsSince(root, 60_000);
+  assert.deepEqual(events, []);
+  // eventWindowCovers' vacuous case: with no retained events nothing can have rotated away,
+  // so `logs --since` on a fleet that never ran must not hedge.
+  assert.equal(covered, true);
+});
+
+test("a log born inside a wide --since window reads as uncovered", () => {
+  const root = tmpdir();
+  writeLog(root, [eventLine(tsDaysAgo(1), { tick: 1 }), eventLine(tsDaysAgo(0), { tick: 2 })]);
+  const { events, covered } = readEventsSince(root, 3 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [1, 2],
+  );
+  // Every retained line lies inside the window's days and the oldest is younger than the
+  // cutoff instant: the read cannot distinguish "idle since" from "younger than the window".
+  assert.equal(covered, false);
+});
+
+test("a --since window spanning the rotation boundary reads the archive through the same filter", () => {
+  const root = tmpdir();
+  writeArchive(root, [eventLine(tsDaysAgo(4), { tick: 1 }), eventLine(tsDaysAgo(2), { tick: 2 })]);
+  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
+  const { events, covered } = readEventsSince(root, 3 * 24 * 60 * 60 * 1000);
+  // Archive first (strictly older), the pre-window 4-days-ago event dropped, the in-window
+  // 2-days-ago one kept: the instant filter applies to the concatenation, not just the live file.
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [2, 3],
+  );
+  // The archive's oldest line predates the window, so the read proves its own coverage —
+  // the rotation note stays silent even though the live file alone would not.
+  assert.equal(covered, true);
 });
