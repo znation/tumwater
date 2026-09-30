@@ -56,7 +56,8 @@ key.
 `tumwater.json`. See [docs/backends.md](docs/backends.md) for requirements and a worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see
-[docs/how-it-works.md](docs/how-it-works.md).
+[docs/how-it-works.md](docs/how-it-works.md). For a measured comparison of tumwater's own
+code against human-written open source, see [docs/code-metrics.md](docs/code-metrics.md).
 
 ## Appendix: initial prompt
 
