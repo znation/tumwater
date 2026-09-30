@@ -29,6 +29,7 @@ node "$here/analyze.cjs" "$co" "$data/metrics.json" "$here/categories-tumwater.c
 node "$here/summary.cjs" "$data/metrics.json" > "$data/summary.txt"
 python3 "$here/blame.py" "$co" "$data/blame.json" > "$data/blame.txt"
 python3 "$here/history.py" tumwater "$co" "$data/blame.json" "$data/history-tumwater.json" > "$data/history-tumwater.txt"
+node "$here/scale.cjs" "$data" > "$data/scale.txt"
 (cd "$co" && npx --no-install eslint --no-config-lookup -c "$here/eslint-complexity.config.mjs" --format json 'src/**/*.ts') > "$data/eslint-cc.json"
 node "$here/eslint-cc.cjs" "$data/eslint-cc.json" > "$data/eslint-cc.txt"
 

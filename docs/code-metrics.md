@@ -54,6 +54,10 @@ The same scripts, with the same definitions, measured all three.
    the dry loop's is duplication, and the organize loop's is file size (no file tops 500 lines).
    Nothing optimizes function complexity, and the most complex functions are ones both authors
    grew together.
+8. **At human rates this is years of work, and it took 41 days.** Line-count models put the
+   19,094 production lines at 4.4 staff-years (basic COCOMO) to 7.3 (McConnell's rates), and at
+   16–25 staff-years with tests. The repository gained 1,590 surviving code lines a day, against
+   4–80 per developer day on human projects of this size.
 
 ## What is in the repository
 
@@ -306,6 +310,36 @@ median of 40 contributors.
 - **Test co-change:** Tumwater's 61% doesn't necessarily mean it tests less. Its coverage loop
   adds tests in separate commits.
 
+## Scale and pace
+
+Two line-count models estimate what the surviving code would take people to write. Tumwater's
+history spans 41.1 days (2026-08-20 03:29 → 2026-09-30 04:59 PDT).
+
+| Estimate | Production code (19,094 lines) | Production + tests (65,289 lines) |
+|---|---|---|
+| Basic COCOMO, organic mode: effort | 53 person-months (4.4 staff-years) | 193 person-months (16.1 staff-years) |
+| Basic COCOMO: schedule | 11.3 months with 4.7 people | 18.5 months with 10.5 people |
+| McConnell's rates for 100,000-line projects | 7.3 staff-years (range 1.0–19.1) | 25.1 staff-years (range 3.3–65.3) |
+
+| Pace, in surviving code lines | Per calendar day | Per active day |
+|---|---|---|
+| Tumwater | 1,213 | 1,245 (40 active days) |
+| Claude | 377 | 674 (23 active days) |
+| The whole repository | 1,590 (production alone: 465) | |
+| Human reference: McConnell, 100,000-line projects | | 4–80 per developer working day, 10.4 at the COCOMO average |
+
+- **Keeping up the repository's pace at human rates would take about 223 developers** at
+  McConnell's COCOMO average (range 29–580).
+- **Surviving lines understate what was written.** 3,856 lines a day were added to `src/` and
+  `test/` before deletions (physical lines, comments and blanks included). 41% of all lines ever
+  added there have since been deleted.
+- **These models were built for human code, and tumwater's isn't typical.** Tests are 71% of its
+  code lines and its production code has a 37.5% comment share, so the production-only column
+  is the fairer one. COCOMO's organic mode is calibrated on projects of 2–50 thousand lines, and the
+  65,000 lines with tests is just past that.
+- **The 41 days weren't unattended.** Claude's 142 commits came from human-directed sessions,
+  and the person steering them doesn't appear in either model.
+
 ## Caveats
 
 - **Seven baselines is a small sample, and all of them are flagship-quality projects.** A typical
@@ -359,6 +393,7 @@ The stages:
 | [coverage-runs.cjs](code-metrics/coverage-runs.cjs) | the per-author coverage split for each run, averaged across runs |
 | [authors.cjs](code-metrics/authors.cjs) | the Tumwater / Claude split (`SRC_SCOPE=all\|core\|ui`) |
 | [history.py](code-metrics/history.py) | commit-history metrics, tumwater and baselines |
+| [scale.cjs](code-metrics/scale.cjs) | the effort estimates and pace |
 | [compare.cjs](code-metrics/compare.cjs) | the three-way tables and branch points by kind |
 
 Definitions:
@@ -401,6 +436,13 @@ Definitions:
     `fixtures` directory, or named `*.test.*` or `*.spec.*`.
   - Examples, samples, benchmarks, build scripts, websites, vendored `node_modules` and `.d.ts`
     files are excluded.
+- **Scale:**
+  - Basic COCOMO in organic mode (Boehm, 1981): effort = 2.4 × KLOC^1.05 person-months, and
+    schedule = 2.5 × effort^0.38 months.
+  - McConnell's lines per staff-year for 100,000-line projects are 1,000–20,000, with a COCOMO
+    average of 2,600 ([as quoted by Coding Horror](https://blog.codinghorror.com/diseconomies-of-scale-and-lines-of-code/)).
+    Per-day figures assume 250 working days a year.
+  - Both models count surviving code lines, excluding comments and blanks.
 - **History:**
   - Non-merge commits only.
   - Lines changed means added plus deleted, lockfiles excluded.
