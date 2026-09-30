@@ -6,7 +6,7 @@
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "./config-schema.js";
-import { budgetGate, budgetPaused, type BudgetGate, fleetDailyCost } from "./budget.js";
+import { budgetGate, budgetReached, budgetSpend, type BudgetGate } from "./budget.js";
 import {
   type FallbackBreaker,
   fallbackServing,
@@ -46,12 +46,17 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
 }
 
 /** One poll's gate decision, handed back for the orchestrator's wiring: which gate holds this
- * poll, whether the fallback is engaged, and the config role loops run under (the fallback
- * view, or the live config unchanged). */
+ * poll, whether the fallback is engaged, the config role loops run under (the fallback
+ * view, or the live config unchanged), and the spend/cap pair the gate just evaluated — the
+ * same figures the transition event below stamps, handed back so the orchestrator can publish
+ * them for observers (the dashboards' persisted-file sum lags the scheduler's by every
+ * in-flight run's charge, BUGS.md 2026-09-30). */
 interface BudgetGatePoll {
   gate: BudgetGate;
   onFallback: boolean;
   roleConfig: TumwaterConfig;
+  spentUsd: number;
+  capUsd: number;
 }
 
 /** Poll the daily cost budget gate: once the fleet's spend for the local day has reached
@@ -69,7 +74,10 @@ export function pollBudgetGate(
 ): BudgetGatePoll {
   const { root, states, liveConfig, modelsPath } = ctx;
   const now = Date.now();
-  const reached = budgetPaused(states, liveConfig, now);
+  // One spend read serves the verdict, the transition event, and the returned figures: the
+  // states are not mutated between, so all three are the same number by construction.
+  const { spentUsd, capUsd } = budgetSpend(states, liveConfig, now);
+  const reached = budgetReached({ spentUsd, capUsd });
   // Whether the fallback is usable is a live question too: models.json is stat-cached
   // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
   // who fixes a mistyped model id sees the fleet switch over within a cycle.
@@ -88,8 +96,8 @@ export function pollBudgetGate(
     logEvent(root, {
       loop: "harness",
       type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
-      spentUsd: fleetDailyCost(states, now),
-      capUsd: liveConfig.maxDailyCostUsd,
+      spentUsd,
+      capUsd,
       // On the way into a gate the fallback's identity is the operator's answer to "why
       // this and not the other one": which free pair took over, which configured pair was
       // refused because pi's definitions do not price it at zero, or which free pair the
@@ -114,5 +122,11 @@ export function pollBudgetGate(
     state.from = liveConfig;
     state.fallbackConfig = applyFallbackModel(liveConfig);
   }
-  return { gate, onFallback, roleConfig: onFallback ? state.fallbackConfig : liveConfig };
+  return {
+    gate,
+    onFallback,
+    roleConfig: onFallback ? state.fallbackConfig : liveConfig,
+    spentUsd,
+    capUsd,
+  };
 }

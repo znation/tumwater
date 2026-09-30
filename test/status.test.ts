@@ -159,6 +159,46 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false, fallback: null });
 });
 
+test("snapshot prefers the running orchestrator's published budget over the persisted sum", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "published budget test"); // seeds tumwater.json with maxDailyCostUsd: 50
+
+  // One loop with $1 persisted. The scheduler's own gate figure is $60 — the in-flight charge
+  // its live runner states carry, which no loop-state save has landed yet (BUGS.md 2026-09-30:
+  // the gate charges run-by-run, the files persist at the saves).
+  const clean = freshLoopState("clean");
+  recordDailyCost(clean, 1);
+  saveLoopState(repo, clean);
+
+  // Not running: no published figure exists (the exit removes the info file), so the
+  // persisted sum is the only figure there is — a stopped fleet's files are final.
+  let snap = snapshot(repo);
+  assert.equal(snap.budget.spentUsd, 1);
+  assert.equal(snap.budget.capUsd, 50);
+
+  // A running orchestrator publishing $60: the snapshot shows the scheduler's number, and the
+  // rendered table keeps its total row equal to the header badge (both read the same budget
+  // block) while the per-loop cell still reads its persisted copy — the lag the publish
+  // exists to expose, visible instead of misleading.
+  writeOrchestratorMarker(repo, ["clean"], { budget: { spentUsd: 60, capUsd: 50 } });
+  snap = snapshot(repo);
+  assert.equal(snap.budget.spentUsd, 60);
+  assert.equal(snap.budget.capUsd, 50);
+  const text = renderStatus(repo, snap);
+  assert.match(text, /· budget: \$60\.00\/\$50 today/); // the header badge
+  assert.match(text, /\$1\.00/); // the per-loop today cell: the persisted copy
+  // The total row agrees with the badge, not with the per-loop cells above it.
+  const totalRow = text.split("\n").find((l) => l.trimStart().startsWith("total")) ?? "";
+  assert.match(totalRow, /\$60\.00/);
+  assert.doesNotMatch(totalRow, /\$1\.00/);
+
+  // The publish rides the liveness check: a stale marker beside a dead pid must not speak
+  // for the fleet.
+  writeOrchestratorMarker(repo, ["clean"], { pid: 2_000_000_000, budget: { spentUsd: 60, capUsd: 50 } }); // beyond any pid space
+  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
+  assert.equal(snapshot(repo).budget.spentUsd, 1);
+});
+
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
 // fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
 // never accumulate against the cap and the badge data carries `free` so both dashboards read n/a.

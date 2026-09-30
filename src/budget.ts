@@ -63,8 +63,20 @@ export function budgetReached(budget: { spentUsd: number; capUsd: number } | nul
  * or crossing midnight flips it on the next cycle and nothing can get stuck. Lives here (not
  * in orchestrator.ts) because observers must not depend on the scheduler module. */
 export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = Date.now()): boolean {
-  const cap = config.maxDailyCostUsd;
-  return budgetReached(cap > 0 ? { spentUsd: fleetDailyCost(states, now), capUsd: cap } : null);
+  return budgetReached(budgetSpend(states, config, now));
+}
+
+/** The fleet's daily-budget figures from live loop states — the exact pair the gate evaluates:
+ * today's summed spend and the configured cap (0 when disabled). budgetReached's own capUsd > 0
+ * term makes a disabled cap read unreached, so the pair needs no null ceremony. Returning the
+ * figures (not just the verdict) lets the scheduler publish WHAT it tripped on, not only THAT it
+ * tripped — the one number every observer must show. */
+export function budgetSpend(
+  states: LoopState[],
+  config: TumwaterConfig,
+  now = Date.now(),
+): { spentUsd: number; capUsd: number } {
+  return { spentUsd: fleetDailyCost(states, now), capUsd: config.maxDailyCostUsd };
 }
 
 /** What the daily cost budget is doing to role loops right now (plans/fallback-model.md):

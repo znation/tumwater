@@ -296,18 +296,25 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
       // owns only the wiring — the demotion publish below and the per-runner assignment at
       // the bottom of this block.
-      const { gate, roleConfig } = pollBudgetGate(budgetGateState, {
+      const { gate, roleConfig, spentUsd, capUsd } = pollBudgetGate(budgetGateState, {
         root,
         states: runners.map((r) => r.state),
         liveConfig,
         modelsPath,
       });
-      // Publish the demotion for observers (the dashboards' gate and `tumwater doctor` would
-      // otherwise read the price alone and advertise a dead fallback); rewritten only when it
-      // changes, like the build status below.
+      // Publish what observers cannot derive themselves: the demotion (the dashboards' gate
+      // and `tumwater doctor` would otherwise read the price alone and advertise a dead
+      // fallback) and the gate's own spend/cap pair — summed over the runners' live states,
+      // which every persisted-file reader lags by the in-flight runs' charges. Both rewritten
+      // only when they change, like the build status below; the exit removes the whole file,
+      // so no stale pair survives a stop.
       const demotion = fallbackDemotion(budgetGateState.breaker);
-      if (JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted)) {
-        info.fallbackDemoted = demotion;
+      const budget = { spentUsd, capUsd };
+      const demotionChanged = JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted);
+      const budgetChanged = JSON.stringify(budget) !== JSON.stringify(info.budget);
+      if (demotionChanged || budgetChanged) {
+        if (demotionChanged) info.fallbackDemoted = demotion;
+        if (budgetChanged) info.budget = budget;
         writeJsonFile(infoFile, info);
       }
       // The director keeps the live config — an explicit human prompt outranks the

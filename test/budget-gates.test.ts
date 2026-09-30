@@ -70,6 +70,10 @@ test("pollBudgetGate keeps the gate open under the cap and hands the live config
   assert.equal(p.gate, "open");
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, cfg); // same object: no view is derived while budget remains
+  // The poll hands back the spend/cap pair it just evaluated — the figures the orchestrator
+  // publishes for the dashboards (BUGS.md 2026-09-30). Disabled cap: the spend still rides
+  // along (a disabled fleet's badge keeps its dollar figure).
+  assert.deepEqual({ spentUsd: p.spentUsd, capUsd: p.capUsd }, { spentUsd: 5, capUsd: 10 });
   assert.deepEqual(readEvents(root), []); // no transition, no events
 });
 
@@ -83,6 +87,7 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   const p = poll(root, state, cfg, models, over);
   assert.equal(p.gate, "fallback");
   assert.equal(p.onFallback, true);
+  assert.deepEqual({ spentUsd: p.spentUsd, capUsd: p.capUsd }, { spentUsd: 10, capUsd: 10 }); // the tripped-on pair
   // The role view: the free pair installed top-level, every override dropped, everything
   // else (the cap itself among it) untouched.
   assert.equal(p.roleConfig.provider, "free");

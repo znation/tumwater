@@ -28,13 +28,14 @@ export function writeMarker(file: string, value: unknown): void {
 export function writeOrchestratorMarker(
   root: string,
   roles: readonly string[],
-  opts: { pid?: number; build?: unknown } = {},
+  opts: { pid?: number; build?: unknown; budget?: { spentUsd: number; capUsd: number } } = {},
 ): void {
   writeMarker(orchestratorStatePath(root), {
     pid: opts.pid ?? process.pid,
     startedAt: Date.now(),
     roles: [...roles],
     ...(opts.build !== undefined ? { build: opts.build } : {}),
+    ...(opts.budget !== undefined ? { budget: opts.budget } : {}),
   });
 }
 

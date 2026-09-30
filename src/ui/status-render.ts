@@ -1,6 +1,6 @@
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "./status.js";
-import { dailyCost, fleetDailyCost } from "../budget.js";
+import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
@@ -275,9 +275,14 @@ export function renderStatusSpans(
     compactTokens(withMetrics.reduce((sum, { m }) => sum + m.generated, 0)),
     compactTokens(Math.max(0, ...withMetrics.map(({ m }) => m.peakCtx))),
     usd(snap.loops.reduce((sum, s) => sum + s.totalCostUsd, 0)),
-    // The fleet's today-spend — by construction equal to the header badge's spend while
-    // enabled (snapshot derives both from the same loops), so table and badge cannot drift.
-    usd(fleetDailyCost(snap.loops)),
+    // The fleet's today-spend, from the snapshot's budget block — the same number the header
+    // badge reads, so table and badge cannot drift. While the orchestrator runs that figure is
+    // the scheduler's live sum over its in-memory states, which can sit ABOVE the per-loop
+    // `today` cells above (each loop's persisted copy, written only at its saves): the gap is
+    // exactly the in-flight charge the budget gate has already counted, and displaying it is
+    // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
+    // same loops, so cells and total agree by construction.
+    usd(snap.budget.spentUsd),
     "",
     "",
     "",

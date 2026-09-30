@@ -53,6 +53,11 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     // lifetime totalCostUsd (which would also read $1 here, but from a different field).
     assert.equal(paused[0]?.spentUsd, 1);
 
+    // The same figures are published in the orchestrator info file for the dashboards
+    // (BUGS.md 2026-09-30): the gate's own pair, summed over the live runner states, which
+    // the persisted loop-state file can lag while a tick is in flight.
+    assert.deepEqual(readOrchestratorInfo(repo)?.budget, { spentUsd: 1, capUsd: 0.5 });
+
     // The paused role starts no new ticks even though its schedule says to run: wait well
     // past nextRunAt plus several (fast) poll cycles — an ungated loop would have ticked by then.
     const scheduled = loadLoopState(repo, "clean").nextRunAt;

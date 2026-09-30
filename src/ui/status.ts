@@ -50,8 +50,13 @@ export interface StatusSnapshot {
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
    * $X/$Y today` while enabled, `· no cap` when disabled) and the editable affordance that
-   * needs a badge even on a disabled fleet. Spend lags in-flight ticks by up to one tick
-   * boundary — exactly like the cost column. `free` is true when every model the fleet could
+   * needs a badge even on a disabled fleet. While the orchestrator runs, `spentUsd` is the
+   * scheduler's OWN published figure (the gate's poll, over the runners' live in-memory
+   * states — BUGS.md 2026-09-30): what an operator sees is what the scheduler enforces. Not
+   * running, it is the persisted loop states' sum — a stopped fleet's files are final. The
+   * per-loop rows always read their persisted copies, so while ticks are in flight the
+   * per-loop cells can sit under the header/total figure: that difference is exactly the
+   * charge the scheduler has already counted. `free` is true when every model the fleet could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
    * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model role loops
@@ -314,6 +319,11 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   const inFlight =
     running && landingMarker ? liveLandingMarker(landingMarker, new Set(landings.map((e) => e.sha))) : undefined;
   if (inFlight) landQueue.inFlight = inFlight;
+  // The running orchestrator's published gate figures (read once above, with the pid and the
+  // demotion): the scheduler's own sum over its live runner states. Only while running — the
+  // exit removes the info file, so a stale file beside a dead pid must not speak for a fleet
+  // whose persisted files are final.
+  const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
   return {
     running,
     pid: info?.pid,
@@ -329,7 +339,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget: {
-      spentUsd: fleetDailyCost(loops),
+      spentUsd: publishedSpend ?? fleetDailyCost(loops),
       capUsd: cfg.maxDailyCostUsd,
       free: fleetModelsFree(cfg, modelsPath),
       // Null unless the gate could actually engage it (configured AND priced at zero AND not

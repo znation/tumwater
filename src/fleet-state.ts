@@ -177,6 +177,14 @@ export interface OrchestratorInfo {
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.
    * Written by the orchestrator whenever the demotion changes; absent otherwise. */
   fallbackDemoted?: FallbackDemotion;
+  /** The daily cost budget gate's own figures from the most recent poll (src/budget-gates.ts):
+   * today's spend summed over the runners' LIVE in-memory states — charged run-by-run as each
+   * pi run folds, not only at the tick-end save — against the cap it was evaluated under.
+   * Published whenever it changes so observers (src/ui/status.ts) can show what the scheduler
+   * is actually enforcing; a stopped fleet removes this file at exit, so the absence of a
+   * running orchestrator means no published figure exists and the persisted sum is final.
+   * Written by the orchestrator whenever the pair changes; absent otherwise. */
+  budget?: { spentUsd: number; capUsd: number };
 }
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.
