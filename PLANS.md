@@ -229,7 +229,9 @@ test and one landing test next to part 2/4's.
 
 Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoints/inbox, ~80 client, ~180 tests. No sub-plans needed.
 
-### Land queue drawer: clicking the GUI sidebar's "Land queue" chip lists the queued changes (planned 2026-09-30)
+## Done
+
+### Land queue drawer: clicking the GUI sidebar's "Land queue" chip lists the queued changes (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** The GUI sidebar shows `Land queue N` (a row in the `statuschips` panel, `renderSidebar` in `src/ui/gui-client-fleet.ts`) whose only detail is a hover title naming the count and — sometimes — the one landing currently in flight. An operator cannot see WHAT is queued: which roles are waiting, what each change is, or how long each has sat in the queue. Clicking the chip opens the dashboard's detail drawer (the same sheet loops and backlog entries use) listing every queued change — position, role, summary, short sha, age — plus the in-flight landing when one is running.
 
@@ -251,7 +253,7 @@ Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoint
 
 Sizing: one run — ~95 lines across three client/server files plus styles, ~120 test lines. No sub-plans needed.
 
-## Done
+**Done 2026-09-30 by feature:** implemented as specified — `landQueue.entries` filled from the existing `queuedLandings` pass in `buildSnapshot` (shallow per-entry copies, absent when empty), the `landqueue` drawer kind with `openLandQueue`/`toggleLandQueue`/`renderLandQueueDrawer` and its `refreshDrawer` case, the `data-action='landqueue'` chip wired through a delegated `#statuschips` listener, and the pointer-cursor style. One addition inside the named files: `showDrawer` in gui-client-drawer.ts also clears `lastPaint["drawerbody"]` — the land-queue drawer is the first to paint `drawerbody` through `paintPanel`, so the paint cache must not outlive the body `showDrawer` writes directly. Snapshot-shape assertions extend the existing land-queue test in test/status.test.ts (two entries, order, shallow-copy fields, absent-when-empty) and test/cli-gui.test.ts gains the e2e asserting the served `/api/status` delivers both queued entries oldest first.
 
 ### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30, done 2026-09-30) — part 1/4, the prompts
 

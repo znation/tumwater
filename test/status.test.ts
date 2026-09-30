@@ -12,7 +12,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
-import { enqueueLanding } from "../src/landing-queue.js";
+import { enqueueLanding, queuedLandingFiles } from "../src/landing-queue.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
@@ -465,10 +465,13 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   const repo = makeRepo();
   await initProject(repo, "land queue snapshot");
 
-  // Idle: depth 0, no inFlight (the field is unconditional, so JSON consumers see one shape).
+  // Idle: depth 0, no inFlight, no entries (depth is unconditional, so JSON consumers see one
+  // shape; the entries ride the same read pass and are absent when there is nothing to render —
+  // the roleInboxPrompts discipline the land-queue drawer's plan names).
   let snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 0);
   assert.equal(snap.landQueue.inFlight, undefined);
+  assert.equal(snap.landQueue.entries, undefined);
 
   // One queued entry (3/5's enqueue) lifts the depth — but a merely queued landing is not
   // in flight, and the queue file alone never names an in-flight record.
@@ -482,6 +485,29 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 1);
   assert.equal(snap.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+  // The queued change is listed in execution order with the fields the drawer paints —
+  // role, sha, tick, summary, enqueuedAt — without the entry's optional body/highFriction.
+  assert.deepEqual(snap.landQueue.entries, [
+    { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: snap.landQueue.entries![0]!.enqueuedAt },
+  ]);
+
+  // Two queued entries list oldest first, in the queue's filename order.
+  enqueueLanding(repo, { role: "feature", sha: "def5678", tick: 2, summary: "add a thing", enqueuedAt: Date.now() });
+  snap = snapshot(repo);
+  assert.equal(snap.landQueue.depth, 2);
+  assert.deepEqual(snap.landQueue.entries!.map((e) => e.role), ["clean", "feature"]);
+  assert.deepEqual(
+    snap.landQueue.entries!.map((e) => [e.sha, e.tick, e.summary, typeof e.enqueuedAt]),
+    [["abc1234", 1, "tidy something", "number"], ["def5678", 2, "add a thing", "number"]],
+  );
+  // The entries are shallow copies, not the queue's own objects (the drawer never mutates
+  // them, and nothing the queue file held beyond the listed fields leaks into the payload).
+  assert.equal("body" in snap.landQueue.entries![0]!, false);
+  assert.equal("highFriction" in snap.landQueue.entries![0]!, false);
+
+  // Back to the single queued entry the rest of this test reasons about.
+  const featureFile = queuedLandingFiles(repo).find((e) => e.entry.sha === "def5678")!.file;
+  fs.rmSync(featureFile);
 
   // The 4/5 marker plus a live orchestrator plus the matching entry → in flight, with the
   // marker's identity (the dashboard's `landing <elapsed>` label reads startedAt from it).
@@ -519,12 +545,14 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.running, true);
   assert.equal(snap.landQueue.inFlight, undefined, "a marker with no matching queue entry never displays");
 
-  // The queue drains and the marker is removed (the drain's own bookkeeping): back to idle.
+  // The queue drains and the marker is removed (the drain's own bookkeeping): back to idle,
+  // with the entries gone too.
   fs.rmSync(path.join(landQueueDir(repo), fs.readdirSync(landQueueDir(repo))[0]!));
   fs.rmSync(landingStatePath(repo));
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 0);
   assert.equal(snap.landQueue.inFlight, undefined);
+  assert.equal(snap.landQueue.entries, undefined);
 });
 
 // The marker carries one record per change the landing pipeline holds, and the snapshot

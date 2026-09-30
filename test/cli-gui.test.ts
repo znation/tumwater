@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
+import { enqueueLanding } from "../src/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/ui/gui.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
@@ -75,6 +76,32 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
       );
   } finally {
     lan.kill();
+  }
+});
+
+test("the served /api/status carries the land queue's entries for the drawer", async () => {
+  // The land-queue drawer is client-side script; this e2e covers its server half: enqueue a
+  // landing in the repo, start the gui, and read the same payload the 1 s poll delivers —
+  // the entries the drawer renders must reach the client in queue order.
+  const repo = makeRepo();
+  await initProject(repo, "cli gui land queue");
+  enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  enqueueLanding(repo, { role: "feature", sha: "def5678", tick: 2, summary: "add a thing", enqueuedAt: Date.now() });
+
+  const port = await freeTcpPort();
+  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
+  try {
+    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner", 30_000);
+    const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
+    assert.equal(snap.landQueue.depth, 2);
+    assert.deepEqual(
+      snap.landQueue.entries.map((e: { role: string; sha: string; tick: number; summary: string; enqueuedAt: number }) =>
+        [e.role, e.sha, e.tick, e.summary, typeof e.enqueuedAt]),
+      [["clean", "abc1234", 1, "tidy something", "number"], ["feature", "def5678", 2, "add a thing", "number"]],
+      "the queued changes reach the client oldest first",
+    );
+  } finally {
+    gui.kill();
   }
 });
 

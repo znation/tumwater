@@ -132,7 +132,17 @@ export interface StatusSnapshot {
    * matching entry never displays. The marker is checked per change (liveLandingMarker):
    * only its records whose entry is still queued are kept, and it displays while one of them
    * is not yet `done`. */
-  landQueue: { depth: number; inFlight?: LandingInFlight };
+  landQueue: {
+    depth: number;
+    /** Each queued change in execution order (oldest first): what the GUI's land-queue
+     * drawer lists — position, role, summary, short sha, age. Filled from the same
+     * `queuedLandings` pass the depth already costs (shallow per-entry copies without the
+     * optional `body`/`highFriction`), only when `depth > 0`, absent when empty — the same
+     * filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
+     * common empty case carries no field. */
+    entries?: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
+    inFlight?: LandingInFlight;
+  };
   /** Main's newest merge-scope build check (PLANS.md "Retire the README freshness stamp"):
    * the latest `build_check` event at the `landing`/`batch`/`baseline` scope, read from the
    * event tail — the live replacement for the committed README stamp the readme role used to
@@ -332,6 +342,15 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   const landings = queuedLandings(root);
   const landingMarker = readLandingMarker(root);
   const landQueue: StatusSnapshot["landQueue"] = { depth: landings.length };
+  if (landings.length > 0) {
+    landQueue.entries = landings.map((e) => ({
+      role: e.role,
+      sha: e.sha,
+      tick: e.tick,
+      summary: e.summary,
+      enqueuedAt: e.enqueuedAt,
+    }));
+  }
   const inFlight =
     running && landingMarker ? liveLandingMarker(landingMarker, new Set(landings.map((e) => e.sha))) : undefined;
   if (inFlight) landQueue.inFlight = inFlight;

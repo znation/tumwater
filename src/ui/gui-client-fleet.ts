@@ -56,7 +56,9 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         rows += row(c.status === "passed" ? "green" : c.status === "failed" ? "red" : "amber", icon(c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info"),
           "Main " + verdict + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
-      if (d.landQueue && d.landQueue.depth > 0) rows += row("orange", icon("merge"), "Land queue " + d.landQueue.depth, landingTitle(d.landQueue));
+      // Clickable: the land-queue drawer (gui-client-drawer.ts). Same row markup as the
+      // helper, plus the data-action the #statuschips listener dispatches on.
+      if (d.landQueue && d.landQueue.depth > 0) rows += "<div class='row t-orange rowclickable' data-action='landqueue' title='" + esc(landingTitle(d.landQueue)) + "'>" + icon("merge") + "Land queue " + d.landQueue.depth + "</div>";
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
       // inside/outside wording the TUI/status header's quietBadge carries, derived from the
@@ -219,6 +221,12 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     }
     const entry = t.closest(".backloglink");
     if (entry) toggleEntry(entry.dataset.file, Number(entry.dataset.index));
+  });
+  // The sidebar's "Land queue N" chip opens the land-queue drawer; every other row is
+  // inert (only rows carrying the data-action dispatch).
+  $("statuschips").addEventListener("click", (ev) => {
+    const r = ev.target instanceof Element ? ev.target.closest("[data-action='landqueue']") : null;
+    if (r) toggleLandQueue();
   });
 
   // ---- activity ----

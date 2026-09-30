@@ -133,6 +133,7 @@ export const GUI_STYLES = String.raw`
   .side-status .row .dot, .side-status .row svg.i { flex: none; }
   .side-status .row svg.i { width: 14px; height: 14px; }
   .side-status .row .mono { font-size: 12px; }
+  .side-status .row.rowclickable { cursor: pointer; }
   .side-nav { display: flex; flex-direction: column; gap: 2px; }
   .tab { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 8px;
          color: var(--text-2); text-decoration: none; font-weight: 500; white-space: nowrap; }
@@ -447,6 +448,7 @@ export const GUI_STYLES = String.raw`
     .project { padding: 0; }
     .side-status { flex-direction: row; flex-wrap: wrap; gap: 2px 10px; padding: 0; }
     .side-status .row { padding: 0; }
+    .side-status .row.rowclickable { padding: 3px 8px; }
     .side-nav { flex-direction: row; min-width: 0; overflow-x: auto; scrollbar-width: none; }
     .tab { flex: none; }
     .side-controls { flex-direction: row; flex-wrap: wrap; margin-top: 0; }
