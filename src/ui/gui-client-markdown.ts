@@ -27,7 +27,25 @@ export const GUI_CLIENT_MARKDOWN_JS = String.raw`  // markdown:start
     }).join("");
   }
   function mdTable(rows) {
-    const cells = (r) => r.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    // Cells split at pipes that sit outside inline-code spans: the digest's tables quote
+    // shell commands, and a pipeline's pipe is cell content, not a delimiter. Each run of
+    // backticks toggles code state — one run opens a span, the next closes it, and a doubled
+    // backtick is one run — so a quoted pipeline ("grep a|b") stays one cell while two
+    // separately quoted cells ("a" and "b") still split.
+    const cells = (r) => {
+      const trimmed = r.trim().replace(/^\|/, "").replace(/\|$/, "");
+      const out = [];
+      let cell = "";
+      let code = false;
+      for (let i = 0; i < trimmed.length; i++) {
+        const ch = trimmed[i];
+        if (ch === "\x60") { code = !code; cell += ch; }
+        else if (ch === "|" && !code) { out.push(cell.trim()); cell = ""; }
+        else cell += ch;
+      }
+      out.push(cell.trim());
+      return out;
+    };
     const head = cells(rows[0]);
     let body = rows.slice(1);
     let align = [];

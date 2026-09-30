@@ -162,6 +162,11 @@ test("renderMarkdown renders the backlog's and digest's Markdown without ever pa
   const table = renderMarkdown("| role | errors |\n| --- | ---: |\n| qa | 3 |");
   assert.match(table, /<th>role<\/th><th class='r'>errors<\/th>/);
   assert.match(table, /<td>qa<\/td><td class='r'>3<\/td>/);
+  // A pipe inside inline code is cell content, not a delimiter (the digest's tables quote
+  // shell pipelines): the row keeps its two cells and the code span stays whole.
+  const piped = renderMarkdown("| command | count |\n| --- | ---: |\n| \x60grep a|b | tail\x60 | 3 |\n| `x` | `p|q` |");
+  assert.match(piped, /<td><code>grep a\|b \| tail<\/code><\/td><td class='r'>3<\/td>/);
+  assert.match(piped, /<td><code>x<\/code><\/td><td class='r'><code>p\|q<\/code><\/td>/);
   // Fenced code stays verbatim and escaped.
   assert.equal(renderMarkdown("\x60\x60\x60\n<b>x</b> **y**\n\x60\x60\x60"), "<pre><code>&lt;b&gt;x&lt;/b&gt; **y**</code></pre>");
   // Model-written HTML is text, never markup; links keep their text and drop the URL.

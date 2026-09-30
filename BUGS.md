@@ -19,6 +19,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The dashboard's markdown table cells split on every pipe, even one inside an inline-code span: a digest table row quoting a shell pipeline (`\`grep a|b | tail\``) renders as three cells with raw backticks leaking into the cell text (found by bugfix loop 2026-09-29 latent-bug hunt over the 2026-09-29 GUI redesign, fixed 2026-09-29)
+
+- **Symptom:** In the dashboard's Failures/Backlog markdown view, any table cell whose inline code contains a `|` — common in the digest's error clusters, which quote the exact failing shell command — split at that pipe: the row grew phantom cells, the code span's backticks rendered as literal text, and the row's remaining cells shifted left of their columns.
+- **Reproduce:** A scratch run of renderMarkdown on `| command | count |\n| --- | ---: |\n| \`grep a|b | tail\` | 3 |` returned `<td>\`grep a\`</td><td class='r'>b</td><td>tail\`</td><td>3</td>` before the fix; after it, the row keeps two cells and `<code>grep a|b | tail</code>.
+- **Cause:** mdTable's `cells` helper stripped the outer pipes and then split the row on every `|` character, with no notion of the inline-code state mdInline gives the cell contents; the two functions' backtick rules had never met.
+- **Fixed 2026-09-29 by bugfix loop:** mdTable's cells helper now scans the row character by character, toggling code state on each run of backticks (one run opens a span, the next closes it, a doubled backtick is one run) and splitting only at pipes outside code (src/ui/gui-client-markdown.ts). Regression test: test/gui-client.test.ts extends the table case with a quoted pipeline and a code-only pipe cell.
+- **Validation gap:** no-observability (closest tag — the corruption is plainly visible in a rendered dashboard, but left no trace the offline suite could fail on): the markdown tests exercised tables only with pipe-free cells, so the delimiter-vs-content ambiguity had no failing assertion; the new fixture pins the code-span rule.
+
 ### The one-character ellipsis reads as a genuine refusal: `TUMWATER_REFUSED: none…` (and `none… nothing to do`) fails `isNegatedRefusal`, so the harness hard-resets the tick's finished, tested work (found by bugfix loop 2026-09-29 latent-bug hunt over the fixed quote/punctuation bugs, fixed 2026-09-29)
 
 - **Symptom:** The negation guard's sentence marks (`;` `:` `,` `.` `!` `?`) and its appended-note separator class both omitted the one-character ellipsis `…`, so a work-completed reply ending `TUMWATER_REFUSED: none…` — or `none… nothing to do`, the ellipsis opening an appended explanation — classified as a genuine refusal and the harness destroyed the tick's tested work. The ASCII three-dot ellipsis (`...`) already stripped via its dots; only the single-character mark was missing.
