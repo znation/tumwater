@@ -50,7 +50,7 @@ export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
  * cap is enabled (capUsd > 0; a cap of 0 disables the gate regardless of spend), and spend
  * sits at or above it. The single definition of "the budget gate is on": the orchestrator
  * evaluates it from live loop states via budgetPaused, and both dashboards evaluate it from
- * the snapshot's materialized budget field (status.ts) — which carries the object even while
+ * the snapshot's materialized budget field (status-data.ts) — which carries the object even while
  * disabled, so the capUsd > 0 term is what keeps a disabled fleet out of "budget paused".
  * The comparison cannot drift between what the scheduler enforces and what users see. */
 export function budgetReached(budget: { spentUsd: number; capUsd: number } | null): boolean {
@@ -96,7 +96,7 @@ export type BudgetGate = "open" | "fallback" | "paused";
  * hour of 33/33 failed ticks on one instead of the pause this gate already had for "nothing
  * usable to fall back to" (BUGS.md 2026-09-20). The single definition of the gate: the
  * orchestrator enforces it and both dashboards display it, so what an operator sees is what the
- * scheduler is doing. Observers pass no third argument — status.ts folds the running
+ * scheduler is doing. Observers pass no third argument — status-data.ts folds the running
  * orchestrator's published demotion into the snapshot's `fallback` field (null while demoted),
  * which is their second input. */
 export function budgetGate(reached: boolean, fallbackReady: boolean, fallbackServing = true): BudgetGate {

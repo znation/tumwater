@@ -12,12 +12,12 @@ import { compactTokens } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
 
 /** The status DISPLAY MODEL: what a loop's cycle position is and its per-loop token metrics
- * (the header badges live next door in badges.ts) — derived from the status data (status.ts)
+ * (the header badges live next door in badges.ts) — derived from the status data (status-data.ts)
  * and shared by BOTH
  * observer surfaces: the terminal table (status-render.ts's renderStatus/stateCell) and the
  * JSON/GUI payload (status-payload.ts). Kept apart from status-render.ts so the GUI payload
  * depends on the shared model, not on the TUI table module — "what to show" (here) is separate
- * from "how a terminal lays it out" (status-render.ts). Depends on status.ts one way: deriving
+ * from "how a terminal lays it out" (status-render.ts). Depends on status-data.ts one way: deriving
  * reads the snapshot and never collects fleet state itself (live tick detail is display-only). */
 
 function duration(ms: number): string {

@@ -122,7 +122,7 @@ test("budgetGate: reached with a free, serving fallback keeps loops running; oth
   // failed ticks. A free fallback the breaker demoted pauses the fleet like no fallback at all.
   assert.equal(budgetGate(true, true, false), "paused");
   assert.equal(budgetGate(true, false, false), "paused");
-  // Observers (status.ts) fold the demotion into their fallbackReady input and pass no third
+  // Observers (status-data.ts) fold the demotion into their fallbackReady input and pass no third
   // argument; it defaults to serving so their two-input reading is unchanged.
   assert.equal(budgetGate(true, true), "fallback");
 });
