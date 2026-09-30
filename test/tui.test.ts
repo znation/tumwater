@@ -155,6 +155,76 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
   });
 });
 
+test("Up/Down recall the submitted prompts; the draft survives the round trip", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    for (const ch of "fix the bug") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /queued for the director loop/);
+
+    // Up recalls the just-submitted prompt; Down returns to the empty live line.
+    tui.key(undefined, "up");
+    assert.equal(tui.lines().at(-1), "director › fix the bug");
+    tui.key(undefined, "down");
+    assert.equal(tui.lines().at(-1), "director › ");
+
+    // A half-typed draft is saved by the first Up and restored past the newest entry.
+    for (const ch of "wake ") tui.key(ch, ch);
+    tui.key(undefined, "up");
+    assert.equal(tui.lines().at(-1), "director › fix the bug");
+    tui.key(undefined, "down"); // the newest entry again
+    tui.key(undefined, "down"); // past it: the saved draft returns
+    assert.equal(tui.lines().at(-1), "director › wake ");
+    // The restored draft submits like any other line (trimmed, like the CLI path).
+    tui.key(undefined, "return");
+    const inbox = path.join(repo, ".tumwater", "inbox");
+    const files = fs.readdirSync(inbox).filter((f) => f.endsWith(".md"));
+    assert.deepEqual(files.map((f) => fs.readFileSync(path.join(inbox, f), "utf8")), ["fix the bug", "wake"]);
+  });
+});
+
+test("a mode switch settles the recall state: the draft survives, role text never leaks", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    for (const ch of "p1") tui.key(ch, ch);
+    tui.key(undefined, "return"); // history: ["p1"]
+    for (const ch of "director draft") tui.key(ch, ch);
+    tui.key(undefined, "up"); // browsing: the line shows "p1", the draft is saved
+    assert.equal(tui.lines().at(-1), "director › p1");
+
+    // Opening the role editor mid-recall settles first: it saves the DRAFT, not the recalled
+    // entry, so Esc later restores what the operator was writing.
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "clean › ");
+    for (const ch of "role text") tui.key(ch, ch);
+    tui.key(undefined, "up"); // recall inside role mode: the shared history serves the role line too
+    assert.equal(tui.lines().at(-1), "clean › p1");
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "director › director draft", "the saved draft, not the recalled entry");
+
+    // The role-mode browse must not survive the exit: Down sits on the live line (the role
+    // draft it would have restored stays out of the director line), and Up starts a fresh
+    // browse that saves the director draft afresh.
+    tui.key(undefined, "down");
+    assert.equal(tui.lines().at(-1), "director › director draft", "no role text leaks onto the line");
+    tui.key(undefined, "up");
+    assert.equal(tui.lines().at(-1), "director › p1");
+    tui.key(undefined, "down");
+    tui.key(undefined, "down");
+    assert.equal(tui.lines().at(-1), "director › director draft");
+
+    // Budget mode settles the same way: entering mid-recall saves the draft, Esc restores it.
+    tui.key(undefined, "up");
+    tui.key(undefined, "b", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "daily cap $ 50");
+    tui.key(undefined, "escape");
+    assert.equal(tui.lines().at(-1), "director › director draft");
+    tui.key(undefined, "down");
+    assert.equal(tui.lines().at(-1), "director › director draft", "no stale recall state after budget mode");
+  });
+});
+
 test("a failed prompt submit keeps the text and flashes the error instead of losing it", async () => {
   // Regression: the TUI cleared the input line before calling submitPrompt and left the call
   // unguarded, so a queue write failure (disk full, permissions) both silently dropped the
@@ -756,7 +826,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     tui.key(undefined, "r", { ctrl: true });
     assert.match(tui.lastFrame(), /prompt for clean: Enter to send, Esc to cancel/);
     // The bottom hint names the addressed loop while the mode holds the line.
-    assert.match(tui.lastFrame(), /Enter send to clean · Esc cancel · Ctrl\+C quit/);
+    assert.match(tui.lastFrame(), /Enter send to clean · ↑↓ history · Esc cancel · Ctrl\+C quit/);
     for (const ch of "check the clean queue") tui.key(ch, ch);
     tui.key(undefined, "return");
 
@@ -825,7 +895,7 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     for (const ch of "role text") tui.key(ch, ch);
     tui.key(undefined, "escape"); // Esc restores the saved director draft
     assert.equal(tui.lines().at(-1), "director › director draft");
-    assert.match(tui.lastFrame(), /Enter send · Ctrl\+R prompt clean/); // the transcript view's ordinary hint is back
+    assert.match(tui.lastFrame(), /Enter send · ↑↓ history · Ctrl\+R prompt clean/); // the transcript view's ordinary hint is back
 
     // Ctrl+R again toggles the mode off the same way.
     tui.key(undefined, "r", { ctrl: true });

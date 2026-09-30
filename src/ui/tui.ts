@@ -36,10 +36,16 @@ import {
 } from "./self-reload.js";
 import {
   applyKey,
+  newPromptHistory,
   parseBudgetInput,
   parseRolePromptInput,
+  pushPromptHistory,
+  recallPromptHistory,
   renderInputView,
+  resetPromptRecall,
+  settlePromptRecall,
   tuiTerminalError,
+  type PromptHistory,
 } from "./tui-input.js";
 import {
   backlogLines,
@@ -140,6 +146,10 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   let rolePromptFor: string | null = null;
   let roleSavedInput = "";
   let roleSavedCursor = 0;
+  // The prompt line's session history (tui-input.ts's rules): every successfully submitted
+  // prompt — director and per-role alike — joins it, and Up/Down walk it the way readline
+  // does. Not persisted: a TUI session starts blank, like a fresh shell.
+  let promptHistory: PromptHistory = newPromptHistory();
   // The last snapshot's cap, captured by render so the Ctrl+B handler can pre-fill without
   // re-reading config itself (render already polls snapshot every second).
   let currentCapUsd = 0;
@@ -288,19 +298,26 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   };
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
+  // The recall state resets with it: the restored text is the live draft now, so the next
+  // Up starts a fresh browse instead of resuming whatever the cap editor's line left behind.
   const exitBudgetMode = (): void => {
     if (!budgetMode) return;
     budgetMode = false;
     input = savedInput;
     cursor = savedCursor;
+    promptHistory = resetPromptRecall(promptHistory);
   };
 
-  // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text.
+  // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text,
+  // and reset the recall state with it — the saved draft was saved settled (see the Ctrl+R
+  // handler), so resuming a browse entered in role mode would restore role-mode text onto
+  // the director line and lose the director draft the arrows had saved.
   const exitRolePromptMode = (): void => {
     if (!rolePromptFor) return;
     rolePromptFor = null;
     input = roleSavedInput;
     cursor = roleSavedCursor;
+    promptHistory = resetPromptRecall(promptHistory);
   };
 
   // readline's emitter setup only accepts a ReadStream; the fake terminal carries the same
@@ -342,8 +359,13 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           // leaves the prompt line untouched (toggle/Esc logic unchanged).
           flashMessage("budget n/a — all models free");
         } else {
-          savedInput = input;
-          savedCursor = cursor;
+          // Mid-recall, hand the arrows' saved draft back before the cap editor takes the
+          // line — the same settle the role editor does — so leaving budget mode restores
+          // the draft, not a history entry, with no stale recall state riding along.
+          const settled = settlePromptRecall(promptHistory, input, cursor);
+          promptHistory = settled.history;
+          savedInput = settled.text;
+          savedCursor = settled.cursor;
           budgetMode = true;
           input = currentCapUsd > 0 ? String(currentCapUsd) : "";
           cursor = input.length;
@@ -381,8 +403,14 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
               exitRolePromptMode();
               flashMessage("role prompt cancelled");
             } else {
-              roleSavedInput = input;
-              roleSavedCursor = cursor;
+              // Mid-recall, the line holds a history entry while the real draft sits in the
+              // recall state: settle first, so the role editor saves (and later restores) the
+              // draft the operator was writing, and no stale index/draft crosses modes —
+              // otherwise Esc here would surface role-mode recalls on the director line.
+              const settled = settlePromptRecall(promptHistory, input, cursor);
+              promptHistory = settled.history;
+              roleSavedInput = settled.text;
+              roleSavedCursor = settled.cursor;
               rolePromptFor = role;
               input = "";
               cursor = 0;
@@ -473,6 +501,24 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
         render();
         return;
       }
+      if (!budgetMode && (key.name === "up" || key.name === "down")) {
+        // Up/Down walk the submitted-prompt history the way readline does (tui-input.ts's
+        // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
+        // above already returned), and budget mode keeps them out — recalling a prompt into
+        // the cap field would be a paste, not a recall. No history in this direction: fall
+        // through to applyKey, which ignores arrows as before.
+        const recalled = recallPromptHistory(
+          promptHistory,
+          input,
+          cursor,
+          key.name === "up" ? "older" : "newer",
+        );
+        if (recalled) {
+          promptHistory = recalled.history;
+          input = recalled.text;
+          cursor = recalled.cursor;
+        }
+      }
       if (key.name === "escape" && budgetMode) {
         // Esc cancels budget-edit mode, restoring the previous prompt text.
         exitBudgetMode();
@@ -523,6 +569,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
             const role = rolePromptFor;
             try {
               submitRolePromptAndWake(root, role, parsed.value);
+              promptHistory = pushPromptHistory(promptHistory, parsed.value);
               exitRolePromptMode();
               flashMessage(`queued for the ${role} loop`);
             } catch (err) {
@@ -538,6 +585,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
           } else {
             try {
               submitPrompt(root, prompt);
+              promptHistory = pushPromptHistory(promptHistory, prompt);
               input = "";
               cursor = 0;
               flashMessage("queued for the director loop");
