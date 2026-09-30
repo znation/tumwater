@@ -10,7 +10,7 @@ import {
 import { fallbackPair } from "./config-views.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
-import { strandedPlanEntries } from "./backlog-structure.js";
+import { duplicateHeadings, strandedPlanEntries } from "./backlog-structure.js";
 import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
@@ -403,6 +403,45 @@ export function checkStrandedPlans(root: string): CheckOutcome {
     detail:
       `PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
       `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean loop repairs these)`,
+  };
+}
+
+/** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
+ * check, src/backlog-structure.ts): a `## Done` a past landing or conflict resolution added
+ * twice leaves every later entry after the first section invisible to the section readers, and
+ * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree
+ * — like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
+ * environment, and a landing that adds another copy of the heading trips the gate's same
+ * rule (a) — src/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an
+ * edit that leaves an existing duplicate alone passes and the duplicate itself needs a
+ * deliberate removal edit. */
+export function checkBacklogHeadings(root: string): CheckOutcome {
+  const duplicates: string[] = [];
+  for (const file of ["PLANS.md", "BUGS.md", "QUESTIONS.md"]) {
+    const p = path.join(root, file);
+    if (!fs.existsSync(p)) continue; // Absent file (early repo): contributes nothing.
+    let doc: string;
+    try {
+      doc = fs.readFileSync(p, "utf8");
+    } catch {
+      duplicates.push(`${file} (unreadable)`);
+      continue;
+    }
+    for (const title of duplicateHeadings(doc)) duplicates.push(`${file} "## ${title}"`);
+  }
+  if (duplicates.length === 0)
+    return { level: "ok", detail: "no duplicated ## section headings in the backlog files" };
+  const [first, ...rest] = duplicates;
+  const more =
+    rest.length > 0
+      ? ` (and ${rest.length} more: ${rest.join(", ")})`
+      : "";
+  return {
+    level: "warn",
+    detail:
+      `${first}${more} appears more than once — readers take the first section of a name, so ` +
+      `later entries are invisible; keep one heading per name (the gate blocks only a landing ` +
+      `that adds another copy — remove the duplicate in a deliberate edit)`,
   };
 }
 

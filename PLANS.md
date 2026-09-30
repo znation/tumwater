@@ -5,70 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/4, the backstop
-
-**Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
-dropped `## ` section heading must not reach main. Today nothing checks backlog structure.
-The Planned reader in src/backlog.ts (`parseEntryDetails`) stops at the first `## `
-heading, so extra Done headings parse cleanly, and the damage stays invisible until an entry
-ends up on the wrong side of one. Markdown-only diffs skip both the build check and the model
-reviewer (`isExemptDiff` over `config.review.exemptPaths`, default `*.md`), so the plan and
-clean loops' landings get no structural check at all. On 2026-09-25 the malformed files
-came from two paths: a feature commit's own edit (`52cbadd1`), and an md-only plan landing
-whose conflict resolution added a third `## Done` (`9eaae5ac`). A check at the review gate
-alone would have caught the first but not the second, because the conflict resolution
-happens after the gate, inside the landing.
-
-**Approach.** Follow the `falseFixReason` precedent (src/fix-claim.ts): a deterministic,
-no-pi check that returns a rejection reason or nothing, called from the same two places.
-- New module src/backlog-structure.ts exporting `backlogStructureReason(wt, mainBranch,
-  files)`. It runs only when `files` includes PLANS.md, BUGS.md, or QUESTIONS.md. For each
-  touched file it reads the `## ` headings (fence-aware, reusing backlog.ts's fence scanner
-  (`fenceTracker` / `parseEntryDetails`) so a `## Done` quoted inside a code block is not a
-  heading) on the tree being landed and on the diff's merge-base (the same base
-  `falseFixReason` compares against). It returns a reason naming the file and the heading
-  when:
-  (a) any `## ` title appears more than once, or
-  (b) a `## ` title present on the base is missing on the head.
-  Do NOT hard-code the section names: the rule is "same heading set as the base, no
-  duplicates", so a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh
-  repo seeded from src/init.ts's templates both pass unchanged. A base that already has a
-  duplicate must not block unrelated edits forever: rule (a) fires only when the head's
-  count for that title is greater than the base's (a change that removes a duplicate always
-  passes).
-- src/review.ts, the gate: call it on BOTH paths, for exempt (md-only) diffs next to
-  `falseFixReason`, and for non-exempt diffs as a deterministic rejection before the build
-  pre-check (no pi run spent), through the same `reject([...])` helper so the author's next
-  tick sees the reason.
-- src/landing-merge.ts `verifyLanding`: call it after the rebase on both branches (exempt
-  and full check), before `runScopedBuildCheck`. A structural failure returns false
-  (→ `merge_blocked`), like a false fix. Log a `warning` event naming the file and heading,
-  so a conflict resolution that broke structure shows on the dashboards instead of reading
-  as an unexplained block. Keep the existing early return for an unchanged rebase: that
-  tree already passed the gate's check.
-- Optional, same change if small: add a `tumwater doctor` line reporting a duplicated
-  heading already present on main (src/doctor-checks.ts already has a fix-claims check to
-  copy the shape from), so an existing malformed file is visible without waiting for the
-  next edit to trip the gate.
-
-**Files touched.** src/backlog-structure.ts (new), src/review.ts, src/landing-merge.ts,
-optionally src/doctor-checks.ts; test/backlog-structure.test.ts (new), plus one gate test
-and one landing test beside the existing false-fix ones.
-
-**Acceptance criteria.**
-- Unit: a PLANS.md head with two `## Done` headings where the base had one yields a reason
-  naming `PLANS.md` and `## Done`; a head that drops `## Planned` yields one; a `## Done`
-  inside a fenced block is ignored; a head whose base already had two `## Done` and still
-  has two passes; a head that removes a duplicate passes; BUGS.md with `## Open` /
-  `## Fixed` / `## Verified` unchanged passes.
-- Gate: an md-only diff that duplicates `## Done` is rejected with that reason and spends
-  no pi run; a code diff that does the same is rejected before the build pre-check runs.
-- Landing: reproduce the 2026-09-25 shape in a fixture repo. The branch adds a plan under
-  `## Planned`; main moves the only planned entry to Done by adding a `## Done` above it;
-  the rebase conflicts and a fake conflict resolver keeps both sides. `verifyLanding`
-  refuses (merge_blocked) and logs the warning; main is unchanged.
-- `npm run test` passes; the existing false-fix gate and landing tests are unchanged.
-
 ### Reject a change that files a new plan directly under `## Done` (planned 2026-09-30) — part 4/4, the gate rule
 
 **Goal.** Part 3/4 repairs a stranded plan after it lands; this part stops the most common
@@ -138,6 +74,70 @@ test and one landing test next to part 2/4's.
 - `npm run test` passes.
 
 ## Done
+
+### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30, done 2026-09-30) — part 2/4, the backstop
+
+**Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
+dropped `## ` section heading must not reach main. Today nothing checks backlog structure.
+The Planned reader in src/backlog.ts (`parseEntryDetails`) stops at the first `## `
+heading, so extra Done headings parse cleanly, and the damage stays invisible until an entry
+ends up on the wrong side of one. Markdown-only diffs skip both the build check and the model
+reviewer (`isExemptDiff` over `config.review.exemptPaths`, default `*.md`), so the plan and
+clean loops' landings get no structural check at all. On 2026-09-25 the malformed files
+came from two paths: a feature commit's own edit (`52cbadd1`), and an md-only plan landing
+whose conflict resolution added a third `## Done` (`9eaae5ac`). A check at the review gate
+alone would have caught the first but not the second, because the conflict resolution
+happens after the gate, inside the landing.
+
+**Approach.** Follow the `falseFixReason` precedent (src/fix-claim.ts): a deterministic,
+no-pi check that returns a rejection reason or nothing, called from the same two places.
+- New module src/backlog-structure.ts exporting `backlogStructureReason(wt, mainBranch,
+  files)`. It runs only when `files` includes PLANS.md, BUGS.md, or QUESTIONS.md. For each
+  touched file it reads the `## ` headings (fence-aware, reusing backlog.ts's fence scanner
+  (`fenceTracker` / `parseEntryDetails`) so a `## Done` quoted inside a code block is not a
+  heading) on the tree being landed and on the diff's merge-base (the same base
+  `falseFixReason` compares against). It returns a reason naming the file and the heading
+  when:
+  (a) any `## ` title appears more than once, or
+  (b) a `## ` title present on the base is missing on the head.
+  Do NOT hard-code the section names: the rule is "same heading set as the base, no
+  duplicates", so a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh
+  repo seeded from src/init.ts's templates both pass unchanged. A base that already has a
+  duplicate must not block unrelated edits forever: rule (a) fires only when the head's
+  count for that title is greater than the base's (a change that removes a duplicate always
+  passes).
+- src/review.ts, the gate: call it on BOTH paths, for exempt (md-only) diffs next to
+  `falseFixReason`, and for non-exempt diffs as a deterministic rejection before the build
+  pre-check (no pi run spent), through the same `reject([...])` helper so the author's next
+  tick sees the reason.
+- src/landing-merge.ts `verifyLanding`: call it after the rebase on both branches (exempt
+  and full check), before `runScopedBuildCheck`. A structural failure returns false
+  (→ `merge_blocked`), like a false fix. Log a `warning` event naming the file and heading,
+  so a conflict resolution that broke structure shows on the dashboards instead of reading
+  as an unexplained block. Keep the existing early return for an unchanged rebase: that
+  tree already passed the gate's check.
+- Optional, same change if small: add a `tumwater doctor` line reporting a duplicated
+  heading already present on main (src/doctor-checks.ts already has a fix-claims check to
+  copy the shape from), so an existing malformed file is visible without waiting for the
+  next edit to trip the gate.
+
+**Files touched.** src/backlog-structure.ts (new), src/review.ts, src/landing-merge.ts,
+optionally src/doctor-checks.ts; test/backlog-structure.test.ts (new), plus one gate test
+and one landing test beside the existing false-fix ones.
+
+**Acceptance criteria.**
+- Unit: a PLANS.md head with two `## Done` headings where the base had one yields a reason
+  naming `PLANS.md` and `## Done`; a head that drops `## Planned` yields one; a `## Done`
+  inside a fenced block is ignored; a head whose base already had two `## Done` and still
+  has two passes; a head that removes a duplicate passes; BUGS.md with `## Open` /
+  `## Fixed` / `## Verified` unchanged passes.
+- Gate: an md-only diff that duplicates `## Done` is rejected with that reason and spends
+  no pi run; a code diff that does the same is rejected before the build pre-check runs.
+- Landing: reproduce the 2026-09-25 shape in a fixture repo. The branch adds a plan under
+  `## Planned`; main moves the only planned entry to Done by adding a `## Done` above it;
+  the rebase conflicts and a fake conflict resolver keeps both sides. `verifyLanding`
+  refuses (merge_blocked) and logs the warning; main is unchanged.
+- `npm run test` passes; the existing false-fix gate and landing tests are unchanged.
 
 ### The build-stale alert's refresh icon becomes a button that forces a restart (planned 2026-09-30, done 2026-09-30)
 

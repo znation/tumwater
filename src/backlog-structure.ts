@@ -1,6 +1,7 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { fenceTracker, headingMetadata } from "./backlog.js";
+import { gitTry } from "./git.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -55,6 +56,76 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
       stranded.push({ title: line.slice(4).trim(), section });
   }
   return stranded;
+}
+
+/** The backlog files every structural check covers — the tracked markdown loops edit and
+ * readers parse by `## ` section. */
+const BACKLOG_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"];
+
+/** The `## ` section titles of `md`, in file order, fence-aware (backlog.ts's shared tracker:
+ * a `## Done` quoted inside a fenced code block is body text, not structure). */
+function sectionTitles(md: string): string[] {
+  const fenced = fenceTracker();
+  const titles: string[] = [];
+  for (const line of md.split("\n")) {
+    if (fenced.inside(line)) continue;
+    if (line.startsWith("## ")) titles.push(line.slice(3).trim());
+  }
+  return titles;
+}
+
+/** The `## ` titles of `md` that appear more than once, in first-appearance order — the
+ * duplicate-heading signal `checkBacklogHeadings` reports for main and
+ * `backlogStructureReason` checks on a tree being landed. */
+export function duplicateHeadings(md: string): string[] {
+  const counts = new Map<string, number>();
+  for (const title of sectionTitles(md)) counts.set(title, (counts.get(title) ?? 0) + 1);
+  return [...counts].filter(([, n]) => n > 1).map(([title]) => title);
+}
+
+/** The first structural fault a diff landing on `mainBranch` leaves in a backlog file, or
+ * undefined when none: for each touched backlog file it compares the `## ` heading set of the
+ * tree being landed (`wt`) against the diff's merge-base — the same base falseFixReason
+ * measures against, so a stacked batch is judged change by change — and rejects when
+ * (a) the head carries MORE of a title than the base carried (a duplicate `## Done` added, or
+ * a second one where the base had none), or (b) a title present on the base is gone from the
+ * head (a whole section dropped). The rule is deliberately about heading sets, not section
+ * names: a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh repo seeded
+ * from src/init.ts's templates passes unchanged. A base that already carries a duplicate never
+ * blocks unrelated edits — rule (a) fires only when the head's count EXCEEDS the base's, so a
+ * change that removes a duplicate always passes. Detection is deterministic markdown reading —
+ * no pi — so both the review gate (exempt and code diffs alike) and the in-lock landing
+ * re-check can afford it on every landing (plans: "Backlog structure check", part 2/4). */
+export async function backlogStructureReason(
+  wt: string,
+  mainBranch: string,
+  files: string[],
+): Promise<string | undefined> {
+  const touched = files.filter((f) => BACKLOG_FILES.includes(f));
+  if (touched.length === 0) return undefined;
+  const baseRev = (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
+  for (const file of touched) {
+    // A deleted file reads as empty: every heading the base had is gone — rule (b).
+    const head = (await readTextOrNull(path.join(wt, file))) ?? "";
+    const base = (await gitTry(wt, "show", `${baseRev}:${file}`)) ?? "";
+    const headCounts = new Map<string, number>();
+    for (const title of sectionTitles(head)) headCounts.set(title, (headCounts.get(title) ?? 0) + 1);
+    const baseCounts = new Map<string, number>();
+    for (const title of sectionTitles(base)) baseCounts.set(title, (baseCounts.get(title) ?? 0) + 1);
+    for (const [title, count] of headCounts)
+      if (count > 1 && count > (baseCounts.get(title) ?? 0))
+        return (
+          `${file} adds another "## ${title}" heading — readers take the first section of a ` +
+          `name, so anything under the duplicate is invisible; keep one "## ${title}" per file`
+        );
+    for (const title of baseCounts.keys())
+      if (!headCounts.has(title))
+        return (
+          `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
+          `be invisible to every section reader; restore "## ${title}"`
+        );
+  }
+  return undefined;
 }
 
 /** The clean loop's `<backlog-structure>` prompt block for the primary checkout at `root`

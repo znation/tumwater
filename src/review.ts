@@ -19,6 +19,7 @@ import { runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
+import { backlogStructureReason } from "./backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "./landing-slot.js";
 import { mainTipVerdict } from "./main-red.js";
@@ -185,8 +186,21 @@ export async function reviewAheadOfMain(
     // pre-check below: no pi run consumed, reasons injected into the author's next tick.
     const falseFix = await falseFixReason(wt, mainBranch, files);
     if (falseFix) return reject([falseFix]);
+    // Same cross-check as the landing path (backlog-structure.ts): an md-only diff that
+    // duplicates or drops a `## ` section heading would land unreviewed — md-only edits skip
+    // the reviewer by design, and a malformed backlog stays invisible until an entry ends up
+    // on the wrong side of a heading (PLANS.md 2026-09-25, 52cbadd1).
+    const structure = await backlogStructureReason(wt, mainBranch, files);
+    if (structure) return reject([structure]);
     return { decision: "exempt" };
   }
+
+  // The backlog-structure check for code diffs too, before the build pre-check: a change that
+  // duplicates or drops a `## ` section heading in PLANS.md, BUGS.md, or QUESTIONS.md cannot
+  // land, and the rejection is deterministic — no pi run and no check run spent on a tree the
+  // heading set already condemns.
+  const structure = await backlogStructureReason(wt, mainBranch, files);
+  if (structure) return reject([structure]);
 
   // Deterministic build pre-check — after BOTH early returns above (an md-only diff cannot
   // break the build) and before any reviewer run or the phase/event that would show

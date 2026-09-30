@@ -16,6 +16,8 @@ import { type BuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
+import { backlogStructureReason } from "./backlog-structure.js";
+import { warnEvent } from "./events.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { mergeLockDir } from "./paths.js";
@@ -135,8 +137,10 @@ async function tryMerge(
 
 /** Verify the exact tree about to land on main — the post-rebase head (BUGS.md 2026-09-08: the
  * gate's pre-check ran outside this lock against a head the rebase may have rewritten, so the
- * bytes that become main were never run through a check). Returns false only when the project's
- * declared check FAILS on the rebased tree; every other outcome lands. Skips:
+ * bytes that become main were never run through a check). Returns false when the tree is
+ * structurally unsound (backlogStructureReason: a duplicated or dropped `## ` section heading,
+ * with a warning event so a broken conflict resolution shows on the dashboards) or when the
+ * project's declared check FAILS on the rebased tree; every other outcome lands. Skips:
  * - no-op rebase (`rebasedHead === preMergeHead`): main did not move under us, so the landing
  *   tree is byte-identical to what this gate invocation already checked (or to a tree nothing
  *   checks — exempt diff / review disabled). When `verifiedHead` names it, seed the red-main
@@ -167,9 +171,25 @@ async function verifyLanding(
   }
   const files = await aheadOfMainFiles(wt, ctx.mainBranch);
   if (isExemptDiff(files, ctx.exemptPaths)) {
-    // Same cross-check as the gate (fix-claim.ts): the in-lock re-check must not wave
-    // through an md-only BUGS.md edit the gate would have rejected as a false fix.
+    // Same cross-checks as the gate (fix-claim.ts, backlog-structure.ts): the in-lock re-check
+    // must not wave through an md-only edit the gate would have rejected — and this is the
+    // site that catches what the gate cannot see: a conflict resolution happens AFTER the
+    // gate, inside this lock, so a resolution that kept both sides of a `## Done` conflict and
+    // duplicated the heading lands here or not at all (PLANS.md 2026-09-25, 9eaae5ac).
+    const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
+    if (structure) {
+      warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
+      return false;
+    }
     return !(await falseFixReason(wt, ctx.mainBranch, files));
+  }
+  // The heading check for code diffs too, before the build check: a conflict resolution that
+  // broke backlog structure reads as an explained block on the dashboards, not as an
+  // unexplained red check run on a tree that could never land.
+  const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
+  if (structure) {
+    warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
+    return false;
   }
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check.

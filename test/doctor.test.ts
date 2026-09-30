@@ -9,6 +9,7 @@ import {
   checkBuildCheck,
   checkFallbackModel,
   checkFixClaims,
+  checkBacklogHeadings,
   checkStrandedPlans,
   checkGitBinary,
   checkInit,
@@ -427,7 +428,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "stranded plans", "build", "orphans", "mach ports"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "stranded plans", "backlog headings", "build", "orphans", "mach ports"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -913,4 +914,41 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
     level: "ok",
     detail: "no PLANS.md — nothing to verify",
   });
+});
+
+// checkBacklogHeadings — the duplicate-heading half of the backlog-structure check surfaced
+// for the operator (plans part 2/4): a `## ` heading already duplicated on main warns, naming
+// the file and heading, so existing damage is visible. The wording must not overstate the
+// gate: rule (a) fires only when a landing ADDS another copy (count exceeds the merge-base's),
+// so a pre-existing duplicate is not blocked away by just any next edit.
+
+test("checkBacklogHeadings warns on a duplicated heading and stays silent on a clean set", () => {
+  const dir = tmpdir("doctor-headings-");
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "## Done\n\n### A\n\n## Done\n\n### B\n\n## Planned\n\n_None yet._\n",
+  );
+  const warn = checkBacklogHeadings(dir);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /PLANS\.md "## Done"/);
+  assert.match(warn.detail, /appears more than once/);
+  // The claim about the gate stays accurate: only an adding landing is blocked, so the
+  // message tells the operator to remove the duplicate deliberately.
+  assert.match(warn.detail, /blocks only a landing that adds another copy/);
+  assert.doesNotMatch(warn.detail, /blocks the next edit/);
+
+  // Clean across all three backlog files: ok, one line.
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n_None yet._\n\n## Done\n\n### A\n");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "## Open\n\n## Fixed\n\n## Verified\n");
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"), "## Open\n");
+  assert.deepEqual(checkBacklogHeadings(dir), {
+    level: "ok",
+    detail: "no duplicated ## section headings in the backlog files",
+  });
+
+  // Absent files contribute nothing; a fenced duplicate is quoted content, not structure.
+  fs.rmSync(path.join(dir, "BUGS.md"));
+  fs.rmSync(path.join(dir, "QUESTIONS.md"));
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n```md\n## Done\n## Done\n```\n");
+  assert.equal(checkBacklogHeadings(dir).level, "ok");
 });

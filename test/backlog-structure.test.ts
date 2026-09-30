@@ -3,8 +3,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { strandedPlanEntries, renderBacklogStructureBlock, type StrandedPlanEntry } from "../src/backlog-structure.js";
-import { tmpdir } from "./repo-fixtures.js";
+import {
+  backlogStructureReason,
+  duplicateHeadings,
+  strandedPlanEntries,
+  renderBacklogStructureBlock,
+  type StrandedPlanEntry,
+} from "../src/backlog-structure.js";
+import { ensureWorktree } from "../src/worktree.js";
+import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/backlog-structure.ts — the stranded-plan detector (plans, part 3/4):
  * a `### ` heading with plan dates filed under the wrong `## ` section of PLANS.md is invisible
@@ -144,4 +151,101 @@ _None yet._`),
 
 test("a missing PLANS.md gives no block instead of throwing", () => {
   assert.equal(renderBacklogStructureBlock(tmpdir("backlog-structure-missing-")), undefined);
+});
+
+// ── backlogStructureReason — the heading-set check at the gate and the landing re-check ──
+// (plans: "Backlog structure check at the review gate and the in-lock landing re-check",
+// part 2/4) A change that duplicates or drops a `## ` section heading must not reach main.
+
+/** A repo whose main carries `base` as a backlog file, plus the improve worktree whose HEAD
+ * commit replaces it with `head` — the shape backlogStructureReason measures: the diff's
+ * merge-base is main's tip, so the two contents compare directly. */
+async function structureFixture(file: string, base: string, head: string): Promise<string> {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, file), base);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "base backlog");
+  const wt = await ensureWorktree(root, "improve", "main");
+  fs.writeFileSync(path.join(wt, file), head);
+  sh(wt, "git", "add", "-A");
+  // An unchanged head is a legitimate fixture (an unchanged backlog file among touched ones);
+  // git refuses an empty commit, so commit only when the tree actually differs.
+  if (sh(wt, "git", "status", "--porcelain")) sh(wt, "git", "commit", "-m", "head backlog");
+  return wt;
+}
+
+test("backlogStructureReason rejects a head that adds a second ## Done where the base had one", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### A (planned 2026-09-25)\n",
+    "## Done\n\n### A (planned 2026-09-25, done 2026-09-26)\n\n## Done\n\n### B (planned 2026-09-26)\n",
+  );
+  const reason = await backlogStructureReason(wt, "main", ["PLANS.md"]);
+  assert.match(reason!, /^PLANS.md /);
+  assert.match(reason!, /## Done/);
+});
+
+test("backlogStructureReason rejects a head that drops a section the base had", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### A (planned 2026-09-25)\n\n## Done\n\n### B (planned 2026-09-01, done 2026-09-02)\n",
+    "## Planned\n\n### A (planned 2026-09-25)\n",
+  );
+  const reason = await backlogStructureReason(wt, "main", ["PLANS.md"]);
+  assert.match(reason!, /^PLANS.md /);
+  assert.match(reason!, /drops the "## Done" section/);
+});
+
+test("backlogStructureReason ignores a heading quoted inside a fenced block", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n",
+    "## Planned\n\n### A (planned 2026-09-25)\n\n```md\n## Done\n## Done\n```\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes when the base already had the duplicate and it stays", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Done\n\n### A\n\n## Done\n\n### B\n",
+    "## Done\n\n### A\n\n## Done\n\n### B\n\n### C (planned 2026-09-25)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a change that removes a duplicate", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Done\n\n### A\n\n## Done\n\n### B\n",
+    "## Done\n\n### A\n\n### B\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason passes an unchanged BUGS.md with sections this repo's template lacks", async () => {
+  const bugs = "## Open\n\n_Nothing yet._\n\n## Fixed\n\n_Nothing yet._\n\n## Verified\n\n_Nothing yet._\n";
+  const wt = await structureFixture("BUGS.md", bugs, bugs);
+  assert.equal(await backlogStructureReason(wt, "main", ["BUGS.md"]), undefined);
+});
+
+test("backlogStructureReason passes a first-time backlog file whose headings the base never had", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "seed\n",
+    "## Planned\n\n### A (planned 2026-09-25)\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason ignores files outside the backlog set", async () => {
+  assert.equal(await backlogStructureReason(".", "main", ["docs/notes.md", "src/foo.ts"]), undefined);
+});
+
+test("duplicateHeadings lists each title that appears more than once, fence-aware", () => {
+  assert.deepEqual(
+    duplicateHeadings("## Done\n\n## Planned\n\n## Done\n\n```md\n## Done\n```\n"),
+    ["Done"],
+  );
+  assert.deepEqual(duplicateHeadings("## Open\n\n## Fixed\n\n## Verified\n"), []);
 });

@@ -599,6 +599,46 @@ test("a conflict resolution is re-verified inside the lock before landing", asyn
   assert.equal(landingChecks.length, 1, "the post-resolution tree was re-verified");
 });
 
+test("a conflict resolution that duplicates ## Done is blocked with a warning, main unchanged", async () => {
+  // The 2026-09-25 shape (PLANS.md 9eaae5ac): main moves the only planned entry to Done by
+  // ADDING a ## Done heading; the branch adds a new plan under ## Planned; the rebase
+  // conflicts and a resolver that keeps both sides puts the new plan under a second
+  // ## Done. The gate never saw this tree — the resolution happens after it, inside the
+  // lock — so the in-lock re-check is the only guard.
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    "## Planned\n\n### Feature A (planned 2026-09-25)\n\n**Goal.** Work in progress.\n",
+  );
+  commitIn(wt, "seed the backlog");
+  // Main moves Feature A to Done: one new ## Done heading, ## Planned gone.
+  advanceMain(
+    root,
+    "PLANS.md",
+    "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n",
+  );
+  const mainBefore = mainSha(root);
+  const { ctx } = makeCtx(root, async (w) => {
+    // "Keeps both sides": main's Done section plus the branch's plan under its own ## Done.
+    fs.writeFileSync(
+      path.join(w, "PLANS.md"),
+      "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n\n" +
+        "## Done\n\n### Feature B (planned 2026-09-26)\n\n**Goal.** New work.\n",
+    );
+    return piResult();
+  });
+
+  const result = await mergeToMain(ctx, wt, "branch work");
+
+  assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
+  assert.equal(mainSha(root), mainBefore, "main is untouched");
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("PLANS.md") && m.includes("## Done")),
+    `the warning names the file and the heading; got: ${JSON.stringify(warnings)}`,
+  );
+});
+
 // ── ffStackToMain (merge queue 5/5) ──────────────────────────────────────────────────────
 
 /** A repo with main at its seed commit and a two-commit stack built off it (a.txt, then

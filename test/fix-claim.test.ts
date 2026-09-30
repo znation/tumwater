@@ -13,6 +13,7 @@ import {
   unbackedSymbols,
 } from "../src/fix-claim.js";
 import { aheadOfMain } from "../src/git.js";
+import { readEvents } from "../src/event-read.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
@@ -439,6 +440,71 @@ test("gate exempts an md-only BUGS.md fix claim whose symbols exist on the tree"
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "exempt");
     assert.ok(!fs.existsSync(marker));
+  } finally {
+    restore();
+  }
+});
+
+// ── The gate's backlog-structure check (plans part 2/4) — same deterministic shape as the
+// false-fix rejections above: no pi run, no check run, the reason injected into the author's
+// next tick, and the branch reset to main.
+
+/** A repo whose worktree carries a PLANS.md commit that adds a second `## Done` — md-only, so
+ * the gate exempts it from the reviewer and the structure check is the only guard. */
+async function duplicateDoneFixture(): Promise<string> {
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "## Done\n\n### Landed (planned 2026-09-24, done 2026-09-25)\n\n## Planned\n\n_None yet._\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "base backlog");
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(
+    path.join(wt, "PLANS.md"),
+    "## Done\n\n### A stray plan (planned 2026-09-26)\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "plan: file it twice");
+  return root;
+}
+
+test("gate rejects an md-only diff that duplicates ## Done, without running pi or the check", async () => {
+  const root = await duplicateDoneFixture();
+  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const { state, result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected"); // deterministic — no reviewer run
+    assert.ok(!fs.existsSync(marker));
+    assert.match(result.detail!, /## Done/);
+    assert.match(state.lastReview!.reasons[0]!, /PLANS\.md/);
+    assert.equal(await aheadOfMain(wt, "main"), 0); // the malformed file is discarded
+  } finally {
+    restore();
+  }
+});
+
+test("gate rejects a code diff that breaks backlog structure before the build pre-check runs", async () => {
+  const root = await duplicateDoneFixture();
+  const wt = path.join(root, ".tumwater", "worktrees", ROLE);
+  // Make the diff non-exempt with a real code change; the structure rejection must fire
+  // before any build_check event is logged.
+  fs.writeFileSync(path.join(wt, "src.ts"), "export const x = 1;\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "code plus a duplicated heading");
+  const marker = path.join(tmpdir(), "pi-ran");
+  const restore = fakePi(`touch '${marker}'`);
+  try {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.match(result.detail!, /## Done/);
+    assert.ok(!fs.existsSync(marker));
+    assert.ok(
+      !readEvents(root).some((e) => e.type === "build_check"),
+      "no check run spent on a tree the heading set already condemns",
+    );
   } finally {
     restore();
   }

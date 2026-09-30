@@ -7,6 +7,7 @@ import { plural, shortSha } from "./text.js";
 import {
   checkAgentBinary,
   checkBrief,
+  checkBacklogHeadings,
   checkBuild,
   checkBuildCheck,
   checkFallbackModel,
@@ -64,6 +65,7 @@ export async function runDoctor(
     { name: "project check", ...checkBuildCheck(root, config) },
     { name: "fix claims", ...checkFixClaims(root) },
     { name: "stranded plans", ...checkStrandedPlans(root) },
+    { name: "backlog headings", ...checkBacklogHeadings(root) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
     { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
