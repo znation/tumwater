@@ -144,7 +144,10 @@ When the project being built is tumwater itself, the fleet notices when main's c
 the running build and shows `STALE: main +N`. With `autoRestart` (default true) it confirms main
 is green, compiles it, drains in-flight ticks, swaps the new build into `dist/`, and restarts, at
 most once every 12 hours. A red main or failed compile keeps the old build running and shows
-`restart BLOCKED: <reason>`.
+`restart BLOCKED: <reason>`. An operator watching a stale build does not have to wait out the
+12-hour clock: the dashboard's stale-build alert has a refresh button that waives the cooldown
+and starts the pending episode immediately — every other gate (a green main, a successful
+compile, in-flight ticks draining) still applies.
 
 `tumwater tui` and `tumwater gui` follow the swap: each re-execs onto the new `dist/` within a
 second, and only onto a build stamped with a real commit of the repo. Because the fleet executes
