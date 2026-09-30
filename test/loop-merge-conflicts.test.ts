@@ -17,7 +17,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { conflictingMainEdit, fakePi, seedBranchEdit } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 test("a rebase conflict is resolved by a second pi run and lands with linear history", async () => {
   const repo = await initializedRepo();
@@ -30,10 +30,8 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
       APPROVE_PI,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `  echo main change > "${repo}/seed.txt"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      ...seedBranchEdit(),
+      ...conflictingMainEdit(repo),
       `else`,
       // The resolution run emits two assistant turns on purpose (plans/commit-bodies.md
       // item c): if it leaked into the trailer's count, the Tick line below would read
@@ -81,10 +79,8 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
       APPROVE_PI,
       `if [ ! -f "${marker}" ]; then`,
       `  touch "${marker}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `  echo main change > "${repo}/seed.txt"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      ...seedBranchEdit(),
+      ...conflictingMainEdit(repo),
       `fi`, // Phase 2 does nothing: the conflict markers stay.
     ].join("\n"),
   );
@@ -133,8 +129,7 @@ test("a stray pi commit makes rebase --continue stop a second time: aborted, mer
       `  git add -A && git commit -m "stray authoring commit"`,
       `  echo branch change 2 > seed.txt`,
       `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo main change > "${repo}/seed.txt"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      ...conflictingMainEdit(repo),
       `fi`,
     ].join("\n"),
   );
@@ -175,8 +170,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
       // The review gate (any run whose prompt asks for a VERDICT) approves, so the tick reaches
       // the merge and can be blocked there.
       APPROVE_PI,
-      `printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `echo branch change > seed.txt`,
+      ...seedBranchEdit(),
     ].join("\n"),
   );
   try {
@@ -219,10 +213,8 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
       reviewerPi(`VERDICT: approve\n1. checked the diff; it holds`),
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `  echo main change > "${repo}/seed.txt"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      ...seedBranchEdit(),
+      ...conflictingMainEdit(repo),
       `elif [ ! -f "${m2}" ]; then`,
       `  touch "${m2}"`, // Unresolvable on the first attempt.
       `else`,

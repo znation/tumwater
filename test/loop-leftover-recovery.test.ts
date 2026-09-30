@@ -47,7 +47,7 @@ async function pinLeftover(
   await setRef(repo, landingRefName(role), sha);
   return sha;
 }
-import { fakePi, firstRunThenIdle } from "./fake-pi.js";
+import { conflictingMainEdit, fakePi, firstRunThenIdle, seedBranchEdit } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
@@ -281,10 +281,8 @@ test("an unmergeable leftover is retried on the next tick and keeps its landing 
       reviewerPi(`VERDICT: approve\n1. checked the diff; it holds`),
       `if [ ! -f "${m1}" ]; then`,
       `  touch "${m1}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-      `  echo branch change > seed.txt`,
-      `  echo main change > "${repo}/seed.txt"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+      ...seedBranchEdit(),
+      ...conflictingMainEdit(repo),
       `elif grep -q '<<<<<<<' seed.txt 2>/dev/null; then`,
       `  : # leave the markers in place (unresolvable)`,
       `else`,
@@ -331,10 +329,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       `  [ -f "${strayOnce}" ] || touch "${strayOnce}" stray.txt`,
       `  printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
       `  exit 0;; esac; done`,
-      ...firstRunThenIdle(m1, [
-        `printf '%s\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
-        `echo branch change > seed.txt`,
-      ]),
+      ...firstRunThenIdle(m1, seedBranchEdit()),
     ].join("\n"),
   );
   try {
@@ -389,10 +384,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
   const restore = fakePi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) echo "reviewer backend down" >&2; exit 1;; esac; done`,
-      ...firstRunThenIdle(m1, [
-        `printf '%s\n' '${assistantLine("ok\\nSUMMARY: branch edit of seed")}'`,
-        `echo branch change > seed.txt`,
-      ]),
+      ...firstRunThenIdle(m1, seedBranchEdit()),
     ].join("\n"),
   );
   try {

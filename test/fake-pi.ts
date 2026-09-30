@@ -121,6 +121,31 @@ export function firstRunThenIdle(marker: string, firstRun: readonly string[]): s
   ];
 }
 
+/** A shell fragment list for fake-pi scripts: the merge-conflict fixtures' authoring run —
+ * pi prints its `ok` reply (SUMMARY: branch edit of seed) and writes `branch change` to
+ * seed.txt on the branch. Seven copies across the merge-conflict and leftover-recovery
+ * tests (one drifted to a double-escaped printf newline); shared here so the reply's shape
+ * and the seed edit cannot drift between the copies. Pair with conflictingMainEdit for the
+ * full "branch edit + conflicting main advance" scenario. */
+export function seedBranchEdit(): string[] {
+  return [
+    `printf '%s\\n' '${assistantLine("ok\nSUMMARY: branch edit of seed")}'`,
+    `echo branch change > seed.txt`,
+  ];
+}
+
+/** A shell fragment list for fake-pi scripts: the merge-conflict fixtures' other half —
+ * advance main in the primary checkout with a conflicting seed.txt edit, committed directly
+ * in that checkout (the way a user's own work would arrive). Five copies across the
+ * merge-conflict and leftover-recovery tests; shared with seedBranchEdit so the scenario's
+ * two halves have one home each and the conflicting commit's shape cannot drift. */
+export function conflictingMainEdit(repo: string): string[] {
+  return [
+    `echo main change > "${repo}/seed.txt"`,
+    `git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main edit"`,
+  ];
+}
+
 /** A fake pi that records each run's --provider/--model flags — and its session name, which
  * carries the role — to argsFile and declares nothing-to-do (so no commit happens). `cost`
  * makes each run report that many dollars of spend, for tests that drive the daily budget
