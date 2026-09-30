@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { loadConfig, saveConfig } from "../src/config.js";
+import { pauseFleet, resumeFleet } from "../src/fleet-state.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
@@ -24,7 +25,10 @@ import { assistantLine } from "./pi-events.js";
 /** Run one once round in-process with the repo's on-disk config, failing loudly if the round
  * does not exit on its own — a once round that hangs is the bug this feature exists to avoid.
  * `roleFilter` scopes the round to one role (`run --once --role <id>`, PLANS.md 2026-09-25). */
-function onceRound(repo: string, roleFilter?: string): Promise<{ restart: boolean }> {
+function onceRound(
+  repo: string,
+  roleFilter?: string,
+): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
   const done = runOrchestrator({
     root: repo,
     config: loadConfig(repo),
@@ -102,6 +106,29 @@ test("once: a role in error backoff is skipped and does not run, and the round s
       "no tick started for the backed-off role",
     );
   } finally {
+    restore();
+  }
+});
+
+test("once: a fleet under a standing pause settles every role as paused, ticks nothing, and still exits", async () => {
+  const repo = await makeFastRepo("once paused test", ["clean"]);
+  pauseFleet(repo);
+  const restore = fakePiIdle();
+  try {
+    // The round must not hang on a pause it cannot lift — a once round has to end even when
+    // a pause marker is left over (the orchestrator settles the role before the gates that
+    // would otherwise skip it silently, so the at-most-one-tick contract holds).
+    const exit = await onceRound(repo);
+    assert.equal(exit.restart, false);
+    assert.equal(exit.settled?.get("clean"), "paused", "the pause is the recorded settle reason, not idle");
+    assert.equal(exit.ticksRun?.get("clean"), 0, "the paused role ran no tick");
+    assert.equal(loadLoopState(repo, "clean").ticks, 0, "nothing ticked under the pause");
+    assert.ok(
+      !readEvents(repo).some((e) => e.type === "tick_start"),
+      "no tick started for the paused role",
+    );
+  } finally {
+    resumeFleet(repo);
     restore();
   }
 });
