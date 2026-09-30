@@ -7,7 +7,9 @@ import { loadConfig, saveConfig } from "../src/config.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/status-data.js";
+import { quietHoursStatus } from "../src/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
+import { quietBadge } from "../src/ui/badges.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
 import { enqueueLanding } from "../src/landing-queue.js";
@@ -23,6 +25,45 @@ import { seedCounters } from "./loop-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
+
+// Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the snapshot carries the
+// configured window and the in-window flag — present only while the value parses to a real
+// window, so a schedule the gate is not holding is never advertised — and the payload ships
+// the same fields with the header badge preformatted.
+test("snapshot carries the quiet-hours window when configured and nothing when not", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+
+  const unset = snapshot(repo);
+  assert.equal(unset.quietHours, undefined);
+  assert.equal(unset.inQuietHours, false);
+
+  writeConfig(repo, { quietHours: "23:00-07:00" });
+  const set = snapshot(repo);
+  assert.equal(set.quietHours, "23:00-07:00");
+  // The flag is the gate's own predicate (inQuietHours), evaluated for the poll's clock.
+  assert.equal(set.inQuietHours, quietHoursStatus("23:00-07:00", new Date()).inWindow);
+  // The payload's badge is the snapshot's fields through quietBadge — agreeing with the
+  // header whatever the wall clock reads (this suite can run inside or outside the window).
+  assert.equal(
+    (statusPayload(repo) as { quietBadge: string }).quietBadge,
+    quietBadge(set.quietHours, set.inQuietHours),
+  );
+
+  // A malformed value degrades with the whole config — configForStatus serves the
+  // last-known-good one, so the badge never flashes off on a single broken write.
+  writeConfig(repo, { quietHours: "23:00" });
+  const broken = snapshot(repo);
+  assert.equal(broken.quietHours, "23:00-07:00", "a broken config serves the last-known-good window");
+
+  // From a cold start (no last-known-good), a broken config means the defaults: nothing.
+  const cold = makeRepo();
+  await initProject(cold, "test project");
+  writeConfig(cold, { quietHours: "23:00" });
+  const fromDefaults = snapshot(cold);
+  assert.equal(fromDefaults.quietHours, undefined);
+  assert.equal(fromDefaults.inQuietHours, false);
+});
 
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();

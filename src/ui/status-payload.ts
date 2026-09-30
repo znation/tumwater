@@ -5,7 +5,7 @@ import { eventMessage, eventResult, formatEvent } from "../event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "../status-data.js";
-import { buildBadge, budgetBadge, landingBadge, mainCheckBadge } from "./badges.js";
+import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, yieldMultiplierFor } from "./status-model.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 
@@ -138,6 +138,15 @@ export function statusPayload(root: string): object {
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
     // client-side (PLANS.md "Pause countdown").
     pausedUntil: snap.pausedUntil,
+    // The configured quiet-hours window ("Quiet hours … part 2/2"): the raw string and
+    // in-window flag are machine-readable for `status --json` and drive the GUI sidebar's
+    // chip; absent (undefined drops from the JSON) when no window is configured or the
+    // value is malformed, matching the snapshot's omit-when-not-held rule. The header badge
+    // is preformatted through badges.ts's quietBadge — the same string the TUI/status
+    // header renders — so the page cannot re-derive it.
+    ...(snap.quietHours ? { quietHours: snap.quietHours } : {}),
+    inQuietHours: snap.inQuietHours,
+    quietBadge: quietBadge(snap.quietHours, snap.inQuietHours),
     loops,
     // The recent event feed as the one-line text `tumwater logs` prints…
     events: recent.map((e) => formatEvent(e)),

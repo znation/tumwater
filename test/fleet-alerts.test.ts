@@ -13,6 +13,7 @@ const base: Snap = {
   budget: { spentUsd: 1, capUsd: 10, free: false, fallback: null },
   build: null,
   paused: false,
+  inQuietHours: false,
 };
 
 test("a healthy fleet raises nothing; a stopped one says how to start it", () => {
@@ -35,6 +36,22 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   assert.match(onFallback[0]?.detail ?? "", /^small-model carries them/);
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free fleet has no cap to hit");
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
+});
+
+// Quiet hours 2/2: the schedule holding the fleet informs rather than asks (blue, no
+// actions), and only while the local clock is actually inside the window — outside it the
+// header's standing quiet badge already carries the schedule, so an alert would be noise.
+test("quiet hours raise one informational alert only while the window holds", () => {
+  const outside = fleetAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: false }, [], [], Date.now());
+  assert.deepEqual(outside.filter((a) => a.key === "quiet"), []);
+
+  const [quiet] = fleetAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: true }, [], [], Date.now());
+  assert.equal(quiet?.key, "quiet");
+  assert.equal(quiet?.tone, "blue");
+  assert.match(quiet?.title ?? "", /Quiet hours — role loops start no new ticks until 07:00/);
+  assert.match(quiet?.detail ?? '', /\(23:00-07:00 local time, quietHours in tumwater.json\)/);
+  assert.deepEqual(quiet?.actions, []);
+  assert.equal(alertNeedsYou(quiet!), false, "a schedule is information, not a request");
 });
 
 test("loop trouble, a stale build, questions, and a pause, most urgent first", () => {

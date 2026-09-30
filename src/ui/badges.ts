@@ -114,3 +114,19 @@ export function pauseBadge(pausedUntil: number | undefined, now: number): string
   if (pausedUntil === undefined || pausedUntil <= now) return "";
   return ` · paused — auto-resumes in ${humanSeconds(Math.round((pausedUntil - now) / 1000))}`;
 }
+
+/** The header's quiet-hours fragment (plans: "Quiet hours … part 2/2, observability"): the
+ * schedule as standing information in every configured state — `· quiet until 07:00` while
+ * the local clock sits inside the window (the active reading answers "why are the loops
+ * idle?" with when they start again) and `· quiet 23:00-07:00` otherwise — and empty when
+ * the snapshot carries no window, so a fleet without the schedule keeps its header
+ * byte-identical. The window end is read back out of the window string (the text after the
+ * dash), not re-parsed into minutes: the badge renders the operator's own spelling.
+ * renderStatus renders it in the TUI/status header after the pause badge; the GUI page
+ * renders its sidebar chip from the payload's raw fields and its active indicator from
+ * fleet-alerts' quiet alert, so both dashboards say the same thing. */
+export function quietBadge(quietHours: string | undefined, inQuietHours: boolean): string {
+  if (!quietHours) return "";
+  const end = quietHours.split("-")[1]?.trim() ?? "";
+  return inQuietHours ? ` · quiet until ${end}` : ` · quiet ${quietHours}`;
+}

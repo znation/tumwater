@@ -5,25 +5,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Quiet hours: surface the window on the dashboards (planned 2026-09-30) — part 2/2, observability
+## Done
+
+### Quiet hours: surface the window on the dashboards (planned 2026-09-30, done 2026-09-30) — part 2/2, observability
 
 **Goal.** Part 1/2's gate is invisible: an operator looking at `tumwater status`, the TUI, or the GUI during a quiet window sees idle loops but no reason. Surface the configured window and whether the fleet is inside it, the same way the pause and budget gates are surfaced.
 
-**Approach.**
-- src/status-data.ts: add to the status payload a `quietHours` field carrying the effective window string (absent when unset) and an `inQuietHours` boolean computed with `inQuietHours` from src/quiet-hours.ts, fresh per poll like `paused`.
-- Renderers: src/ui/status-render.ts renders a `quiet until 07:00`-style line/badge while inside the window and the plain window string otherwise; the TUI (src/ui/tui-frame.ts's cell budget) and the GUI (src/ui/gui-server's `/api/status` payload already carries the whole status object, so this is client-side rendering in the GUI's status view) show the same. Follow the `paused` field's render precedent end to end.
-- src/help.ts: the `config set` help line names `quietHours` among the settable keys.
+**Approach (as landed).**
+- src/status-data.ts: `StatusSnapshot` carries `quietHours` (the operator's own window string, trimmed, absent when unset or off) and `inQuietHours`, computed fresh per poll through a new `quietHoursStatus` helper in src/quiet-hours.ts — the same membership predicate the gate polls, so the dashboards and the hold cannot disagree. A malformed config value degrades with the whole config (configForStatus's last-known-good hold), so the badge never flashes off on one broken write.
+- Renderers: a `quietBadge` in src/ui/badges.ts (beside `pauseBadge`, the header badges' one home) renders `· quiet until 07:00` while inside the window and `· quiet 23:00-07:00` otherwise; renderStatus appends it to the header after the pause badge. The active in-window indicator is a blue `quiet` alert in src/ui/fleet-alerts.ts — informational, no actions — which both the TUI's attention lines and the GUI's alerts band render through the shared `fleetAlerts`, the `paused` field's actual render precedent. The GUI's sidebar (gui-client-fleet.ts) adds a quiet chip from the payload's raw fields, and status-payload.ts ships `quietHours`/`inQuietHours` plus the preformatted `quietBadge`.
+- src/help.ts: the `config` stanza now names `quietHours` among the settable keys.
 
-**Files touched.** `src/status-data.ts`, `src/ui/status-render.ts`, `src/ui/tui-frame.ts`, the GUI status view under `src/ui/`, `src/help.ts`, plus the matching status-render/status-payload tests.
+**Files touched.** `src/quiet-hours.ts`, `src/status-data.ts`, `src/ui/badges.ts`, `src/ui/status-render.ts`, `src/ui/fleet-alerts.ts`, `src/ui/status-payload.ts`, `src/ui/gui-client-model.ts` (alert icon), `src/ui/gui-client-fleet.ts` (sidebar chip), `src/help.ts`, README's settings line; tests in `test/quiet-hours.test.ts`, `test/status-header.test.ts`, `test/fleet-alerts.test.ts`, `test/status.test.ts`, plus the `snapshotWith` fixture.
+
+**Deviations from the entry as written.** The plan named `src/ui/tui-frame.ts` for the TUI, but the TUI owns no badge code of its own — it paints the shared header (status-render.ts) and alerts (fleet-alerts.ts), which now carry the field; the anchor was stale. The window/in-window derivation factored into `quietHoursStatus` in quiet-hours.ts rather than inline in status-data.ts, keeping the domain logic in one module. `help.ts` had no settable-key list to extend, so the `config` stanza gained one.
 
 **Acceptance criteria.**
-- `tumwater status` shows the configured window and, inside it, an active quiet-hours indicator naming the window end; with `quietHours` unset, output is byte-identical to today's.
-- The TUI and GUI render the same field without layout regressions in the existing test fixtures.
+- `tumwater status` shows the configured window and, inside it, an active quiet-hours indicator naming the window end; with `quietHours` unset, output is byte-identical to today's (pinned: the header badge is empty without a window, and the fleet-alerts suite asserts no quiet alert outside the window).
+- The TUI and GUI render the same field without layout regressions in the existing test fixtures (full suite green).
 - Depends on part 1/2 (`quietHours.ts`'s `parseQuietHours`/`inQuietHours` and the config key) — landed 2026-09-30 (see Done); this part lands once that is the running build.
 
-Cross-references part 1/2 above.
-
-## Done
+**Done 2026-09-30 by feature.**
 
 ### Quiet hours: a daily local-time window the fleet holds itself during (planned 2026-09-30, done 2026-09-30) — part 1/2, the gate
 

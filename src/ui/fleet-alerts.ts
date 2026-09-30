@@ -57,7 +57,10 @@ function localizeInstants(text: string): string {
  * questions, a pause, a stopped fleet. `now` is passed so a timed pause's countdown agrees with
  * the rest of the frame. */
 export function fleetAlerts(
-  snap: Pick<StatusSnapshot, "running" | "budget" | "build" | "paused" | "pausedUntil">,
+  snap: Pick<
+    StatusSnapshot,
+    "running" | "budget" | "build" | "paused" | "pausedUntil" | "quietHours" | "inQuietHours"
+  >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
   now: number,
@@ -142,6 +145,21 @@ export function fleetAlerts(
       title: `${plural(questions.length, "question needs", "questions need")} your answer`,
       detail: `${entryTitle(questions[0]!)}${questions.length > 1 ? ` — and ${questions.length - 1} more` : ""}`,
       actions: [{ label: "Answer", act: "questions" }],
+    });
+  }
+  // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
+  // the fleet holding to a schedule is not a problem, but an operator watching idle loops
+  // inside the window needs the same explanation the pause alert gives a paused fleet —
+  // why nothing ticks, and when it starts again. The window end is read back out of the
+  // window string (the text after the dash), the same rule quietBadge uses for the header.
+  if (snap.inQuietHours && snap.quietHours) {
+    const end = snap.quietHours.split("-")[1]?.trim() ?? "";
+    out.push({
+      key: "quiet",
+      tone: "blue",
+      title: `Quiet hours — role loops start no new ticks until ${end}`,
+      detail: `The schedule (${snap.quietHours} local time, quietHours in tumwater.json) holds them. In-flight ticks finish, and the director still runs your prompts.`,
+      actions: [],
     });
   }
   if (snap.paused) {

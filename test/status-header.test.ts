@@ -59,6 +59,26 @@ test("the status header shows the timed-pause countdown only while the fleet dea
   assert.doesNotMatch(renderStatus(tmpdir(), snap).split("\n")[0] ?? "", /auto-resumes/);
 });
 
+// Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the window rides the
+// header LAST, after the pause badge, as standing information once configured — the plain
+// window string outside it, the active `quiet until <end>` reading inside — and a fleet
+// without the schedule keeps its header byte-identical (the badge is empty).
+test("the status header carries a quiet-hours badge only while a window is configured", () => {
+  const unset = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  assert.doesNotMatch(unset, /quiet/);
+
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.quietHours = "23:00-07:00";
+  snap.inQuietHours = false;
+  const outside = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  assert.match(outside, /· quiet 23:00-07:00$/);
+
+  snap.inQuietHours = true;
+  const inside = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  assert.match(inside, /· quiet until 07:00$/);
+  assert.doesNotMatch(inside, /23:00-07:00/, "inside the window the active reading replaces the raw string");
+});
+
 // The daily cost budget (plans/daily-cost-budget.md): the header badge is standing
 // information while enabled — the paused role loops' state-cell half of this plan lives in
 // status-render.test.ts's fallback tests.

@@ -12,6 +12,7 @@ import {
   newQuietHoursGateState,
   parseQuietHours,
   pollQuietHoursGate,
+  quietHoursStatus,
 } from "../src/quiet-hours.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -99,6 +100,22 @@ test("inQuietHours: wrapping window spans midnight", () => {
 
 // pollQuietHoursGate — the edge-triggered event logging the orchestrator's poll depends on:
 // exactly one event per crossing, none while settled, one on a restart mid-window.
+// quietHoursStatus (plans: "Quiet hours … part 2/2, observability") is what the dashboards
+// read: the operator's own window string whenever the gate would hold, null otherwise, and
+// the membership decision from the same predicate the scheduler uses.
+
+test("quietHoursStatus: the window string plus the gate's own membership predicate", () => {
+  assert.deepEqual(quietHoursStatus("23:00-07:00", localDate(3, 0)), { window: "23:00-07:00", inWindow: true });
+  assert.deepEqual(quietHoursStatus("23:00-07:00", localDate(12, 0)), { window: "23:00-07:00", inWindow: false });
+  // The operator's own spelling survives, trimmed but never reformatted.
+  assert.deepEqual(quietHoursStatus(" 9:00 - 17:00 ", localDate(10, 0)), { window: "9:00 - 17:00", inWindow: true });
+  // Off in every shape the gate treats as off — unset, empty, malformed — advertises nothing.
+  assert.deepEqual(quietHoursStatus(undefined, localDate(3, 0)), { window: null, inWindow: false });
+  assert.deepEqual(quietHoursStatus("", localDate(3, 0)), { window: null, inWindow: false });
+  assert.deepEqual(quietHoursStatus("25:00-07:00", localDate(3, 0)), { window: null, inWindow: false });
+  assert.deepEqual(quietHoursStatus("23:00-23:00", localDate(3, 0)), { window: null, inWindow: false });
+});
+
 test("pollQuietHoursGate: one started/ended event per crossing, none while settled", () => {
   const root = tmpdir("quiet-hours-");
   const state = newQuietHoursGateState();

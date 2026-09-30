@@ -57,6 +57,17 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           "Main " + verdict + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
       if (d.landQueue && d.landQueue.depth > 0) rows += row("orange", icon("merge"), "Land queue " + d.landQueue.depth, landingTitle(d.landQueue));
+      // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
+      // standing information, amber while the local clock is inside it — the same
+      // inside/outside wording the TUI/status header's quietBadge carries, derived from the
+      // payload's raw quietHours/inQuietHours fields (the active case also raises the
+      // fleet-alerts quiet alert above).
+      if (d.quietHours) {
+        const end = String(d.quietHours).split("-")[1] || "";
+        rows += row(d.inQuietHours ? "amber" : "", icon("pause"),
+          d.inQuietHours ? "Quiet until " + esc(end) : "Quiet " + esc(d.quietHours),
+          "Quiet hours — role loops start no new ticks during this local-time window; the director keeps running your prompts");
+      }
     }
     paintPanel("statuschips", rows);
     renderBudgetBadge(d);

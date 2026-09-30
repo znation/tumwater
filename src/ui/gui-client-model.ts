@@ -91,7 +91,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     return (offline ? [OFFLINE_ALERT] : []).concat((d && d.alerts) || []);
   }
   const ALERT_ICONS = { offline: "offline", budget: "dollar", fallback: "info", mainred: "fail", failing: "fail", stuck: "clock",
-    build: "refresh", questions: "question", paused: "pause", stopped: "info" };
+    build: "refresh", questions: "question", paused: "pause", quiet: "pause", stopped: "info" };
   // Alerts that ask something of the operator (the page title counts them); blue and gray ones
   // are information.
   const needsYou = (alerts) => alerts.filter((a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo").length;

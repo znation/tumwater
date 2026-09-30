@@ -54,6 +54,10 @@ export function snapshotWith(
     budget,
     paused,
     pausedRoles,
+    // Quiet hours default to off — no window, not inside one — so existing header
+    // assertions stay byte-identical; a test sets quietHours/inQuietHours to exercise the
+    // badge (status-header.test.ts).
+    inQuietHours: false,
     build: null,
     // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
     // (the 4/5 badge is empty at depth 0) and renders no in-flight label.

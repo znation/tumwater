@@ -121,3 +121,23 @@ export function pollQuietHoursGate(
   }
   return inNow;
 }
+
+/** What the dashboards show for one `quietHours` config value at `now` (plans: "Quiet hours
+ * … part 2/2, observability"): the operator's own window string while it parses to a real
+ * window (trimmed — the schedule as written, not a canonical reformat), null when unset,
+ * empty (off), or malformed — a value the gate is not holding must never be advertised as
+ * one it is — and whether the local wall clock sits inside that window right now, decided
+ * by the same inQuietHours predicate the scheduler's gate uses so the dashboards and the
+ * hold cannot disagree. Part 1/2's pollQuietHoursGate logs the crossings; this renders the
+ * standing state. */
+export function quietHoursStatus(
+  value: unknown,
+  now: Date,
+): { window: string | null; inWindow: boolean } {
+  const parsed = parseQuietHours(value);
+  if (!parsed.ok || parsed.window === null) return { window: null, inWindow: false };
+  return {
+    window: typeof value === "string" ? value.trim() : null,
+    inWindow: inQuietHours(parsed.window, now),
+  };
+}

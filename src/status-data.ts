@@ -7,6 +7,7 @@ import { fallbackPair } from "./config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { queuedRolePromptCount, queuedRolePromptEntries } from "./inbox.js";
+import { quietHoursStatus } from "./quiet-hours.js";
 import { readEvents } from "./event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "./git.js";
 import { statePath } from "./paths.js";
@@ -85,6 +86,21 @@ export interface StatusSnapshot {
    * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while
    * a timed fleet pause stands. Fresh per poll, like `paused`. */
   pausedUntil?: number;
+  /** The configured quiet-hours window as written (trimmed — "Quiet hours … part 2/2,
+   * observability"), present only while the config's `quietHours` parses to a real window:
+   * absent when unset or empty (off), because a schedule the gate is not holding must never
+   * be advertised as one it is. A malformed value degrades with the whole config
+   * (configForStatus's last-known-good hold, or the defaults when none exists) — the badge
+   * never flashes off on one broken write. Standing information — the header badge shows it
+   * in every configured state, like the budget badge's cap figure. Fresh per poll like
+   * `paused`: a live `config set quietHours` edit shows on the next poll, the same
+   * fresh-read rule the gate itself follows. */
+  quietHours?: string;
+  /** True while the LOCAL wall clock sits inside that window: idle role loops start no new
+   * ticks (the director keeps steering). Decided by quiet-hours.ts's inQuietHours — the
+   * scheduler's own predicate — so the dashboards and the hold cannot disagree. Fresh per
+   * poll, like `quietHours`. */
+  inQuietHours: boolean;
   /** The running harness's build (src/build-info.ts) as the orchestrator published it: the stamp
    * plus whether main's build inputs have moved past it. Null when no harness is running or its
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
@@ -324,6 +340,11 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // exit removes the info file, so a stale file beside a dead pid must not speak for a fleet
   // whose persisted files are final.
   const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
+  // Quiet hours 2/2 — one parse and one clock read per poll serve both the window string the
+  // header badge renders and the in-window boolean the active reading turns on; the value is
+  // read fresh from the same cached config load the budget block uses, so a live edit shows
+  // on the next poll exactly when the gate applies it.
+  const quiet = quietHoursStatus(cfg.quietHours, new Date());
   return {
     running,
     pid: info?.pid,
@@ -355,6 +376,8 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
     pausedUntil: fleetPause?.until,
+    quietHours: quiet.window ?? undefined,
+    inQuietHours: quiet.inWindow,
     landQueue,
     mainCheck: mainCheckForPoll(root, cfg),
   };

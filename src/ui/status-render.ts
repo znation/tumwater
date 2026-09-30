@@ -5,7 +5,7 @@ import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";
 import { formatTime, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
-import { buildBadge, budgetBadge, humanSeconds, landingBadge, mainCheckBadge, pauseBadge } from "./badges.js";
+import { buildBadge, budgetBadge, humanSeconds, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
 import {
   isActivePhase,
   loopRowCells,
@@ -195,6 +195,11 @@ export function renderStatusSpans(
     ...badgeSpans(budgetBadge(snap.budget), budgetTone(snap.budget)),
     ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck ? (snap.mainCheck.status === "passed" ? "green" : snap.mainCheck.status === "failed" ? "red" : "yellow") : undefined),
     ...badgeSpans(pauseBadge(snap.pausedUntil, now), "yellow"),
+    // Quiet hours 2/2 rides the header last: the window as standing information whenever it
+    // is configured, the yellow `quiet until <end>` reading while the hold is on — the same
+    // ask-me-nothing informality the pause badge's countdown uses, without stealing its
+    // urgency. Unset keeps the header byte-identical (the badge is empty).
+    ...badgeSpans(quietBadge(snap.quietHours, snap.inQuietHours), snap.inQuietHours ? "yellow" : undefined),
   ]);
   lines.push([]);
   // `today` is the loop's daily budget window (dailyCost): $0.00 while its stamp is stale
