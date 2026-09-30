@@ -5,6 +5,57 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### The build-stale alert's refresh icon becomes a button that forces a restart (planned 2026-09-30)
+
+**Goal.** In the GUI dashboard, the refresh icon on the stale-build alert — "The fleet runs an
+old build: main is N ahead and the restart is blocked" (amber) and its sibling "main is N ahead
+of the running build" (blue) — becomes an actual button; pressing it forces the fleet's
+self-redeploy onto newer main now, instead of waiting out the 12 h restart cooldown or the
+drain deferral.
+
+**Semantics (pinned — nothing left open).** Forcing clears ONLY the cooldown deferral
+(RESTART_COOLDOWN_MS measured from the last completed auto-restart). It never bypasses a
+refusal: a red main verdict, a failed compile, a swap error, or a startup-gate boot problem
+still blocks the episode as today (the `blockedHead`/`restartBlocked` path), and in-flight
+ticks still drain through the ordinary drain window before the swap. A press when the build is
+not stale writes nothing and reports that no restart is pending. With no fleet running, the
+marker is written harmlessly and the reply says only a live fleet would apply it — the same
+liveness contract `tumwater wake` states.
+
+**Approach.**
+1. `Redeployer` (src/redeploy-policy.ts): add `forceRestart()` — arm a forced flag the next
+   `poll()` consults in the cooldown check (one flag, consumed by that poll: set
+   `lastAutoRestartAt` to null semantics or clear the deferral branch) and log one
+   `restart_forced` event through the existing `RedeployEvent` channel. No other state changes:
+   verify-green, compile, drain, and swap all proceed through the existing episode machinery.
+2. Marker transport, mirroring wake: src/paths.ts gains `restartRequestPath(root)` beside
+   `wakeRequestPath` (`.tumwater/restart.json`); src/operator-intent.ts gains
+   `requestRestart(root)` returning the confirmation string with the `markerApplyNote`
+   liveness clause; src/operator-requests.ts gains `consumeRestartRequest(root, redeployer)`
+   (call `forceRestart()` once, delete the marker, log the event); src/orchestrator.ts calls
+   it in the marker-consumption block next to `consumeWakeRequest`.
+3. Endpoint: src/ui/gui-endpoints.ts gains `handleRestart` shaped like `handleWake`
+   (structured `{ ok, message }` / `{ ok: false, error }`); src/ui/gui.ts routes
+   `POST /api/restart` behind the existing cross-origin gate with the other POST routes.
+4. GUI client (src/ui/gui-client-fleet.ts, `renderAlerts`): when an alert's key is `build`
+   and `d.build && d.build.stale`, wrap the alert's icon span (`ALERT_ICONS.build`, the
+   refresh glyph) in a `<button type='button' class='alert-icon' data-act='restart'
+   title='Restart onto the new build now'>` — the icon itself is the press target; no extra
+   labeled action button, and the TUI's rendering of the same alerts is untouched. In
+   src/ui/gui-client-boot.ts, dispatch `act === "restart"` through the existing
+   `postJson`/flash flow to `POST /api/restart`.
+5. Tests: test/redeploy.test.ts — a forced restart proceeds into verify/compile while the
+   cooldown was deferring, and a forced restart still refuses on a blocked head; add these
+   alongside the existing drain/cooldown tests, using the same injected seams they use.
+   test/gui-endpoints.test.ts — POST /api/restart writes the marker and replies ok; the
+   not-stale and no-fleet cases keep their stated reply shapes.
+
+**Acceptance criteria.** With the fleet running an old build and the restart cooldown
+pending, clicking the refresh icon in the dashboard's build-stale alert produces a
+`restart_forced` event and the fleet verifies, compiles, drains, and swaps onto main's head
+within one drain window; a red main still blocks with the existing blocked wording; a fresh
+build's press changes nothing; `npm run test` passes with the new tests above.
+
 ### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/4, the backstop
 
 **Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
