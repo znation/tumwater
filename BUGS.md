@@ -5,7 +5,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-(none)
+### The failure digest's cluster examples are hard-sliced at 120 chars mid-word with no ellipsis or remainder marker, so the tail that names the repro — the failing assertion's file, the recovery action, the rejected claim — is silently invisible to the operator and to every loop that reads the digest (found by telemetry loop 2026-09-30)
+
+- **Symptom:** the 2026-09-30 digest cuts four cluster keys mid-word with nothing marking the cut: the day's top error cluster ends `Expected values to be strictly equal:) — authoring skipped u` (the slice eats `until main is green`, leaving the reader unable to tell whether authoring was skipped or urged), the red-main warning ends `code mer`, the clean-role rejection ends `the commit claims "comme`, and the bugfix rejection ends `an empty \`PI_CODING_AGENT_DIR\` di`. A bugfix loop sent at a rejection it can only read as `…PI_CODING_AGENT_DIR di` cannot reproduce it; the digest is the fleet's primary evidence channel and it hid the distinguishing tail of its own most expensive cluster.
+- **Reproduce:** run `tumwater report --failures` on any window holding a normalized error, warning, or rejection message longer than 120 chars — every such example is cut at exactly 120 characters, mid-word, with no marker.
+- **Cause:** `src/failure-cluster.ts` slices `message.trim().slice(0, EXAMPLE_MAX)` (lines 42, 92, 101; `EXAMPLE_MAX = 120`) and `src/failure-report.ts` renders `${c.example}` raw (lines 184, 237). The byte bound itself is deliberate (`src/failure-report.ts:104` documents "every free string is capped — cluster examples at 120 chars"); the defect is that the cut is a bare `String.slice` — no ellipsis, no word boundary, no pointer — while the digest's own cluster-count overflow right next to it prints a proper remainder marker (`+2 more clusters holding 2 warnings`).
+- **Fix sketch:** when an example is cut, always mark it — truncate at a word/whitespace boundary where one exists inside the budget and append `… (+N chars)` so a truncated example can never be mistaken for a complete message; apply the same rule to the other free strings capped on that documented line (landed-commit subjects), which cut identically.
+
+## Fixed
 
 ## Fixed
 
