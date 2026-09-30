@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { alertNeedsYou, fleetAlerts, type AlertLoop } from "../src/ui/fleet-alerts.js";
-import { phaseTone, resultTone } from "../src/ui/status-model.js";
+import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./gui-client-scope.js";
 
 // fleet-alerts.ts's fleetAlerts: what needs the operator, phrased once for the dashboard's alert

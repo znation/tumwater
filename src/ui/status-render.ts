@@ -14,12 +14,10 @@ import {
   loopRowCells,
   mainCheckBadge,
   pauseBadge,
-  phaseTone,
-  resultTone,
   sortLoopsByState,
   yieldMultiplierFor,
-  type Tone,
 } from "./status-model.js";
+import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
@@ -104,7 +102,7 @@ const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
 ];
 const COLUMN_GAP = 2;
 
-/** A run of text on a status line, with the tone it may be drawn in (status-model's Tone, or
+/** A run of text on a status line, with the tone it may be drawn in (tone.ts's Tone, or
  * "brand" / "bold" for the header's name and the totals). Plain renderings join the text and
  * ignore the tone; the TUI colors each toned span. */
 export interface StatusSpan {

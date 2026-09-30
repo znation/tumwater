@@ -7,7 +7,7 @@
  * the same status colors — drawn in the terminal's base colors, so they follow its theme. */
 import type { HarnessEvent } from "../events.js";
 import { clipSpans, type StatusLine, type StatusSpan } from "./status-render.js";
-import { eventKind, resultTone, type Tone } from "./status-model.js";
+import { eventKind, resultTone, type Tone } from "./tone.js";
 import type { FleetAlert } from "./fleet-alerts.js";
 import { displayWidth } from "../text.js";
 
@@ -140,7 +140,7 @@ export function prefixWidth(prefix: readonly StatusSpan[]): number {
   return displayWidth(prefix.map((sp) => sp.text).join(""));
 }
 
-/** An activity line's tone, by the event's kind (status-model's eventKind — the dashboard's
+/** An activity line's tone, by the event's kind (tone.ts's eventKind — the dashboard's
  * activity card uses the same rule): landings green, problems in their outcome's color,
  * questions magenta, routine bookkeeping dim. */
 export function eventTone(e: HarnessEvent): Tone | undefined {

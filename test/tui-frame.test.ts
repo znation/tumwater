@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { clipToWidth, displayWidth } from "../src/text.js";
 import { clipSpans, renderStatus, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
-import { eventKind } from "../src/ui/status-model.js";
+import { eventKind } from "../src/ui/tone.js";
 import type { FleetAlert } from "../src/ui/fleet-alerts.js";
 import { snapshot } from "../src/ui/status.js";
 import { initProject } from "../src/init.js";
@@ -135,7 +135,7 @@ test("activity and transcript lines take the tones of what they report", () => {
   assert.equal(transcriptTone("  plain assistant text"), undefined);
 });
 
-test("the page's event kinds are status-model's", () => {
+test("the page's event kinds are tone's", () => {
   const { eventKind: pageKind } = clientScope<{ eventKind(item: { type: string; result?: string }): string }>(["format", "view-model"], ["eventKind"]);
   const cases: Array<[string, string | undefined]> = [
     ["merged", undefined], ["question_posted", undefined], ["tick_end", "error"], ["tick_end", "queued"], ["tick_end", "no_change"],
