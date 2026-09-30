@@ -48,6 +48,19 @@ export function fakePiIdle(opts: { cost?: number } = {}): () => void {
   return fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`);
 }
 
+/** Run one async block with fakePi's script on PATH, restoring PATH afterwards even when the
+ * block throws — the async form of the `const restore = fakePi(...); try { ... } finally {
+ * restore(); }` boilerplate the loop tests repeated verbatim, so a test only writes its script
+ * and its body and the save/restore pairing cannot be forgotten or double-restore. */
+export async function withPi<T>(script: string, fn: () => Promise<T>): Promise<T> {
+  const restore = fakePi(script);
+  try {
+    return await fn();
+  } finally {
+    restore();
+  }
+}
+
 /** The review tests' standard reviewer stub: a fake-pi script that creates `marker` (when
  * given — the test's proof the review run actually happened, asserted with existsSync) and
  * prints "VERDICT: approve" as the review run's one assistant turn. The single home of the

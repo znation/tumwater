@@ -16,7 +16,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, firstRunThenIdle } from "./fake-pi.js";
+import { firstRunThenIdle, withPi } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
 test("a rejected change rides along on the role's next tick prompt with its reasons", async () => {
   const repo = await initializedRepo();
@@ -25,19 +25,17 @@ test("a rejected change rides along on the role's next tick prompt with its reas
   // the test can assert what each tick was actually told, not just that state changed.
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "changed-once");
-  const restore = fakePi(
-    [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
-      `  printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule\n2. no regression test")}'`,
-      `  exit 0;; esac; done`,
-      `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
-      ...firstRunThenIdle(marker, [
-        `printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
-        `echo bad > rejected.txt`,
-      ]),
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+    `  printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the zero-dep rule\n2. no regression test")}'`,
+    `  exit 0;; esac; done`,
+    `{ printf '%s\n' "$@"; echo "===RUN==="; } >> "${promptsFile}"`,
+    ...firstRunThenIdle(marker, [
+      `printf '%s\n' '${assistantLine("did it\nSUMMARY: add rejected thing")}'`,
+      `echo bad > rejected.txt`,
+    ]),
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     // Tick 1: the change is committed and enqueued, then the LANDING rejects it — nothing
     // lands on main.
@@ -66,24 +64,20 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     assert.match(second, /1\. breaks the zero-dep rule/);
     assert.match(second, /2\. no regression test/);
     assert.match(second, /Address the objections or take a different approach\./);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("concurrent-main-advance still lands (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
   // The fake pi advances main itself mid-tick, simulating another loop landing work.
-  const restore = fakePi(
-    [
-      // The tick's commit goes through the review gate before the (rebased) merge.
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("ok\nSUMMARY: slow work")}'`,
-      `echo slow > slow.txt`,
-      `git -C "${repo}" -c user.name=t -c user.email=t@t commit --allow-empty -m "someone else"`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    // The tick's commit goes through the review gate before the (rebased) merge.
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("ok\nSUMMARY: slow work")}'`,
+    `echo slow > slow.txt`,
+    `git -C "${repo}" -c user.name=t -c user.email=t@t commit --allow-empty -m "someone else"`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "organize");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
@@ -91,9 +85,7 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
     // The tick's commit was rebased onto the concurrent main advance: no merge commits.
     assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a clean resolution of a conflicted file with setext underlines lands (regression)", async () => {
@@ -106,20 +98,18 @@ test("a clean resolution of a conflicted file with setext underlines lands (regr
   const marker = path.join(tmpdir(), "phase");
   // Phase 1 (the tick): both sides edit the same line. Phase 2 (the resolution run):
   // combine them, keeping the setext underline — no real conflict markers remain.
-  const restore = fakePi(
-    [
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch docs edit")}'`,
-      `  printf 'History\\n=======\\n\\nBranch entry.\\n' > docs.md`,
-      `  printf 'History\\n=======\\n\\nMain entry.\\n' > "${repo}/docs.md"`,
-      `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main docs edit"`,
-      `else`,
-      `  printf 'History\\n=======\\n\\nBranch entry.\\nMain entry.\\n' > docs.md`,
-      `fi`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    `if [ ! -f "${marker}" ]; then`,
+    `  touch "${marker}"`,
+    `  printf '%s\n' '${assistantLine("ok\nSUMMARY: branch docs edit")}'`,
+    `  printf 'History\\n=======\\n\\nBranch entry.\\n' > docs.md`,
+    `  printf 'History\\n=======\\n\\nMain entry.\\n' > "${repo}/docs.md"`,
+    `  git -C "${repo}" -c user.name=t -c user.email=t@t commit -am "conflicting main docs edit"`,
+    `else`,
+    `  printf 'History\\n=======\\n\\nBranch entry.\\nMain entry.\\n' > docs.md`,
+    `fi`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
@@ -132,9 +122,7 @@ test("a clean resolution of a conflicted file with setext underlines lands (regr
       fs.readFileSync(path.join(repo, "docs.md"), "utf8"),
       "History\n=======\n\nBranch entry.\nMain entry.\n",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
@@ -143,15 +131,13 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   // Attempt 1 (the tick's pi run): LM Studio kills an idle predict stream after a machine
   // sleep. Attempt 2 (the harness retry, detected by the phase file): a fresh request
   // succeeds within seconds of the wake.
-  const restore = fakePi(
-    [
-      ...firstRunThenIdle(marker, [
-        `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
-        `exit 1`,
-      ]),
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    ...firstRunThenIdle(marker, [
+      `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+      `exit 1`,
+    ]),
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
@@ -164,9 +150,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     // A predict-stream timeout is a transient failure of the local backend, not the provider
     // rate-limiting the fleet: it must never feed the fleet-wide 429 hold.
     assert.equal(runner.lastRateLimit, undefined);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a provider 429 rate-limit rejection is retried once and the tick succeeds (regression, BUGS.md 2026-09-21)", async () => {
@@ -175,15 +159,13 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
   // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the fleet's
   // single largest error source, and by definition retryable. Attempt 2 (the harness retry,
   // detected by the phase file): the limit has passed and the request succeeds.
-  const restore = fakePi(
-    [
-      ...firstRunThenIdle(marker, [
-        `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
-        `exit 1`,
-      ]),
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    ...firstRunThenIdle(marker, [
+      `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
+      `exit 1`,
+    ]),
+  ].join("\n");
+  await withPi(script, async () => {
     // The hint-less 429 now defaults its retry wait to the minute-scale refill pause (BUGS.md
     // 2026-09-25); this end-to-end test injects an instant sleep and asserts the recorded wait
     // instead of living through the minute.
@@ -207,9 +189,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     assert.ok(runner.lastRateLimit.at >= before && runner.lastRateLimit.at <= Date.now());
     assert.equal(runner.lastRateLimit.retryAfterSeconds, undefined, "no hint in the fleet's error text");
     assert.deepEqual(sleeps, [60_000], "a hint-less 429 waits the minute-scale refill pause before its retry");
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Self-explaining commit bodies (plans/commit-bodies.md item b): the trailer's turn count is
@@ -224,24 +204,22 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
   // idle predict stream — a failed run with transientServerTimeout set. The errored final
   // message is itself an assistant message_end, so attempt 1 counts as THREE turns. Attempt
   // 2 (the harness retry, detected by the phase file): one more turn that finishes the work.
-  const restore = fakePi(
-    [
-      APPROVE_PI,
-      // The retry branch finishes the work rather than idling — this is not the
-      // firstRunThenIdle shape (its else must emit nothing-to-do), so it stays hand-rolled.
-      `if [ ! -f "${marker}" ]; then`,
-      `  touch "${marker}"`,
-      `  printf '%s\\n' '${assistantLine("first turn of work")}'`,
-      `  printf '%s\\n' '${assistantLine("second turn, still working")}'`,
-      `  printf '%s\\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
-      `  exit 1`,
-      `else`,
-      `  printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `  echo hello > hello.txt`,
-      `fi`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    APPROVE_PI,
+    // The retry branch finishes the work rather than idling — this is not the
+    // firstRunThenIdle shape (its else must emit nothing-to-do), so it stays hand-rolled.
+    `if [ ! -f "${marker}" ]; then`,
+    `  touch "${marker}"`,
+    `  printf '%s\\n' '${assistantLine("first turn of work")}'`,
+    `  printf '%s\\n' '${assistantLine("second turn, still working")}'`,
+    `  printf '%s\\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
+    `  exit 1`,
+    `else`,
+    `  printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `  echo hello > hello.txt`,
+    `fi`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
@@ -250,7 +228,5 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     // after the commit. Peak ctx is the retry run's 42; attempt 1 carried no usage.
     const body = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(body, /^Tick: improve #\d+ · turns 4 · ctx 42$/m);
-  } finally {
-    restore();
-  }
+  });
 });
