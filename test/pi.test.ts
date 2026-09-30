@@ -7,7 +7,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   TRANSIENT_PI_CRASH,
-  commandBuffersOutput,
   piArgs,
   runPi,
   type PiRunOptions,
@@ -315,27 +314,8 @@ test("toolCallStallSeconds 0 disables the stall warning", async (t) => {
 
 // The stall warning must not fire on a command whose stdout is piped or redirected — the
 // tick prompt prescribes exactly that shape for verification runs, so their silence is the
-// prescribed shape, not a hang (BUGS.md 2026-09-28).
-
-test("commandBuffersOutput classifies the redirect shapes", () => {
-  const buffered = [
-    "npm run test 2>&1 | tail -8", // the prescribed shape: the pipe holds every byte
-    "npm run test > /tmp/out.log",
-    "npm run test >> /tmp/out.log",
-    "npm run test &> /tmp/out.log", // both streams leave
-    "npm run test 2> /tmp/err.log > /dev/null", // the > redirects stdout
-    'grep "a > b" file', // errs toward buffered on unparseable shapes
-  ];
-  const live = [
-    "sleep 999", // bare: pi's pipe stays open, silence means something
-    "npm run test 2>&1", // stderr dups onto stdout's destination — pi's pipe
-    "npm run test 2> /tmp/err.log", // only stderr leaves; stdout still streams
-    "npm run test 2>> /tmp/err.log", // stderr appends; the >> pair is one operator
-    "npm run test >&1", // stdout dups onto itself
-  ];
-  for (const c of buffered) assert.equal(commandBuffersOutput(c), true, `buffered: ${c}`);
-  for (const c of live) assert.equal(commandBuffersOutput(c), false, `live: ${c}`);
-});
+// prescribed shape, not a hang (BUGS.md 2026-09-28). The classifier's own shape table lives
+// in test/command-shape.test.ts.
 
 test("a stalled piped-stdout call warns nothing; the redirect is found in the full command, not the truncated label", async (t) => {
   const dir = tmpdir();

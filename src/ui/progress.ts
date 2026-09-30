@@ -1,5 +1,5 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi-event-line.js";
-import { commandBuffersOutput } from "../pi.js";
+import { commandBuffersOutput } from "../command-shape.js";
 import { describeToolCall, squash } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { landWorktreePath } from "../paths.js";
