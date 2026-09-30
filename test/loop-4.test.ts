@@ -13,7 +13,7 @@ import { readEvents } from "../src/events.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, firstRunThenIdle } from "./fake-pi.js";
@@ -119,7 +119,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   );
   fs.writeFileSync(
     path.join(repo, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
+    projManifest({ build: "buildcheck-tool --fail" }),
   );
   // Commit package.json (node_modules stays untracked — the install marker): a git worktree
   // checks out tracked files, and npm re-roots `npm run` at the nearest package.json. With one

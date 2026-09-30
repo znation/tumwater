@@ -22,6 +22,7 @@ import { NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
 import { runStartupProblem } from "../src/startup-gate.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
+import { projManifest } from "./fake-commands.js";
 
 // The self-redeploy policy (src/redeploy.ts): drive the state machine with scripted effects so
 // every decision branch — stale detection, red main, compile failure, drain, swap — is pinned
@@ -753,7 +754,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   const root = makeRepo();
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node -e 'process.exit(0)'" } }),
+    projManifest({ test: "node -e 'process.exit(0)'" }),
   );
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");
@@ -767,7 +768,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   // A red main reads false — the verdict the restart gate blocks a swap on.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node -e 'process.exit(1)'" } }),
+    projManifest({ test: "node -e 'process.exit(1)'" }),
   );
   sh(root, "git", "commit", "-aqm", "break the suite");
   const redHead = sh(root, "git", "rev-parse", "HEAD");
@@ -796,14 +797,7 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
   // succeed), the suite runs and dies on the toolchain — pre-fix that read as a RED main and
   // latched the restart until main moved; the fix must let the same episode proceed.
   const root = makeRepo();
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    JSON.stringify({
-      name: "proj",
-      version: "1.0.0",
-      scripts: { test: 'echo "xcrun: error: missing input"; exit 1' },
-    }),
-  );
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: 'echo "xcrun: error: missing input"; exit 1' }));
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-q", "-m", "project");

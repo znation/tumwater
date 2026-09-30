@@ -10,6 +10,7 @@ import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
+import { projManifest } from "./fake-commands.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -96,7 +97,7 @@ test("checkMainBaseline re-checks when main moves to a new SHA", async () => {
   // fresh SHA must re-run the check instead of trusting the old verdict.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo run >> ${counter}; exit 2` } }),
+    projManifest({ test: `echo run >> ${counter}; exit 2` }),
   );
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "still red");
@@ -165,7 +166,7 @@ test("checkMainBaseline reads a toolchain-failing suite as an environmental skip
   fs.rmSync(counter, { force: true });
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo run >> ${counter}; echo ok` } }),
+    projManifest({ test: `echo run >> ${counter}; echo ok` }),
   );
   const rechecked = await checkMainBaseline(wt, CFG);
   assert.equal(rechecked.baseline?.status, "green", "the fixed toolchain re-checks the same SHA");
@@ -320,11 +321,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   const root = makeRepo();
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({
-      name: "proj",
-      version: "1.0.0",
-      scripts: { test: `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"` },
-    }),
+    projManifest({ test: `echo run >> ${counter}; node -e "process.exit(require('fs').existsSync('marker') ? 0 : 1)"` }),
   );
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker detectBuildCheck walks up to
   sh(root, "git", "add", "-A");

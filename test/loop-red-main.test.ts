@@ -12,7 +12,7 @@ import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -93,7 +93,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   fs.mkdirSync(path.join(repo, "node_modules"));
   fs.writeFileSync(
     path.join(repo, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "echo ok" } }),
+    projManifest({ test: "echo ok" }),
   );
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "green main");
@@ -191,7 +191,7 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
     // The bugfix role (exempt) lands a fix on main — the suite is green at the new SHA.
     fs.writeFileSync(
       path.join(repo, "package.json"),
-      JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo fixed >> ${counter}; exit 0` } }),
+      projManifest({ test: `echo fixed >> ${counter}; exit 0` }),
     );
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "fix the suite");

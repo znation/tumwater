@@ -6,7 +6,8 @@
  * (oracles.ts, log-fixtures.ts, loop-fixtures.ts, gui-fixtures.ts); the live-orchestrator,
  * fake-pi, and fake-command families live in their own modules (orchestrator-fixtures.ts,
  * fake-pi.ts, fake-commands.ts). The dependency runs one way: the other test modules and
- * the tests import from here; this module never imports them.
+ * the tests import from here; this module imports only the leaf fake-command utilities
+ * (fake-commands.ts), never another fixture family.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { ensureParentDir } from "../src/files.js";
+import { projManifest } from "./fake-commands.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
  * process exit. A full suite run (one worker process per test file) therefore abandons at most
@@ -111,7 +113,7 @@ export function makeMainRed(repo: string, counter: string): void {
   fs.mkdirSync(path.join(repo, "node_modules")); // untracked install marker (gitignored in real projects)
   fs.writeFileSync(
     path.join(repo, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: `echo baseline-failure-line; echo run >> ${counter}; exit 1` } }),
+    projManifest({ test: `echo baseline-failure-line; echo run >> ${counter}; exit 1` }),
   );
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "make main red");

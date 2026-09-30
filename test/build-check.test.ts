@@ -12,7 +12,7 @@ import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { pathPrepend, writeScript } from "./fake-commands.js";
+import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
@@ -74,7 +74,7 @@ test("runBuildCheck still classifies a genuinely failing build as failed with th
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --fail" } }),
+    projManifest({ build: "buildcheck-tool --fail" }),
   );
   writeScript(
     path.join(root, "node_modules", ".bin", "buildcheck-tool"),
@@ -128,7 +128,7 @@ test("runBuildCheck carries the runner's summary counts on passed and failed out
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
+    projManifest({ build: "buildcheck-tool" }),
   );
   const tool = path.join(root, "node_modules", ".bin", "buildcheck-tool");
   writeScript(tool, 'echo "ℹ tests 3"; echo "ℹ pass 3"; echo "ℹ fail 0"; echo "ℹ skipped 0"');
@@ -157,7 +157,7 @@ test("runBuildCheck skips (not fails closed) when the script times out", async (
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "sleep 5" } }),
+    projManifest({ build: "sleep 5" }),
   );
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 400);
   assert.equal(outcome.status, "skipped");
@@ -173,7 +173,7 @@ test("a check killed by an external signal is skipped as killed, naming the sign
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+    projManifest({ test: "kill -9 $$" }),
   );
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000);
   assert.equal(outcome.status, "skipped");
@@ -209,7 +209,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
   );
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "node runner.mjs" } }),
+    projManifest({ test: "node runner.mjs" }),
   );
   let pid = 0;
   try {
@@ -254,14 +254,7 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
   const { root, wt } = buildCheckFixture();
   const started = path.join(wt, "started");
   const go = path.join(wt, "go");
-  fs.writeFileSync(
-    path.join(wt, "package.json"),
-    JSON.stringify({
-      name: "proj",
-      version: "1.0.0",
-      scripts: { test: `touch '${started}'; while [ ! -f '${go}' ]; do sleep 0.02; done` },
-    }),
-  );
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ test: `touch '${started}'; while [ ! -f '${go}' ]; do sleep 0.02; done` }));
   // On logical time (checkClock): the run lasts four graces, far short of its 30 s deadline,
   // and finishes on its own once the test says go.
   const advance = checkClock(t);
@@ -392,7 +385,7 @@ test("a landing- or batch-scope timeout is a deterministic reject, not an enviro
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "sleep 5" } }),
+    projManifest({ build: "sleep 5" }),
   );
 
   for (const scope of ["landing", "batch"] as const) {
@@ -432,11 +425,7 @@ test("a gate check killed by an external signal is retried once, and the retry's
   fs.mkdirSync(path.join(wt, "node_modules"));
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({
-      name: "proj",
-      version: "1.0.0",
-      scripts: { test: "if [ -f killed-once ]; then exit 0; else touch killed-once; kill -9 $$; fi" },
-    }),
+    projManifest({ test: "if [ -f killed-once ]; then exit 0; else touch killed-once; kill -9 $$; fi" }),
   );
   const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000);
   assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
@@ -455,7 +444,7 @@ test("a merge-scope check killed by an external signal rejects, naming the signa
   fs.mkdirSync(path.join(wt, "node_modules"));
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+    projManifest({ test: "kill -9 $$" }),
   );
   const result = await runScopedBuildCheck(root, ROLE, "batch", wt, undefined, 30_000);
   assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
@@ -531,7 +520,7 @@ test("a gate check killed on every attempt stays skipped, and the warning names 
   fs.mkdirSync(path.join(wt, "node_modules"));
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "kill -9 $$" } }),
+    projManifest({ test: "kill -9 $$" }),
   );
   const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000);
   assert.equal(result!.outcome.status, "skipped", "the gate stays fail-open on an environmental kill");
@@ -592,7 +581,7 @@ test("runBuildCheck skips (not fails closed) when the toolchain probe fails, and
   const counter = path.join(tmpdir(), "runs");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: `echo run >> ${counter}` } }),
+    projManifest({ build: `echo run >> ${counter}` }),
   );
   const restore = pathPrepend(brokenGitBin()); // the broken git shadows the real one; npm stays
   try {
@@ -612,11 +601,7 @@ test("runBuildCheck reads a toolchain error in a failed run's output as skipped,
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({
-      name: "proj",
-      version: "1.0.0",
-      scripts: { build: 'echo "You have not agreed to the Xcode license agreements."; echo "xcrun: error: missing input"; exit 1' },
-    }),
+    projManifest({ build: 'echo "You have not agreed to the Xcode license agreements."; echo "xcrun: error: missing input"; exit 1' }),
   );
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "skipped");
@@ -677,14 +662,14 @@ test("detectBuildCheck prefers test over typecheck and build when all three scri
   // All three declared: test wins — npm convention makes `npm test` the canonical verify command.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t", test: "x" } }),
+    projManifest({ build: "b", typecheck: "t", test: "x" }),
   );
   assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "test" });
 
   // Without a test script the old preference stands: typecheck over build.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "b", typecheck: "t" } }),
+    projManifest({ build: "b", typecheck: "t" }),
   );
   assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "typecheck" });
 });
@@ -728,7 +713,7 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string) is no check.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "", build: "", typecheck: null } }),
+    projManifest({ test: "", build: "", typecheck: null }),
   );
   assert.equal(detectBuildCheck(root), null);
 
@@ -736,14 +721,14 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   // so honoring it would report a false green. All blank → no check.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "   ", build: "\t\n" } }),
+    projManifest({ test: "   ", build: "\t\n" }),
   );
   assert.equal(detectBuildCheck(root), null);
 
   // A blank test still lets a real build be used: the preference order is preserved, not skipped.
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "  ", build: "echo ok" } }),
+    projManifest({ test: "  ", build: "echo ok" }),
   );
   assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "build" });
 });
@@ -764,7 +749,7 @@ test("detectBuildCheck honors the maxLevels bound and terminates at the filesyst
   fs.mkdirSync(path.join(chain, "node_modules"), { recursive: true });
   fs.writeFileSync(
     path.join(chain, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "echo ok" } }),
+    projManifest({ build: "echo ok" }),
   );
   assert.deepEqual(detectBuildCheck(dir, undefined, 3), { kind: "npm", rootDir: chain, script: "build" });
   assert.equal(detectBuildCheck(dir, undefined, 2), null);

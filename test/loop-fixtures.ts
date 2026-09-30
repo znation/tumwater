@@ -10,7 +10,7 @@ import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { ensureParentDir } from "../src/files.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
@@ -39,7 +39,7 @@ export function buildCheckFixture(): { root: string; wt: string } {
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   writeScript(path.join(binDir, "buildcheck-tool"), "echo buildcheck-ok");
 
@@ -47,7 +47,7 @@ export function buildCheckFixture(): { root: string; wt: string } {
   fs.mkdirSync(wt, { recursive: true });
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   return { root, wt };
 }
@@ -65,7 +65,7 @@ export function baselineFixture(role: string, testScript: string): { root: strin
   gitInit(root);
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: testScript } }),
+    projManifest({ test: testScript }),
   );
   fs.mkdirSync(path.join(root, "node_modules")); // untracked install marker
   sh(root, "git", "add", "-A");

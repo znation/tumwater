@@ -12,7 +12,7 @@ import type { TumwaterConfig } from "../src/config-schema.js";
 import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
@@ -142,7 +142,7 @@ export function declareCheck(root: string, toolBody: string): void {
   writeScript(tool, toolBody);
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool" } }),
+    projManifest({ build: "buildcheck-tool" }),
   );
 }
 

@@ -13,7 +13,7 @@ import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
@@ -431,7 +431,7 @@ test("a merged diff that posts new Open questions emits one question_posted per 
 function declareBuildCheck(root: string, wt: string, toolBody = "exit 0", commitManifestToMain = true): void {
   const binDir = path.join(root, "node_modules", ".bin");
   fs.mkdirSync(binDir, { recursive: true });
-  const manifest = JSON.stringify({ name: "proj", version: "1.0.0", scripts: { test: "buildcheck-tool" } });
+  const manifest = projManifest({ test: "buildcheck-tool" });
   fs.writeFileSync(path.join(root, "package.json"), manifest);
   if (commitManifestToMain) {
     sh(root, "git", "add", "package.json"); // targeted — never sweeps in node_modules

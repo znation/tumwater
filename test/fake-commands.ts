@@ -37,6 +37,13 @@ export function writeScript(file: string, body: string): void {
   fs.symlinkSync(SCRIPT_SHIM, file);
 }
 
+/** The manifest every test project writes to its package.json: same name and version across
+ * the suite, with the caller's npm scripts. Single-homed so a shape change (a new field, a
+ * different project name) lands in all ~30 fixture sites at once instead of one at a time. */
+export function projManifest(scripts: Record<string, string | null>): string {
+  return JSON.stringify({ name: "proj", version: "1.0.0", scripts });
+}
+
 /** Put a directory at the front of PATH for the duration of a test, so executables dropped
  * into it shadow the real ones (the same technique behind every fake-* helper here).
  * Returns a restore function. */

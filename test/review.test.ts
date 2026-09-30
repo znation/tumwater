@@ -14,7 +14,7 @@ import { noteGreenBaseline } from "../src/main-baseline.js";
 import { shortSha } from "../src/text.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
@@ -648,14 +648,14 @@ test("gate pre-check compiles the worktree against the root install — a health
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   writeScript(path.join(binDir, "buildcheck-tool"), "echo ok");
 
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
   sh(wt, "git", "add", "-A");
@@ -693,7 +693,7 @@ test("the gate's green pre-check attests the runner's counts in the event and th
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   writeScript(
     path.join(binDir, "buildcheck-tool"),
@@ -702,7 +702,7 @@ test("the gate's green pre-check attests the runner's counts in the event and th
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { build: "buildcheck-tool --ok" } }),
+    projManifest({ build: "buildcheck-tool --ok" }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
   sh(wt, "git", "add", "-A");
@@ -751,12 +751,12 @@ async function gateBuildFixture(
   }
   fs.writeFileSync(
     path.join(root, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { [scriptName]: buildScript } }),
+    projManifest({ [scriptName]: buildScript }),
   );
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
     path.join(wt, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0", scripts: { [scriptName]: buildScript } }),
+    projManifest({ [scriptName]: buildScript }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
   sh(wt, "git", "add", "-A");
