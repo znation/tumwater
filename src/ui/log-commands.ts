@@ -1,9 +1,7 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
-import { dayKey } from "../datetime.js";
 import {
-  eventWindowCovers,
   LOGS_SINCE_MAX_MS,
-  readWindowEvents,
+  readEventsSince,
   SPARSE_WINDOW_NOTE,
 } from "../event-window.js";
 import { parseEventLine, readEventsTailWithEnd, type HarnessEvent } from "../events.js";
@@ -92,16 +90,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     rejectRoleViewRival(rest, "--since", true);
     const ms = parseDurationFlag("--since", sinceRaw);
     failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
-    // The window key is the cutoff's local calendar day, from the shared dayKey helper
-    // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
-    // filter below; the day-keyed read may include earlier hours of that day, which the
-    // ts filter removes (over-read is at most one day's events).
-    const cutoff = Date.now() - ms;
-    const window = readWindowEvents(root, dayKey(cutoff));
-    const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
-    const covered = eventWindowCovers(window, cutoff);
+    const { events, covered } = readEventsSince(root, ms);
     if (events.length === 0) {
       // In JSON mode an empty window answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.

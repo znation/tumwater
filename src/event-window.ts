@@ -1,3 +1,4 @@
+import { dayKey } from "./datetime.js";
 import { eventDayKey, parseEventLine, type HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "./paths.js";
 import { readTailText } from "./files.js";
@@ -157,4 +158,23 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
     events: [...archive.events, ...live.events],
     coversFullWindow: archive.coversFullWindow || live.coversFullWindow,
   };
+}
+
+/** The duration-shaped windowed read shared by the two `--since` surfaces — `logs --since`
+ * (log-commands.ts) and `history --since` (history-data.ts's readTickRowsSince): the cutoff is
+ * now − sinceMs, the rotation-spanning read is keyed on the cutoff's local calendar day
+ * (dayKey — the shared dayKey helper eventDayKey buckets events with, so the read's day keys
+ * cannot disagree with the ts filter), the day-keyed read may include earlier hours of that
+ * day and the ts filter removes them (over-read is at most one day's events), and `covered` is
+ * the exact eventWindowCovers predicate so neither surface can claim coverage the other would
+ * hedge. `cutoff` comes back too, since both renderers name the window in their messages.
+ * Pure over root: reads the event log, writes nothing. */
+export function readEventsSince(
+  root: string,
+  sinceMs: number,
+): { cutoff: number; events: HarnessEvent[]; covered: boolean } {
+  const cutoff = Date.now() - sinceMs;
+  const window = readWindowEvents(root, dayKey(cutoff));
+  const events = window.events.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
+  return { cutoff, events, covered: eventWindowCovers(window, cutoff) };
 }
