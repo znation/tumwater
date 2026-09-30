@@ -720,6 +720,25 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops and landings start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
+  // A timeout storm names its own phrase too — the digest pools plain and progressing tick
+  // timeouts under this kind, and a timeout hold must not borrow a connection's wording.
+  const timeout = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_hold", kind: "timeout", roles: ["tests"], holdMs: 60_000, escalation: 0,
+  } as never);
+  assert.match(
+    timeout,
+    /harness\s+backend hold \(request timed out\) — tests hit backend failures; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    `timeout hold line: ${timeout}`,
+  );
+  const timeoutResumed = formatEvent({
+    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "timeout",
+  } as never);
+  assert.match(
+    timeoutResumed,
+    /harness\s+backend hold lifted \(request timed out\) — role loops tick again$/,
+    `timeout resumed line: ${timeoutResumed}`,
+  );
+
   // The lift names what actually ended (BUGS.md 2026-09-29): the resumed event carries the
   // ended hold's kind, so a backend hold's re-open must not render as "429 hold lifted".
   const backendResumed = formatEvent({

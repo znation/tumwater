@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  backendKindPhrase,
   clipToWidth,
   compactTokens,
   collapseWhitespace,
@@ -285,4 +286,19 @@ test("describeToolCall falls back to the bare tool name for non-object or non-st
   assert.equal(describeToolCall("read", { path: 123 }), "read");
   assert.equal(describeToolCall("grep", { pattern: ["a"] }), "grep");
   assert.equal(describeToolCall("edit", { unrelated: "/a/b.ts" }), "edit");
+});
+
+// backendKindPhrase is the one home of a backend hold's kind wording, shared by the event
+// feed (event-format.ts) and the failure digest (failure-state-change.ts). The timeout arm
+// and the unknown-kind fallback are the arms the renderer tests' chosen kinds never
+// exercise: a "Request timed out" storm must render its own phrase (not a connection's),
+// and an unreadable kind (a hand-edited or future kind value) must degrade to the generic
+// wording rather than leak "undefined" into the feed or digest.
+test("backendKindPhrase names each backend-failure kind and falls back on an unreadable kind", () => {
+  assert.equal(backendKindPhrase("connection"), "connection error");
+  assert.equal(backendKindPhrase("timeout"), "request timed out");
+  assert.equal(backendKindPhrase("server"), "server error");
+  assert.equal(backendKindPhrase("model-load"), "model load failure");
+  assert.equal(backendKindPhrase("gateway-noon"), "backend failure");
+  assert.equal(backendKindPhrase(undefined), "backend failure");
 });

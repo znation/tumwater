@@ -234,6 +234,12 @@ test("rate_limit_hold renders backend kinds as backend holds, rate-limit as a 42
     describeStateChange(ev({ type: "rate_limit_hold", kind: "server", holdMs: 180_000, escalation: 1, roles: ["feature"] })),
     "backend hold (server error) for 3m (relapse 1) — feature",
   );
+  // A timeout hold names the timeout's own phrase, not a connection's — the digest pools
+  // plain and progressing tick timeouts under this kind (failure-cluster.ts).
+  assert.equal(
+    describeStateChange(ev({ type: "rate_limit_hold", kind: "timeout", holdMs: 60_000, escalation: 0, roles: ["tests"] })),
+    "backend hold (request timed out) for 60s — tests",
+  );
   // A torn line with no kind at all keeps the 429 wording too (the existing test above pins
   // the normal rate-limit kind's wording).
   assert.equal(
