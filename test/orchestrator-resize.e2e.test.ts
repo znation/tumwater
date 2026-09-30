@@ -1,7 +1,10 @@
-/** The orchestrator e2e tier, fourth slice (see orchestrator.e2e.test.ts for the split): a live
- * maxConcurrent edit resizing the cap. It keeps the real poll cadence on purpose and is the
- * tier's single longest test, so it runs in its own process. Like the rest of the tier it
- * waits on real timers and runs via `npm run test:e2e`, not in the gating `npm test`. */
+/** The orchestrator e2e tier's live maxConcurrent-resize test (see orchestrator.e2e.test.ts
+ * for the tier's split): a live maxConcurrent edit resizing the cap. Renamed here from
+ * orchestrator-4.e2e.test.ts (2026-09-29) so the topic has a name instead of a slice number —
+ * unlike the tier's balanced orchestrator-2/3 slices, this file holds one coherent topic.
+ * It keeps the real poll cadence on purpose and is the tier's single longest test, so it runs
+ * in its own process. Like the rest of the tier it waits on real timers and runs via
+ * `npm run test:e2e`, not in the gating `npm test`. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";

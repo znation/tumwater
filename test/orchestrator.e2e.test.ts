@@ -1,11 +1,12 @@
-/** The orchestrator e2e tier (orchestrator-2…5.e2e.test.ts are the other slices): these tests
- * start a live orchestrator and wait on real timers, so their fixed wall-clock budgets are
- * not reliable on a loaded machine — they run via `npm run test:e2e` (and CI), not in the
- * unfiltered `npm test` run the harness's landing gate executes (BUGS.md 2026-09-21). The
- * slices run in parallel processes; this one holds scheduling basics, deferral, session
- * pruning, live config edits, reset requests and the branch watch, orchestrator-4 the live
- * maxConcurrent resize (the tier's single longest test), orchestrator-5 the shared-permit and
- * tier-ordering cases. */
+/** The orchestrator e2e tier (orchestrator-2/3.e2e.test.ts are the balanced slices, renamed
+ * here from the old orchestrator-4/5 numbering: orchestrator-resize.e2e.test.ts holds the live
+ * maxConcurrent resize and orchestrator-permits.e2e.test.ts the shared-permit and
+ * tier-ordering cases): these tests start a live orchestrator and wait on real timers, so
+ * their fixed wall-clock budgets are not reliable on a loaded machine — they run via
+ * `npm run test:e2e` (and CI), not in the unfiltered `npm test` run the harness's landing gate
+ * executes (BUGS.md 2026-09-21). The files run in parallel processes; this one holds
+ * scheduling basics, deferral, session pruning, live config edits, reset requests and the
+ * branch watch. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

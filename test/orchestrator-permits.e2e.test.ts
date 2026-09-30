@@ -1,7 +1,10 @@
-/** The orchestrator e2e tier, fifth slice (see orchestrator.e2e.test.ts for the split): a
- * landing's reviewer run sharing the maxConcurrent permit with role ticks, and a work-role tick
- * jumping ahead of parked maintenance waiters. Like the rest of the tier it waits on real
- * timers and runs via `npm run test:e2e`, not in the gating `npm test`. */
+/** The orchestrator e2e tier's shared-permit slice (see orchestrator.e2e.test.ts for the
+ * tier's split): a landing's reviewer run sharing the maxConcurrent permit with role ticks, and
+ * a work-role tick jumping ahead of parked maintenance waiters. Renamed here from
+ * orchestrator-5.e2e.test.ts (2026-09-29) so the topic has a name instead of a slice number —
+ * unlike the tier's balanced orchestrator-2/3 slices, this file holds one coherent topic.
+ * Like the rest of the tier it waits on real timers and runs via `npm run test:e2e`, not in
+ * the gating `npm test`. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
