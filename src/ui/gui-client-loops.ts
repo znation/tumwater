@@ -129,11 +129,9 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     patchLoops(rows);
   }
   $("loops").addEventListener("click", (ev) => {
-    const t = ev.target instanceof Element ? ev.target : null;
-    if (!t) return;
-    const b = t.closest("button.rowaction");
+    const b = clickClosest(ev, "button.rowaction");
     if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role); return; }
-    const tr = t.closest("tr[data-role]");
+    const tr = clickClosest(ev, "tr[data-role]");
     if (tr) toggleLoop(tr.dataset.role);
   });
   $("wakeall").addEventListener("click", () =>

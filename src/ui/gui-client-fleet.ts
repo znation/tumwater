@@ -215,9 +215,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (b) setBacklogTab(b.dataset.tab);
   });
   $("backlog").addEventListener("click", async (ev) => {
-    const t = ev.target instanceof Element ? ev.target : null;
-    if (!t) return;
-    const cancel = t.closest("button.rowaction[data-action='promptcancel']");
+    const cancel = clickClosest(ev, "button.rowaction[data-action='promptcancel']");
     if (cancel) {
       await postAction("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file }, (d) =>
         d && d.status === "cancelled"
@@ -225,14 +223,13 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           : "No longer queued — " + (cancel.dataset.role || "the director") + " already took it");
       return;
     }
-    const entry = t.closest(".backloglink");
+    const entry = clickClosest(ev, ".backloglink");
     if (entry) toggleEntry(entry.dataset.file, Number(entry.dataset.index));
   });
   // The sidebar's "Land queue N" chip opens the land-queue drawer; every other row is
   // inert (only rows carrying the data-action dispatch).
   $("statuschips").addEventListener("click", (ev) => {
-    const r = ev.target instanceof Element ? ev.target.closest("[data-action='landqueue']") : null;
-    if (r) toggleLandQueue();
+    if (clickClosest(ev, "[data-action='landqueue']")) toggleLandQueue();
   });
 
   // ---- activity ----

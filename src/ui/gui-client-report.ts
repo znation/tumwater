@@ -248,7 +248,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       fetchReport();
       return;
     }
-    if (ev.target instanceof Element && ev.target.closest("#usagerefresh")) fetchReport();
+    if (clickClosest(ev, "#usagerefresh")) fetchReport();
   });
   document.getElementById("failures").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "[data-days]");
@@ -258,6 +258,6 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       fetchFailures();
       return;
     }
-    if (ev.target instanceof Element && ev.target.closest("#failrefresh")) fetchFailures();
+    if (clickClosest(ev, "#failrefresh")) fetchFailures();
   });
 `;
