@@ -209,6 +209,40 @@ test("createReloadWatch recovers from an unresolvable startup stamp compiled in 
   }
 });
 
+test("createReloadWatch survives a failed self-hosted check: it un-latches and fires on the same stamp", async () => {
+  // A transient check failure (git wedged, say) must not wedge the watch: the in-flight guard
+  // clears on the rejection, and the SAME differing stamp is retried on the next poll rather
+  // than being consumed or rejected — only a definitive "not self-hosted" verdict sets that.
+  let fail = false;
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => stamp("b"),
+    isSelfHostedImpl: async () => {
+      if (fail) throw new Error("git unavailable");
+      return true;
+    },
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start(); // the boot-time gate runs before the disk can differ; it succeeds here
+    fail = true;
+    await sleep(20);
+    assert.equal(fired, 0, "checks that cannot run never fire the reload");
+    fail = false;
+    await sleep(20);
+    assert.equal(fired, 1, "recovery fires on the same stamp the failed checks kept seeing");
+    await sleep(20);
+    assert.equal(fired, 1, "still one-shot after a rejected check");
+  } finally {
+    watch.stop();
+  }
+});
+
 test("createReloadWatch never fires with a stampless startup and skips the async gate", async () => {
   let fired = 0;
   let gateCalls = 0;
