@@ -4,15 +4,14 @@ import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
 import { mainIsGreen } from "../src/main-baseline.js";
+import { autoRestartRecord, redeployDeps } from "../src/redeploy.js";
 import {
-  autoRestartRecord,
   type AutoRestartRecord,
-  redeployDeps,
   type RedeployDeps,
   RESTART_COOLDOWN_MS,
   RESTART_URGENT_COOLDOWN_MS,
   RESTART_EXIT_CODE,
-} from "../src/redeploy.js";
+} from "../src/redeploy-policy.js";
 import {
   BUILD,
   CFG,

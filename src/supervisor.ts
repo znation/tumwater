@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import type { HarnessEventInput } from "./events.js";
-import { RESTART_EXIT_CODE } from "./redeploy.js";
+import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
 
 /** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor
  * (the one the operator started, holding the terminal) and a child that actually runs the
- * orchestrator. When the child rebuilt dist/ onto a newer main (redeploy.ts) it exits
+ * orchestrator. When the child rebuilt dist/ onto a newer main (redeploy-policy.ts) it exits
  * RESTART_EXIT_CODE and the supervisor respawns it — the same script path, now holding the new
  * code — so a self-hosting fleet picks up its own changes without anyone at the keyboard. Any
  * other exit ends the supervisor with the child's code — and when nobody asked for it, the fleet

@@ -12,7 +12,7 @@ import { headLanding } from "../src/landing-queue.js";
 import { Semaphore } from "../src/semaphore.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { logEvent } from "../src/events.js";
-import { Redeployer, type RedeployDeps } from "../src/redeploy.js";
+import { Redeployer, type RedeployDeps } from "../src/redeploy-policy.js";
 import { LoopRunner } from "../src/loop.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";

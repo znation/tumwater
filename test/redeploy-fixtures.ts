@@ -6,7 +6,7 @@ import {
   type AutoRestartRecord,
   type RedeployDeps,
   Redeployer,
-} from "../src/redeploy.js";
+} from "../src/redeploy-policy.js";
 
 /** Shared scripted-effect fixtures for the self-redeploy tests: drive the state machine with
  * controllable deps so every decision branch is pinned without git, tsc, or a fleet. The

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { type RedeployDeps, RESTART_COOLDOWN_MS } from "../src/redeploy.js";
+import { type RedeployDeps, RESTART_COOLDOWN_MS } from "../src/redeploy-policy.js";
 import {
   HEAD_B,
   HEAD_C,
@@ -12,7 +12,7 @@ import {
   settle,
 } from "./redeploy-fixtures.js";
 
-// The cooldown/prewarm policy (src/redeploy.ts): after a completed restart the fleet defers a
+// The cooldown/prewarm policy (src/redeploy-policy.ts): after a completed restart the fleet defers a
 // second episode until the deadline lapses, and while it defers, the pending head's green check
 // and staged compile prewarm once per SHA so the lapse reaches the swap directly. These tests
 // share the scripted-effect fixtures in redeploy-fixtures.ts.
