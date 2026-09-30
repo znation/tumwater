@@ -278,6 +278,28 @@ test and one landing test next to part 2/4's.
 
 Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoints/inbox, ~80 client, ~180 tests. No sub-plans needed.
 
+### Land queue drawer: clicking the GUI sidebar's "Land queue" chip lists the queued changes (planned 2026-09-30)
+
+**Goal.** The GUI sidebar shows `Land queue N` (a row in the `statuschips` panel, `renderSidebar` in `src/ui/gui-client-fleet.ts`) whose only detail is a hover title naming the count and — sometimes — the one landing currently in flight. An operator cannot see WHAT is queued: which roles are waiting, what each change is, or how long each has sat in the queue. Clicking the chip opens the dashboard's detail drawer (the same sheet loops and backlog entries use) listing every queued change — position, role, summary, short sha, age — plus the in-flight landing when one is running.
+
+**Approach.**
+
+1. Server payload — `src/status-data.ts`: the snapshot already reads every queued entry each poll (`queuedLandings(root)` into `landings`, used only for `.length` and the in-flight cross-check) and `LandingEntry` already carries `role`, `sha`, `tick`, `summary`, `enqueuedAt`. Extend `StatusSnapshot.landQueue` with `entries: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>` — filled from `landings` (shallow per-entry copies without the optional `body`/`highFriction`) only when `depth > 0`, absent when empty, exactly the `roleInboxPrompts` filling discipline (documented in the same doc comment). Zero extra reads per poll: the entries come from the listing pass the depth already pays for, and `landing-queue.ts`'s stat cache keeps unchanged files at one stat. `src/ui/status-payload.ts` passes `landQueue` through untouched — no change there.
+2. Client drawer — `src/ui/gui-client-drawer.ts`: add a third drawer kind, `drawer = { kind: "landqueue" }` (the union comment on the `drawer` variable names the current two). New `openLandQueue()` / `toggleLandQueue()` mirroring `openEntry`/`toggleEntry` (no hash — like the entry drawer, the drawer is transient state, not a shareable view), a `renderLandQueueDrawer(d)` that paints `drawerhead` (kicker "Land queue", title `N changes`, a `Landing now: <role> — <summary> (<stage>)` pill from `landQueue.inFlight` when present) and `drawerbody` (one section per queued entry in payload order: position, `role` in mono, `summary`, `<sha.slice(0, 8)>` in mono, `fmtAgo(enqueuedAt)`; the existing `sec-head`/`note` markup the loop drawer uses) — and a `"landqueue"` case in `refreshDrawer()` so the open drawer repaints on each 1 s poll instead of going stale. Esc, the close button, and re-click all close it through the existing `closeDrawer`.
+3. Click wiring — `src/ui/gui-client-fleet.ts`: the `Land queue N` row gets `data-action='landqueue'` (and `cursor:pointer` styling); the sidebar panel `#statuschips` gains a delegated click listener (the same pattern the backlog panel's `$("backlog").addEventListener("click", …)` already uses) that calls `toggleLandQueue()` when the click lands on that row. The row keeps its existing `landingTitle` tooltip.
+4. Tests: `test/status.test.ts` (or its `test/status-fixtures.ts` helpers) asserts the new `landQueue.entries` shape — present with the queued roles/shas/summaries in queue order when entries are enqueued (use `enqueueLanding`), absent when the queue is empty, and absent-but-depth-N after entries drop. `test/cli-gui.test.ts` gets one e2e: enqueue a landing, GET the served page, and assert the `/api/status` payload's `entries` reach the client (the drawer rendering itself is client-side script — the endpoint e2e covers its server half, as the drag-and-drop plan's client behavior does).
+
+**Files touched:** `src/status-data.ts` (~15 lines: type + fill + doc comment), `src/ui/gui-client-drawer.ts` (~70 lines), `src/ui/gui-client-fleet.ts` (~10 lines), `src/ui/gui-styles.ts` (pointer cursor for the clickable row, a line or two), tests (`test/status.test.ts`, `test/cli-gui.test.ts`, ~120 lines).
+
+**Acceptance criteria.**
+
+1. With entries enqueued, `/api/status`'s `landQueue.entries` lists each in queue order (oldest first) with `role`, `sha`, `summary`, `enqueuedAt`, and `tick`; with an empty queue the field is absent and `depth` is 0. The in-flight `inFlight` block is unchanged.
+2. Clicking the sidebar's `Land queue N` chip opens the drawer listing every queued change (position, role, summary, short sha, age) and, while a landing runs, the in-flight change with its stage; the drawer refreshes on subsequent polls while open; Esc / close / re-click closes it; clicking any other sidebar row does not open it.
+3. No extra per-poll reads are introduced beyond what the depth already costs (the entries ride the existing `queuedLandings` pass).
+4. `npm run test` passes, including the new snapshot-shape and GUI e2e assertions.
+
+Sizing: one run — ~95 lines across three client/server files plus styles, ~120 test lines. No sub-plans needed.
+
 ## Done
 
 ### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30, done 2026-09-30)
