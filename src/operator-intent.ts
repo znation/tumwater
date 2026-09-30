@@ -1,4 +1,4 @@
-import { orchestratorAlive, isFleetPaused } from "./fleet-state.js";
+import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "./fleet-state.js";
 import { durationLabel } from "./cli-args.js";
 import { formatTime } from "./datetime.js";
 import { submitRolePrompt } from "./inbox.js";
@@ -7,7 +7,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { clearBackoff } from "./tick-outcome.js";
 import { writeJsonFile } from "./json-files.js";
-import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
+import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "./paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that
  * writes one (the `cmd*` CLI commands in src/operator-commands.ts, the dashboard's POST
@@ -74,6 +74,27 @@ export function requestWake(root: string, roles: string[]): string {
   // marker, so say so instead of promising a poll that will not happen.
   const { live, when } = markerApplyNote(root);
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
+}
+
+/** The marker-writing core of the forced restart, shared with the GUI's POST /api/restart:
+ * drop the marker a running fleet consumes within one poll, telling the redeployer to waive
+ * its post-restart cooldown. Forcing never bypasses a refusal — a red main, a failed compile,
+ * a swap error, or a boot refusal still blocks — so a press is only meaningful while a restart
+ * is actually pending: with a live fleet whose published build is not stale, nothing is written
+ * and the reply says so. With no fleet running the marker is written harmlessly (the next `run`
+ * consumes it on its first poll) and the reply carries the same liveness contract as `wake`.
+ * Returns the structured confirmation the CLI prints verbatim and the GUI flashes. */
+export function requestRestart(root: string): { ok: true; message: string } | { ok: false; error: string } {
+  const info = readOrchestratorInfo(root);
+  if (info?.build && info.build.stale !== true) {
+    return { ok: false, error: "no restart is pending — the running build is current with main" };
+  }
+  writeJsonFile(restartRequestPath(root), { at: Date.now() });
+  const { live, when } = markerApplyNote(root);
+  const message =
+    `restart requested — ${applyClause(live, when, "applies it")}` +
+    (live ? " (the restart cooldown is waived; a blocked restart still blocks)" : "");
+  return { ok: true, message };
 }
 
 /** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt

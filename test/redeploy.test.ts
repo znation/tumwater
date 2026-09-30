@@ -316,6 +316,60 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
   assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);
 });
 
+test("a forced restart waives the cooldown: the deferred head starts its episode on the next poll", async () => {
+  // The dashboard's restart button (PLANS.md 2026-09-30): the operator presses the stale-build
+  // alert's refresh icon rather than waiting out the 12 h cooldown. The force clears ONLY the
+  // deferral — verify-green, compile, drain, and swap run through the ordinary machinery.
+  const f = fakeDeps();
+  const { r, types } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  assert.equal(
+    await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 60 * 60_000),
+    "none",
+    "still inside the cooldown: deferring",
+  );
+  r.forceRestart();
+  assert.deepEqual(
+    types().filter((t) => t === "restart_forced"),
+    ["restart_forced"],
+    "one restart_forced event records the operator's hand",
+  );
+  assert.equal(
+    await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 1),
+    "hold",
+    "the forced flag consumes the deferral: the episode starts",
+  );
+  assert.equal(r.status(swappedAt + 60 * 60_000 + 1).restartPending, true);
+  f.green(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 2), "hold", "the compile starts — the ordinary machinery, not a shortcut");
+  f.compiled(true);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 3), "restart", "swap and go");
+  assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
+  // The flag is one-shot: the new cooldown after the forced restart defers the next head as usual.
+  assert.equal(
+    await r.poll(HEAD_D, { roleInFlight: 1, directorInFlight: 0 }, true, swappedAt + 60 * 60_000 + 4),
+    "none",
+    "one press buys one waiver, not a standing exemption",
+  );
+});
+
+test("a forced restart still refuses on a blocked head: a red main blocks the forced episode too", async () => {
+  const f = fakeDeps();
+  const { r, types } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000);
+  r.forceRestart();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 1), "hold");
+  f.green(false);
+  await settle();
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 2), "none");
+  assert.match(String(r.status(swappedAt + 60 * 60_000 + 2).restartBlocked), /is red/);
+  assert.deepEqual(types().filter((t) => t === "restart_blocked"), ["restart_blocked"], "the forced episode blocks through the ordinary path");
+  assert.deepEqual(f.calls.swap, [HEAD_B], "no swap happened for the red head");
+});
+
 test("during the cooldown the deferred head's check and compile prewarm, so the lapse reaches the swap on its first poll", async () => {
   // The 2026-09-30 shape: the fleet sat on a stale build for the full 12 h cooldown with the
   // newer head unverified, then paid green-check + compile + drain from zero when it lapsed

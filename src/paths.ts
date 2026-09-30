@@ -103,6 +103,13 @@ export function wakeRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "wake.json");
 }
 
+/** Marker file the dashboard's restart button (the build-stale alert's refresh icon) drops for
+ * a running fleet to consume: force the pending self-redeploy past its cooldown now. Presence
+ * is the request; the content is just `{ at }` — like the abort markers, one untyped flag. */
+export function restartRequestPath(root: string): string {
+  return path.join(tumwaterDir(root), "restart.json");
+}
+
 /** Per-role marker file `tumwater abort --role <id>` drops for a running fleet to consume:
  * kill that loop's in-flight tick. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared

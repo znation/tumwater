@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleReport, handleFailures } from "../src/ui/gui-endpoints.js";
+import { handleReport, handleFailures, handleRestart } from "../src/ui/gui-endpoints.js";
+import { consumeRestartRequest } from "../src/operator-requests.js";
+import { writeJsonFile } from "../src/json-files.js";
+import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
@@ -118,3 +124,72 @@ function serveFailures(root: string, query = ""): { captured: Captured; data: un
   handleFailures(new URLSearchParams(query), res, root);
   return { captured, data: JSON.parse(captured.body) };
 }
+
+// ---- POST /api/restart: the build-stale alert's refresh button ----
+// handleRestart reads a request body (the shared readJsonObject front half), so a fake req is
+// an EventEmitter that emits the body then ends — the same shape readBody's callbacks expect.
+function fakeReq(body: string): http.IncomingMessage {
+  const req = new EventEmitter() as unknown as http.IncomingMessage;
+  process.nextTick(() => {
+    req.emit("data", Buffer.from(body));
+    req.emit("end");
+  });
+  return req;
+}
+
+async function serveRestart(root: string, body = "{}"): Promise<{ captured: Captured; data: unknown }> {
+  const { res, captured } = fakeRes();
+  await handleRestart(fakeReq(body), res, root);
+  return { captured, data: JSON.parse(captured.body) };
+}
+
+/** Seed an orchestrator info file whose pid is this test process (alive, by definition) with
+ * the given published build — the staleness requestRestart consults. */
+function seedFleet(root: string, build: Record<string, unknown> | null): void {
+  fs.mkdirSync(path.dirname(orchestratorStatePath(root)), { recursive: true });
+  fs.writeFileSync(orchestratorStatePath(root), JSON.stringify({ pid: process.pid, ...(build ? { build } : {}) }));
+}
+
+test("handleRestart writes the marker and replies ok while the running build is stale", async () => {
+  const root = tmpdir();
+  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: true, aheadCommits: 3 });
+  const { captured, data } = await serveRestart(root);
+  assert.equal(captured.status, 200);
+  assert.equal((data as { ok: boolean }).ok, true);
+  assert.match((data as { message: string }).message, /restart requested/);
+  assert.match((data as { message: string }).message, /cooldown is waived/);
+  assert.match((data as { message: string }).message, /blocked restart still blocks/);
+  assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker a live fleet consumes is on disk");
+});
+
+test("handleRestart refuses with nothing written when the running build is not stale", async () => {
+  const root = tmpdir();
+  seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: false });
+  const { captured, data } = await serveRestart(root);
+  assert.equal(captured.status, 409);
+  assert.match((data as { error: string }).error, /no restart is pending/);
+  assert.equal(fs.existsSync(restartRequestPath(root)), false, "a fresh build's press writes nothing");
+});
+
+test("handleRestart with no fleet running writes the marker harmlessly and says so", async () => {
+  const root = tmpdir();
+  const { captured, data } = await serveRestart(root);
+  assert.equal(captured.status, 200);
+  assert.equal((data as { ok: boolean }).ok, true);
+  assert.match((data as { message: string }).message, /no harness is running/);
+  assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker waits for the next run's first poll");
+});
+
+test("consumeRestartRequest forces the redeployer once and removes the marker", () => {
+  const root = tmpdir();
+  let forced = 0;
+  writeJsonFile(restartRequestPath(root), { at: Date.now() });
+  consumeRestartRequest(root, { forceRestart: () => void forced++ });
+  assert.equal(forced, 1);
+  assert.equal(fs.existsSync(restartRequestPath(root)), false, "consumed");
+  consumeRestartRequest(root, { forceRestart: () => void forced++ });
+  assert.equal(forced, 1, "no marker, no force");
+  consumeRestartRequest(root, null);
+  assert.equal(forced, 1, "no redeployer (a non-self-hosting fleet): the marker is still cleaned up");
+  assert.equal(fs.existsSync(restartRequestPath(root)), false);
+});

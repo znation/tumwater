@@ -86,9 +86,17 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
   // "no pi output for 9m47s" ticks every second, and rebuilding it would swap its buttons out
   // from under a click in progress.
-  function alertParts(a) {
+  function alertParts(a, restartable) {
+    // A stale-build alert's refresh icon IS the restart button (PLANS.md 2026-09-30): pressing
+    // it forces the fleet's self-redeploy onto main's head now instead of waiting out the
+    // cooldown. Only the build alert carries it, and only while the build is actually stale —
+    // a fresh build's icon stays inert decoration.
+    const glyph = icon(ALERT_ICONS[a.key] || "info");
+    const iconHtml = restartable
+      ? "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>"
+      : "<span class='alert-icon'>" + glyph + "</span>";
     return {
-      shell: "<span class='alert-icon'>" + icon(ALERT_ICONS[a.key] || "info") + "</span><div class='alert-body'><div class='alert-title'></div><div class='alert-detail'></div></div>" +
+      shell: iconHtml + "<div class='alert-body'><div class='alert-title'></div><div class='alert-detail'></div></div>" +
         (a.actions && a.actions.length ? "<div class='alert-actions'>" + a.actions.map((x) => "<button type='button' class='btn btn-sm' data-act='" + esc(x.act) +
           "' data-arg='" + esc(x.arg || "") + "'>" + esc(x.label) + "</button>").join("") + "</div>" : ""),
       cls: "alert t-" + a.tone,
@@ -100,7 +108,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const keep = new Set(alerts.map((a) => a.key));
     for (const el of Array.from(box.children)) if (!keep.has(el.dataset.key)) el.remove();
     alerts.forEach((a, i) => {
-      const parts = alertParts(a);
+      const parts = alertParts(a, a.key === "build" && d && d.build && d.build.stale);
       let el = Array.from(box.children).find((c) => c.dataset.key === a.key);
       if (!el) {
         el = document.createElement("div");

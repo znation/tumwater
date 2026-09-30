@@ -4,7 +4,7 @@ import type { LoopRunner } from "./loop.js";
 import { logEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
 import { readJsonFile } from "./json-files.js";
-import { abortRequestPath, resetRequestPath, wakeRequestPath, STATE_DIR } from "./paths.js";
+import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath, STATE_DIR } from "./paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
  * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, and the vetting
@@ -67,6 +67,18 @@ export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
     r.wake();
     logEvent(root, { loop: r.role, type: "wake", reason: "operator" });
   }
+  removeQuiet(markerFile);
+}
+
+/** Consume a pending restart request from the dashboard's build-stale alert (POST /api/restart),
+ * if any: tell the redeployer to force its next poll past the restart cooldown, then remove the
+ * marker. The redeployer logs the `restart_forced` event itself; with no redeployer (a
+ * non-self-hosting fleet never has a stale build, so nothing could have written the marker) it
+ * is still cleaned up. */
+export function consumeRestartRequest(root: string, redeployer: { forceRestart(): void } | null | undefined): void {
+  const markerFile = restartRequestPath(root);
+  if (!fs.existsSync(markerFile)) return;
+  redeployer?.forceRestart();
   removeQuiet(markerFile);
 }
 

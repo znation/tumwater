@@ -206,6 +206,9 @@ export class Redeployer {
    * restartRecord at construction and updated when this process completes one. The cooldown is
    * measured from here on every poll (BUGS.md 2026-09-11). */
   private lastAutoRestartAt: number | null = null;
+  /** The operator's forced-restart request (the dashboard's build-stale alert's refresh
+   * button): one armed flag, consumed by the next poll that reaches the cooldown check. */
+  private forcedRestart = false;
   /** When the current unbroken stale episode began (epoch ms), or null while the build is fresh.
    * Deliberately head-independent: main moving under a stale build CONTINUES the episode rather
    * than restarting the clock, because the fleet's predicament — running code main has left
@@ -311,6 +314,25 @@ export class Redeployer {
   /** When the current post-restart cooldown expires (epoch ms), or 0 when none is running. */
   private cooldownUntil(): number {
     return this.lastAutoRestartAt !== null ? this.lastAutoRestartAt + RESTART_COOLDOWN_MS : 0;
+  }
+
+  /** Arm the operator's forced restart (the dashboard's build-stale alert's refresh button):
+   * the next poll that reaches the cooldown check waives the deferral — it nulls the cooldown's
+   * start, so the whole episode proceeds now and later polls of it stay un-deferred. It clears
+   * ONLY the cooldown — a red main verdict, a failed compile, a swap error, or a boot refusal
+   * still blocks through the ordinary paths, and in-flight ticks still drain through the
+   * ordinary window. One `restart_forced` event records the operator's hand, so the feed shows
+   * why an episode started mid-cooldown. */
+  forceRestart(): void {
+    this.forcedRestart = true;
+    this.log({ loop: "harness", type: "restart_forced", build: this.build.sha });
+  }
+
+  /** Read and clear the forced flag — one-shot: the poll that consumes it acts on it. */
+  private consumeForcedRestart(): boolean {
+    if (!this.forcedRestart) return false;
+    this.forcedRestart = false;
+    return true;
   }
 
   /** Start the RUNNING build's own baseline check in the background when the cooldown is
@@ -448,6 +470,12 @@ export class Redeployer {
     // Its verdict is established in the background (ensureBuildRedCheck) and consulted fresh on
     // every poll, so a red observed mid-cooldown shortens the remaining wait at once.
     if (now < this.cooldownUntil()) this.ensureBuildRedCheck();
+    // A forced restart (forceRestart) consumes its one-shot flag here by nulling the cooldown's
+    // start — the deferral is waived for the whole episode, not one poll, since every later
+    // poll of a pending episode re-enters this check. Only the deferral is waived: the episode
+    // below — verify-green, compile, drain, swap, and every refusal — runs exactly as an
+    // unforced lapse would.
+    if (this.consumeForcedRestart()) this.lastAutoRestartAt = null;
     const { until: cooldownUntil, urgent } = this.effectiveCooldownUntil(now);
     if (now < cooldownUntil) {
       if (this.cooldownWarnedUntil !== cooldownUntil) {

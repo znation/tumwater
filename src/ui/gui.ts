@@ -21,6 +21,7 @@ import {
   handlePromptCancel,
   handlePromptRole,
   handleReport,
+  handleRestart,
   handleHistory,
   handleTranscript,
   handleWake,
@@ -249,6 +250,8 @@ export function startGui(
         await handlePause(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/wake") {
         await handleWake(req, res, root);
+      } else if (req.method === "POST" && pathname === "/api/restart") {
+        await handleRestart(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/abort") {
         await handleAbort(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/pause-role") {

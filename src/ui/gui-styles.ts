@@ -234,6 +234,9 @@ export const GUI_STYLES = String.raw`
   .alert { display: flex; align-items: flex-start; gap: 12px; padding: 11px 14px; border-radius: 10px;
            border: 1px solid var(--t-line); background: var(--t-bg); }
   .alert-icon { color: var(--t); padding-top: 1px; }
+  /* The build alert's refresh icon is a button (the restart affordance): strip the native
+   * button chrome so it reads as the same icon the other alerts render. */
+  button.alert-icon { background: none; border: 0; padding: 1px 0 0; margin: 0; font: inherit; cursor: pointer; }
   .alert-body { flex: 1; min-width: 0; }
   .alert-title { font-weight: 600; color: var(--text); }
   .alert-detail { color: var(--text-2); font-size: 13.5px; overflow-wrap: anywhere; }

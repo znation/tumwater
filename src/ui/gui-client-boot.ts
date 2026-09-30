@@ -52,6 +52,11 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     else if (act === "budget") openBudgetEditor();
     else if (act === "resume") setFleetPause(false);
     else if (act === "copy") copyText(arg);
+    else if (act === "restart")
+      postAction("/api/restart", {}, (d) =>
+        d && typeof d.message === "string"
+          ? d.message
+          : "Restart requested — the fleet applies it within one poll");
     else if (act === "questions" || act === "queued" || act === "backlog") {
       if (activeView !== "fleet") location.hash = "fleet";
       if (act !== "backlog") setBacklogTab(act);

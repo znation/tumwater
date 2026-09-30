@@ -1,7 +1,7 @@
 /**
  * The dashboard's /api endpoint handlers (src/ui/gui.ts routes to them): the GET data
  * endpoints — transcript, backlog, report, failures, history — and the POST operator endpoints —
- * prompt, prompt-cancel, budget, pause, wake, abort, pause-role — plus, below them, the
+ * prompt, prompt-cancel, budget, pause, wake, restart, abort, pause-role — plus, below them, the
  * shared request-argument validators each handler guards its inputs with (gui-args.ts) and
  * the response/body plumbing (http-body.ts: sendJson, the body cap, readJsonObject).
  * Each handler answers its request and touches no socket beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
@@ -15,7 +15,7 @@ import { cancelQueuedFile, promptPreview, queueFileNameProblem, submitPrompt } f
 import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
@@ -265,6 +265,23 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
     ok: true,
     message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
   });
+}
+
+/** Handle POST /api/restart: the dashboard's build-stale alert's refresh button — the same
+ * marker-writing core a CLI surface would call (requestRestart), so the wording and the
+ * not-pending refusal cannot drift. The not-pending error comes back 409 like /api/abort's
+ * not-live one: the request is valid but nothing can act on it. Same body discipline as
+ * /api/wake (readJsonObject → 400 malformed/non-object, 413 oversized; the body itself is
+ * ignored — there are no options to force a restart). */
+export async function handleRestart(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readJsonObject(req, res, "{}");
+  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const result = requestRestart(root);
+  if (!result.ok) {
+    sendJson(res, 409, { error: result.error });
+    return;
+  }
+  sendJson(res, 200, { ok: true, message: result.message });
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing

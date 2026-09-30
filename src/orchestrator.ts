@@ -34,6 +34,7 @@ import { inboxSize } from "./inbox.js";
 import { OnceRound } from "./once-round.js";
 import {
   consumeAbortRequests,
+  consumeRestartRequest,
   consumeResetRequest,
   consumeWakeRequest,
 } from "./operator-requests.js";
@@ -266,10 +267,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // wedges the Mac's GUI session. Never awaited — a poll does not wait on `top`.
       void launchServicesWatch?.poll();
 
-      // Consume CLI request markers: a reset-counters request, a wake request, and per-role
-      // abort requests.
+      // Consume CLI request markers: a reset-counters request, a wake request, a forced-restart
+      // request, and per-role abort requests.
       consumeResetRequest(root, runners);
       consumeWakeRequest(root, runners);
+      consumeRestartRequest(root, redeploy);
       consumeAbortRequests(root, runners, abortableLandings(landings));
       await settleAbortedVetted(root, landings);
 
