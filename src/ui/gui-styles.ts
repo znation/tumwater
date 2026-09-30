@@ -164,8 +164,6 @@ export const GUI_STYLES = String.raw`
           border: 1px solid var(--t-line, var(--line)); background: var(--t-bg, var(--surface)); color: var(--t, var(--text-2));
           font-size: 13px; font-weight: 500; white-space: nowrap; }
   .chip.mono { font-size: 12px; font-weight: 500; }
-  .chip-btn { cursor: pointer; }
-  .chip-btn:hover { border-color: var(--text-4); }
   .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px;
           background: var(--t-bg); color: var(--t); font-size: 12px; font-weight: 600; white-space: nowrap; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
@@ -194,7 +192,6 @@ export const GUI_STYLES = String.raw`
   .btn-warn:hover { background: var(--amber-bg); color: var(--amber); border-color: var(--amber); }
   .btn-danger { color: var(--red); }
   .btn-note { font-weight: 400; opacity: 0.85; }
-  .btn-icon { width: 32px; padding: 0; }
   .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
               border-radius: 7px; border: 1px solid transparent; background: none; color: var(--text-3); cursor: pointer; }
   .icon-btn:hover { background: var(--surface-3); color: var(--text); }
