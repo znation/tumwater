@@ -1,11 +1,13 @@
 /** The tumwater.json config schema shape: the types `config-validation.ts` validates a
- * loaded config into and every config read site consumes. Split out of types.ts — which
- * keeps the runtime types a tick produces (TickResult, TickOutcome, LoopState, events,
- * landings, pi runs) — so the schema the file on disk is validated against and the
- * runtime state the harness runs with are two layers, changed for different reasons by
- * different readers: a tumwater.json knob hunt starts here, a tick-lifecycle trace starts
- * there. Sibling modules: config.ts (defaults + load), config-validation.ts (validation),
- * config-write.ts (writes). */
+ * loaded config into and every config read site consumes. Split out of the former
+ * types.ts grab-bag — the runtime types a tick produces now live beside their consumers
+ * (TickResult and TickOutcome in tick-outcome.ts, LoopState in loop-state.ts, HarnessEvent
+ * in events.ts, LandingEntry in landing-queue.ts, the pi-run types in pi.ts) — so the
+ * schema the file on disk is validated against and the runtime state the harness runs with
+ * are two layers, changed for different reasons by different readers: a tumwater.json knob
+ * hunt starts here, a tick-lifecycle trace starts beside the type it traces. Sibling
+ * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
+ * (writes). */
 
 /** Per-role configuration in tumwater.json. */
 export interface RoleConfig {
