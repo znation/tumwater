@@ -5,7 +5,76 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater diff` fleet-wide — one line per loop holding pending work, no `--role` needed (planned 2026-09-29)
+
+- **Goal.** Between a loop's commit and its merge, its work lives only on its branch and
+  worktree. The Done entry "`tumwater diff --role <id>` — show the change a loop holds"
+  (planned/done 2026-09-29, above) answers that for one named loop, but a fleet-wide "what
+  is every loop about to land?" still means querying each role by hand — the one fleet view
+  without an all-roles form, since every other one (status, logs, history, backlog, report)
+  has it. Give `tumwater diff` a no-`--role` form: one line per loop that holds pending
+  work, and `--json` prints the roster as data. This plan builds on that Done entry's
+  module, `src/ui/change-preview.ts`; it changes nothing about the per-role view.
+- **Approach.** In src/ui/change-preview.ts, beside `collectRoleChange`/`renderRoleChange`,
+  add: a `FleetRoleChange` interface — one entry per role with `role`, `branch`, `state`
+  (`"absent" | "no-base" | "ready"`, the RoleChangeView states), `ahead`, `commits`
+  (`{sha, subject}[]`), `dirtyFiles` — i.e. the RoleChangeView fields minus the
+  `diff`/`uncommittedDiff` patch strings (the patches stay in the per-role view; a
+  fleet-wide patch dump would be 13 roles × 200 KB); a `FleetChangeView` of
+  `{mainBranch: string, roles: FleetRoleChange[]}`; a `collectFleetChanges(root)` that
+  maps `knownRoleIdsCached(root)` (src/config.ts — built-in plus custom loop ids, config
+  order; disabled roles included, since a loop stopped mid-flight still holds its branch)
+  to `collectRoleChange(root, role)` and drops the two patch fields per entry — reusing
+  `collectRoleChange` keeps the `absent`/`no-base` degradation logic single-homed, and the
+  patch git-diffs it computes for nothing only run for roles actually holding work, each
+  capped by the module's `DIFF_MAX_BYTES`; and a `renderFleetChange(views)` that skips
+  entries that are `no-base` or hold nothing (`ahead === 0 && dirtyFiles.length === 0`),
+  prints one line per remaining role in roster order — `<role>: <ahead> commit(s) ahead of
+  <mainBranch>`, gaining `, <n> uncommitted file(s)` when `n > 0` (pluralization via
+  src/text.ts's `plural` where it fits) — prints `no pending changes` when no line remains,
+  and reuses the per-role `main branch <name> does not exist` line when every entry is
+  `no-base` (`mainBranch` resolves fleet-wide in `resolveMainBranch`, so that condition is
+  fleet-wide) — every degraded case exit 0, like the per-role view. In src/cli.ts's
+  `case "diff"`: `parseRoleFlag` already returns null for an absent flag and fails on an
+  empty or unknown value, so replace the `if (role === null) fail("diff needs --role…")`
+  branch with the fleet path — absent `--role` runs `sayJsonOrRender(args, await
+  collectFleetChanges(root), renderFleetChange)`; present `--role` keeps the existing
+  `collectRoleChange` path untouched; the `rejectUnknownArgs` spec is unchanged. In
+  src/help.ts add a `  tumwater diff [--json]` stanza (one line per loop holding pending
+  work — ahead-of-main commit count and uncommitted-file count, no patch; the `--role`
+  form is the full view; `--json` prints the `{mainBranch, roles}` roster) above the
+  existing `--role` form; `helpStanzas`/`helpTopic` group both under `diff` because both
+  carry the same command token, like `logs`' two forms. In README.md extend the usage
+  table's diff row to note that without `--role` it lists every loop's pending change in
+  one line each. In test/cli-diff.test.ts (existing; the "fails fast" test at its
+  `missing` case currently pins the old behavior) update that test so a bare `diff` no
+  longer fails — the missing-`--role` failure assertions are replaced, while empty
+  `--role`, unknown role, and stray-flag failures keep their existing wording — and add:
+  on a seeded repo where the feature worktree holds one unlanded commit plus one dirty
+  file (the file's `seededFeatureRepo`-style setup, plus a dirty append), `tumwater diff`
+  exits 0 printing exactly the `feature` line with both counts and no lines for other
+  roles; with nothing pending anywhere it prints `no pending changes` (exit 0); a
+  configured-missing baseBranch (the existing test's `ghost` setup) prints
+  `main branch ghost does not exist` (exit 0); `tumwater diff --json` parses to
+  `{mainBranch, roles}` with `mainBranch` `"main"`, one entry per known role in
+  `knownRoleIdsCached` order, the holding role carrying `ahead`/`commits`/`dirtyFiles`,
+  and no `diff`/`uncommittedDiff` keys on any entry.
+- **Files touched.** src/ui/change-preview.ts (+~70 lines: the two interfaces,
+  `collectFleetChanges`, `renderFleetChange`), src/cli.ts (+~10 in `case "diff"`),
+  src/help.ts (+1 stanza), README.md (1 usage-table line), test/cli-diff.test.ts
+  (+~110 lines including the updated fail-fast test).
+- **Acceptance criteria.**
+  1. On a seeded fleet where the feature worktree holds one unlanded commit and one dirty
+     file and no other role holds work, `tumwater diff` exits 0 printing exactly one
+     pending line — `feature: 1 commit ahead of main, 1 uncommitted file` — with no lines
+     for other roles; with nothing pending anywhere it prints `no pending changes`.
+  2. A configured-missing baseBranch prints `main branch <name> does not exist` (exit 0);
+     empty `--role`, unknown role, and unknown flags still fail with the existing
+     wording; `tumwater diff --role <id>` output is byte-identical to before.
+  3. `tumwater diff --json` prints the roster: `mainBranch` names the resolved baseline,
+     `roles` holds one entry per known role in `knownRoleIdsCached` order with
+     `state`/`ahead`/`commits`/`dirtyFiles` and no patch fields.
+  4. `npm run test` passes; `tumwater help diff` shows both forms.
 
 ## Done
 
