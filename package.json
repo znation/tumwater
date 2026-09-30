@@ -34,7 +34,7 @@
     "lint": "eslint . --cache",
     "test": "eslint . --cache && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js",
     "test:e2e": "tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js e2e",
-    "tumwater": "node dist/src/cli.js"
+    "tumwater": "node scripts/tumwater.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
