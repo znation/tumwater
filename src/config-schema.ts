@@ -194,6 +194,13 @@ export interface TumwaterConfig {
    * or an absent key means off. The director is exempt — a human steering outranks a
    * schedule, exactly as under the budget gate and the operator pause. */
   quietHours?: string;
+  /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
+   * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
+   * fleet or one of its changes is stopped and only a human can act; src/notify.ts owns the
+   * allowlist and the per-type one-minute throttle). The command runs detached with
+   * TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE (the line
+   * `tumwater logs` renders) in its environment. Absent or an empty string disables. */
+  notify?: string;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free

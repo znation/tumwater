@@ -58,6 +58,7 @@ export const TOP_LEVEL_KEYS = [
   "sessionRetentionDays",
   "maxDailyCostUsd",
   "quietHours",
+  "notify",
   "fallbackModel",
   "thrashTurns",
   "thrashMinutes",
@@ -291,6 +292,16 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   if ("quietHours" in r) {
     const parsed = parseQuietHours(r.quietHours);
     if (!parsed.ok) problems.push(parsed.error);
+  }
+
+  // The operator notify hook (src/notify.ts): absent or empty string means off, otherwise the
+  // value is the shell command the orchestrator runs on notable events — so it must be a
+  // string when present, and an empty string stays valid (it is how `config set notify ""`
+  // clears the hook).
+  if ("notify" in r && typeof r.notify !== "string") {
+    problems.push(
+      `notify must be a string (the shell command to run on notable events, empty string disables; got ${show(r.notify)})`,
+    );
   }
 
   // The project's own verification command (plans/portability.md §6/7): a blank command is the

@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Operator notify hook: a configured shell command the harness runs when something needs a human (planned 2026-09-30 by plan loop)
+_None yet._
+
+## Done
+
+### Operator notify hook: a configured shell command the harness runs when something needs a human (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** Everything the fleet does on its own — the daily budget pausing it (src/budget-gates.ts), the error-streak breaker pausing a role (src/streak-gate.ts), a change failing to land (src/landing-slot.ts), the self-redeploy being blocked (src/redeploy-policy.ts) — is recorded faithfully in events.jsonl and rendered on the dashboards, but all of it is pull-based: an operator who is not watching a TUI/GUI or tailing `tumwater logs` learns of a stalled fleet hours late. Give the harness a push channel: one configured shell command, `notify` in tumwater.json, that the orchestrator runs whenever one of a small, fixed set of notable events fires. One knob, an opinionated allowlist of event types, no per-event selection — a command that can post anywhere (a desktop notification, a webhook, a phone push) composes it with the environment the harness hands it.
 
@@ -31,8 +35,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 5. A notify command whose spawn fails does not throw out of the event listener: one `warning` event names the failure and the orchestrator keeps polling.
 6. Setting `notify` live while a fake fleet runs takes effect on the next poll (the `update(liveConfig)` path), no restart.
 7. `npm run test` passes with the new test file green.
-
-## Done
 
 ### An error-streak circuit breaker: a loop that keeps failing gets paused, not just warned (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

@@ -27,6 +27,7 @@ import { removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { inboxSize } from "./inbox.js";
 import { OnceRound } from "./once-round.js";
+import { newNotifier } from "./notify.js";
 import {
   consumeAbortRequests,
   consumeRestartRequest,
@@ -231,11 +232,20 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // so another fleet-wide hold on new ticks can close the same gate point.
   const tickStartHeld = () => holdForRestart || restart;
 
+  // The operator notify hook (src/notify.ts owns the whole concern): one configured shell
+  // command run on notable events (budget_paused, role_streak_paused, land_failed,
+  // restart_blocked). Subscribed here so it sees every event this process logs from start;
+  // disposed beside the orchestrator_stop event below.
+  const notifier = newNotifier(root);
+
   try {
     while (!signal.aborted) {
       // Live-reload tumwater.json — the single reload point shared by all loops (src/config-live.ts
       // owns the last-known-good retention and the edge-triggered warnings/events around it).
       const liveConfig = liveReload.poll();
+      // The notify command rides the same last-known-good reload (src/notify.ts): a live
+      // `config set notify` edit takes effect on the next poll, no restart.
+      notifier.update(liveConfig);
 
       // Live session retention (the last restart-only setting): the edge-triggered
       // retention_changed event, the once-per-day gate, and the prune itself live in
@@ -612,6 +622,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       () => internalStop.abort(),
     );
     logEvent(root, { loop: "harness", type: "orchestrator_stop" });
+    notifier.dispose();
     removeQuiet(infoFile);
   }
   // Only once mode carries the settle reasons and the per-role ticks-run: the daemon return
