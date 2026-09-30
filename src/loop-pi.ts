@@ -2,6 +2,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./pi.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
 import { HOLD_BASE_MS } from "./fleet-hold.js";
+import { backendKindPhrase } from "./text.js";
 import { configForRole } from "./config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt.js";
 import { piLogPath, sessionDir } from "./paths.js";
@@ -144,6 +145,23 @@ export class LoopPi {
       const retry = await runPi({ ...opts, continueSession: true });
       this.host.foldUsage(retry);
       return retry;
+    }
+    // The backend-kind floor (BUGS.md 2026-09-29): a failed run of a backend kind the retry
+    // does not cover (connection down, 5xx, model load) still warns — parity with the 429
+    // branch above, so any episode is visible from the feed alone instead of living only in
+    // per-tick error events an operator must aggregate by hand. The fleet-wide hold
+    // (src/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
+    // floor under them, not a retry: a dead backend is not something an immediate re-run beats.
+    if (
+      !pi.ok &&
+      !pi.aborted &&
+      !pi.timedOut &&
+      !pi.quietKilled &&
+      pi.transientBackend
+    ) {
+      this.host.warn(
+        `provider backend failure (${backendKindPhrase(pi.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
+      );
     }
     this.host.foldUsage(pi);
     return pi;

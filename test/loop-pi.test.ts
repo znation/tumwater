@@ -206,6 +206,50 @@ test("a Retry-After hint larger than the cap is waited out only to the cap", asy
   }
 });
 
+test("a backend-kind failure the retry does not cover warns once and earns no retry", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // pi's fetch-level rendering of a dead provider endpoint — the connection kind of
+    // BUGS.md 2026-09-29's silent storm.
+    firstRun: `printf '%s\\n' '${errorLine("Connection error.")}'`,
+  });
+  try {
+    const { loopPi, warns, usage } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-7-author");
+    assert.equal(result.ok, false, "the run fails — a dead backend is not retried");
+    assert.equal(result.transientBackend, true);
+    assert.equal(result.backendKind, "connection");
+    // The per-run floor (BUGS.md 2026-09-29): the episode is visible from the feed alone —
+    // one warning naming the kind — where before it left only a per-tick error event.
+    assert.equal(warns.length, 1);
+    assert.match(warns[0]!, /provider backend failure \(connection error\)/);
+    assert.equal(usage.length, 1, "one attempt, one foldUsage — no retry for this kind");
+    assert.equal(runArgs(args).length, 1, "exactly one pi invocation");
+  } finally {
+    restore();
+  }
+});
+
+test("a successful run that merely saw a backend error mid-stream stays silent", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // A provider blip that pi recovered from: the error line rides mid-stream and the run
+    // still completes — nothing failed, so there is nothing to warn about.
+    firstRun: `printf '%s\\n' '${errorLine("Connection error.")}' '${assistantLine("done\\nSUMMARY: tidied src")}'`,
+  });
+  try {
+    const { loopPi, warns, usage } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-8-author");
+    assert.equal(result.ok, true);
+    assert.equal(warns.length, 0, "a recovered run raises no alarm");
+    assert.equal(usage.length, 1);
+  } finally {
+    restore();
+  }
+});
+
 test("runLandingPi ignores the tick's per-tick runSignal — an aborted tick must not abort a queued landing", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");
