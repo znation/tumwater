@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { freshLoopState } from "../src/loop-state.js";
 import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./gui-client-scope.js";
+import { shortSha as tsShortSha } from "../src/text.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
 // pure view model that turns a status payload into what the page shows, the Markdown
@@ -345,4 +346,14 @@ test("the pause control offers timed pauses and shows a timed pause's countdown"
   await scope.setFleetPause(false);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: false } });
   assert.equal(flashes.pop(), "Fleet resumed");
+});
+
+test("the page's shortSha abbreviates like text.ts's 8-character rule", () => {
+  // The land-queue drawer and the running-build row both render sha cells through the page's
+  // shortSha; it must stay byte-identical to the TypeScript single home it mirrors.
+  const { shortSha } = clientScope<{ shortSha(sha: unknown): string }>(["format"], ["shortSha"]);
+
+  for (const sha of ["abcdef1234567890", "abc", 12345678901234, null, undefined]) {
+    assert.equal(shortSha(sha), tsShortSha(sha), `sha ${String(sha)}`);
+  }
 });

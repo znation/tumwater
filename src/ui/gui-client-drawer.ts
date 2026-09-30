@@ -92,7 +92,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       ? entries.map((e, i) =>
         "<section><div class='sec-head'><h3>#" + (i + 1) + " · <span class='mono'>" + esc(e.role) + "</span></h3>" +
         "<span class='muted' style='margin-left:auto;font-size:13px'>" + esc(fmtAgo(e.enqueuedAt)) + "</span></div>" +
-        "<div class='note'>" + esc(e.summary) + " <span class='mono'>" + esc(String(e.sha).slice(0, 8)) + "</span></div></section>").join("")
+        "<div class='note'>" + esc(e.summary) + " <span class='mono'>" + esc(shortSha(e.sha)) + "</span></div></section>").join("")
       : "<p class='muted'>The queue is empty — the queued changes just landed.</p>");
   }
 

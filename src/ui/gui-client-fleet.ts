@@ -46,7 +46,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       if (d.build) {
         const stale = d.build.stale;
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", icon("refresh"),
-          "Build <span class='mono'>" + esc(String(d.build.sha).slice(0, 8)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
+          "Build <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
           localizeInstants(("Running build" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }
       if (d.mainCheck) {
