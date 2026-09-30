@@ -7,6 +7,7 @@ import {
   parseCountFlag,
   parsePortFlag,
   parsePromptArgs,
+  parseRoleFlag,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -28,6 +29,8 @@ import { runTui } from "./ui/tui.js";
 import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
+import { collectRoleChange, renderRoleChange } from "./ui/change-preview.js";
+import { knownRoleIdsCached } from "./config.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
@@ -199,6 +202,18 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await cmdHistory(root, args);
       break;
+    case "diff": {
+      // No requireReadyRepo gate: an absent worktree degrades to a `no worktree for <role>`
+      // line (exit 0), so the command answers in any directory — report's rationale.
+      rejectUnknownArgs("diff", args, [ROLE_FLAG, { names: ["--json"] }]);
+      // --role is required here (unlike the scoping flags of logs/history): without it there
+      // is no change to show, so a missing flag points at the usage instead of guessing.
+      const role = parseRoleFlag(args, knownRoleIdsCached(root));
+      if (role === null) fail("diff needs --role <id> (try `tumwater help diff`)");
+      const change = await collectRoleChange(root, role);
+      say(args.includes("--json") ? JSON.stringify(change, null, 2) : renderRoleChange(change));
+      break;
+    }
     case "backlog": {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
       // command prints three empty sections in any directory (report's rationale, not config's).

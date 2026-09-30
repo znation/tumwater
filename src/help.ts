@@ -54,6 +54,13 @@ Usage:
                                    7d, like logs --since); --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload
+  tumwater diff --role <id> [--json]
+                                   Show the change that loop holds: its branch's unlanded
+                                   commits (one line each, plus the ahead-of-main patch) and
+                                   its worktree's uncommitted edits (the file list, plus the
+                                   patch — staged and unstaged alike); a loop with no worktree
+                                   yet prints \`no worktree for <id>\`; --json prints the
+                                   collector's payload as machine-readable data
   tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the

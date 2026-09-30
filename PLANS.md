@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater diff --role <id>` — show the change a loop holds: its branch's unlanded commits and its worktree's uncommitted edits (planned 2026-09-29)
+_None yet._
+
+## Done
+
+### `tumwater diff --role <id>` — show the change a loop holds: its branch's unlanded commits and its worktree's uncommitted edits (planned 2026-09-29, done 2026-09-29)
 
 - **Goal.** Between a loop's commit and its merge, the change lives only on the role's branch —
   and mid-tick, uncommitted edits live only in its worktree. The dashboards show a text label
@@ -16,8 +20,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   `tumwater diff --role <id>`.
 - **Approach.** Everything the command needs already exists; this plan wires it, it invents
   nothing. New src/ui/change-preview.ts exports `collectRoleChange(root, role)` and
-  `renderRoleChange(view)`: resolve `mainBranch` with `currentBranch(root)` (src/git.ts, the
-  symbolic-ref resolver landing-git.ts already uses), the role's branch and worktree with
+  `renderRoleChange(view)`: resolve `mainBranch` the way doctor's checkRepo resolves the
+  fleet's target — a configured `baseBranch` in tumwater.json wins (`run --branch` is
+  per-invocation and invisible to a later CLI query), then `currentBranch(root)` (src/git.ts),
+  then "main" — so the diff compares against the branch the fleet actually lands on; a
+  resolved main that does not exist degrades to a `main branch <name> does not exist` line
+  (exit 0). The role's branch and worktree come from
   `branchName(role)` and `worktreePath(root, role)` (src/paths.ts). When the worktree dir is
   missing or `gitTry(wt, "rev-parse", "--git-dir")` returns null, the view is `absent` — a
   fresh fleet or never-run loop renders `no worktree for <role>` (exit 0), so the command
@@ -27,20 +35,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   `aheadOfMainDiff(wt, mainBranch)` (src/git-diff.ts) for the patch — its existing 200 KB cap
   with the --stat-plus-largest-files fallback is reused verbatim, so the output can never be
   unbounded; the uncommitted half via `changedFiles(wt)` (src/git-diff.ts, porcelain) for the
-  file list and `gitTry(wt, "diff")` capped the same way for the patch. The render prints the
+  file list and `gitTry(wt, "diff", "HEAD")` capped the same way for the patch — `HEAD` so a
+  staged edit shows in the patch its porcelain file list already counts (plain `git diff`
+  covers unstaged only; untracked paths appear in the file list alone). The render prints the
   commit log one line per commit, the committed patch, then `uncommitted (N files)` with the
   same shape; when both halves are empty it prints `no pending change for <role>`. In
   src/cli.ts add `case "diff"`: no `requireReadyRepo` gate (absent worktrees degrade, per
   above), `rejectUnknownArgs` with the shared `ROLE_FLAG` spec, `parseRoleFlag` for the value
   — `--role` is required here, so an absent value fails with the existing
-  `ROLE_VALUE_ERROR` wording, and a missing `--role` prints the usage line. `--json` prints
-  the collector's own payload (`{role, branch, state, ahead, commits: [{sha, subject}], diff,
-  dirtyFiles, uncommittedDiff}`), following the `--json` series' collector-payload rule. Add
+  `ROLE_VALUE_ERROR` wording, and a missing `--role` fails pointing at `tumwater help diff`.
+  `--json` prints
+  the collector's own payload (`{role, branch, mainBranch, state, ahead, commits: [{sha,
+  subject}], diff, dirtyFiles, uncommittedDiff}` — `mainBranch` names the baseline the diff
+  was computed against, and `state` is `absent` (no usable worktree), `no-base` (resolved
+  main branch missing), or `ready`), following the `--json` series' collector-payload rule. Add
   the HELP stanza in src/help.ts (one form, under the logs/history family) and a README usage
   table row so the doc stays accurate.
 - **Files touched.** src/ui/change-preview.ts (new, ~90 lines), src/cli.ts (+~12),
   src/help.ts (+1 stanza), README.md (+1 table row), test/cli-diff.test.ts (new, ~130 lines,
   built on test/repo-fixtures.ts and test/cli-harness.ts like the other CLI command tests).
+
+  First landed 2026-09-29, rejected in review on two points, re-landed the same day: the
+  baseline now resolves `baseBranch`-first like doctor/status instead of
+  `currentBranch(root) ?? "main"` (with a `no-base` degrade for a configured-but-missing
+  branch, and `mainBranch` added to the JSON payload so scripts see what was compared
+  against), and the uncommitted patch uses `git diff HEAD` so a staged edit is actually in
+  the patch its file list counts. Tests pin both fixes: the baseBranch-counts-differently
+  case and the staged-only-edit case.
 - **Acceptance criteria.**
   1. On a seeded fleet, a commit on `tumwater/feature` ahead of main makes
      `tumwater diff --role feature` print that commit's subject and a patch naming its
@@ -51,8 +72,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   3. `tumwater diff --role feature --json` prints the payload above with `ahead` and the raw
      diff as data.
   4. `npm run test` passes; the new stanza appears in `tumwater help` and `tumwater help diff`.
-
-## Done
 
 ### `tumwater history --since <duration>` — window-shaped tick history, completing the `--since` pattern (planned 2026-09-29, done 2026-09-29)
 
