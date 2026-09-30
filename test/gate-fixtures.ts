@@ -1,6 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { reviewAheadOfMain } from "../src/review.js";
+import { headOf } from "../src/git.js";
+import { ensureWorktree } from "../src/worktree.js";
+import { makeRepo, sh } from "./repo-fixtures.js";
 
 /** Shared scaffolding for the review-gate orchestration tests — the "Gate orchestration"
  * sections of review.test.ts and fix-claim.test.ts, which both drive reviewAheadOfMain
@@ -13,6 +18,16 @@ export const ROLE = "improve";
 /** The reviewAheadOfMain context over a repo: tick 1 unless overridden. */
 export function gateCtx(root: string, wt: string, tick = 1) {
   return { root, role: ROLE, wt, mainBranch: "main", config: defaultConfig(), tick };
+}
+
+/** Repo with a worktree one commit ahead of main — a code change, so NOT exempt. */
+export async function gateFixture(): Promise<{ root: string; wt: string; head: string }> {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "wip change");
+  return { root, wt, head: await headOf(wt, "HEAD") };
 }
 
 /** The common gate-test shape in one call: a brand-new LoopState plus one reviewAheadOfMain
