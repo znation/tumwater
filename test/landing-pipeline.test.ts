@@ -532,6 +532,35 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
   }
 });
 
+test("a landing whose role has no live runner vets and lands through a throwaway author", async () => {
+  // resolveAuthor's fallback: a role disabled before this process started (or removed from
+  // the fleet after its change was queued) has no runner in ctx.runners, so the drain builds
+  // a throwaway one with the same landing wiring and a disk-loaded state — the queue must
+  // still drain, or the orphaned entry wedges the interlock and the slot forever.
+  const root = makeRepo();
+  await queueChanges(root, ["alpha"]);
+  const restore = fakePi(APPROVE());
+  const { ctx, pipeline } = makePipeline(root, []); // no live runners at all
+  const bg = pump(ctx, pipeline);
+  try {
+    await pumpUntil(ctx, pipeline, drained(root, pipeline), "the orphaned change to vet and land");
+    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "the change landed on main");
+    assert.deepEqual(
+      readEvents(root).filter((e) => e.type === "landed" && e.loop === "alpha").map((e) => e.result),
+      ["changed"],
+      "the outcome was written and reported for the runner-less role",
+    );
+    const state = loadLoopState(root, "alpha");
+    assert.equal(state.lastError, undefined, "the throwaway author ran clean");
+    assert.equal(state.lastResult, "changed", "the disk-loaded state was folded and saved back");
+    assert.equal(state.commits, 1, "the landed change counted on the throwaway author's counters");
+  } finally {
+    await bg.stop();
+    await Promise.allSettled(allTasks(pipeline));
+    restore();
+  }
+});
+
 // ── An abort whose pin is already gone ──────────────────────────────────────────────────
 // discardPinnedRefs's documented edge: a pin that is already gone is not an error. The ref
 // can vanish between the operator's abort and the settle — the gate itself deletes a pin at
