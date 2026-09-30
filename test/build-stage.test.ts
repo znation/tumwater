@@ -245,6 +245,89 @@ test("compileStaged reports a spawn failure as a rejection, not a verdict about 
   assert.match(result.detail, /could not start the compile/);
 });
 
+test("compileStaged still rebuilds through tsc's shebang when the node binary vanished under the running build", async () => {
+  // The live fleet's catch-22 (BUGS.md 2026-09-29): a long-running build's process.execPath can
+  // name a binary an upgrade removed, killing only the spawns that use it directly while every
+  // PATH-resolved spawn (git, npm, pi) keeps working — so the fleet cannot redeploy at all. The
+  // retry through tsc's own shebang (env node, resolved at spawn time) is what lets the next
+  // rebuild succeed and break the pin. The stale path is injected through the execPath seam.
+  const root = makeRepo();
+  const head = tinyTsProject(root);
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  const result = await compileStaged(root, mirror, head, undefined, "/nonexistent/node/removed-by-an-upgrade");
+  assert.deepEqual(result, { ok: true, detail: "" }, "the shebang fallback compiled the tree");
+});
+
+test("compileStaged names every missing spawn input when the compile cannot start", async () => {
+  // A spawn failure's child leaves no output, so the error carries no evidence of its own: the
+  // rejection must name which of the interpreter, the cwd, and the toolchain did not exist —
+  // the diagnosis the live `tsc exited ENOENT` cluster never had (BUGS.md 2026-09-29).
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  const result = await compileStaged(root, path.join(root, "mirror-went-away"), "f".repeat(40), undefined, "/nonexistent/node");
+  assert.equal(result.ok, false);
+  assert.equal(result.rejected, true);
+  assert.match(result.detail, /could not start the compile/);
+  assert.match(result.detail, /missing: the node binary at \/nonexistent\/node; the compile cwd at /);
+});
+
+test("compileStaged reads a tsc that died by signal as a rejection even with output attached", async () => {
+  // The old condition (`code not a number AND no output`) read a non-numeric exit that carried
+  // output as a compiler verdict — exactly the shape a spawn failure with buffered output would
+  // latch as a false verdict about a good commit (BUGS.md 2026-09-29). A tsc that prints and
+  // then dies by signal (a null exit code) proves output no longer manufactures a verdict.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "node_modules/typescript/bin/tsc"),
+    "require('node:fs').writeSync(1, 'verdict-shaped output\\n');\nprocess.kill(process.pid, 'SIGKILL');\n",
+  );
+  const result = await compileStaged(root, root, "e".repeat(40));
+  assert.equal(result.ok, false);
+  assert.equal(result.rejected, true, "no exit code was chosen — this is not a verdict about the tree");
+  assert.match(result.detail, /signal SIGKILL/);
+});
+
+test("compileStaged reads the fallback tsc's numeric exit as a verdict, not a rejection", async () => {
+  // The shebang fallback obeys the same invariant as the primary spawn: when the fallback tsc
+  // runs and chooses a numeric exit, that is a compiler verdict about the tree — the
+  // misclassification that read it as `rejected: true` / "could not start the compile" made the
+  // redeployer drop a genuinely failing head and re-attempt it forever instead of blocking on
+  // it (review objection 2026-09-29). A shebang'd shim exiting 7, reached only because the
+  // injected interpreter is gone, pins the verdict shape.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "node_modules/typescript/bin/tsc"),
+    "#!/usr/bin/env node\nprocess.exit(7);\n",
+  );
+  fs.chmodSync(path.join(root, "node_modules/typescript/bin/tsc"), 0o755); // the shebang spawn needs the exec bit
+  const result = await compileStaged(root, root, "e".repeat(40), undefined, "/nonexistent/node");
+  assert.deepEqual(result, { ok: false, detail: "tsc exited 7" });
+  assert.equal(result.rejected, undefined, "a numeric exit from the fallback tsc is a verdict, never a rejection");
+});
+
+test("compileStaged reports the fallback's own spawn failure as a rejection naming both attempts", async () => {
+  // When the fallback's shebang cannot resolve an interpreter either, neither attempt produced
+  // a process: the rejection must say the fallback was tried and failed, not just the primary
+  // spawn — an operator repairing the environment needs to know both paths are dead.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules/typescript/bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "node_modules/typescript/bin/tsc"),
+    "#!/nonexistent/interpreter\nprocess.exit(7);\n",
+  );
+  fs.chmodSync(path.join(root, "node_modules/typescript/bin/tsc"), 0o755); // the EACCES shape must not mask the ENOENT one
+  const result = await compileStaged(root, root, "e".repeat(40), undefined, "/nonexistent/node");
+  assert.equal(result.ok, false);
+  assert.equal(result.rejected, true, "neither spawn produced a process — no verdict exists");
+  assert.match(result.detail, /could not start the compile/);
+  assert.match(result.detail, /shebang fallback also failed/);
+});
+
 test("compileStaged reports a timeout instead of hanging when tsc runs past its cap", async () => {
   // The redeploy's only guard against a wedged compiler: a tsc that never returns must fail the
   // compile with a clear reason (so the stale build keeps running with `restart BLOCKED: tsc timed
