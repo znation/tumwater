@@ -6,13 +6,13 @@ import { parseTestCounts, runBuildCheck, runScopedBuildCheck } from "../src/buil
 import { checkFailureReasons } from "../src/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
 import { errCode } from "../src/errno.js";
-import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
+import { detectBuildCheck } from "../src/build-check-detect.js";
 import { readEvents } from "../src/event-read.js";
 import { pidAlive } from "../src/process.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-commands.js";
-import { sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { sh, tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
@@ -44,10 +44,11 @@ function readPid(file: string): number {
   return fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8").trim()) : 0;
 }
 
-// Unit coverage for the deterministic build pre-check (src/build-check.ts): detection by
-// walk-up to the installed root and execution/outcome classification. The gate's integration
-// with this check (a healthy build reaching the reviewer) is covered in review.test.ts, where
-// it belongs — that test drives reviewAheadOfMain end-to-end.
+// Unit coverage for the deterministic build pre-check (src/build-check.ts): execution and
+// outcome classification, plus the configured-check.command detection boundary. The walk-up
+// detection tests live in build-check-detect.test.ts beside their subject, and the gate's
+// integration with this check (a healthy build reaching the reviewer) is covered in
+// review.test.ts, where it belongs — that test drives reviewAheadOfMain end-to-end.
 
 const ROLE = "improve";
 
@@ -613,152 +614,6 @@ test("runBuildCheck proceeds when git is missing from PATH: a check that never t
     restorePath();
   }
 });
-
-test("detectBuildCheck walks up from a worktree without node_modules to the installed project root", () => {
-  const { root, wt } = buildCheckFixture();
-  assert.deepEqual(detectBuildCheck(wt), { kind: "npm", rootDir: root, script: "build" });
-});
-
-test("detectBuildCheck returns the NEAREST qualifying ancestor when several qualify", () => {
-  const base = tmpdir("buildcheck-nearest-");
-  const outer = path.join(base, "outer");
-  const inner = path.join(outer, "inner");
-  for (const [dir, script] of [
-    [outer, "echo outer"],
-    [inner, "echo inner"],
-  ] as const) {
-    fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { build: script } }));
-  }
-  // Start from a worktree-shaped path below the inner root — inner is closer and must win.
-  const start = path.join(inner, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(start, { recursive: true });
-  assert.deepEqual(detectBuildCheck(start), { kind: "npm", rootDir: inner, script: "build" });
-});
-
-// --- detectBuildCheck semantics: preference, first-qualifying-directory-wins, and failure modes.
-// These are documented in src/build-check.ts but were untested; the first-qualifier rule is the
-// load-bearing one — skipping past a scriptless installed project to an unrelated ancestor would
-// run THAT project's build script against this worktree (or nothing of this project at all).
-
-test("detectBuildCheck prefers test over typecheck and build when all three scripts are declared", () => {
-  const base = tmpdir("buildcheck-pref-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
-
-  // All three declared: test wins — npm convention makes `npm test` the canonical verify command.
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: "b", typecheck: "t", test: "x" }),
-  );
-  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "test" });
-
-  // Without a test script the old preference stands: typecheck over build.
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ build: "b", typecheck: "t" }),
-  );
-  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "typecheck" });
-});
-
-test("detectBuildCheck stops at the first qualifying directory even when it declares no check script", () => {
-  const base = tmpdir("buildcheck-first-qualifies-");
-  const outer = path.join(base, "outer"); // installed and HAS a build script — must never be used
-  fs.mkdirSync(path.join(outer, "node_modules"), { recursive: true });
-  fs.writeFileSync(
-    path.join(outer, "package.json"),
-    JSON.stringify({ name: "other", version: "1.0.0", scripts: { build: "echo other-project" } }),
-  );
-  const project = path.join(outer, "project"); // installed but scriptless — the first qualifier
-  fs.mkdirSync(path.join(project, "node_modules"), { recursive: true });
-  fs.writeFileSync(
-    path.join(project, "package.json"),
-    JSON.stringify({ name: "proj", version: "1.0.0" }),
-  );
-  const wt = path.join(project, ".tumwater", "worktrees", ROLE);
-  fs.mkdirSync(wt, { recursive: true });
-
-  assert.equal(detectBuildCheck(wt), null, "no check — the scriptless project wins over its ancestor");
-});
-
-test("detectBuildCheck tolerates a malformed or scriptless package.json without throwing", () => {
-  const base = tmpdir("buildcheck-malformed-");
-  const root = path.join(base, "project");
-  fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
-
-  // Unparseable JSON at the qualifying directory: no check, and detection never throws into the gate.
-  writeMalformedJson(path.join(root, "package.json"));
-  assert.equal(detectBuildCheck(root), null);
-
-  // Valid JSON that is not an object must not throw: reading `.scripts` off the null from
-  // JSON.parse("null") would otherwise escape detection, which callers rely on never throwing.
-  for (const raw of ["null", "true", '"proj"', "[1,2]"]) {
-    fs.writeFileSync(path.join(root, "package.json"), raw);
-    assert.equal(detectBuildCheck(root), null, `non-object package.json ${raw} must not throw`);
-  }
-
-  // A scripts object with neither a usable test, typecheck, nor build (empty string / non-string) is no check.
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ test: "", build: "", typecheck: null }),
-  );
-  assert.equal(detectBuildCheck(root), null);
-
-  // Whitespace-only scripts are empty in effect — `npm run test` on one is a no-op that exits 0,
-  // so honoring it would report a false green. All blank → no check.
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ test: "   ", build: "\t\n" }),
-  );
-  assert.equal(detectBuildCheck(root), null);
-
-  // A blank test still lets a real build be used: the preference order is preserved, not skipped.
-  fs.writeFileSync(
-    path.join(root, "package.json"),
-    projManifest({ test: "  ", build: "echo ok" }),
-  );
-  assert.deepEqual(detectBuildCheck(root), { kind: "npm", rootDir: root, script: "build" });
-});
-
-test("detectBuildCheck honors the maxLevels bound and terminates at the filesystem root", () => {
-  // No install anywhere up a plain tmpdir chain. Walking 10 levels from here passes through /
-  // (tmpdir is only a few levels deep), so this also pins the parent===dir termination: a
-  // regression that kept walking past root would loop forever and hang the suite.
-  const base = tmpdir("buildcheck-none-");
-  const deep = path.join(base, "a", "b", "c");
-  fs.mkdirSync(deep, { recursive: true });
-  assert.equal(detectBuildCheck(deep, undefined, 10), null);
-
-  // The bound is inclusive: an install exactly maxLevels up is found; one level further out is not.
-  const chain = tmpdir("buildcheck-bound-");
-  let dir = path.join(chain, "l1", "l2", "l3");
-  fs.mkdirSync(dir, { recursive: true });
-  fs.mkdirSync(path.join(chain, "node_modules"), { recursive: true });
-  fs.writeFileSync(
-    path.join(chain, "package.json"),
-    projManifest({ build: "echo ok" }),
-  );
-  assert.deepEqual(detectBuildCheck(dir, undefined, 3), { kind: "npm", rootDir: chain, script: "build" });
-  assert.equal(detectBuildCheck(dir, undefined, 2), null);
-});
-
-// --- resolveFromNodeModules: the same walk-up detectBuildCheck makes, for a dependency the
-// harness must locate itself (redeploy's tsc) rather than let npm's PATH walk find.
-
-test("resolveFromNodeModules climbs to an ancestor's install and gives up past the level cap", () => {
-  const base = tmpdir("walkup-");
-  fs.mkdirSync(path.join(base, "node_modules", "typescript", "bin"), { recursive: true });
-  const tsc = path.join(base, "node_modules", "typescript", "bin", "tsc");
-  fs.writeFileSync(tsc, "#!/usr/bin/env node\n");
-  const nested = path.join(base, "a", "b", "c");
-  fs.mkdirSync(nested, { recursive: true });
-
-  assert.equal(resolveFromNodeModules(base, path.join("typescript", "bin", "tsc")), tsc, "found at the start dir");
-  assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc")), tsc, "and three levels down");
-  assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc"), 2), null, "cap reached first");
-  assert.equal(resolveFromNodeModules(nested, "nonesuch"), null, "nothing to find");
-});
-
 
 // --- A configured check.command (plans/portability.md §6/7): the walk-up cannot know how a
 // Python, Rust, or Go repo verifies itself, so `check` in tumwater.json names it and the same

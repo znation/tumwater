@@ -538,9 +538,20 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
     { detached: true, stdio: "ignore", env: { ...process.env, TUMWATER_RUN: marker } },
   );
   child.unref();
+  // Poll for CONTENT, not existence: writeFileSync creates the (still empty) file before it
+  // writes, so an existsSync-then-read poll can catch that window under load and read "" —
+  // Number("") is 0 and the assertion below fails with "the orphan recorded its pid". Same
+  // guard as pi.test.ts's `-s` wait. ENOENT before the file first appears is just a miss.
   const upDeadline = Date.now() + 10_000;
-  while (!fs.existsSync(pidFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
-  const victimPid = Number(fs.readFileSync(pidFile, "utf8").trim());
+  let victimPid = 0;
+  while (victimPid <= 0 && Date.now() < upDeadline) {
+    await new Promise((r) => setTimeout(r, 25));
+    try {
+      victimPid = Number(fs.readFileSync(pidFile, "utf8").trim());
+    } catch {
+      victimPid = 0;
+    }
+  }
   assert.ok(victimPid > 0, "the orphan recorded its pid");
   const original = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "linux" });
