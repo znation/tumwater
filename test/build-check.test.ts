@@ -13,7 +13,7 @@ import { pidAlive } from "../src/process.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
-import { sh, tmpdir } from "./repo-fixtures.js";
+import { sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {
@@ -700,7 +700,7 @@ test("detectBuildCheck tolerates a malformed or scriptless package.json without 
   fs.mkdirSync(path.join(root, "node_modules"), { recursive: true });
 
   // Unparseable JSON at the qualifying directory: no check, and detection never throws into the gate.
-  fs.writeFileSync(path.join(root, "package.json"), "{ not json ");
+  writeMalformedJson(path.join(root, "package.json"));
   assert.equal(detectBuildCheck(root), null);
 
   // Valid JSON that is not an object must not throw: reading `.scripts` off the null from

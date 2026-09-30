@@ -140,6 +140,19 @@ export function writeConfig(dir: string, value: unknown): void {
   fs.writeFileSync(path.join(dir, "tumwater.json"), JSON.stringify(value));
 }
 
+/** Overwrite `file` with the shared unparseable-JSON payload ("{ not json"): the single home
+ * of the malformed-JSON fixture the parse-failure tests used to hand-roll as
+ * `fs.writeFileSync(file, "{ not json")` (config, templates, state files, package.json —
+ * every "bad bytes degrade gracefully" shape). Returns `file` so a fixture writer that also
+ * mints the path composes inline. Only the fully unparseable payload lives here: a torn
+ * (truncated but still shapeful) write is a distinct fixture per test, so those stay local.
+ * The exact bytes match what the sites hand-rolled, so every JSON.parse failure and error
+ * message under test is unchanged. */
+export function writeMalformedJson(file: string): string {
+  fs.writeFileSync(file, "{ not json");
+  return file;
+}
+
 /** Write a backlog fixture file (PLANS.md, BUGS.md, or QUESTIONS.md) from its sections. The
  * single home of the skeleton every backlog fixture used to hand-roll — title heading, blank
  * line, each `## ` section heading with its body — so a test states only the entries under

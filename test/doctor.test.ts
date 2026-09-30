@@ -26,7 +26,7 @@ import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -191,7 +191,7 @@ test("checkAgentBinary falls back to the default when tumwater.json is malformed
   // A broken config must not throw inside a check: checkInit reports it separately, and the
   // pi check still stands on its own default resolution.
   const root = makeRepo();
-  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(root, "tumwater.json"));
   const out = checkAgentBinary(root, fakeBins("pi"));
   assert.equal(out.level, "ok");
   assert.match(out.detail, /pi$/);
@@ -259,7 +259,7 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
 
 test("checkInit carries the config error verbatim — invalid JSON and validation problems alike", () => {
   const badJson = makeRepo();
-  fs.writeFileSync(path.join(badJson, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(badJson, "tumwater.json"));
   assert.match(checkInit(badJson).detail, /not valid JSON/);
 
   const unknownKey = readyRepo();
@@ -545,7 +545,7 @@ test("runDoctor survives a corrupt config and lets the init check report it", as
   // loadConfig throwing must not take down the one command an operator runs to find out why
   // nothing works — doctor degrades to the init check's failure detail instead.
   const root = makeRepo();
-  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(root, "tumwater.json"));
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
   assert.match(report.header, /harness not running/);
   const init = report.checks.find((c) => c.name === "init");
@@ -660,7 +660,7 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   const root = readyRepo();
   // Unparseable template: seedConfig would silently seed bare defaults and exampleDrift would
   // report no drift — this warn is the broken template's only signal.
-  fs.writeFileSync(path.join(root, "tumwater.example.json"), "{ not json");
+  writeMalformedJson(path.join(root, "tumwater.example.json"));
   const warn = checkInit(root);
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /broken template: tumwater\.example\.json is not valid JSON/);

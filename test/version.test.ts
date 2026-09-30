@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { belowNodeFloor, nodeFloorProblem, packageEnginesNode, packageVersion } from "../src/version.js";
+import { writeMalformedJson } from "./repo-fixtures.js";
 
 // The harness's own version (src/version.ts): `tumwater version` reads package.json beside
 // the compiled CLI. The happy path is pinned against the real file so the URL arithmetic
@@ -28,7 +29,7 @@ test("packageVersion reports the reason when the file cannot be read", () => {
 test("packageVersion reports malformed JSON instead of throwing", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-ver-"));
   const file = path.join(dir, "package.json");
-  fs.writeFileSync(file, "{ not json");
+  writeMalformedJson(file);
   const result = packageVersion(file);
   assert.equal(result.version, undefined);
   assert.match(result.problem ?? "", /^cannot read package.json \(the running harness's install looks broken\): /);
@@ -59,7 +60,7 @@ test("packageEnginesNode returns null on a missing, malformed, or engines-less f
     return file;
   };
   assert.equal(packageEnginesNode(path.join(dir, "absent.json")), null);
-  assert.equal(packageEnginesNode(write("{ not json")), null);
+  assert.equal(packageEnginesNode(writeMalformedJson(path.join(dir, "not-json.json"))), null);
   for (const body of ["null", "{}", '{"engines":{}}', '{"engines":{"node":20}}', '{"engines":{"node":""}}']) {
     assert.equal(packageEnginesNode(write(body)), null, body);
   }

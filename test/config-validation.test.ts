@@ -6,7 +6,7 @@ import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/co
 import { show, validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
-import { tmpdir, writeConfig } from "./repo-fixtures.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
 // Tests for src/config-validation.ts — validateConfig/show — plus the load and save paths that
 // enforce it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
@@ -369,7 +369,7 @@ test("validateConfig rejects unknown role ids (a typo would spawn a phantom erro
 
 test("loadConfig rejects malformed JSON and invalid values with actionable messages", () => {
   const dir = tmpdir();
-  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(dir, "tumwater.json"));
   assert.throws(() => loadConfig(dir), /tumwater\.json is not valid JSON/);
 
   writeConfig(dir, { maxConcurrent: 0 });
@@ -387,7 +387,7 @@ test("loadConfigSafe returns the config when valid and the error message otherwi
   assert.equal(ok.config?.model, "sonnet");
 
   // Broken JSON and invalid values surface as messages, never throws.
-  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(dir, "tumwater.json"));
   const broken = loadConfigSafe(dir);
   assert.equal(broken.config, undefined);
   assert.match(broken.error ?? "", /not valid JSON/);

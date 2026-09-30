@@ -30,7 +30,7 @@ import { validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
 import { withCountedReads } from "./fs-faults.js";
-import { tmpdir, writeConfig } from "./repo-fixtures.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
 // The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
 // telemetry at 185 minutes). A shipped default at or below it re-kills every such tick and
@@ -309,7 +309,7 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfigCached(dir).config?.model, "sonnet"); // healthy baseline is cached
-  fs.writeFileSync(path.join(dir, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(dir, "tumwater.json"));
   const reads = withCountedReads(() => {
     const broken = loadConfigCached(dir);
     assert.equal(broken.config, undefined);
@@ -750,7 +750,7 @@ test("seedConfig falls back to the defaults with no example, a malformed one, or
   assert.deepEqual(none, defaultConfig());
 
   const malformed = tmpdir();
-  fs.writeFileSync(exampleConfigPath(malformed), "{ not json");
+  writeMalformedJson(exampleConfigPath(malformed));
   // Seeding never throws — init must not die on a bad template.
   assert.deepEqual(seedConfig(malformed), defaultConfig());
 
@@ -773,7 +773,7 @@ test("exampleConfigProblem names a broken template and stays null on a usable on
   // A parse failure must name the example file, not leave a bare syntax error for the
   // operator to attribute to the wrong file.
   const malformed = tmpdir();
-  fs.writeFileSync(exampleConfigPath(malformed), "{ not json");
+  writeMalformedJson(exampleConfigPath(malformed));
   assert.match(exampleConfigProblem(malformed) ?? "", /tumwater\.example\.json is not valid JSON/);
 
   // A validation failure carries the full problem list under the example's name — the same

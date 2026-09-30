@@ -13,7 +13,7 @@ import {
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
-import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();
@@ -540,7 +540,7 @@ test("initProject seeds the config from a tracked tumwater.example.json and keep
 
 test("initProject seeds defaults when the template is malformed", async () => {
   const repo = makeRepo();
-  fs.writeFileSync(exampleConfigPath(repo), "{ not json");
+  writeMalformedJson(exampleConfigPath(repo));
   const result = await initProject(repo, "prompt");
   assert.ok(result.created.includes("tumwater.json"));
   // Seeding never throws: a bad template falls back to the defaults.

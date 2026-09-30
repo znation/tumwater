@@ -19,7 +19,7 @@ import {
 import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState } from "../src/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
@@ -220,7 +220,7 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
   }
 
   // A torn write must not crash observers (TUI/GUI poll this every second).
-  fs.writeFileSync(file, "{ not json");
+  writeMalformedJson(file);
   assert.equal(readOrchestratorInfo(dir), null);
   assert.equal(orchestratorAlive(dir), false);
 });

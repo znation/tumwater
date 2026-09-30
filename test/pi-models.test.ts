@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi-models.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 /** A models.json shaped like the one on a local-model machine: an unpriced model (no cost
  * field), an all-zero-cost model, and a paid one. */
@@ -87,7 +87,7 @@ test("unresolvable pairs count as not free (the safe direction)", () => {
 test("missing or malformed definitions files count as not free, never throw", () => {
   const cfg = fleetAt("lm-studio", "qwen3.8-27b");
   assert.equal(fleetModelsFree(cfg, path.join(tmpdir(), "absent.json")), false, "missing file");
-  assert.equal(fleetModelsFree(cfg, writeModels("{ not json")), false, "malformed JSON");
+  assert.equal(fleetModelsFree(cfg, writeMalformedJson(writeModels())), false, "malformed JSON");
   assert.equal(fleetModelsFree(cfg, writeModels(JSON.stringify({ models: [] }))), false, "no providers key");
 });
 

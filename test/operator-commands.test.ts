@@ -28,7 +28,7 @@ import {
   resetRequestPath,
   wakeRequestPath,
 } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
@@ -129,7 +129,7 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
 // of requiring the file to parse — the same resilience `logs --role` has.
 test("marker commands with --role <builtin> work while tumwater.json is malformed", async () => {
   const root = tmpdir();
-  fs.writeFileSync(configPath(root), "{ not json");
+  writeMalformedJson(configPath(root));
   saveLoopState(root, { ...freshLoopState("feature"), backoffSeconds: 120 });
 
   const wake = await expectOk(() => cmdWake(root, ["--role", "feature"]));
@@ -150,7 +150,7 @@ test("marker commands with --role <builtin> work while tumwater.json is malforme
 // of the command silently claiming a role that may not exist.
 test("marker commands with a custom/unknown --role still report the broken config", async () => {
   const root = tmpdir();
-  fs.writeFileSync(configPath(root), "{ not json");
+  writeMalformedJson(configPath(root));
   const { code, stderr } = await expectFail(() => cmdWake(root, ["--role", "docs"]));
   assert.equal(code, 1);
   assert.match(stderr, /tumwater\.json is not valid JSON/);

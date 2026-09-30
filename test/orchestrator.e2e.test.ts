@@ -37,7 +37,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./orchestrator-fixtures.js";
-import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
+import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, recordingFakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -570,7 +570,7 @@ test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-know
     await waitFor(() => runs().at(-1)?.includes("model=reloaded-model") === true, "pi run with the edited model");
 
     // A broken file keeps the last-known-good config and warns exactly once.
-    fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+    writeMalformedJson(path.join(repo, "tumwater.json"));
     const runsBeforeBreak = runs().length;
     await waitFor(
       () => runs().length > runsBeforeBreak && runs().at(-1)?.includes("model=reloaded-model") === true,

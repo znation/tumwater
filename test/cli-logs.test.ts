@@ -6,7 +6,7 @@ import { initProject } from "../src/init.js";
 import { submitPrompt } from "../src/inbox.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -213,7 +213,7 @@ test("logs --role still reads a transcript when tumwater.json is broken", async 
   // and the whole command exited 1 with the config error.
   const repo = makeRepo();
   await initProject(repo, "broken config transcript test");
-  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(repo, "tumwater.json"));
   const file = piLogPath(repo, "clean");
   writeLogLines(file, [JSON.stringify({ type: "agent_start" }), assistantLine("readable anyway")]);
 

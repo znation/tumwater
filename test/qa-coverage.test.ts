@@ -8,7 +8,7 @@ import {
   renderCoverageBlock,
 } from "../src/qa-coverage.js";
 import { qaCoveragePath } from "../src/paths.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 /** Unit coverage for src/qa-coverage.ts — the `qa` observer's flow-coverage ledger
  * (plans/observer-roles.md 2/2). Every tick is a fresh session and a passing cheap check
@@ -70,7 +70,7 @@ test("readQaCoverage treats missing, torn, and wrong-shaped files as no data", (
   const root = tmpdir();
   assert.deepEqual(readQaCoverage(root), {}, "missing file");
   fs.mkdirSync(`${root}/.tumwater/state`, { recursive: true });
-  fs.writeFileSync(qaCoveragePath(root), "{ not json");
+  writeMalformedJson(qaCoveragePath(root));
   assert.deepEqual(readQaCoverage(root), {}, "torn JSON");
   fs.writeFileSync(qaCoveragePath(root), JSON.stringify(["array"]));
   assert.deepEqual(readQaCoverage(root), {}, "array is not a ledger object");

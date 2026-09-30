@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
 import { inboxDir } from "../src/paths.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
 // The prompt queue's child-process tests: cancel/list/flag-validation, per-role queues, and
@@ -44,7 +44,7 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
 test("prompt --list survives a broken tumwater.json; named-role writes still fail loudly", async () => {
   const repo = makeRepo();
   await initProject(repo, "broken config prompt list");
-  fs.writeFileSync(path.join(repo, "tumwater.json"), "{ not json");
+  writeMalformedJson(path.join(repo, "tumwater.json"));
   submitPrompt(repo, "survives");
 
   let r = await cli(repo, "prompt", "--list");
