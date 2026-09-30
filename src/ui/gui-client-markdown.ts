@@ -8,18 +8,43 @@
  * never inject markup or a script URL. Spliced into gui-client.ts's script; it reaches esc
  * through that concatenation. */
 export const GUI_CLIENT_MARKDOWN_JS = String.raw`  // markdown:start
-  // Inline spans: code first (its text stays literal), then bold and italics on the rest. An
-  // unmatched trailing backtick is kept as text rather than opening a runaway code span.
+  // Inline spans: code first (its text stays literal), then bold and italics on the rest. A
+  // code span opens at a run of backticks and closes at a run of the SAME length — a run of a
+  // different length inside a span is content, so the doubled-backtick form that quotes a
+  // literal backtick ("\x60\x60 \x60 \x60\x60") parses as one span whose code flag survives
+  // both runs — and a run left open at the end is prose, not a runaway span. An empty span
+  // renders as its backticks.
   function mdInline(s) {
-    const parts = String(s).split("\x60");
-    if (parts.length % 2 === 0) {
-      const tail = parts.pop();
-      parts[parts.length - 1] += "\x60" + tail;
+    // Tokenize into text and backtick runs.
+    const src = String(s);
+    const toks = [];
+    let text = "";
+    for (let i = 0; i < src.length; ) {
+      if (src[i] === "\x60") {
+        let n = 0;
+        while (i < src.length && src[i] === "\x60") { n++; i++; }
+        if (text) { toks.push(["t", text]); text = ""; }
+        toks.push(["b", n]);
+      } else text += src[i++];
     }
-    return parts.map((part, i) => {
-      // An empty span is a run of backticks in prose ("\x60\x60\x60python"), not code.
-      if (i % 2 === 1) return part ? "<code>" + esc(part) + "</code>" : "\x60\x60";
-      return esc(part)
+    if (text) toks.push(["t", text]);
+    // Match the runs: a same-length run closes the span; anything else inside it is content.
+    const segs = [];
+    let open = 0, buf = "";
+    for (const tok of toks) {
+      if (tok[0] === "t") { if (open) buf += tok[1]; else segs.push(["t", tok[1]]); }
+      else if (!open) { open = tok[1]; buf = ""; }
+      else if (tok[1] === open) { segs.push(["c", buf]); buf = ""; open = 0; }
+      else buf += "\x60".repeat(tok[1]);
+    }
+    if (open) segs.push(["t", "\x60".repeat(open) + buf]); // Never closed: literal prose.
+    return segs.map((seg) => {
+      if (seg[0] === "c") {
+        const body = seg[1].length > 1 && seg[1].startsWith(" ") && seg[1].endsWith(" ")
+          ? seg[1].slice(1, -1) : seg[1];
+        return body ? "<code>" + esc(body) + "</code>" : "\x60\x60";
+      }
+      return esc(seg[1])
         .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
         .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
         .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>")
@@ -28,20 +53,28 @@ export const GUI_CLIENT_MARKDOWN_JS = String.raw`  // markdown:start
   }
   function mdTable(rows) {
     // Cells split at pipes that sit outside inline-code spans: the digest's tables quote
-    // shell commands, and a pipeline's pipe is cell content, not a delimiter. Each run of
-    // backticks toggles code state — one run opens a span, the next closes it, and a doubled
-    // backtick is one run — so a quoted pipeline ("grep a|b") stays one cell while two
-    // separately quoted cells ("a" and "b") still split.
+    // shell commands, and a pipeline's pipe is cell content, not a delimiter. A span opens at
+    // a run of backticks and closes at a run of the SAME length (mdInline's rule), so a quoted
+    // pipeline ("grep a|b") stays one cell, two separately quoted cells ("a" and "b") still
+    // split, and a doubled-backtick span quoting a literal backtick ("\x60\x60 \x60 \x60\x60")
+    // is closed by its own final run rather than swallowing the rest of the row.
     const cells = (r) => {
       const trimmed = r.trim().replace(/^\|/, "").replace(/\|$/, "");
       const out = [];
       let cell = "";
-      let code = false;
-      for (let i = 0; i < trimmed.length; i++) {
-        const ch = trimmed[i];
-        if (ch === "\x60") { code = !code; cell += ch; }
-        else if (ch === "|" && !code) { out.push(cell.trim()); cell = ""; }
-        else cell += ch;
+      let open = 0; // The opening run's length; 0 means outside a code span.
+      for (let i = 0; i < trimmed.length; ) {
+        if (trimmed[i] === "\x60") {
+          let n = 0;
+          while (i < trimmed.length && trimmed[i] === "\x60") { n++; i++; }
+          if (open === 0) open = n;
+          else if (n === open) open = 0; // A same-length run closes the span.
+          cell += "\x60".repeat(n);
+        } else {
+          if (trimmed[i] === "|" && open === 0) { out.push(cell.trim()); cell = ""; }
+          else cell += trimmed[i];
+          i++;
+        }
       }
       out.push(cell.trim());
       return out;

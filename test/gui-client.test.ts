@@ -167,14 +167,22 @@ test("renderMarkdown renders the backlog's and digest's Markdown without ever pa
   const piped = renderMarkdown("| command | count |\n| --- | ---: |\n| \x60grep a|b | tail\x60 | 3 |\n| `x` | `p|q` |");
   assert.match(piped, /<td><code>grep a\|b \| tail<\/code><\/td><td class='r'>3<\/td>/);
   assert.match(piped, /<td><code>x<\/code><\/td><td class='r'><code>p\|q<\/code><\/td>/);
+  // A doubled-backtick span (the markdown form that quotes a literal backtick) is ONE span:
+  // its inner run neither breaks the span nor swallows the row's remaining cells — the span
+  // closes at its own second doubled run, so the pipe after it still delimits.
+  const doubled = renderMarkdown("| lit | n |\n| --- | ---: |\n| \x60\x60 \x60 \x60\x60 | 3 |");
+  assert.match(doubled, /<td><code>\x60<\/code><\/td><td class='r'>3<\/td>/);
+  assert.equal(renderMarkdown("quote \x60\x60 \x60 \x60\x60 here"), "<p>quote <code>\x60</code> here</p>");
   // Fenced code stays verbatim and escaped.
   assert.equal(renderMarkdown("\x60\x60\x60\n<b>x</b> **y**\n\x60\x60\x60"), "<pre><code>&lt;b&gt;x&lt;/b&gt; **y**</code></pre>");
   // Model-written HTML is text, never markup; links keep their text and drop the URL.
   const hostile = renderMarkdown("<img src=x onerror=alert(1)> [click](javascript:void) <script>alert(1)</script>");
   assert.doesNotMatch(hostile, /<img|<script|javascript:/);
   assert.match(hostile, /&lt;img src=x onerror=alert\(1\)&gt; click &lt;script&gt;/);
-  // Code spans are literal, and an unmatched backtick is plain text.
+  // Code spans are literal, and an unmatched backtick is plain text (a lone run — or a run
+  // of a different length than the opener's — never closes a span, so neither opens one).
   assert.equal(renderMarkdown("\x60**not bold**\x60 and \x60 alone"), "<p><code>**not bold**</code> and \x60 alone</p>");
+  assert.equal(renderMarkdown("pair \x60\x60not a span\x60 here"), "<p>pair \x60\x60not a span\x60 here</p>");
   assert.equal(renderMarkdown("Render \x60\x60\x60python fences"), "<p>Render \x60\x60\x60python fences</p>", "a backtick run in prose stays text");
   // One fact per line (the failure digest) keeps its line breaks when asked.
   assert.equal(renderMarkdown("Window: 14 days\npartial: log starts 09-29", true), "<p>Window: 14 days<br>partial: log starts 09-29</p>");
