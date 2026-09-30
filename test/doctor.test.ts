@@ -916,6 +916,18 @@ test("checkStrandedPlans warns naming a stranded heading and stays silent on a c
   });
 });
 
+test("checkStrandedPlans warns instead of throwing when PLANS.md cannot be read", () => {
+  // A directory where the file belongs: existsSync passes, readFileSync lands EISDIR — the
+  // class of filesystem damage a stray tool leaves behind. Without the catch the check
+  // throws and takes the whole doctor run down; the contract is a warn, never a fail
+  // (checkFixClaims's vanish-on-read twin above pins the same policy for BUGS.md).
+  const dir = tmpdir("doctor-stranded-unreadable-");
+  fs.mkdirSync(path.join(dir, "PLANS.md"));
+  const r = checkStrandedPlans(dir);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /^cannot read PLANS\.md — /);
+});
+
 // checkBacklogHeadings — the duplicate-heading half of the backlog-structure check surfaced
 // for the operator (plans part 2/4): a `## ` heading already duplicated on main warns, naming
 // the file and heading, so existing damage is visible. The wording must not overstate the
@@ -951,4 +963,19 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
   fs.rmSync(path.join(dir, "QUESTIONS.md"));
   fs.writeFileSync(path.join(dir, "PLANS.md"), "## Planned\n\n```md\n## Done\n## Done\n```\n");
   assert.equal(checkBacklogHeadings(dir).level, "ok");
+});
+
+test("checkBacklogHeadings names an unreadable backlog file and still scans the readable ones", () => {
+  // A directory where the file belongs: existsSync passes, readFileSync throws EISDIR. The
+  // unreadable file is reported, not swallowed — its duplicate headings (if any) are now
+  // invisible to every reader — and the scan continues, so one damaged file cannot mask
+  // the damage in the readable ones.
+  const dir = tmpdir("doctor-headings-unreadable-");
+  fs.mkdirSync(path.join(dir, "PLANS.md"));
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "## Open\n\n## Open\n\n## Fixed\n");
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"), "## Open\n");
+  const r = checkBacklogHeadings(dir);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /PLANS\.md \(unreadable\)/);
+  assert.match(r.detail, /BUGS\.md "## Open"/);
 });
