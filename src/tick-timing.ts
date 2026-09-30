@@ -107,15 +107,6 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
   });
 }
 
-/** One poll of the fleet-wide backend-failure hold (src/fleet-hold.ts): gather each
- * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
- * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
- * timeout, server, and model-load kinds) — every role's, the director's included, since its
- * failures are the same provider's evidence — step the pure gate, and log exactly one event
- * per crossing, like the budget gate's: `rate_limit_hold` on the way in (which kind, which
- * roles tripped it, for how long, and how many relapses deep it is) and `rate_limit_resumed`
- * when it re-opens at its own deadline. Returns the new hold for the caller to keep. Exported
- * as a unit-test seam, like runTimedRoleTick above. */
 /** A runner as the hold poll reads it: the role and its two episodic observations, both
  * optional (a runner with neither simply contributes nothing). Structural, so tests stand in
  * plain objects for the runner — its real getters are readonly, and only these fields are
@@ -126,6 +117,15 @@ export type HoldInputs = {
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 };
 
+/** One poll of the fleet-wide backend-failure hold (src/fleet-hold.ts): gather each
+ * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
+ * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
+ * timeout, server, and model-load kinds) — every role's, the director's included, since its
+ * failures are the same provider's evidence — step the pure gate, and log exactly one event
+ * per crossing, like the budget gate's: `rate_limit_hold` on the way in (which kind, which
+ * roles tripped it, for how long, and how many relapses deep it is) and `rate_limit_resumed`
+ * when it re-opens at its own deadline. Returns the new hold for the caller to keep. Exported
+ * as a unit-test seam, like runTimedRoleTick above. */
 export function pollFleetHold(
   root: string,
   prev: FleetHold,

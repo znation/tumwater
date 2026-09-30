@@ -112,13 +112,6 @@ type PromptArgs =
   | { mode: "list"; role: string | null }
   | { mode: "cancel"; role: string | null; position: number };
 
-/** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
- * positionals are free-form prompt content — but a double-dash token must be a real flag
- * (`--role <id>`, `--list`, `--cancel <n>`), or it would be baked into the queued prompt (the
- * same class of bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues
- * "--foo text"). Single-dash positionals remain prompt content. `--list` and `--cancel` are
- * mutually exclusive and may not combine with positional text; `--role` is accepted in every
- * mode (PLANS.md "Per-role prompts 1/2") and is never prompt content. */
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
  * equals-form refusal inside it (ROLE_FLAG rides in with its shared missing-value wording). */
 const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
@@ -127,6 +120,13 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--cancel"], value: true, valueName: "<n>" },
 ];
 
+/** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
+ * positionals are free-form prompt content — but a double-dash token must be a real flag
+ * (`--role <id>`, `--list`, `--cancel <n>`), or it would be baked into the queued prompt (the
+ * same class of bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues
+ * "--foo text"). Single-dash positionals remain prompt content. `--list` and `--cancel` are
+ * mutually exclusive and may not combine with positional text; `--role` is accepted in every
+ * mode (PLANS.md "Per-role prompts 1/2") and is never prompt content. */
 export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
     // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.

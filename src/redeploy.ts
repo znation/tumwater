@@ -586,8 +586,6 @@ export class Redeployer {
   }
 }
 
-/** The production Redeployer for `root`, or null when the running dist carries no build stamp
- * (compiled with a bare tsc): then provenance is unknown and there is nothing to compare. */
 /** The redeployer's production effects, bound to one repo: the mirror worktree both the green
  * check and the compile run in, the baseline check that reads the live config per call, the
  * staged compile, and the dist swap. Extracted from createRedeployer so the wiring itself is
@@ -620,6 +618,8 @@ export function redeployDeps(
   };
 }
 
+/** The production Redeployer for `root`, or null when the running dist carries no build stamp
+ * (compiled with a bare tsc): then provenance is unknown and there is nothing to compare. */
 export async function createRedeployer(
   root: string,
   log: (event: RedeployEvent) => void,
