@@ -226,9 +226,15 @@ async function main(): Promise<void> {
       await cmdHistory(root, args);
       break;
     case "diff": {
-      // No requireReadyRepo gate: an absent worktree degrades to a `no worktree for <role>`
-      // line (exit 0), so the command answers in any directory — report's rationale.
+      // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
+      // (no git, not a repository, no tumwater.json, no commits) has no fleet to ask about,
+      // and the change view's own degradation would misreport that as "main branch <name>
+      // does not exist" — so the shared readiness wording answers here, like every sibling
+      // command. Past the gate an absent worktree still degrades to a `no worktree for
+      // <role>` line (exit 0), so the command answers in any initialized directory —
+      // report's rationale.
       rejectUnknownArgs("diff", args, [ROLE_FLAG, { names: ["--json"] }]);
+      await requireReadyRepo(root);
       // Absent --role is the fleet-wide form: one line per loop holding pending work
       // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
       // already failed above). A named role keeps the full per-role view.

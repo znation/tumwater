@@ -5,9 +5,10 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
+import { commitIn, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { ROLE_VALUE_ERROR } from "../src/cli-args.js";
+import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
 import { allRoleIds } from "../src/roles.js";
 
 // The `diff` command: the change a loop holds — its branch's unlanded commits (with the
@@ -107,6 +108,25 @@ test("diff fails fast on an empty or unknown --role and rejects unknown flags", 
   const stray = await cli(repo, "diff", "--role", "feature", "--wat");
   assert.equal(stray.code, 1);
   assert.ok(stray.stderr.includes("--wat"));
+});
+
+test("diff in a directory tumwater cannot read yet names the readiness problem, not the branch", async () => {
+  // Before the repo gate, both views degraded to the change collector's no-base line —
+  // "main branch main does not exist" — which misreports a missing/never-initialized repo
+  // as a missing branch. The shared readiness wording answers instead, like every sibling
+  // command; the absent-worktree degradation past the gate keeps its exit-0 line above.
+  const notRepo = await cli(tmpdir("diff-not-a-repo-"), "diff");
+  assert.equal(notRepo.code, 1);
+  assert.ok(notRepo.stderr.includes(NOT_A_REPO_MESSAGE));
+
+  const notRepoRole = await cli(tmpdir("diff-not-a-repo-"), "diff", "--role", "feature");
+  assert.equal(notRepoRole.code, 1);
+  assert.ok(notRepoRole.stderr.includes(NOT_A_REPO_MESSAGE));
+
+  // A git repo with no tumwater.json: the init hint, not a branch complaint.
+  const uninitialized = await cli(makeRepo(), "diff");
+  assert.equal(uninitialized.code, 1);
+  assert.ok(uninitialized.stderr.includes(NOT_INITIALIZED_MESSAGE));
 });
 
 test("a configured baseBranch is the diff's baseline, not the checked-out branch", async () => {
