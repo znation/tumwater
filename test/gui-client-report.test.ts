@@ -67,16 +67,23 @@ function makeDom() {
   };
   const win = { innerWidth: 1000, innerHeight: 768 };
   class ElementShim {}
+  // The served clickClosest (gui-client.ts's click-delegate region) narrowed to this shim's
+  // Element class, so the region's call resolves the way the browser resolves it.
+  const clickClosest = (ev: { target?: unknown }, selector: string): unknown =>
+    ev.target instanceof ElementShim
+      ? (ev.target as { closest(sel: string): unknown }).closest(selector)
+      : null;
   const body = new Function(
     "document",
     "window",
     "Element",
+    "clickClosest",
     `${GUI_CLIENT_REPORT_JS.match(/\/\/ report-tip:start\n([\s\S]*?)\n  \/\/ report-tip:end/)![1]}\nreturn { attachReportTip, hideReportTip };`,
-  ) as (doc: unknown, win: unknown, element: unknown) => {
+  ) as (doc: unknown, win: unknown, element: unknown, clickClosest: unknown) => {
     attachReportTip(): void;
     hideReportTip(): void;
   };
-  const api = body(doc, win, ElementShim);
+  const api = body(doc, win, ElementShim, clickClosest);
 
   const panel = makeEl("report");
   created.push(panel);

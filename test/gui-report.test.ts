@@ -150,7 +150,11 @@ test("the report charts carry a cursor-following hover label", async () => {
   // The label is each segment's own <title> — never re-derived — read off the #report
   // container, which re-renders its content but is never replaced, so one attach at start-up
   // survives every render.
-  assert.match(GUI_PAGE, /ev\.target instanceof Element \? ev\.target\.closest\("rect"\) : null/);
+  // The rect narrowing routes through clickClosest — the one home of the
+  // instanceof-Element guard every delegated handler shares (gui-client.ts's
+  // click-delegate region), which the page defines beside onClick.
+  assert.match(GUI_PAGE, /const target = clickClosest\(ev, "rect"\);/);
+  assert.match(GUI_PAGE, /function clickClosest\(ev, selector\) \{[\s\S]*?ev\.target instanceof Element/);
   assert.match(GUI_PAGE, /target\.querySelector\("title"\)\?\.textContent/);
   assert.match(GUI_PAGE, /attachReportTip\(\) \{\n    const panel = document\.getElementById\("report"\);[\s\S]*?panel\.addEventListener\("pointermove", /);
   assert.match(GUI_PAGE, /panel\.addEventListener\("pointerleave", /);

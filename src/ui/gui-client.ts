@@ -144,6 +144,15 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
       if (t) fn(t, ev);
     });
   }
+  // The Element a delegated click landed on, narrowed by closest(selector): null when the
+  // click's target is not an Element (a text node, say) or nothing matches. One home for the
+  // instanceof-Element guard every per-element delegated handler on the page needs before it
+  // can read ev.target (the same pitfall onClick guards for document-level handlers), so the
+  // guard and the narrowing cannot drift per handler.
+  function clickClosest(ev, selector) {
+    const t = ev.target instanceof Element ? ev.target : null;
+    return t ? t.closest(selector) : null;
+  }
   // click-delegate:end
   const pill = (info) => "<span class='pill t-" + info.tone + "'><span class='dot" + (info.live ? " live" : "") + "'></span>" + esc(info.label) + "</span>";
   // Repaint a panel only when its markup changed: an idle fleet's payload is identical poll

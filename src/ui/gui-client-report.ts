@@ -144,7 +144,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function attachReportTip() {
     const panel = document.getElementById("report");
     panel.addEventListener("pointermove", (ev) => {
-      const target = ev.target instanceof Element ? ev.target.closest("rect") : null;
+      const target = clickClosest(ev, "rect");
       const title = target ? target.querySelector("title")?.textContent : "";
       if (!title) { hideReportTip(); return; }
       const tip = reportTipElement();
@@ -242,7 +242,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   document.getElementById("report").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("[data-days]") : null;
+    const b = clickClosest(ev, "[data-days]");
     if (b) {
       usageDays = Number(b.dataset.days);
       store("usage-days", String(usageDays));
@@ -252,7 +252,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     if (ev.target instanceof Element && ev.target.closest("#usagerefresh")) fetchReport();
   });
   document.getElementById("failures").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("[data-days]") : null;
+    const b = clickClosest(ev, "[data-days]");
     if (b) {
       failDays = Number(b.dataset.days);
       store("fail-days", String(failDays));

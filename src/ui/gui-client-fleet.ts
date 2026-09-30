@@ -192,7 +192,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     paintPanel("backlog", html);
   }
   $("backlogtabs").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("button[data-tab]") : null;
+    const b = clickClosest(ev, "button[data-tab]");
     if (b) setBacklogTab(b.dataset.tab);
   });
   $("backlog").addEventListener("click", async (ev) => {
@@ -233,7 +233,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
   }
   $("feedfilter").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("button[data-filter]") : null;
+    const b = clickClosest(ev, "button[data-filter]");
     if (!b) return;
     feedFilter = b.dataset.filter;
     store("feed", feedFilter);

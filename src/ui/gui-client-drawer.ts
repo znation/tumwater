@@ -207,7 +207,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   $("scrim").addEventListener("click", closeDrawer);
   $("drawer").addEventListener("click", (ev) => {
-    const b = ev.target instanceof Element ? ev.target.closest("button.rowaction") : null;
+    const b = clickClosest(ev, "button.rowaction");
     if (b) rowAction(b.dataset.action, b.dataset.role);
   });
 `;
