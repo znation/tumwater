@@ -63,23 +63,8 @@ export async function compileStaged(
   try {
     await execFileAsync(execPath, args, opts);
   } catch (err) {
-    const e = err as { stdout?: string; stderr?: string; killed?: boolean; code?: unknown; signal?: unknown };
-    if (e.killed) return { ok: false, detail: `tsc timed out after ${timeoutMs / 1000}s` };
-    const tail = clipBuildTail(`${e.stdout ?? ""}${e.stderr ?? ""}`).slice(-3).join(" | ");
-    // A numeric exit code is the one shape that is a verdict about the tree: tsc ran and chose
-    // it. Everything else is a rejection — naming the commit as the thing that failed tells the
-    // operator nothing and latching it pins the fleet on the stale build even after the
-    // environment recovers (BUGS.md 2026-09-28): a spawn failure (a string code — ENOENT and
-    // friends, whatever output rode the error object with it) and a tsc that died by signal (a
-    // null code) never chose an exit, so neither may read as one.
-    if (typeof e.code === "number")
-      return { ok: false, detail: `tsc exited ${String(e.code)}${tail ? `: ${tail}` : ""}` };
-    if (e.signal)
-      return {
-        ok: false,
-        rejected: true,
-        detail: `tsc died by signal ${String(e.signal)} — no compiler verdict${tail ? `: ${tail}` : ""}`,
-      };
+    const verdict = tscVerdict(err, timeoutMs);
+    if (verdict) return verdict;
     // The spawn itself never produced a process. Name every input that did not exist at
     // failure time — with no child output, that existence check is the only evidence the
     // error carries, and it is what turns the next live `tsc exited ENOENT` (BUGS.md
@@ -89,50 +74,54 @@ export async function compileStaged(
     // under it (an upgrade while the fleet stays up leaves process.execPath naming a file that
     // no longer exists, while every PATH-resolved spawn — git, npm, pi — keeps working). tsc's
     // own shebang resolves a live node through PATH at spawn time, so run it directly.
-    if (!fs.existsSync(execPath) && fs.existsSync(mirrorWt)) {
-      try {
-        await execFileAsync(tsc, tscArgs, opts);
-      } catch (fallbackErr) {
-        const fe = fallbackErr as {
-          stdout?: string;
-          stderr?: string;
-          killed?: boolean;
-          code?: unknown;
-          signal?: unknown;
-        };
-        if (fe.killed) return { ok: false, detail: `tsc timed out after ${timeoutMs / 1000}s` };
-        const ftail = clipBuildTail(`${fe.stdout ?? ""}${fe.stderr ?? ""}`).slice(-3).join(" | ");
-        // The fallback obeys the same invariant as the primary spawn: a numeric exit is the
-        // fallback tsc's own verdict about the tree and must never read as a rejection — only
-        // a spawn that never produced a process is one. Misclassifying a real compiler exit
-        // here would make the redeployer drop a genuinely failing head and re-attempt it
-        // forever instead of blocking on it (review objection 2026-09-29).
-        if (typeof fe.code === "number")
-          return { ok: false, detail: `tsc exited ${String(fe.code)}${ftail ? `: ${ftail}` : ""}` };
-        if (fe.signal)
-          return {
-            ok: false,
-            rejected: true,
-            detail: `tsc died by signal ${String(fe.signal)} — no compiler verdict${ftail ? `: ${ftail}` : ""}`,
-          };
-        return {
-          ok: false,
-          rejected: true,
-          detail:
-            `could not start the compile: ${errorMessage(err)}${missing}` +
-            `; the shebang fallback also failed: ${errorMessage(fallbackErr)}`,
-        };
-      }
-    } else {
+    if (fs.existsSync(execPath) || !fs.existsSync(mirrorWt))
       return {
         ok: false,
         rejected: true,
         detail: `could not start the compile: ${errorMessage(err)}${missing}`,
       };
+    try {
+      await execFileAsync(tsc, tscArgs, opts);
+    } catch (fallbackErr) {
+      const verdict = tscVerdict(fallbackErr, timeoutMs);
+      if (verdict) return verdict;
+      return {
+        ok: false,
+        rejected: true,
+        detail:
+          `could not start the compile: ${errorMessage(err)}${missing}` +
+          `; the shebang fallback also failed: ${errorMessage(fallbackErr)}`,
+      };
     }
   }
   const stamped = await stampBuild(root, staged, mainHead);
   return stamped ? { ok: true, detail: "" } : { ok: false, detail: "could not stamp the compiled build" };
+}
+
+/** Classify one failed compile spawn into its terminal CompileResult, or null when the error
+ * carries no exit at all — a spawn failure the caller still has to diagnose. Shared by the
+ * primary and shebang-fallback spawns so the two classification ladders cannot drift: a
+ * numeric exit code is the one shape that is a verdict about the tree (tsc ran and chose it),
+ * so latching anything else as a verdict pins the fleet on the stale build even after the
+ * environment recovers (BUGS.md 2026-09-28), and misclassifying a real exit as a rejection
+ * makes the redeployer drop a genuinely failing head and re-attempt it forever instead of
+ * blocking on it (review objection 2026-09-29). A timeout (killed) and a death by signal are
+ * the other two outcomes that say something; a string code (ENOENT and friends, whatever
+ * output rode the error object with it) and a null code fall through as no-verdict
+ * rejections. */
+function tscVerdict(err: unknown, timeoutMs: number): CompileResult | null {
+  const e = err as { stdout?: string; stderr?: string; killed?: boolean; code?: unknown; signal?: unknown };
+  if (e.killed) return { ok: false, detail: `tsc timed out after ${timeoutMs / 1000}s` };
+  const tail = clipBuildTail(`${e.stdout ?? ""}${e.stderr ?? ""}`).slice(-3).join(" | ");
+  if (typeof e.code === "number")
+    return { ok: false, detail: `tsc exited ${String(e.code)}${tail ? `: ${tail}` : ""}` };
+  if (e.signal)
+    return {
+      ok: false,
+      rejected: true,
+      detail: `tsc died by signal ${String(e.signal)} — no compiler verdict${tail ? `: ${tail}` : ""}`,
+    };
+  return null;
 }
 
 /** Which of the compile spawn's inputs did not exist at failure time: the interpreter, the
