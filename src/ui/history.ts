@@ -117,7 +117,19 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     return;
   }
   if (rows.length === 0) {
-    say(sinceMs === null ? "no ticks yet" : `no ticks in ${durationLabel(sinceMs)}`);
+    // A grep that matched nothing must not borrow the empty-log prose: `no ticks yet` and
+    // `no ticks in 2h` are statements about the LOG and the WINDOW, and both are false when
+    // rows were scanned and filtered out — the operator would read a quiet fleet where the
+    // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
+    // matching "<pattern>"`, src/ui/log-commands.ts) names the pattern instead; --json stays
+    // a bare {"rows":[]} document above, never prose in either form.
+    say(
+      grepPattern !== null
+        ? `no ticks matching "${grepPattern}"`
+        : sinceMs === null
+          ? "no ticks yet"
+          : `no ticks in ${durationLabel(sinceMs)}`,
+    );
     return;
   }
   // Widths in terminal display columns (displayWidth), for the same reason the cells pad

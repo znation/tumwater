@@ -454,10 +454,11 @@ test("history --grep keeps only rows whose rendered line matches, case-insensiti
   assert.match(lines[0]!, /feature\s+#7\s+changed/);
   assert.match(lines[0]!, /added a widget/);
 
-  // An empty match is the existing empty-log prose, unchanged in wording.
+  // An empty match names the pattern, never the empty-log prose: "no ticks yet" would be a
+  // false statement about a log this command just scanned (the logs --grep rule).
   const none = await cli(repo, "history", "--grep", "no such text");
   assert.equal(none.code, 0);
-  assert.equal(none.stdout, "no ticks yet\n");
+  assert.equal(none.stdout, 'no ticks matching "no such text"\n');
 
   // The stable event id is greppable: the haystack prefixes the raw type.
   const type = await cli(repo, "history", "--grep", "tick_end");
@@ -479,10 +480,11 @@ test("history --grep treats a flag-shaped pattern as text, not a flag", async ()
 test("history --grep composes with -n, which bounds the scanned window", async () => {
   const repo = await seededHistoryRepo();
 
-  // The last two rows are bugfix #9 and clean #3: feature #7 lies outside the scan.
+  // The last two rows are bugfix #9 and clean #3: feature #7 lies outside the scan — a
+  // scanned-but-unmatched window says so, it does not claim the log was empty.
   const narrow = await cli(repo, "history", "-n", "2", "--grep", "widget");
   assert.equal(narrow.code, 0);
-  assert.equal(narrow.stdout, "no ticks yet\n");
+  assert.equal(narrow.stdout, 'no ticks matching "widget"\n');
 
   const wide = await cli(repo, "history", "-n", "3", "--grep", "widget");
   assert.equal(wide.code, 0);
@@ -498,7 +500,7 @@ test("history --grep composes with --role", async () => {
 
   const scoped = await cli(repo, "history", "--role", "feature", "--grep", "no_change");
   assert.equal(scoped.code, 0);
-  assert.equal(scoped.stdout, "no ticks yet\n");
+  assert.equal(scoped.stdout, 'no ticks matching "no_change"\n');
 });
 
 test("history --since --grep filters the window's rows", async () => {
@@ -511,10 +513,16 @@ test("history --since --grep filters the window's rows", async () => {
   assert.equal(r.stdout.trim().split("\n").length, 1);
   assert.match(r.stdout, /feature\s+#3/);
 
-  // The 2-day-old tick sits outside the window, so its detail matches nothing here.
+  // The 2-day-old tick sits outside the window, so its detail matches nothing here — the
+  // empty-match wording names the pattern, not a window the log disproves.
   const outside = await cli(repo, "history", "--since", "1h", "--grep", "old work");
   assert.equal(outside.code, 0);
-  assert.equal(outside.stdout, "no ticks in 1h\n");
+  assert.equal(outside.stdout, 'no ticks matching "old work"\n');
+
+  // Without --grep the empty window keeps its own prose — the pattern branch never leaks.
+  const plain = await cli(repo, "history", "--since", "1s");
+  assert.equal(plain.code, 0);
+  assert.equal(plain.stdout, "no ticks in 1s\n");
 });
 
 test("history --grep --json filters the payload and stays a document when empty", async () => {
