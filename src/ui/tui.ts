@@ -358,7 +358,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       // They call the same marker-writing/submit cores the CLI's --role flags do, so the
       // surfaces cannot drift on marker format, idempotence, or wording. Guarded to the
       // transcript views and out of budget-edit mode; everywhere else the keys fall through
-      // (applyKey drops ctrl-key presses, so they stay inert and never edit the prompt line).
+      // to applyKey, where only Ctrl+U edits the prompt line (kill to line start) and the
+      // rest of these ctrl-key presses stay inert.
       // Every branch is a disk write that can fail (a lock timeout, a torn fs), and an
       // unguarded throw would escape this keypress handler and kill the TUI — flash the
       // reason instead, the same contract the prompt-submit path below honors.

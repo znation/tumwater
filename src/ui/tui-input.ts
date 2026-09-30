@@ -24,12 +24,37 @@ function snapCursor(text: string, cursor: number): number {
   return cutSplitsSurrogatePair(text, clamp) ? clamp - 1 : clamp;
 }
 
+/** The character immediately before index `i`, as its whole [start, i) span: a surrogate
+ * pair is never split, so the backward word-scan killWordBefore runs on always steps a
+ * whole character and its boundary lands where a cut is safe. Null at the text's start. */
+function prevChar(text: string, i: number): { start: number; ch: string } | null {
+  if (i <= 0) return null;
+  const start = cutSplitsSurrogatePair(text, i - 1) ? i - 2 : i - 1;
+  return { start, ch: text.slice(start, i) };
+}
+
+/** Backward word kill (readline's unix-word-rubout, Alt+Backspace): whitespace immediately
+ * before the cursor goes first, then the non-whitespace token that precedes it — on
+ * "configure the  loop" it kills "  loop", leaving "configure the". The whitespace-first
+ * skip is what makes a second press eat the separator between tokens, so repeated presses
+ * peel words off one at a time instead of doing nothing on the spaces between them.
+ * Boundaries come from prevChar, so an astral token is killed whole. */
+function killWordBefore(text: string, c: number): { text: string; cursor: number } {
+  let i = c;
+  for (let p = prevChar(text, i); p !== null && /\s/.test(p.ch); p = prevChar(text, i)) i = p.start;
+  for (let p = prevChar(text, i); p !== null && !/\s/.test(p.ch); p = prevChar(text, i)) i = p.start;
+  return { text: text.slice(0, i) + text.slice(c), cursor: i };
+}
+
 /** Apply one keypress to the prompt text (pure, so it is unit-testable without a TTY).
  * Printable characters insert at the cursor — including multi-character strings readline
  * delivers for IME-composed input, which advance the cursor by their full length; backspace
  * deletes before it, delete after it, left/right move it, and home/end jump to the text's
  * start/end (the readline navigation an operator expects while editing a long prompt).
- * Control/meta combinations are ignored. Returns the new state; an out-of-range cursor is
+ * Two readline kill keys work too: Alt+Backspace kills the word before the cursor and
+ * Ctrl+U kills from the line start to it (the two edits a long prompt asks for most).
+ * Every other control/meta combination is ignored — Ctrl+W cannot join the kill set
+ * because the TUI's transcript views already bind it to per-loop wake (tui.ts). Returns the new state; an out-of-range cursor is
  * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when the unit they would cut is one
  * half of a surrogate pair (an astral character such as emoji), both units go together so no
  * lone surrogate — which terminals render as garbage — is ever left behind (the same
@@ -55,6 +80,7 @@ export function applyKey(
       return { text, cursor: cutSplitsSurrogatePair(text, n) ? n + 1 : n };
     }
     case "backspace":
+      if (key.meta) return killWordBefore(text, c); // Alt+Backspace: kill the previous word
       if (c === 0) return { text, cursor: 0 };
       // The character before the cursor is a surrogate pair [c-2, c-1]: delete both units.
       if (cutSplitsSurrogatePair(text, c - 1)) {
@@ -65,6 +91,11 @@ export function applyKey(
       return { text, cursor: 0 };
     case "end":
       return { text, cursor: text.length };
+    case "u":
+      // Ctrl+U (readline's unix-line-discard) kills from the line start to the cursor; a
+      // plain "u" breaks here and reaches the printable insert branch below, unchanged.
+      if (key.ctrl) return { text: text.slice(c), cursor: 0 };
+      break;
     case "delete":
       if (c >= text.length) return { text, cursor: c };
       // The character at the cursor is a surrogate pair [c, c+1]: delete both units.

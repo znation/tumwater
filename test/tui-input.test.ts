@@ -112,6 +112,48 @@ test("a typo is fixable without retyping the rest of the prompt", () => {
   assert.deepEqual(state, { text: "dark mode", cursor: 3 });
 });
 
+test("applyKey kills the word before the cursor with Alt+Backspace", () => {
+  // Readline's unix-word-rubout shape: the token before the cursor goes, and the cursor
+  // ends up just after the separator that preceded it.
+  const first = applyKey("configure the loop", 18, undefined, key("backspace", { meta: true }));
+  assert.deepEqual(first, { text: "configure the ", cursor: 14 });
+  // A second press eats the separator space plus the previous token.
+  assert.deepEqual(applyKey(first.text, first.cursor, undefined, key("backspace", { meta: true })), {
+    text: "configure ",
+    cursor: 10,
+  });
+  // Mid-word the kill starts at the cursor, not the word's end: only "wo" goes.
+  assert.deepEqual(applyKey("hello world", 8, undefined, key("backspace", { meta: true })), {
+    text: "hello rld",
+    cursor: 6,
+  });
+  // Trailing whitespace before the cursor: the run of spaces and the token before them
+  // go together — the same press that peels "word" off "word   " would otherwise strand
+  // the separator for a second press that kills nothing.
+  assert.deepEqual(applyKey("ab   ", 5, undefined, key("backspace", { meta: true })), {
+    text: "",
+    cursor: 0,
+  });
+  // No-op at the line start, like plain backspace.
+  assert.deepEqual(applyKey("hi", 0, undefined, key("backspace", { meta: true })), { text: "hi", cursor: 0 });
+  // An astral token is killed whole — no lone surrogate is ever left behind.
+  const emoji = "\u{1f600}";
+  assert.deepEqual(applyKey(`${emoji} tail`, 7, undefined, key("backspace", { meta: true })), {
+    text: `${emoji} `,
+    cursor: 3,
+  });
+});
+
+test("applyKey kills from the line start to the cursor with Ctrl+U", () => {
+  assert.deepEqual(applyKey("hello world", 5, "\x15", key("u", { ctrl: true })), { text: " world", cursor: 0 });
+  // Everything dies when the cursor sits at the end.
+  assert.deepEqual(applyKey("all gone", 8, "\x15", key("u", { ctrl: true })), { text: "", cursor: 0 });
+  // No-op at the line start.
+  assert.deepEqual(applyKey("hi", 0, "\x15", key("u", { ctrl: true })), { text: "hi", cursor: 0 });
+  // A plain "u" still types: the kill is bound to the ctrl spelling only.
+  assert.deepEqual(applyKey("heo", 2, "u", key("u")), { text: "heuo", cursor: 3 });
+});
+
 test("applyKey ignores control and meta characters but clamps a stale cursor", () => {
   assert.deepEqual(applyKey("ab", 1, "\x03", key("c", { ctrl: true })), { text: "ab", cursor: 1 });
   assert.deepEqual(applyKey("ab", 1, "é", key("e", { meta: true })), { text: "ab", cursor: 1 });
