@@ -373,6 +373,32 @@ for (const main of ["green", "red"] as const) {
   });
 }
 
+test("an unverified red in-lock check — the run timed out — keeps the pin without a strike", async () => {
+  // The landing half of BUGS.md 2026-09-30: at the merge scopes a timed-out check made no
+  // verdict about the tree, so it is not a strike against the patch (the red-attribution
+  // helper's own unverified arm is pinned in attribute-red-check.test.ts — this drives the
+  // same weather through a real landing, where the in-lock check's timeout is remapped to
+  // unverified before landingCheckRed ever sees it).
+  const { root, sha } = await pinnedFixture();
+  const tip = advanceMain(root, `main-unverified-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  const state = freshLoopState(ROLE);
+  const { ctx, calls } = makeCtx(root, state);
+  ctx.config = { ...ctx.config, check: { command: "sleep 5", timeoutSeconds: 1 } };
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "an unverified red is retriable, like any merge_blocked");
+  assert.equal(await refSha(root, REF), sha, "the pin stays for the next attempt");
+  assert.equal(state.landingCheckFailures, undefined, "no strike: the check never judged the tree");
+  assert.match(state.lastError ?? "", /the tree is unverified/, "the state names the verdict-less run, not a test failure");
+  assert.equal(mainSha(root), tip, "nothing landed");
+
+  // A second attempt is the same weather: still no strike, still recoverable — an unverified
+  // check can never accumulate into the strike-cap attribution that deletes the pin.
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked");
+  assert.equal(state.landingCheckFailures, undefined, "the streak never opens on an unverified red");
+  assert.equal(await refSha(root, REF), sha);
+  assert.equal(calls.length, 0, "no model run");
+});
+
 test("a failing pre-check on a red main keeps the pin, records no rejection, and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
   declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
