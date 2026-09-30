@@ -66,7 +66,7 @@ export function fenceTracker(): { inside(line: string): boolean } {
  * reader of a `## ` section (backlog entry parsing here, the usage report's Done/Fixed date
  * scan in src/report-data.ts) walks its section through this, so two independent readers can
  * never disagree about the boundary. */
-export function sectionLines(md: string, sectionTitle: string): string[] {
+function sectionLines(md: string, sectionTitle: string): string[] {
   const lines: string[] = [];
   let inSection = false;
   const fenced = fenceTracker();
@@ -110,6 +110,91 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
   }
   close(); // An entry at the end of file ends with EOF, not a heading.
   return entries;
+}
+
+/** The completion dates ("YYYY-MM-DD") of the entries inside one `## <sectionTitle>` section.
+ * An entry starts at a `### ` heading or `- ` bullet line and ends at the next such line; only
+ * its METADATA is matched for dates — never its body, so a body's "**Done 2026-…**" recap line
+ * (or a prose cross-reference like "(done 2026-…)") cannot double-count. Fenced lines are
+ * body content, never entry starts — an entry quoting a markdown template with a
+ * `### … (fixed DATE)` heading inside must not count as a completion of its own. Metadata =
+ * the start line plus, for `### ` headings only, continuation lines up to and including the
+ * first line ending in `)` (capped at 3 lines) — wrapped headings carry their date on the
+ * second line, while `- ` epitaphs are single-line by construction, so a bullet's own line is
+ * its whole metadata (a following prose paragraph is body, never matched). Joining with a
+ * space keeps "done\n2026-…" matchable. Entries without a parseable date are skipped.
+ *
+ * A `- ` line needs more than a date to be an entry: the sections also hold body bullets (an
+ * entry's repro steps, a plan's task breakdown), and a body bullet that merely mentions a
+ * completion — "- same shape as the sibling bug (fixed 2026-09-24)" — is not one. The epitaph
+ * shape separates them: an epitaph always closes its line with a parenthetical that records
+ * both the completion date and the landing commit ("(planned …, done …; commit abc1234)"),
+ * so a bullet counts only when its trailing `(…)` group carries the date AND a `commit`
+ * reference; a heading entry keeps the plain metadata match (headings are the primary entry
+ * format and always close their metadata parenthetical by convention). */
+export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
+  const dates: string[] = [];
+  // A section always starts at its non-fenced `## ` heading, so a fresh tracker is in sync
+  // with the document's fence state here and for the whole section.
+  const fenced = fenceTracker();
+  const lines = sectionLines(md, sectionTitle).filter((line) => !fenced.inside(line));
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
+    const meta: string[] = [line];
+    let closed = line.endsWith(")");
+    let j = i + 1;
+    // Continuation is a heading-only concern (wrapped headings); bullets are single-line.
+    while (line.startsWith("### ") && meta.length < 3 && j < lines.length && !closed) {
+      const next = lines[j] ?? "";
+      if (next.startsWith("### ") || next.startsWith("- ")) break; // The entry ends at the next start.
+      meta.push(next);
+      j++;
+      closed = next.endsWith(")");
+    }
+    let date: string | null = null;
+    if (line.startsWith("- ")) {
+      // Epitaph guard (see the doc comment): the date must live in the line's trailing
+      // parenthetical beside a commit reference, or the bullet is body text, not an entry.
+      // Within the parenthetical the completion is the LAST dated verb, matching the heading
+      // branch: a decomposition cross-reference ("decomposed from the sibling bug fixed
+      // <date>, fixed <date>") precedes the entry's own completion record.
+      const tail = trailingParenthetical(line);
+      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+      const all = [...tail.matchAll(global)];
+      const m = all[all.length - 1] ?? null;
+      if (m?.[1] && /\bcommits?\b/.test(tail)) date = m[1];
+    } else {
+      // The entry's completion is its heading meta's LAST dated verb, not the first: found-by,
+      // decomposition, and sibling mentions ("decomposed from the X bug fixed <date>") all
+      // precede the completion record, so first-match let a sibling's date steal the entry's
+      // count onto the wrong day (BUGS.md 2026-09-29).
+      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+      const all = [...meta.join(" ").matchAll(global)];
+      date = all[all.length - 1]?.[1] ?? null;
+    }
+    if (date) dates.push(date);
+    i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
+  }
+  return dates;
+}
+
+/** A `- ` line's trailing parenthetical's inner text, nesting-aware: a backward scan from the
+ * line's closing ")" to its matching "(" returns the group's FULL inner text, so an epitaph
+ * that quotes a parenthetical of its own — "(planned …, done …; commit abc1234 (re-landed
+ * after review fix))" — still yields its date-bearing text. The previous flat `\([^()]*\)$`
+ * match saw only the innermost group ("" when the line ended in two closes) and silently
+ * dropped the epitaph's date from the day report (BUGS.md 2026-09-29). Unbalanced text (no
+ * matching open paren) yields "" — the guard then treats the bullet as body text, as before. */
+function trailingParenthetical(line: string): string {
+  if (!line.endsWith(")")) return "";
+  let depth = 0;
+  for (let i = line.length - 1; i >= 0; i--) {
+    const ch = line[i];
+    if (ch === ")") depth++;
+    else if (ch === "(" && --depth === 0) return line.slice(i + 1, -1);
+  }
+  return "";
 }
 
 /** Parsed sections keyed by file + section title (a future reader of a second section from the
