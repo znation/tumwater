@@ -428,6 +428,26 @@ function advanceMain(root: string, file: string, content: string): void {
   sh(root, "git", "commit", "-m", `main moves (${file})`);
 }
 
+/** Seed the 2026-09-25 duplicate-`## Done` conflict shape: the worktree commits a Planned
+ * Feature A, then main moves that entry to Done (the file's `## Planned` replaced by one
+ * `## Done` heading), so the branch's backlog commit rebases against a fully rewritten
+ * PLANS.md and a resolver's choice of where Feature B lands is what the gate judges. The
+ * exact bytes both sibling conflict tests stand on — the twin seed blocks they used to
+ * hand-roll — so the gate sees the document it always did. */
+function seedFeatureAPlannedToDone(root: string, wt: string): void {
+  fs.writeFileSync(
+    path.join(wt, "PLANS.md"),
+    "## Planned\n\n### Feature A (planned 2026-09-25)\n\n**Goal.** Work in progress.\n",
+  );
+  commitIn(wt, "seed the backlog");
+  // Main moves Feature A to Done: one new ## Done heading, ## Planned gone.
+  advanceMain(
+    root,
+    "PLANS.md",
+    "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n",
+  );
+}
+
 test("a rebase that rewrote the commits re-runs the declared check on the rebased tree before landing", async () => {
   const { root, wt } = await initializedWorktree();
   // The tool passes only when BOTH files exist — true of the post-rebase tree, false of the
@@ -606,17 +626,7 @@ test("a conflict resolution that duplicates ## Done is blocked with a warning, m
   // ## Done. The gate never saw this tree — the resolution happens after it, inside the
   // lock — so the in-lock re-check is the only guard.
   const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(
-    path.join(wt, "PLANS.md"),
-    "## Planned\n\n### Feature A (planned 2026-09-25)\n\n**Goal.** Work in progress.\n",
-  );
-  commitIn(wt, "seed the backlog");
-  // Main moves Feature A to Done: one new ## Done heading, ## Planned gone.
-  advanceMain(
-    root,
-    "PLANS.md",
-    "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n",
-  );
+  seedFeatureAPlannedToDone(root, wt);
   const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root, async (w) => {
     // "Keeps both sides": main's Done section plus the branch's plan under its own ## Done.
@@ -645,17 +655,7 @@ test("a conflict resolution that files a new plan under a single ## Done is bloc
   // plan below it strands the plan where no Planned reader looks. The in-lock re-check is the
   // site that catches conflict resolutions, so it must catch this one too.
   const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(
-    path.join(wt, "PLANS.md"),
-    "## Planned\n\n### Feature A (planned 2026-09-25)\n\n**Goal.** Work in progress.\n",
-  );
-  commitIn(wt, "seed the backlog");
-  // Main moves Feature A to Done — the file keeps a single ## Done heading.
-  advanceMain(
-    root,
-    "PLANS.md",
-    "## Done\n\n### Feature A (planned 2026-09-25, done 2026-09-26)\n\n**Goal.** Landed.\n",
-  );
+  seedFeatureAPlannedToDone(root, wt);
   const mainBefore = mainSha(root);
   const { ctx } = makeCtx(root, async (w) => {
     // The resolver keeps a Planned section (so the heading set is sound) but files the
