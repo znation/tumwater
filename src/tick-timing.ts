@@ -118,6 +118,22 @@ export type HoldInputs = {
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 };
 
+/** The HoldObservation list both fleet-wide failure polls step their reducer with, gathered
+ * from each runner's two episodic fields: lastRateLimit (stamped "rate-limit", carrying the
+ * server's retry-after when present) and lastBackendFailure. One copy of that flatMap so the
+ * two polls' observation sets cannot drift on shape or fields — the spread reads the same two
+ * fields the hold reads (its poll's own words), it simply does not use retry-after. */
+function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
+  return runners.flatMap((r) => [
+    ...(r.lastRateLimit
+      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
+      : []),
+    ...(r.lastBackendFailure
+      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      : []),
+  ]);
+}
+
 /** One poll of the fleet-wide backend-failure hold (src/fleet-hold.ts): gather each
  * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
  * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
@@ -133,14 +149,7 @@ export function pollFleetHold(
   runners: readonly HoldInputs[],
   now: number,
 ): FleetHold {
-  const observations: HoldObservation[] = runners.flatMap((r) => [
-    ...(r.lastRateLimit
-      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
-      : []),
-    ...(r.lastBackendFailure
-      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
-      : []),
-  ]);
+  const observations = holdObservations(runners);
   const next = fleetHold(prev, observations, now);
   if (prev.until === null && next.until !== null) {
     logEvent(root, {
@@ -214,14 +223,7 @@ export function pollFailureSpread(
   runners: readonly HoldInputs[],
   now: number,
 ): FailureSpread {
-  const observations: HoldObservation[] = runners.flatMap((r) => [
-    ...(r.lastRateLimit
-      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at }]
-      : []),
-    ...(r.lastBackendFailure
-      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
-      : []),
-  ]);
+  const observations = holdObservations(runners);
   const next = failureSpread(prev, observations, now);
   if (next.active && (!prev.active || next.kind !== prev.kind)) {
     const episode = next.recent.filter((o) => o.kind === next.kind);
