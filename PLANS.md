@@ -5,7 +5,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_Nothing planned yet._
+### `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30)
+
+**Goal.** An operator asking "which ticks touched the flaky test?" or "when did a loop last fail with a merge conflict?" has no filter over the tick table: `tumwater history` prints the last N rows or a `--since` window wholesale, while the event-log view (`logs --grep`, landed 2026-09-28) filters case-insensitively against the same rendered line the operator would otherwise read. Give history the same filter so both observing views answer substring questions the same way.
+
+**Approach.** Mirror `logs --grep`'s semantics exactly, in `cmdHistory` (src/ui/history.ts):
+
+- `--grep <text>` filters the row set case-insensitively as a substring against the WYSIWYG row text — the string `renderRow(row, widths)` produces, plus a prefix of the raw event type so stable ids (`tick_end`) are greppable too. Filter runs on the collected `TickRow[]` before rendering and before `--json` serialization (compose with `--json`: filtered rows, same `{rows}` payload).
+- Composes with everything history already has: `-n` bounds the **scanned** window, not the printed rows (grep shows only matching rows among the last N — the `logs --grep` rule); `--since` filters the window then greps; `--role` is a row filter and composes. No rival shapes to reject (history has no transcript view to collide with).
+- Parsing mirrors log-commands.ts's impersonation guard: with `--grep` present, drop the value's position from the flag scan (`rest`) so a pattern spelling a rival flag (`history --grep -n`) is text, not a flag; a valueless or empty `--grep` fails with wording shaped like `GREP_VALUE_ERROR` (src/ui/log-commands.ts) — "history --grep needs a pattern" — but as a local constant in history.ts, not an import, so the two views' wordings name themselves.
+- No change to `readTickRows`/`readTickRowsSince` (src/history-data.ts): filtering is a view concern over collected rows.
+- Extend the `tumwater history` stanza in `HELP` (src/help.ts) — the helpStanzas split derives `help history` from it, so the topic stays in sync automatically.
+
+**Files touched.** src/ui/history.ts (the flag, the filter, the error constant), src/help.ts (one stanza line), test/cli-history.test.ts (new cases).
+
+**Acceptance criteria.**
+1. `tumwater history --grep <text>` prints only rows whose rendered line (or `tick_end`) matches, case-insensitively; a pattern containing `--` (e.g. `--grep --since`) is treated as text.
+2. `--grep` composes with `-n` (scan-bounded), `--since` (window-filtered then grepped), `--role`, and `--json` (filtered payload, still `"rows":[]`-shaped when empty).
+3. `history --grep` with no value exits 1 with "history --grep needs a pattern"; an empty-match run prints the existing `no ticks yet` / `no ticks in <window>` lines, unchanged in wording.
+4. `tumwater help history` shows the new flag; the full `HELP` listing and the topic cannot disagree (derived).
+5. New tests in test/cli-history.test.ts cover: filter match/no-match, composition with `-n` and `--since` and `--json`, and the valueless-`--grep` failure — all against the existing fake-harness fixtures the file already builds.
+
+Size: one run — ~60 lines in history.ts, one help line, ~5 test cases.
 
 ## Done
 
