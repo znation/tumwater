@@ -1,4 +1,4 @@
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say } from "../cli-args.js";
 import { displayWidth, padToWidth, shortSpanPhrase } from "../text.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
@@ -60,19 +60,12 @@ export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
-  // both observing views answer substring questions the same way. A flag-shaped token sitting
-  // at the --grep value's position IS the pattern, not the flag it spells (`history --grep
-  // --since` greps for the text "--since"): every flag scan below therefore runs over `rest` —
-  // args with that one position removed — so the pattern cannot impersonate a rival flag and a
-  // rival check cannot misfire on the pattern. With no --grep, rest is args.
-  const grepFlag = args.indexOf("--grep");
-  const grepRaw = flagValue(args, "--grep");
-  const rest = grepFlag >= 0 ? args.filter((_, i) => i !== grepFlag + 1) : args;
-  let grepPattern: string | null = null;
-  if (grepRaw !== null) {
-    if (grepRaw === undefined || grepRaw === "") fail(HISTORY_GREP_VALUE_ERROR);
-    grepPattern = grepRaw;
-  }
+  // both observing views answer substring questions the same way. The flag scan itself — the
+  // value lookup, the `rest` construction that keeps a flag-shaped pattern (`history --grep
+  // --since` greps for the text "--since") from impersonating a rival flag, and the
+  // empty-value fail — is cli-args.ts's parseGrepFlag, the one home shared with logs. With no
+  // --grep, rest is args.
+  const { rest, pattern: grepPattern } = parseGrepFlag(args, HISTORY_GREP_VALUE_ERROR);
   const nRaw = flagValue(rest, "-n");
   // `--since <duration>` is the window-shaped view over the same tick record the -n view
   // dumps: a rival shape to -n, so they fail together naming both (the same rule and wording

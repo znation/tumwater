@@ -1,4 +1,4 @@
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say } from "../cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -44,20 +44,12 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // (review_rejected, land_failed) be filtered even where the rendering paraphrases them.
   // Rival shapes stay exclusive — --role swaps in a pi transcript rather than this event log
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
-  // rather than a window to filter — and each failure names both flags.
-  const grepFlag = args.indexOf("--grep");
-  const grepRaw = flagValue(args, "--grep");
-  let grepPattern: string | null = null;
-  let grepLower: string | null = null;
-  // A flag-shaped token sitting at the --grep value's position IS the pattern, not the flag it
-  // spells: `logs --grep -f` greps for the text "-f", and `--grep --since` greps for "--since".
-  // Every flag scan below therefore runs over `rest` — args with that one position removed — so
-  // the pattern cannot impersonate a rival flag (entering follow mode under `-f`) and a rival
-  // check cannot misfire on the pattern (rejecting a legitimate grep). With no --grep, rest is
-  // args unchanged and every scan behaves exactly as before. flagValue keeps doing the value
-  // lookup, but over `rest` from --since on: a pattern spelling a rival flag must not be read
-  // as that flag's value any more than it may be counted as the flag.
-  const rest = grepFlag >= 0 ? args.filter((_, i) => i !== grepFlag + 1) : args;
+  // rather than a window to filter — and each failure names both flags. The flag scan itself
+  // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
+  // impersonating a rival flag, and the empty-value fail) is cli-args.ts's parseGrepFlag,
+  // the one home shared with history's identical preamble.
+  const { rest, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
+  const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
   const follow = rest.includes("-f") || rest.includes("--follow");
   // `--json` switches the feed from formatEvent rendering to one JSON.stringify(e) per line —
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
@@ -68,13 +60,10 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // excluded with it).
   const json = rest.includes("--json");
   rejectRoleViewRival(rest, "--json", json);
-  if (grepRaw !== null) {
+  if (grepPattern !== null) {
     rejectRoleViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
       fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
-    if (grepRaw === undefined || grepRaw === "") fail(GREP_VALUE_ERROR);
-    grepPattern = grepRaw;
-    grepLower = grepRaw.toLowerCase();
   }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the

@@ -51,6 +51,25 @@ export function flagValue(args: string[], flag: string): string | null | undefin
   return i < 0 ? null : args[i + 1];
 }
 
+/** Parse an optional `--grep <text>` filter flag for the filtering views (logs, history): the
+ * substring pattern, or null when absent, returned alongside `rest` — the args with the
+ * flag's value token removed. The value token leaves the list because a flag-shaped token
+ * sitting at the --grep value's position IS the pattern, not the flag it spells (`logs --grep
+ * -f` greps for the text "-f"): every rival-flag scan the caller runs must go over `rest`, or
+ * the pattern impersonates a rival flag and a rival check misfires on the pattern. A valueless
+ * or empty pattern fails with the caller's wording — each view names its own command — the
+ * same error the --grep gate spec (grepFlagSpec) reports earlier for the trailing-no-value
+ * case. Lives beside flagValue, whose indexOf/value pairing it builds on, so the views'
+ * scans cannot drift apart. */
+export function parseGrepFlag(args: string[], missingValueError: string): { rest: string[]; pattern: string | null } {
+  const i = args.indexOf("--grep");
+  const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
+  const raw = flagValue(args, "--grep");
+  if (raw === null) return { rest, pattern: null };
+  if (raw === undefined || raw === "") fail(missingValueError);
+  return { rest, pattern: raw };
+}
+
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
  * (or drop leading lines) instead of showing the requested tail. */
@@ -264,6 +283,15 @@ export const N_FLAG: FlagSpec = {
     parseCountFlag("-n", value);
   },
 };
+
+/** The `--grep <text>` flag spec shared by the two filtering views (logs, history): one
+ * definition of the flag's spelling and value shape, beside ROLE_FLAG and SINCE_FLAG, so the
+ * gate's accepted vocabulary cannot drift apart. The missing-value wording differs per command
+ * (each names its own command), so the spec is a factory taking it — the same string
+ * parseGrepFlag fails with in the command body. */
+export function grepFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--grep"], value: true, valueName: "<text>", missingValue };
+}
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), and `--role <id>`

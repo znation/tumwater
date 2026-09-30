@@ -4,6 +4,7 @@ import {
   say,
   sayJsonOrRender,
   DURATION_FLAG,
+  grepFlagSpec,
   N_FLAG,
   parseCountFlag,
   parsePortFlag,
@@ -206,7 +207,7 @@ async function main(): Promise<void> {
         { names: ["-f", "--follow"] },
         N_FLAG,
         SINCE_FLAG,
-        { names: ["--grep"], value: true, valueName: "<text>", missingValue: GREP_VALUE_ERROR },
+        grepFlagSpec(GREP_VALUE_ERROR),
         { names: ["--json"] },
         ROLE_FLAG,
         { names: ["--prompt"] },
@@ -218,7 +219,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("history", args, [
         N_FLAG,
         SINCE_FLAG,
-        { names: ["--grep"], value: true, valueName: "<text>", missingValue: HISTORY_GREP_VALUE_ERROR },
+        grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
         { names: ["--json"] },
         ROLE_FLAG,
       ]);
