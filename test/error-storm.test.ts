@@ -129,6 +129,46 @@ test("the progressing timeout shape pools with the plain one into one storm", ()
   assert.equal(allProgressing.key, TIMEOUT_KEY);
 });
 
+test("a streak at the bar with no error message counts toward no storm", () => {
+  // lastError is optional at the observation seam and can be absent in real state (a failed
+  // tick whose run recorded no message); the `!lastError` half of the bar-guard skips those.
+  // A whitespace-only message is the other half: it is truthy so it passes `!lastError`, but
+  // normalizeClusterKey trims it to an empty key, and without the `!key` guard three such
+  // roles would storm on a cause that names nothing — the warning stays silent until a
+  // message actually explains the shared failure. All three members must be whitespace-only
+  // for the mutation to show: an empty string is already skipped by `!lastError`, and one
+  // real error among them leaves the empty-key cluster below the bar either way.
+  assert.equal(
+    errorStorm(ERROR_STORM_QUIET, [obs("clean", 3), obs("coverage", 3), obs("dry", 3)]).key,
+    null,
+    "no message at all: the role counts toward no cause",
+  );
+  assert.equal(
+    errorStorm(ERROR_STORM_QUIET, [
+      obs("clean", 3, "   "),
+      obs("coverage", 3, " "),
+      obs("dry", 3, "\t"),
+    ]).key,
+    null,
+    "whitespace-only messages never become a shared cause — the empty key must not storm",
+  );
+});
+
+test("an observation with no streak at all reads as healthy", () => {
+  // consecutiveErrors is optional at the observation seam (a torn or older state read may
+  // omit it); the `?? 0` treats a missing streak as healthy, so such a role adds no weight
+  // to any cause — garbage state must never trip the fleet-wide warning by itself. All
+  // three members must share one real cause for the mutation to show: a lone streakless
+  // role beside a real storm adds no weight either way, so only an all-streakless trio on
+  // one cause distinguishes the guard from its absence.
+  const noStreak = (role: string) => ({ role, lastError: "timed out after 1800s" }) as ErrorStormObservation;
+  assert.equal(
+    errorStorm(ERROR_STORM_QUIET, [noStreak("clean"), noStreak("coverage"), noStreak("dry")]).key,
+    null,
+    "a missing streak is not a failing one",
+  );
+});
+
 test("errorStormKnob names tickTimeoutSeconds for the timeout cause and nothing else", () => {
   assert.equal(errorStormKnob(TIMEOUT_KEY), "tickTimeoutSeconds");
   assert.equal(errorStormKnob("pi exited 1"), undefined);
