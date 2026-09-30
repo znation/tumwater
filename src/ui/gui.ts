@@ -59,16 +59,16 @@ export function lanAddresses(
   return out;
 }
 
-/** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
- * server, print the banner, and serve until Ctrl+C. Lives beside startGui so the CLI's
- * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
- * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
- * cases; everything gui-specific after that gate is this function's job. */
 /** The empty-secret error cmdGui prints for a valueless `--token`, exported so cli.ts's
  * rejectUnknownArgs spec for --token can fail a trailing `gui --token` with the same wording
  * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
 export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
+/** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
+ * server, print the banner, and serve until Ctrl+C. Lives beside startGui so the CLI's
+ * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
+ * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
+ * cases; everything gui-specific after that gate is this function's job. */
 export async function cmdGui(root: string, args: string[]): Promise<void> {
   const portRaw = flagValue(args, "--port");
   const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;

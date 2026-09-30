@@ -27,14 +27,14 @@ function rejectRoleViewRival(rest: string[], flag: string, active: boolean): voi
     fail(`logs ${flag} cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)`);
 }
 
-/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
- * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
- * loop's pi transcript (see cmdLogsTranscript). */
 /** The missing-pattern error cmdLogs prints for a valueless `--grep`, exported so cli.ts's
  * rejectUnknownArgs spec for --grep can fail a trailing `logs --grep` with the same wording
  * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
 export const GREP_VALUE_ERROR = "logs --grep needs a pattern";
 
+/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
+ * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
+ * loop's pi transcript (see cmdLogsTranscript). */
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator

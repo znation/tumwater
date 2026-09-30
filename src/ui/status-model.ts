@@ -296,7 +296,7 @@ export function loopRank(phase: string): number {
  * pipeline, then loops that need attention, then paused, then idle); within a rank by last tick
  * most-recent-first, a never-ticked (null) row after any timestamp, ties broken by role
  * ascending. This is the TUI/status table's comparator; the GUI page's browser copy
- * (`sortLoops`, gui-client.ts) cannot import TS, so test/gui.test.ts cross-checks the two over
+ * (`sortLoops`, gui-client-model.ts) cannot import TS, so test/gui.test.ts cross-checks the two over
  * the same fixtures to keep them in lockstep. /api/status and `status --json` keep their payload
  * (config) order — only the rendered tables sort. */
 export function sortLoopsByState<T extends LoopSortRow>(loops: readonly T[]): T[] {
@@ -432,8 +432,8 @@ export function pauseBadge(pausedUntil: number | undefined, now: number): string
 
 /** The colors the observer surfaces share for loop state and tick outcomes, as the terminal's
  * base palette names them — so they follow the user's terminal theme. The dashboard draws the
- * same families in its own tones (gui-client.ts phaseInfo/resultInfo; test/gui-client.test.ts
- * keeps the two aligned): in-progress work blue, a loop that needs attention red, a held loop
+ * same families in its own tones (gui-client-model.ts phaseInfo/resultInfo;
+ * test/gui-client.test.ts keeps the two aligned): in-progress work blue, a loop that needs attention red, a held loop
  * yellow, a landed change green, a change on its way to landing cyan; idle states and neutral
  * outcomes stay uncolored. */
 export type Tone = "blue" | "red" | "yellow" | "green" | "cyan" | "magenta" | "dim";
@@ -472,7 +472,7 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
 /** What kind of news an event is, for the activity feeds: a landing, a problem, a question for
  * the operator, a notice about the fleet, or routine bookkeeping (a tick starting, a passing
  * check). The dashboard's activity card filters on it and both surfaces tone by it; the page's
- * browser copy (gui-client.ts eventKind) is pinned to this one by test. */
+ * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */
 type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
 
 const PROBLEM_RESULTS = new Set(["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"]);
