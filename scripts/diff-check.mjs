@@ -12,8 +12,8 @@ requireDistBuild("../dist/src/roles.js", "diff-check compares compiled builds");
 
 // Same guard for the baseline side: on a fresh checkout (or after a /tmp cleanup) no baseline
 // has ever been staged, and the import below would die with a raw ERR_MODULE_NOT_FOUND stack
-// for /tmp/tw-baseline/dist/src/ui/status.js — naming the staging command instead.
-if (!fs.existsSync("/tmp/tw-baseline/dist/src/ui/status.js")) {
+// for /tmp/tw-baseline/dist/src/status-data.js — naming the staging command instead.
+if (!fs.existsSync("/tmp/tw-baseline/dist/src/status-data.js")) {
   console.error(
     "diff-check compares compiled builds: no baseline at /tmp/tw-baseline/dist — stage one before you start\n" +
     "changing code, from a clean main checkout:\n" +
@@ -36,8 +36,8 @@ function makeFixture() {
   return root;
 }
 
-const baseline = await import("/tmp/tw-baseline/dist/src/ui/status.js");
-const current = await import("../dist/src/ui/status.js");
+const baseline = await import("/tmp/tw-baseline/dist/src/status-data.js");
+const current = await import("../dist/src/status-data.js");
 const baseRender = (await import("/tmp/tw-baseline/dist/src/ui/status-render.js")).renderStatus;
 const curRender = (await import("../dist/src/ui/status-render.js")).renderStatus;
 const basePayload = (await import("/tmp/tw-baseline/dist/src/ui/status-payload.js")).statusPayload;

@@ -1,6 +1,6 @@
 import { DIRECTOR_ROLE, yieldScaledRole } from "../roles.js";
 import type { LoopState } from "../loop-state.js";
-import type { StatusSnapshot } from "./status.js";
+import type { StatusSnapshot } from "../status-data.js";
 import {
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,

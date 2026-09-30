@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { displayWidth } from "../src/text.js";
 import { buildBadge, loopPhase } from "../src/ui/status-model.js";
-import type { StatusSnapshot } from "../src/ui/status.js";
+import type { StatusSnapshot } from "../src/status-data.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
 import { defaultConfig } from "../src/config.js";

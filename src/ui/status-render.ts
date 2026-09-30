@@ -1,5 +1,5 @@
 import type { LoopState } from "../loop-state.js";
-import type { StatusSnapshot } from "./status.js";
+import type { StatusSnapshot } from "../status-data.js";
 import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "./progress.js";
 import { clipToWidth, compactTokens, displayWidth, usd } from "../text.js";

@@ -25,7 +25,7 @@ import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./ui/history.js";
 import { cmdReport } from "./ui/report.js";
-import { snapshot } from "./ui/status.js";
+import { snapshot } from "./status-data.js";
 import { renderStatus } from "./ui/status-render.js";
 import { runTui } from "./ui/tui.js";
 import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";

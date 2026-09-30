@@ -23,7 +23,7 @@ import {
   roleResumeMessage,
   submitRolePromptAndWake,
 } from "../operator-intent.js";
-import { snapshot } from "./status.js";
+import { snapshot } from "../status-data.js";
 import { renderStatusSpans, type StatusLine } from "./status-render.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 import { errorMessage, usdCap } from "../text.js";

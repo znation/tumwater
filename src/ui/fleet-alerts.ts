@@ -7,7 +7,7 @@
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
 
-import type { StatusSnapshot } from "./status.js";
+import type { StatusSnapshot } from "../status-data.js";
 import { humanSeconds } from "./status-model.js";
 import { plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";

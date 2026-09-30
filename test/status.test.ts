@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { allRoleIds } from "../src/roles.js";
-import { snapshot } from "../src/ui/status.js";
+import { snapshot } from "../src/status-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
@@ -714,7 +714,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // A merge-scope check older than the default 200-event tail still badges the header: a
   // burst of quiet ticks logs hundreds of events without moving main, and a tail that ends
   // before the last check would make the badge vanish and reappear as ticks tick by. The
-  // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/ui/status.ts) until the check is inside it —
+  // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/status-data.ts) until the check is inside it —
   // every event after the check is newer, so one window holds the whole derivation.
   const busy = makeRepo();
   writeEvents(busy, [

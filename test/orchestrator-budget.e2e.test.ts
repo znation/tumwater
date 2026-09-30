@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { runOrchestrator } from "../src/orchestrator.js";
-import { snapshot } from "../src/ui/status.js";
+import { snapshot } from "../src/status-data.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { readEvents } from "../src/events.js";

@@ -4,7 +4,7 @@ import { clipToWidth, displayWidth } from "../src/text.js";
 import { clipSpans, renderStatus, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
 import { eventKind } from "../src/ui/tone.js";
 import type { FleetAlert } from "../src/ui/fleet-alerts.js";
-import { snapshot } from "../src/ui/status.js";
+import { snapshot } from "../src/status-data.js";
 import { initProject } from "../src/init.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import {

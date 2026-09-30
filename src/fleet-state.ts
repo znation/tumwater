@@ -180,7 +180,7 @@ export interface OrchestratorInfo {
   /** The daily cost budget gate's own figures from the most recent poll (src/budget-gates.ts):
    * today's spend summed over the runners' LIVE in-memory states — charged run-by-run as each
    * pi run folds, not only at the tick-end save — against the cap it was evaluated under.
-   * Published whenever it changes so observers (src/ui/status.ts) can show what the scheduler
+   * Published whenever it changes so observers (src/status-data.ts) can show what the scheduler
    * is actually enforcing; a stopped fleet removes this file at exit, so the absence of a
    * running orchestrator means no published figure exists and the persisted sum is final.
    * Written by the orchestrator whenever the pair changes; absent otherwise. */
