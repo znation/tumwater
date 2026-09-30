@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
-import { lanAddresses } from "../src/ui/gui.js";
+import { cmdGui, lanAddresses, type GuiSeams } from "../src/ui/gui.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
@@ -336,4 +336,110 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
     }
     child.kill("SIGKILL");
   }
+});
+
+// ── cmdGui's policy, pinned in-process through its seams ────────────────────────────────
+// The spawn tests above exercise cmdGui end to end, but a killed child's coverage never
+// reaches the suite's report, so the banner's exact wording, the LAN announcement block, and
+// the busy-port message stayed invisible to the coverage table. cmdGui takes seams (the same
+// discipline runTui's TuiSeams established): these tests pin that policy in-process.
+
+/** A startGui seam stub that records the arguments and resolves without listening. */
+function startRecorder(started: Array<{ port: number; allInterfaces: boolean; token: string }>) {
+  return async (_root: string, port: number, allInterfaces?: boolean, token?: string) => {
+    started.push({ port, allInterfaces: allInterfaces ?? false, token: token ?? "" });
+    return undefined as unknown as http.Server;
+  };
+}
+
+const QUIET_SERVE: GuiSeams["serve"] = async () => {}; // resolves instead of serving until Ctrl+C
+
+ test("cmdGui prints the localhost banner and starts the server with the parsed flags", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui banner seams");
+  const lines: string[] = [];
+  const started: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+
+  // An explicit --port is parsed and passed through; no token, localhost only.
+  await cmdGui(repo, ["--port", "7181"], {
+    startGui: startRecorder(started),
+    say: (t) => lines.push(t),
+    serve: QUIET_SERVE,
+  });
+  assert.deepEqual(started, [{ port: 7181, allInterfaces: false, token: "" }]);
+  assert.deepEqual(lines, ["tumwater gui at http://127.0.0.1:7181 — Ctrl+C to stop"]);
+
+  // No --port at all: the documented 7180 default, still localhost-only.
+  lines.length = 0;
+  started.length = 0;
+  await cmdGui(repo, [], {
+    startGui: startRecorder(started),
+    say: (t) => lines.push(t),
+    serve: QUIET_SERVE,
+  });
+  assert.deepEqual(started, [{ port: 7180, allInterfaces: false, token: "" }]);
+  assert.deepEqual(lines, ["tumwater gui at http://127.0.0.1:7180 — Ctrl+C to stop"]);
+});
+
+test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token or not", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui lan seams");
+  const started: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+  const lan = () => ["192.168.1.50", "10.0.0.2"]; // the machine's addresses, as the real filter would yield
+
+  // Without a token the LAN URLs carry no suffix and the warning says the dashboard is open.
+  const open: string[] = [];
+  await cmdGui(repo, ["--all-interfaces"], {
+    startGui: startRecorder(started),
+    lanAddresses: lan,
+    say: (t) => open.push(t),
+    serve: QUIET_SERVE,
+  });
+  assert.deepEqual(open, [
+    "tumwater gui at http://127.0.0.1:7180 — Ctrl+C to stop",
+    "             also at http://192.168.1.50:7180",
+    "             also at http://10.0.0.2:7180",
+    "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
+  ]);
+
+  // With a token every printed URL — banner and LAN lines alike — carries the ?token= suffix
+  // an operator can open directly, and the warning names the token as the gate.
+  const gated: string[] = [];
+  await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
+    startGui: startRecorder(started),
+    lanAddresses: lan,
+    say: (t) => gated.push(t),
+    serve: QUIET_SERVE,
+  });
+  assert.deepEqual(gated, [
+    "tumwater gui at http://127.0.0.1:7180/?token=s3cret — Ctrl+C to stop",
+    "             also at http://192.168.1.50:7180/?token=s3cret",
+    "             also at http://10.0.0.2:7180/?token=s3cret",
+    "listening on ALL interfaces — token-protected; prompting the director requires the token",
+  ]);
+  assert.deepEqual(started.slice(-1), [{ port: 7180, allInterfaces: true, token: "s3cret" }]);
+});
+
+test("cmdGui turns a taken port into the friendly port-in-use error and rethrows the rest", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui busy port seams");
+
+  // EADDRINUSE — the common case — becomes the hint that names the fix, thrown so cli.ts's
+  // main catch renders it as the same `tumwater: …` line and exit 1 a direct fail() printed.
+  const inUse = Object.assign(new Error("listen EADDRINUSE: address already in use"), { code: "EADDRINUSE" });
+  await assert.rejects(
+    cmdGui(repo, ["--port", "7181"], { startGui: () => Promise.reject(inUse), serve: QUIET_SERVE }),
+    {
+      message:
+        "port 7181 is already in use — stop that process or pick another port with `tumwater gui --port <n>`",
+    },
+  );
+
+  // Any other listen failure passes through untouched — the CLI shows the raw error (the
+  // spawn test above pins EACCES reaching the operator verbatim).
+  const eacces = Object.assign(new Error("listen EACCES: permission denied"), { code: "EACCES" });
+  await assert.rejects(
+    cmdGui(repo, [], { startGui: () => Promise.reject(eacces), serve: QUIET_SERVE }),
+    (err: unknown) => err === eacces,
+  );
 });

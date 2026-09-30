@@ -64,12 +64,31 @@ export function lanAddresses(
  * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
 export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
+/** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
+ * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
+ * callers omit it and get the real server, interfaces, stdout, and wait; tests inject fakes
+ * so the CLI's gui-specific policy (the banner wording, the LAN announcement, the busy-port
+ * message) is assertable in-process, without a listener or a killed child whose coverage the
+ * suite can never see. */
+export interface GuiSeams {
+  startGui?: typeof startGui;
+  lanAddresses?: typeof lanAddresses;
+  say?: typeof say;
+  serve?: () => Promise<void>;
+}
+
 /** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
  * server, print the banner, and serve until Ctrl+C. Lives beside startGui so the CLI's
  * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
  * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
- * cases; everything gui-specific after that gate is this function's job. */
-export async function cmdGui(root: string, args: string[]): Promise<void> {
+ * cases; everything gui-specific after that gate is this function's job. A taken port throws
+ * (cli.ts's main catch renders it as the same `tumwater: …` line and exit 1 fail() would) so
+ * the busy-port wording stays assertable in-process. */
+export async function cmdGui(root: string, args: string[], seams: GuiSeams = {}): Promise<void> {
+  const start = seams.startGui ?? startGui;
+  const lan = seams.lanAddresses ?? lanAddresses;
+  const print = seams.say ?? say;
+  const serve = seams.serve ?? (() => new Promise<void>(() => {}));
   const portRaw = flagValue(args, "--port");
   const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
   const allInterfaces = args.includes("--all-interfaces");
@@ -87,30 +106,30 @@ export async function cmdGui(root: string, args: string[]): Promise<void> {
       `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
     );
   try {
-    await startGui(root, port, allInterfaces, token);
+    await start(root, port, allInterfaces, token);
   } catch (err) {
     // A taken port is the common listen failure; Node's raw EADDRINUSE does not
     // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
     if (errCode(err) === "EADDRINUSE")
-      fail(
+      throw new Error(
         `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
       );
     throw err;
   }
   const tokenSuffix = token ? `/?token=${encodeURIComponent(token)}` : "";
-  say(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
+  print(`tumwater gui at http://127.0.0.1:${port}${tokenSuffix} — Ctrl+C to stop`);
   if (allInterfaces) {
     // Name the concrete URLs teammates can open (token included, so they are openable
     // as printed), and say what exposure means: without a token the dashboard has no
     // auth and its prompt box steers the fleet; with one, the token is the gate.
-    for (const addr of lanAddresses()) say(`             also at http://${addr}:${port}${tokenSuffix}`);
-    say(
+    for (const addr of lan()) print(`             also at http://${addr}:${port}${tokenSuffix}`);
+    print(
       token
         ? "listening on ALL interfaces — token-protected; prompting the director requires the token"
         : "listening on ALL interfaces — no auth; anyone reaching it can prompt the director",
     );
   }
-  await new Promise(() => {}); // Serve until Ctrl+C.
+  await serve(); // Serve until Ctrl+C.
 }
 
 /** The request target parsed once (path, query, and the token gate all read the same
