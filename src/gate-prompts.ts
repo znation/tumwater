@@ -169,7 +169,7 @@ export function buildRejectedReviewNote(review: {
   let context = "";
   if (review.at !== undefined) {
     context = ` (${formatTimestamp(review.at)}`;
-    if (review.head) context += `, head ${review.head.slice(0, 7)}`;
+    if (review.head) context += `, head ${shortSha(review.head)}`;
     context += ")";
   }
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.`;

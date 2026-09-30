@@ -88,7 +88,7 @@ test("buildRejectedReviewNote degrades to a placeholder when no reasons were rec
 test("buildRejectedReviewNote dates the verdict and names the reviewed head", () => {
   const at = new Date(2026, 8, 24, 1, 20, 32).getTime();
   const note = buildRejectedReviewNote({ reasons: ["md-only edit"], at, head: "127157a4deadbeef" });
-  assert.match(note, /rejected in review \(2026-09-24 01:20:32, head 127157a\):/);
+  assert.match(note, /rejected in review \(2026-09-24 01:20:32, head 127157a4\):/);
 });
 
 test("buildRejectedReviewNote omits the context when the review recorded neither time nor head", () => {

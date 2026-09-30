@@ -217,7 +217,7 @@ test("the rejected-review note on the next tick's prompt is dated and names the 
     }),
   });
   assert.ok(result);
-  assert.match(result.prompt, /rejected in review \(2026-09-24 01:20:32, head 8b58124\):/);
+  assert.match(result.prompt, /rejected in review \(2026-09-24 01:20:32, head 8b58124a\):/);
 });
 
 test("a conflict discard note rides along, with its attempt count", () => {
