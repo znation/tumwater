@@ -19,9 +19,7 @@ import {
 } from "../src/doctor.js";
 import { renderDoctor } from "../src/ui/doctor-report.js";
 import { helpTopic } from "../src/help.js";
-import { checkOrphans } from "../src/doctor-orphans.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
-import type { ProcessProbe, ProcessRow } from "../src/process.js";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
@@ -31,59 +29,15 @@ import { vanishOnReadFile } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
+import { fakeBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
 
 // Unit coverage for the pre-flight environment check (src/doctor.ts): every check's ok/fail/warn
 // branches plus report composition and rendering. The binary checks take an explicit PATH so the
 // missing branch is exercised by passing "" — no PATH mutation, no spawning. The CLI wiring
 // (`tumwater doctor` exit codes through main()) is pinned at the bottom of this file; the rest
-// pins the module's own behavior, including its read-only guarantee against .tumwater/.
-
-/** A bin dir holding executable files with the given names — a deterministic PATH for the binary checks. */
-function fakeBins(...names: string[]): string {
-  const dir = tmpdir("doctor-bins-");
-  for (const name of names) {
-    fs.writeFileSync(path.join(dir, name), "#!/bin/sh\nexit 0\n");
-    fs.chmodSync(path.join(dir, name), 0o755);
-  }
-  return dir;
-}
-
-/** A ready repo: one commit on main plus a valid tumwater.json (the empty object — all
- * defaults). */
-function readyRepo(): string {
-  const root = makeRepo();
-  writeConfig(root, {});
-  return root;
-}
-
-/** An empty process table and a healthy launchservicesd: runDoctor's report tests pin every
- * other check without reading the host's real table or daemon (the orphan check's own tests
- * below drive it with fakeProbe; the port check's live in launch-services.test.ts). */
-const noProcesses: ProcessProbe = {
-  list: async () => [],
-  cwds: async () => new Map(),
-  launchServicesPorts: async () => 1_000,
-};
-
-/** A fake process table for checkOrphans: each row defaults to a parentless (PPID 1) process
- * of this user, and `cwds` answers from the given map. `asked` records every cwd lookup, so a
- * test can pin that only parentless candidates reach lsof. No real process is spawned. */
-function fakeProbe(
-  rows: Array<Partial<ProcessRow> & { pid: number; command: string }>,
-  cwds: Record<number, string> = {},
-): { probe: ProcessProbe; asked: number[][] } {
-  const asked: number[][] = [];
-  const uid = process.getuid?.() ?? 0;
-  const probe: ProcessProbe = {
-    list: async () => rows.map((r) => ({ ppid: 1, uid, etime: "01:00", time: "0:00.10", ...r })),
-    cwds: async (pids) => {
-      asked.push(pids);
-      return new Map(pids.flatMap((p): Array<[number, string]> => (cwds[p] !== undefined ? [[p, cwds[p]]] : [])));
-    },
-    launchServicesPorts: async () => null,
-  };
-  return { probe, asked };
-}
+// pins the module's own behavior, including its read-only guarantee against .tumwater/. The
+// orphan check's own unit coverage lives in test/doctor-orphans.test.ts (it pins
+// src/doctor-orphans.ts), and the fixtures both files share live in test/doctor-fixtures.ts.
 
 test("checkNodeVersion reports this runtime as ok and warns below the declared floor", () => {
   const current = checkNodeVersion();
@@ -684,199 +638,6 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   const healthy = checkInit(root);
   assert.equal(healthy.level, "warn"); // drift reappears: tumwater.json lacks the key again
   assert.match(healthy.detail, /template drift/);
-});
-
-// Orphaned worktree processes (BUGS.md 2026-09-21, the grandchild-leak fix's missing
-// detector): every shape below is a real leak the fleet produced, driven through a fake
-// process table — no orphan is ever spawned. The real ps/lsof reader is smoked in
-// test/process.test.ts.
-
-test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, tree and command", async () => {
-  const root = readyRepo();
-  const real = fs.realpathSync(root); // What lsof and /proc report (macOS: /private/var/…).
-  for (const wt of ["qa", "bugfix"]) fs.mkdirSync(path.join(root, ".tumwater", "worktrees", wt), { recursive: true });
-  const { probe, asked } = fakeProbe(
-    [
-      // The stray orchestrator an orphaned suite started (2026-09-21): an absolute worktree argv.
-      { pid: 8198, etime: "18:34:12", time: "0:41.20", command: `node ${root}/.tumwater/worktrees/perf/dist/src/cli.js run` },
-      // The leaked build-check runner: no worktree in its argv at all, only in its cwd — and its
-      // `node --test` workers still have it as their parent.
-      { pid: 88052, etime: "2-21:44:01", time: "0:03.12", command: "node dist/test/test-runner.js" },
-      { pid: 88160, ppid: 88052, command: "node --test a.test.js" },
-      { pid: 95649, ppid: 88160, time: "4:44.00", command: "node a.test.js" },
-      // The qa GUI (2026-09-23): a relative worktree argv, its cwd a scratch dir since deleted.
-      {
-        pid: 73241,
-        etime: "07:24:10",
-        time: "0:02.50",
-        command: "node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces",
-      },
-    ],
-    { 88052: path.join(real, ".tumwater", "worktrees", "bugfix"), 73241: path.join(real, "..", "tumwater-qa.gone") },
-  );
-  assert.deepEqual(await checkOrphans(root, probe), {
-    level: "fail",
-    detail:
-      "3 orphaned worktree processes (PPID 1): " +
-      "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
-      "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
-      "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
-      " — nothing reaps these; kill each with its descendants",
-  });
-  // One cwd lookup, over the parentless processes argv did not already settle — never the
-  // workers (they have a parent) and never the absolute-argv match.
-  assert.deepEqual(asked, [[88052, 73241]]);
-});
-
-test("checkOrphans leaves the live fleet and other checkouts' orphans alone", async () => {
-  const root = readyRepo();
-  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
-  const other = tmpdir("doctor-other-checkout-");
-  fs.mkdirSync(path.join(other, ".tumwater", "worktrees", "qa"), { recursive: true });
-  const { probe } = fakeProbe(
-    [
-      // A nohup'd supervisor is parentless too — but it, and the orchestrator it spawns, run
-      // from the repo root, never from a worktree.
-      { pid: 500, command: "node dist/src/cli.js run" },
-      { pid: 501, ppid: 500, command: `node ${root}/dist/src/cli.js run` },
-      // The orchestrator's pi run and its tool calls live in worktrees, but have real parents.
-      { pid: 502, ppid: 501, command: "pi --mode json -p go" },
-      { pid: 503, ppid: 502, command: `node ${root}/.tumwater/worktrees/qa/dist/src/cli.js gui --port 41601` },
-      // Another checkout's orphans: an absolute argv there, and a relative one whose cwd
-      // resolves into that checkout's worktree — though this repo has a `qa` worktree too.
-      { pid: 600, command: `node ${other}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
-      { pid: 601, command: "node .tumwater/worktrees/qa/dist/src/cli.js gui" },
-      // A path that merely ends in this checkout's (a copy nested elsewhere) is not this one.
-      { pid: 602, command: `node /mirror${root}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
-      // A relative worktree argv with no cwd to confirm it, naming a worktree this repo lacks.
-      { pid: 603, command: "node .tumwater/worktrees/nosuch/dist/src/cli.js gui" },
-      // Everything else a host runs parentless.
-      { pid: 700, command: "/usr/libexec/logd" },
-    ],
-    { 500: root, 601: other, 700: "/" },
-  );
-  assert.deepEqual(await checkOrphans(root, probe), {
-    level: "ok",
-    detail: "none — no process reparented to PID 1 runs from .tumwater/worktrees/",
-  });
-});
-
-test("checkOrphans asks cwds only of parentless processes this user can inspect", async (t) => {
-  const uid = process.getuid?.();
-  if (uid === undefined || uid === 0) {
-    t.skip("root (or no uids): every process is inspectable, so there is nothing to filter");
-    return;
-  }
-  const root = readyRepo();
-  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "bugfix");
-  const { probe, asked } = fakeProbe(
-    [
-      { pid: 10, command: "node dist/test/test-runner.js" },
-      // Another user's process: lsof and /proc cannot read its cwd, so it is never asked.
-      { pid: 11, uid: uid + 1, command: "node dist/test/test-runner.js" },
-      { pid: 12, ppid: 10, command: "node --test a.test.js" },
-    ],
-    { 10: wt, 11: wt, 12: wt },
-  );
-  assert.deepEqual(await checkOrphans(root, probe), {
-    level: "fail",
-    detail:
-      "1 orphaned worktree process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
-      " — nothing reaps these; kill each with its descendants",
-  });
-  assert.deepEqual(asked, [[10]]);
-});
-
-test("checkOrphans degrades instead of crashing doctor: no table warns, unreadable cwds fall back to argv", async () => {
-  const root = readyRepo();
-  const noPs: ProcessProbe = {
-    list: async () => {
-      throw new Error("spawn ps ENOENT");
-    },
-    cwds: async () => new Map(),
-    launchServicesPorts: async () => null,
-  };
-  assert.deepEqual(await checkOrphans(root, noPs), {
-    level: "warn",
-    detail: "could not scan the process table — spawn ps ENOENT",
-  });
-
-  const noLsof = (rows: Parameters<typeof fakeProbe>[0]): ProcessProbe => ({
-    ...fakeProbe(rows).probe,
-    cwds: async () => {
-      throw new Error("spawn lsof ENOENT");
-    },
-  });
-  // Nothing named in argv, but the scan was partial: a warn, never a false all-clear.
-  const partial = await checkOrphans(root, noLsof([{ pid: 20, command: "node dist/test/test-runner.js" }]));
-  assert.equal(partial.level, "warn");
-  assert.match(partial.detail, /^none named in argv, but process cwds are unreadable \(spawn lsof ENOENT\)/);
-  // An argv match still fails the check, and says the cwd half did not run.
-  const found = await checkOrphans(
-    root,
-    noLsof([
-      { pid: 20, command: "node dist/test/test-runner.js" },
-      { pid: 21, command: `node ${root}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
-    ]),
-  );
-  assert.equal(found.level, "fail");
-  assert.match(found.detail, /^1 orphaned worktree process \(PPID 1\): pid 21 /);
-  assert.match(found.detail, /\(process cwds unreadable — spawn lsof ENOENT; argv matched only\)$/);
-});
-
-test("checkOrphans itemizes at most eight orphans and trims each command, keeping the full count", async () => {
-  const root = readyRepo();
-  const wt = path.join(fs.realpathSync(root), ".tumwater", "worktrees", "_land-dry");
-  const long = `node ${root}/.tumwater/worktrees/_land-dry/dist/src/cli.js run --note ${"a".repeat(100)}`;
-  const rows = Array.from({ length: 10 }, (_, i) => ({ pid: 45355 + i, command: i === 0 ? long : "perl -e while(1){}" }));
-  const { probe } = fakeProbe(rows, Object.fromEntries(rows.map((r) => [r.pid, wt])));
-  const r = await checkOrphans(root, probe);
-  assert.equal(r.level, "fail");
-  assert.match(r.detail, /^10 orphaned worktree processes \(PPID 1\): /);
-  assert.equal(r.detail.match(/pid \d+ \(age/g)?.length, 8);
-  assert.match(r.detail, /; and 2 more — nothing reaps these/);
-  // The root is cut first, then the command is trimmed to 80 characters with an ellipsis.
-  const shown = `node .tumwater/worktrees/_land-dry/dist/src/cli.js run --note ${"a".repeat(100)}`.slice(0, 79);
-  assert.ok(r.detail.includes(`) ${shown}…; pid 45356 `), r.detail);
-});
-
-test("checkOrphans matches orphans through a root spelled as a symlink, alive or dangling", async () => {
-  const root = readyRepo();
-  const real = fs.realpathSync(root);
-  const dir = tmpdir("doctor-root-link-");
-
-  // A root whose path cannot be resolved — the repo removed under doctor's feet, or a
-  // broken symlink — must degrade to the spelling given, not crash the check, and an
-  // orphan argv naming that spelling must still be blamed on this repo.
-  const dangling = path.join(dir, "dangling");
-  fs.symlinkSync(path.join(root, "gone"), dangling);
-  assert.equal((await checkOrphans(dangling, noProcesses)).level, "ok", "an unresolvable root never crashes the check");
-  const { probe } = fakeProbe([
-    { pid: 700, command: `node ${dangling}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
-  ]);
-  const given = await checkOrphans(dangling, probe);
-  assert.equal(given.level, "fail", "an orphan naming the given spelling is still this repo's");
-  assert.match(given.detail, /^1 orphaned worktree process \(PPID 1\): pid 700 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
-
-  // A root given through a live symlink must also match orphans spelled with the RESOLVED
-  // path — lsof and /proc report a resolved cwd, and macOS's /var is /private/var — and the
-  // listed command is cut at the longest spelling, the resolved one.
-  const link = path.join(dir, "live");
-  fs.symlinkSync(root, link);
-  const { probe: resolvedProbe } = fakeProbe([
-    { pid: 701, command: `node ${real}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
-  ]);
-  const through = await checkOrphans(link, resolvedProbe);
-  assert.equal(through.level, "fail", "an orphan naming the resolved spelling is still this repo's");
-  assert.match(through.detail, /^1 orphaned worktree process \(PPID 1\): pid 701 \(age 01:00, cpu 0:00\.10\) node \.tumwater\/worktrees\/qa\/dist\/src\/cli\.js gui/);
-});
-
-test("runDoctor fails the verdict on an orphan — the exit code a scripted doctor keys off", async () => {
-  const root = readyRepo();
-  const { probe } = fakeProbe([{ pid: 8198, command: `node ${root}/.tumwater/worktrees/perf/dist/src/cli.js run` }]);
-  const report = await runDoctor(root, fakeBins("git", "pi"), probe);
-  assert.equal(report.checks.find((c) => c.name === "orphans")?.level, "fail");
-  assert.equal(report.verdict, "1 problem");
 });
 
 // checkFixClaims — the standalone false-fix detector: the newest Fixed records of BUGS.md are
