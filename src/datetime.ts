@@ -7,6 +7,8 @@
  * arithmetic (dayAt's midnight truncation, month/year edges) is a different concern from
  * string cutting, with its own tests. Presentation only: depends on node built-ins alone. */
 
+import { plural } from "./text.js";
+
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
  * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */
@@ -62,9 +64,10 @@ export function dayWindow(days: number, now: Date): { from: string; to: string }
 }
 
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window
- * reads the same on either surface. */
+ * reads the same on either surface. Rendered through text.ts's plural, like every other
+ * count-plus-noun phrase in the harness. */
 export function dayLabel(days: number): string {
-  return `${days} day${days === 1 ? "" : "s"}`;
+  return plural(days, "day");
 }
 
 /** The report header both renderers print: the window's day-key bounds, its length in days

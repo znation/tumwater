@@ -4,7 +4,7 @@
  * reads — so the byte bound argued at collection holds here unchanged. */
 import type { TickResult } from "./tick-outcome.js";
 import { collectFailureReport, type ClusterSection, type FailureReportData, type OutcomeRow, type SpendCell } from "./failure-data.js";
-import { shortSha, usd } from "./text.js";
+import { plural, shortSha, usd } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
 
@@ -182,7 +182,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
           c.kind === "no_change"
             ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
             : `${c.example} (${roleList(c.roles)})`;
-        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${c.ticks} ${c.ticks === 1 ? "tick" : "ticks"}: ${cause}`);
+        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
       }
     }
   }

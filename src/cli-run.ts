@@ -13,6 +13,7 @@ import { formatEvent } from "./event-format.js";
 import { runOrchestrator } from "./orchestrator.js";
 import { createRedeployer, RESTART_EXIT_CODE } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
+import { plural } from "./text.js";
 import { fleetDownEvent, spawnRunChild, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 
@@ -190,7 +191,7 @@ export function onceSummary(
   }
   const counts = [...outcomes.entries()].sort().map(([k, n]) => `${n} ${k}`).join(", ");
   const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
-  return `once: ${ticks} tick${ticks === 1 ? "" : "s"} — ${counts || "nothing ran"}${skipNote}`;
+  return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
 /** The supervisor half of `tumwater run` (src/supervisor.ts): spawn the orchestrator as a child

@@ -9,7 +9,7 @@
 
 import type { StatusSnapshot } from "./status.js";
 import { humanSeconds } from "./status-model.js";
-import { usd, usdCap } from "../text.js";
+import { plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,
@@ -36,8 +36,6 @@ export interface AlertLoop {
 
 /** A stalled tool call or a long silence, as inFlightDetail names them in a phase label. */
 const STALL = /tool call stalled[^·]*|no pi output for [^·]*/;
-
-const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
 function listRoles(loops: readonly AlertLoop[]): string {
   const names = loops.map((l) => l.role);

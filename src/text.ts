@@ -177,6 +177,18 @@ export function shortSha(sha: unknown): string {
   return String(sha).slice(0, 8);
 }
 
+/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
+ * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
+ * (datetime.ts), the failure digest's loss-cause lines (failure-report.ts), and the fleet
+ * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces) all rendered
+ * inline before. `many` accepts a whole replacement form (`plural(n, "loop is", "loops are")`)
+ * so verb-agreement titles share the helper; the plural-by-`s` default covers regular nouns.
+ * (The GUI keeps its own JS copy in gui-client.ts: a separate runtime that cannot import
+ * TypeScript.) */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
 /** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of
  * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
  * the status table's cost/today cells plus totals row (status-render.ts), and the usage
