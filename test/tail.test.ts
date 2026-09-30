@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { followFile, readCompleteLines, withTail, type TailState } from "../src/tail.js";
+import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/tail.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { vanishOnOpen } from "./fs-faults.js";
+import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 import { waitFor } from "./wait.js";
 
 test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {
@@ -231,5 +231,81 @@ test("readCompleteLines returns no lines when rotation removes the file between 
     assert.deepEqual(readCompleteLines(file, 0, size), { lines: [], end: 0 }); // no throw — next poll reseeds
   } finally {
     restore();
+  }
+});
+test("forEachTailChunk delivers chunks newest-first and honors onChunk's early stop", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "log.jsonl");
+  // Exactly three tail chunks (8 KB each), with a position-identifiable byte pattern.
+  const data = Buffer.alloc(3 * 8192);
+  for (let i = 0; i < data.length; i++) data[i] = i % 251;
+  fs.writeFileSync(file, data);
+
+  // Early stop: a callback that returns true after the first chunk must not read further —
+  // this is what keeps per-poll I/O bounded by the caller's need (readEvents' limit lines,
+  // readWindowEvents' window) rather than by how far the log has grown.
+  const stopped: Buffer[] = [];
+  forEachTailChunk(file, (chunk) => {
+    stopped.push(Buffer.from(chunk));
+    return true;
+  });
+  assert.equal(stopped.length, 1, "scan stops after the first chunk");
+  assert.ok(stopped[0]!.equals(data.subarray(2 * 8192)), "first chunk is the newest (tail) bytes");
+
+  // No early stop: all three chunks arrive in newest-first order with their exact contents.
+  const full: Buffer[] = [];
+  forEachTailChunk(file, (chunk) => {
+    full.push(Buffer.from(chunk));
+    return false;
+  });
+  assert.equal(full.length, 3);
+  for (let k = 0; k < 3; k++) {
+    const start = (2 - k) * 8192; // newest first: [16384..), [8192..16384), [0..8192)
+    assert.ok(
+      full[k]!.equals(data.subarray(start, start + 8192)),
+      `chunk ${k} is bytes ${start}..${start + 8192}`,
+    );
+  }
+
+  // A file at or under the small-file threshold is delivered whole as a single chunk.
+  const small = path.join(dir, "small.jsonl");
+  fs.writeFileSync(small, "abc\n");
+  const smallParts: Buffer[] = [];
+  forEachTailChunk(small, (chunk) => {
+    smallParts.push(Buffer.from(chunk));
+    return true;
+  });
+  assert.equal(smallParts.length, 1);
+  assert.equal(smallParts[0]!.toString("utf8"), "abc\n");
+
+  // A missing file delivers nothing.
+  let missingCalls = 0;
+  forEachTailChunk(path.join(dir, "nope.jsonl"), () => {
+    missingCalls++;
+    return false;
+  });
+  assert.equal(missingCalls, 0);
+});
+
+test("forEachTailChunk delivers nothing when rotation removes the file between stat and open", () => {
+  const dir = tmpdir();
+  // Both read paths: over the small-file threshold opens an fd, at or under it reads whole.
+  for (const [name, data] of [
+    ["large.jsonl", Buffer.alloc(3 * 8192).fill(0x61)],
+    ["small.jsonl", Buffer.from("abc\n")],
+  ] as const) {
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, data);
+    const restore = name === "large.jsonl" ? vanishOnOpen(file) : vanishOnReadFile(file);
+    try {
+      let calls = 0;
+      forEachTailChunk(file, () => {
+        calls++;
+        return false;
+      }); // must not throw — a rotated-away file is no data, like a missing one
+      assert.equal(calls, 0, `${name}: nothing delivered`);
+    } finally {
+      restore();
+    }
   }
 });

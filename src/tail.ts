@@ -3,11 +3,13 @@ import { openForRead, statOrNull } from "./files.js";
 import { piLogPath } from "./paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
- * complete-line window reads, per-file tail state that folds only appended bytes on each
- * poll (plus the shared stat-and-clear entry point for polling a role's pi log), and
- * byte-offset following for `logs -f`. Split out of files.ts — which keeps the
+ * complete-line window reads, the bounded backwards chunk scan (forEachTailChunk and the
+ * readTailText collection loop built on it) that the windowed readers ask for, per-file tail
+ * state that folds only appended bytes on each poll (plus the shared stat-and-clear entry
+ * point for polling a role's pi log), and byte-offset following for `logs -f`. Split out of files.ts — which keeps the
  * generic file helpers — because this is one self-contained concern with its own internal
- * structure (readCompleteLines as the primitive; withTail and followFile built on it).
+ * structure (readCompleteLines and forEachTailChunk as the primitives; withTail, followFile,
+ * and readTailText built on them).
  * Lives here in src/, not src/ui/: it is core file I/O with no presentation concern, and
  * its consumers — the ui observer layer polling those logs — may import core freely,
  * while the reverse edge would be forbidden (DEVELOPMENT.md Layout). */
@@ -48,6 +50,110 @@ export function readCompleteLines(file: string, offset: number, size: number): {
   }
 }
 
+/** Files at or under this size are read whole in one go; larger ones get a tail window.
+ * Small on purpose: below it a single read is cheapest, and above it the windowed path reads
+ * only what the caller's stop condition needs — so a poll asking for ~40 events never pays to
+ * re-read log growth (the event log rotates at 16 MB). */
+const TAIL_SCAN_THRESHOLD = 8 * 1024;
+
+/** Chunk size for the backwards tail scan. Small on purpose: a bounded query (last N lines,
+ * events since day X) needs only a few KB, and one oversized chunk per poll would re-read bytes
+ * no caller asked for — with the old 64KB chunk, every poll of a grown log cost as much as
+ * reading it whole. */
+const TAIL_CHUNK_BYTES = 8 * 1024;
+
+/** Read an append-only line log backwards from EOF in TAIL_CHUNK_BYTES chunks, delivering each
+ * chunk (newest first) to `onChunk`, which returns true to stop early once enough bytes are in
+ * hand. Files at or under TAIL_SCAN_THRESHOLD are delivered whole as a single chunk; a missing
+ * or empty file delivers nothing. Per-call I/O is bounded by the caller's stop condition, not
+ * the log's size. Callers that accumulate the chunks into one decoded string should use
+ * readTailText, the shared collection loop built on this. Each delivered chunk arrives with
+ * `coveredEnd`, the byte offset the scan covers through — the file's size at scan time (the
+ * whole-file delivery reports the bytes actually read, the chunked one the opened inode's
+ * fstat size) — so a caller can position a follow at where its read stopped; the follow-facing
+ * readTailTextWithEnd backs that raw end up to the last complete line's boundary. */
+export function forEachTailChunk(
+  file: string,
+  onChunk: (chunk: Buffer, coveredEnd: number) => boolean,
+): void {
+  const st = statOrNull(file);
+  if (!st || st.size === 0) return; // No log yet.
+  let size = st.size;
+  if (size <= TAIL_SCAN_THRESHOLD) {
+    try {
+      const whole = fs.readFileSync(file);
+      onChunk(whole, whole.length); // Read covers through the bytes actually read.
+    } catch {
+      return; // Rotated away between stat and read — no data, the same policy as a missing file.
+    }
+    return;
+  }
+  const fd = openForRead(file);
+  if (fd === null) return; // Vanished (rotated) between stat and open — nothing to deliver.
+  try {
+    // fstat on the opened inode stays correct even if rotation renames the file mid-read.
+    size = fs.fstatSync(fd).size;
+    let end = size;
+    for (;;) {
+      const len = Math.min(TAIL_CHUNK_BYTES, end);
+      if (len <= 0) break; // Reached the start of the file: everything is in hand.
+      const buf = Buffer.alloc(len);
+      const got = fs.readSync(fd, buf, 0, len, end - len);
+      if (got === 0) break; // File shrank under us; use what we have.
+      if (onChunk(buf.subarray(0, got), size)) break; // Early stop: the caller has enough bytes in hand.
+      end -= got;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/** Scan an append-only line log backwards (forEachTailChunk) and return the delivered bytes
+ * as one decoded string. Each chunk is unshifted into `parts` (newest-first delivery, so
+ * oldest-first order) BEFORE the caller's stop predicate runs, and the predicate receives both
+ * the chunk just delivered and everything in hand — so it can count what it has seen (readEvents'
+ * newline count) or inspect the oldest bytes (readWindowEvents' oldest complete line) without
+ * carrying its own parts array. Missing/empty files and a scan that never delivers return
+ * "". */
+export function readTailText(
+  file: string,
+  onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
+): string {
+  return readTailTextWithEnd(file, onChunk).text;
+}
+
+/** readTailText, plus the byte offset the scan covered through (forEachTailChunk's
+ * `coveredEnd`), backed up to the last complete line's boundary: the file's size at read time
+ * minus any trailing torn bytes the scan read but never parsed. A caller that seeds a follow
+ * from it can neither skip an event appended between this read and a later stat — the race a
+ * fresh `statOrNull(file).size` seed carries — nor land mid-line: followFile's offset must sit
+ * on a line boundary (readCompleteLines' contract), and a seed past a torn trailing line's
+ * start would deliver that line's tail as a garbled fragment once its writer completed it,
+ * its head never delivered. Early stops and mid-scan appends leave the covered region
+ * contiguous through the scan's EOF either way: chunks are delivered newest-first from the
+ * size the scan measured, so everything below that offset up to the delivered total was
+ * read, and everything at or above it was not. With no newline in the covered region the
+ * whole region is one torn fragment and the end backs up to its start, so the follow re-reads
+ * and delivers it whole once completed (an early stop requires newlines, so that region
+ * start is always the file's own start). */
+export function readTailTextWithEnd(
+  file: string,
+  onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
+): { text: string; coveredEnd: number } {
+  const parts: Buffer[] = [];
+  let coveredEnd = 0;
+  forEachTailChunk(file, (chunk, end) => {
+    coveredEnd = end;
+    parts.unshift(chunk);
+    return onChunk(chunk, parts);
+  });
+  const raw = Buffer.concat(parts);
+  // Byte arithmetic on the raw buffer, not the decoded text: a torn write can end mid-character,
+  // where the decoded string's byte length no longer matches the bytes on disk.
+  const lastNl = raw.lastIndexOf(10);
+  const completeEnd = lastNl >= 0 ? coveredEnd - (raw.length - 1 - lastNl) : coveredEnd - raw.length;
+  return { text: raw.toString("utf8"), coveredEnd: completeEnd };
+}
 /** Per-file state for a consumer that polls an append-only log tick by tick and only wants
  * the bytes appended since its last visit: where it stopped reading (dev/ino guard against
  * rotation, offset always at a line boundary) plus its accumulated value. */

@@ -3,13 +3,8 @@ import { eventsLogPath } from "./paths.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { dayKey } from "./datetime.js";
 import { parseJsonObject } from "./json-object.js";
-import {
-  ensureParentDir,
-  openForRead,
-  readTailTextWithEnd,
-  rotateIfLarge,
-  statOrNull,
-} from "./files.js";
+import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "./files.js";
+import { readTailTextWithEnd } from "./tail.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();
@@ -249,7 +244,7 @@ export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): numbe
  * Observers poll this every second and only ever need the tail, so for logs past the small-file
  * threshold we read just enough bytes from the end of the file to cover `limit` lines instead of
  * rescanning the whole log: per-poll I/O is bounded by what `limit` lines occupy, not by how far
- * the log has grown (the backwards chunk scan lives in files.readTailText). The parsed tail is
+ * the log has grown (the backwards chunk scan lives in tail.readTailText). The parsed tail is
  * also stat-keyed cached (stat-cache.cachedByStat, like the other per-poll readers): the log is
  * append-only, so an unchanged stat means unchanged tail bytes, and a steady-state poll costs
  * one stat instead of open + read + `limit` JSON.parse calls. Rotation swaps the inode and every
@@ -278,7 +273,7 @@ const tailCache = new Map<string, StatKeyedValue<HarnessEvent[]>>();
 
 /** The backwards tail scan readEvents caches: read just enough bytes from the end to cover
  * `limit` lines, parse them, keep the newest `limit` complete ones. Also reports the byte end
- * the scan covered through (files.readTailTextWithEnd — the last complete line's boundary) for
+ * the scan covered through (tail.readTailTextWithEnd — the last complete line's boundary) for
  * callers that seed a follow from the same read. */
 function scanEventTailWithEnd(file: string, limit: number): { events: HarnessEvent[]; coveredEnd: number } {
   let newlines = 0;

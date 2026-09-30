@@ -1,7 +1,7 @@
 import { dayKey } from "./datetime.js";
 import { eventDayKey, parseEventLine, type HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "./paths.js";
-import { readTailText } from "./files.js";
+import { readTailText } from "./tail.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days, `tumwater report --failures --days`, and /api/report?days=N): 14-day default, at most
@@ -94,7 +94,7 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
 }
 
 /** One file's in-window events, scanned backwards with bounded I/O: the log is append-only and
- * chronological, so we scan backwards in chunks from EOF (files.readTailText) and stop as soon
+ * chronological, so we scan backwards in chunks from EOF (tail.readTailText) and stop as soon
  * as the oldest complete line in hand predates the window — cost scales with the window's size,
  * not the file's. `coversFullWindow` records whether this file reaches back before the window
  * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
