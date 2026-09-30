@@ -17,7 +17,7 @@
  * that slips through either way is cheap. */
 
 import path from "node:path";
-import { collapseWhitespace, truncate } from "./text.js";
+import { squash } from "./text.js";
 
 /** One tool call as pi started it (a `tool_execution_start` event): the tool's name — empty
  * when pi omitted it — and its raw args (bash: `{ command }`). */
@@ -182,5 +182,5 @@ export function suiteRerunWarning(calls: readonly ToolCallStart[]): string | und
   const first = reruns[0];
   if (first === undefined) return undefined;
   const more = reruns.length > 1 ? ` (+${reruns.length - 1} more)` : "";
-  return `reviewer re-ran the suite the harness's pre-check already verified: ${truncate(collapseWhitespace(first), 160)}${more}`;
+  return `reviewer re-ran the suite the harness's pre-check already verified: ${squash(first, 160)}${more}`;
 }

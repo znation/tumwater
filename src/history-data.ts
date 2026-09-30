@@ -9,7 +9,7 @@
 import { eventUsage, readEvents, tickStartMap, type HarnessEvent } from "./events.js";
 import { readEventsSince } from "./event-window.js";
 import { formatTimestamp } from "./datetime.js";
-import { collapseWhitespace, truncate } from "./text.js";
+import { squash } from "./text.js";
 import { usageText } from "./event-format.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
@@ -74,7 +74,7 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
       result: String(e.result),
       durationMs: startTs === undefined ? null : Math.max(0, e.ts - startTs),
       usage: usageText(e),
-      detail: truncate(collapseWhitespace(String(e.summary ?? e.error ?? "")), DETAIL_MAX),
+      detail: squash(String(e.summary ?? e.error ?? ""), DETAIL_MAX),
     });
   }
   return rows;

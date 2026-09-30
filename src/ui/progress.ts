@@ -1,6 +1,6 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi-event-line.js";
 import { commandBuffersOutput } from "../pi.js";
-import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
+import { describeToolCall, squash } from "../text.js";
 import { defaultConfig, loadConfigCached } from "../config.js";
 import { landWorktreePath } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../tail.js";
@@ -109,9 +109,9 @@ function workItemFromContent(content: unknown): string | undefined {
   for (const raw of content) {
     const block = raw as { type?: unknown; text?: unknown } | null;
     if (block?.type !== "text" || typeof block.text !== "string") continue;
-    const collapsed = collapseWhitespace(block.text);
-    if (!collapsed) continue;
-    return truncate(collapsed, WORK_ITEM_MAX);
+    const squashed = squash(block.text, WORK_ITEM_MAX);
+    if (!squashed) continue;
+    return squashed;
   }
   return undefined;
 }

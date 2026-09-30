@@ -1,6 +1,6 @@
 import { parsePiEventLine } from "../pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "../tail.js";
-import { collapseWhitespace, describeToolCall, truncate } from "../text.js";
+import { collapseWhitespace, describeToolCall, squash, truncate } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its
@@ -161,7 +161,7 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
         case "auto_retry_start": {
           const attempt = typeof event.attempt === "number" ? event.attempt : "?";
           const maxAttempts = typeof event.maxAttempts === "number" ? event.maxAttempts : "?";
-          const error = truncate(collapseWhitespace(String(event.errorMessage ?? "unknown error")), 120);
+          const error = squash(String(event.errorMessage ?? "unknown error"), 120);
           return [...emitSeparator(), `⚠ retry ${attempt}/${maxAttempts}: ${error}`];
         }
         case "tumwater_run": {

@@ -60,6 +60,15 @@ export function truncate(s: string, max: number): string {
   return `${s.slice(0, cut).trimEnd()}…`;
 }
 
+/** One bounded one-line detail from a blob: collapseWhitespace then truncate — the shape
+ * every summary, error, and work-item line takes before display (a multi-line pi message or
+ * command output becomes a single line that fits its budget). Consumers call this one helper
+ * instead of composing the two, so the collapse-then-bound order cannot drift apart or be
+ * reversed (truncating first could cut a word mid-run and leave the collapse room to spare). */
+export function squash(s: string, max: number): string {
+  return truncate(collapseWhitespace(s), max);
+}
+
 /** East Asian Wide/Fullwidth and common emoji code-point ranges that render two terminal
  * columns wide — an approximate wcwidth table covering the CJK, Hangul, fullwidth, and emoji
  * text this harness's labels and lines realistically carry. Combining marks and variation
@@ -271,7 +280,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
         candidate === args.path || candidate === args.file_path ? path.basename(candidate) : candidate;
     }
   }
-  detail = truncate(collapseWhitespace(detail), 32);
+  detail = squash(detail, 32);
   // An empty name (pi omits toolName on some start events) yields the bare detail — no
   // leading space in front of it.
   return detail ? (toolName ? `${toolName} ${detail}` : detail) : toolName;
