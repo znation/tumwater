@@ -5,7 +5,53 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-(Nothing planned right now.)
+### `tumwater history --since <duration>` — window-shaped tick history, completing the `--since` pattern (planned 2026-09-29)
+
+- **Goal.** `tumwater history` answers "the last N ticks" only: an operator auditing "what
+  happened since the last failed landing" or "over the last hour" must guess a count. The two
+  sibling observability commands already speak durations — `logs --since <duration>` and
+  `report --since <duration>` (both capped at 7d) — so history is the odd one out. Give it the
+  same window shape over the same record.
+- **Approach.** Everything the window needs already exists; this plan wires it, it invents
+  nothing. In src/history-data.ts (113 lines) add `readTickRowsSince(root, sinceMs, role)`
+  beside `readTickRows`, mirroring cmdLogs' since path (src/ui/log-commands.ts lines 90–113):
+  `cutoff = Date.now() - sinceMs`; `readWindowEvents(root, dayKey(cutoff))` — the shared
+  rotation-spanning reader (src/event-window.ts), so the archive `events.jsonl.1` is covered
+  for free; filter events to `typeof e.ts === "number" && e.ts >= cutoff` (the day-keyed read
+  may include earlier hours of the cutoff's day); then reuse the existing pure `tickRows`
+  with `limit = events.length` (newest first, role filter intact) and return
+  `{ rows, covered }` where `covered` is `eventWindowCovers(window, cutoff)` — the exact
+  predicate cmdLogs uses, so the two surfaces cannot disagree about when the window is proven.
+  In src/ui/history.ts's `cmdHistory`: `--since <duration>` is a rival shape to `-n`
+  (same rule and wording shape as logs' "a count and a window are rival shapes"), parsed with
+  the shared `parseDurationFlag` and capped with `failOverDurationCap` against the existing
+  `LOGS_SINCE_MAX_MS` (reuse that constant — same log, same cap; no third cap value).
+  `--role` composes with `--since` here (history's `--role` is a filter, not the rival view
+  logs guards against), and `--json` works unchanged: an empty window prints nothing in JSON
+  mode (`{"rows":[]}`, the report --json precedent) and `no ticks in <duration>` in table
+  mode (reuse `durationLabel`, as cmdLogs does); when rows exist and `covered` is false,
+  print cmdLogs' hedged note verbatim — "note: the log's oldest retained event lies inside
+  this window; older events may have rotated out" — only in table mode, only after rows.
+  Update the `rejectUnknownArgs` list for history in src/cli.ts (add
+  `{ names: ["--since"], value: true, valueName: "<duration>" }`) and the HELP text's history
+  line in src/help.ts to match. The GUI's /api/history stays count-shaped this round — the
+  dashboard's history tab asks for rows, not windows; extending the endpoint is a follow-up
+  only if an operator asks for it.
+- **Files touched.** src/history-data.ts (+~35), src/ui/history.ts (+~25), src/cli.ts (+2),
+  src/help.ts (+1 line of help text), test/history-data.test.ts and test/ui-history.test.ts
+  (new window cases, ~80 total).
+- **Acceptance criteria.**
+  1. A seeded log spanning several days: `history --since 2h` returns exactly the tick_end
+     events at or after the cutoff (role filter composes), newest first, with paired durations
+     where the tick_start survives the read; `--json` emits the same rows with raw ts/tokens/
+     costUsd and `{"rows":[]}` for an empty window.
+  2. `--since` combined with `-n` fails with the rival-shape message; an over-cap or malformed
+     duration fails through the shared helpers with the same wording shape logs --since uses.
+  3. When the window's oldest retained event lies inside the window (rotation or idleness),
+     the hedged note prints after the table in table mode only — never in `--json` output.
+  4. No `--since`: behavior is byte-identical to today (default 20 rows, `-n` ceiling 200,
+     existing tests pass unchanged).
+  5. `npm run test` green.
 
 ## Done
 
