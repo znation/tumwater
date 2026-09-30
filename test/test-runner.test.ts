@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
 import { test } from "node:test";
 import path from "node:path";
@@ -274,16 +274,20 @@ function runnerEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** Spawn dist/test/test-runner.js as a subprocess with the options every runner test needs
+ * (string stdout/stderr, runnerEnv's NODE_TEST_CONTEXT strip) — the one home for the spawn
+ * boilerplate, so a test states only the filter it exercises. */
+function runRunner(args: string[]): SpawnSyncReturns<string> {
+  return spawnSync(process.execPath, [runnerPath, ...args], { encoding: "utf8", env: runnerEnv() });
+}
+
 // main() itself — the spawn, the filter announcement, the durations ledger, the exit code —
 // only runs when dist/test/test-runner.js is the program, so these exercise it as a subprocess.
 // json-object is the suite's cheapest file (fractions of a second), keeping the nested run
 // well inside a tick's budget.
 
 test("the spawned runner runs exactly the filtered file and exits with its result", () => {
-  const r = spawnSync(process.execPath, [runnerPath, "json-object"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const r = runRunner(["json-object"]);
   assert.equal(r.status, 0, `stderr: ${r.stderr}`);
   // The one-line announcement only appears on the filtered path (the unfiltered suite's
   // output stays byte-identical for the harness's build gate).
@@ -304,10 +308,7 @@ test("the spawned runner runs exactly the filtered file and exits with its resul
 
 test("the spawned runner runs only the tests a #name filter matches, and fails a pattern that matches nothing", () => {
   // json-object.test.ts's first test, matched by a substring of its name.
-  const hit = spawnSync(process.execPath, [runnerPath, "json-object#plain object"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const hit = runRunner(["json-object#plain object"]);
   assert.equal(hit.status, 0, `stderr: ${hit.stderr}`);
   assert.match(hit.stdout ?? '', /^running 1 test file\(s\) \(tests matching plain object\): json-object\.test\.ts$/m);
   assert.match(hit.stdout ?? '', /^✔ a plain object is a JSON object/m);
@@ -315,17 +316,11 @@ test("the spawned runner runs only the tests a #name filter matches, and fails a
   // A pattern that matches nothing exits 0 at node --test's level — node sees a green run of
   // file wrappers — so the runner's own guard must fail it, or a typo'd filter would read as
   // a green suite that verified nothing.
-  const miss = spawnSync(process.execPath, [runnerPath, "json-object#nosuchname"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const miss = runRunner(["json-object#nosuchname"]);
   assert.equal(miss.status, 1);
   assert.match(miss.stderr ?? "", /^tumwater: no test name matches the "#name" filter/m);
   // The pattern and the syntax error surface like the file filters' do.
-  const bare = spawnSync(process.execPath, [runnerPath, "json-object#"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const bare = runRunner(["json-object#"]);
   assert.equal(bare.status, 1);
   assert.match(bare.stderr ?? "", /must be followed by the test name to run/);
 });
@@ -333,10 +328,7 @@ test("the spawned runner runs only the tests a #name filter matches, and fails a
 test("the spawned runner under --coverage ends with node's coverage table and leaves the durations ledger alone", () => {
   const durationsPath = path.join(path.dirname(runnerPath), ".durations.json");
   const before = fs.readFileSync(durationsPath, "utf8");
-  const r = spawnSync(process.execPath, [runnerPath, "--coverage", "json-object"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const r = runRunner(["--coverage", "json-object"]);
   assert.equal(r.status, 0, `stderr: ${r.stderr}`);
   // The filter composed: exactly the one file ran, and node's table followed the spec output.
   assert.match(r.stdout ?? "", /^running 1 test file\(s\): json-object\.test\.ts$/m);
@@ -351,10 +343,7 @@ test("the spawned runner under --coverage ends with node's coverage table and le
 });
 
 test("the spawned runner exits 1 and lists candidates when a filter matches nothing", () => {
-  const r = spawnSync(process.execPath, [runnerPath, "nosuchfilter"], {
-    encoding: "utf8",
-    env: runnerEnv(),
-  });
+  const r = runRunner(["nosuchfilter"]);
   assert.equal(r.status, 1);
   assert.match(r.stderr ?? "", /^tumwater: no test file matches "nosuchfilter" — available:/m);
 });
