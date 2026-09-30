@@ -254,6 +254,41 @@ test("a severed stream (terminated) warns and earns the one retry like the other
   }
 });
 
+test("a provider request timeout (Request timed out.) warns and earns the one retry after the refill pause", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    // The provider accepted the request and failed to answer it in time — the digest's #1
+    // loss cause of 2026-09-30 (a combined 4.7 agent-hours discarded on first failure).
+    // The session on disk is intact, so this is a transient of the world, not of the session.
+    firstRun: `printf '%s\\n' '${errorLine("Request timed out.")}'`,
+  });
+  try {
+    const { loopPi, warns, usage, sleeps } = makeHost(root);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-9-author");
+    assert.equal(result.ok, true, "the retry succeeds — a fresh attempt on the intact session");
+    assert.equal(runArgs(args).length, 2, "the request-timeout run is retried once");
+    const [, retryLine] = runArgs(args);
+    assert.match(retryLine!, /--continue/, "the retry resumes the first attempt's session");
+    assert.equal(usage.length, 2, "both attempts fold — the failed one before the pause");
+    assert.ok(
+      warns.some((w) => /provider request timed out after accepting the connection/.test(w)),
+      `the warning names the timeout: ${warns.join(" | ")}`,
+    );
+    assert.ok(
+      !warns.some((w) => /does not cover this kind/.test(w)),
+      `the retry now covers the timeout kind — no floor warning: ${warns.join(" | ")}`,
+    );
+    assert.deepEqual(
+      sleeps,
+      [60_000],
+      "the retry waits the minute-scale refill pause an overloaded provider needs",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("a successful run that merely saw a backend error mid-stream stays silent", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

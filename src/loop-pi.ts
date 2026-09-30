@@ -100,8 +100,10 @@ export class LoopPi {
    * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
    * earn exactly one retry that continues the same session — the model server timing out an
    * idle predict stream, the provider severing that stream outright (undici's bare
-   * "terminated", the stream-severed backend kind), pi itself crashing on a torn server chunk
-   * (a JSON.parse failure on its stderr), and the provider rate-limiting the request with
+   * "terminated", the stream-severed backend kind), the provider accepting a request and
+   * then failing to answer it in time (its own "Request timed out.", the timeout backend
+   * kind), pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr),
+   * and the provider rate-limiting the request with
    * HTTP 429 (where the
    * provider's Retry-After hint, when sent, is waited out first — capped, so one provider's
    * generosity cannot eat the tick's own run budget). A harness-killed or quiet-killed run
@@ -119,7 +121,8 @@ export class LoopPi {
       (pi.transientServerTimeout ||
         pi.transientPiCrash ||
         pi.transientRateLimit ||
-        (pi.transientBackend && pi.backendKind === "stream-severed")) &&
+        (pi.transientBackend &&
+          (pi.backendKind === "stream-severed" || pi.backendKind === "timeout"))) &&
       !pi.ok
     ) {
       this.host.warn(
@@ -129,23 +132,33 @@ export class LoopPi {
             ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the pi run once`
             : pi.backendKind === "stream-severed"
               ? "provider severed the in-flight stream (terminated) — retrying the pi run once"
-              : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+              : pi.backendKind === "timeout"
+                ? "provider request timed out after accepting the connection — retrying the pi run once"
+                : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
       this.host.foldUsage(pi);
-      // The pause is the rate-limit branch's alone: a server timeout or pi crash is a failure
-      // of the local path, retried at once, while a 429 must wait its per-minute bucket out.
-      // A hint-less 429 defaults to that minute-scale refill pause instead of 0 — an immediate
-      // retry lands in the same exhausted bucket and burns the tick's only retry (BUGS.md
-      // 2026-09-25). A present hint wins; the cap bounds either.
+      // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
+      // pi crash is a failure of the local path, retried at once, while a 429 must wait its
+      // per-minute bucket out. A hint-less 429 defaults to that minute-scale refill pause
+      // instead of 0 — an immediate retry lands in the same exhausted bucket and burns the
+      // tick's only retry (BUGS.md 2026-09-25). A present hint wins; the cap bounds either.
       // A hint of 0 (or any non-positive value) is no usable hint — "retry now" is exactly
       // the burned-retry bug a hint-less 429 causes — so it falls back to the refill pause
       // just like a missing hint, keeping the warning text and the actual wait in agreement.
+      // The timeout kind (BUGS.md 2026-09-30) takes that same minute-scale pause: the
+      // provider accepted the request and failed to answer it, an overload shape — an
+      // immediate re-request lands at the back of the same queue and burns the tick's only
+      // retry, so the retry waits the refill pause out first.
       const hintS =
         pi.retryAfterSeconds && pi.retryAfterSeconds > 0 ? pi.retryAfterSeconds : RATE_LIMIT_NO_HINT_RETRY_S;
-      const waitS = pi.transientRateLimit ? Math.min(hintS, RATE_LIMIT_RETRY_AFTER_CAP_S) : 0;
+      const waitS = pi.transientRateLimit
+        ? Math.min(hintS, RATE_LIMIT_RETRY_AFTER_CAP_S)
+        : pi.backendKind === "timeout"
+          ? RATE_LIMIT_NO_HINT_RETRY_S
+          : 0;
       if (waitS > 0) await (this.host.sleep?.(waitS * 1000) ?? sleepFor(waitS * 1000));
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
