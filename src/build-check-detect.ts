@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "./json-object.js";
+import type { CheckConfigSlice } from "./config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the
  * installed root a walk-up from a bare worktree finds) and which npm script it names. Split
@@ -128,7 +129,7 @@ function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => 
  * never throws into the gate. */
 export function detectBuildCheck(
   startDir: string,
-  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } },
+  config?: CheckConfigSlice,
   maxLevels = WALK_UP_LEVELS,
 ): BuildCheck | null {
   const c = config?.check;
@@ -151,7 +152,7 @@ export function detectBuildCheck(
  * the batch/landing scope instead. One reading shared by runScopedBuildCheck (which runs it at
  * scope "gate") and landing-merge.ts's verifyLanding (which must then never treat the gate's green as
  * the full check's), so the two cannot disagree about whether it is on. */
-export function gateCommandOf(config?: { check?: { gateCommand?: string } }): string | undefined {
+export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
   return typeof g === "string" && g.trim() !== "" ? g : undefined;
 }

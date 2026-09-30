@@ -7,6 +7,7 @@ import {
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { gitTry } from "./git.js";
+import type { CheckConfigSlice } from "./config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build-check.ts — which keeps running and classifying
@@ -138,7 +139,7 @@ export async function checkMainBaseline(
    * §6/7), so a configured command verifies main on a non-npm repo too. Required in this
    * position: detection needs it, and an optional trailing parameter would let future
    * callers skip the baseline gate entirely. */
-  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number }; maxConcurrentChecks?: number },
+  config: CheckConfigSlice,
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
@@ -219,7 +220,7 @@ export async function mainIsGreen(
   /** The live config — the declared check is detected through it (plans/portability.md
    * §6/7), so a configured command makes the green check run on a non-npm repo too; its
    * maxConcurrentChecks sizes the check permit this run takes. */
-  config: { check?: { command: string; cwd?: string; timeoutSeconds?: number }; maxConcurrentChecks?: number },
+  config: CheckConfigSlice,
   /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
    * the feed like the role loops' own baseline checks. */
   onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,

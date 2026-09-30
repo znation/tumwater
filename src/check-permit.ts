@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { defaultConfig } from "./config.js";
+import type { CheckConfigSlice } from "./config-schema.js";
 import { Semaphore } from "./semaphore.js";
 
 /** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks,
@@ -35,7 +36,7 @@ export const CHECK_TIER = { merge: 0, other: 1 } as const;
  * enforces that for tumwater.json), the default otherwise — a caller passing a partial config
  * (the tests' `{ check }`) or none gets the default, never a cap the semaphore could not grant
  * under. */
-function checkCap(config: { maxConcurrentChecks?: number } | undefined): number {
+function checkCap(config: CheckConfigSlice | undefined): number {
   const n = config?.maxConcurrentChecks;
   return typeof n === "number" && Number.isInteger(n) && n >= 1 ? n : defaultConfig().maxConcurrentChecks;
 }
@@ -45,7 +46,7 @@ function checkCap(config: { maxConcurrentChecks?: number } | undefined): number 
  * gives its permit back. Reentrant (holdingPermit): called again from inside `run`, it runs the
  * inner work under the permit already held. */
 export async function withCheckPermit<T>(
-  config: { maxConcurrentChecks?: number } | undefined,
+  config: CheckConfigSlice | undefined,
   tier: number,
   run: () => Promise<T>,
 ): Promise<T> {

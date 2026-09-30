@@ -14,6 +14,7 @@ import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
+import type { CheckConfigSlice } from "./config-schema.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
  * the project's declared check (an npm script — `test` preferred per npm convention, then
@@ -315,10 +316,7 @@ export async function runScopedBuildCheck(
   role: string,
   scope: BuildCheckScope,
   wt: string,
-  config?: {
-    check?: { command: string; gateCommand?: string; cwd?: string; timeoutSeconds?: number };
-    maxConcurrentChecks?: number;
-  },
+  config?: CheckConfigSlice,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;

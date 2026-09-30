@@ -10,7 +10,7 @@ import {
 import { fallbackPair } from "./config-views.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "./version.js";
@@ -290,7 +290,7 @@ export function checkMergeLock(root: string): CheckOutcome {
  * (the checkFallbackModel precedent). */
 export function checkBuildCheck(
   root: string,
-  config?: { check?: { command: string; cwd?: string; timeoutSeconds?: number } } | null,
+  config?: CheckConfigSlice | null,
 ): CheckOutcome {
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)

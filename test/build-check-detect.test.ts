@@ -131,9 +131,9 @@ test("maxLevels bounds the climb: the root one level too deep is never used", ()
 });
 
 test("gateCommandOf: on for a real string, off for blank or missing", () => {
-  assert.equal(gateCommandOf({ check: { gateCommand: "npm run typecheck" } }), "npm run typecheck");
-  assert.equal(gateCommandOf({ check: { gateCommand: "  " } }), undefined);
-  assert.equal(gateCommandOf({ check: {} }), undefined);
+  assert.equal(gateCommandOf({ check: { command: "npm test", gateCommand: "npm run typecheck" } }), "npm run typecheck");
+  assert.equal(gateCommandOf({ check: { command: "npm test", gateCommand: "  " } }), undefined);
+  assert.equal(gateCommandOf({ check: { command: "npm test" } }), undefined);
   assert.equal(gateCommandOf({}), undefined);
   assert.equal(gateCommandOf(), undefined);
 });
