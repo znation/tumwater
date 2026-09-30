@@ -25,6 +25,17 @@ export const LOGS_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
  * the CLI's flag validation and the collector's window read share one bound. */
 export const REPORT_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** The one-line note every windowed render prints when its read cannot prove the window was
+ * fully covered (coversFullWindow false or eventWindowCovers false): the log's oldest retained
+ * event lies inside the window, so older events may have rotated out. The phrasing is hedged
+ * on purpose and stays true whenever it prints — a flat "rotated out" claim would be false for
+ * a log born inside the window — so all four renders (`logs --since`, `report --since`,
+ * `report --days`, `history --since`) must share this exact wording rather than re-derive it.
+ * Lives here beside the coverage proof it restates, not in the presentation layer, so every
+ * renderer imports it from the one place that defines what "covered" means. */
+export const SPARSE_WINDOW_NOTE =
+  "note: the log's oldest retained event lies inside this window; older events may have rotated out";
+
 /** What one windowed read of events.jsonl yielded. */
 interface EventWindow {
   /** Events whose local day is on or after the `fromKey` the read was asked for, oldest first. */

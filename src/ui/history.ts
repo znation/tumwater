@@ -1,7 +1,7 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { displayWidth, padToWidth, shortSpanPhrase } from "../text.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
-import { LOGS_SINCE_MAX_MS } from "../event-window.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
@@ -88,9 +88,8 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   };
   say(rows.map((r) => renderRow(r, widths)).join("\n"));
   // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows
-  // (an empty window returned above), it never touches --json output, and its hedged phrasing
-  // is cmdLogs' verbatim: the oldest retained event being inside the window is exactly the
-  // unproven case, whether the cause is rotation or idleness.
-  if (!covered)
-    say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
+  // (an empty window returned above), it never touches --json output, and it is the shared
+  // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
+  // the unproven case, whether the cause is rotation or idleness.
+  if (!covered) say(SPARSE_WINDOW_NOTE);
 }

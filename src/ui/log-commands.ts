@@ -1,6 +1,11 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleScope, say } from "../cli-args.js";
 import { dayKey } from "../datetime.js";
-import { eventWindowCovers, LOGS_SINCE_MAX_MS, readWindowEvents } from "../event-window.js";
+import {
+  eventWindowCovers,
+  LOGS_SINCE_MAX_MS,
+  readWindowEvents,
+  SPARSE_WINDOW_NOTE,
+} from "../event-window.js";
 import { parseEventLine, readEventsTailWithEnd, type HarnessEvent } from "../events.js";
 import { formatEvent } from "../event-format.js";
 import { followFile } from "../tail.js";
@@ -109,8 +114,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
     // The hedged phrasing stays true whenever it prints: the oldest retained event being inside
     // the window is exactly the unproven case, whether the cause is rotation or idleness.
-    if (!covered && !json)
-      say("note: the log's oldest retained event lies inside this window; older events may have rotated out");
+    if (!covered && !json) say(SPARSE_WINDOW_NOTE);
     return;
   }
   const nRaw = flagValue(rest, "-n");

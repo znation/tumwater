@@ -12,7 +12,12 @@ import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, pa
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
+import {
+  REPORT_DEFAULT_DAYS,
+  REPORT_MAX_DAYS,
+  REPORT_SINCE_MAX_MS,
+  SPARSE_WINDOW_NOTE,
+} from "../event-window.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -78,8 +83,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // whether from rotation or a log born inside the window), or the one-time statement of the
   // backlog-tally omission. A flat "rotated out" claim would be false for a log that never
   // had the older events, so the wording names only what is provably the case.
-  if (!data.coversFullWindow)
-    lines.push("note: the log's oldest retained event lies inside this window; older events may have rotated out");
+  if (!data.coversFullWindow) lines.push(SPARSE_WINDOW_NOTE);
   else lines.push("backlog tallies (features done / bugs fixed) need the day report (--days)");
   return lines.join("\n");
 }
@@ -121,12 +125,11 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
-  // The same truncation note the --since render prints (one voice across the report's two
-  // windows): covered is false only when events were aggregated from a log whose oldest
-  // retained event lies inside the window, so the hedged sentence stays true whenever it
-  // prints — an empty or fully covered log never claims a history it cannot see.
-  if (!data.coversFullWindow)
-    lines.push("", "note: the log's oldest retained event lies inside this window; older events may have rotated out");
+  // The shared SPARSE_WINDOW_NOTE (one voice across the report's two windows and the other
+  // windowed renders): covered is false only when events were aggregated from a log whose
+  // oldest retained event lies inside the window, so the hedged sentence stays true whenever
+  // it prints — an empty or fully covered log never claims a history it cannot see.
+  if (!data.coversFullWindow) lines.push("", SPARSE_WINDOW_NOTE);
   return lines.join("\n");
 }
 
