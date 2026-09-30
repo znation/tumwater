@@ -245,7 +245,7 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
     if (line.startsWith("- ")) {
       // Epitaph guard (see the doc comment): the date must live in the line's trailing
       // parenthetical beside a commit reference, or the bullet is body text, not an entry.
-      const tail = line.match(/\(([^()]*)\)\s*$/)?.[1] ?? "";
+      const tail = trailingParenthetical(line);
       const m = tail.match(dateRe);
       if (m?.[1] && /\bcommits?\b/.test(tail)) date = m[1];
     } else {
@@ -261,6 +261,24 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
     i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
   }
   return dates;
+}
+
+/** A `- ` line's trailing parenthetical's inner text, nesting-aware: a backward scan from the
+ * line's closing ")" to its matching "(" returns the group's FULL inner text, so an epitaph
+ * that quotes a parenthetical of its own — "(planned …, done …; commit abc1234 (re-landed
+ * after review fix))" — still yields its date-bearing text. The previous flat `\([^()]*\)$`
+ * match saw only the innermost group ("" when the line ended in two closes) and silently
+ * dropped the epitaph's date from the day report (BUGS.md 2026-09-29). Unbalanced text (no
+ * matching open paren) yields "" — the guard then treats the bullet as body text, as before. */
+function trailingParenthetical(line: string): string {
+  if (!line.endsWith(")")) return "";
+  let depth = 0;
+  for (let i = line.length - 1; i >= 0; i--) {
+    const ch = line[i];
+    if (ch === ")") depth++;
+    else if (ch === "(" && --depth === 0) return line.slice(i + 1, -1);
+  }
+  return "";
 }
 
 /** Aggregate fleet usage over exactly `days` local calendar days ending today, from the event

@@ -278,6 +278,29 @@ And a closing note.
   assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1); // the epitaph only
 });
 
+test("an epitaph whose trailing parenthetical quotes a nested parenthetical still counts; a body bullet with one still does not", () => {
+  // The epitaph guard reads the trailing parenthetical to separate entries from body bullets.
+  // The flat [^()] match could not span a nested group: "(…; commit abc (re-landed after
+  // review fix))" matched only the innermost "(re-landed after review fix)", whose text
+  // carries neither the date nor the commit reference, so the epitaph's completion date
+  // vanished from the day report with no error. The nesting-aware backward scan keeps it.
+  const root = tmpdir();
+  const d1 = dayKey(at(2));
+  const d2 = dayKey(at(1));
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `- Nested-paren epitaph (planned ${d1}, fixed ${d2}; commit abc1234 (re-landed after review fix))
+- A body bullet after it (fixed ${d2})`,
+    },
+  ]);
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 1); // the epitaph only — the body bullet still counts nowhere
+  assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 0); // zero-filled, not counted
+});
+
 test("a Fixed heading whose completion is recorded as re-landed counts on that date; an undated fixed mention counts nowhere", () => {
   // The bugfix prompt pins the completion DATE, not the verb: an entry whose first landing was
   // rejected in review is completed by the re-land, and its epitaph says "re-landed <date>" —
