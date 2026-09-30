@@ -66,6 +66,16 @@ const RESTART_DRAIN_MAX_MS = 30 * 60_000;
  * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. */
 export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
 
+/** How long a build may stay CONTINUOUSLY stale before the pin itself — not any one head's
+ * failure — is warned about (BUGS.md 2026-09-29): under churn each per-head warning names a
+ * different commit, so the aggregate — hours pinned on a stale build while every rebuild dies —
+ * raised no alarm anywhere the operator reads. One warning at this age, then at most one per
+ * STALE_ESCALATE_EVERY_MS for as long as the episode lasts. */
+const STALE_ESCALATE_AFTER_MS = 6 * 60 * 60_000;
+
+/** The sustained-pin warning's repeat cadence: daily, not per poll and not per head. */
+const STALE_ESCALATE_EVERY_MS = 24 * 60 * 60_000;
+
 /** What the orchestrator should do this poll: `hold` starts no new ticks (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */
 type RedeployAction = "none" | "hold" | "restart";
@@ -198,6 +208,21 @@ export class Redeployer {
    * restartRecord at construction and updated when this process completes one. The cooldown is
    * measured from here on every poll (BUGS.md 2026-09-11). */
   private lastAutoRestartAt: number | null = null;
+  /** When the current unbroken stale episode began (epoch ms), or null while the build is fresh.
+   * Deliberately head-independent: main moving under a stale build CONTINUES the episode rather
+   * than restarting the clock, because the fleet's predicament — running code main has left
+   * behind — is the same whatever the head, and a per-head clock is exactly what let the
+   * 2026-09-29 pin produce 109 warnings without ever saying the pin was the story. In-memory,
+   * per process: a completed restart (and the process exit that follows it) is a new world. */
+  private staleSince: number | null = null;
+  /** When a restart attempt last failed during the current stale episode, or null. The
+   * escalation's second condition: a stale build with NO failed attempt is a cooldown deferral
+   * or an intentional off switch, not a pin. Set by noteFailure from every dead-end shape
+   * EXCEPT a red-main verdict, which is a correct deferral rather than a failure. */
+  private lastRestartFailureAt: number | null = null;
+  /** When the sustained-pin warning last fired, or null — spaces the repeats (see
+   * escalateIfSustained). Cleared with the episode. */
+  private lastEscalationAt: number | null = null;
   /** Whether the current cooldown episode's deferral was already warned about — one warning per
    * episode, not one per poll and not one per head: the cooldown condition is head-independent,
    * so a landing mid-cooldown adds no new information (BUGS.md 2026-09-19). Cleared when the
@@ -291,10 +316,21 @@ export class Redeployer {
           aheadCommits: this.staleness?.aheadCommits ?? 0,
         });
       }
+      // The sustained-pin clock (see staleSince): a moved main under a stale build continues the
+      // episode rather than restarting it, and the episode's end clears the escalation schedule.
+      if (stale && this.staleSince === null) this.staleSince = now;
+      else if (!stale) {
+        this.staleSince = null;
+        this.lastEscalationAt = null;
+      }
       // A moved main supersedes any restart in progress for the previous head: its compile
       // (if running) finishes into its own staging dir and is simply never swapped in.
       if (this.pendingHead !== null && this.pendingHead !== mainHead) this.clearPending();
     }
+    // The sustained-pin escalation runs BEFORE the early returns below: a latched block on a
+    // frozen main never re-enters the episode logic, and that pinned-and-stuck state is exactly
+    // what must escalate (BUGS.md 2026-09-29).
+    if (this.staleness?.stale && autoRestart) this.escalateIfSustained(now);
     if (!this.staleness?.stale || !autoRestart || this.blockedHead === mainHead) return this.endDrain();
 
     // Completed auto-restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11):
@@ -321,7 +357,7 @@ export class Redeployer {
       // nothing — no hold, no green check, no compile — so asking again every poll is how a
       // repaired environment (the config restored, pi back on PATH) lets the restart proceed.
       const problem = await this.bootProblem();
-      if (problem !== null) return this.refuse(mainHead, problem);
+      if (problem !== null) return this.refuse(mainHead, problem, now);
       this.refusedReason = null;
       this.pendingHead = mainHead;
       // Only when the fleet was not already being held: a superseded head hands its drain over
@@ -344,6 +380,7 @@ export class Redeployer {
     // re-run the check on the same head; a fleet whose toolchain recovers redeploys itself
     // without main ever moving (BUGS.md 2026-09-16). A red VERDICT below still blocks.
     if (this.green.error) {
+      this.noteFailure(now);
       if (this.checkFailedHead !== mainHead) {
         this.checkFailedHead = mainHead;
         this.warn(`green check of ${shortSha(mainHead)} could not run: ${this.green.error} — retrying on the next poll`);
@@ -377,6 +414,7 @@ export class Redeployer {
     const c = this.compiled.result;
     if (!c?.ok) {
       const detail = c?.detail ?? this.compiled.error ?? "compile threw";
+      this.noteFailure(now);
       // A compile that never produced a verdict is not a verdict about the tree, in either shape
       // it arrives in: an explicit rejection (ENOENT-class spawn failure — the environment is
       // broken, not the commit) and a promise that rejected without a CompileResult (the
@@ -387,6 +425,7 @@ export class Redeployer {
       // repairing the mirror or the toolchain redeploys the current head without main moving
       // (BUGS.md 2026-09-28). A real compiler exit below still blocks.
       if (c === undefined || c.rejected) {
+        this.noteFailure(now);
         if (this.compileFailedHead !== mainHead) {
           this.compileFailedHead = mainHead;
           this.warn(
@@ -420,11 +459,12 @@ export class Redeployer {
     const problem = await this.bootProblem();
     if (problem !== null) {
       this.clearPending();
-      return this.refuse(mainHead, problem);
+      return this.refuse(mainHead, problem, now);
     }
     try {
       this.deps.swap(mainHead);
     } catch (err) {
+      this.noteFailure(now);
       const reason = "swapping the new build into place failed";
       this.block(mainHead, reason, `${reason}: ${errorMessage(err)}`);
       return this.endDrain();
@@ -439,6 +479,10 @@ export class Redeployer {
       // An unpersistable timestamp degrades to no cooldown rather than failing the restart.
     }
     this.lastAutoRestartAt = now;
+    // A completed restart ends the stale episode; the next one (a fresh build going stale again)
+    // starts its own clock and its own escalation schedule.
+    this.staleSince = null;
+    this.lastEscalationAt = null;
     // The director is guaranteed finished by here (poll only reaches the swap with
     // directorInFlight === 0), so what gets aborted — and counted — are role ticks only, and
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
@@ -477,7 +521,8 @@ export class Redeployer {
 
   /** Refuse to swap onto a generation that could not boot here: keep the running one, end any
    * drain, and log `restart_refused` once per distinct reason (see refusedReason). */
-  private refuse(head: string, reason: string): "none" {
+  private refuse(head: string, reason: string, now: number): "none" {
+    this.noteFailure(now);
     if (reason !== this.refusedReason) {
       this.refusedReason = reason;
       this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason });
@@ -507,6 +552,32 @@ export class Redeployer {
     // stream's only trace of the episode's end.
     this.log({ loop: "harness", type: "restart_blocked", from: this.build.sha, to: head, reason });
     this.warn(message);
+  }
+
+  /** A restart attempt just failed — record when, so sustained staleness WITH failures can
+   * escalate (see escalateIfSustained). Every dead-end shape feeds this: a refused boot gate
+   * (both asks — before the hold and before the swap — share refuse(), so neither can be
+   * forgotten), a green check or compile that could not run, a failed compile verdict, a swap
+   * error. A red main is a correct deferral, not a failure, and never feeds the escalation. */
+  private noteFailure(now: number): void {
+    this.lastRestartFailureAt = now;
+  }
+
+  /** The sustained-pin warning (BUGS.md 2026-09-29): once the build has stayed stale past
+   * STALE_ESCALATE_AFTER_MS and a restart attempt has failed within this same stale episode,
+   * say the aggregate out loud — at most once per STALE_ESCALATE_EVERY_MS while it lasts.
+   * Healthy churn never feeds it: a landing restart clears the episode, and a cooldown
+   * deferral or red main produces no failed attempt, so no warning. */
+  private escalateIfSustained(now: number): void {
+    const since = this.staleSince;
+    if (since === null || now - since < STALE_ESCALATE_AFTER_MS) return;
+    if (this.lastRestartFailureAt === null || this.lastRestartFailureAt < since) return;
+    if (this.lastEscalationAt !== null && now - this.lastEscalationAt < STALE_ESCALATE_EVERY_MS) return;
+    this.lastEscalationAt = now;
+    const hours = Math.max(1, Math.round((now - since) / 3_600_000));
+    this.warn(
+      `build ${shortSha(this.build.sha)} has stayed stale for ~${hours} h (${this.staleness?.aheadCommits ?? 0} commits behind main) while rebuild attempts keep failing — the sustained pin itself is the problem, not any one head`,
+    );
   }
 
   /** Log one warning event for the harness loop — the shape the class's warn sites share. */
