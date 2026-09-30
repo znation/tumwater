@@ -17,23 +17,21 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, fakePiIdle, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
+import { withPi, withIdlePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
 
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      // The review gate (enabled by default) runs after the commit: approve with zero usage so
-      // the tick's token assertions below see only the author run.
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    // The review gate (enabled by default) runs after the commit: approve with zero usage so
+    // the tick's token assertions below see only the author run.
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     // Merge queue 3/5: the tick ends at commit + pin — the landing is the orchestrator's
@@ -48,9 +46,7 @@ test("a tick that changes files commits and merges to main", async () => {
     assert.equal(runner.state.backoffSeconds, 0);
     assert.equal(runner.state.generatedTokens, 42);
     assert.equal(runner.state.peakContextTokens, 42);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a full tick → review → merge cycle lands on a repo whose only branch is trunk (portability 2/7)", async () => {
@@ -60,14 +56,12 @@ test("a full tick → review → merge cycle lands on a repo whose only branch i
   const repo = makeRepo();
   sh(repo, "git", "branch", "-m", "main", "trunk");
   await initProject(repo, "A trunk-based project.");
-  const restore = fakePi(
-    [
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 10, output: 10, cost: 0 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 10, output: 10, cost: 0 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const config = defaultConfig();
     const runner = makeLoopRunner(repo, "improve", config, "trunk");
     const outcome = await runner.tick();
@@ -80,9 +74,7 @@ test("a full tick → review → merge cycle lands on a repo whose only branch i
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")));
     assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a changed tick schedules its next run at the role's own interval, not the global", async () => {
@@ -92,14 +84,12 @@ test("a changed tick schedules its next run at the role's own interval, not the 
   // slow clock (3600 s) over the fast global (20 s) must land its next run ~1 h out, not
   // 20 s: a read of config.minTickIntervalSeconds directly would have scheduled it in seconds.
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const config = defaultConfig();
     assert.equal(config.minTickIntervalSeconds, 20, "the global stays fast");
     config.roles.improve = { enabled: true, minTickIntervalSeconds: 3600 };
@@ -114,9 +104,7 @@ test("a changed tick schedules its next run at the role's own interval, not the 
       Math.abs(gapMs - 3_600_000) < 10_000,
       `next run is ~1 h after the tick ended, got ${gapMs} ms`,
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("gen / peak ctx are per-tick windows: a second tick does not accumulate on the first", async () => {
@@ -127,12 +115,10 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
   fs.writeFileSync(counter, "0");
   const line1 = assistantLine("first tick\nSUMMARY: first", { tokens: 42, output: 42, cost: 0.05 });
   const line2 = assistantLine("second tick\nSUMMARY: second", { tokens: 7, output: 7, cost: 0.01 });
-  const restore = fakePi(
-    APPROVE_PI + "\n" +
-      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
-      `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`,
-  );
-  try {
+  const script = APPROVE_PI + "\n" +
+    `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
+    `[ "$n" -eq 1 ] && { printf '%s\n' '${line1}'; echo one > t.txt; } || { printf '%s\n' '${line2}'; echo two >> t.txt; }`;
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     // After the first completed tick + its landing the state file holds that tick's usage only.
@@ -153,15 +139,12 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
     // Lifetime counters are untouched by the per-tick reset.
     assert.equal(runner.state.ticks, 2);
     assert.equal(runner.state.commits, 2);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a nothing-to-do tick backs off without committing", async () => {
   const repo = await initializedRepo();
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const config = defaultConfig();
     const runner = makeLoopRunner(repo, "clean", config);
     const before = mainSha(repo);
@@ -176,9 +159,7 @@ test("a nothing-to-do tick backs off without committing", async () => {
       config.idleBackoff.initialSeconds * config.idleBackoff.factor,
     );
     assert.ok(runner.state.nextRunAt > Date.now());
-  } finally {
-    restore();
-  }
+  });
 });
 
 // The qa observer's coverage ledger (plans/observer-roles.md 2/2): every tick is a fresh
@@ -188,31 +169,23 @@ test("a nothing-to-do tick backs off without committing", async () => {
 
 test("a qa no_change tick records the FLOW line it emitted", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    `printf '%s\n' '${assistantLine("checked status\nFLOW: status — passed\nTUMWATER_NOTHING_TO_DO")}'`,
-  );
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("checked status\nFLOW: status — passed\nTUMWATER_NOTHING_TO_DO")}'`, async () => {
     const runner = makeLoopRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     const coverage = readQaCoverage(repo);
     assert.equal(coverage.status?.result, "passed");
     assert.equal(typeof coverage.status?.lastRunAt, "number");
     assert.deepEqual(Object.keys(coverage), ["status"]);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a qa tick with no FLOW line records nothing and still completes", async () => {
   const repo = await initializedRepo();
-  const restore = fakePiIdle();
-  try {
+  await withIdlePi(async () => {
     const runner = makeLoopRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.deepEqual(readQaCoverage(repo), {});
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a qa tick cut off before declaring its outcome does not advance the flow rotation", async () => {
@@ -220,36 +193,28 @@ test("a qa tick cut off before declaring its outcome does not advance the flow r
   // Mid-run FLOW line, then a thinking-only final message (the cut-off signature) with no
   // nothing-to-do sentinel: the run never declared its outcome, so the flow must NOT be
   // recorded — the rotation must not skip a check that did not finish.
-  const restore = fakePi(
-    `printf '%s\n' '${assistantLine("checking status\nFLOW: status — passed")}'\n` +
-      `printf '%s\n' '${thinkingOnlyLine("status looks", { output: 16 })}'`,
-  );
-  try {
+  const script = `printf '%s\n' '${assistantLine("checking status\nFLOW: status — passed")}'\n` +
+    `printf '%s\n' '${thinkingOnlyLine("status looks", { output: 16 })}'`;
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.deepEqual(readQaCoverage(repo), {});
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a qa tick that files a bug records the bug result and its headline", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      `printf '%s\n' '${assistantLine("found one\nSUMMARY: status --json omits the fallback badge\nFLOW: status — bug")}'`,
-      `printf '%s\n' '- status --json omits the fallback badge' >> BUGS.md`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    `printf '%s\n' '${assistantLine("found one\nSUMMARY: status --json omits the fallback badge\nFLOW: status — bug")}'`,
+    `printf '%s\n' '- status --json omits the fallback badge' >> BUGS.md`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "queued");
     const coverage = readQaCoverage(repo);
     assert.equal(coverage.status?.result, "bug");
     assert.equal(coverage.status?.summary, "status --json omits the fallback badge");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a qa tick's prompt carries the rendered coverage block from the ledger", async () => {
@@ -257,77 +222,60 @@ test("a qa tick's prompt carries the rendered coverage block from the ledger", a
   // Seed a ledger so the block has content; the shim only emits a FLOW line when it sees the
   // rendered block in its own arguments, so a tick whose prompt omitted it would record nothing.
   recordFlow(repo, "status", "passed", undefined, Date.now() - 4 * 60 * 60 * 1000);
-  const restore = fakePi(
-    `for a in "$@"; do case "$a" in *"least recently exercised first"*) ` +
-      `printf '%s\n' '${assistantLine("checked logs\nFLOW: logs — passed\nTUMWATER_NOTHING_TO_DO")}'; exit 0;; esac; done\n` +
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-  );
-  try {
+  const script = `for a in "$@"; do case "$a" in *"least recently exercised first"*) ` +
+    `printf '%s\n' '${assistantLine("checked logs\nFLOW: logs — passed\nTUMWATER_NOTHING_TO_DO")}'; exit 0;; esac; done\n` +
+    `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`;
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "qa");
     assert.equal((await runner.tick()).result, "no_change");
     assert.equal(readQaCoverage(repo).logs?.result, "passed", "the coverage block reached the qa prompt");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a nothing-to-do declaration in an intermediate turn does not warn (regression)", async () => {
   const repo = await initializedRepo();
   // pi declares nothing-to-do, then emits a closing remark afterwards; no file changes.
-  const restore = fakePi(
-    `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'\n` +
-      `printf '%s\n' '${assistantLine("all done")}'`,
-  );
-  try {
+  const script = `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'\n` +
+    `printf '%s\n' '${assistantLine("all done")}'`;
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const warnings = eventsOfType(repo, "warning");
     assert.deepEqual(warnings, [], "no spurious warning when the sentinel was declared mid-run");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a non-compliant tick warns and notes a truncated final message", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("hmm, let me think", { stopReason: "length" })}'`);
-  try {
+  await withPi(`printf '%s\n' '${assistantLine("hmm, let me think", { stopReason: "length" })}'`, async () => {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /stopReason=length/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a silent tick warns that no assistant text was captured", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`exit 0`);
-  try {
+  await withPi(`exit 0`, async () => {
     const runner = makeLoopRunner(repo, "clean");
     assert.equal((await runner.tick()).result, "no_change");
     const [warning] = eventsOfType(repo, "warning");
     assert.ok(warning, "expected exactly one warning");
     assert.match(String(warning.message), /no assistant text/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a failing pi run records an error and backs off", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(`echo 'pi exploded' >&2\nexit 1`);
-  try {
+  await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.ok(runner.state.lastError);
     assert.ok(runner.state.backoffSeconds > 0);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("consecutive error ticks raise one warning per episode, not one per tick", async () => {
@@ -335,8 +283,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
   // streak crossing fires exactly one warning per episode — the fourth failure deepens the
   // episode without re-warniing, and a healthy tick re-arms it for the next episode.
   const repo = await initializedRepo();
-  const restore = fakePi(`echo 'git is broken' >&2\nexit 1`);
-  try {
+  await withPi(`echo 'git is broken' >&2\nexit 1`, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const warnings = () => eventsOfType(repo, "warning");
     assert.equal((await runner.tick()).result, "error");
@@ -355,9 +302,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
     const saved = loadLoopState(repo, "clean");
     assert.equal(saved.lastResult, "error");
     assert.equal(saved.consecutiveErrors, 4);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("consecutive quiet kills raise one warning per episode, then drop the starved session", async (t) => {
@@ -366,10 +311,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
   // (fresh tick) and backs off instead of retrying the starved session immediately forever.
   const repo = await initializedRepo();
   // One line, then silence — the quiet watchdog kills the run as hung.
-  const restore = fakePi(
-    [`printf '%s\n' '${assistantLine("starting work")}'`, `exec sleep 60`].join("\n"),
-  );
-  try {
+  await withPi([`printf '%s\n' '${assistantLine("starting work")}'`, `exec sleep 60`].join("\n"), async () => {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 1;
     config.tickTimeoutSeconds = 3600;
@@ -397,9 +339,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     assert.equal(runner.state.resumePending, false, "the starved session is abandoned");
     assert.ok(runner.state.backoffSeconds > 0, "the give-up backs off on the idle ladder");
     assert.equal(warnings().length, 1, "the warning is once per episode, not once per kill");
-  } finally {
-    restore();
-  }
+  });
 });
 
 // tick() promises to never throw: runTick's own error paths RETURN an "error" outcome, but
@@ -476,14 +416,12 @@ test("a tick_end carries durationMs even when the tick spans no measurable time"
 
 test("director skips with an empty inbox and runs a queued prompt", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("ok\nSUMMARY: honor user request")}'`,
-      `echo req > request.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("ok\nSUMMARY: honor user request")}'`,
+    `echo req > request.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "director");
     assert.equal((await runner.tick()).result, "skipped");
     enqueuePrompt(repo, "please add request.txt");
@@ -492,9 +430,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     assert.equal(await landHead(repo, runner, defaultConfig(), "director"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "request.txt")));
     assert.equal(inboxSize(repo), 0, "a fulfilled prompt is not re-queued");
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Harness-mediated config writes (plans/portability.md §3/7): the director's config request is
@@ -502,13 +438,11 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
 // the request file never enters a diff.
 test("a director tick applies a config request without producing a commit", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
-      `printf '%s' '{"customLoops":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+    `printf '%s' '{"customLoops":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "director");
     enqueuePrompt(repo, "add a loop named docs that keeps the examples current");
     // The request is not a worktree change: consumed and deleted before the dirty check, the
@@ -521,20 +455,16 @@ test("a director tick applies a config request without producing a commit", asyn
       "",
       "the request file never reaches a commit",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a config request naming a disallowed key applies customLoops and warns naming the key", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
-      `printf '%s' '{"customLoops":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
+    `printf '%s' '{"customLoops":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "director");
     enqueuePrompt(repo, "add docs and set the budget to 1");
     await runner.tick();
@@ -546,24 +476,20 @@ test("a config request naming a disallowed key applies customLoops and warns nam
       warnings.some((e) => String(e.message).includes("maxDailyCostUsd")),
       `expected a warning naming the ignored key, got: ${JSON.stringify(warnings.map((e) => String(e.message)))}`,
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("worktree changes commit even when pi forgets the summary line: the subject names the changed files", async () => {
   const repo = await initializedRepo();
   // Neither the run nor the follow-up turn produces a SUMMARY: the subject is derived from
   // what changed instead of the bare "dry tick 1" (73 such commits in the first 670).
-  const restore = fakePi(
-    [
-      TOUCH_SESSION,
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("did it, no summary")}'`,
-      `echo x > x.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    TOUCH_SESSION,
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("did it, no summary")}'`,
+    `echo x > x.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "dry");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
@@ -571,9 +497,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
     const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x\.txt"/.test(w)), JSON.stringify(warnings));
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a missing SUMMARY is recovered with one follow-up turn in the tick's own session", async () => {
@@ -582,19 +506,17 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
   // The authoring run edits and ends without the block (a cut-off final message, say); the
   // follow-up — recognizable by its prompt — answers with the full block. Every run records
   // whether it continued a session.
-  const restore = fakePi(
-    [
-      TOUCH_SESSION,
-      logFlagsTo(argsFile),
-      APPROVE_PI,
-      `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
-      `  printf '%s\n' '${assistantLine("SUMMARY: Add the x marker file\nWHY: the harness needed a fixture\nRISK: none\nVERIFIED: none")}'`,
-      `  exit 0;; esac; done`,
-      `echo x > x.txt`,
-      `printf '%s\n' '${thinkingOnlyLine("almost done", { output: 5 })}'`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    TOUCH_SESSION,
+    logFlagsTo(argsFile),
+    APPROVE_PI,
+    `for a in "$@"; do case "$a" in *"did not include the required closing block"*)`,
+    `  printf '%s\n' '${assistantLine("SUMMARY: Add the x marker file\nWHY: the harness needed a fixture\nRISK: none\nVERIFIED: none")}'`,
+    `  exit 0;; esac; done`,
+    `echo x > x.txt`,
+    `printf '%s\n' '${thinkingOnlyLine("almost done", { output: 5 })}'`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "dry");
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
@@ -607,7 +529,5 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     assert.equal(runs.filter((r) => r.includes("--continue")).length, 1, JSON.stringify(runs));
     const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /recovered it with a follow-up turn/.test(w)), JSON.stringify(warnings));
-  } finally {
-    restore();
-  }
+  });
 });

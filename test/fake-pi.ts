@@ -39,13 +39,19 @@ export function fakePi(script: string): () => void {
   return pathPrepend(dir);
 }
 
+/** The script fakePiIdle installs: one compliant TUMWATER_NOTHING_TO_DO assistant line — the
+ * standard fixture for a tick that finds nothing to do. The single home of the printf +
+ * assistantLine idiom the orchestrator and loop tests repeated verbatim, so the sentinel's
+ * spelling cannot drift per fixture. `opts` passes through to assistantLine when a test pins
+ * tokens or cost. */
+function idlePiScript(opts: { cost?: number } = {}): string {
+  return `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`;
+}
+
 /** A fake pi whose only action is emitting one compliant TUMWATER_NOTHING_TO_DO assistant
- * line — the standard fixture for a tick that finds nothing to do. The single home of the
- * printf + assistantLine idiom the orchestrator and loop tests repeated verbatim, so the
- * sentinel's spelling cannot drift per fixture. `opts` passes through to assistantLine when
- * a test pins tokens or cost. */
+ * line. `opts` passes through to assistantLine when a test pins tokens or cost. */
 export function fakePiIdle(opts: { cost?: number } = {}): () => void {
-  return fakePi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO", opts)}'`);
+  return fakePi(idlePiScript(opts));
 }
 
 /** Run one async block with fakePi's script on PATH, restoring PATH afterwards even when the
@@ -59,6 +65,12 @@ export async function withPi<T>(script: string, fn: () => Promise<T>): Promise<T
   } finally {
     restore();
   }
+}
+
+/** Run one async block with fakePiIdle's script on PATH — the withPi form of fakePiIdle, so a
+ * nothing-to-do test writes only its body and the same save/restore pairing rules it. */
+export async function withIdlePi<T>(fn: () => Promise<T>): Promise<T> {
+  return withPi(idlePiScript(), fn);
 }
 
 /** The review tests' standard reviewer stub: a fake-pi script that creates `marker` (when
