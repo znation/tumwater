@@ -126,7 +126,10 @@ discards a role's in-flight landing.
 
 Stopping the fleet mid-tick loses nothing: on the next `tumwater run`, the loop resumes its pi
 session and uncommitted edits. `tumwater stop` is the graceful path — it signals the orchestrator,
-lets in-flight ticks finish and land, then exits. Crashes recover the same way, and so do runs the
+lets in-flight ticks finish and land, then exits. The orchestrator also runs the same graceful
+stop if its supervisor dies without forwarding a signal (a `kill -9` or OOM kill), so a dead
+supervisor takes the fleet down instead of leaving it orphaned and ticking unattended. Crashes
+recover the same way, and so do runs the
 watchdog kills for
 going quiet, up to three in a row. An interrupted landing re-lands through the gate, and an
 interrupted director prompt goes back to its inbox. A commit left unlanded (a landing error that

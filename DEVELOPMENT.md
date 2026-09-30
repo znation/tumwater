@@ -26,6 +26,12 @@ watch. Run suites in a worktree. For the same reason a test never writes the run
 own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` serves a copy of
 `dist/src` from a fixture repo instead.
 
+## CI
+
+GitHub Actions runs the lint+build+unit gate on every push and pull request, a `package`
+job packs the npm tarball on main pushes and uploads it as a workflow artifact, and a tag
+push (`v*`) runs the release workflow, which attaches the packed tarball to a GitHub release.
+
 ## Keeping the suite fast
 
 The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes
