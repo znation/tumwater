@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { fileURLToPath } from "node:url";
 import {
   fail,
   say,
@@ -27,7 +26,7 @@ import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
-import { packageVersion } from "./version.js";
+import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
 // would run main(), so tests pin the topics against help.ts directly.
@@ -67,6 +66,16 @@ async function runMarkerCommand(root: string, command: MarkerCommand, args: stri
 
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
+  // The Node-floor gate, before any command does work: package.json's engines spec is the
+  // declared minimum, and a runtime below it fails with the fix instead of whatever the
+  // first unsupported API call happens to throw. A floor the package read cannot supply
+  // (a broken install) stands down rather than blocking every command on a value it
+  // cannot evaluate — packageEnginesNode's rationale, not the version command's job here.
+  const floor = packageEnginesNode(PACKAGE_JSON);
+  if (floor !== null) {
+    const problem = nodeFloorProblem(process.versions.node, floor);
+    if (problem !== undefined) fail(problem);
+  }
   // The repo root, not the cwd: every command must behave identically from any subdirectory
   // of the repo it targets (.tumwater/ and tumwater.json live at the toplevel, and
   // readBranchHead's ref-file fast path needs a root that actually holds .git). Outside a
@@ -221,9 +230,7 @@ async function main(): Promise<void> {
       // The read lives in version.ts (testable; cli.ts runs main() on import). A broken
       // install — a missing or malformed package.json — fails with the reason instead of a
       // raw stack trace, and a non-string version fails instead of printing "undefined".
-      const { version, problem } = packageVersion(
-        fileURLToPath(new URL("../../package.json", import.meta.url)),
-      );
+      const { version, problem } = packageVersion(PACKAGE_JSON);
       if (problem !== undefined || version === undefined)
         fail(problem ?? "package.json carries no version field (the running harness's install looks broken)");
       say(version);

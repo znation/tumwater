@@ -13,6 +13,7 @@ import { fallbackModelFree, piModelsPath } from "./pi-models.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
+import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "./version.js";
 import {
   GIT_MISSING_MESSAGE,
   branchExists,
@@ -58,25 +59,32 @@ import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHays
  * belongs in the review gate / red-main check, not a pre-flight. */
 
 
-/** The Node.js major version this harness supports — the floor declared in package.json's
- * `engines` (">=20"). The build targets ES2023 and the code deliberately stays off Node
- * 20.12-only APIs (files.ts), so an older runtime may still work, but it is outside what the
- * project declares and tests. */
-const MIN_NODE_MAJOR = 20;
+/** The floor doctor falls back to when package.json — the one source of the declared
+ * engines.node spec, read below — cannot be read (a broken install, the version command's
+ * story). The CLI's startup gate enforces the spec itself; this check stays a warning so a
+ * runtime that usually still works does not block a scripted pre-flight. */
+const NODE_FLOOR_FALLBACK = ">=20";
 
-/** Node runtime — warn when this process runs below the declared floor. Takes the version
+/** Node runtime — warn when this process runs below the declared floor: package.json's
+ * engines.node spec, the same one the CLI's startup gate fails on, read here so the check
+ * and the gate cannot drift (the literal fallback above covers only an unreadable package).
+ * The comparison is belowNodeFloor's component-wise spec match, not a major-only read, so
+ * `v20.0.0` against `>=20.3` warns here exactly as the gate refuses it. Takes the version
  * string (defaulting to process.versions.node) so the below-floor branch is unit-testable
  * without swapping the runtime. A warning, not a failure: doctor reports the mismatch so the
  * operator can decide, and a runtime that usually still works does not block a scripted
  * pre-flight. */
-export function checkNodeVersion(version: string = process.versions.node): CheckOutcome {
+export function checkNodeVersion(
+  version: string = process.versions.node,
+  floor: string = packageEnginesNode(PACKAGE_JSON) ?? NODE_FLOOR_FALLBACK,
+): CheckOutcome {
   const major = Number.parseInt(version, 10);
   if (!Number.isInteger(major) || major <= 0)
     return { level: "warn", detail: `unrecognized Node version ${JSON.stringify(version)}` };
-  if (major >= MIN_NODE_MAJOR) return { level: "ok", detail: `v${version}` };
+  if (!belowNodeFloor(version, floor)) return { level: "ok", detail: `v${version}` };
   return {
     level: "warn",
-    detail: `v${version} is below the v${MIN_NODE_MAJOR} minimum declared in package.json engines — upgrade Node`,
+    detail: `v${version} is below the ${floor} Node floor declared in package.json engines — upgrade Node`,
   };
 }
 

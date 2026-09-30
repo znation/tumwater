@@ -92,10 +92,14 @@ test("checkNodeVersion reports this runtime as ok and warns below the declared f
 
   const old = checkNodeVersion("18.20.4");
   assert.equal(old.level, "warn");
-  assert.match(old.detail, /v18\.20\.4 is below the v20 minimum/);
+  assert.match(old.detail, /v18\.20\.4 is below the >=20\.3 Node floor/);
   assert.match(old.detail, /upgrade Node/);
 
-  const atFloor = checkNodeVersion("20.0.0");
+  // The floor is the engines spec, compared component-wise: a runtime the old major-only
+  // check blessed (20.0.0) now warns, because the gate below the engines floor refuses it.
+  const belowPatchFloor = checkNodeVersion("20.2.0");
+  assert.equal(belowPatchFloor.level, "warn");
+  const atFloor = checkNodeVersion("20.3.0");
   assert.equal(atFloor.level, "ok");
 
   // An unparseable version string is a warning, never a thrown failure.
