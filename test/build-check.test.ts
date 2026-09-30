@@ -13,6 +13,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { waitFor } from "./wait.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
 function groupAlive(pgid: number): boolean {
@@ -22,17 +23,6 @@ function groupAlive(pgid: number): boolean {
   } catch (err) {
     return errCode(err) === "EPERM";
   }
-}
-
-/** The real setTimeout, captured when this file loads — before any test installs mock timers —
- * so `until` keeps polling in real time under checkClock, which mocks setTimeout itself. */
-const realSetTimeout = globalThis.setTimeout;
-
-/** Poll `cond` every 10 ms for at most `ms` (performance.now and the captured real timer, so a
- * test that mocks Date or the timers can still bound its wait). */
-async function until(cond: () => boolean, ms: number): Promise<void> {
-  const deadline = performance.now() + ms;
-  while (!cond() && performance.now() < deadline) await new Promise((r) => realSetTimeout(r, 10));
 }
 
 /** Put a check's deadline, SIGKILL grace and group poll (runScriptGroup in src/process-group.ts)
@@ -222,7 +212,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     // reddened main at 03edeba6 (BUGS.md 2026-09-24), and 4s stayed a load flake after it.
     const advance = checkClock(t);
     const check = runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 4_000, 700);
-    await until(() => readPid(pidFile) > 0, 30_000);
+    await waitFor(() => readPid(pidFile) > 0, "the grandchild's pid file", 30_000);
     pid = readPid(pidFile);
     assert.ok(pid > 0, "the grandchild recorded its pid before the timeout");
     advance(4_000 + 700); // the deadline's group SIGTERM, then the grace's SIGKILL
@@ -231,7 +221,7 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     assert.equal(outcome.skipReason, "timeout");
     // The SIGKILL lands before the check settles, but launchd reaps the orphan asynchronously:
     // poll until it is gone (or the assertion below fails on the leak this test pins).
-    await until(() => !pidAlive(pid), 5_000);
+    await waitFor(() => !pidAlive(pid), "the timed-out check's grandchild to be reaped", 5_000);
     assert.equal(pidAlive(pid), false, "the timed-out check's grandchild is gone after the SIGKILL grace");
   } finally {
     // A failure above must not leave the SIGTERM-trapping process behind.
@@ -258,7 +248,7 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
   // and finishes on its own once the test says go.
   const advance = checkClock(t);
   const check = runBuildCheck(wt, { kind: "npm", rootDir: root, script: "test" }, 30_000, 500);
-  await until(() => fs.existsSync(started), 30_000);
+  await waitFor(() => fs.existsSync(started), "the check's started marker", 30_000);
   advance(2_000);
   fs.writeFileSync(go, "");
   const outcome = await check;
@@ -282,7 +272,7 @@ test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles a
     // timers made it.
     const advance = checkClock(t);
     const check = runBuildCheck(wt, { kind: "command", command, cwd: wt, timeoutMs: 1_000 }, 30_000, 800);
-    await until(() => readPid(path.join(wt, "sleep.pid")) > 0, 30_000);
+    await waitFor(() => readPid(path.join(wt, "sleep.pid")) > 0, "the pipe holder's pid file", 30_000);
     advance(1_000 + 800); // the deadline's SIGTERM (ignored), then the grace's SIGKILL
     const outcome = await check;
     pgid = readPid(path.join(wt, "pgid"));
@@ -295,7 +285,7 @@ test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles a
     assert.ok(ran <= 1_800 + 250, `bounded at deadline + grace (settled ${ran}ms after the spawn)`);
     // SIGKILLed before the check settled; launchd reaps the orphan a moment later. Pre-fix
     // the SIGKILL was still ~800 ms away here, so this window cannot hide the leak.
-    await until(() => !groupAlive(pgid), 300);
+    await waitFor(() => !groupAlive(pgid), "the check's process group to die", 300);
     assert.equal(groupAlive(pgid), false, "nothing in the check's process group survives it");
     assert.equal(pidAlive(sleepPid), false, "the SIGTERM-ignoring pipe holder is dead");
   } finally {
@@ -317,7 +307,7 @@ test("a timed-out check does not settle on its leader's close while a grandchild
     const sleepPid = readPid(path.join(wt, "sleep.pid"));
     assert.equal(outcome.skipReason, "timeout");
     assert.ok(pgid > 0 && sleepPid > 0, "the fixture's tree started before the deadline");
-    await until(() => !pidAlive(sleepPid), 300);
+    await waitFor(() => !pidAlive(sleepPid), "the surviving grandchild to be reaped", 300);
     assert.equal(pidAlive(sleepPid), false, "the surviving grandchild was SIGKILLed before the check settled");
   } finally {
     if (pgid > 0 && groupAlive(pgid)) process.kill(-pgid, "SIGKILL");
@@ -356,7 +346,7 @@ test("a deadline the host slept through is reported as when it really fired, on 
   const pending = runScopedBuildCheck(root, ROLE, "gate", wt, {
     check: { command: "touch started; sleep 30", timeoutSeconds: 2 },
   });
-  await until(() => fs.existsSync(marker), 10_000);
+  await waitFor(() => fs.existsSync(marker), "the check's started marker", 10_000);
   assert.ok(fs.existsSync(marker), "the check spawned before the deadline");
   t.mock.timers.tick(412_000); // the host sleeps 412 s through the 2 s deadline
   const result = await pending;
@@ -466,7 +456,7 @@ test("a merge-scope timeout the host slept through is retried once, and the clea
   const pending = runScopedBuildCheck(root, ROLE, "landing", wt, {
     check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
   });
-  await until(() => fs.existsSync(path.join(wt, "retried")), 10_000);
+  await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
   t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline
   const result = await pending;
   assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
@@ -489,9 +479,9 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
       timeoutSeconds: 2,
     },
   });
-  await until(() => fs.existsSync(path.join(wt, "retried")), 10_000);
+  await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
   t.mock.timers.tick(10_000); // the first deadline fires 8s late → one retry is owed
-  await until(() => fs.existsSync(path.join(wt, "retried2")), 10_000);
+  await waitFor(() => fs.existsSync(path.join(wt, "retried2")), "the retry's retried2 marker", 10_000);
   t.mock.timers.tick(10_000); // the retry's deadline fires late too → its verdict stands
   const result = await pending;
   assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
