@@ -157,6 +157,14 @@ const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
  * elapsed since nothing of its own is running: its vet approved it and it waits for the merge
  * slot. (A queued change whose vet is still parked for a permit has no record: it reads
  * plainly queued.)
+ * `mainCheck`, when given (loopRowCells passes the snapshot's), lets the main-red label
+ * retire itself between ticks: main's newest merge-scope check passing AFTER this loop's red
+ * tick ended means main is green now — the loop's `main_red` verdict is stale until its next
+ * tick, which sleep, a full slot pool, a pause, or a spent budget can defer for hours
+ * (BUGS.md 2026-09-30), so the label falls through to the ordinary idle state and the
+ * fleetAlerts banner follows. A check that is newer but failed keeps the label (main is
+ * genuinely red); so does one older than the red tick or with no known pass at all — the
+ * blockage stands until the loop's own next tick re-verdicts it.
  * Otherwise its elapsed is the CHANGE's own landing (its record's startedAt — from its vet's
  * start, never another change's), never the authoring tick's,
  * and its stage scopes the cell to the phase the landing is actually in: `reviewing` carries
@@ -174,6 +182,7 @@ export function loopPhase(
   live?: LiveProgress | null,
   userPaused = false,
   landing?: LandingCell | null,
+  mainCheck?: StatusSnapshot["mainCheck"],
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -220,7 +229,11 @@ export function loopPhase(
   // so it leaves the main_red pair in place until its landing resolves (tick-outcome.ts's
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
-  if (s.lastResult === "main_red" && s.queuedSummary === undefined) return "main red";
+  // Except too when main's newest merge-scope check PASSED after this loop's red tick ended:
+  // the fleet-level verdict is fresher than the loop's own, so the label is stale until the
+  // loop's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
+  // red tick, a failed or skipped one, or an unknown tick end all keep the label.
+  if (s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s)) return "main red";
   // An error streak at or past the warning threshold (tick-outcome.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
@@ -242,6 +255,18 @@ export function loopPhase(
     return `sleeping (for ${humanSeconds(remain)})`;
   }
   return "queued";
+}
+
+/** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a
+ * PASSED check stamped strictly after the loop's red tick ended counts — the fleet-level
+ * green is newer evidence than the loop's own red (BUGS.md 2026-09-30). A failed or skipped
+ * newest check, a check from before the red tick, or a loop with no known tick end all leave
+ * the verdict standing. Single-homed here so loopPhase's main-red branch and its callers
+ * cannot drift. */
+function mainCheckRecovered(mainCheck: StatusSnapshot["mainCheck"], s: LoopState): boolean {
+  return mainCheck?.status === "passed"
+    && s.lastTickEndedAt !== undefined
+    && mainCheck.at > s.lastTickEndedAt;
 }
 
 /** One rendered loop-table row's sort key: the role name, its rendered phase label
@@ -280,6 +305,9 @@ export function loopRowCells(
     // loopPhase covers both gates (status-model has no per-role branch of its own).
     snap.paused || snap.pausedRoles.includes(s.role),
     landingForRole(snap.landQueue, s.role),
+    // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
+    // between ticks (BUGS.md 2026-09-30) — the banner (fleetAlerts) reads this same phase.
+    snap.mainCheck,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }

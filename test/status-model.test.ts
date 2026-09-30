@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
 import { loopPhase, loopRowCells, workingDetail } from "../src/ui/status-model.js";
+import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
@@ -286,6 +287,78 @@ test("loopPhase shows main red for idle loops whose last tick was blocked by a r
 
   // A stopped orchestrator still reads stopped.
   assert.equal(loopPhase(s, false), "stopped");
+});
+
+// BUGS.md 2026-09-30 — a main_red verdict outlived main's recovery: the phase came from the
+// loop's own last tick result and nothing compared it with main's newer green check, so the
+// GUI raised "main is red — 1 loop is blocked" while the sidebar read "Main green". Main's
+// newest merge-scope check (mainCheck) is fresher fleet-level evidence; only a PASSED one
+// stamped after the red tick ended retires the label.
+test("loopPhase retires a stale main red when main's newest check passed after it", () => {
+  const s = freshLoopState("feature");
+  s.lastResult = "main_red";
+  s.lastTickEndedAt = Date.now() - 300_000; // the red tick ended 5m ago
+  s.nextRunAt = Date.now() + 3_600_000; // and its next tick is an hour away
+  // A green merge-scope check landed AFTER the red tick: main is green now, so the label
+  // falls through to the ordinary sleep state and the banner never raises.
+  assert.match(
+    loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 60_000 }),
+    /^sleeping/,
+    "a newer passed check is fresher evidence than the loop's own red",
+  );
+  // A passed check from BEFORE the red tick says nothing about main now.
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 600_000 }),
+    "main red",
+    "a check older than the red tick keeps the blockage",
+  );
+  // A newer failed check means main is genuinely still red.
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "failed", at: Date.now() - 60_000 }),
+    "main red",
+  );
+  // A skipped check is not green evidence either.
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "skipped", at: Date.now() - 60_000 }),
+    "main red",
+  );
+  // No recorded tick end: the comparison cannot be made, so the blockage stands.
+  const undated = freshLoopState("feature");
+  undated.lastResult = "main_red";
+  assert.equal(
+    loopPhase(undated, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() }),
+    "main red",
+    "no tick end keeps the blockage (conservative)",
+  );
+  // Without a mainCheck at all the old behavior stands (direct callers, hand-built states).
+  assert.equal(loopPhase(s, true), "main red");
+});
+
+// The same staleness through the single-homed row derivation and the alert it feeds: the
+// banner (fleetAlerts) reads the rendered phase, so a retired phase must raise no mainred.
+test("loopRowCells retires the stale main red and fleetAlerts raises no banner for it", () => {
+  const s = freshLoopState("feature");
+  s.lastResult = "main_red";
+  s.lastTickEndedAt = Date.now() - 300_000;
+  const snap = snapshotWith([{ role: "feature", lastResult: "main_red", lastTickEndedAt: s.lastTickEndedAt }]);
+  snap.running = true;
+  snap.mainCheck = { status: "passed", at: Date.now() - 60_000 };
+  const cells = loopRowCells(snap, tmpdir(), s);
+  assert.notEqual(cells.phase, "main red", "the row derivation sees the snapshot's newer green check");
+  assert.equal(
+    fleetAlerts(snap, [], [{ role: "feature", phase: cells.phase, inFlight: false }], Date.now())
+      .some((a) => a.key === "mainred"),
+    false,
+    "no 'main is red' banner for a loop whose blockage main has already recovered from",
+  );
+  // And the banner still raises while the phase genuinely reads main red (an older check).
+  snap.mainCheck = { status: "passed", at: Date.now() - 600_000 };
+  const stale = loopRowCells(snap, tmpdir(), s).phase;
+  assert.equal(stale, "main red");
+  assert.ok(
+    fleetAlerts(snap, [], [{ role: "feature", phase: stale, inFlight: false }], Date.now())
+      .some((a) => a.key === "mainred"),
+  );
 });
 
 test("loopPhase shows failing for a quiet-kill streak at the give-up threshold", () => {
