@@ -370,6 +370,43 @@ test("a forced restart still refuses on a blocked head: a red main blocks the fo
   assert.deepEqual(f.calls.swap, [HEAD_B], "no swap happened for the red head");
 });
 
+test("a forced restart request evaporates with the pending restart it targeted: a later stale head defers as usual", async () => {
+  // The dashboard's restart button waives the cooldown of the restart pending WHEN the operator
+  // pressed. If main reverts before the next poll, the build goes fresh and that pending
+  // restart evaporates — the press must evaporate with it, not linger armed until some later
+  // stale head's poll waives a deferral the operator never saw.
+  let staleNow = true;
+  const f = fakeDeps({
+    staleness: async () => (staleNow ? { stale: true, aheadCommits: 3 } : { stale: false, aheadCommits: 0 }),
+  });
+  const { r, events } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  assert.equal(
+    await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 60 * 60_000),
+    "none",
+    "HEAD_C pending inside the cooldown: deferring",
+  );
+  r.forceRestart(); // the operator presses for HEAD_C's pending restart
+  // Before the forced poll lands, main reverts to the built sha: the build is fresh, the
+  // pending restart evaporates, and the poll exits before the cooldown check.
+  staleNow = false;
+  assert.equal(await r.poll(BUILD.sha, IDLE, true, swappedAt + 60 * 60_000 + 1), "none", "fresh build: nothing to restart");
+  // Main moves again well before the cooldown lapses: a NEW pending restart the operator has
+  // not pressed for. The evaporated press must not waive its deferral.
+  staleNow = true;
+  const beforeHeadD = events.length;
+  assert.equal(
+    await r.poll(HEAD_D, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 2 * 60 * 60_000),
+    "none",
+    "the stale press died with HEAD_C's restart: HEAD_D defers inside the cooldown as usual",
+  );
+  assert.equal(
+    events.slice(beforeHeadD).some((e) => e.type === "restart_pending"),
+    false,
+    "no episode started for HEAD_D",
+  );
+});
+
 test("during the cooldown the deferred head's check and compile prewarm, so the lapse reaches the swap on its first poll", async () => {
   // The 2026-09-30 shape: the fleet sat on a stale build for the full 12 h cooldown with the
   // newer head unverified, then paid green-check + compile + drain from zero when it lapsed

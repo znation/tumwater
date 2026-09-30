@@ -207,7 +207,9 @@ export class Redeployer {
    * measured from here on every poll (BUGS.md 2026-09-11). */
   private lastAutoRestartAt: number | null = null;
   /** The operator's forced-restart request (the dashboard's build-stale alert's refresh
-   * button): one armed flag, consumed by the next poll that reaches the cooldown check. */
+   * button): one armed flag, consumed by the next poll that reaches the cooldown check. Its
+   * lifetime is the pending restart it targeted: the poll that sees the build go fresh clears
+   * it, so an evaporated press cannot waive a later stale head's deferral (BUGS.md 2026-09-30). */
   private forcedRestart = false;
   /** When the current unbroken stale episode began (epoch ms), or null while the build is fresh.
    * Deliberately head-independent: main moving under a stale build CONTINUES the episode rather
@@ -444,6 +446,11 @@ export class Redeployer {
       else if (!stale) {
         this.staleSince = null;
         this.lastEscalationAt = null;
+        // The build going fresh ends the stale episode the forced restart was pressed into:
+        // the pending restart it targeted is gone, so the armed flag dies with it. A later
+        // stale head is a new pending restart whose deferral only a fresh press waives
+        // (BUGS.md 2026-09-30).
+        this.forcedRestart = false;
       }
       // A moved main supersedes any restart in progress for the previous head: its compile
       // (if running) finishes into its own staging dir and is simply never swapped in.
