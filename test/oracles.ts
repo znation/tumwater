@@ -31,6 +31,16 @@ export function dayKey(ms: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** One hour in ms — the unit the --since window fixtures measure in (6h windows, hour-old
+ * events). Shared by the report test files that seed relative timestamps. */
+export const HOUR = 3_600_000;
+
+/** Epoch-ms timestamp `ms` before now — the relative-clock oracle the --since fixtures seed
+ * with (absolute timestamps would drift past the window cutoff as the test runs). */
+export function ago(ms: number): number {
+  return Date.now() - ms;
+}
+
 /** Local wall-clock rendering of an epoch-ms timestamp as `YYYY-MM-DD HH:MM:SS` — the same
  * shape the transcript's run separators print. Test-local oracle: built from raw local date
  * parts, never through datetime.ts's formatDate/formatTime, so the transcript renderers stay
