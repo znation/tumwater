@@ -245,8 +245,13 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
     if (line.startsWith("- ")) {
       // Epitaph guard (see the doc comment): the date must live in the line's trailing
       // parenthetical beside a commit reference, or the bullet is body text, not an entry.
+      // Within the parenthetical the completion is the LAST dated verb, matching the heading
+      // branch: a decomposition cross-reference ("decomposed from the sibling bug fixed
+      // <date>, fixed <date>") precedes the entry's own completion record.
       const tail = trailingParenthetical(line);
-      const m = tail.match(dateRe);
+      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+      const all = [...tail.matchAll(global)];
+      const m = all[all.length - 1] ?? null;
       if (m?.[1] && /\bcommits?\b/.test(tail)) date = m[1];
     } else {
       // The entry's completion is its heading meta's LAST dated verb, not the first: found-by,

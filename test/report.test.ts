@@ -352,6 +352,29 @@ Body prose.`,
   assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 0); // the sibling's day stays at zero
 });
 
+test("an epitaph bullet's completion date is the LAST dated verb in its trailing parenthetical; a sibling's earlier dated fix mention inside it does not steal the day", () => {
+  // The heading branch takes the meta's LAST dated verb (the previous fix), but the bullet
+  // branch matched the trailing parenthetical's FIRST verb+date — so a decomposition
+  // cross-reference inside the epitaph ("decomposed from the sibling bug fixed <date>, fixed
+  // <date>") put the entry on the sibling's day, silently, whenever the sibling landed first.
+  // The convention is the same for both shapes: found-by and sibling mentions precede the
+  // completion record, so the last dated verb is the completion.
+  const root = tmpdir();
+  const d1 = dayKey(at(3));
+  const d2 = dayKey(at(2));
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `- A real fix, cross-referencing its sibling inside the epitaph (decomposed from the sibling bug fixed ${d1}, fixed ${d2}; commit abc1234)`,
+    },
+  ]);
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 0); // the sibling's day stays at zero
+});
+
 test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);
