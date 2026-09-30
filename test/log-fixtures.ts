@@ -8,7 +8,7 @@ import path from "node:path";
 import { readEvents, type HarnessEvent } from "../src/events.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
+import { FIXED_TS, agentStart, assistantBlocks, runMarker, userLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
 
 /** Stamp a marker/request file the way tests simulate CLI/operator side effects: create the
@@ -61,15 +61,22 @@ export function writeEvents(root: string, lines: unknown[]): void {
 /** Write a synthetic pi session log of `turns` complete runs — the fixture most transcript
  * and tail tests need: run i is agentStart, userLine(`prompt ${i}`) at FIXED_TS + i·60s, and
  * assistantBlocks with text `turn ${i}`. Creates the log's directory and returns the temp root
- * and log file path. Callers that need a shape past the standard turns (a pending separator, a
- * stale marker, per-run noise) append extra lines with fs.appendFileSync instead of hand-rolling
- * the whole loop, and turn-count variants pass a different `turns`. */
-export function writeTurnLog(turns: number): { root: string; file: string } {
+ * and log file path. `reviewMarkerAt` labels runs: when it returns true for turn i, the
+ * harness-written tumwater_run marker line precedes that run — every interleaved-label shape
+ * (every run, every other run, one stale marker) is a predicate, not a hand-rolled loop.
+ * Callers that need a shape past the standard turns (a pending separator, a truncated orphan
+ * tail, per-run noise) append extra lines with fs.appendFileSync instead of hand-rolling the
+ * whole loop, and turn-count variants pass a different `turns`. */
+export function writeTurnLog(
+  turns: number,
+  opts: { reviewMarkerAt?: (turn: number) => boolean } = {},
+): { root: string; file: string } {
   const root = tmpdir();
   const file = piLogPath(root, "feature");
   ensureParentDir(file);
   const lines: string[] = [];
   for (let i = 1; i <= turns; i++) {
+    if (opts.reviewMarkerAt?.(i)) lines.push(runMarker());
     lines.push(agentStart());
     lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
     lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));

@@ -13,11 +13,6 @@ import { tmpdir } from "./repo-fixtures.js";
 import { recreateSmallerOnOpen, vanishOnOpen } from "./fs-faults.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 
-/** A harness-written run-label marker line (src/pi.ts writes it for labeled runs). */
-function reviewMarker(): string {
-  return JSON.stringify({ type: "tumwater_run", label: "review" });
-}
-
 test("readTranscriptTail matches a full re-read on a small log", () => {
   const { file } = writeTurnLog(3);
 
@@ -48,20 +43,13 @@ test("readTranscriptTail honors limit=0: slice(-0) must not widen the window", (
 });
 
 test("readTranscriptTail matches a full re-read with prompts included, newest entry a prompt", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  const lines: string[] = [];
-  for (let i = 1; i <= 6; i++) {
-    if (i % 2 === 0) lines.push(reviewMarker());
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
+  const { file } = writeTurnLog(6, { reviewMarkerAt: (i) => i % 2 === 0 });
   // The newest run has its prompt but no assistant turn yet: with prompts included the newest
   // entry IS the prompt (separator + its lines).
-  lines.push(agentStart());
-  lines.push(userLine("newest prompt\nwith two lines", FIXED_TS + 7 * 60_000));
-  writeLogLines(file, lines);
+  fs.appendFileSync(
+    file,
+    [agentStart(), userLine("newest prompt\nwith two lines", FIXED_TS + 7 * 60_000)].join("\n") + "\n",
+  );
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines, { includePrompts: true });
@@ -294,18 +282,9 @@ test("readTranscriptTail returns null when rotation recreates the path as an emp
 });
 
 test("readTranscriptTail includes a marker line when it labels the boundary run", () => {
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
   // Every run is labeled; with limit 1 the walk arms on the newest agent_start and must keep
   // walking to its marker — the window starts at M even though A is what armed the stop.
-  const lines: string[] = [];
-  for (let i = 1; i <= 5; i++) {
-    lines.push(reviewMarker());
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  writeLogLines(file, lines);
+  const { file } = writeTurnLog(5, { reviewMarkerAt: () => true });
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -324,16 +303,7 @@ test("readTranscriptTail includes a marker line when it labels the boundary run"
 test("readTranscriptTail matches a full re-read with interleaved labels at every limit", () => {
   // Alternating author/review runs — the real shape of a role's shared log. As the window
   // slides, boundaries land on markers and agent_starts alike; the oracle must hold throughout.
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  const lines: string[] = [];
-  for (let i = 1; i <= 40; i++) {
-    if (i % 2 === 0) lines.push(reviewMarker());
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  writeLogLines(file, lines);
+  const { file } = writeTurnLog(40, { reviewMarkerAt: (i) => i % 2 === 0 });
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -345,16 +315,8 @@ test("readTranscriptTail matches a full re-read with interleaved labels at every
 test("readTranscriptTail matches a full re-read with a stale marker, mislabel included", () => {
   // A failed reviewer spawn leaves a marker whose own agent_start never came: the next run's
   // separator picks it up. The invariant is tail ≡ full re-read — not "labels are always correct".
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  const lines: string[] = [];
-  for (let i = 1; i <= 5; i++) {
-    if (i === 3) lines.push(reviewMarker()); // stale — its reviewer died before emitting anything
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  writeLogLines(file, lines);
+  // Run 3's marker is stale — its reviewer died before emitting anything.
+  const { file } = writeTurnLog(5, { reviewMarkerAt: (i) => i === 3 });
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);
@@ -370,16 +332,7 @@ test("readTranscriptTail matches a full re-read with a stale marker, mislabel in
 test("readTranscriptTail excludes a labeled run older than the window boundary", () => {
   // Only the OLDEST run is labeled: for small limits its marker sits outside [boundary..EOF]
   // and contributes nothing, while the whole-file window still carries its label.
-  const root = tmpdir();
-  const file = piLogPath(root, "feature");
-  const lines: string[] = [];
-  for (let i = 1; i <= 6; i++) {
-    if (i === 1) lines.push(reviewMarker());
-    lines.push(agentStart());
-    lines.push(userLine(`prompt ${i}`, FIXED_TS + i * 60_000));
-    lines.push(assistantBlocks([{ type: "text", text: `turn ${i}` }]));
-  }
-  writeLogLines(file, lines);
+  const { file } = writeTurnLog(6, { reviewMarkerAt: (i) => i === 1 });
 
   const size = fs.statSync(file).size;
   const full = formatTranscript(readCompleteLines(file, 0, size).lines);

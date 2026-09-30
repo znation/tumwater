@@ -73,6 +73,12 @@ export function userLine(text: string, timestamp: number = FIXED_TS): string {
   });
 }
 
+/** A harness-written run-label marker line — src/pi.ts writes it before an agent_start to
+ * label that run ("review", landing review, ...), and the transcript renderers read it. */
+export function runMarker(label = "review"): string {
+  return JSON.stringify({ type: "tumwater_run", label });
+}
+
 /** A pi JSON line for an assistant message_end with arbitrary content blocks (thinking/text/toolCall) and no usage — the richer fixture transcript rendering tests need, in contrast to assistantLine above. */
 export function assistantBlocks(content: unknown[]): string {
   return JSON.stringify({ type: "message_end", message: { role: "assistant", content, stopReason: "stop" } });
