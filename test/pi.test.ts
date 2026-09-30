@@ -488,6 +488,77 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
   }
 });
 
+// The group sweep cannot reach what a tool call BACKGROUNDS under pi 0.87.1: the bash tool
+// spawns every command detached, in its OWN process group, so terminateChild's kill(-pi.pid)
+// never sees that group — and the regression test above modeled the tool call as a same-group
+// background job, passing while the real agent leaked servers and test workers for hours
+// (BUGS.md 2026-09-30). This test drives the real shape: the fake pi's "tool call" spawns its
+// child detached — a group leader in its own right, exactly as pi's bash tool does — and the
+// orphan outlives the run in a group whose leader is not pi. The fix marks the run's whole
+// environment (TUMWATER_RUN, inherited by every tool call and its descendants) and sweeps
+// every same-user process carrying the mark when pi exits, whatever group it sits in. The
+// orphan is node on purpose: macOS's ps -E — the scan the sweep reads — hides the
+// environment of platform binaries like sleep and sh, so a sleep orphan would prove nothing
+// here even where the fix works.
+test("the end-of-run sweep reaches a detached tool call's cross-group orphan (regression)", async () => {
+  const dir = tmpdir();
+  const pidFile = path.join(dir, "orphan.pid");
+  const spawner = path.join(dir, "spawn-orphan.cjs");
+  fs.writeFileSync(
+    spawner,
+    [
+      "const { spawn } = require('node:child_process');",
+      "const c = spawn(process.execPath, ['-e',",
+      "  \"require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setTimeout(() => {}, 120000)\",",
+      "  process.argv[2]], { detached: true, stdio: 'ignore' });",
+      "c.unref();",
+    ].join("\n"),
+  );
+  // A backstop, far beyond the test's span: a wedged run fails on the tick timeout.
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 30;
+  const restore = fakePi(
+    [
+      `node ${spawner} ${pidFile}`,
+      `n=0; until [ -s ${pidFile} ] || [ $n -ge 200 ]; do sleep 0.05; n=$((n+1)); done`,
+      `printf '%s\n' '${assistantLine("Everything checked out.")}'`,
+      `exit 0`,
+    ].join("\n"),
+  );
+  const readPid = () => {
+    try {
+      return Number(fs.readFileSync(pidFile, "utf8").trim()) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  let swept = false;
+  try {
+    const result = await runPi(runPiFixture(dir, { config }));
+    assert.equal(result.ok, true, "the run ends normally — no kill path is involved");
+    const pid = readPid();
+    assert.ok(pid > 0, "the orphan recorded its pid");
+    // The marker sweep is fire-and-forget after pi's exit (one process-table scan): poll
+    // until the marked orphan is gone, or the assertion below fails on a leak.
+    const deadline = Date.now() + 15_000;
+    while (pidAlive(pid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    swept = !pidAlive(pid);
+    assert.equal(swept, true, "the detached tool call's orphan is gone after the run resolves");
+  } finally {
+    // Never leak the orphan, whichever assertion failed: SIGKILL it unless the sweep already
+    // reaped it (its pid may then be recycled — never signal a swept pid again).
+    const pid = readPid();
+    if (!swept && pid > 0) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    restore();
+  }
+});
+
 // The sweep's contract with signalTree: a group that died with its leader is the normal case
 // after an exit, so signalling it reports "nothing received this" instead of throwing — which
 // is what lets the post-exit sweep skip arming a SIGKILL at a pgid no process holds any more.

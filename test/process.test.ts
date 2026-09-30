@@ -1,14 +1,20 @@
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
   NO_LAUNCH_SERVICES_CHECK_IN,
+  makeRunMarker,
   parseLsofCwds,
   parsePsOutput,
   parseTopPorts,
   pidAlive,
+  pidsMarkedInPs,
+  procEnvironCarriesMarker,
+  runMarkerEnv,
   signalTree,
+  sweepRunMarker,
   systemProcessProbe,
   terminateChild,
   withoutLaunchServicesCheckIn,
@@ -338,6 +344,106 @@ test("signalTree returns false, never throwing, when nothing can be signalled", 
     },
   } as unknown as ChildProcess;
   assert.equal(signalTree(child, "SIGKILL"), false);
+});
+
+test("runMarkerEnv appends to an inherited mark and makes fresh markers unique", () => {
+  const marker = makeRunMarker(4242);
+  assert.match(marker, /^4242-[0-9a-f]{12}$/, "the mark names its harness pid plus random hex");
+  assert.notEqual(makeRunMarker(4242), marker, "two runs of one harness never share a mark");
+  const outer = "111-aaaaaaaaaaaa";
+  const env = runMarkerEnv({ PATH: "/bin", TUMWATER_RUN: outer }, marker);
+  assert.equal(env.TUMWATER_RUN, `${outer},${marker}`, "a nested run keeps the outer mark");
+  assert.equal(env.PATH, "/bin", "the rest of the environment rides along");
+  assert.equal(runMarkerEnv({}, marker).TUMWATER_RUN, marker, "no inherited mark means just this one");
+});
+
+test("pidsMarkedInPs picks the marked rows only, never the scanner itself", () => {
+  const marker = "4242-deadbeefcafe";
+  // ps -wwE -A -o pid=,command= shape: pid, then the command column with the launch
+  // environment appended. One marked process (multi-run env), one whose mark is a different
+  // run's, one mentioning the variable in argv with a foreign value, and the scanner itself.
+  const stdout = [
+    `  111 sh -c 'server &' TUMWATER_RUN=${marker} NODE_OPTIONS=--import=data:...`,
+    `  222 node server.js TUMWATER_RUN=111-aaaaaaaaaaaa,${marker} PATH=/bin:/usr/bin`,
+    `  333 node other.js TUMWATER_RUN=111-aaaaaaaaaaaa`,
+    `  444 grep TUMWATER_RUN=111-aaaaaaaaaaaa`,
+    `  ${process.pid} node -e sweep TUMWATER_RUN=${marker}`,
+    "  555 sleep 30",
+    "garbage line without a pid",
+  ].join("\n");
+  assert.deepEqual(pidsMarkedInPs(stdout, marker), [111, 222]);
+  assert.deepEqual(pidsMarkedInPs(stdout, "111-aaaaaaaaaaaa"), [222, 333, 444]);
+  assert.deepEqual(pidsMarkedInPs("", marker), []);
+});
+
+test("procEnvironCarriesMarker reads NUL-separated environ entries", () => {
+  const marker = "4242-deadbeefcafe";
+  assert.equal(
+    procEnvironCarriesMarker(["PATH=/bin", `TUMWATER_RUN=111-aaaaaaaaaaaa,${marker}`], marker),
+    true,
+  );
+  assert.equal(procEnvironCarriesMarker(["PATH=/bin", "TUMWATER_RUN=111-aaaaaaaaaaaa"], marker), false);
+  assert.equal(procEnvironCarriesMarker([], marker), false);
+  // A value that merely CONTAINS the marker as a substring of another run's id is not a match.
+  assert.equal(
+    procEnvironCarriesMarker([`TUMWATER_RUN=111-${marker.slice(5)}`], marker),
+    false,
+    "membership is exact per comma-separated run, not substring",
+  );
+});
+
+test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour", async () => {
+  // Real spawns: the sweep's victim-finding is a live process-table scan, so the unit keeps
+  // to the real shape — a detached node orphan carrying the mark in its environment, and an
+  // unmarked sibling beside it. Node, not sleep: macOS ps -E hides platform binaries'
+  // environments, the one blind spot the sweep accepts (BUGS.md 2026-09-30). The full
+  // run-shaped sweep — mark minted inside runPi, sweep at exit — is the regression test in
+  // pi.test.ts; here the mark is an argument, so the test mints its own.
+  const dir = tmpdir();
+  const writePid = "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)";
+  const spawnOrphan = (file: string, env?: NodeJS.ProcessEnv) => {
+    const child = spawn(process.execPath, ["-e", writePid, path.join(dir, file)], {
+      detached: true,
+      stdio: "ignore",
+      ...(env ? { env } : {}),
+    });
+    child.unref();
+    return child;
+  };
+  const readPid = (file: string) => {
+    try {
+      return Number(fs.readFileSync(path.join(dir, file), "utf8").trim()) || 0;
+    } catch {
+      return 0;
+    }
+  };
+  const own = makeRunMarker();
+  spawnOrphan("ours.pid", { ...process.env, TUMWATER_RUN: own });
+  spawnOrphan("plain.pid");
+  const recordDeadline = Date.now() + 10_000;
+  while ((!readPid("ours.pid") || !readPid("plain.pid")) && Date.now() < recordDeadline)
+    await new Promise((r) => setTimeout(r, 25));
+  const oursPid = readPid("ours.pid");
+  const plainPid = readPid("plain.pid");
+  try {
+    assert.ok(oursPid > 0 && plainPid > 0, "both orphans recorded their pids");
+    const signaled = await sweepRunMarker(own);
+    assert.ok(signaled >= 1, "the sweep found the marked victim");
+    const goneDeadline = Date.now() + 10_000;
+    while (pidAlive(oursPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(pidAlive(oursPid), false, "the marked victim is gone");
+    assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
+  } finally {
+    for (const pid of [oursPid, plainPid]) {
+      if (pid > 0) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+  }
 });
 
 test("terminateChild takes a live process group down promptly with the SIGTERM leg", async () => {

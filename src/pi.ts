@@ -6,7 +6,7 @@ import { StringDecoder } from "node:string_decoder";
 import type { TumwaterConfig } from "./config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
-import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
+import { makeRunMarker, runMarkerEnv, sweepRunMarker, terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { PiStreamParser, type BackendFailureKind } from "./pi-stream.js";
 import { commandBuffersOutput } from "./command-shape.js";
 export type { BackendFailureKind } from "./pi-stream.js";
@@ -212,6 +212,9 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       rawLog.write(JSON.stringify({ type: "tumwater_run", label: opts.label }) + "\n");
     }
     const parser = new PiStreamParser(opts.onToolCallStart);
+    // The run's cross-group attribution mark, minted before the spawn so the environment can
+    // carry it and the exit sweep can name it.
+    const runMarker = makeRunMarker();
     // Decode stdout incrementally instead of per chunk: a raw Buffer.toString("utf8")
     // replaces any multi-byte character whose bytes straddle two 'data' events with U+FFFD,
     // corrupting that line's text (commit subjects, summaries, transcripts). StringDecoder
@@ -231,11 +234,16 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       stdio: ["ignore", "pipe", "pipe"],
       // pi sets its process title at startup, and so does every npm its tool calls run: on
       // macOS each would register with LaunchServices and leak a launchservicesd port.
-      env: withoutLaunchServicesCheckIn(process.env),
       // Detached so pi leads its own process group: terminateChild signals the group, so a
       // run's tool-call grandchildren — killed or finished — die with it instead of leaking
       // to launchd.
       detached: true,
+      // The run's mark, inherited by every tool call and its descendants: pi 0.87.1's bash
+      // tool spawns each command detached in its OWN group, so the group sweep below cannot
+      // reach what a tool call backgrounds (BUGS.md 2026-09-30) — the mark is the only
+      // attribution that follows a reparented orphan. Appended to any inherited mark so a
+      // nested harness under test keeps the outer run's.
+      env: runMarkerEnv(withoutLaunchServicesCheckIn(process.env), runMarker),
     });
 
     const timeout = setTimeout(() => {
@@ -417,16 +425,30 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       finish(resultFromParser({ errorMessage: spawnErrorMessage(resolved, err.message) }));
     });
 
-    // Sweep the group pi led however the run ended, a normal exit included: pi exits before
-    // its orphans — a tool call's `(server &)` or `cd … && server &` is reparented to PID 1 but
-    // stays in pi's group — and the harness cannot rely on the model's own cleanup (BUGS.md
-    // 2026-09-23: qa's unauthenticated `gui --all-interfaces` listened on the LAN for 7.5 hours
-    // after a tick that ended "Everything checked out"). On 'exit', not 'close': pi has just
-    // been reaped, so the pgid still names only its group (never reissued while a member
-    // lives), and an orphan holding pi's stdio open dies now instead of holding 'close' — and
-    // the run — open. Synchronous, so it adds nothing to the run's resolution; on the kill
-    // paths it re-sends a SIGTERM the group already had.
-    child.on("exit", () => terminateChild(child));
+    // Sweep the run however it ended, a normal exit included, in two passes:
+    //
+    // 1. The group pi led: pi exits before its orphans — a tool call's `(server &)` or
+    //    `cd … && server &` is reparented to PID 1 but stays in pi's group — and the harness
+    //    cannot rely on the model's own cleanup (BUGS.md 2026-09-23: qa's unauthenticated
+    //    `gui --all-interfaces` listened on the LAN for 7.5 hours after a tick that ended
+    //    "Everything checked out"). On 'exit', not 'close': pi has just been reaped, so the
+    //    pgid still names only its group (never reissued while a member lives), and an orphan
+    //    holding pi's stdio open dies now instead of holding 'close' — and the run — open.
+    //    Synchronous, so it adds nothing to the run's resolution; on the kill paths it
+    //    re-sends a SIGTERM the group already had.
+    //
+    // 2. The marker sweep: pi 0.87.1's bash tool starts every command detached, in its own
+    //    process group, so whatever a tool call backgrounds sits in a group whose leader is
+    //    not pi and pass 1 never reaches it (BUGS.md 2026-09-30 — leaked servers and test
+    //    workers outlived their ticks by hours). Every process the run started carries the
+    //    run's TUMWATER_RUN mark in its environment, so the same-user scan finds them
+    //    wherever they were reparented. Fire-and-forget: one process-table scan, never
+    //    awaited — the run resolves on pi's output, and the sweep's own SIGKILL escalation
+    //    (10 s) is unref'd like signalTree's.
+    child.on("exit", () => {
+      terminateChild(child);
+      void sweepRunMarker(runMarker).catch(() => {});
+    });
 
     child.on("close", (code) => {
       // Flush any bytes the decoder held back at stream end so a final line is not lost.
