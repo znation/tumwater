@@ -24,7 +24,6 @@ const DARK_TOKENS = String.raw`
     --text-4: #71717a;
     --accent: #2dd4bf;
     --accent-bg: rgba(20, 184, 166, 0.12);
-    --accent-line: rgba(20, 184, 166, 0.35);
     --primary: #14b8a6;
     --primary-hover: #2dd4bf;
     --on-primary: #042f2e;
@@ -63,7 +62,6 @@ export const GUI_STYLES = String.raw`
     --text-4: #a1a1aa;
     --accent: #0f766e;
     --accent-bg: #f0fdfa;
-    --accent-line: #99f6e4;
     --primary: #0d9488;
     --primary-hover: #0f766e;
     --on-primary: #ffffff;
