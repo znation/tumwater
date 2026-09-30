@@ -16,6 +16,7 @@ import {
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
+  sortedRoles,
   truncateExample,
   type Cluster,
 } from "./failure-cluster.js";
@@ -300,7 +301,7 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   const lossCauses: LossCause[] = [...losses.values()]
     .map((d) => ({
       kind: d.kind,
-      roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
+      roles: sortedRoles(d.roles),
       example: d.example,
       ticks: d.ticks,
       ms: d.ms,

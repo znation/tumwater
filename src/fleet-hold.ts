@@ -27,6 +27,8 @@
  * perf 18 s apart on 09-22 05:50) had two roles in the window as often as three, while the six
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */
+import { sortedRoles } from "./failure-cluster.js";
+
 const HOLD_STORM_ROLES = 2;
 
 /** How recent a failure must be to count toward a storm. Two minutes: wide enough that roles
@@ -150,7 +152,7 @@ export function fleetHold(
     }
   }
   if (kind === null) return prev;
-  const roles = [...new Set(storm.map((o) => o.role))].sort();
+  const roles = sortedRoles(new Set(storm.map((o) => o.role)));
   const relapse = prev.kind !== null && prev.kind === kind && prev.reopenedAt !== null && now - prev.reopenedAt <= HOLD_RELAPSE_MS;
   const escalation = relapse ? prev.escalation + 1 : 0;
   const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));

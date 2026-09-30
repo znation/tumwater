@@ -6,6 +6,7 @@ import {
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
+  sortedRoles,
   truncateExample,
 } from "../src/failure-cluster.js";
 
@@ -178,6 +179,19 @@ test("clusterMessages keys a keyPrefix separately from the bare message", () => 
     clusters.map((c) => c.key).sort(),
     ["reject:same text", "same text"],
   );
+});
+
+test("sortedRoles orders a cause's member roles ascending regardless of Set insertion order", () => {
+  // The one home for the roles payload the digest's clusters, the digest's loss causes, and
+  // the error-storm warning all emit; pinning the rule here keeps those three payloads from
+  // drifting back into per-site sort orders.
+  assert.deepEqual(sortedRoles(new Set(["tui", "dry", "bugfix"])), ["bugfix", "dry", "tui"]);
+  assert.deepEqual(sortedRoles([]), []); // an empty cause renders no roles, not an error
+  const input = new Set(["dry", "bugfix"]);
+  const out = sortedRoles(input);
+  assert.deepEqual(out, ["bugfix", "dry"]);
+  assert.deepEqual([...input], ["dry", "bugfix"]); // the accumulated Set is never mutated
+  assert.notEqual(out, [...out]); // a fresh array, so re-sorting a payload cannot alias it
 });
 
 test("clusterMessages returns the top-N by count with ties broken by key, and the hidden rest", () => {

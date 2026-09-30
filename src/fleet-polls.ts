@@ -1,6 +1,7 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent } from "./events.js";
 import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
+import { sortedRoles } from "./failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "./loop-state.js";
 import type { BackendFailureKind } from "./pi.js";
@@ -132,7 +133,7 @@ export function pollFailureSpread(
   const next = failureSpread(prev, observations, now);
   if (next.active && (!prev.active || next.kind !== prev.kind)) {
     const episode = next.recent.filter((o) => o.kind === next.kind);
-    const roles = [...new Set(episode.map((o) => o.role))].sort();
+    const roles = sortedRoles(new Set(episode.map((o) => o.role)));
     logEvent(root, {
       loop: "harness",
       type: "warning",

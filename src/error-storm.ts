@@ -9,7 +9,7 @@
  * event). Like the hold it has memory — which storm is active is a fact about the past
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
-import { normalizeClusterKey, poolTimeoutKey, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
 import { ERROR_STREAK_WARN } from "./tick-outcome.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
@@ -83,5 +83,5 @@ export function errorStorm(prev: ErrorStorm, observations: readonly ErrorStormOb
   if (!top) return ERROR_STORM_QUIET;
   const [key, roles] = top;
   if (prev.key === key) return prev;
-  return { key, roles: [...roles].sort() };
+  return { key, roles: sortedRoles(roles) };
 }

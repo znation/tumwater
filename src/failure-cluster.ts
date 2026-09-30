@@ -27,6 +27,16 @@ export function truncateExample(message: string, max: number = EXAMPLE_MAX): str
   return `${kept.trimEnd()} … (+${trimmed.length - kept.length} chars)`;
 }
 
+/** A cause's member roles as the payload field every cluster-shaped surface emits: a fresh
+ * array in ascending localeCompare order, so equal inputs always render identically no matter
+ * the Set's insertion order. One home for the rule the failure digest's clusters
+ * (clusterMessages) and loss causes (failure-data.ts) and the error-storm warning
+ * (error-storm.ts) all share — an inline `.sort()` without the comparator would silently pick
+ * code-unit order instead and let the two rules drift. */
+export function sortedRoles(roles: Iterable<string>): string[] {
+  return [...roles].sort((a, b) => a.localeCompare(b));
+}
+
 /** A normalized cluster of like error/warning/rejection strings. */
 export interface Cluster {
   key: string; // the normalized form, the grouping key
@@ -125,7 +135,7 @@ export function clusterMessages(
     clusters: sorted.slice(0, top).map((d) => ({
       key: d.key,
       count: d.count,
-      roles: [...d.roles].sort((a, b) => a.localeCompare(b)),
+      roles: sortedRoles(d.roles),
       firstSeen: d.firstSeen,
       lastSeen: d.lastSeen,
       example: d.example,
