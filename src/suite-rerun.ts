@@ -32,6 +32,39 @@ const NPM_TEST = new Set(["test", "t", "tst"]);
 const NPM_RUN = new Set(["run", "run-script", "rum", "urn"]);
 const NPM_CI = new Set(["ci", "clean-install", "ic", "install-clean", "isntall-clean"]);
 
+/** npm's global options that consume the next word as their value (`npm --prefix /tmp/rev
+ * test`, `npm -C /tmp/rev test`, `npm --registry http://r npm test`): a scanner that skips only
+ * flag tokens reads `/tmp/rev` as the subcommand and the line reads as an innocuous npm call.
+ * `--flag=value` form needs no entry — it is one token and starts with `-`. Kept to the options
+ * a suite-running reviewer plausibly reaches for; an unlisted value-taking flag costs one missed
+ * warning, exactly what this table exists to prevent (BUGS.md 2026-09-29). */
+const NPM_VALUE_FLAGS = new Set([
+  "--prefix",
+  "-C",
+  "--cache",
+  "--registry",
+  "--userconfig",
+  "--globalconfig",
+  "--loglevel",
+  "--workspace",
+  "-w",
+  "--omit",
+]);
+
+/** The same for node's own options before the entry point (`node --max-old-space-size 4096
+ * dist/test/test-runner.js`): `--eval`'s value is code the value-skipping scan should not
+ * mistake for the runner path. */
+const NODE_VALUE_FLAGS = new Set([
+  "--max-old-space-size",
+  "--stack-size",
+  "--require",
+  "-r",
+  "--conditions",
+  "--cpu-prof-dir",
+  "--eval",
+  "-e",
+]);
+
 /** Words that can precede the command itself in one segment of a shell line (`do npm test` in
  * a for loop, `time npm test`, `env CI=1 npm test`) — skipped before the command is read. */
 const PREFIX_WORDS = new Set(["do", "then", "else", "time", "exec", "nohup", "env", "command", "!"]);
@@ -69,16 +102,26 @@ function commandWords(segment: string): string[] {
 
 /** True when `args` (what follows the script or subcommand) carries a positional argument — a
  * test filter — rather than only option flags. Anything after a bare `--` is passed through to
- * the script, so it counts as a filter whatever its shape. */
-function hasFilter(args: readonly string[]): boolean {
-  const dashDash = args.indexOf("--");
-  if (dashDash >= 0 && dashDash < args.length - 1) return true;
-  return args.some((a) => !a.startsWith("-"));
+ * the script, so it counts as a filter whatever its shape. A value-taking flag's value is the
+ * flag's, not the script's, so `npm test --prefix /tmp/rev` is unfiltered too. */
+function hasFilter(args: readonly string[], valueFlags?: ReadonlySet<string>): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i] ?? "";
+    if (a === "--") return i < args.length - 1;
+    if (!a.startsWith("-")) return true;
+    if (valueFlags?.has(a)) i++; // the flag consumes the next word as its value
+  }
+  return false;
 }
 
-/** Index of the first word at or after `from` that is not an option flag, or -1. */
-function firstNonFlag(words: readonly string[], from: number): number {
-  for (let i = from; i < words.length; i++) if (!(words[i] ?? "").startsWith("-")) return i;
+/** Index of the first word at or after `from` that is not an option flag — counting the next
+ * word as part of any value-taking flag in `valueFlags` — or -1. */
+function firstNonFlag(words: readonly string[], from: number, valueFlags?: ReadonlySet<string>): number {
+  for (let i = from; i < words.length; i++) {
+    const w = words[i] ?? "";
+    if (!w.startsWith("-")) return i;
+    if (valueFlags?.has(w)) i++; // the flag consumes the next word as its value
+  }
   return -1;
 }
 
@@ -86,16 +129,19 @@ function firstNonFlag(words: readonly string[], from: number): number {
 function segmentRunsFullSuite(words: readonly string[]): boolean {
   const bin = path.basename(words[0] ?? "");
   if (bin === "npm") {
-    const sub = firstNonFlag(words, 1);
+    // Value-skipping everywhere npm flags can appear, including after the subcommand (`npm run
+    // --prefix /tmp/rev test`): without it the flag's value reads as the subcommand or script
+    // name and a copied-tree suite run goes unflagged (BUGS.md 2026-09-29).
+    const sub = firstNonFlag(words, 1, NPM_VALUE_FLAGS);
     if (sub < 0) return false;
     const name = words[sub] ?? "";
     // Reinstalling dependencies is the setup of a scratch-copy suite run; a dry run installs
     // nothing (a reviewer checking a lockfile change).
     if (NPM_CI.has(name)) return !words.includes("--dry-run");
-    if (NPM_TEST.has(name)) return !hasFilter(words.slice(sub + 1));
+    if (NPM_TEST.has(name)) return !hasFilter(words.slice(sub + 1), NPM_VALUE_FLAGS);
     if (NPM_RUN.has(name)) {
-      const script = firstNonFlag(words, sub + 1);
-      return script >= 0 && words[script] === "test" && !hasFilter(words.slice(script + 1));
+      const script = firstNonFlag(words, sub + 1, NPM_VALUE_FLAGS);
+      return script >= 0 && words[script] === "test" && !hasFilter(words.slice(script + 1), NPM_VALUE_FLAGS);
     }
     return false;
   }
@@ -103,8 +149,8 @@ function segmentRunsFullSuite(words: readonly string[]): boolean {
     // `node dist/test/test-runner.js` — what `npm test` runs after compiling. The runner must be
     // node's entry point: a `sed -n 1,80p test/test-runner.ts` read or a `pkill -f test-runner`
     // names the file without running it.
-    const entry = firstNonFlag(words, 1);
-    return entry >= 0 && (words[entry] ?? "").endsWith("test-runner.js") && !hasFilter(words.slice(entry + 1));
+    const entry = firstNonFlag(words, 1, NODE_VALUE_FLAGS);
+    return entry >= 0 && (words[entry] ?? "").endsWith("test-runner.js") && !hasFilter(words.slice(entry + 1), NODE_VALUE_FLAGS);
   }
   return false;
 }

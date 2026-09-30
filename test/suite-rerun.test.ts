@@ -77,6 +77,38 @@ test("runsFullSuite leaves filtered runs and mere mentions of the runner alone",
   }
 });
 
+test("runsFullSuite sees the subcommand behind a value-taking npm or node flag (BUGS.md 2026-09-29)", () => {
+  // A value-taking option before the subcommand must not read its value as the subcommand: the
+  // shapes a reviewer reaches for when running the suite in a copied tree.
+  for (const command of [
+    "npm --prefix /tmp/rev test", // the bug's own shape: /tmp/rev is the flag's value, not the subcommand
+    "npm -C /tmp/rev test",
+    "npm --cache /tmp/cache test",
+    "npm --registry http://127.0.0.1:4873 test",
+    "npm --prefix /tmp/rev run test",
+    "npm run --prefix /tmp/rev test", // the flag can also trail the subcommand
+    "npm --prefix /tmp/rev ci",
+    "cd /tmp/rev && npm --prefix . test", // value that is not a path-looking word either
+    "node --max-old-space-size 4096 dist/test/test-runner.js",
+    "node -r ./trace.js dist/test/test-runner.js",
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+  // The value must never leak through as a filter either: `npm test --prefix /tmp/rev` runs the
+  // whole suite in the copied tree even though a positional-shaped word follows the flag.
+  assert.ok(runsFullSuite("npm test --prefix /tmp/rev"), "flagged: npm test --prefix /tmp/rev");
+
+  // Value-skipping must not swallow a real positional: a flag that takes no value leaves the
+  // next word where it is.
+  for (const command of [
+    "npm --silent test gui",
+    "npm --no-audit run test merge",
+    "npm --prefix /tmp/rev ci --dry-run", // still a dry run: installs nothing
+  ]) {
+    assert.ok(!runsFullSuite(command), `not flagged: ${command}`);
+  }
+});
+
 test("suiteRerunWarning names the first full-suite run and counts the rest; filtered and non-bash calls never count", () => {
   assert.equal(suiteRerunWarning([]), undefined, "no calls, no warning");
   assert.equal(
