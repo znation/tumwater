@@ -8,6 +8,7 @@
  * reaching the shared state and the render helpers of every other section through that
  * concatenation. */
 export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
+  // view-routing:start
   const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures" };
   function switchView(v) {
     if (!VIEWS[v]) v = "fleet";
@@ -36,6 +37,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     } else switchView(h);
     routed = true;
   }
+  // view-routing:end
   window.addEventListener("hashchange", route);
   $("viewnav").addEventListener("click", (ev) => {
     const a = ev.target instanceof Element ? ev.target.closest("a.tab") : null;
