@@ -39,6 +39,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     });
   }
   // row-actions:end
+  // loops-table:start
   // The status pill's second line: what the phase label carried, or when an idle loop runs next.
   function phaseDetail(l, info, d) {
     const raw = fmtNextRun(l, d.running);
@@ -85,6 +86,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     actions += paused ? b("resume", "play", "Resume " + l.role) : b("pause", "pause", "Pause " + l.role);
     return { info, cells: [name, status, activity, spent, "<div class='actions'>" + actions + "</div>"] };
   }
+  // loops-table:end
   const LOOP_TDS = ["c-loop", "c-status", "c-activity", "c-today num", "c-actions"];
   let loopKeys = "";
   // Rows are patched cell by cell: a working loop's elapsed time changes every second, and
