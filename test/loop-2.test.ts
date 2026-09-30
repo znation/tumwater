@@ -18,7 +18,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION, withPi } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./pi-events.js";
 
@@ -33,17 +33,15 @@ import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./pi-ev
 test("a changed tick past thrashTurns is flagged high-friction end to end", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
-  const restore = fakePi(
-    [
-      reviewerPi("VERDICT: approve", reviewArgs),
-      // Two assistant turns with thrashTurns set to 1 AND thrashMinutes set to 0 → past both
-      // thresholds, so the flag fires.
-      `printf '%s\\n' '${assistantLine("first turn of work")}'`,
-      `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    reviewerPi("VERDICT: approve", reviewArgs),
+    // Two assistant turns with thrashTurns set to 1 AND thrashMinutes set to 0 → past both
+    // thresholds, so the flag fires.
+    `printf '%s\\n' '${assistantLine("first turn of work")}'`,
+    `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: slow change", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const config = defaultConfig();
     config.thrashTurns = 1;
     config.thrashMinutes = 0;
@@ -76,26 +74,22 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     // The commit on main carries the Friction trailer line after the Tick line (item d's e2e).
     const body = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(body, /^Tick: improve #\d+ · turns 2 · ctx \S+\nFriction: high \(2 turns \/ \d+m\)$/m);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a changed tick past only thrashTurns is not flagged high-friction", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
-  const restore = fakePi(
-    [
-      reviewerPi("VERDICT: approve", reviewArgs),
-      // Two turns with thrashTurns set to 1 is past the turn threshold; the default
-      // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
-      // an ordinary fast tick is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
-      `printf '%s\\n' '${assistantLine("first turn of work")}'`,
-      `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: fast change", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    reviewerPi("VERDICT: approve", reviewArgs),
+    // Two turns with thrashTurns set to 1 is past the turn threshold; the default
+    // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
+    // an ordinary fast tick is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
+    `printf '%s\\n' '${assistantLine("first turn of work")}'`,
+    `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: fast change", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const config = defaultConfig();
     config.thrashTurns = 1;
     const runner = makeLoopRunner(repo, "improve", config);
@@ -113,22 +107,18 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
     );
     assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
     assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an ordinary changed tick under both thresholds is not flagged high-friction", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
-  const restore = fakePi(
-    [
-      reviewerPi("VERDICT: approve", reviewArgs),
-      `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    reviewerPi("VERDICT: approve", reviewArgs),
+    `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     // Default thresholds (40 turns / 30 min): one fast turn is far under both.
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
@@ -145,9 +135,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     // …the reviewer prompt carries no marker, and the commit has no Friction line.
     assert.doesNotMatch(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
     assert.doesNotMatch(sh(repo, "git", "log", "-1", "--format=%B"), /Friction:/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Self-explaining commit bodies (plans/commit-bodies.md item a): the reply contract's
@@ -175,12 +163,11 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     { tokens: 42, output: 42, cost: 0.05 },
   );
   const summaryOnly = assistantLine("done\nSUMMARY: add world file", { tokens: 7, output: 7, cost: 0.01 });
-  const restore = fakePi(
+  const script =
     APPROVE_PI + "\n" +
-      `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
-      `[ "$n" -eq 1 ] && { printf '%s\\n' '${compliant}'; echo hello > hello.txt; } || { printf '%s\\n' '${summaryOnly}'; echo world > world.txt; }`,
-  );
-  try {
+    `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'\n` +
+    `[ "$n" -eq 1 ] && { printf '%s\\n' '${compliant}'; echo hello > hello.txt; } || { printf '%s\\n' '${summaryOnly}'; echo world > world.txt; }`;
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
 
     // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
@@ -200,9 +187,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     const second = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(second, /^tumwater\(improve\): add world file\n\nTick: improve #2 · turns 1 · ctx 7$/m);
     assert.doesNotMatch(second, /WHY:|RISK:|VERIFIED:/);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost,
@@ -213,16 +198,14 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
 
 test("a changed tick's tick_end event carries its per-tick tokens and cost", async () => {
   const repo = await initializedRepo();
-  const restore = fakePi(
-    [
-      // The reviewer run reports zero usage, so the tick's totals are exactly the author
-      // run's — the same numbers the status table's gen column shows for this tick.
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 18400, output: 18400, cost: 0.37 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    // The reviewer run reports zero usage, so the tick's totals are exactly the author
+    // run's — the same numbers the status table's gen column shows for this tick.
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 18400, output: 18400, cost: 0.37 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
 
@@ -240,9 +223,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     assert.equal(landed.length, 1, "the landing slot logged its own outcome");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a skipped tick's tick_end event carries no usage fields", async () => {
@@ -264,13 +245,11 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
 test("a cut-off resume is bridged as a cut-off, and the fresh tick after the limit carries the note", async () => {
   const repo = await initializedRepo();
   const promptsFile = path.join(tmpdir(), "prompts.log");
-  const restore = fakePi(
-    [
-      logPromptsTo(promptsFile),
-      `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    logPromptsTo(promptsFile),
+    `printf '%s\n' '${thinkingOnlyLine("cut off again", { output: 16 })}'`,
+  ].join("\n");
+  await withPi(script, async () => {
     fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
     const runner = makeLoopRunner(repo, "perf");
@@ -294,9 +273,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
     const resumes = eventsOfType(repo, "resume");
     assert.equal(resumes.length, 3);
     assert.ok(resumes.every((e) => e.cause === "cut-off"), "resume events name the cut-off cause");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a shutdown resume is bridged as a restart with no cut-off note", async () => {
@@ -342,17 +319,15 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   // Attempt 1: pi dies mid-run the way five ticks did in the first 18 days — a JSON.parse
   // failure on a torn model-server chunk, nothing on stdout worth keeping. Attempt 2 (the
   // harness retry, detected by the phase file) continues the same session and finishes.
-  const restore = fakePi(
-    [
-      TOUCH_SESSION,
-      logFlagsTo(argsFile),
-      ...firstRunThenIdle(marker, [
-        `echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2`,
-        `exit 1`,
-      ]),
-    ].join("\n"),
-  );
-  try {
+  const script = [
+    TOUCH_SESSION,
+    logFlagsTo(argsFile),
+    ...firstRunThenIdle(marker, [
+      `echo 'SyntaxError: Unterminated string in JSON at position 2781 (line 1 column 2782)' >&2`,
+      `exit 1`,
+    ]),
+  ].join("\n");
+  await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
@@ -363,9 +338,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
     assert.ok(runs[1]!.includes("--continue"), "the retry continued the crashed run's session");
     const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
     assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
-  } finally {
-    restore();
-  }
+  });
 });
 
 // A failed pin write is the tick's fail-closed branch: the commit STAYS on the branch for
@@ -379,17 +352,15 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
   const repo = await initializedRepo();
   // Tick 1: one authoring run that makes a change. The tick ends at commit + pin, so the
   // VERDICT branch below only guards against the review prompt ever reaching this script.
-  const restore1 = fakePi(
-    [
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
-      `echo hello > hello.txt`,
-    ].join("\n"),
-  );
+  const script1 = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
   const blockedRef = path.join(repo, ".git", "refs", "tumwater", "landing", "improve");
   fs.mkdirSync(blockedRef, { recursive: true });
   fs.writeFileSync(path.join(blockedRef, "blocker"), "keep the directory non-empty\n");
-  try {
+  await withPi(script1, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -413,21 +384,17 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
       ),
       JSON.stringify(warnings),
     );
-  } finally {
-    restore1();
-    fs.rmSync(blockedRef, { recursive: true, force: true });
-  }
+  });
+  fs.rmSync(blockedRef, { recursive: true, force: true });
 
-  // Unblock done (finally); tick 2's leftover recovery adopts the unpinned commit and puts it on
+  // Unblock done (the first tick's withPi block ended); tick 2's leftover recovery adopts the unpinned commit and puts it on
   // the land queue — the tick ends there, like a fresh changed tick — and the landing slot lands
   // it through the same gate, with the approve.
-  const restore2 = fakePi(
-    [
-      APPROVE_PI,
-      `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
-    ].join("\n"),
-  );
-  try {
+  const script2 = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  ].join("\n");
+  await withPi(script2, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
@@ -446,7 +413,5 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     // merely that a recovery happened, so the failure digest's "Landed in the window" is
     // never opaque (BUGS.md 2026-09-21).
     assert.equal(String(merged[0]!.summary), "recovered leftover work from improve: add hello file");
-  } finally {
-    restore2();
-  }
+  });
 });
