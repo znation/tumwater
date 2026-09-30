@@ -18,7 +18,7 @@ async function run(
   role: string,
   state: LoopState,
   outcome: TickOutcome,
-  opts: { tick?: number; usage?: TickUsage; recoveryFailure?: string } = {},
+  opts: { tick?: number; usage?: TickUsage; recoveryFailure?: string; mainBranch?: string } = {},
 ): Promise<TickOutcome> {
   const tick = opts.tick ?? 1;
   state.lastTickStartedAt = Date.now() - 50;
@@ -26,7 +26,7 @@ async function run(
   return finalizeTick({
     root,
     role,
-    mainBranch: "main",
+    mainBranch: opts.mainBranch ?? "main",
     config: defaultConfig(),
     state,
     outcome,
@@ -184,6 +184,51 @@ test("finalizeTick restores a mid-tick wake instead of making it wait out the in
   assert.ok(woken.nextRunAt <= (woken.lastTickEndedAt ?? 0) + 1, "the wake was restored to now");
   // The restored wake persists with the state.
   assert.equal(loadLoopState(root, "organize").nextRunAt, woken.nextRunAt);
+});
+
+test("finalizeTick keeps the previous main head when main's head cannot be resolved", async () => {
+  // The contract the ?? fallback encodes: branchHead returning null (a branch name that
+  // resolves nowhere) must NOT wake the loop on "main moved" to nowhere — the previous head
+  // stands. Driven with a mainBranch that resolves to nothing.
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  s.lastMainHead = "0123456789abcdef0123456789abcdef01234567";
+  await run(root, "organize", s, { result: "no_change", summary: "nothing to do" }, {
+    mainBranch: "no-such-branch",
+  });
+  assert.equal(loadLoopState(root, "organize").lastMainHead, "0123456789abcdef0123456789abcdef01234567",
+    "the unresolvable head must not overwrite the previous one");
+  // The tick still ended normally — the missing head is not an error.
+  assert.equal(eventsOfType(root, "tick_end").length, 1);
+});
+
+test("the error-streak warning falls back to 'unknown error' when no cause is recorded", async () => {
+  // An error outcome whose own error field is empty (and no leftover recovery failure riding
+  // it): the crossing warning still fires, naming the fallback rather than printing blank.
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  for (let n = 1; n <= ERROR_STREAK_WARN; n++)
+    await run(root, "organize", s, { result: "error", summary: `fail ${n}` });
+  const warnings = eventsOfType(root, "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!.message as string, /^3 consecutive tick failures: unknown error$/);
+});
+
+test("the quiet-kill warning names the recorded error when the crossing tick carries one", async () => {
+  // The quiet-kill message prefers the state's lastError (folded from this tick's outcome)
+  // over the 'unknown hang' fallback: a kill whose outcome says why reports that reason.
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  const killed = (n: number): TickOutcome => ({ result: "quiet_killed", summary: `kill ${n}` });
+  await run(root, "organize", s, killed(1));
+  await run(root, "organize", s, killed(2));
+  await run(root, "organize", s, { ...killed(3), error: "watchdog killed the session" });
+  const warnings = eventsOfType(root, "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(
+    warnings[0]!.message as string,
+    /^3 consecutive quiet kills \(no progress\): watchdog killed the session$/,
+  );
 });
 
 test("a cut-off outcome keeps resumePending's delay against a mid-tick wake", async () => {
