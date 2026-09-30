@@ -17,6 +17,46 @@ export function collapseWhitespace(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** Levenshtein edit distance between two short tokens (command names, config keys — a
+ * handful of chars, so the two-row DP table is trivially cheap). */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row.push(
+        Math.min(
+          prev[j]! + 1, // Deletion.
+          row[j - 1]! + 1, // Insertion.
+          prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1), // Substitution.
+        ),
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
+/** The candidate closest to a mistyped `input` by case-insensitive edit distance, or null
+ * when nothing is close enough to suggest: the "did you mean" behind typo'd command names
+ * (help.ts) and config keys (config-write.ts, operator-commands.ts). Capped at `maxDistance`
+ * (two edits by default — a typo's distance, not a different word's), so only a near miss
+ * gets a hint and the suggestion can never fire as an auto-correction; the caller still
+ * prints the full valid list, so a suggestion only annotates it. */
+export function suggestClosest(
+  input: string,
+  candidates: readonly string[],
+  maxDistance = 2,
+): string | null {
+  const needle = input.toLowerCase();
+  let best: { candidate: string; distance: number } | null = null;
+  for (const candidate of candidates) {
+    const distance = editDistance(needle, candidate.toLowerCase());
+    if (best === null || distance < best.distance) best = { candidate, distance };
+  }
+  return best !== null && best.distance <= maxDistance ? best.candidate : null;
+}
+
 /** The human-facing message of whatever was thrown: its `.message` when it is an Error,
  * `String(err)` otherwise (a thrown string or other value). Every catch site that surfaces a
  * failure as text renders unknown throws through this one coercion instead of repeating the

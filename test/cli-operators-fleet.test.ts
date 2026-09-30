@@ -399,12 +399,19 @@ test("config set rejects unknown and type-invalid edits, leaving tumwater.json b
   await initProject(repo, "cli config rejects");
   const before = fs.readFileSync(`${repo}/tumwater.json`, "utf8");
 
-  // An unknown key is rejected with the valid-keys list and nothing is written.
+  // An unknown key is rejected with the valid-keys list, a did-you-mean for the typo, and
+  // nothing is written.
   let r = await cli(repo, "config", "set", "modle", "x");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown config key "modle" \(valid top-level keys: /);
   assert.ok(r.stderr.includes("maxDailyCostUsd"), "the valid list names a real key");
+  assert.match(r.stderr, /— did you mean `model`\?/);
   assert.equal(fs.readFileSync(`${repo}/tumwater.json`, "utf8"), before);
+
+  // `get` carries the same suggestion for its unknown-key error.
+  r = await cli(repo, "config", "get", "modle");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown config key "modle" \(valid top-level keys: .+\) — did you mean `model`\?/);
 
   // A type-invalid value fails with validateConfig's own message; no tmp remnant.
   r = await cli(repo, "config", "set", "minTickIntervalSeconds", '"45"');

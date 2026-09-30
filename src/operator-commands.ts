@@ -8,7 +8,7 @@ import {
   queuedPrompts,
   queuedRolePrompts,
 } from "./inbox.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, suggestClosest } from "./text.js";
 import { TOP_LEVEL_KEYS } from "./config-validation.js";
 import { setConfigKey } from "./config-write.js";
 import { errCode } from "./errno.js";
@@ -210,8 +210,16 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
   const [sub, key, ...rest] = args;
   if (sub === "get") {
     const k = key ?? "";
-    if (!(TOP_LEVEL_KEYS as readonly string[]).includes(k))
-      fail(`unknown config key "${k}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})`);
+    if (!(TOP_LEVEL_KEYS as readonly string[]).includes(k)) {
+      // The same did-you-mean setConfigKey appends to its unknown-key error, so a typo'd key
+      // reads the same whichever verb misspelled it.
+      const suggestion = suggestClosest(k, TOP_LEVEL_KEYS as readonly string[]);
+      fail(
+        `unknown config key "${k}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${
+          suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+        }`,
+      );
+    }
     const { config, error } = loadConfigSafe(root);
     if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
     const value = (config as unknown as Record<string, unknown>)[k];

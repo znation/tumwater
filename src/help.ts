@@ -3,6 +3,7 @@
  * full text is one template literal, and helpStanzas/helpTopic derive `tumwater help
  * <command>` from it by splitting the usage block on its `  tumwater <command>` lines, so a
  * topic can never drift out of sync with the full listing. */
+import { suggestClosest } from "./text.js";
 
 export const HELP = `tumwater — autonomous development harness built on pi
 
@@ -90,39 +91,15 @@ under .tumwater/, does one task per tick with pi, commits, and merges to main. L
 off while the project is quiet and wake when main moves. Everything is local: no remotes.
 `;
 
-/** Levenshtein edit distance between two short tokens (command names — a handful of chars,
- * so the two-row DP table is trivially cheap). */
-function editDistance(a: string, b: string): number {
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j++) {
-      row.push(
-        Math.min(
-          prev[j]! + 1, // Deletion.
-          row[j - 1]! + 1, // Insertion.
-          prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1), // Substitution.
-        ),
-      );
-    }
-    prev = row;
-  }
-  return prev[b.length]!;
-}
-
 /** The listed command closest to a mistyped one, or null when nothing is close enough to
- * suggest. Case-insensitive Levenshtein over the commands helpStanzas(HELP) names, capped at
- * two edits — a typo's distance, not a different word's — so only a near miss gets a hint and
- * the suggestion can never fire as an auto-correction. Deriving the candidates from the help
- * text (not a hand-kept list) means a new command is suggestible the tick it gains a stanza. */
+ * suggest. Case-insensitive closest-match over the commands helpStanzas(HELP) names, capped
+ * at two edits — a typo's distance, not a different word's — so only a near miss gets a hint
+ * and the suggestion can never fire as an auto-correction. Deriving the candidates from the
+ * help text (not a hand-kept list) means a new command is suggestible the tick it gains a
+ * stanza; the distance mechanics are text.ts's suggestClosest, shared with the config-key
+ * suggestion. */
 export function suggestCommand(input: string, help: string = HELP): string | null {
-  const needle = input.toLowerCase();
-  let best: { command: string; distance: number } | null = null;
-  for (const command of new Set(helpStanzas(help).map((s) => s.command))) {
-    const distance = editDistance(needle, command.toLowerCase());
-    if (best === null || distance < best.distance) best = { command, distance };
-  }
-  return best !== null && best.distance <= 2 ? best.command : null;
+  return suggestClosest(input, [...new Set(helpStanzas(help).map((s) => s.command))]);
 }
 
 /** One usage stanza: the command its `  tumwater <command>` line names and that line plus

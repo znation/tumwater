@@ -122,10 +122,14 @@ test("setConfigKey rejects an unknown key and a type-invalid value, leaving the 
   const file = path.join(dir, "tumwater.json");
   const before = fs.readFileSync(file, "utf8");
 
-  // An unknown key: the error names the valid keys (the same list checkKnownKeys enforces).
+  // An unknown key: the error names the valid keys (the same list checkKnownKeys enforces)
+  // and points a typo at its real spelling, like the unknown-command error does.
   let r = setConfigKey(dir, "modle", "x");
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /unknown config key "modle" \(valid top-level keys: .+\)/);
+  if (!r.ok) {
+    assert.match(r.error, /unknown config key "modle" \(valid top-level keys: .+\)/);
+    assert.match(r.error, /— did you mean `model`\?/);
+  }
 
   // A type-invalid value fails with validateConfig's own message.
   r = setConfigKey(dir, "minTickIntervalSeconds", '"45"');

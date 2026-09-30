@@ -9,6 +9,7 @@ import {
   displayWidth,
   parseNonNegativeInt,
   parsePositiveInt,
+  suggestClosest,
   truncate,
 } from "../src/text.js";
 
@@ -301,4 +302,21 @@ test("backendKindPhrase names each backend-failure kind and falls back on an unr
   assert.equal(backendKindPhrase("model-load"), "model load failure");
   assert.equal(backendKindPhrase("gateway-noon"), "backend failure");
   assert.equal(backendKindPhrase(undefined), "backend failure");
+});
+
+// suggestClosest is the shared did-you-mean behind the unknown-command and unknown-config-key
+// errors. The contract the CLI wording relies on: a typo (≤2 edits, case-insensitive) names
+// its closest real token, a different word or an empty input gets null, and ties/near-misses
+// never invent a candidate — the caller still prints the full valid list.
+test("suggestClosest names the closest candidate within two edits, case-insensitively", () => {
+  assert.equal(suggestClosest("modle", ["model", "thinking"]), "model");
+  assert.equal(suggestClosest("MODLE", ["model"]), "model");
+  assert.equal(suggestClosest("statis", ["status", "logs"]), "status");
+  assert.equal(suggestClosest("frobnicate", ["model", "status"]), null);
+  assert.equal(suggestClosest("", ["model"]), null);
+  // The closest candidate wins even when another is also within the cap:
+  // modle→model is 2 edits, modle→modeller 3, so the nearer spelling is named.
+  assert.equal(suggestClosest("modle", ["modeller", "model"]), "model");
+  // An empty candidate list has nothing to suggest.
+  assert.equal(suggestClosest("model", []), null);
 });

@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import type { TumwaterConfig } from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, suggestClosest } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
 import { show, TOP_LEVEL_KEYS, validateConfig } from "./config-validation.js";
@@ -101,11 +101,18 @@ export function setConfigKey(
   key: string,
   rawValue: string,
 ): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
-  if (!(TOP_LEVEL_KEYS as readonly string[]).includes(key))
+  if (!(TOP_LEVEL_KEYS as readonly string[]).includes(key)) {
+    // The same did-you-mean the unknown-command error carries: a typo'd key (modle → model)
+    // gets pointed at its real spelling when one sits within two edits; otherwise the valid
+    // keys list alone answers. text.ts's suggestClosest keeps the distance rule single-homed.
+    const suggestion = suggestClosest(key, TOP_LEVEL_KEYS as readonly string[]);
     return {
       ok: false,
-      error: `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})`,
+      error: `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${
+        suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+      }`,
     };
+  }
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
