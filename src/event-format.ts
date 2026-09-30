@@ -178,6 +178,11 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${e.role ?? "?"} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
     case "role_resumed":
       return `role ${e.role ?? "?"} resumed — it ticks again`;
+    case "role_streak_paused":
+      // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
+      // harness handling the failure. Names the streak depth and the lift command, so the
+      // operator knows why the loop stopped and what to do about it.
+      return `role ${e.role ?? "?"} paused — ${e.streak ?? "?"} ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.

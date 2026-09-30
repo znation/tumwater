@@ -197,6 +197,15 @@ const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds
  * the failure is clearly not transient. */
 export const ERROR_STREAK_WARN = 3;
 
+/** Consecutive failed ticks after which the error-streak circuit breaker (src/streak-gate.ts)
+ * auto-pauses the role through the per-role pause marker — the same act-on-it escalation the
+ * budget gate and the pause gates perform, applied to a role failing on its own cause. Ten,
+ * not the warn bar: at 3 the failure is diagnosed but possibly transient, and by tick 4 the
+ * error ladder has already doubled to its 10-minute rung, so 10 consecutive failures is 45+
+ * minutes of a role failing on the slowest rung — long enough to ride out genuine transience,
+ * short enough to stop the burn well before an all-day failure. One sensible default, no knob. */
+export const ERROR_STREAK_BREAKER = 10;
+
 /** Resumes granted to one context-ceiling cut-off streak before the loop stops resuming the
  * task and falls back to a fresh tick: a task that outruns the ceiling on every attempt (even
  * from a freshly compacted context) is too big to converge, and each cycle costs an hour-plus

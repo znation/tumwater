@@ -485,6 +485,23 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   const resumed = formatEvent({ ts: 0, loop: "harness", type: "role_resumed", role: "docs" } as never);
   assert.match(resumed, /harness\s+role docs resumed — it ticks again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
+
+  // role_streak_paused (src/streak-gate.ts): the breaker's pause IS the harness handling the
+  // failure — routine with an explanation, like rate_limit_hold, never a warning. It names
+  // the streak depth and how to lift it.
+  const streakPaused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_streak_paused",
+    role: "docs",
+    streak: 10,
+  } as never);
+  assert.match(
+    streakPaused,
+    /harness\s+role docs paused — 10 ticks failed in a row; fix the cause and resume it \(tumwater resume --role <id>\)$/,
+    `breaker pause line: ${streakPaused}`,
+  );
+  assert.ok(!streakPaused.includes("warning"), `the breaker's pause is routine, not a warning: ${streakPaused}`);
 });
 
 // Fleet-wide 429 hold (src/fleet-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no

@@ -8,6 +8,7 @@ import {
 } from "./budget-gates.js";
 import { fallbackDemotion } from "./fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
+import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
   newQuietHoursGateState,
   pollQuietHoursGate,
@@ -44,6 +45,7 @@ import type { OrchestratorInfo } from "./fleet-state.js";
 export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
+  streak: StreakGateState;
   quiet: QuietHoursGateState;
   fleetHold: FleetHold;
   errorStorm: ErrorStorm;
@@ -57,6 +59,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
   return {
     budget: newBudgetGateState(config),
     pause: newPauseGateState(),
+    streak: newStreakGateState(),
     quiet: newQuietHoursGateState(),
     fleetHold: FLEET_OPEN,
     errorStorm: ERROR_STORM_QUIET,
@@ -159,6 +162,16 @@ export function pollFleetGates(
   // pause's set, both read fresh per cycle so a marker change lands on the next poll.
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
+  // The error-streak circuit breaker (src/streak-gate.ts): a role past ERROR_STREAK_BREAKER
+  // consecutive failed ticks is paused through the same per-role marker the operator's
+  // `pause --role` writes — act-on-it where the warn bar and the storm alarms only talk. The
+  // director is not exempt; a failing director cannot process prompts anyway. Roles it just
+  // paused fold into this poll's paused-roles view, so the scheduler blocks them on this very
+  // poll instead of the next one.
+  const streakPaused = pollStreakGate(root, states.streak, runners, pausedRoles);
+  const pausedRolesNow =
+    streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
+
   // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
   // which role loops start no new ticks — the operator pause's semantics on a schedule.
   // The config value is read fresh per cycle, so a live edit applies on the next poll;
@@ -205,5 +218,5 @@ export function pollFleetGates(
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, runners, now);
 
-  return { gate, roleConfig, userPaused, pausedRoles, quietNow };
+  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, quietNow };
 }

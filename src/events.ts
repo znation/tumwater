@@ -60,6 +60,7 @@ export interface HarnessEvent {
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
+    | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/streak-gate.ts); carries role, streak, lastError when one is recorded
     | "quiet_hours_started" // the configured quietHours window began; role loops stop starting new ticks until it ends, director exempt (carries window)
     | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)
     | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/fleet-hold.ts); role loops and the landing slot start nothing new until it re-opens; carries kind, roles, holdMs, escalation

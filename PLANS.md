@@ -5,9 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### An error-streak circuit breaker: a loop that keeps failing gets paused, not just warned (planned 2026-09-30 by plan loop)
+_None yet._
 
-**Goal.** A role whose ticks fail consecutively is warned at 3 (`ERROR_STREAK_WARN`, src/tick-outcome.ts) and the fleet-wide storm alarm names shared causes (src/error-storm.ts) — but both only *talk*. A single loop failing on its own cause (a broken worktree, a cursed task, a wrong per-role model) keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and spend on a loop that cannot succeed. Give the harness a third act-on-it gate beside the budget gate (src/budget-gates.ts) and the pause gates (src/pause-gates.ts): after `ERROR_STREAK_BREAKER = 10` consecutive failed ticks, the harness auto-pauses that role by writing it into the same per-role pause marker the operator's `tumwater pause --role` uses, so the scheduler's existing `pausedRolesSet.has(runner.role)` skip (src/orchestrator.ts) blocks new ticks with zero scheduler changes. The director is not exempt: a failing director cannot process prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row toggle) lifts it, as today.
+## Done
+
+### An error-streak circuit breaker: a loop that keeps failing gets paused, not just warned (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
+
+**Goal.** A role whose ticks fail consecutively is warned at 3 (`ERROR_STREAK_WARN`, src/tick-outcome.ts) and the fleet-wide storm alarm names shared causes (src/error-storm.ts) — but both only *talk*. (Anchors corrected at implementation, 2026-09-30: the gate family's wiring moved from orchestrator.ts into src/gate-polls.ts's pollFleetGates, so the new gate wired there.) A single loop failing on its own cause (a broken worktree, a cursed task, a wrong per-role model) keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and spend on a loop that cannot succeed. Give the harness a third act-on-it gate beside the budget gate (src/budget-gates.ts) and the pause gates (src/pause-gates.ts): after `ERROR_STREAK_BREAKER = 10` consecutive failed ticks, the harness auto-pauses that role by writing it into the same per-role pause marker the operator's `tumwater pause --role` uses, so the scheduler's existing `pausedRolesSet.has(runner.role)` skip (src/orchestrator.ts) blocks new ticks with zero scheduler changes. The director is not exempt: a failing director cannot process prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row toggle) lifts it, as today.
 
 **Approach.**
 
@@ -16,12 +20,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - **Trip**: for each runner whose `LoopState.consecutiveErrors` (via the same `r.state` pick pollErrorStorm uses) is ≥ `ERROR_STREAK_BREAKER + (acked.get(role) ?? 0)` and whose role is **not** in `pausedRoles`: call `pauseRole(root, role)` (src/fleet-state.ts — the shared marker, lock, and idempotence come free) and log one event `role_streak_paused` carrying `role`, `streak`, and `lastError`.
   - **Ack while paused**: every poll, for each role present in `pausedRoles`, set `acked` to its current streak. The marker itself is the ack carrier, so no separate resume detection is needed: after the operator resumes a breaker-paused role, re-tripping requires ten *more* consecutive failures, not one. This also covers the operator-paused-then-resumed failing role (no instant re-trip) and a harness restart mid-pause (state is lost; the marker freezes the ack on the first poll after restart).
   - A role whose streak resets to 0 through its own success needs no special case — the bar arithmetic simply never trips again until a fresh streak climbs to 10.
-- **Orchestrator wiring** — one call beside `pollPauseGates` in runOrchestrator's poll (src/orchestrator.ts, where pauseGateState is stepped): `pollStreakGate(root, streakGateState, runners, pausedRolesSet)`. In-flight ticks finish; only new ticks are blocked, like every gate.
+- **Orchestrator wiring** — one call beside `pollPauseGates` in the gate family's poll (src/gate-polls.ts, where the pause gate state is stepped; the anchor moved there after the plan was written): `pollStreakGate(root, streakGateState, runners, pausedRolesSet)`. The gate returns the roles it just paused and they fold into that poll's paused-roles view, so the scheduler blocks them on the very poll of the trip, not the next one. In-flight ticks finish; only new ticks are blocked, like every gate.
 - **Event plumbing** — add `"role_streak_paused"` to the `HarnessEvent["type"]` union (src/events.ts) with a comment naming the trigger, and a renderer case in src/event-format.ts beside `role_paused`: `role <id> paused — 10 ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`. Treated as routine-with-explanation like `rate_limit_hold`, not a `warning` — the pause IS the harness handling the failure.
 - **Accepted behavior** (state it in the module doc, do not fix here): the dashboards' "failing tick after tick" alert (src/ui/fleet-alerts.ts) reads `consecutiveErrors` regardless of pause, so it keeps listing a breaker-paused role until the streak clears; the loop cell's paused badge explains why it is not ticking, and the `role_streak_paused` event tells the operator why.
 - **Docs** — one sentence in docs/how-it-works.md's gate enumeration if it lists the fleet gates (the same list the pause-gates.ts doc comment points at).
 
-**Files touched.** src/tick-outcome.ts (constant), src/streak-gate.ts (new, ~90 lines), src/orchestrator.ts (one call site + state init), src/events.ts (union entry), src/event-format.ts (renderer case), docs/how-it-works.md (one sentence, if applicable); tests: test/streak-gate.test.ts (new) plus a renderer case in test/event-format.test.ts.
+**Files touched.** src/tick-outcome.ts (constant), src/streak-gate.ts (new), src/gate-polls.ts (one call site + state init; the anchor corrected from src/orchestrator.ts, whose gate wiring had moved into the family), src/events.ts (union entry), src/event-format.ts (renderer case), docs/how-it-works.md (one sentence); tests: test/streak-gate.test.ts (new) plus a renderer case in test/event-format.test.ts.
 
 **Acceptance criteria.**
 
@@ -32,8 +36,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 5. An orchestrator restart mid-pause logs nothing while the marker stands (the first poll re-acks), and if the operator had already resumed before the restart, a still-live streak ≥ 10 re-trips once (durable cause, one event).
 6. The director's streak trips the breaker like any role's.
 7. `npm run test` passes with the new test file green; the new event renders in `tumwater logs` output via the event-format case.
-
-## Done
 
 ### Reject a change that files a new plan directly under `## Done` (planned 2026-09-30, done 2026-09-30) — part 4/4, the gate rule
 
