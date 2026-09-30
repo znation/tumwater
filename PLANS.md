@@ -5,7 +5,45 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Quiet hours: a daily local-time window the fleet holds itself during (planned 2026-09-30) — part 1/2, the gate
+
+**Goal.** A fleet that runs 24/7 spends budget overnight on work nobody is awake to steer. Add a
+config-driven daily window during which role loops start no new ticks, so an operator can set
+`quietHours` once (e.g. `"23:00-07:00"`) and the fleet idles through it every night — the
+operator pause's semantics on a schedule, without anyone typing `tumwater pause` at 23:00.
+
+**Approach.**
+- New `src/quiet-hours.ts`: `parseQuietHours(value: unknown)` returns `{ startMin: number; endMin: number } | null` (minutes since local midnight) or an error message; `inQuietHours(window, date)` decides membership for a `Date` (a window that wraps midnight, `start > end`, spans across 00:00; `start === end` is a parse error, not a zero-length always-on window); `pollQuietHoursGate(state, quietHours, now)` mirrors `pollPauseGates`'s edge-triggered shape — it logs exactly one `quiet_hours_started` / `quiet_hours_ended` event (`loop: "harness"`) per crossing, holding the previous in-window boolean in `QuietHoursGateState` (in memory only; a restart mid-window logs one event on the first poll, like the pause gate).
+- Config: add the optional `quietHours?: string` key to `TumwaterConfig` (src/config-schema.ts) and to `TOP_LEVEL_KEYS` (src/config-validation.ts); `validateConfig` rejects a non-string or a malformed value using `parseQuietHours`'s message. Add `checkQuietHours(value)` to src/config-write.ts beside `checkDailyBudgetUsd`, and wire it into `setConfigKey`'s per-key validators so `tumwater config set quietHours "23:00-07:00"` (and the TUI/GUI editors) share one definition of valid; an empty string means off.
+- Orchestrator wiring: in src/orchestrator.ts's poll cycle, poll the gate next to `pollPauseGates` and fold its boolean into the same hold site that already combines `userPaused || (gate === "paused" && !probeDue)` before `role !== DIRECTOR_ROLE` — the director is exempt exactly as under the budget gate and the operator pause (a human steering outranks a schedule). In-flight ticks finish; the gate sits before eligibility, so a tick due inside the window simply starts at window end. No change to the landing pipeline, the budget gate, or scheduling clocks.
+
+**Files touched.** `src/quiet-hours.ts` (new), `src/config-schema.ts`, `src/config-validation.ts`, `src/config-write.ts`, `src/orchestrator.ts`, `test/quiet-hours.test.ts` (new), plus small additions to `test/config-validation.test.ts` / `test/config-write.test.ts`.
+
+**Acceptance criteria.**
+- With `quietHours: "23:00-07:00"` in tumwater.json and the wall clock inside the window, idle role loops start no new ticks while the director keeps ticking; in-flight ticks run to completion.
+- Exactly one `quiet_hours_started` event at window entry and one `quiet_hours_ended` at exit per crossing, even across many polls; a restart inside the window logs at most one event.
+- A wrapping window (`23:00-07:00`) holds from 23:00 through 00:00 into 07:00; `start === end` and malformed strings fail `validateConfig` and `config set` with an actionable message; absent or empty `quietHours` changes no behavior.
+- `npm run test` passes with the new `test/quiet-hours.test.ts` covering parse (valid/wrap/invalid), membership at the boundaries, edge events, and the director exemption.
+
+Cross-references part 2/2 below (dashboards), which lands after this part is the running build.
+
+### Quiet hours: surface the window on the dashboards (planned 2026-09-30) — part 2/2, observability
+
+**Goal.** Part 1/2's gate is invisible: an operator looking at `tumwater status`, the TUI, or the GUI during a quiet window sees idle loops but no reason. Surface the configured window and whether the fleet is inside it, the same way the pause and budget gates are surfaced.
+
+**Approach.**
+- src/status-data.ts: add to the status payload a `quietHours` field carrying the effective window string (absent when unset) and an `inQuietHours` boolean computed with `inQuietHours` from src/quiet-hours.ts, fresh per poll like `paused`.
+- Renderers: src/ui/status-render.ts renders a `quiet until 07:00`-style line/badge while inside the window and the plain window string otherwise; the TUI (src/ui/tui-frame.ts's cell budget) and the GUI (src/ui/gui-server's `/api/status` payload already carries the whole status object, so this is client-side rendering in the GUI's status view) show the same. Follow the `paused` field's render precedent end to end.
+- src/help.ts: the `config set` help line names `quietHours` among the settable keys.
+
+**Files touched.** `src/status-data.ts`, `src/ui/status-render.ts`, `src/ui/tui-frame.ts`, the GUI status view under `src/ui/`, `src/help.ts`, plus the matching status-render/status-payload tests.
+
+**Acceptance criteria.**
+- `tumwater status` shows the configured window and, inside it, an active quiet-hours indicator naming the window end; with `quietHours` unset, output is byte-identical to today's.
+- The TUI and GUI render the same field without layout regressions in the existing test fixtures.
+- Depends on part 1/2 (`quietHours.ts`'s `parseQuietHours`/`inQuietHours` and the config key); land only after part 1/2 is the running build.
+
+Cross-references part 1/2 above.
 
 ## Done
 
