@@ -1,7 +1,7 @@
 import path from "node:path";
 import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
 import { readEvents, type HarnessEvent } from "../events.js";
-import { eventMessage, formatEvent } from "../event-format.js";
+import { eventMessage, eventResult, formatEvent } from "../event-format.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
 import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
@@ -15,7 +15,7 @@ const RECENT_EVENTS = 80;
 /** One event as the dashboard's activity feed consumes it. `result` is a tick's outcome, a
  * landing's result, or a build check's status — whichever string the event carries. */
 function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; result?: string; message: string } {
-  const result = typeof e.result === "string" ? e.result : typeof e.status === "string" ? e.status : undefined;
+  const result = eventResult(e);
   return { ts: e.ts, loop: String(e.loop), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
 }
 

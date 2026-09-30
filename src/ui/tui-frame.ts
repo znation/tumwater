@@ -7,6 +7,7 @@
  * the same status colors — drawn in the terminal's base colors, so they follow its theme. */
 import type { HarnessEvent } from "../events.js";
 import { clipSpans, type StatusLine, type StatusSpan } from "./status-render.js";
+import { eventResult } from "../event-format.js";
 import { eventKind, resultTone, type Tone } from "./tone.js";
 import type { FleetAlert } from "./fleet-alerts.js";
 import { displayWidth } from "../text.js";
@@ -144,7 +145,7 @@ export function prefixWidth(prefix: readonly StatusSpan[]): number {
  * activity card uses the same rule): landings green, problems in their outcome's color,
  * questions magenta, routine bookkeeping dim. */
 export function eventTone(e: HarnessEvent): Tone | undefined {
-  const result = typeof e.result === "string" ? e.result : typeof e.status === "string" ? e.status : undefined;
+  const result = eventResult(e);
   const kind = eventKind(e.type, result);
   if (kind === "landing") return "green";
   if (kind === "attention") return "magenta";

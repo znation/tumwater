@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatEvent, usageText } from "../src/event-format.js";
+import { eventResult, formatEvent, usageText } from "../src/event-format.js";
 import { displayWidth } from "../src/text.js";
 
 test("formatEvent renders each type as one line", () => {
@@ -680,6 +680,20 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   // defaults, and no resume clause.
   const restartBare = formatEvent({ ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40) } as never);
   assert.match(restartBare, /\(drained 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);
+});
+
+// eventResult — the activity feeds' outcome key: a tick's result, else a landing's or build
+// check's status, else undefined. Single-homes the extraction the status payload's eventItem
+// and the TUI's eventTone both render through, so the two surfaces cannot key differently.
+test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: "changed" }), "changed");
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "build_check", status: "failed" }), "failed");
+  // A status is only a fallback: when both ride one event the tick's result wins.
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: "error", status: "failed" }), "error");
+  // Non-string values (a number smuggled into the loose payload) are not an outcome.
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: 7 } as never), undefined);
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "wake" }), undefined);
 });
 
 // usageText's either-part-omitted rule has a third shape the tick_end/landed tests never hit:

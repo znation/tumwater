@@ -34,6 +34,15 @@ function elapsed(ms: unknown): string {
   return ` (in ${shortSpanPhrase(n)})`;
 }
 
+/** An event's outcome string — a tick's `result`, or a landing's or build check's `status`,
+ * whichever the event carries; undefined when neither does. The activity feeds' tone and
+ * filter key (tone.ts's eventKind takes it beside the event type), also shipped as the
+ * status payload's per-event `result` field, so the two surfaces cannot disagree on what a
+ * feed row keys by. */
+export function eventResult(e: HarnessEvent): string | undefined {
+  return typeof e.result === "string" ? e.result : typeof e.status === "string" ? e.status : undefined;
+}
+
 /** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
  * the local time, the loop padded to a column, then the event's message (eventMessage).
  * Presentation only: depends on the event shape (events.ts's HarnessEvent), not on its log
