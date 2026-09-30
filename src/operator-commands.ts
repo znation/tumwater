@@ -198,7 +198,10 @@ export async function cmdStop(root: string): Promise<void> {
  * config holds no secrets — provider keys belong to pi's own env) and no transformation,
  * including the per-role entries custom loops merge into. `get <key>` prints that one key's
  * resolved value (defaults merged in, exactly what the no-arg dump prints) as JSON, failing
- * with the valid top-level keys on an unknown one. `set <key> <value>` writes one top-level
+ * with the valid top-level keys on an unknown one. An optional key nothing sets (model,
+ * provider, fallbackModel, …) prints `null` — JSON's no-value — because JSON.stringify of an
+ * absent key is the undefined *value*, which say would render as the bare word `undefined`:
+ * not parseable JSON for a script and indistinguishable from a crash for a human. `set <key> <value>` writes one top-level
  * key through setConfigKey and prints one confirmation line naming the key and its new value;
  * a running fleet picks the change up on its next ~2 s config poll (newLiveConfigReload).
  * A malformed or invalid tumwater.json fails with validateConfig's actionable message and
@@ -211,7 +214,8 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
       fail(`unknown config key "${k}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})`);
     const { config, error } = loadConfigSafe(root);
     if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-    say(JSON.stringify((config as unknown as Record<string, unknown>)[k]));
+    const value = (config as unknown as Record<string, unknown>)[k];
+    say(JSON.stringify(value === undefined ? null : value)); // Absent optional key → JSON null.
     return;
   }
   if (sub === "set") {

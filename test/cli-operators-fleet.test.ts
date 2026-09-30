@@ -382,6 +382,16 @@ test("config get/set roundtrip: set persists, get reads the resolved value", asy
   assert.equal(loadConfig(repo).model, "gpt-5");
   r = await cli(repo, "config", "get", "model");
   assert.match(r.stdout, /^"gpt-5"\n?$/);
+
+  // An optional key nothing sets prints JSON null, not the bare word `undefined` — the raw
+  // JSON.stringify(undefined) is not parseable output and reads like a crash (improve 2026-09-30).
+  assert.equal(loadConfig(repo).provider, undefined); // The seeded config leaves it unset.
+  r = await cli(repo, "config", "get", "provider");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^null\n?$/);
+  r = await cli(repo, "config", "get", "fallbackModel");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^null\n?$/);
 });
 
 test("config set rejects unknown and type-invalid edits, leaving tumwater.json byte-identical", async () => {
