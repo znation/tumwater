@@ -64,16 +64,28 @@ function ownsBrief(text: string): boolean {
   return text.indexOf(PROMPT_END, start + PROMPT_START.length) >= 0;
 }
 
-/** Which file owns the project's managed sections — the basename of the first candidate
- * (TUMWATER.md before README.md) that carries a well-formed prompt block, or null when
- * neither does. Callers that only need the prompt use readInitialPrompt; this exists for the
- * prompt builders (which name the actual file) and doctor's brief check. */
-export function briefFile(root: string): string | null {
+/** The first brief candidate (TUMWATER.md before README.md) that exists on disk and whose
+ * text `accepts` — its basename and text, or null when none does. The one home of the
+ * candidate-order scan (skip missing files, read the first present one) briefFile and
+ * readInitialPrompt share; their difference is only the predicate applied to the text. */
+function firstBriefText(
+  root: string,
+  accepts: (text: string) => boolean,
+): { file: string; text: string } | null {
   for (const candidate of briefCandidates(root)) {
     if (!fs.existsSync(candidate)) continue;
-    if (ownsBrief(fs.readFileSync(candidate, "utf8"))) return path.basename(candidate);
+    const text = fs.readFileSync(candidate, "utf8");
+    if (accepts(text)) return { file: path.basename(candidate), text };
   }
   return null;
+}
+
+/** Which file owns the project's managed sections — the basename of the first candidate
+ * that carries a well-formed prompt block, or null when none does. Callers that only need
+ * the prompt use readInitialPrompt; this exists for the prompt builders (which name the
+ * actual file) and doctor's brief check. */
+export function briefFile(root: string): string | null {
+  return firstBriefText(root, ownsBrief)?.file ?? null;
 }
 
 /** The project's initial prompt, extracted from the resolved brief file's managed section —
@@ -83,12 +95,8 @@ export function briefFile(root: string): string | null {
  * valid later block unreadable — every loop would then run without its project prompt, and
  * init's guard would reject re-init as if the section were missing. */
 export function readInitialPrompt(root: string): string {
-  for (const candidate of briefCandidates(root)) {
-    if (!fs.existsSync(candidate)) continue;
-    const prompt = extractPrompt(fs.readFileSync(candidate, "utf8"));
-    if (prompt !== null) return prompt;
-  }
-  return "";
+  const found = firstBriefText(root, (text) => extractPrompt(text) !== null);
+  return found ? (extractPrompt(found.text) ?? "") : "";
 }
 
 function extractPrompt(text: string): string | null {
