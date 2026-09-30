@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30)
+## Done
+
+### `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** An operator asking "which ticks touched the flaky test?" or "when did a loop last fail with a merge conflict?" has no filter over the tick table: `tumwater history` prints the last N rows or a `--since` window wholesale, while the event-log view (`logs --grep`, landed 2026-09-28) filters case-insensitively against the same rendered line the operator would otherwise read. Give history the same filter so both observing views answer substring questions the same way.
 
@@ -28,7 +30,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 Size: one run — ~60 lines in history.ts, one help line, ~5 test cases.
 
-## Done
+
+Implemented as planned: `cmdHistory` (src/ui/history.ts) gains `--grep <text>` — a case-insensitive substring filter over the WYSIWYG row line plus a `tick_end` prefix, with log-commands.ts's impersonation guard (the pattern's position is dropped from every later flag scan, so `history --grep --since` greps for "--since") and a local `HISTORY_GREP_VALUE_ERROR` ("history --grep needs a pattern", exported for cli.ts's rejectUnknownArgs spec, worded locally rather than imported so the two views name themselves). The filter runs on the collected `TickRow[]` before rendering and before `--json` serialization, so it composes with `-n` (scan-bounded), `--since` (window-then-grep), `--role`, and `--json` (filtered payload, still `{"rows":[]}` when empty); empty-match table runs keep the existing `no ticks yet` / `no ticks in <window>` prose. The haystack renders each row with its own widths (padToWidth is the identity there), the canonical unpadded line, because the filter runs before the shown rows' widths are known. `src/help.ts`'s history stanza names the flag (the derived topic follows), and README.md's usage-table row gained the flag too — one file beyond the entry's list, for doc accuracy. Tests in test/cli-history.test.ts cover match/no-match, the flag-shaped pattern, `-n`/`--role`/`--since`/`--json` composition, and the valueless/empty-value failure (8 new cases).
 
 ### `tumwater diff` fleet-wide — one line per loop holding pending work, no `--role` needed (planned 2026-09-29, done 2026-09-30)
 

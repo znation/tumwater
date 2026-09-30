@@ -22,7 +22,7 @@ import { repoNotReady } from "./startup-gate.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
 import { renderBacklogMarkdown } from "./ui/backlog-report.js";
-import { cmdHistory } from "./ui/history.js";
+import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./ui/history.js";
 import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./ui/status.js";
 import { renderStatus } from "./ui/status-render.js";
@@ -218,6 +218,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("history", args, [
         N_FLAG,
         SINCE_FLAG,
+        { names: ["--grep"], value: true, valueName: "<text>", missingValue: HISTORY_GREP_VALUE_ERROR },
         { names: ["--json"] },
         ROLE_FLAG,
       ]);

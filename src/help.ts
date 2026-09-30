@@ -46,14 +46,15 @@ Usage:
   tumwater logs --role <id> [-f] [-n N] [--prompt]
                                    Show (and follow) that loop's pi transcript
                                    (--prompt also shows each run's exact prompt text)
-  tumwater history [--role <id>] [-n N] [--since <duration>] [--json]
+  tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    One row per completed tick, newest first — time, loop,
                                    tick number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
                                    shows the window's ticks instead of the last N (capped at
-                                   7d, like logs --since); --json prints the rows as
-                                   machine-readable history data — ts, tokens, and costUsd
-                                   kept raw, the GUI's /api/history payload
+                                   7d, like logs --since); --grep <text> keeps only rows whose
+                                   line matches, case-insensitively (like logs --grep);
+                                   --json prints the rows as machine-readable history data —
+                                   ts, tokens, and costUsd kept raw, the GUI's /api/history payload
   tumwater diff [--json]           One line per loop holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles
                                    with no worktree or nothing pending are skipped, and a

@@ -32,19 +32,55 @@ function renderRow(row: TickRow, widths: { loop: number; tick: number; result: n
     .trimEnd();
 }
 
-/** `tumwater history [--role <id>] [-n N] [--since <duration>]`: print the last N completed
- * ticks, newest first — or, with `--since`, the ticks of a bounded past window over the same
- * record, the same shape `logs --since` and `report --since` speak. Read-only: stdout only,
- * no state file created — a missing or empty event log prints `no ticks yet` and exits 0. */
+/** The --grep haystack: the WYSIWYG row line — renderRow over the row's own widths, where
+ * padToWidth is the identity, so this is the canonical unpadded line the row renders as
+ * whenever it is the widest row in each column — prefixed with the raw event type so stable
+ * ids (`tick_end`) are greppable the way logs --grep's haystack carries e.type. Built per row
+ * because the filter runs before the widths of the rows actually shown are known. */
+function grepHaystack(row: TickRow): string {
+  return `tick_end ${renderRow(row, {
+    loop: displayWidth(row.loop),
+    tick: String(row.tick).length,
+    result: displayWidth(row.result),
+    duration: row.durationMs === null ? 1 : shortSpanPhrase(row.durationMs).length,
+    usage: displayWidth(row.usage),
+  })}`;
+}
+
+/** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
+ * cli.ts's rejectUnknownArgs spec for --grep can fail a trailing `history --grep` with the same
+ * wording. Kept local to this module — log-commands.ts holds its own GREP_VALUE_ERROR — so the
+ * two observing views' wordings each name the command that printed them. */
+export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
+
+/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`: print the last
+ * N completed ticks, newest first — or, with `--since`, the ticks of a bounded past window over
+ * the same record, the same shape `logs --since` and `report --since` speak. Read-only: stdout
+ * only, no state file created — a missing or empty event log prints `no ticks yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
-  const nRaw = flagValue(args, "-n");
+  // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
+  // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
+  // both observing views answer substring questions the same way. A flag-shaped token sitting
+  // at the --grep value's position IS the pattern, not the flag it spells (`history --grep
+  // --since` greps for the text "--since"): every flag scan below therefore runs over `rest` —
+  // args with that one position removed — so the pattern cannot impersonate a rival flag and a
+  // rival check cannot misfire on the pattern. With no --grep, rest is args.
+  const grepFlag = args.indexOf("--grep");
+  const grepRaw = flagValue(args, "--grep");
+  const rest = grepFlag >= 0 ? args.filter((_, i) => i !== grepFlag + 1) : args;
+  let grepPattern: string | null = null;
+  if (grepRaw !== null) {
+    if (grepRaw === undefined || grepRaw === "") fail(HISTORY_GREP_VALUE_ERROR);
+    grepPattern = grepRaw;
+  }
+  const nRaw = flagValue(rest, "-n");
   // `--since <duration>` is the window-shaped view over the same tick record the -n view
   // dumps: a rival shape to -n, so they fail together naming both (the same rule and wording
   // shape logs uses). It reuses the logs --since cap (same log, same cap — no third cap
   // value) through the shared parser and over-cap helpers, so the error wordings cannot
   // drift. `--role` composes with --since here: history's --role is a row filter, not the
   // rival transcript view logs guards against.
-  const sinceRaw = flagValue(args, "--since");
+  const sinceRaw = flagValue(rest, "--since");
   let rows: TickRow[];
   let covered = true;
   let sinceMs: number | null = null;
@@ -52,7 +88,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     if (nRaw !== null) fail("history --since cannot be combined with -n (a count and a window are rival shapes)");
     sinceMs = parseDurationFlag("--since", sinceRaw);
     failOverDurationCap("history --since", sinceMs, LOGS_SINCE_MAX_MS);
-    const role = parseRoleScope(root, args);
+    const role = parseRoleScope(root, rest);
     const windowed = readTickRowsSince(root, sinceMs, role);
     rows = windowed.rows;
     covered = windowed.covered;
@@ -62,14 +98,21 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
       fail(`-n must be between 1 and ${HISTORY_MAX_TICKS} (got ${JSON.stringify(nRaw)})`);
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
-    const role = parseRoleScope(root, args);
+    const role = parseRoleScope(root, rest);
     rows = readTickRows(root, limit, role);
+  }
+  // The filter runs on the collected rows, before rendering and before --json serialization:
+  // the same rows the table would print, filtered the same way in both forms (the logs --grep
+  // rule: -n bounds the scanned window, not the printed rows).
+  if (grepPattern !== null) {
+    const needle = grepPattern.toLowerCase();
+    rows = rows.filter((r) => grepHaystack(r).toLowerCase().includes(needle));
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
   // the report --json precedent: the flag's output must be parseable in every exit-0 case).
-  if (args.includes("--json")) {
+  if (rest.includes("--json")) {
     say(JSON.stringify({ rows }, null, 2));
     return;
   }

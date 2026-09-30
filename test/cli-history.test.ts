@@ -319,7 +319,7 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--json\]/);
+  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--grep <text>\] \[--json\]/);
   assert.match(help.stdout, /machine-readable history data/);
 });
 
@@ -440,4 +440,104 @@ test("history --since refuses the rival shape and validates through the shared d
   const empty = await cli(repo, "history", "--since", "1s");
   assert.equal(empty.code, 0);
   assert.equal(empty.stdout, "no ticks in 1s\n");
+});
+
+// --- --grep <text>: the row filter its sibling logs --grep already has
+
+test("history --grep keeps only rows whose rendered line matches, case-insensitively", async () => {
+  const repo = await seededHistoryRepo();
+
+  const r = await cli(repo, "history", "--grep", "WIDGET");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.equal(lines.length, 1);
+  assert.match(lines[0]!, /feature\s+#7\s+changed/);
+  assert.match(lines[0]!, /added a widget/);
+
+  // An empty match is the existing empty-log prose, unchanged in wording.
+  const none = await cli(repo, "history", "--grep", "no such text");
+  assert.equal(none.code, 0);
+  assert.equal(none.stdout, "no ticks yet\n");
+
+  // The stable event id is greppable: the haystack prefixes the raw type.
+  const type = await cli(repo, "history", "--grep", "tick_end");
+  assert.equal(type.code, 0);
+  assert.equal(type.stdout.trim().split("\n").length, 3);
+});
+
+test("history --grep treats a flag-shaped pattern as text, not a flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history grep impersonation");
+  writeEvents(repo, [
+    { ts: 1787222691956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "reverted --since handling" },
+  ]);
+  const r = await cli(repo, "history", "--grep", "--since");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /reverted --since handling/);
+});
+
+test("history --grep composes with -n, which bounds the scanned window", async () => {
+  const repo = await seededHistoryRepo();
+
+  // The last two rows are bugfix #9 and clean #3: feature #7 lies outside the scan.
+  const narrow = await cli(repo, "history", "-n", "2", "--grep", "widget");
+  assert.equal(narrow.code, 0);
+  assert.equal(narrow.stdout, "no ticks yet\n");
+
+  const wide = await cli(repo, "history", "-n", "3", "--grep", "widget");
+  assert.equal(wide.code, 0);
+  assert.match(wide.stdout, /added a widget/);
+});
+
+test("history --grep composes with --role", async () => {
+  const repo = await seededHistoryRepo();
+
+  const unscoped = await cli(repo, "history", "--grep", "no_change");
+  assert.equal(unscoped.code, 0);
+  assert.match(unscoped.stdout, /clean\s+#3/);
+
+  const scoped = await cli(repo, "history", "--role", "feature", "--grep", "no_change");
+  assert.equal(scoped.code, 0);
+  assert.equal(scoped.stdout, "no ticks yet\n");
+});
+
+test("history --since --grep filters the window's rows", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history since grep");
+  seedWindowedHistory(repo);
+
+  const r = await cli(repo, "history", "--since", "1h", "--grep", "new work");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim().split("\n").length, 1);
+  assert.match(r.stdout, /feature\s+#3/);
+
+  // The 2-day-old tick sits outside the window, so its detail matches nothing here.
+  const outside = await cli(repo, "history", "--since", "1h", "--grep", "old work");
+  assert.equal(outside.code, 0);
+  assert.equal(outside.stdout, "no ticks in 1h\n");
+});
+
+test("history --grep --json filters the payload and stays a document when empty", async () => {
+  const repo = await seededHistoryRepo();
+
+  const r = await cli(repo, "history", "--json", "--grep", "widget");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { rows: Array<{ loop: string }> };
+  assert.deepEqual(payload.rows.map((row) => row.loop), ["feature"]);
+
+  const empty = await cli(repo, "history", "--json", "--grep", "no such text");
+  assert.equal(empty.code, 0);
+  assert.deepEqual(JSON.parse(empty.stdout), { rows: [] });
+});
+
+test("history --grep fails with its own wording when the value is missing or empty", async () => {
+  const repo = await seededHistoryRepo();
+
+  const valueless = await cli(repo, "history", "--grep");
+  assert.equal(valueless.code, 1);
+  assert.match(valueless.stderr, /history --grep needs a pattern/);
+
+  const empty = await cli(repo, "history", "--grep", "");
+  assert.equal(empty.code, 1);
+  assert.match(empty.stderr, /history --grep needs a pattern/);
 });
