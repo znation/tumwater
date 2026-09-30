@@ -96,6 +96,86 @@ test("--role narrows the window to one loop", () => {
   assert.equal(feature.rows[0]!.durationMs, 10 * MIN);
 });
 
+test("a queued tick resolves to its change's landing outcome — landed or land_failed (BUGS.md 2026-09-30)", () => {
+  const root = tmpdir();
+  const t = (mins: number) => Date.now() - mins * MIN;
+  // The real order: land_queued is logged DURING the tick (before its tick_end); the landing
+  // slot logs landed/land_failed with the same commit sha later.
+  writeEvents(root, [
+    { ts: t(50), loop: "feature", type: "tick_start", tick: 1 },
+    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(48), loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "work one" },
+    { ts: t(40), loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+    { ts: t(30), loop: "feature", type: "tick_start", tick: 2 },
+    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "work two" },
+    { ts: t(28), loop: "feature", type: "tick_end", tick: 2, result: "queued", summary: "work two" },
+    { ts: t(20), loop: "feature", type: "land_failed", commit: "sha2", result: "merge_conflict" },
+  ]);
+  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  // Each queued row joins its OWN change: the newest land_queued at or before its tick_end,
+  // then the first same-sha landing outcome after that pin — never the other tick's.
+  assert.deepEqual(
+    rows.map((r) => [r.tick, r.result, r.detail]),
+    [
+      [2, "merge_conflict", "work two"],
+      [1, "changed", "work one"],
+    ],
+  );
+});
+
+test("a queued tick whose landing is still in the pipeline keeps the raw label", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: Date.now() - 10 * MIN, loop: "feature", type: "tick_start", tick: 1 },
+    { ts: Date.now() - 9 * MIN, loop: "feature", type: "land_queued", commit: "sha1", summary: "pending work" },
+    { ts: Date.now() - 8 * MIN, loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "pending work" },
+  ]);
+  assert.deepEqual(
+    readTickRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.tick, r.result]),
+    [[1, "queued"]],
+  );
+});
+
+test("a queued tick stays raw when no landing outcome matches its pinned sha", () => {
+  const root = tmpdir();
+  // The only landing outcome in the log resolved a DIFFERENT change (an older retry's sha):
+  // joining by loop alone would steal it, so the sha must match and the unmatched row keeps
+  // the raw label (its verdict is genuinely not in the log — still in the pipeline).
+  writeEvents(root, [
+    { ts: Date.now() - 40 * MIN, loop: "feature", type: "landed", commit: "sha0", result: "changed" },
+    { ts: Date.now() - 10 * MIN, loop: "feature", type: "tick_start", tick: 1 },
+    { ts: Date.now() - 9 * MIN, loop: "feature", type: "land_queued", commit: "sha1", summary: "unresolved work" },
+    { ts: Date.now() - 8 * MIN, loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "unresolved work" },
+  ]);
+  assert.deepEqual(
+    readTickRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.tick, r.result]),
+    [[1, "queued"]],
+  );
+});
+
+test("the resolution survives the --role filter and never crosses loops", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: Date.now() - 30 * MIN, loop: "feature", type: "land_queued", commit: "shaF", summary: "feature work" },
+    { ts: Date.now() - 29 * MIN, loop: "feature", type: "tick_end", tick: 1, result: "queued", summary: "feature work" },
+    { ts: Date.now() - 25 * MIN, loop: "clean", type: "land_queued", commit: "shaC", summary: "clean work" },
+    { ts: Date.now() - 24 * MIN, loop: "clean", type: "tick_end", tick: 1, result: "queued", summary: "clean work" },
+    { ts: Date.now() - 20 * MIN, loop: "feature", type: "landed", commit: "shaF", result: "changed" },
+    { ts: Date.now() - 15 * MIN, loop: "clean", type: "land_failed", commit: "shaC", result: "rejected" },
+  ]);
+  const all = readTickRowsSince(root, TWO_HOURS, null);
+  assert.deepEqual(
+    all.rows.map((r) => [r.loop, r.tick, r.result]),
+    [
+      ["clean", 1, "rejected"],
+      ["feature", 1, "changed"],
+    ],
+  );
+  // The role-filtered scope carries each loop's own landing events, so the join holds there too.
+  const clean = readTickRowsSince(root, TWO_HOURS, "clean");
+  assert.deepEqual(clean.rows.map((r) => [r.loop, r.result]), [["clean", "rejected"]]);
+});
+
 test("covered is false while the log starts inside the window, true once an event predates the cutoff", () => {
   const inside = tmpdir();
   writeEvents(inside, [

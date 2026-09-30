@@ -51,6 +51,40 @@ export interface TickRow {
   detail: string;
 }
 
+/** A queued tick_end's row resolves to its change's landing outcome (BUGS.md 2026-09-30):
+ * a `queued` result is a transient pipeline state, not a completed outcome — the tick pinned
+ * its commit and the landing slot resolved it later, so rendering `queued` as final leaves a
+ * landed change labeled "Queued to land" forever. The join the log already supports: the
+ * tick's own `land_queued` event (logged during the tick, so at or before its tick_end) pins
+ * the commit sha, and the later `landed`/`land_failed` event for the same loop+sha carries
+ * the landing's final result. Rows are built newest-first, so each queued tick_end claims
+ * the newest land_queued at or before its ts that no newer row has claimed — the one logged
+ * during that tick. No outcome event (the landing still in the pipeline, or its event outside
+ * the scanned window) leaves the raw label: the conservative fallback for a landing whose
+ * verdict is simply not visible here. Returns the resolved result string, or null to keep
+ * the tick_end's own. */
+function resolveQueuedResult(
+  end: HarnessEvent,
+  landQueuedByLoop: Map<string, HarnessEvent[]>,
+  outcomeByLoop: Map<string, HarnessEvent[]>,
+  claimTop: Map<string, number>,
+): string | null {
+  const queuedList = landQueuedByLoop.get(end.loop);
+  if (!queuedList || queuedList.length === 0) return null;
+  let top = claimTop.get(end.loop) ?? queuedList.length - 1;
+  while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
+  if (top < 0) return null;
+  claimTop.set(end.loop, top - 1);
+  const claimed = queuedList[top]!;
+  const sha = String(claimed.commit ?? "");
+  const outcome = (outcomeByLoop.get(end.loop) ?? []).find(
+    (o) => o.ts >= claimed.ts && String(o.commit ?? "") === sha,
+  );
+  if (!outcome) return null;
+  const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
+  return result || null;
+}
+
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as
  * readEvents returns them), filtered to `role` when given, newest first. Pure: the CLI, the
  * GUI, and the tests share this collector, and none of them writes anything. */
@@ -59,10 +93,32 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
+  // The landing bookkeeping resolveQueuedResult joins over: per loop, the land_queued pins
+  // (oldest first) and the landed/land_failed outcomes (oldest first). Both ride the role
+  // filter with their tick, so the scoped events hold them exactly when they hold the row.
+  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
+  const outcomeByLoop = new Map<string, HarnessEvent[]>();
+  for (const e of scoped) {
+    if (e.type === "land_queued") {
+      const list = landQueuedByLoop.get(e.loop) ?? [];
+      list.push(e);
+      landQueuedByLoop.set(e.loop, list);
+    } else if (e.type === "landed" || e.type === "land_failed") {
+      const list = outcomeByLoop.get(e.loop) ?? [];
+      list.push(e);
+      outcomeByLoop.set(e.loop, list);
+    }
+  }
+  const claimTop = new Map<string, number>();
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
     if (!e || e.type !== "tick_end") continue;
+    const rawResult = String(e.result);
+    const result =
+      rawResult === "queued"
+        ? resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop) ?? rawResult
+        : rawResult;
     const usage = eventUsage(e);
     rows.push({
       ts: e.ts,
@@ -71,7 +127,7 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
       costUsd: usage.costUsd,
       loop: String(e.loop),
       tick: Number(e.tick),
-      result: String(e.result),
+      result,
       durationMs: tickSpanMs(e, starts),
       usage: usageText(e),
       detail: squash(String(e.summary ?? e.error ?? ""), DETAIL_MAX),
@@ -96,7 +152,10 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
  *   sits just before it, so the row renders a dash though the log holds the start. Every
  *   tick_end the harness logs follows its tick_start (tick() logs the start before runTick,
  *   skipped results included), so an unpaired start is either just past the window or lost
- *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan. */
+ *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan.
+ *   (A queued row's landing verdict needs no growth: the landed/land_failed event sits
+ *   after its tick_end, so any tail window holding the row holds the verdict too — or there
+ *   is none yet, the genuinely-pending case that keeps the raw label.) */
 export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
   let window = limit * 2 + 50;
   let events = readEvents(root, window);
