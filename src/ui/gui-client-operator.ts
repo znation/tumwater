@@ -5,9 +5,12 @@
  * /api/pause with `forSeconds`, the CLI's `pause --for`) that turns into a Resume button with
  * the countdown while the fleet is paused. Neither keeps optimistic state: after a successful
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
- * the error and leaves the editor open. Spliced into gui-client.ts's script, reaching its
- * helpers (esc, icon, postJson, paintPanel, showFlash, the menu registry) through that
- * concatenation (esc, icon, postJson, paintPanel, showFlash, the menu registry, onClick). */
+ * the error and leaves the editor open. Spliced into gui-client.ts's script, where it reaches
+ * the other sections' shared plumbing through that concatenation: the DOM and HTML helpers
+ * ($, esc, icon), the formatters (fmtUsd, fmtCap, humanSeconds), the slot painter and toast
+ * (paintPanel, showFlash), the POST helper (postJson), the click hook (onClick), the menu
+ * registry (closeMenus, openMenu), the poll re-render (refresh, hoisted from gui-client-boot.ts
+ * later in the join), and the shared page state it reads and invalidates (lastStatus, lastPaint). */
 export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
   let budgetEditing = false;
   function budgetTone(b) {
