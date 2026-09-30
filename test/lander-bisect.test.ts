@@ -19,6 +19,7 @@ import {
   runBatch,
   batchChecks,
   checkAfterGates,
+  countingCheck,
   advanceMain,
 } from "./lander-fixtures.js";
 
@@ -87,6 +88,63 @@ test("a stack whose every change passes still takes exactly one batch check", as
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
     assert.deepEqual(batchChecks(root).map((e) => e.status), ["passed"], "one check over the whole stack");
     assert.equal(eventsOfType(root, "merged").length, 3);
+  } finally {
+    restore();
+  }
+});
+
+// ── A stack whose delta ahead of its assembly base is doc-only pays no check ────────────
+// A doc-only delta cannot break the build — the gate skips its pre-check for one, and
+// verifyLanding's exempt arm skips its in-lock re-check (BUGS.md 2026-09-30: a docs-only
+// change batched with others, or left alone as a bisect's last step, paid a full suite run
+// and could be rejected on its failure).
+
+test("a stack whose every change is doc-only lands with no batch check", async () => {
+  // The check fails anything it actually runs on, so a skip that stops holding fails the test
+  // loudly (bisect → red alone → rejected) instead of quietly via a count.
+  const roles = ["alpha", "beta"];
+  const { root, shas, wiringFor } = await batchFixture(roles, {
+    edit: (r, role) => fs.appendFileSync(path.join(r, `${role}.md`), `docs by ${role}\n`),
+  });
+  declareCheck(root, "#!/bin/sh\necho \"a doc-only stack must never run me\"; exit 1\n");
+  const mainBefore = mainSha(root);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    assert.equal(batchChecks(root).length, 0, "a doc-only stack runs no check at all");
+    assert.deepEqual(
+      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+      ["work by beta", "work by alpha"],
+      "both doc changes landed, in queue order",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a red stack's doc-only remainder lands on the exemption, without another check", async () => {
+  // The incident's shape: the code prefix lands through the bisect, and the size-1 doc-only
+  // remainder landStack is then left with must not pay a suite run of its own.
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
+    // alpha is the code change the red check implicates; beta is the doc-only remainder.
+    edit: (r, role) => fs.appendFileSync(path.join(r, role === "beta" ? "beta.md" : "alpha.txt"), "work\n"),
+  });
+  // Run 1: alpha's gate pre-check (beta's vet is exempt — no pre-check). Run 2: the whole
+  // stack, planted red. Run 3: alpha alone, green — it lands. The remainder is beta alone.
+  countingCheck(root, `if [ "$n" = "2" ]; then echo "planted failure"; exit 1; fi`);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    assert.deepEqual(
+      batchChecks(root).map((e) => e.status),
+      ["failed", "passed"],
+      "the red stack check and the code prefix's — the doc-only remainder pays no third",
+    );
+    assert.equal(eventsOfType(root, "merged").length, 2);
   } finally {
     restore();
   }
