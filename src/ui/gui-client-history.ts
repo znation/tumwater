@@ -103,7 +103,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
   function renderHistory() {
     const body = $("histbody");
     if (!body) return;
-    Array.from($("histfilter").children).forEach((b) => b.classList.toggle("active", b.dataset.hist === histFilter));
+    markActive($("histfilter"), "hist", histFilter);
     body.innerHTML = historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)));
   }
 `;

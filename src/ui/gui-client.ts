@@ -175,6 +175,15 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
     return "<div class='" + (cls || "empty") + "'><strong>" + esc(title) + "</strong>" +
       esc(err && err.message ? err.message : "") + "</div>";
   }
+  // Mark the one button of a segmented filter whose dataset[attr] matches current as
+  // "active" and clear the rest: one home for the toggle loop each of the page's segmented
+  // controls (the feed's kinds, the history's ranges, the report's day windows) repeated.
+  // Tolerates a missing container (a view not yet built) and compares as strings, so a
+  // numeric current works against its String-coerced dataset values.
+  function markActive(box, attr, current) {
+    if (!box) return;
+    Array.from(box.children).forEach((b) => b.classList.toggle("active", String(b.dataset[attr]) === String(current)));
+  }
   // Per-viewer preferences (theme, open backlog tab, filters): best effort, never required.
   function store(key, value) {
     try { localStorage.setItem("tumwater-" + key, value); } catch { /* storage unavailable */ }

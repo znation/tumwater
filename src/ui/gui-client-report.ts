@@ -186,8 +186,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
   }
   function markWindow(pickerId, current) {
-    const seg = $(pickerId);
-    if (seg) Array.from(seg.children).forEach((b) => b.classList.toggle("active", Number(b.dataset.days) === current));
+    markActive($(pickerId), "days", current);
   }
 
   let usageDays = Number(recall("usage-days")) || 14;

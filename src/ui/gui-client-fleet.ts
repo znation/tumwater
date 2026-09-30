@@ -216,7 +216,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   function renderFeed(d) {
     const items = (d.eventItems || []).slice().reverse(); // newest first
     const shown = feedFilter === "all" ? items : items.filter((it) => eventKind(it) !== "routine");
-    Array.from($("feedfilter").children).forEach((b) => b.classList.toggle("active", b.dataset.filter === feedFilter));
+    markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.loops || []).map((l) => l.role));
     paintPanel("feed", shown.length
       ? shown.map((it) => {
