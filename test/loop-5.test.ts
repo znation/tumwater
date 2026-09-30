@@ -199,7 +199,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
     // The discard is explicit, not accidental: the dequeued prompt is cleared on the live
     // runner (item (a)) rather than left to be overwritten by the next tick's dequeue.
     assert.equal(
-      (runner as unknown as { pendingUserPrompt: string | null }).pendingUserPrompt,
+      (runner as unknown as { pending: { get(): string | null } }).pending.get(),
       null,
       "the dequeued prompt was discarded from the runner",
     );

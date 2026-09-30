@@ -16,7 +16,7 @@ import { LoopPi } from "./loop-pi.js";
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
 import { RETRIABLE_LANDING_RESULTS } from "./lander.js";
-import { enqueueRolePrompt, takeQueuedFile } from "./inbox.js";
+import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome, clearBackoff, restoreMidTickWake } from "./tick-outcome.js";
@@ -56,9 +56,10 @@ export class LoopRunner {
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
-  /** The raw user prompt a director tick is executing, so an unfulfilled tick (abort,
-   * timeout, or failure without changes) can re-queue it instead of losing the request. */
-  private pendingUserPrompt: string | null = null;
+  /** The dequeued user prompt a tick is executing and its requeue policy (src/pending-prompt.ts):
+   * the raw director request is recorded at dequeue so an unfulfilled tick (abort, timeout, or
+   * failure without changes) can re-queue it instead of losing the request. */
+  private readonly pending: PendingPrompt;
   /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
    * would stop the whole fleet. */
@@ -88,6 +89,7 @@ export class LoopRunner {
     readonly sleep?: (ms: number) => Promise<void>,
   ) {
     this.config = config;
+    this.pending = new PendingPrompt(root, role);
     this.state = loadLoopState(root, role);
     this.pi = new LoopPi({
       root: this.root,
@@ -173,35 +175,8 @@ export class LoopRunner {
   private tickPrompt(): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state });
     if (assembled === null) return null;
-    if (assembled.userPrompt !== null) this.pendingUserPrompt = assembled.userPrompt;
+    this.pending.record(assembled.userPrompt);
     return assembled.prompt;
-  }
-
-  /** Put an unfulfilled user prompt back in the queue it came from so the next tick retries it
-   * — the one place that policy lives, shared by every outcome that leaves the request undone
-   * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, red-main
-   * gate). The queue is the role's own (the director's historical inbox for the director), so a
-   * re-queued per-role request never leaks across loops. A fulfilled no_change never reaches
-   * here: re-queueing it would loop the prompt forever. */
-  private requeueUnfulfilledPrompt(userPrompt: string | null): void {
-    if (userPrompt) enqueueRolePrompt(this.root, this.role, userPrompt);
-  }
-
-  /** Re-queue an unfulfilled prompt whose pi session the next tick will resume: the resumed
-   * session still owns the request in its (compacted) context, so the re-queued copy is only
-   * the durable store for a restart — the resume must reclaim exactly it as its own user
-   * prompt (the resume's fulfillment consumes it; only its failure paths re-queue it) instead
-   * of leaving it queued for a later fresh tick to run the same request twice. The queue file
-   * is recorded so the reclaim takes that exact prompt whatever else was enqueued meanwhile.
-   * Director ticks never resume — their re-queued prompt always reruns fresh — so they take
-   * the plain path. */
-  private requeuePromptForResume(userPrompt: string | null): void {
-    if (!userPrompt) return;
-    if (this.role === DIRECTOR_ROLE) {
-      this.requeueUnfulfilledPrompt(userPrompt);
-      return;
-    }
-    this.state.resumePromptFile = enqueueRolePrompt(this.root, this.role, userPrompt);
   }
 
   /** Finish a tick whose pi run was killed mid-flight — shared by the author-run and review-
@@ -219,7 +194,7 @@ export class LoopRunner {
       // An explicit abort discards the request itself too: clear the dequeued prompt here —
       // required on the author-run path (whose early return skips runTick's shared clearing),
       // a no-op on the review-gate path (already cleared after the author run).
-      this.pendingUserPrompt = null;
+      this.pending.clear();
       await resetWorktreeToMain(wt, this.mainBranch);
       return { result: "user_aborted" };
     }
@@ -228,7 +203,7 @@ export class LoopRunner {
     // run its half-done edits are discarded by the next tick's reset). A role's re-queued
     // prompt rides the resume that follows (mid-review the fresh recovery dequeues it like any
     // other tick instead — the flag is cleared and never reclaimed there).
-    this.requeuePromptForResume(userPrompt);
+    this.pending.requeueForResume(this.state, userPrompt);
     return { result: "aborted" };
   }
 
@@ -290,8 +265,8 @@ export class LoopRunner {
     wt: string,
     priorLandingFailure: string | undefined,
   ): Promise<TickOutcome> {
-    this.pendingUserPrompt = null;
-    this.requeueUnfulfilledPrompt(userPrompt);
+    this.pending.clear();
+    this.pending.requeueUnfulfilled(userPrompt);
     if (recovered.kind === "unpinned") {
       this.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its landing ref; left for next-tick recovery`;
       return { result: "error", summary: this.state.lastError, recoveredLeftover: true };
@@ -384,8 +359,7 @@ export class LoopRunner {
       // left to re-queue it (the handlers run inside runTick, after the pi run). The queue is
       // the durable store, so the catch re-queues whatever is still pending, like every
       // unfulfilled outcome does; it is always null once a pi run has been accounted for.
-      this.requeueUnfulfilledPrompt(this.pendingUserPrompt);
-      this.pendingUserPrompt = null;
+      this.pending.requeuePendingUnfulfilled();
     }
     // A re-queued leftover's landing failure is not the tick's own result, so it rides the
     // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
@@ -487,20 +461,11 @@ export class LoopRunner {
     // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
     // path's reset below.
     const resuming = resumableSession && s.phase !== "review";
-    // Reclaim the prompt the interrupted tick re-queued (requeuePromptForResume): the resumed
-    // session still owns that request in its context, so this tick's outcome bookkeeping —
-    // re-queue on unfulfilled, clear on fulfillment — must operate on the queue's copy, or a
-    // fulfilling resume leaves it queued for a later fresh tick to run the same request twice.
-    // The exact recorded file is taken, so an enqueue or cancel meanwhile cannot divert the
-    // reclaim; a vanished file (cancelled) reclaims nothing. The flag is consumed even when
-    // this tick does not resume: a fresh fallback re-derives its prompt from the queue like
-    // any other tick, and a stale record must never survive into a later resume.
-    const reclaimFile = s.resumePromptFile;
-    s.resumePromptFile = undefined;
-    if (resuming && reclaimFile) {
-      const reclaimed = takeQueuedFile(reclaimFile);
-      if (reclaimed !== null) this.pendingUserPrompt = reclaimed;
-    }
+    // Reclaim the prompt the interrupted tick re-queued for its resume (src/pending-prompt.ts):
+    // the resumed session still owns that request in its context, so this tick's bookkeeping
+    // operates on the queue's copy. Consumed even when this tick does not resume, so a stale
+    // record never survives into a later resume.
+    this.pending.reclaimForResume(s, resuming);
 
     // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
     // bridge then warns against re-running it unchanged) or on the tick deadline while still
@@ -512,7 +477,7 @@ export class LoopRunner {
     if (prompt === null) return { result: "skipped" };
     // The raw user prompt a director tick is executing (null for role loops), so an
     // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
-    const userPrompt = this.pendingUserPrompt;
+    const userPrompt = this.pending.get();
 
     const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
     if (resuming) {
@@ -560,8 +525,8 @@ export class LoopRunner {
           // not lost to a restart (the pending field is memory-only) or dropped by the next
           // tick's outcome handling — the queue is the durable store, and once main is green
           // the next tick dequeues it again (PLANS.md "Per-role prompts 1/2" criterion b).
-          this.requeueUnfulfilledPrompt(userPrompt);
-          this.pendingUserPrompt = null;
+          this.pending.requeueUnfulfilled(userPrompt);
+          this.pending.clear();
           return blocked;
         }
       }
@@ -594,7 +559,7 @@ export class LoopRunner {
     // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
     // The next tick's reset discards them.
     if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
-    this.pendingUserPrompt = null;
+    this.pending.clear();
     // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
     // config request in its worktree. Consume it here — after the abort return (a deliberate
     // abort still discards an unfulfilled request) and before every staging path (quiet-kill,
@@ -618,7 +583,7 @@ export class LoopRunner {
       // leaving hours of work for the next tick's reset to discard. Director ticks never resume;
       // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
       s.lastError = pi.errorMessage ?? "killed as hung";
-      this.requeuePromptForResume(userPrompt);
+      this.pending.requeueForResume(this.state, userPrompt);
       return { result: "quiet_killed" };
     }
     if (pi.timedOut && pi.timedOutProgressing) {
@@ -627,17 +592,18 @@ export class LoopRunner {
       // 97 timeouts in 8 hours, ~55 agent-hours discarded). Handle it the way a quiet kill is
       // handled — keep the session and the worktree's edits, resume promptly, bounded by the
       // same quiet-kill streak — while a run with no recent progress keeps the discard path
-      // below. Director ticks never resume; requeuePromptForResume re-queues their prompt
-      // fresh, and applyTickOutcome schedules the immediate retry without a resume.
+      // below. Director ticks never resume; requeueForResume re-queues their prompt
+      // fresh (src/pending-prompt.ts), and applyTickOutcome schedules the immediate retry
+      // without a resume.
       s.lastError = pi.errorMessage ?? "timed out while still making progress";
-      this.requeuePromptForResume(userPrompt);
+      this.pending.requeueForResume(this.state, userPrompt);
       return { result: "quiet_killed", resumeCause: "timeout" };
     }
     if (pi.timedOut) {
       s.lastError = pi.errorMessage ?? "timed out";
       // The request never ran to completion and no work landed: put it back so the next
       // tick retries it. (A killed run's half-done edits are discarded by the reset.)
-      this.requeueUnfulfilledPrompt(userPrompt);
+      this.pending.requeueUnfulfilled(userPrompt);
       return { result: "error" };
     }
 
@@ -674,7 +640,7 @@ export class LoopRunner {
       // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
       // IS fulfillment (a question-type prompt answered without file changes) — never
       // re-queue that, or such prompts would loop forever.
-      this.requeueUnfulfilledPrompt(userPrompt);
+      this.pending.requeueUnfulfilled(userPrompt);
       return { result: "error" };
     }
     if (!changed) {
@@ -691,7 +657,7 @@ export class LoopRunner {
       // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
       // to the inbox to rerun fresh; a role loop resumes the just-compacted session
       // next tick (see the cutOff handling in tick()).
-      if (diagnosis.cutOff) this.requeuePromptForResume(userPrompt);
+      if (diagnosis.cutOff) this.pending.requeueForResume(this.state, userPrompt);
       // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
       // line it left mid-stream is not a finished verdict, so recording it would advance the
       // rotation past a check that did not complete. Only a run that was not cut off records.
