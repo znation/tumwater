@@ -4,12 +4,13 @@
  * human (a failing loop, a red main, a spent budget, an old build, open questions, a pause);
  * the composer that steers the director or one loop; and the fleet view — today's progress,
  * the loops grouped by what they are doing, the backlog, and the notable activity. The
- * view-model, the drawer, the History/Usage/Failures views, the operator controls, and the
- * Markdown renderer live in their own modules and are spliced in below; everything shares
- * one scope. The page
+ * view-model, the drawer, the History/Usage/Failures views, the operator controls, the
+ * Markdown renderer, and the routing/poll boot live in their own modules and are spliced in
+ * below; everything shares one scope. The page
  * cannot import the harness modules, so it keeps its own copies of the few display rules it
  * needs (formatters, loop order), each pinned against its TypeScript twin by test. Written as
  * String.raw templates so the served script is exactly the text below — no double escaping. */
+import { GUI_CLIENT_BOOT_JS } from "./gui-client-boot.js";
 import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
 import { GUI_CLIENT_FLEET_JS } from "./gui-client-fleet.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
@@ -199,148 +200,5 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let activeView = "fleet";
 `;
 
-/** Routing between views, global actions and keys, the theme toggle, and the poll loop. */
-const BOOT_JS = String.raw`  // ---- views ----
-  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures" };
-  function switchView(v) {
-    if (!VIEWS[v]) v = "fleet";
-    activeView = v;
-    for (const k of Object.keys(VIEWS)) {
-      $(VIEWS[k]).hidden = k !== v;
-      const tab = $("tab-" + k);
-      tab.classList.toggle("active", k === v);
-      if (k === v) tab.setAttribute("aria-current", "page");
-      else tab.removeAttribute("aria-current");
-    }
-    if (v === "fleet" && lastStatus) renderFleet(lastStatus);
-    if (v === "history") fetchHistory();
-    if (v === "usage") fetchReport();
-    if (v === "failures") fetchFailures();
-  }
-  // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
-  // tab refetches its data. #loop/<role> opens that loop's drawer (over Fleet on a fresh load),
-  // and the address bar follows the open drawer, so a loop's live view can be linked to.
-  let routed = false;
-  function route() {
-    const h = decodeURIComponent(location.hash.slice(1));
-    if (h.startsWith("loop/")) {
-      if (!routed) switchView("fleet");
-      if (openLoopRole() !== h.slice(5)) openLoop(h.slice(5));
-    } else switchView(h);
-    routed = true;
-  }
-  window.addEventListener("hashchange", route);
-  $("viewnav").addEventListener("click", (ev) => {
-    const a = ev.target instanceof Element ? ev.target.closest("a.tab") : null;
-    if (a && a.getAttribute("href") === location.hash) { ev.preventDefault(); switchView(location.hash.slice(1)); }
-  });
-
-  // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
-  function runAct(act, arg) {
-    if (act === "loop") openLoop(arg);
-    else if (act === "close") closeDrawer();
-    else if (act === "view") location.hash = arg;
-    else if (act === "budget") openBudgetEditor();
-    else if (act === "resume") setFleetPause(false);
-    else if (act === "copy") copyText(arg);
-    else if (act === "questions" || act === "queued" || act === "backlog") {
-      if (activeView !== "fleet") location.hash = "fleet";
-      if (act !== "backlog") setBacklogTab(act);
-      $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
-    } else if (act === "answer") {
-      const q = ((lastStatus && lastStatus.questions) || [])[Number(arg)];
-      if (q !== undefined) draftForDirector("Answer to the open question “" + splitTitle(q).title + "”: ");
-    } else if (act === "mention") {
-      const [file, index] = arg.split(":");
-      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
-      if (title !== undefined) draftForDirector("About “" + splitTitle(title).title + "”: ");
-    }
-  }
-  onClick((t, ev) => {
-    const act = t.closest("[data-act]");
-    if (act) { ev.preventDefault(); runAct(act.dataset.act, act.dataset.arg || ""); return; }
-    const open = t.closest("[data-open]");
-    if (open && !t.closest("#loops")) { ev.preventDefault(); toggleLoop(open.dataset.open); }
-  });
-  const typing = (el) => el instanceof Element && el.closest("input, textarea, select, [contenteditable]") !== null;
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key === "Escape") {
-      if (openMenu) { closeMenus(); return; }
-      if (drawer && !typing(ev.target)) { closeDrawer(); return; }
-    }
-    if (ev.key === "/" && !typing(ev.target) && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
-      ev.preventDefault();
-      focusComposer();
-    }
-  });
-  $("themetoggle").addEventListener("click", () => {
-    const root = document.documentElement;
-    const current = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    const next = current === "dark" ? "light" : "dark";
-    root.setAttribute("data-theme", next);
-    store("theme", next);
-  });
-
-  // ---- the poll ----
-  function rerender() {
-    if (!lastStatus) return;
-    if (activeView === "fleet") renderFleet(lastStatus);
-    if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus);
-  }
-  let lastEventKey = null;
-  // New events are what move the numbers the other panels show (today's landings, the History
-  // rows, the open loop's recent ticks), so they refetch on that signal, each throttled.
-  function onNewEvents() {
-    refreshToday(false);
-    if (activeView === "history") fetchHistory(true);
-    if (activeView === "usage") fetchReport(true);
-    loadLoopTicks(false);
-  }
-  async function refresh() {
-    let d;
-    try {
-      // The guarded getJson: the server's 500 sends a JSON {error} body, which must never be
-      // taken for fleet state — a failed poll keeps the last good frame and says so.
-      d = await getJson("/api/status");
-    } catch {
-      offline = true;
-      renderSidebar(lastStatus);
-      renderAlerts(lastStatus);
-      return;
-    }
-    offline = false;
-    lastStatus = d;
-    // A newer serving build means this page is stale: reload before painting a frame.
-    if (d.serverBuildSha) {
-      if (serverBuildSha === null) serverBuildSha = d.serverBuildSha;
-      else if (d.serverBuildSha !== serverBuildSha) {
-        location.reload();
-        return;
-      }
-    }
-    try {
-      renderSidebar(d);
-      renderAlerts(d);
-      renderComposer(d);
-      if (activeView === "fleet") renderFleet(d);
-      if (activeView === "history") syncHistoryRoles(d);
-      const items = d.eventItems || [];
-      const last = items[items.length - 1];
-      const key = last ? last.ts + ":" + last.type + ":" + last.loop : "";
-      if (lastEventKey !== null && key !== lastEventKey) onNewEvents();
-      lastEventKey = key;
-    } catch (e) {
-      console.error("tumwater: render failed", e);
-    }
-    await refreshDrawer();
-  }
-
-  composerHint();
-  attachReportTip();
-  route();
-  refreshToday(true);
-  refresh();
-  setInterval(refresh, 1000);`;
-
 export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_FLEET_JS,
-  GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_REPORT_JS, BOOT_JS].join("\n");
+  GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_BOOT_JS].join("\n");
