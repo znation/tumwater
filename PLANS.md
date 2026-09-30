@@ -5,7 +5,25 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater role <id>` — inspect one loop's standing prompt and resolved settings (planned 2026-09-30 by plan loop)
+
+**Goal.** Operators can steer a loop (`tumwater prompt --role <id>`, run it one-shot with `run --once --role`) and see its last tick (`status`, the GUI drawer), but nothing surfaces what a loop actually carries: its standing find prompt, the per-role `instructions` override from tumwater.json, its resolved provider/model with the fallback pair applied, and what its *next* tick's prompt will read like (including the reject-reject, discard, and cut-off notes and any queued per-role prompt). Debugging a misbehaving loop or aiming a targeted prompt means guessing. Add a read-only `tumwater role <id>` command that shows exactly that, with `--json` for scripts. Not a config knob — pure observability, so it stays inside the opinionated-defaults principle.
+
+**Approach.**
+
+1. Read-only prompt seam. src/inbox.ts: add `peekPrompt(root)` and `peekRolePrompt(root, role)` beside `dequeuePrompt`/`dequeueRolePrompt` — read the oldest queue file's full text (same reader, same order/race policy as `queuedRolePromptEntries`) and never unlink. src/tick-prompt.ts: add `preview?: boolean` to `TickPromptInput`; when set, `assembleTickPrompt` calls the peek functions instead of the dequeues, so a preview can never consume a queued prompt (the director's empty-inbox `null` path applies unchanged). The reject-reject / conflict-discard / cut-off notes already derive from `state`, which the caller loads read-only via `loadLoopState` (src/loop-state.ts).
+2. Collector. New src/role-view.ts: `rolePayload(root, role, modelsPath?)` — the modelsPath test seam mirrors status-data.ts's `snapshot`. Resolves the loop: catalog entry via `roleById`, else `customRole` from `config.customLoops`; the director is allowed and special-cased (no find text; inbox count instead); unknown id exits 1 with `unknownRoleMessage` (src/roles.ts). Payload: id, title, custom flag, enabled (`enabledRoleIds`), paused (`pausedRoles`), tier (`roleTier`), resolved provider/model via `configForRole` (src/config-views.ts) plus `fallbackPair` when the budget gate engages it, `minTickIntervalSeconds`, the `instructions` override verbatim, and `nextPrompt` from `assembleTickPrompt({ root, config, role, state, preview: true })`. Every read degrades like `backlogPayload` does (missing files → empty), so the command works with the fleet stopped and never throws on a torn repo.
+3. Renderer and CLI. New src/ui/role-report.ts: `renderRoleMarkdown(payload)`, following ui/backlog-report.ts's shape (payload thunk consumed by exactly one of the two branches). src/cli.ts: a `case "role"` follows the `backlog` case — no requireReadyRepo, `rejectUnknownArgs("role", args, [ROLE_FLAG])`, `sayJsonOrRender(args, thunk, renderRoleMarkdown)`. src/help.ts: one stanza in the listing.
+
+**Files touched.** src/inbox.ts, src/tick-prompt.ts, src/role-view.ts (new), src/ui/role-report.ts (new), src/cli.ts, src/help.ts; tests under test/.
+
+**Acceptance criteria.**
+
+- `tumwater role <id>` prints title, enabled/paused state, resolved provider and model (naming the fallback pair when one is configured), the interval override if set, the instructions override if set, the find text verbatim (a custom loop's `task`), and the next tick's assembled prompt verbatim.
+- A queued `tumwater prompt --role <id> <text>` survives a `role <id>` invocation and appears inside the previewed prompt — this is the test that proves the peek seam never consumes.
+- `--json` prints the collector's payload as one JSON document (the payload the renderer consumes, not a parallel shape); an unknown role exits 1 printing `unknownRoleMessage`; the command works while the fleet is stopped, reading persisted state.
+- Tests: the preview seam in test/tick-prompt.test.ts (preview leaves the queue intact; the real dequeue still consumes); the collector and renderer in a new test/role-view.test.ts; one CLI wiring case alongside the existing operator-command tests (test/cli-operators.test.ts's patterns).
+- `npm run test` green.
 
 ## Done
 
