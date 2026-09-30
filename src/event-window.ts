@@ -1,5 +1,5 @@
 import { eventDayKey, parseEventLine, type HarnessEvent } from "./events.js";
-import { eventsLogPath } from "./paths.js";
+import { eventsArchivePath, eventsLogPath } from "./paths.js";
 import { readTailText } from "./files.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
@@ -81,15 +81,14 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
   );
 }
 
-/** Events whose local day is on or after `fromKey`, read with bounded I/O: the log is
- * append-only and chronological, so we scan backwards in chunks from EOF (files.readTailText)
- * and stop as soon as the oldest complete line in hand predates the window — cost scales with
- * the window's size, not the log's. `coversFullWindow` records whether the retained log reaches
- * back before the window (see its field doc), so a caller can tell "the log was rotated inside
- * the window" from "the fleet was idle": both leave the oldest returned event later than the
- * window start, but only the former means data was lost. */
-export function readWindowEvents(root: string, fromKey: string): EventWindow {
-  const file = eventsLogPath(root);
+/** One file's in-window events, scanned backwards with bounded I/O: the log is append-only and
+ * chronological, so we scan backwards in chunks from EOF (files.readTailText) and stop as soon
+ * as the oldest complete line in hand predates the window — cost scales with the window's size,
+ * not the file's. `coversFullWindow` records whether this file reaches back before the window
+ * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
+ * fleet was idle": both leave the oldest returned event later than the window start, but only
+ * the former means data was lost. */
+function scanEventsFile(file: string, fromKey: string): EventWindow {
   let coversFullWindow = false;
   const text = readTailText(file, (_chunk, parts) => {
     // The oldest chunk's leading line may be torn by the chunk boundary, so oldestCompleteLine
@@ -126,4 +125,25 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
     coversFullWindow = day !== null && day < fromKey;
   }
   return { events, coversFullWindow };
+}
+
+/** Events whose local day is on or after `fromKey`, read from the live log and — when the live
+ * log alone does not cover the window — its one archived generation (events.jsonl.1, written by
+ * rotation). Each file is scanned with bounded I/O (scanEventsFile) and the archive's in-window
+ * events are strictly older than the live file's, so prepending them keeps the oldest-first
+ * ordering every consumer assumes; the concatenation needs no dedup because rotation moves the
+ * whole file, so the two files share no lines. `coversFullWindow` is true when either file's
+ * oldest retained event predates the window, which keeps the rotation note honest in both
+ * directions: it vanishes once the archive completes the window and still appears when even the
+ * archive starts inside it. A window the live file provably covers never touches the archive,
+ * and a missing or empty archive (the normal case) reads as nothing, so the no-rotation
+ * behavior is unchanged. */
+export function readWindowEvents(root: string, fromKey: string): EventWindow {
+  const live = scanEventsFile(eventsLogPath(root), fromKey);
+  if (live.coversFullWindow) return live;
+  const archive = scanEventsFile(eventsArchivePath(root), fromKey);
+  return {
+    events: [...archive.events, ...live.events],
+    coversFullWindow: archive.coversFullWindow || live.coversFullWindow,
+  };
 }

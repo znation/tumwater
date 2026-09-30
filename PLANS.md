@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Windowed event reads span the rotation boundary: `readWindowEvents` continues into `events.jsonl.1` (planned 2026-09-29)
+(Nothing planned right now.)
+
+## Done
+
+### Windowed event reads span the rotation boundary: `readWindowEvents` continues into `events.jsonl.1` (planned 2026-09-29, done 2026-09-29)
 
 - **Goal.** Every windowed consumer of the event log — `logs --since`, the usage report's
   `--days`/`--since` collectors, the failure digest's day-windowed pass, and the GUI endpoints
@@ -48,12 +52,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
      (`parseEventLine`), and a window that lies entirely inside the live file never touches
      the archive.
   5. `npm run test` green.
-
-
-## Done
-
-
-## Done
 
 ### Count the landing slot's spend in the usage report: `landed`/`land_failed` usage folds into `tumwater report` totals, with a reviewer-and-conflict-resolution breakdown line (planned 2026-09-29, done 2026-09-29)
 

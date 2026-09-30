@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
+import { collectReport } from "../src/report-data.js";
 import { atLocalTs as tsDaysAgo } from "./oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -25,6 +26,11 @@ function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
  * test can plant a malformed or blank line. */
 function writeLog(root: string, lines: string[]): void {
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl"), lines);
+}
+
+/** Write the rotated archive (events.jsonl.1) beside the fixture root's live log. */
+function writeArchive(root: string, lines: string[]): void {
+  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), lines);
 }
 
 test("a missing or empty log reads as an empty window that does not cover", () => {
@@ -125,4 +131,124 @@ test("a multi-chunk log with no line before the window reports an uncovered wind
   );
   // Every retained line lies inside the window; the early stop never fires.
   assert.equal(coversFullWindow, false);
+});
+
+// Rotation moves the grown log to events.jsonl.1; the windowed readers continue into it so a
+// 16 MB live file no longer truncates a multi-day window. These cases pin the boundary: both
+// files' in-window events returned oldest-first, coverage reported from whichever file reaches
+// farthest back, and the no-archive case unchanged.
+
+test("a window spanning the rotation boundary reads both files, oldest-first, in-window only", () => {
+  const root = tmpdir();
+  writeArchive(root, [
+    eventLine(tsDaysAgo(6), { tick: 1 }),
+    eventLine(tsDaysAgo(3), { tick: 2 }),
+  ]);
+  writeLog(root, [
+    eventLine(tsDaysAgo(1), { tick: 3 }),
+    eventLine(tsDaysAgo(0), { tick: 4 }),
+  ]);
+  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  // The archive's day-6 event predates the window and drops out; the day-3 one comes first,
+  // then the live file's two — archive events are strictly older than the live file's.
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [2, 3, 4],
+  );
+  // The archive's oldest event predates the window start, so nothing rotated away.
+  assert.equal(coversFullWindow, true);
+});
+
+test("the report's per-day series sums to the seeded totals across the boundary", () => {
+  const root = tmpdir();
+  writeArchive(root, [
+    eventLine(tsDaysAgo(3), { tick: 1, loop: "feature", tokens: 10 }),
+    eventLine(tsDaysAgo(3), { tick: 2, loop: "bugfix", tokens: 20 }),
+  ]);
+  writeLog(root, [
+    eventLine(tsDaysAgo(0), { tick: 3, loop: "feature", tokens: 30 }),
+  ]);
+  const report = collectReport(root, 5);
+  const totalTicks = report.series.reduce((n, d) => n + Object.values(d.ticksByRole).reduce((a, b) => a + b, 0), 0);
+  const totalTokens = report.series.reduce((n, d) => n + d.tokensOut, 0);
+  assert.equal(totalTicks, 3, "both files' in-window ticks fold into the series");
+  assert.equal(totalTokens, 60);
+  // The out-of-window archive day contributes nothing, and the series' dates do not repeat.
+  const featureDay3 = report.series.find((d) => d.ticksByRole["feature"] !== undefined);
+  assert.ok(featureDay3, "the archive day's feature tick lands on its own date");
+});
+
+test("coversFullWindow is false when even the archive starts inside the window", () => {
+  const root = tmpdir();
+  writeArchive(root, [
+    eventLine(tsDaysAgo(3), { tick: 1 }),
+    eventLine(tsDaysAgo(2), { tick: 2 }),
+  ]);
+  writeLog(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
+  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [1, 2, 3],
+  );
+  // Both files' oldest events lie inside the window: the note must still warn that older
+  // events rotated out.
+  assert.equal(coversFullWindow, false);
+});
+
+test("a missing or empty archive leaves the live file's window behavior unchanged", () => {
+  const missingArchive = tmpdir();
+  writeLog(missingArchive, [
+    eventLine(tsDaysAgo(1), { tick: 1 }),
+    eventLine(tsDaysAgo(1, 13), { tick: 2 }),
+  ]);
+  assert.deepEqual(readWindowEvents(missingArchive, keyAt(tsDaysAgo(1))), {
+    events: [
+      { ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 },
+      { ts: tsDaysAgo(1, 13), loop: "feature", type: "tick_end", tick: 2 },
+    ],
+    coversFullWindow: false,
+  });
+
+  const emptyArchive = tmpdir();
+  writeArchive(emptyArchive, []);
+  writeLog(emptyArchive, [eventLine(tsDaysAgo(1), { tick: 1 })]);
+  assert.deepEqual(readWindowEvents(emptyArchive, keyAt(tsDaysAgo(1))), {
+    events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
+    coversFullWindow: false,
+  });
+});
+
+test("the archive follows the live file's skip policy, and a covered window never touches it", () => {
+  const root = tmpdir();
+  writeArchive(root, [
+    "this line is not json", // torn/corrupt archive line: skipped
+    "", // blank line: skipped
+    eventLine(tsDaysAgo(1), { tick: 1 }),
+  ]);
+  // The live file's own oldest line predates the window, so the read never needs the archive —
+  // and anything the archive holds must not leak into the result.
+  writeLog(root, [
+    eventLine(tsDaysAgo(10), { tick: 99 }),
+    eventLine(tsDaysAgo(0), { tick: 2 }),
+  ]);
+  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  assert.deepEqual(
+    events.map((e) => e.tick),
+    [2],
+  );
+  assert.equal(coversFullWindow, true);
+
+  // And when the window does reach into the archive, the same skip policy applies there.
+  const archiveInside = tmpdir();
+  writeArchive(archiveInside, [
+    "still not json",
+    eventLine(tsDaysAgo(2), { tick: 1 }),
+  ]);
+  writeLog(archiveInside, [eventLine(tsDaysAgo(0), { tick: 2 })]);
+  const spanned = readWindowEvents(archiveInside, keyAt(tsDaysAgo(5)));
+  assert.deepEqual(
+    spanned.events.map((e) => e.tick),
+    [1, 2],
+  );
+  assert.equal(spanned.coversFullWindow, false);
 });
