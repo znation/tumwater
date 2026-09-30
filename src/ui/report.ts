@@ -49,6 +49,35 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
+/** The totals fields both renders print (both collectors' inline `totals` shapes satisfy it
+ * structurally); the day report's shape adds the day-granular features/bugs cells on top. */
+type SharedTotals = {
+  tokensOut: number;
+  ticks: number;
+  commits: number;
+  costUsd: number;
+  landingRuns: number;
+  landingTokens: number;
+  landingCostUsd: number;
+};
+
+/** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
+ * separators cannot drift between the day report and the --since window. `tail` carries the
+ * cells only one shape has: the day report's features/bugs counts (a sub-day window cannot
+ * subdivide their day-granular dates, so the --since render passes nothing). */
+function totalsLine(t: SharedTotals, tail = ""): string {
+  return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
+}
+
+/** The "of which landing runs …" line under a totals line — one home for the landing share's
+ * wording. The caller decides when it prints: zero-means-absent, so a fleet with no landing
+ * spend renders exactly as before (the budget charges the landing slot's runs too, so the
+ * totals include them — this line says how much of the spend was reviewer + conflict
+ * resolution work). */
+function landingShareLine(t: SharedTotals): string {
+  return `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
+}
+
 /** Render a trailing-window totals report as Markdown — the aggregate sibling of the
  * `logs --since` raw stream ("how much" here, "what exactly" there). Pure function of
  * SinceReport: no I/O, no clock reads (the window line's local time is rendered from the
@@ -63,15 +92,12 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // Same totals voice as the day report, minus the features/bugs cells: those tallies come
   // from day-granular backlog-file dates that cannot subdivide a sub-day window, so the final
   // line below states the omission instead of showing a day-rounded number.
-  lines.push(`**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)}`);
+  lines.push(totalsLine(t));
   // The landing share of those totals: the budget charges the landing slot's runs too, so the
   // totals include them — this line says how much of the spend was reviewer + conflict
   // resolution work. Omitted entirely when no landing ran (zero means absent, like the
   // cost-by-role line), so a fleet with no landing spend renders exactly as before.
-  if (t.landingRuns > 0)
-    lines.push(
-      `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`,
-    );
+  if (t.landingRuns > 0) lines.push(landingShareLine(t));
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
@@ -98,16 +124,11 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(reportWindow(data.from, data.to, data.days, eventsRotationLabel()));
   lines.push("");
   const t = data.totals;
-  lines.push(
-    `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)} · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`,
-  );
-  // The landing share of those totals, same voice and zero-means-absent rule as the --since
-  // render above: the reviewer's and conflict resolution's part of spend the budget already
-  // charges, shown only when landing runs actually folded into the window.
-  if (t.landingRuns > 0)
-    lines.push(
-      `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`,
-    );
+  lines.push(totalsLine(t, ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed`));
+  // The landing share of those totals: the reviewer's and conflict resolution's part of spend
+  // the budget already charges, shown only when landing runs actually folded into the window
+  // (the shared zero-means-absent rule lives on landingShareLine).
+  if (t.landingRuns > 0) lines.push(landingShareLine(t));
   lines.push("");
   lines.push("| day | tokens out | ticks | commits | cost |");
   lines.push("| --- | ---: | ---: | ---: | ---: |");
