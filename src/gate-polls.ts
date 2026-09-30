@@ -169,6 +169,12 @@ export function pollFleetGates(
   // paused fold into this poll's paused-roles view, so the scheduler blocks them on this very
   // poll instead of the next one.
   const streakPaused = pollStreakGate(root, states.streak, runners, pausedRoles);
+  // pollPauseGates advanced its edge-triggered bookkeeping BEFORE the breaker wrote its
+  // marker, so without this fold the NEXT poll would log a generic role_paused for a pause
+  // the breaker already announced as role_streak_paused — one pause, two events, the second
+  // mislabeled as an operator action (BUGS.md 2026-09-30). The trips are not the pause
+  // gates' to announce; a later operator resume still logs role_resumed as usual.
+  for (const role of streakPaused) states.pause.prevPausedRoles.add(role);
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
 
