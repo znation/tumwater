@@ -5,7 +5,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None right now — the newest plan moved to Done below. Plan more in `## Planned`._
+### `tumwater config get <key>` / `tumwater config set <key> <value>` — read and edit top-level settings from the terminal (planned 2026-09-30)
+
+**Goal.** Today the only ways to change a setting are hand-editing tumwater.json or the two
+narrow in-harness editors (TUI Ctrl+B, GUI /api/budget — both just the budget cap, via
+`setDailyBudgetUsd`). `tumwater config` is read-only (show the whole resolved config). Give the
+operator a terminal way to read one value and write one top-level key, with the same
+fresh-load → validate → atomic-write discipline the in-harness writers already use, so a typo
+can never leave a broken or silently-ignored tumwater.json behind. The running fleet needs no
+change: the live reload (`newLiveConfigReload` in src/config-live.ts) polls the file every ~2 s
+and already picks up external edits.
+
+**Approach.**
+- src/config-validation.ts: export `TOP_LEVEL_KEYS` (currently a module-private constant used
+  by the top-level `checkKnownKeys` call) so the CLI can name valid keys in its errors instead
+  of hardcoding a second list.
+- src/config-write.ts: extract the load/validate/write idiom `setDailyBudgetUsd` embodies into
+  a small internal helper — fresh `loadConfig(root)` (stat cache bypassed on purpose), apply a
+  mutation, `validateConfig`, `writeJsonAtomic(file, cfg, true)` — leaving the file untouched
+  (and no tmp remnant) on any failure. Re-point `setDailyBudgetUsd` at the helper and add
+  `setConfigKey(root, key, rawValue): { ok: true; oldValue: unknown } | { ok: false; error }`:
+  the key must be a member of `TOP_LEVEL_KEYS` (else an error naming the valid keys — the same
+  protection `checkKnownKeys` gives the file itself, so `config set modle x` cannot write a
+  dead key); the value is `JSON.parse(rawValue)` when that parses, else the literal string (so
+  `set maxDailyCostUsd 20` is the number 20 and `set model gpt-5` is the string "gpt-5"); then
+  validate the whole merged config so a type mismatch (`set maxDailyCostUsd "20"`) fails with
+  validateConfig's own message. Top-level keys only — nested sections (`roles`, `review`,
+  `check`, `idleBackoff`, `fallbackModel`) stay file-edited; one op per run.
+- src/operator-commands.ts: `cmdConfig(root, args)` dispatches — no args keeps today's
+  whole-config JSON dump; `get <key>` prints `JSON.stringify(value)` of that key from the same
+  resolved config (defaults merged in, exactly what the no-arg dump prints); `set <key> <value>`
+  writes and prints one confirmation line naming the key and its new value; anything else fails
+  with usage. Errors go through the standard `fail()`.
+- src/cli.ts: the `config` case's `rejectUnknownArgs("config", args, [])` becomes subcommand
+  arity checks (`get` takes exactly one arg, `set` exactly two); `requireReadyRepo` stays.
+- src/help.ts: update the config line to the three forms.
+- Tests: update test/cli-operators-fleet.test.ts's `config takes no flags…` test (now
+  `config get`/`set` subcommand arg-shape cases + the help-table match) and add: a get/set
+  roundtrip (`set minTickIntervalSeconds 45` then `get minTickIntervalSeconds` prints 45 and
+  `loadConfig` sees it), an unknown-key set rejected with the valid-keys list and the file
+  byte-identical afterward, a type-invalid set rejected with validateConfig's message and the
+  file untouched, and `set model gpt-5` landing as the string. Unit cases for `setConfigKey`
+  (JSON-vs-string parsing, untouched file on failure) in test/config-write.test.ts.
+
+**Files touched:** src/config-validation.ts, src/config-write.ts, src/operator-commands.ts,
+src/cli.ts, src/help.ts, test/cli-operators-fleet.test.ts, test/config-write.test.ts.
+
+**Acceptance criteria.**
+- `tumwater config get <key>` prints the resolved value as JSON; an unknown key exits 1 naming
+  the valid keys.
+- `tumwater config set <key> <value>` writes the parsed value to tumwater.json atomically,
+  prints a confirmation, and a running fleet picks the change up on its next ~2 s config poll
+  (no harness code changes needed).
+- An unknown key or a value that fails `validateConfig` exits 1 with an actionable message and
+  leaves tumwater.json byte-identical (no tmp remnant).
+- Bare `tumwater config` behaves exactly as today; `npm run test` green including the updated
+  arg-shape test.
+
+_Size: ~120–150 lines including tests — one run._
 
 ## Done
 
