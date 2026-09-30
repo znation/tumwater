@@ -16,7 +16,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { ensureParentDir } from "../src/files.js";
-import { projManifest } from "./fake-commands.js";
+import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
 
 /** Per-process root for every test temp dir: created on first use, torn down synchronously at
  * process exit. A full suite run (one worker process per test file) therefore abandons at most
@@ -65,6 +65,17 @@ export function mainSha(dir: string): string {
  * keeps git working (repo checks, landing, the worktree helpers) while dropping every other
  * binary — pi, npm — so a test can isolate exactly one missing tool. Tests that need the dir
  * to stay findable in failures pass a distinctive `prefix`. */
+/** Install a logging `git` shim at the front of PATH that appends each invocation's args
+ * to `logFile` before exec'ing the real git (so behavior stays correct). Returns a restore
+ * function. Lets a test assert exactly which subprocesses a code path spawned — the same
+ * PATH technique fakePi uses for pi. */
+export function loggingGit(logFile: string): () => void {
+  const dir = tmpdir("fake-git-");
+  const real = execFileSync("which", ["git"], { encoding: "utf8" }).trim().split("\n")[0];
+  writeScript(path.join(dir, "git"), `echo "$@" >> ${logFile}\nexec "${real}" "$@"`);
+  return pathPrepend(dir);
+}
+
 export function gitOnlyBinDir(prefix = "tumwater-test-bin-"): string {
   const binDir = tmpdir(prefix);
   const gitPath = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
