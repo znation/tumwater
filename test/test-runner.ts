@@ -26,7 +26,26 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
  * selection and ordering logic is pure and exported (selectTestFiles, orderByDuration) so
  * test/test-runner.test.ts pins its rules without spawning anything; the spawn lives in main()
  * behind an import guard, because this module is imported by that very test file and a
- * top-level run would recurse into node --test. */
+ * top-level run would recurse into node --test. The whole run sits under a hard ceiling
+ * (SUITE_TIMEOUT_MS) enforced by spawnSync's own timeout, so a hung or never-exiting suite
+ * fails the gate instead of holding it forever. */
+
+/** The whole suite's hard ceiling: no green run has come near it, so only a test that hangs or
+ * leaves the event loop alive (a leaked timer, socket, or worker) can reach it. */
+export const SUITE_TIMEOUT_MS = 30 * 60_000;
+
+/** Map a suite spawn that hit SUITE_TIMEOUT_MS to its failure message. spawnSync kills the
+ * timed-out child itself and reports ETIMEDOUT — semantics a decade old, unlike node --test's
+ * own --test-timeout and --test-force-exit flags, which postdate package.json's engines floor
+ * (>= 20.3) and would need version gates that mis-gate: a supported node must never refuse to
+ * start the suite over a guard flag. Returns null for every outcome spawnSync reports without
+ * a timeout kill (a green run, node --test's own failures, an externally signalled child).
+ * Exported for test/test-runner.test.ts to pin against a real spawnSync kill. */
+export function timedOutFailure(r: { status: number | null; signal: NodeJS.Signals | null; error?: unknown }): string | null {
+  if (!(r.status === null && (r.error as { code?: unknown } | undefined)?.code === "ETIMEDOUT")) return null;
+  return `the test suite exceeded its ${SUITE_TIMEOUT_MS / 60_000}-minute ceiling and was killed — a test hangs or ` +
+    `leaves the event loop alive; bisect with npm test '<file filter>' or a "#name" filter (npm test 'loop#resume')`;
+}
 
 /** What selectTestFiles decided: which compiled files to run (and their source-style names for
  * messages), or why nothing could be selected. */
@@ -305,9 +324,12 @@ function main(): void {
         : []),
       ...files,
     ];
-    const r = spawnSync(process.execPath, args, { stdio: "inherit", env: suiteEnv(scratch) });
-    status = r.status ?? 1;
-    recordDurations(distDir, fresh);
+    const r = spawnSync(process.execPath, args, { stdio: "inherit", env: suiteEnv(scratch), timeout: SUITE_TIMEOUT_MS });
+    const killed = timedOutFailure(r);
+    status = killed !== null ? 1 : (r.status ?? 1);
+    if (killed !== null) process.stderr.write(`tumwater: ${killed}\n`);
+    // A killed run leaves the durations file missing or partial — keep earlier runs' records.
+    else recordDurations(distDir, fresh);
     // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
     // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
     if (sel.namePattern && status === 0) {

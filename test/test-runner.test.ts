@@ -6,7 +6,16 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
-import { noNameMatchReason, orderByDuration, parseFilter, selectTestFiles, suiteEnv, suiteGitEnv } from "./test-runner.js";
+import {
+  noNameMatchReason,
+  orderByDuration,
+  parseFilter,
+  selectTestFiles,
+  suiteEnv,
+  suiteGitEnv,
+  SUITE_TIMEOUT_MS,
+  timedOutFailure,
+} from "./test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -136,6 +145,18 @@ test("files run longest-first by recorded duration; unrecorded files lead, ties 
   // A torn or foreign entry is no record, not a sort key.
   const torn = { "a.test.js": "slow" as unknown as number, "b.test.js": 1 };
   assert.deepEqual(orderByDuration(["/d/a.test.js", "/d/b.test.js"], torn), ["/d/a.test.js", "/d/b.test.js"]);
+});
+
+test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {
+  assert.ok(SUITE_TIMEOUT_MS >= 20 * 60_000, "the ceiling must stay far above any healthy full-suite run");
+  // A genuinely hung child, killed by spawnSync's own timeout — the exact shape main() gets back.
+  const hung = spawnSync(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { timeout: 100 });
+  const message = timedOutFailure(hung);
+  assert.match(message ?? "", /exceeded its 30-minute ceiling and was killed/);
+  assert.match(message ?? "", /bisect with npm test '<file filter>'/);
+  // A clean exit and a failing exit are node --test's own outcomes, not timeouts.
+  assert.equal(timedOutFailure(spawnSync(process.execPath, ["-e", "process.exit(0)"])), null);
+  assert.equal(timedOutFailure(spawnSync(process.execPath, ["-e", "process.exit(3)"])), null);
 });
 
 test("suiteGitEnv appends maintenance.auto=false after any env-injected git config it inherits", () => {
