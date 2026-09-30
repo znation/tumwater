@@ -305,6 +305,30 @@ Body prose.`,
   assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 1);
 });
 
+test("a Fixed heading's completion date is its LAST dated verb; a sibling's earlier dated fix mention does not steal the day", () => {
+  // Headings routinely mention siblings with their own dated verbs ("decomposed from the X bug
+  // fixed <date>") before the entry's own completion record. The collector read the FIRST
+  // verb+date match in the meta, so the sibling's date won and the entry was counted on the
+  // wrong day — silently, whenever the sibling landed the day before. The completion record is
+  // conventionally the meta's last dated verb (found-by and decomposition mentions precede it).
+  const root = tmpdir();
+  const d1 = dayKey(at(3));
+  const d2 = dayKey(at(2));
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Fixed",
+      body: `### A real entry (found by qa loop ${d2}, decomposed from the sibling bug fixed ${d1}, fixed ${d2})
+
+Body prose.`,
+    },
+  ]);
+
+  const data = collectReport(root, 5);
+  assert.equal(data.totals.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d2)?.bugsFixed, 1);
+  assert.equal(data.series.find((d) => d.date === d1)?.bugsFixed, 0); // the sibling's day stays at zero
+});
+
 test("collectReport degrades to zeros when every source is missing", () => {
   const root = tmpdir(); // no .tumwater/, no PLANS.md, no BUGS.md
   const data = collectReport(root, 3);

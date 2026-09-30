@@ -241,17 +241,23 @@ function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] 
       j++;
       closed = next.endsWith(")");
     }
-    let m: RegExpMatchArray | null;
+    let date: string | null = null;
     if (line.startsWith("- ")) {
       // Epitaph guard (see the doc comment): the date must live in the line's trailing
       // parenthetical beside a commit reference, or the bullet is body text, not an entry.
       const tail = line.match(/\(([^()]*)\)\s*$/)?.[1] ?? "";
-      m = tail.match(dateRe);
-      if (m && !/\bcommits?\b/.test(tail)) m = null;
+      const m = tail.match(dateRe);
+      if (m?.[1] && /\bcommits?\b/.test(tail)) date = m[1];
     } else {
-      m = meta.join(" ").match(dateRe);
+      // The entry's completion is its heading meta's LAST dated verb, not the first: found-by,
+      // decomposition, and sibling mentions ("decomposed from the X bug fixed <date>") all
+      // precede the completion record, so first-match let a sibling's date steal the entry's
+      // count onto the wrong day (BUGS.md 2026-09-29).
+      const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+      const all = [...meta.join(" ").matchAll(global)];
+      date = all[all.length - 1]?.[1] ?? null;
     }
-    if (m && m[1]) dates.push(m[1]);
+    if (date) dates.push(date);
     i = j - 1; // The loop's ++ resumes at the first line not consumed as metadata.
   }
   return dates;
