@@ -295,7 +295,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   // Seeds exactly what a hard crash mid-enqueueLanding leaves behind: a truncated queue
   // file that sorts before a live entry. headLanding reads null for the torn head and
   // nothing else drops it, so before the fix the live entry behind it never landed and
-  // its role's interlock (a non-empty landingFor) held the role's ticks forever.
+  // its role's interlock (a non-empty land queue) held the role's ticks forever.
   const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
   // The review run approves; the role's own ticks never start — the interlock holds from
   // the first poll, because the entry is queued before the orchestrator starts.

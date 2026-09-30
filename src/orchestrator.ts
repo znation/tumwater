@@ -413,7 +413,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
       const reasons = new Map<LoopRunner, string | undefined>();
       // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
-      // landingFor() re-listed the land-queue directory and re-statted every queued entry): the
+      // queuedLandingFiles() re-lists the land-queue directory and re-stats every queued entry): the
       // check below only asks whether the runner's role has a queued entry. The queue changes
       // only when a landing completes or a tick enqueues — both asynchronous events this pass
       // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
