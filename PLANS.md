@@ -5,7 +5,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Operator notify hook: a configured shell command the harness runs when something needs a human (planned 2026-09-30 by plan loop)
+
+**Goal.** Everything the fleet does on its own — the daily budget pausing it (src/budget-gates.ts), the error-streak breaker pausing a role (src/streak-gate.ts), a change failing to land (src/landing-slot.ts), the self-redeploy being blocked (src/redeploy-policy.ts) — is recorded faithfully in events.jsonl and rendered on the dashboards, but all of it is pull-based: an operator who is not watching a TUI/GUI or tailing `tumwater logs` learns of a stalled fleet hours late. Give the harness a push channel: one configured shell command, `notify` in tumwater.json, that the orchestrator runs whenever one of a small, fixed set of notable events fires. One knob, an opinionated allowlist of event types, no per-event selection — a command that can post anywhere (a desktop notification, a webhook, a phone push) composes it with the environment the harness hands it.
+
+**Approach.**
+
+- **New module `src/notify.ts`** — `NOTIFY_EVENT_TYPES` and `newNotifier(root)` returning `{ update, dispose }`. The module owns the allowlist, the throttle, and the only spawn site:
+  - **Fixed allowlist** — `NOTIFY_EVENT_TYPES = ["budget_paused", "role_streak_paused", "land_failed", "restart_blocked"] as const`: the four states where the fleet or one of its changes is stopped and only a human can act (spend cap hit with no free fallback, a breaker trip, a landing that did not land, a rebuild/restart that cannot proceed). Deliberately excluded: operator-initiated events (`fleet_paused`, `role_paused`, `wake` — the operator caused them), self-resolving holds (`rate_limit_hold`, `build_stale`), and per-change review outcomes (`review_rejected`/`review_failed` — a rejected change becomes a `land_failed` if it ends there).
+  - **Throttle** — `NOTIFY_MIN_GAP_MS = 60_000`; a `Map<type, timestamp>` suppresses a second spawn of the same type within the gap, so a burst of `land_failed` events pages once, not once per landing.
+  - **Spawn shape** — when the stored command is a non-empty string and the event's type is on the allowlist and passes the throttle: `spawn(cmd, [], { shell: true, env: { ...process.env, TUMWATER_EVENT_TYPE: ev.type, TUMWATER_EVENT_LOOP: ev.loop, TUMWATER_EVENT_MESSAGE: formatEvent(ev) }, stdio: "ignore", detached: true })`, then `.unref()` — fire-and-forget, never awaited from the poll loop. `formatEvent` (src/event-format.ts) gives the env var the exact line `tumwater logs` renders. An `error` event on the spawn (the shell itself could not start) logs one `warnEvent(root, "harness", ...)`; a nonzero exit is ignored. `"warning"` is not on the allowlist, so the warning can never recurse.
+  - **Scope, stated in the module doc** — the notifier subscribes via `subscribeEvents` (src/events.ts), which only sees events THIS process logs. All four allowlist types are logged by the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts, landing-slot.ts, redeploy-policy.ts), so nothing notable is missed; events appended by operator CLI commands go straight to the file and are out of scope by design.
+- **Config plumbing** — `notify?: string` on `TumwaterConfig` in src/config-schema.ts beside `quietHours`, doc comment stating: a shell command run on notable fleet events (env vars `TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, `TUMWATER_EVENT_MESSAGE`); absent or empty string disables. src/config-validation.ts: add `"notify"` to `TOP_LEVEL_KEYS` and one block beside the `quietHours` block — must be a string when present, empty string allowed (= off). src/config-write.ts needs no new code: `setConfigKey` handles any `TOP_LEVEL_KEYS` member generically (the value JSON-parses or stays a literal string, which is what a shell command is), and the whole-candidate `validateConfig` covers the type.
+- **Orchestrator wiring** — `const notifier = newNotifier(root)` before the scheduler loop in src/orchestrator.ts; `notifier.update(liveConfig)` immediately after the loop's `const liveConfig = liveReload.poll()`, so a live `config set notify` edit takes effect on the next poll with no restart; `notifier.dispose()` (the `subscribeEvents` unsubscribe) in the `finally` block beside the `orchestrator_stop` logEvent.
+- **Docs** — one clause in README.md's settings paragraph ("Settings live in `tumwater.json`: … a `notify` shell command run when the fleet needs a human"), keeping the steward's list current; docs/how-it-works.md is not touched (the gate enumeration is unchanged — this is an observer, not a gate).
+
+**Files touched.** src/notify.ts (new), src/config-schema.ts (one field), src/config-validation.ts (one key + one validation block), src/orchestrator.ts (three lines of wiring), README.md (one clause); tests: test/notify.test.ts (new).
+
+**Acceptance criteria.**
+
+1. With `notify` set to a command that appends its env to a temp file, a `budget_paused` event delivered through `subscribeEvents` spawns it exactly once, and the captured environment carries `TUMWATER_EVENT_TYPE=budget_paused`, `TUMWATER_EVENT_LOOP` equal to the event's loop, and a `TUMWATER_EVENT_MESSAGE` equal to `formatEvent`'s rendered line.
+2. `tick_end`, `warning`, and `landed` events spawn nothing; with `notify` absent or an empty string, nothing spawns even for allowlisted types.
+3. Two same-type notable events within `NOTIFY_MIN_GAP_MS` spawn once; after the gap the same type spawns again (throttle keyed per type, so a `budget_paused` never suppresses a later `land_failed`).
+4. `validateConfig` rejects a non-string `notify` with an actionable message, accepts `""` and a command string, and `tumwater config set notify '<cmd>'` / `config get notify` round-trip it (membership in `TOP_LEVEL_KEYS`).
+5. A notify command whose spawn fails does not throw out of the event listener: one `warning` event names the failure and the orchestrator keeps polling.
+6. Setting `notify` live while a fake fleet runs takes effect on the next poll (the `update(liveConfig)` path), no restart.
+7. `npm run test` passes with the new test file green.
 
 ## Done
 
