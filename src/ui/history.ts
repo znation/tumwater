@@ -86,9 +86,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     rows = windowed.rows;
     covered = windowed.covered;
   } else {
-    const limit = nRaw !== null ? parseCountFlag("-n", nRaw) : HISTORY_DEFAULT_TICKS;
-    if (limit > HISTORY_MAX_TICKS)
-      fail(`-n must be between 1 and ${HISTORY_MAX_TICKS} (got ${JSON.stringify(nRaw)})`);
+    // parseCountFlag's max caps the scan window: a typo'd "999999" must not build a
+    // HISTORY_MAX_TICKS-sized slice scan from a huge limit.
+    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_TICKS) : HISTORY_DEFAULT_TICKS;
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
     const role = parseRoleScope(root, rest);

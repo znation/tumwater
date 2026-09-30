@@ -40,6 +40,18 @@ test("parseCountFlag accepts positive integers and rejects everything else", () 
   }
 });
 
+test("parseCountFlag's optional max caps the value with the shared wording", () => {
+  // At or under the cap the value passes through unchanged.
+  assert.equal(expectOk(() => parseCountFlag("--days", "90", 90)), 90);
+  assert.equal(expectOk(() => parseCountFlag("-n", "3", 50)), 3);
+
+  // Over the cap the message names the bound and the raw token — the wording history -n
+  // and report --days previously repeated by hand.
+  const r = expectFail(() => parseCountFlag("--days", "91", 90));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /tumwater: --days must be between 1 and 90 \(got "91"\)/);
+});
+
 // --- flagValue ---
 
 /** The tri-state the valued-flag sites rely on: null means the flag is absent (the caller

@@ -72,11 +72,16 @@ export function parseGrepFlag(args: string[], missingValueError: string): { rest
 
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
- * (or drop leading lines) instead of showing the requested tail. */
-export function parseCountFlag(flag: string, raw: string | undefined): number {
+ * (or drop leading lines) instead of showing the requested tail. With `max`, the count is
+ * also capped — the shared `must be between 1 and <max>` wording — so a huge bound can't
+ * grow the result until the process runs out of memory (report's per-day series, history's
+ * scanned window). */
+export function parseCountFlag(flag: string, raw: string | undefined, max?: number): number {
   if (raw === undefined) fail(`${flag} needs a value`);
   const n = parsePositiveInt(raw);
   if (n === null) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
+  if (max !== undefined && n > max)
+    fail(`${flag} must be between 1 and ${max} (got ${JSON.stringify(raw)})`);
   return n;
 }
 

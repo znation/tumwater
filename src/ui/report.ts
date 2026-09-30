@@ -181,13 +181,12 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   const daysRaw = flagValue(args, "--days");
   let days = REPORT_DEFAULT_DAYS;
   if (daysRaw !== null) {
-    days = parseCountFlag("--days", daysRaw);
     // /api/report clamps its ?days= param to the same bound; an explicit flag fails fast
     // instead — a typo'd "3650" must not build a ten-year series (one entry per day), and
-    // a huge value would grow it until the process runs out of memory. parseCountFlag has
-    // already rejected 0, non-decimals, and a missing value.
-    if (days > REPORT_MAX_DAYS)
-      fail(`--days must be between 1 and ${REPORT_MAX_DAYS} (got ${JSON.stringify(daysRaw)})`);
+    // a huge value would grow it until the process runs out of memory. parseCountFlag's max
+    // is that bound, with its shared `must be between 1 and <max>` wording; it has already
+    // rejected 0, non-decimals, and a missing value.
+    days = parseCountFlag("--days", daysRaw, REPORT_MAX_DAYS);
   }
   // --failures --json prints the collector's own payload (the FailureReportData object), the
   // report --json and doctor --json precedent: the time-and-spend fold gave the digest a
