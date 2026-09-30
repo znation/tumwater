@@ -25,6 +25,14 @@ export type BuildCheckScope = "gate" | "landing" | "batch";
  * either way; this only keeps sub-second jitter out of the one-line warning. */
 export const DEADLINE_LATE_TOLERANCE_MS = 5_000;
 
+/** How much measured sleep (BuildCheckRun.sleptMs, host-sleep.ts) inside one check's run the
+ * harness treats as none. Normal dark wakes are seconds; the sleep-caused failures BUGS.md
+ * 2026-09-30 recorded spanned 59–252 s of a 116–275 s run. A run carrying more than this much
+ * measured suspension is not a verdict about the tree: it is retried once from a clean attempt,
+ * and a retry that also sleeps is recorded as unverified. Aligned with the deadline tolerance
+ * above so neither measurement's noise floor crosses into policy on its own. */
+export const SLEEP_SPAN_TOLERANCE_MS = 5_000;
+
 /** Per-scope wording for the environmental-skip warning. The call sites' current messages
  * are identical apart from these words, so keying them on the scope keeps each surface's feed
  * line byte-for-byte what it is today. */
@@ -76,6 +84,16 @@ export function killedPhrase(
     : `${label} was killed by an external signal; ${proceeding}`;
 }
 
+/** The `<label> ran while the host slept <secs>s mid-run; <proceeding>` sentence for a check
+ * whose run spanned a measured host sleep — the one home of that phrasing, beside killedPhrase
+ * and timedOutPhrase, so the merge-scope unverified reason and any later warning render the
+ * same sleep identically. The measured amount is the run's own sleptMs (host-sleep.ts); it is
+ * what makes this a statement about the host rather than a guess at one. */
+export function sleptPhrase(label: string, sleptMs: number, proceeding: string): string {
+  const secs = Math.round(sleptMs / 100) / 10;
+  return `${label} ran while the host slept ${secs}s mid-run; ${proceeding}`;
+}
+
 /** The one-line warning for an environmental check skip, keyed on why the check could not run.
  * `label` names the check in the feed and `proceeding` says what happens despite the skip; the
  * scoped check (SCOPE_WORDS above) and the red-main baseline gate (main-red.ts) differ only in
@@ -113,6 +131,10 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
     ...(run.deadlineLateMs === undefined
       ? {}
       : { timeoutMs: run.timeoutMs, deadlineLateMs: run.deadlineLateMs }),
+    // The measured host sleep inside the run (host-sleep.ts), when the platform could measure
+    // one — the field BUGS.md 2026-09-30 added so a sleep that finishes inside the deadline
+    // still leaves its trace on the feed.
+    ...(run.sleptMs === undefined ? {} : { sleptMs: run.sleptMs }),
   };
 }
 

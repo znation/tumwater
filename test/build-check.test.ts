@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parseTestCounts, runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
+import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
 import { checkFailureReasons } from "../src/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
 import { errCode } from "../src/errno.js";
@@ -753,4 +754,60 @@ test("an unset or blank check.gateCommand leaves the gate running check.command"
     );
     assert.equal(result!.outcome.script, "echo full", `gateCommand ${JSON.stringify(gateCommand)} is off`);
   }
+});
+
+// A scripted sleep clock: each runBuildCheck attempt samples it twice (open, close). The
+// samples hand the measurement its evidence, so a test can put a host sleep inside one
+// attempt and none inside the next — no test can suspend the real host.
+function scriptedSampler(samples: SleepSample[]): SleepSampler {
+  return () => {
+    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
+    return Promise.resolve(samples.shift()!);
+  };
+}
+const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
+
+// BUGS.md 2026-09-30: a sleep shorter than the check's remaining deadline but longer than a
+// test's own wait expires that wait at the wake; the suite exits 1 inside the deadline, the
+// run carries no deadlineLateMs, and the failure reads as a deterministic rejection of the
+// change. With a measured sleptMs on the run it owes the same clean retry a late-deadline
+// timeout already gets — and a clean retry's verdict stands, exactly like a first-time pass.
+test("a failed check that spanned a host sleep is retried once, and the clean retry's verdict stands", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    projManifest({ test: "if [ -f slept-once ]; then exit 0; else touch slept-once; exit 1; fi" }),
+  );
+  // Attempt 1 opens awake and closes after a 119 s sleep; attempt 2 never sleeps.
+  const sampler = scriptedSampler([woke(1_000), woke(121_000, 2_000), woke(121_000), woke(121_500)]);
+  const result = await runScopedBuildCheck(root, ROLE, "gate", wt, undefined, 30_000, sampler);
+  assert.equal(result!.outcome.status, "passed", "the clean retry's pass is the verdict");
+  const events = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "gate");
+  assert.equal(events.length, 2, "the slept failure and the retry are each priced as their own event");
+  assert.equal(events[0]!.status, "failed");
+  assert.equal(events[0]!.sleptMs, 119_000, "the first attempt's event carries the measured sleep");
+  assert.equal(events[1]!.status, "passed");
+});
+
+// The other half of the same bug: a retry that ALSO slept made no clean verdict either, so it
+// is recorded as unverified at a merge scope — not a deterministic failure of the change.
+test("a retry that also slept is recorded as unverified, not as the change's own failure", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.mkdirSync(path.join(wt, "node_modules"));
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ test: "exit 1" }));
+  const sampler = scriptedSampler([woke(1_000), woke(121_000, 2_000), woke(122_000), woke(241_000, 3_000)]);
+  const result = await runScopedBuildCheck(root, ROLE, "landing", wt, undefined, 30_000, sampler);
+  assert.equal(result!.outcome.status, "failed", "an unverified landing still rejects — the tree must not merge");
+  assert.equal(result!.outcome.unverified, true, "the rejection is unverified, not attributed to the tree");
+  // The retry's sleep began before its window opened, so the measured in-window span is
+  // clamped to 119 s — the sleep is still evidenced, never counted outside the run.
+  assert.match(result!.outcome.outputTail?.[0] ?? "", /host slept 119s mid-run/);
+  const events = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "landing");
+  assert.equal(events.length, 2);
+  assert.equal(events[1]!.sleptMs, 119_000, "the retry's own sleep is on its event too");
+  assert.ok(
+    readEvents(root).some((e) => e.type === "warning" && /host slept 119s mid-run.*rejecting the merge/.test(String(e.message))),
+    "the operator sees the sleep, not a flaky test",
+  );
 });

@@ -14,6 +14,8 @@ import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
+import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
+import { SLEEP_SPAN_TOLERANCE_MS, sleptPhrase } from "./build-check-events.js";
 import type { CheckConfigSlice } from "./config-schema.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
@@ -153,6 +155,18 @@ export interface BuildCheckRun {
    * actually ran. Near zero normally; large when the harness could not run the timer on time,
    * because the host was asleep or the event loop was stalled. */
   deadlineLateMs?: number;
+  /** Measured time the host spent suspended while the check ran (host-sleep.ts), or undefined
+   * when the platform exposes no readable sleep clock. macOS measures the newest sleep's span
+   * (kern.sleeptime → kern.waketime), so several sleeps inside one run are undercounted, never
+   * overcounted; Linux differences the boottime clock against the monotonic one. BUGS.md
+   * 2026-09-30: deadlineLateMs is set only when the harness's OWN deadline timer fired late, so
+   * a sleep shorter than the check's remaining deadline but longer than a test's own wait
+   * expired that wait at the next wake, the suite exited 1 inside the deadline, and the run
+   * carried no mark of the sleep — every caller read a deterministic rejection of the change.
+   * A sleep the run survived is not a verdict about the tree either way: this is the evidence
+   * runScopedBuildCheck needs to retry such a failure from a clean attempt instead of
+   * attributing it. */
+  sleptMs?: number;
 }
 
 /** Probe the check's environment BEFORE spending a run on it: `git --version`, unambiguous
@@ -225,6 +239,7 @@ export async function runBuildCheck(
   check: BuildCheck,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
   killGraceMs = KILL_GRACE_MS,
+  sampleSleep: SleepSampler = sampleSleepClock,
 ): Promise<BuildCheckOutcome> {
   const script = checkScriptName(check);
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
@@ -234,6 +249,11 @@ export async function runBuildCheck(
   if ((await probeToolchain()) === "broken") {
     return { status: "skipped", script, skipReason: "toolchain" };
   }
+  // Sleep evidence brackets the spawn: the opening sample is taken while the host is provably
+  // awake (this code is running), so any sleep the closing sample can attribute began inside
+  // the run's window. A platform with no readable clock leaves run.sleptMs unset — no evidence
+  // recorded, not a wrong one.
+  const sleepOpened = await sampleSleep();
   const r =
     check.kind === "command"
       ? await runScriptGroup("sh", ["-c", check.command], {
@@ -251,6 +271,8 @@ export async function runBuildCheck(
   // Spawn failed before anything ran — the runner is missing from PATH.
   if (r.spawnError) return { status: "skipped", script, skipReason: "no-npm" };
   const run = r.run;
+  const sleptMs = sleptMsBetween(sleepOpened, await sampleSleep());
+  if (sleptMs !== undefined) run.sleptMs = sleptMs;
   // The harness's own timeout: environmental — warn and proceed. A timed-out check's whole
   // process tree is already gone: runScriptGroup settles only once the group is (SIGTERM at
   // the deadline, SIGKILL at the grace for anything that survived). `run` says when the
@@ -318,6 +340,7 @@ export async function runScopedBuildCheck(
   wt: string,
   config?: CheckConfigSlice,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
+  sampleSleep: SleepSampler = sampleSleepClock,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
   const check = detectBuildCheck(
@@ -337,7 +360,7 @@ export async function runScopedBuildCheck(
     MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
     async () => {
       const startedAt = Date.now();
-      const first = await runBuildCheck(wt, check, timeoutMs);
+      const first = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep);
       durationMs = Date.now() - startedAt;
       // A check the harness did not stop itself says nothing about the tree — its death is
       // another run's doing. At a merge scope, a timeout whose deadline demonstrably fired
@@ -353,11 +376,23 @@ export async function runScopedBuildCheck(
         first.skipReason === "timeout" &&
         MERGE_SCOPES.has(scope) &&
         (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS;
-      if (first.status !== "skipped" || (first.skipReason !== "killed" && !lateDeadlineTimeout))
+      // A FAILED run the host slept through is the same weather seen from the other side: the
+      // sleep expired a test's own wall-clock wait at the wake, the suite exited 1 inside the
+      // deadline, and until the measured sleptMs existed nothing marked the run — the failure
+      // read as a deterministic rejection of the change (BUGS.md 2026-09-30). It owes the same
+      // clean retry as the verdict-less attempts above, at every scope: a retry that passes
+      // verifies the tree exactly like a first-time pass, and one that fails again is
+      // classified below.
+      const sleepFailed =
+        first.status === "failed" && (first.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+      if (
+        (first.status !== "skipped" || (first.skipReason !== "killed" && !lateDeadlineTimeout)) &&
+        !sleepFailed
+      )
         return first;
       logEvent(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
-      const retry = await runBuildCheck(wt, check, timeoutMs);
+      const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep);
       durationMs = Date.now() - retryStart;
       return retry;
     },
@@ -371,10 +406,16 @@ export async function runScopedBuildCheck(
   // again as weather (BUGS.md 2026-09-28). no-npm and a broken toolchain still say nothing
   // about the tree, and the gate scope still proceeds to the model reviewer, which the landing
   // path's own check backs up.
+  // A retry that ALSO slept made no clean verdict either: it is recorded as unverified — not
+  // attributed to the change, not cached as a red baseline — rather than read as a second
+  // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went
+  // green under the project's own check, even if the host napped through parts of it.
+  const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
   const unverifiedSkip =
-    raw.status === "skipped" &&
-    (raw.skipReason === "timeout" || raw.skipReason === "killed") &&
-    MERGE_SCOPES.has(scope);
+    MERGE_SCOPES.has(scope) &&
+    (((raw.status === "skipped" &&
+      (raw.skipReason === "timeout" || raw.skipReason === "killed")) ||
+      sleepFailed));
   const unverifiedReason =
     raw.skipReason === "killed"
       ? killedPhrase(
@@ -382,7 +423,9 @@ export async function runScopedBuildCheck(
           raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
           "the tree is unverified",
         )
-      : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; the tree is unverified`;
+      : sleepFailed
+        ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, "the tree is unverified")
+        : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; the tree is unverified`;
   const outcome: BuildCheckOutcome = unverifiedSkip
     ? {
         status: "failed",
