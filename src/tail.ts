@@ -124,7 +124,10 @@ export function statRoleLog<T>(
  *
  * Polling is unconditional (setInterval + stat) rather than fs.watchFile's change detection:
  * watchFile only fires when the stat differs from its asynchronously established baseline, so
- * writes landing between the initial read and that first baseline stat would go undelivered. */
+ * writes landing between the initial read and that first baseline stat would go undelivered.
+ * Rotation also drains the outgoing inode's unread tail from the `<file>.1` archive the
+ * rotation left behind (drainRotatedTail below), so lines appended between the last poll and
+ * the rename are delivered too. */
 export function followFile(
   file: string,
   offset: number,
@@ -148,7 +151,13 @@ export function followFile(
     // alone, and reading it from the stale offset delivers the new content's tail as a
     // mangled mid-line fragment while its head is never delivered (withTail's TailState
     // carries the same dev/ino guard for the same reason).
-    if (seen && (st.dev !== seen.dev || st.ino !== seen.ino)) offset = 0;
+    // Resetting the offset alone would also abandon the outgoing inode's unread tail — lines
+    // appended between the last poll and the rename — so the archive the rotation left behind
+    // is drained first.
+    if (seen && (st.dev !== seen.dev || st.ino !== seen.ino)) {
+      drainRotatedTail(file, offset, seen, onLines);
+      offset = 0;
+    }
     seen = { dev: st.dev, ino: st.ino };
     const size = st.size;
     if (size < offset) offset = 0; // Truncated in place: re-read the new content from the
@@ -167,4 +176,29 @@ export function followFile(
       clearInterval(timer);
     }
   };
+}
+
+/** Deliver the complete lines a rotation moved out of the followed path: the bytes the poll
+ * never consumed from the outgoing inode — everything appended between the last poll and the
+ * rename — live in the `<file>.1` archive rotateIfLarge leaves behind, still addressable by
+ * the old byte offsets, so they are read from there and delivered before the fresh file's
+ * content. The archive is trusted only when it IS the outgoing inode (its dev/ino must match
+ * the pair the offset was measured against): a second rotation inside one poll interval
+ * replaces the archive with an older generation, and matching it would deliver that older
+ * content as the missed lines — so that rarer race keeps the pre-drain behavior (those lines
+ * are lost, exactly as before). A missing, fully-consumed, or vanished archive drains nothing.
+ * A torn trailing line in the archive stays held back (readCompleteLines' contract) and is
+ * not re-delivered later — the fresh file never contained it — so a write in flight exactly
+ * at rotation can still lose its tail, the same policy every other archive consumer applies. */
+function drainRotatedTail(
+  file: string,
+  offset: number,
+  seen: { dev: number; ino: number },
+  onLines: (lines: string[]) => void,
+): void {
+  const archive = `${file}.1`;
+  const ast = statOrNull(archive);
+  if (!ast || ast.dev !== seen.dev || ast.ino !== seen.ino || ast.size <= offset) return;
+  const { lines } = readCompleteLines(archive, offset, ast.size);
+  onLines(lines);
 }

@@ -93,6 +93,37 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
   }
 });
 
+test("followFile drains the lines the rotation moved into <file>.1: nothing appended before the rename is lost", async () => {
+  const file = path.join(tmpdir(), "rotate-drain.jsonl");
+  fs.writeFileSync(file, "old line\n");
+  const seen: string[] = [];
+  const stop = followFile(file, fs.statSync(file).size, (lines) => {
+    for (const line of lines.filter(Boolean)) seen.push(line);
+  }, 25);
+  try {
+    await new Promise((r) => setTimeout(r, 100)); // a poll consumes the pre-existing content
+    assert.equal(seen.length, 0);
+
+    // Lines appended to the outgoing inode after the last poll, then the rename: the next
+    // poll stats only the fresh file, so without a drain these lines are silently lost —
+    // the append and the rename are back-to-back synchronous calls, so no poll can run
+    // between them and the loss is deterministic.
+    fs.appendFileSync(file, "missed one\nmissed two\n");
+    fs.renameSync(file, file + ".1");
+    fs.writeFileSync(file, "");
+    fs.appendFileSync(file, "fresh\n");
+    assert.ok(await waitFor(() => seen.includes("fresh")), `expected fresh, got ${JSON.stringify(seen)}`);
+    assert.deepEqual(seen, ["missed one", "missed two", "fresh"]);
+  } finally {
+    stop();
+  }
+
+  // A second poll after everything settled must not re-deliver the drained lines: the
+  // archive's size no longer exceeds the offset the follow consumed through.
+  await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(seen, ["missed one", "missed two", "fresh"]);
+});
+
 test("followFile survives a rotation whose replacement outgrows the old offset within one poll: the new content is delivered whole, not from the stale offset", async () => {
   const file = path.join(tmpdir(), "rotate-grow.jsonl");
   fs.writeFileSync(file, "old line\n");
