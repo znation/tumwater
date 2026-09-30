@@ -2,6 +2,7 @@
 import {
   fail,
   say,
+  sayJson,
   sayJsonOrRender,
   DURATION_FLAG,
   grepFlagSpec,
@@ -153,7 +154,7 @@ async function main(): Promise<void> {
         // serving process's own `serverBuildSha`, printed with no server. A query, not a
         // health verdict: exit 0 on any successful read and let scripts interpret fields
         // themselves ("running": false is data, not failure).
-        say(JSON.stringify(statusPayload(root), null, 2));
+        sayJson(statusPayload(root));
       } else {
         say(renderStatus(root, snapshot(root), process.stdout.isTTY ? process.stdout.columns : undefined));
       }

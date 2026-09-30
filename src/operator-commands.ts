@@ -1,5 +1,5 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "./config.js";
-import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
+import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say, sayJson } from "./cli-args.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,
@@ -238,7 +238,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     fail("usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)");
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-  say(JSON.stringify(config, null, 2));
+  sayJson(config);
 }
 
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the

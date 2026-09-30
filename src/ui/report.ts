@@ -9,7 +9,7 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say, sayJsonOrRender } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say, sayJson, sayJsonOrRender } from "../cli-args.js";
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.
@@ -195,11 +195,11 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // stable data shape, so the machine-readable form is the data itself, not a re-parse of the
   // Markdown (the old "clustered narrative with no agreed shape" refusal is retired).
   if (args.includes("--failures") && args.includes("--json")) {
-    say(JSON.stringify(collectFailureReport(root, days), null, 2));
+    sayJson(collectFailureReport(root, days));
     return;
   }
   if (args.includes("--json")) {
-    say(JSON.stringify(collectReport(root, days), null, 2));
+    sayJson(collectReport(root, days));
     return;
   }
   say(

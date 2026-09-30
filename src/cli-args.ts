@@ -21,6 +21,15 @@ export function say(text: string): void {
   process.stdout.write(text + "\n");
 }
 
+/** Print a value as pretty-printed (2-space) JSON — the `--json` output every CLI query
+ * command (status, history, report, config) renders through: say()'s stdout line, with the
+ * pretty-print spelling (indent 2) decided once so the machine-readable surface cannot
+ * drift per command. The compact prints that are part of a sentence (config get's one-line
+ * value) stay hand-rolled — this helper is the whole-document form. */
+export function sayJson(value: unknown): void {
+  say(JSON.stringify(value, null, 2));
+}
+
 /** Print a query command's result as `--json` or human text — the shared convention behind
  * doctor/report --since/diff/backlog --json: the flag prints the collector's own payload
  * pretty-printed, not a re-parse of the render, so every exit-0 output is parseable. The
@@ -32,7 +41,7 @@ export function say(text: string): void {
  * table collect different data, so neither branch can feed the other.) */
 export function sayJsonOrRender<T>(args: string[], payload: T | (() => T), render: (payload: T) => string): void {
   const resolve = () => (typeof payload === "function" ? (payload as () => T)() : payload);
-  if (args.includes("--json")) say(JSON.stringify(resolve(), null, 2));
+  if (args.includes("--json")) sayJson(resolve());
   else say(render(resolve()));
 }
 

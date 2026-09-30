@@ -1,4 +1,4 @@
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say, sayJson } from "../cli-args.js";
 import { displayWidth, padToWidth, shortSpanPhrase } from "../text.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
@@ -140,7 +140,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
   // the report --json precedent: the flag's output must be parseable in every exit-0 case).
   if (rest.includes("--json")) {
-    say(JSON.stringify({ rows }, null, 2));
+    sayJson({ rows });
     return;
   }
   if (rows.length === 0) {
