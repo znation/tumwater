@@ -137,7 +137,8 @@ export function extractFlow(text: string): FlowResult | null {
 // family): a reviewer who nests or indents the final line must not fail the whole review as
 // "no parseable verdict" while an identically indented refusal would still count. One source
 // of truth, two derived regexes — stateless detection for pi.ts's per-message scan, and a
-// global one for review.ts's extraction (matchAll clones it internally, so sharing is safe).
+// global one for verdictLines's extraction, which review-verdict.ts's parseVerdict consumes
+// (matchAll clones it internally, so sharing is safe).
 const VERDICT_LINE_SOURCE = "^[ \\t]*VERDICT:\\s*(approve|reject)\\b";
 const VERDICT_LINE = new RegExp(VERDICT_LINE_SOURCE, "m");
 const VERDICT_LINES = new RegExp(VERDICT_LINE_SOURCE, "gm");
