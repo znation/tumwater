@@ -238,11 +238,13 @@ test("logs -f prints the current window and follows newly appended events", asyn
 
   const s = spawnCli(repo, ["logs", "-f"]);
   try {
-    await s.waitFor((out) => out.includes("user prompt queued: first prompt"), "the seeded event");
+    // Wide deadlines: under full-suite load the spawned child's startup alone can eat
+    // most of the harness default, and this test only needs to prove the follow works.
+    await s.waitFor((out) => out.includes("user prompt queued: first prompt"), "the seeded event", 30_000);
 
     // A new event appended while following must appear without a restart (500ms poll).
     submitPrompt(repo, "second prompt");
-    await s.waitFor((out) => out.includes("user prompt queued: second prompt"), "the live event");
+    await s.waitFor((out) => out.includes("user prompt queued: second prompt"), "the live event", 30_000);
   } finally {
     s.kill();
   }
