@@ -7,14 +7,13 @@ import { ffStackToMain, mergeToMain, type MergeContext } from "../src/landing-me
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
-import { initProject } from "../src/init.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
-import { gitOnlyBinDir, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
@@ -54,33 +53,13 @@ function makeCtx(
   };
 }
 
-/** A fresh initialized repo (seed.txt on main, .tumwater gitignored) — the same base every
- * other test builds on, so `git add -A` never sweeps in the worktree dir. */
-async function initializedRoot(): Promise<string> {
-  const repo = makeRepo();
-  await initProject(repo, "A test project.");
-  return repo;
-}
-
-/** A fresh repo plus the improve role's worktree. */
-async function setup(): Promise<{ root: string; wt: string }> {
-  const root = await initializedRoot();
-  const wt = await ensureWorktree(root, "improve", "main");
-  return { root, wt };
-}
-
-function commitIn(dir: string, msg: string): void {
-  sh(dir, "git", "add", "-A");
-  sh(dir, "git", "commit", "-m", msg);
-}
-
 /** No merge or rebase left in progress and the worktree back on its committed branch state. */
 function assertWorktreeSettled(wt: string): void {
   assert.equal(sh(wt, "git", "status", "--porcelain"), "", "worktree clean, no rebase in progress");
 }
 
 test("a clean rebase lands as changed with a merged event and linear history", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
   const { ctx, calls } = makeCtx(root);
@@ -99,7 +78,7 @@ test("a clean rebase lands as changed with a merged event and linear history", a
 });
 
 test("a rebase conflict is resolved by one pi run and lands with linear history", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
   commitIn(wt, "branch edit");
   // Advance main with a conflicting edit while the tick's work is unmerged.
@@ -121,7 +100,7 @@ test("a rebase conflict is resolved by one pi run and lands with linear history"
 });
 
 test("a conflict pi leaves unresolved aborts and reports merge_conflict", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
   commitIn(wt, "branch edit");
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
@@ -140,7 +119,7 @@ test("a conflict pi leaves unresolved aborts and reports merge_conflict", async 
 });
 
 test("a failed pi run aborts even when it resolved every marker", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
   commitIn(wt, "branch edit");
   fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
@@ -161,7 +140,7 @@ test("a failed pi run aborts even when it resolved every marker", async () => {
 });
 
 test("a second conflict on replay aborts after one resolution attempt", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   // Two branch commits both rewriting seed.txt: resolving the first still leaves the
   // second conflicting when git replays it.
   fs.writeFileSync(path.join(wt, "seed.txt"), "one\n");
@@ -188,7 +167,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
 });
 
 test("a fast-forward that git refuses reports merge_blocked without landing", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
   commitIn(wt, "branch edit");
   // The primary checkout sits on main with a local edit to the same file: the working-tree
@@ -223,7 +202,7 @@ test("the landing-flow git helpers are exported from landing-git.js (regression)
     assert.equal(typeof landingGit[name], "function", `landing-git.js exports ${name}`);
   }
   // And one of them actually works from its new home: a real rebase onto an advanced main.
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
   fs.writeFileSync(path.join(root, "seed.txt"), "main advanced\n");
@@ -250,7 +229,7 @@ function detachedAheadOfMain(repo: string): string {
  * runs outside the merge lock — fast-forwarding to the original pin would fail as merge_blocked;
  * ff'ing to the worktree's post-rebase HEAD lands cleanly. */
 test("a detached worktree's pinned sha lands when main moved after the commit (ff to post-rebase tip)", async () => {
-  const root = await initializedRoot();
+  const root = await initializedRepo();
   // A lander-style detached worktree at its production path: checked out at a bare sha, not on
   // a branch ref. Under root so .tumwater/ exists for the merge lock (as in the real flow).
   const wt = await ensureDetachedWorktree(root, landWorktreePath(root, "improve"), "main");
@@ -386,7 +365,7 @@ test("the config write-back is restore-only-when-absent: a newer write wins", as
 });
 
 test("a merged diff that posts new Open questions emits one question_posted per entry", async () => {
-  const root = await initializedRoot();
+  const root = await initializedRepo();
   fs.writeFileSync(
     path.join(root, "QUESTIONS.md"),
     "# Questions\n\n## Open\n\n### First question (asked by improve)\n\nBody.\n\n## Answered\n\n_None yet._\n",
@@ -450,7 +429,7 @@ function advanceMain(root: string, file: string, content: string): void {
 }
 
 test("a rebase that rewrote the commits re-runs the declared check on the rebased tree before landing", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   // The tool passes only when BOTH files exist — true of the post-rebase tree, false of the
   // pre-rebase head (which lacks main's file). A check of the wrong tree would block the merge.
   declareBuildCheck(root, wt, "test -f app.js && test -f mainfile.txt");
@@ -470,7 +449,7 @@ test("a rebase that rewrote the commits re-runs the declared check on the rebase
 });
 
 test("a red post-rebase check blocks the landing and keeps the commit for recovery", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt, "exit 1"); // fails on every tree — a deterministic red
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
@@ -494,7 +473,7 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
 });
 
 test("an environmental skip of the re-check warns and still lands — never fail-closed", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt); // would pass if it could run at all
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
@@ -530,7 +509,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
 });
 
 test("a no-op rebase skips the re-check and seeds the baseline for the landed SHA", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt); // would pass if run — but must NOT run (no landing event)
   sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
@@ -555,7 +534,7 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
 test("with check.gateCommand set, a no-op rebase still runs the full check before landing", async () => {
   // PLANS.md Land-queue speed 3e: the gate ran only the cheaper gateCommand, so its green says
   // nothing about check.command — the no-op skip would land a tree the full suite never saw.
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   sh(wt, "git", "reset", "--hard", "main");
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
@@ -578,7 +557,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
 });
 
 test("a doc-only delta skips the re-check even when main moved under it", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "NOTES.md"), "notes\n");
   commitIn(wt, "doc work");
   // Declared AFTER the commit and tracked NOWHERE: the manifest stays out of every diff so
@@ -600,7 +579,7 @@ test("a doc-only delta skips the re-check even when main moved under it", async 
 });
 
 test("a conflict resolution is re-verified inside the lock before landing", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   // The tool passes only when seed.txt holds the RESOLVED content — true of the post-resolution
   // tree, false of both pre-conflict sides. A check of either original head would block.
   declareBuildCheck(root, wt, "grep -q resolved seed.txt");

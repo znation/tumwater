@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initProject } from "../src/init.js";
+import { ensureWorktree } from "../src/worktree.js";
 import { ensureParentDir } from "../src/files.js";
 import { projManifest } from "./fake-commands.js";
 
@@ -101,6 +102,22 @@ export async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, "A test project.");
   return repo;
+}
+
+/** An initializedRepo'd repo plus the improve role's worktree off main — the base the landing
+ * git/merge tests stage their scenarios on, which each used to carry their own identical
+ * initializedRoot/setup copy. */
+export async function initializedWorktree(): Promise<{ root: string; wt: string }> {
+  const root = await initializedRepo();
+  const wt = await ensureWorktree(root, "improve", "main");
+  return { root, wt };
+}
+
+/** Stage everything and commit in a fixture dir — the tests' one way to put work on a branch
+ * or main, so the sweeping `git add -A` + commit pair lives once. */
+export function commitIn(dir: string, msg: string): void {
+  sh(dir, "git", "add", "-A");
+  sh(dir, "git", "commit", "-m", msg);
 }
 
 /** Seed a fixture's tumwater.json with the given (partial) config: the project config file's

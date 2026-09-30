@@ -9,38 +9,16 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing-git.js";
-import { initProject } from "../src/init.js";
-import { ensureWorktree } from "../src/worktree.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in
 // landing-merge.test.ts only checks that these helpers exist; these tests drive real rebases,
 // conflicts, and continuations — the mechanics a half-broken helper would silently break.
 
-/** A fresh initialized repo (seed.txt on main, .tumwater gitignored) — the same base the
- * landing-merge tests build on, so `git add -A` never sweeps in the worktree dir. */
-async function initializedRoot(): Promise<string> {
-  const repo = makeRepo();
-  await initProject(repo, "A test project.");
-  return repo;
-}
-
-/** A fresh repo plus the improve role's worktree. */
-async function setup(): Promise<{ root: string; wt: string }> {
-  const root = await initializedRoot();
-  const wt = await ensureWorktree(root, "improve", "main");
-  return { root, wt };
-}
-
-function commitIn(dir: string, msg: string): void {
-  sh(dir, "git", "add", "-A");
-  sh(dir, "git", "commit", "-m", msg);
-}
-
 /** A repo whose main and worktree branch both edited the same file — the next rebase onto
  * main must stop mid-conflict. */
 async function conflictingSetup(): Promise<{ root: string; wt: string }> {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   // Both sides edit seed.txt, which exists in the fork-point commit — a content conflict
   // (UU), not an add/add conflict (AA), so the assertions name the classic spelling.
   fs.writeFileSync(path.join(root, "seed.txt"), "main line\n");
@@ -56,7 +34,7 @@ function assertWorktreeSettled(wt: string): void {
 }
 
 test("conflictedFiles is empty on a clean worktree", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   assert.deepEqual(await conflictedFiles(wt), []);
 });
 
@@ -73,7 +51,7 @@ test("conflictedFiles decodes the C-quoted name of a non-ASCII conflicted file",
   // conflicted name as `"h\303\251llo.md"`. Undecoded, hasConflictMarkers could never read
   // the file and continueRebase would commit the markers to main (the bug the decode exists
   // for) — so the decoded, on-disk form is the contract.
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(root, "héllo.md"), "main line\n");
   commitIn(root, "main edit");
   fs.writeFileSync(path.join(wt, "héllo.md"), "branch line\n");
@@ -84,7 +62,7 @@ test("conflictedFiles decodes the C-quoted name of a non-ASCII conflicted file",
 });
 
 test("rebaseOntoMainLeaveConflicts returns clean when main has not moved", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "clean");
@@ -94,7 +72,7 @@ test("rebaseOntoMainLeaveConflicts returns clean when main has not moved", async
 test("rebaseOntoMainLeaveConflicts returns failed and cleans up when the rebase cannot start", async () => {
   // An unstaged edit to a tracked file makes `git rebase` refuse before any conflict exists:
   // conflictedFiles is empty, so the state is "other" → abort and report "failed".
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "dirty\n");
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "failed");
   // The abort cleaned up the rebase state, not the working tree: the edit that blocked it
@@ -137,7 +115,7 @@ test("continueRebase finishes cleanly when the resolution leaves no unique conte
 test("hasConflictMarkers sees start/end markers but not a bare ======= separator", async () => {
   // Only `<<<<<<<`/`>>>>>>>` at a line start count: a bare `=======` is legitimate content
   // (a markdown setext underline), and flagging it would reject clean resolutions forever.
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "marked.txt"), "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\nb\n");
   assert.equal(hasConflictMarkers(wt, ["marked.txt"]), true);
   fs.writeFileSync(path.join(wt, "marked.txt"), "title\n=======\nbody\n");
