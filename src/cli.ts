@@ -88,11 +88,12 @@ async function main(): Promise<void> {
   // `tumwater help <command>` derives from the full listing — and exits 0. Intercepted once
   // here, before any command parses its arguments or gates on a ready repo, so the flag
   // cannot collide with a command's real flags (a command's arg gate never sees it) and every
-  // command gains the convention at once; a command with no topic falls through to its
-  // ordinary dispatch, where an unknown argument is still named.
+  // command gains the convention at once — `help` included, whose own topic it answers
+  // (a `--help` topic lookup would only fail: the listing names no such command); a command
+  // with no topic falls through to its ordinary dispatch, where an unknown argument is
+  // still named.
   if (
     command !== undefined &&
-    command !== "help" &&
     command !== "--help" &&
     command !== "-h" &&
     (args.includes("--help") || args.includes("-h"))

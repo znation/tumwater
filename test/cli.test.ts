@@ -77,6 +77,17 @@ test("<command> --help prints that command's help topic", async () => {
   assert.doesNotMatch(bare.stderr, /not a git repository/);
 });
 
+test("help --help prints the help command's own topic", async () => {
+  // The convention covers every command, help included: `help --help`/`help -h` must answer
+  // with the help topic, not fall through to a topic lookup for the literal flag text
+  // (exit 1, "no help topic: --help — did you mean `help`?").
+  for (const args of [["help", "--help"], ["help", "-h"]]) {
+    const r = await cli(tmpdir(), ...args);
+    assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
+    assert.match(r.stdout, /tumwater help \[<command>\]/);
+  }
+});
+
 test("--help does not rescue an unknown command", async () => {
   const r = await cli(tmpdir(), "frobnicate", "--help");
   assert.equal(r.code, 1);
