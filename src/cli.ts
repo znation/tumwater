@@ -7,13 +7,13 @@ import {
   N_FLAG,
   parseCountFlag,
   parsePortFlag,
-  parsePromptArgs,
   parseRoleFlag,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   SINCE_FLAG,
 } from "./cli-args.js";
+import { parsePromptArgs } from "./cli-command-args.js";
 import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";

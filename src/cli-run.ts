@@ -3,7 +3,8 @@
  * command it dispatches already delegates to a module (operator-commands.ts, ui/log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
-import { fail, parseBranchFlag, parseInitArgs, parseRoleFlag, say } from "./cli-args.js";
+import { fail, parseBranchFlag, parseRoleFlag, say } from "./cli-args.js";
+import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";

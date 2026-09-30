@@ -1,5 +1,6 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "./config.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parsePromptArgs, parseRoleFlag, say } from "./cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
+import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,
   cancelRolePrompt,
