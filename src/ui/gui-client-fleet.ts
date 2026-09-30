@@ -143,7 +143,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (todayLoading || (!force && Date.now() - todayAt < 20000)) return;
     todayLoading = true;
     try {
-      today = await getJson("/api/report?days=1");
+      today = await getJson("/api/report?days=1", pollSignal());
       todayAt = Date.now();
     } catch { /* keep the last numbers */ }
     todayLoading = false;

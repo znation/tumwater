@@ -55,8 +55,21 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
     if (!r.ok) throw await apiError(path, r);
     return r;
   }
-  async function getJson(path) {
-    return (await apiFetch(path)).json();
+  async function getJson(path, init) {
+    return (await apiFetch(path, init)).json();
+  }
+  // Bounded wait for the dashboard's periodic fetches (the 1 s status poll and the today/drawer
+  // refreshes its await chain drives): a server that accepts the connection but never answers
+  // would otherwise hold the poll open forever, leaving the page frozen on stale data with no
+  // offline alert — the catch in refresh() only runs when fetch rejects. The timeout aborts the
+  // request, so the poll fails, the red "Lost contact" alert shows, and the loop keeps polling.
+  // AbortSignal.timeout is standard since 2022; where a browser lacks it the fetch stays
+  // unbounded, exactly the old behavior.
+  const POLL_TIMEOUT_MS = 15000;
+  function pollSignal() {
+    return typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? { signal: AbortSignal.timeout(POLL_TIMEOUT_MS) }
+      : {};
   }
   // A JSON POST; resolves to the endpoint's JSON answer (null if it sent none).
   async function postJson(path, payload) {

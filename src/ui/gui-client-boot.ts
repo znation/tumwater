@@ -114,8 +114,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     let d;
     try {
       // The guarded getJson: the server's 500 sends a JSON {error} body, which must never be
-      // taken for fleet state — a failed poll keeps the last good frame and says so.
-      d = await getJson("/api/status");
+      // taken for fleet state — a failed poll keeps the last good frame and says so. The
+      // bounded wait covers the other failure a bare fetch never reports: a connection the
+      // server accepted but never answers (pollSignal).
+      d = await getJson("/api/status", pollSignal());
     } catch {
       offline = true;
       renderSidebar(lastStatus);
@@ -149,9 +151,24 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     await refreshDrawer();
   }
 
+  // One poll in flight at a time: the next poll starts one interval after the previous one
+  // settles (render included), so a slow response can never stack overlapping polls against
+  // the server — the fixed setInterval fired on schedule regardless of whether the last poll
+  // had finished. The chain's one contract is to keep polling: refresh guards its own fetches
+  // and renders, but anything that escapes it is caught here, because a rejection would kill
+  // the chain at the setTimeout below and freeze the page exactly like the wedged server this
+  // loop exists to survive — so the reschedule runs no matter how the poll ended. pollSignal
+  // bounds each request so a wedged server cannot park an iteration forever.
+  async function pollLoop() {
+    try {
+      await refresh();
+    } catch (e) {
+      console.error("tumwater: poll failed", e);
+    }
+    setTimeout(pollLoop, 1000);
+  }
   composerHint();
   attachReportTip();
   route();
   refreshToday(true);
-  refresh();
-  setInterval(refresh, 1000);`;
+  pollLoop();`;

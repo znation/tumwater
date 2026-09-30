@@ -166,7 +166,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (!role || (!force && Date.now() - drawerTicksAt < 5000)) return;
     drawerTicksAt = Date.now();
     try {
-      const d = await getJson("/api/history?n=8&role=" + encodeURIComponent(role));
+      const d = await getJson("/api/history?n=8&role=" + encodeURIComponent(role), pollSignal());
       if (openLoopRole() !== role) return;
       drawerTicks = d && Array.isArray(d.rows) ? d.rows : [];
     } catch {
@@ -188,7 +188,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (!role) return;
     let d;
     try {
-      d = await getJson("/api/transcript?role=" + encodeURIComponent(role) + "&n=200");
+      d = await getJson("/api/transcript?role=" + encodeURIComponent(role) + "&n=200", pollSignal());
     } catch {
       return; // keep the previous content on a failed poll
     }
@@ -209,7 +209,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const index = drawer.index;
     let d;
     try {
-      d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
+      d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index), pollSignal());
     } catch (e) {
       // Keep what is shown; only a first load that fails says so.
       if (lastPaint.entrybody === undefined) paintPanel("entrybody", errorPanel("Could not load this entry", e));

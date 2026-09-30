@@ -536,6 +536,81 @@ test("apiError renders the operator-facing message for every error-body shape", 
   assert.equal(await getJson("/api/status"), payload, "a 2xx response flows through to the caller");
 });
 
+test("the dashboard's periodic fetches ride a bounded wait — pollSignal bounds the poll", async () => {
+  // A server that accepts the connection but never answers would otherwise hold the poll open
+  // forever (fetch has no default timeout), freezing the page on stale data with no offline
+  // alert. The periodic fetches pass pollSignal()'s AbortSignal.timeout through getJson's init
+  // into fetch; this pins the thread-through and the bound without waiting real time.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const script = GUI_PAGE.slice(GUI_PAGE.indexOf("<script>\n") + "<script>\n".length);
+  const head = script.slice(0, script.indexOf("const fmtTokens"));
+  // A stub AbortSignal whose timeout() records the requested bound and returns a plain marker.
+  const requested: number[] = [];
+  const fakeAbortSignal = { timeout: (ms: number) => { requested.push(ms); return { aborted: false }; } };
+  let lastInit: unknown;
+  const fetchStub = (_path: string, init: unknown) => {
+    lastInit = init;
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+  };
+  const { getJson, pollSignal } = new Function(
+    "fetch",
+    "AbortSignal",
+    `${head}\nreturn { getJson, pollSignal };`,
+  )(fetchStub, fakeAbortSignal) as {
+    getJson: (path: string, init?: unknown) => Promise<unknown>;
+    pollSignal: () => unknown;
+  };
+  await getJson("/api/status", pollSignal());
+  assert.deepEqual(requested, [15000], "the periodic fetches are bounded at 15 s");
+  // apiFetch merges its own headers in beside the caller's init, so the init that reaches
+  // fetch carries the signal plus that (empty) Headers instance.
+  const sent = lastInit as { signal?: { aborted: boolean }; headers?: unknown };
+  assert.equal(sent.signal?.aborted, false, "the signal rides into fetch as init.signal");
+  assert.ok(sent.headers instanceof Headers, "the caller's init still reaches apiFetch's header merge");
+  // A browser without AbortSignal.timeout keeps the old unbounded fetch instead of crashing.
+  const plain = new Function("fetch", "AbortSignal", `${head}\nreturn pollSignal();`)(fetchStub, {});
+  assert.deepEqual(plain, {}, "no AbortSignal.timeout means no signal, not a crash");
+});
+
+test("the poll chain survives a rejected refresh — pollLoop always reschedules", async () => {
+  // The chained poll replaced a setInterval, which fired on schedule no matter what the
+  // previous poll did — so its one contract is liveness: even if refresh() rejects (a render
+  // bug, a malformed frame), the next poll must still be scheduled, or the page freezes
+  // exactly like the wedged server the bounded wait exists to survive. This runs the page's
+  // own pollLoop body against a refresh that rejects on its first call and succeeds on its
+  // second, with setTimeout captured so no real time passes.
+  const { GUI_PAGE } = await import("../src/ui/gui-page.js");
+  const src = GUI_PAGE.match(/\/\/ One poll in flight[\s\S]*?setTimeout\(pollLoop, 1000\);\n  \}/)?.[0];
+  assert.ok(src, "the poll chain is present in the page script");
+  const scheduled: Array<{ fn: () => unknown; ms: number }> = [];
+  let calls = 0;
+  const refresh = () => {
+    calls++;
+    if (calls === 1) return Promise.reject(new Error("render blew up"));
+    return Promise.resolve();
+  };
+  const errors: string[] = [];
+  const { pollLoop } = new Function(
+    "refresh",
+    "setTimeout",
+    "console",
+    `${src}\nreturn { pollLoop };`,
+  )(refresh, (fn: () => unknown, ms: number) => { scheduled.push({ fn, ms }); return 0; }, { error: (...a: unknown[]) => errors.push(a.map(String).join(" ")) }) as {
+    pollLoop: () => Promise<void>;
+  };
+  await pollLoop();
+  assert.equal(calls, 1);
+  assert.equal(scheduled.length, 1, "a rejected refresh still schedules the next poll");
+  const first = scheduled[0];
+  assert.ok(first, "the reschedule is captured");
+  assert.equal(first.ms, 1000);
+  await first.fn();
+  assert.equal(calls, 2, "the chain keeps polling after the failure");
+  assert.equal(scheduled.length, 2);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0] ?? "", /render blew up/, "the escape is reported, not swallowed silently");
+});
+
 // Backlog bodies, plans, and bugs are model-written Markdown the loops edit; with
 // --all-interfaces the dashboard is reachable network-wide without auth, so nothing they carry
 // may execute in the operator's browser. The page escapes every dynamic value through its own
@@ -748,7 +823,9 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
   // The page makes no request off its own server: no remote scripts, styles, fonts, or images.
   assert.doesNotMatch(GUI_PAGE, /(?:src|href)=["']https?:|url\(\s*["']?https?:|@import/, "nothing is fetched from elsewhere");
   // The only timer is the 1 s status poll; everything else refetches on events or on demand.
-  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "one poll");
-  assert.match(GUI_PAGE, /setInterval\(refresh, 1000\)/);
+  // The poll is chained — the next poll starts one interval after the previous settles, and
+  // its reschedule sits outside the try, so no two polls can ever be in flight at once.
+  assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "one poll timer");
+  assert.doesNotMatch(GUI_PAGE, /setInterval\(/, "no stacked polls");
 });
 

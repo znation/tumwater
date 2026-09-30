@@ -138,8 +138,8 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The fleet view's "today" tiles read a one-day report, refreshed on new events.
-  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=1"\)/);
-  assert.equal(GUI_PAGE.match(/setInterval\(/g)?.length ?? 0, 1, "the only poll is the 1 s status refresh");
+  assert.match(GUI_PAGE, /getJson\("\/api\/report\?days=1", pollSignal\(\)\)/);
+  assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "the only poll is the 1 s status refresh");
 });
 test("the report charts carry a cursor-following hover label", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui-page.js");
