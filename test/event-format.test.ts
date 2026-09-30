@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { eventResult, formatEvent, usageText } from "../src/event-format.js";
-import { displayWidth } from "../src/text.js";
+import { displayWidth } from "../src/text-width.js";
 
 test("formatEvent renders each type as one line", () => {
   const cases = [

@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
-import { displayWidth } from "../src/text.js";
+import { displayWidth } from "../src/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import type { StatusSnapshot } from "../src/status-data.js";
 import { freshLoopState } from "../src/loop-state.js";

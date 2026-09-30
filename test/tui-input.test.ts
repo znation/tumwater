@@ -8,7 +8,8 @@ import {
   renderInputView,
   tuiTerminalError,
 } from "../src/ui/tui-input.js";
-import { cutSplitsSurrogatePair, displayWidth } from "../src/text.js";
+import { cutSplitsSurrogatePair } from "../src/text.js";
+import { displayWidth } from "../src/text-width.js";
 
 const key = (name: string, extra: Partial<{ ctrl: boolean; meta: boolean }> = {}) => ({ name, ...extra });
 

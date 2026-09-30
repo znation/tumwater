@@ -1,5 +1,6 @@
 import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say, sayJson } from "../cli-args.js";
-import { displayWidth, padToWidth, shortSpanPhrase } from "../text.js";
+import { displayWidth, padToWidth } from "../text-width.js";
+import { shortSpanPhrase } from "../text.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
 

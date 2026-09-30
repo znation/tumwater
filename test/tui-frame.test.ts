@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clipToWidth, displayWidth } from "../src/text.js";
+import { clipToWidth, displayWidth } from "../src/text-width.js";
 import { clipSpans, renderStatus, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
 import { eventKind } from "../src/ui/tone.js";
 import type { FleetAlert } from "../src/ui/fleet-alerts.js";

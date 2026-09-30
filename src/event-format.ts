@@ -1,6 +1,7 @@
 import { eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, compactTokens, padToWidth, holdPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
+import { backendKindPhrase, budgetPhrase, compactTokens, holdPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
+import { padToWidth } from "./text-width.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion

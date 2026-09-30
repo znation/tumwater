@@ -10,7 +10,7 @@ import { clipSpans, type StatusLine, type StatusSpan } from "./status-render.js"
 import { eventResult } from "../event-format.js";
 import { eventKind, resultTone, type Tone } from "./tone.js";
 import type { FleetAlert } from "./fleet-alerts.js";
-import { displayWidth } from "../text.js";
+import { displayWidth } from "../text-width.js";
 
 /** The run's escape codes: attributes plus one foreground color per tone. */
 interface TuiStyles {

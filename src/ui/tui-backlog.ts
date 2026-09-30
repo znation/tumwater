@@ -1,4 +1,4 @@
-import { clipToWidth } from "../text.js";
+import { clipToWidth } from "../text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui.ts): the three-section backlog body
  * (`backlogLines`) and the entry browser — selection movement and the entry body's scroll
