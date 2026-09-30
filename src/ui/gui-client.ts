@@ -131,6 +131,18 @@ const FORMAT_JS = String.raw`  // format:start
 const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   const icon = (name) => "<svg class='i' viewBox='0 0 24 24' aria-hidden='true'>" + (ICONS[name] || "") + "</svg>";
   const $ = (id) => document.getElementById(id);
+  // click-delegate:start
+  // One delegated document-level click listener: fn receives the clicked element and the
+  // event, and is skipped when the click has no Element target (a text node) — the guard
+  // every delegated handler on the page repeated, so the contract cannot drift per handler.
+  // fn decides for itself whether to preventDefault.
+  function onClick(fn) {
+    document.addEventListener("click", (ev) => {
+      const t = ev.target instanceof Element ? ev.target : null;
+      if (t) fn(t, ev);
+    });
+  }
+  // click-delegate:end
   const pill = (info) => "<span class='pill t-" + info.tone + "'><span class='dot" + (info.live ? " live" : "") + "'></span>" + esc(info.label) + "</span>";
   // Repaint a panel only when its markup changed: an idle fleet's payload is identical poll
   // after poll, and rewriting identical HTML re-parses it, churns layout, and drops the
@@ -244,9 +256,7 @@ const BOOT_JS = String.raw`  // ---- views ----
       if (title !== undefined) draftForDirector("About “" + splitTitle(title).title + "”: ");
     }
   }
-  document.addEventListener("click", (ev) => {
-    const t = ev.target instanceof Element ? ev.target : null;
-    if (!t) return;
+  onClick((t, ev) => {
     const act = t.closest("[data-act]");
     if (act) { ev.preventDefault(); runAct(act.dataset.act, act.dataset.arg || ""); return; }
     const open = t.closest("[data-open]");

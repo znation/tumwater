@@ -7,7 +7,7 @@
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
  * the error and leaves the editor open. Spliced into gui-client.ts's script, reaching its
  * helpers (esc, icon, postJson, paintPanel, showFlash, the menu registry) through that
- * concatenation. */
+ * concatenation (esc, icon, postJson, paintPanel, showFlash, the menu registry, onClick). */
 export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
   let budgetEditing = false;
   function budgetTone(b) {
@@ -90,9 +90,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
     closeMenus();
     refresh();
   }
-  document.addEventListener("click", (ev) => {
-    const t = ev.target instanceof Element ? ev.target : null;
-    if (!t) return;
+  onClick((t, ev) => {
     if (t.closest("#budgetbadge")) {
       ev.preventDefault();
       if (budgetEditing) closeMenus();
@@ -179,9 +177,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
     closeMenus();
     refresh();
   }
-  document.addEventListener("click", (ev) => {
-    const t = ev.target instanceof Element ? ev.target : null;
-    if (!t) return;
+  onClick((t, ev) => {
     if (t.closest("#pausebadge")) {
       ev.preventDefault();
       if (lastStatus && lastStatus.paused) setFleetPause(false);
