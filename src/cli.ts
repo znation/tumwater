@@ -30,7 +30,7 @@ import { runTui } from "./ui/tui.js";
 import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
-import { collectRoleChange, renderRoleChange } from "./ui/change-preview.js";
+import { collectFleetChanges, collectRoleChange, renderFleetChange, renderRoleChange } from "./ui/change-preview.js";
 import { knownRoleIdsCached } from "./config.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
@@ -227,12 +227,16 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: an absent worktree degrades to a `no worktree for <role>`
       // line (exit 0), so the command answers in any directory — report's rationale.
       rejectUnknownArgs("diff", args, [ROLE_FLAG, { names: ["--json"] }]);
-      // --role is required here (unlike the scoping flags of logs/history): without it there
-      // is no change to show, so a missing flag points at the usage instead of guessing.
+      // Absent --role is the fleet-wide form: one line per loop holding pending work
+      // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
+      // already failed above). A named role keeps the full per-role view.
       const role = parseRoleFlag(args, knownRoleIdsCached(root));
-      if (role === null) fail("diff needs --role <id> (try `tumwater help diff`)");
-      const change = await collectRoleChange(root, role);
-      sayJsonOrRender(args, change, renderRoleChange);
+      if (role === null) {
+        sayJsonOrRender(args, await collectFleetChanges(root), renderFleetChange);
+      } else {
+        const change = await collectRoleChange(root, role);
+        sayJsonOrRender(args, change, renderRoleChange);
+      }
       break;
     }
     case "backlog": {

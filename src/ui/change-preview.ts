@@ -6,7 +6,8 @@
  * when the fleet (or just this role's worktree) does not exist yet. */
 
 import fs from "node:fs";
-import { loadConfigSafe } from "../config.js";
+import { knownRoleIdsCached, loadConfigSafe } from "../config.js";
+import { plural } from "../text.js";
 import { aheadOfMain, branchExists, currentBranch, gitTry } from "../git.js";
 import { aheadOfMainDiff, changedFiles } from "../git-diff.js";
 import { branchName, worktreePath } from "../paths.js";
@@ -43,6 +44,63 @@ interface RoleChangeView {
    * appear ("" unless state is "ready"). Untracked paths have no diff content — they show
    * in dirtyFiles only. */
   uncommittedDiff: string;
+}
+
+/** The change one role holds as the fleet-wide view carries it: the RoleChangeView fields
+ * minus the two patch strings. The patches stay in the per-role view — a fleet-wide patch
+ * dump would be 13 roles × DIFF_MAX_BYTES — while the counts and commit subjects an operator
+ * scans a roster for survive the trip. */
+interface FleetRoleChange {
+  role: string;
+  branch: string;
+  /** The per-role view's state, verbatim: "absent" | "no-base" | "ready". */
+  state: "absent" | "no-base" | "ready";
+  ahead: number;
+  commits: RoleChangeCommit[];
+  dirtyFiles: string[];
+}
+
+/** The fleet-wide roster `tumwater diff` (no --role) prints: the baseline every role was
+ * compared against, plus one entry per known role in config order. */
+interface FleetChangeView {
+  mainBranch: string;
+  roles: FleetRoleChange[];
+}
+
+/** Collect the pending change of every known role (built-in plus custom loop ids, config
+ * order — disabled roles included, since a loop stopped mid-flight still holds its branch).
+ * Each entry goes through collectRoleChange, which keeps the absent/no-base degradation
+ * logic single-homed and only computes the patch git-diffs for roles actually holding work
+ * (both are "" when a role holds nothing); the fleet view then drops the patch fields. */
+export async function collectFleetChanges(root: string): Promise<FleetChangeView> {
+  const roles = await Promise.all(
+    knownRoleIdsCached(root).map(async (role) => {
+      const view = await collectRoleChange(root, role);
+      const { diff: _diff, uncommittedDiff: _uncommittedDiff, ...fleet } = view;
+      return fleet;
+    }),
+  );
+  // mainBranch is fleet-wide: resolveMainBranch resolves it once per role the same way, so
+  // the first entry's value is every entry's value.
+  return { mainBranch: roles[0]?.mainBranch ?? "main", roles };
+}
+
+/** Render the roster as the operator-facing text `tumwater diff` (no --role) prints: one
+ * line per role that holds pending work, in roster order; roles with no worktree and roles
+ * holding nothing are skipped. Every entry no-base means the baseline itself is gone — the
+ * per-role view's line says so, fleet-wide, exit 0 like every other degraded case. */
+export function renderFleetChange(view: FleetChangeView): string {
+  if (view.roles.length > 0 && view.roles.every((r) => r.state === "no-base")) {
+    return `main branch ${view.mainBranch} does not exist`;
+  }
+  const lines = view.roles
+    .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
+    .map(
+      (r) =>
+        `${r.role}: ${plural(r.ahead, "commit")} ahead of ${view.mainBranch}` +
+        (r.dirtyFiles.length > 0 ? `, ${plural(r.dirtyFiles.length, "uncommitted file")}` : ""),
+    );
+  return lines.length > 0 ? lines.join("\n") : "no pending changes";
 }
 
 /** The uncommitted patch's cap, matching aheadOfMainDiff's — one shared bound so neither

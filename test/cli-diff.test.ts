@@ -8,6 +8,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { ROLE_VALUE_ERROR } from "../src/cli-args.js";
+import { allRoleIds } from "../src/roles.js";
 
 // The `diff` command: the change a loop holds — its branch's unlanded commits (with the
 // patch) and its worktree's uncommitted edits — via the CLI the way cli-history tests
@@ -93,12 +94,8 @@ test("diff --json prints the collector's payload", async () => {
   assert.equal(payload.uncommittedDiff, "");
 });
 
-test("diff fails fast on a missing, empty, or unknown --role and rejects unknown flags", async () => {
+test("diff fails fast on an empty or unknown --role and rejects unknown flags", async () => {
   const { repo } = await seededFeatureRepo();
-  const missing = await cli(repo, "diff");
-  assert.equal(missing.code, 1);
-  assert.ok(missing.stderr.includes("diff needs --role"));
-
   const empty = await cli(repo, "diff", "--role");
   assert.equal(empty.code, 1);
   assert.ok(empty.stderr.includes(ROLE_VALUE_ERROR));
@@ -139,4 +136,60 @@ test("a configured baseBranch is the diff's baseline, not the checked-out branch
   const ghost = await cli(repo, "diff", "--role", "feature");
   assert.equal(ghost.code, 0);
   assert.equal(ghost.stdout.trim(), "main branch ghost does not exist");
+});
+
+// The fleet-wide form (`diff` with no --role): one line per loop holding pending work.
+
+test("fleet diff prints exactly the holding role's line with both counts", async () => {
+  const { repo, wt } = await seededFeatureRepo();
+  fs.appendFileSync(path.join(wt, "widget.md"), "more\n");
+  const r = await cli(repo, "diff");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "feature: 1 commit ahead of main, 1 uncommitted file");
+});
+
+test("fleet diff with nothing pending anywhere prints no pending changes, exit 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "diff fleet empty test");
+  const r = await cli(repo, "diff");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "no pending changes");
+});
+
+test("fleet diff on a missing baseline degrades to the per-role line, exit 0", async () => {
+  const { repo } = await seededFeatureRepo();
+  const cfg = loadConfig(repo);
+  cfg.baseBranch = "ghost";
+  writeConfig(repo, cfg);
+  const r = await cli(repo, "diff");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "main branch ghost does not exist");
+});
+
+test("fleet diff --json prints the roster: one entry per known role, no patch fields", async () => {
+  const { repo } = await seededFeatureRepo();
+  const r = await cli(repo, "diff", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as {
+    mainBranch: string;
+    roles: { role: string; branch: string; state: string; ahead: number; commits: unknown[]; dirtyFiles: string[] }[];
+  };
+  assert.equal(payload.mainBranch, "main");
+  assert.deepEqual(
+    payload.roles.map((e) => e.role),
+    allRoleIds(),
+  );
+  const feature = payload.roles.find((e) => e.role === "feature")!;
+  assert.equal(feature.state, "ready");
+  assert.equal(feature.branch, "tumwater/feature");
+  assert.equal(feature.ahead, 1);
+  assert.deepEqual(
+    (feature.commits as { subject: string }[]).map((c) => c.subject),
+    ["add widget.md"],
+  );
+  assert.deepEqual(feature.dirtyFiles, []);
+  for (const entry of payload.roles) {
+    assert.ok(!("diff" in entry));
+    assert.ok(!("uncommittedDiff" in entry));
+  }
 });

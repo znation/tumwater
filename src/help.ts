@@ -54,6 +54,11 @@ Usage:
                                    7d, like logs --since); --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload
+  tumwater diff [--json]           One line per loop holding pending work — the ahead-of-main
+                                   commit count and uncommitted-file count, no patch; roles
+                                   with no worktree or nothing pending are skipped, and a
+                                   missing baseline prints the per-role view's degradation
+                                   line; --json prints the {mainBranch, roles} roster
   tumwater diff --role <id> [--json]
                                    Show the change that loop holds: its branch's unlanded
                                    commits (one line each, plus the ahead-of-main patch) and

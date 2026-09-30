@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater diff` fleet-wide — one line per loop holding pending work, no `--role` needed (planned 2026-09-29)
+_Nothing planned yet._
+
+## Done
+
+### `tumwater diff` fleet-wide — one line per loop holding pending work, no `--role` needed (planned 2026-09-29, done 2026-09-30)
 
 - **Goal.** Between a loop's commit and its merge, its work lives only on its branch and
   worktree. The Done entry "`tumwater diff --role <id>` — show the change a loop holds"
@@ -75,8 +79,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
      `roles` holds one entry per known role in `knownRoleIdsCached` order with
      `state`/`ahead`/`commits`/`dirtyFiles` and no patch fields.
   4. `npm run test` passes; `tumwater help diff` shows both forms.
+- **Done 2026-09-30 (feature).** Implemented as planned, one deviation: the two new
+  interfaces (`FleetRoleChange`, `FleetChangeView`) stayed module-internal (no `export`)
+  because the exports lint requires every exported symbol to be used outside its own file
+  and the CLI and tests consume `collectFleetChanges`'s return type structurally.
 
-## Done
 
 ### `tumwater diff --role <id>` — show the change a loop holds: its branch's unlanded commits and its worktree's uncommitted edits (planned 2026-09-29, done 2026-09-29)
 
