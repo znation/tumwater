@@ -206,6 +206,81 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   }
 });
 
+// Ctrl+C from a terminal also reaches the orchestrator generation itself (same foreground
+// group): cmdRun's own SIGINT handler must stop the fleet gracefully — announce, abort
+// in-flight ticks — and hand both processes a clean exit, and a SECOND Ctrl+C must force the
+// generation out at once (exit 130) instead of waiting on a teardown that is not progressing.
+// Neither half was pinned: the supervisor-only SIGINT test above deliberately never signals
+// the child, and SIGTERM only covers the graceful half of the child's handling.
+test("a SIGINT reaching the orchestrator generation stops the fleet cleanly", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run child sigint");
+
+  // One enabled role keeps the startup burst small; a no-op pi ends every tick as no_change.
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  writeConfig(repo, cfg);
+
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
+    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+
+    // SIGINT straight to the orchestrator generation: the graceful stop path (announce, abort).
+    process.kill(info.pid, "SIGINT");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit after the generation's SIGINT; output so far:\n${s.out()}`);
+    assert.match(s.out(), /stopping — waiting for in-flight ticks/,
+      "the generation announces the graceful stop");
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
+    // A stop the operator asked for is not the fleet dying: no supervisor_exit trace.
+    assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,
+      `a clean Ctrl+C must not be recorded as a fleet death:\n${JSON.stringify(readEvents(repo))}`);
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
+test("a second Ctrl+C forces the orchestrator generation out at once", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run double sigint");
+
+  const cfg = defaultConfig();
+  for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
+  writeConfig(repo, cfg);
+
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run"]);
+  try {
+    await s.waitFor(
+      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      "the run banner and orchestrator event",
+    );
+    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+
+    // The first Ctrl+C starts the graceful stop; the second must not queue behind it —
+    // the operator pressed it to force the issue, so the generation exits 130 at once.
+    process.kill(info.pid, "SIGINT");
+    await new Promise((r) => setTimeout(r, 100)); // let the first handler mark stopping
+    process.kill(info.pid, "SIGINT");
+    const code = await exitCode(s.child);
+    assert.equal(code, 130, `expected the forced exit code; output so far:\n${s.out()}`);
+    // The generation died unasked (a forced exit, not a clean stop): the supervisor records
+    // the death and hands the operator the child's code back.
+    const down = eventsOfType(repo, "supervisor_exit");
+    assert.equal(down.length, 1, `expected one supervisor_exit event:\n${JSON.stringify(readEvents(repo))}`);
+    assert.equal(down[0]?.code, 130);
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
 // The `--role` guards of `run` (cmdRun): scoping is a once-round concept, the filter is
 // validated against the ENABLED role ids, and the startup gate is asked before any of it.
 // These were pinned only in the e2e tier (orchestrator-once.e2e.test.ts), which `npm test`
