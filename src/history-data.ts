@@ -6,7 +6,7 @@
  * prints" (column widths, terminal display padding), which change for different reasons —
  * and keeps core data collection out of the presentation layer, so a core consumer (as the
  * GUI's /api/history already is) never forces a core→ui import. */
-import { eventUsage, readEvents, tickStartMap, type HarnessEvent } from "./events.js";
+import { eventUsage, readEvents, tickSpanMs, tickStartMap, type HarnessEvent } from "./events.js";
 import { readEventsSince } from "./event-window.js";
 import { formatTimestamp } from "./datetime.js";
 import { squash } from "./text.js";
@@ -62,7 +62,6 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
     if (!e || e.type !== "tick_end") continue;
-    const startTs = starts.get(`${e.loop}#${e.tick}`);
     const usage = eventUsage(e);
     rows.push({
       ts: e.ts,
@@ -72,7 +71,7 @@ export function tickRows(events: HarnessEvent[], limit: number, role: string | n
       loop: String(e.loop),
       tick: Number(e.tick),
       result: String(e.result),
-      durationMs: startTs === undefined ? null : Math.max(0, e.ts - startTs),
+      durationMs: tickSpanMs(e, starts),
       usage: usageText(e),
       detail: squash(String(e.summary ?? e.error ?? ""), DETAIL_MAX),
     });

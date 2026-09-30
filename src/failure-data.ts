@@ -8,7 +8,7 @@
  * in failure-cluster.ts, shared with the error-storm reducer. */
 import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
-import { eventDayKey, eventRole, eventUsage, tickStartMap, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, eventUsage, tickSpanMs, tickStartMap, type HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, normalizeClusterKey, poolTimeoutKey, EXAMPLE_MAX, type Cluster } from "./failure-cluster.js";
@@ -225,8 +225,7 @@ function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
     ? ev.durationMs
     : null;
   if (own !== null) return own;
-  const startTs = starts.get(`${ev.loop}#${ev.tick}`);
-  return startTs === undefined ? 0 : Math.max(0, ev.ts - startTs);
+  return tickSpanMs(ev, starts) ?? 0;
 }
 
 /** Fold the window's tick_ends into the time-and-spend table and the loss ranking. Pairing

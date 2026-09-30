@@ -230,6 +230,16 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   return starts;
 }
 
+/** The start→end span of the `tick_end` event `ev` against `starts` (tickStartMap's pairing):
+ * the `${loop}#${tick}` lookup and the clamp to non-negative, in one place beside the map
+ * they index, so the key format and the span rule are spelled once. null when the start is
+ * missing (rotation cut it); callers decide what an unpaired end costs — the failure digest
+ * prices it as 0, history renders it as "—". */
+export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
+  const startTs = starts.get(`${ev.loop}#${ev.tick}`);
+  return startTs === undefined ? null : Math.max(0, ev.ts - startTs);
+}
+
 /** Read the last `limit` events (best-effort; skips malformed lines).
  * A limit that is not a positive number reads as an empty window — `[]` — matching
  * readTranscriptTail's zero-boundary semantics (the raw `lines.slice(-limit)` below would not: `slice(-0)` is
