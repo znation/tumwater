@@ -28,17 +28,17 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
 export const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
 /** Wire bytes readBody is holding right now, across all in-flight requests. Deliberately
- * observable: the oversized-body guarantee ("buffering stops at the cap, the buffer is
- * released at rejection") is a statement about exactly these bytes, so the regression test
- * reads this instead of a whole-process heap delta — heap counts garbage and unrelated
- * allocations too, so host noise can flip such a measurement either way. The counter rises
- * only while a request is still under the cap, is zeroed the moment a request settles, and
- * can therefore never exceed the cap plus one chunk. */
+ * observable (bufferedBodyBytes below hands it to tests): the oversized-body guarantee
+ * ("buffering stops at the cap, the buffer is released at rejection") is a statement about
+ * exactly these bytes, so the regression test reads this instead of a whole-process heap
+ * delta — heap counts garbage and unrelated allocations too, so host noise can flip such a
+ * measurement either way. The counter rises only while a request is still under the cap, is
+ * zeroed the moment a request settles, and can therefore never exceed the cap plus one
+ * chunk. */
 let inFlightBufferedBytes = 0;
 
-/** The wire bytes readBody is currently holding, across all in-flight requests — the
- * observable the oversized-body regression test reads (see the counter below for why it is
- * these bytes and not a heap delta). */
+/** inFlightBufferedBytes, exposed for the oversized-body regression test's assertions — the
+ * counter above carries the rationale for why it is these bytes and not a heap delta. */
 export function bufferedBodyBytes(): number {
   return inFlightBufferedBytes;
 }
