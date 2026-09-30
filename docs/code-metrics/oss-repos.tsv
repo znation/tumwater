@@ -1,0 +1,8 @@
+# name	url	tag	commit	production root
+typedoc	https://github.com/TypeStrong/typedoc.git	v0.22.16	a4945d39ca6694f209651381f9aad16efb1661cf	src/
+graphql-js	https://github.com/graphql/graphql-js.git	v16.5.0	1f8ba95c662118452bd969c6b26ba4e9050c55da	src/
+ts-node	https://github.com/TypeStrong/ts-node.git	v10.8.0	78d103ffe7e899471081f5a88ac4bd61e9a42184	src/
+socket.io	https://github.com/socketio/socket.io.git	4.5.1	5ab8289c0acd33d7230541f4fe3be5ccca21a556	lib/
+npm-check-updates	https://github.com/raineorshine/npm-check-updates.git	v13.0.3	1ba4a72ae7ba1ac663423813bd08391f09d8f471	src/
+yargs	https://github.com/yargs/yargs.git	v17.5.1	02515116f818fe93ce035139c16bf2953b4de43a	lib/
+nest	https://github.com/nestjs/nest.git	v8.4.6	9407ec90b38fad7e1c60add438d0dbbccfe6dc7c	packages/
