@@ -5,6 +5,48 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### GitHub CI on main builds the installable npm package and uploads it as a workflow artifact (planned 2026-09-30)
+
+**Goal.** Every push to `main` on GitHub produces a downloadable, installable package — the packed
+npm tarball — attached to that CI run as a workflow artifact, so a user can grab the current state
+of main without a tag release or npm publish.
+
+**Approach.** Extend `.github/workflows/ci.yml` (currently a single `test` job) with a second job,
+`package`, that runs only on pushes to main (`if: github.event_name == 'push' && github.ref ==
+'refs/heads/main'`) and never on pull requests:
+
+1. `actions/checkout@v4` + `actions/setup-node@v4` with `node-version: 22` and `cache: npm`, matching
+   `release.yml`'s pins (the release workflow is the house style for packaging steps).
+2. `npm ci`.
+3. `npm pack` — `prepack` already runs `npm run build` (`rm -rf dist && tsc && node
+   scripts/stamp-build.mjs`), so the tarball always carries a freshly stamped `dist/`. Do NOT run the
+   test suite in this job: the existing `test` job already gates the run, and duplicating it doubles
+   CI minutes for no new signal.
+4. Upload with `actions/upload-artifact@v4`: `name: tumwater-${{ github.sha }}` (the sha disambiguates
+   artifacts across runs, which would otherwise collide on one name), `path: tumwater-*.tgz`,
+   `retention-days: 30` (a main build is a moving target; release tarballs keep living on the releases
+   page via `release.yml`).
+
+Notes for the implementer:
+- The job needs no git identity config (the suite's fixture commits only matter when tests run; the
+  `test` job already sets one).
+- Keep both jobs independent (no `needs:`) so a packaging failure cannot block the test report and
+  vice versa; GitHub marks the run red either way.
+- No new dependencies, no package.json changes — `files`/`bin` are already declared there and
+  `prepack` is already wired.
+
+**Files touched.** `.github/workflows/ci.yml` only.
+
+**Acceptance criteria.**
+- A push to main produces a workflow run containing a `package` job whose artifact is the packed
+  tarball (one `.tgz`, name `tumwater-<version>-<sha>`), downloadable from the run page.
+- Pull-request runs and pushes to non-main branches run only the `test` job — no artifact upload.
+- The workflow YAML is valid (`node -e "…yaml check…"` is not available offline; verify by eyeballing
+  structure against `release.yml` and running `npm pack` locally to confirm `prepack` produces
+  `tumwater-<version>.tgz`).
+- `npm run test` stays green (nothing in the suite can see this change, but the tick's gate still
+  applies).
+
 ## Done
 
 ### Quiet hours: surface the window on the dashboards (planned 2026-09-30, done 2026-09-30) — part 2/2, observability
