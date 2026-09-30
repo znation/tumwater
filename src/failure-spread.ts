@@ -15,6 +15,7 @@
  * carry — so it is a reducer rather than a stateless predicate. */
 
 import { type HoldKind, type HoldObservation } from "./fleet-hold.js";
+import { rankCountEntries } from "./rank.js";
 
 /** Failures of one kind within the window that trip the alarm. Six in thirty minutes: the
  * same magnitude as the 2026-09-29 storm's recorded cluster (10× across 7 roles) at the
@@ -76,7 +77,7 @@ export function failureSpread(
   }
   const counts = new Map<HoldKind, number>();
   for (const o of recent) counts.set(o.kind, (counts.get(o.kind) ?? 0) + 1);
-  const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+  const top = rankCountEntries(counts)[0];
   if (!top || top[1] < FAILURE_SPREAD_COUNT) {
     return { recent, active: false, kind: prev.kind };
   }

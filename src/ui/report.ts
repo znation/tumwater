@@ -3,6 +3,7 @@
  * reads — so the bounds argued at collection hold here unchanged), plus `report`'s CLI command
  * half (cmdReport), which parses the flags and drives the collectors and the renderers. */
 import { collectReport, collectReportSince, type ReportData, type ReportDay, type SinceReport } from "../report-data.js";
+import { rankCountEntries } from "../rank.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
@@ -26,10 +27,11 @@ function barWidth(v: number, max: number): number {
   return Math.max(1, Math.round((20 * v) / max));
 }
 
-/** Rank one role map by total desc then name asc so identical totals render deterministically.
+/** Rank one role map by total desc then name asc so identical totals render deterministically —
+ * rank.ts's rule, so the report cannot drift from the other counters that rank the same way.
  * Callers filter/format the ranked pairs. */
 function rankedRoleMap(totals: Record<string, number>): [string, number][] {
-  return Object.entries(totals).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return rankCountEntries(Object.entries(totals));
 }
 
 /** Window totals per role: fold the per-day role maps (any `Record<string, number>` day field,
