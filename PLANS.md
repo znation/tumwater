@@ -5,7 +5,118 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Backlog moves cut and paste under the existing heading: prompt wording for feature, bugfix, and conflict resolution (planned 2026-09-30) — part 1/2, the prompts
+
+**Goal.** Stop loops from rewriting a backlog file's section headings when they move an entry.
+On 2026-09-25 the feature loop's `run --once` commit `52cbadd1` marked its plan done by
+rewriting the top of PLANS.md in place (`## Planned` / `### X` became `## Planned` /
+`_None yet._` / `## Done` / `### X (…, done …)`) and never touched the existing `## Done`
+further down. That left PLANS.md with two `## Done` headings. The next three feature commits
+(`761af2b7`, `758e6de1`, `f91ed2b2`) repeated the shortcut, each adding one heading and
+removing one, so the count stayed at two. Then the timed-pause plan's landing (`9eaae5ac`)
+hit a rebase conflict. The conflict-resolution run stripped the markers and kept both
+sides, so the new plan ended up after a Done entry, under the first `## Done`, and the
+file had three `## Done` headings. The plan sat outside `## Planned` until the clean loop
+re-filed it (`b7ab97c7`, 14:38). The root cause is the wording: the feature prompt says
+"move it to a Done section with the date" and bugfix says "move it to a Fixed section".
+Both read as "create a section", and nothing says the heading already exists.
+
+**Approach.**
+- src/roles.ts, `feature` role `find` text: replace "(move it to a Done section with the
+  date)" with wording that says to cut the entry out of `## Planned`, paste it as the first
+  entry under the file's existing `## Done` heading with the done date in its heading, and
+  never add, remove, or rename a `## ` heading. When the moved entry was the last one under
+  Planned, `## Planned` keeps a `_None yet._` placeholder. `grep -n '^## ' PLANS.md` should
+  list the same headings before and after the edit.
+- src/roles.ts, `bugfix` role `find` text: the same fix for "(move it to a Fixed section with
+  the date)", naming `## Open` → the existing `## Fixed`.
+- src/gate-prompts.ts `buildConflictPrompt`: add one rule for backlog files. When a
+  conflicted file is PLANS.md, BUGS.md, or QUESTIONS.md, resolve section headings as
+  structure, not text: the result keeps exactly one of each `## ` heading, and every
+  `### ` entry sits under the section its own side put it in (a new plan stays under
+  `## Planned` even when main's side moved entries around it). Keep this generic, e.g. "for
+  markdown backlog files, the `## ` section headings are structure: never duplicate one" —
+  the prompt must not grow file-specific branches for every name.
+- Keep wording shared, not repeated: if the two role strings end up with the same
+  sentence, extract a helper in src/role-guidance.ts (the home of `PLAN_SIZING` and the
+  other shared role clauses) that takes the section names.
+
+**Files touched.** src/roles.ts, src/gate-prompts.ts, possibly src/role-guidance.ts;
+test/prompt.test.ts and test/gate-prompts.test.ts.
+
+**Acceptance criteria.**
+- The feature and bugfix prompts name the existing `## Done` / `## Fixed` heading and forbid
+  adding a second one; neither says "a Done section" or "a Fixed section" anymore.
+- `buildConflictPrompt` carries the backlog-heading rule; test/gate-prompts.test.ts pins it
+  beside the existing "combining the intent of BOTH sides" assertion.
+- test/prompt.test.ts pins the new feature and bugfix wording.
+- `npm run test` passes.
+- Part 2/2 (the deterministic check below) is the backstop; this part only makes the
+  failure rarer, so it lands first and on its own.
+
+### Backlog structure check at the review gate and the in-lock landing re-check (planned 2026-09-30) — part 2/2, the backstop
+
+**Goal.** A change that leaves PLANS.md, BUGS.md, or QUESTIONS.md with a duplicated or
+dropped `## ` section heading must not reach main. Today nothing checks backlog structure.
+The Planned reader in src/backlog.ts (`parseEntryDetails`) stops at the first `## `
+heading, so extra Done headings parse cleanly, and the damage stays invisible until an entry
+ends up on the wrong side of one. Markdown-only diffs skip both the build check and the model
+reviewer (`isExemptDiff` over `config.review.exemptPaths`, default `*.md`), so the plan and
+clean loops' landings get no structural check at all. On 2026-09-25 the malformed files
+came from two paths: a feature commit's own edit (`52cbadd1`), and an md-only plan landing
+whose conflict resolution added a third `## Done` (`9eaae5ac`). A check at the review gate
+alone would have caught the first but not the second, because the conflict resolution
+happens after the gate, inside the landing.
+
+**Approach.** Follow the `falseFixReason` precedent (src/fix-claim.ts): a deterministic,
+no-pi check that returns a rejection reason or nothing, called from the same two places.
+- New module src/backlog-structure.ts exporting `backlogStructureReason(wt, mainBranch,
+  files)`. It runs only when `files` includes PLANS.md, BUGS.md, or QUESTIONS.md. For each
+  touched file it reads the `## ` headings (fence-aware, reusing backlog.ts's fence scanner
+  (`fenceTracker` / `parseEntryDetails`) so a `## Done` quoted inside a code block is not a
+  heading) on the tree being landed and on the diff's merge-base (the same base
+  `falseFixReason` compares against). It returns a reason naming the file and the heading
+  when:
+  (a) any `## ` title appears more than once, or
+  (b) a `## ` title present on the base is missing on the head.
+  Do NOT hard-code the section names: the rule is "same heading set as the base, no
+  duplicates", so a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh
+  repo seeded from src/init.ts's templates both pass unchanged. A base that already has a
+  duplicate must not block unrelated edits forever: rule (a) fires only when the head's
+  count for that title is greater than the base's (a change that removes a duplicate always
+  passes).
+- src/review.ts, the gate: call it on BOTH paths, for exempt (md-only) diffs next to
+  `falseFixReason`, and for non-exempt diffs as a deterministic rejection before the build
+  pre-check (no pi run spent), through the same `reject([...])` helper so the author's next
+  tick sees the reason.
+- src/landing-merge.ts `verifyLanding`: call it after the rebase on both branches (exempt
+  and full check), before `runScopedBuildCheck`. A structural failure returns false
+  (→ `merge_blocked`), like a false fix. Log a `warning` event naming the file and heading,
+  so a conflict resolution that broke structure shows on the dashboards instead of reading
+  as an unexplained block. Keep the existing early return for an unchanged rebase: that
+  tree already passed the gate's check.
+- Optional, same change if small: add a `tumwater doctor` line reporting a duplicated
+  heading already present on main (src/doctor-checks.ts already has a fix-claims check to
+  copy the shape from), so an existing malformed file is visible without waiting for the
+  next edit to trip the gate.
+
+**Files touched.** src/backlog-structure.ts (new), src/review.ts, src/landing-merge.ts,
+optionally src/doctor-checks.ts; test/backlog-structure.test.ts (new), plus one gate test
+and one landing test beside the existing false-fix ones.
+
+**Acceptance criteria.**
+- Unit: a PLANS.md head with two `## Done` headings where the base had one yields a reason
+  naming `PLANS.md` and `## Done`; a head that drops `## Planned` yields one; a `## Done`
+  inside a fenced block is ignored; a head whose base already had two `## Done` and still
+  has two passes; a head that removes a duplicate passes; BUGS.md with `## Open` /
+  `## Fixed` / `## Verified` unchanged passes.
+- Gate: an md-only diff that duplicates `## Done` is rejected with that reason and spends
+  no pi run; a code diff that does the same is rejected before the build pre-check runs.
+- Landing: reproduce the 2026-09-25 shape in a fixture repo. The branch adds a plan under
+  `## Planned`; main moves the only planned entry to Done by adding a `## Done` above it;
+  the rebase conflicts and a fake conflict resolver keeps both sides. `verifyLanding`
+  refuses (merge_blocked) and logs the warning; main is unchanged.
+- `npm run test` passes; the existing false-fix gate and landing tests are unchanged.
 
 ## Done
 
