@@ -3,15 +3,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs";
 
-// Before any dist/ import below: a tree without a build would otherwise die here with a raw
-// ERR_MODULE_NOT_FOUND stack for dist/src/roles.js (repro: rm -rf dist && node scripts/diff-check.mjs)
-// instead of the fix. This script's whole subject is comparing builds, so a missing build is
-// not an edge case — name it and the command that produces one.
-if (!fs.existsSync(new URL("../dist/src/roles.js", import.meta.url))) {
-  console.error("diff-check compares compiled builds: run `npm run build` first (dist/src is missing).");
-  process.exit(1);
-}
+// Before any dist/ import below: a tree without a build would otherwise die with a raw
+// ERR_MODULE_NOT_FOUND stack instead of the fix. This script's whole subject is comparing
+// builds, so a missing build is not an edge case — name it and the command that produces one.
+requireDistBuild("../dist/src/roles.js", "diff-check compares compiled builds");
 
 // Same guard for the baseline side: on a fresh checkout (or after a /tmp cleanup) no baseline
 // has ever been staged, and the import below would die with a raw ERR_MODULE_NOT_FOUND stack
@@ -25,33 +22,11 @@ if (!fs.existsSync("/tmp/tw-baseline/dist/src/ui/status.js")) {
   process.exit(1);
 }
 
-// Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
-// drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
-const { allRoleIds } = await import("../dist/src/roles.js");
-const ROLES = allRoleIds();
+const ROLES = await distRoleIds();
 
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-diff-"));
-  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
-  fs.mkdirSync(path.join(root, ".tumwater", "log"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".tumwater", "state", "orchestrator.json"), JSON.stringify({ pid: process.pid }));
-  const startedAt = Date.now() - 90_000;
-  const endedAt = Date.now() - 3600_000;
-  const logLines = [
-    JSON.stringify({ type: "session", id: "abc" }),
-    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "I will implement the plan now." }], usage: { totalTokens: 4200, output: 310 } } }),
-    JSON.stringify({ type: "tool_execution_start", toolName: "bash", args: { command: "npm test" } }),
-    JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Tests pass, committing." }], usage: { totalTokens: 5100, output: 280 } } }),
-  ].join("\n") + "\n";
-  for (const role of ROLES) {
-    const st = {
-      role, ticks: 3, commits: 2, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "x",
-      generatedTokens: 100, peakContextTokens: 4000, totalCostUsd: 0.5, dayStamp: "", dayCostUsd: 0.2,
-      running: true, phase: "pi", lastTickStartedAt: startedAt, lastTickEndedAt: endedAt,
-    };
-    fs.writeFileSync(path.join(root, ".tumwater", "state", `${role}.json`), JSON.stringify(st));
-    fs.writeFileSync(path.join(root, ".tumwater", "log", `${role}.pi.jsonl`), logLines);
-  }
+  seedLiveFleet(root, ROLES);
   // One idle loop and one review-phase loop to cover the non-working branches.
   for (const [role, patch] of [["qa", { running: false, phase: undefined }], ["steward", { phase: "review" }]]) {
     const st = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "state", `${role}.json`), "utf8"));

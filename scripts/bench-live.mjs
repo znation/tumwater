@@ -6,47 +6,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs";
 
-// Before the dist/ imports below: a tree without a build would otherwise die here with a raw
-// ERR_MODULE_NOT_FOUND stack for dist/src/ui/status.js (repro: rm -rf dist && node scripts/bench-live.mjs)
-// instead of the fix. Name the command that produces a build — the benchmark's numbers mean
-// nothing against a stale one anyway, so a missing dist is not an edge case.
-if (!fs.existsSync(new URL("../dist/src/ui/status.js", import.meta.url))) {
-  console.error("bench-live benchmarks the compiled build: run `npm run build` first (dist/src is missing).");
-  process.exit(1);
-}
+// Before the dist/ imports below: a tree without a build would otherwise die with a raw
+// ERR_MODULE_NOT_FOUND stack instead of the fix. The benchmark's numbers mean nothing against
+// a stale one anyway, so a missing dist is not an edge case.
+requireDistBuild("../dist/src/ui/status.js", "bench-live benchmarks the compiled build");
 
 const { snapshot } = await import("../dist/src/ui/status.js");
 const { renderStatus } = await import("../dist/src/ui/status-render.js");
 
-// Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
-// drifted — it silently omitted `telemetry` — so the fixture tracks the real role set instead.
-const { allRoleIds } = await import("../dist/src/roles.js");
-const ROLES = allRoleIds();
+const ROLES = await distRoleIds();
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-bench-"));
-fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
-fs.mkdirSync(path.join(root, ".tumwater", "log"), { recursive: true });
-// A live orchestrator (this process) so snapshot reports running and live detail renders.
-fs.writeFileSync(path.join(root, ".tumwater", "state", "orchestrator.json"), JSON.stringify({ pid: process.pid }));
-
-// A realistic raw log tail: session start + a few assistant turns with usage.
-const logLines = [
-  JSON.stringify({ type: "session", id: "abc" }),
-  JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "I will implement the plan now." }], usage: { totalTokens: 4200, output: 310 } } }),
-  JSON.stringify({ type: "tool_execution_start", toolName: "bash", args: { command: "npm test" } }),
-  JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Tests pass, committing." }], usage: { totalTokens: 5100, output: 280 } } }),
-].join("\n") + "\n";
-
-for (const role of ROLES) {
-  const st = {
-    role, ticks: 3, commits: 2, nextRunAt: 0, backoffSeconds: 0, lastMainHead: "x",
-    generatedTokens: 100, peakContextTokens: 4000, totalCostUsd: 0.5, dayStamp: "", dayCostUsd: 0.2,
-    running: true, phase: "pi", lastTickStartedAt: Date.now() - 90_000, lastTickEndedAt: Date.now() - 3600_000,
-  };
-  fs.writeFileSync(path.join(root, ".tumwater", "state", `${role}.json`), JSON.stringify(st));
-  fs.writeFileSync(path.join(root, ".tumwater", "log", `${role}.pi.jsonl`), logLines);
-}
+seedLiveFleet(root, ROLES);
 
 // Warm up: first frame seeds tail state and stat caches.
 snapshot(root);
