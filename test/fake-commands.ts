@@ -54,3 +54,19 @@ export function pathPrepend(dir: string): () => void {
     process.env.PATH = oldPath;
   };
 }
+
+/** Replace PATH entirely for the duration of a test — the isolation the suite's "no npm on
+ * PATH", "no git on PATH", and wrapper-only- resolves-pi tests need, where the real
+ * executables must NOT stay reachable (pathPrepend cannot express that). Single home for the
+ * save/replace/restore idiom those sites repeat, so a restore can never be forgotten and the
+ * undefined-PATH edge (restore by deleting, two sites once hand-rolled differently from the
+ * rest) cannot drift per site. Returns a restore function for the caller's finally. */
+export function pathReplace(value: string | undefined): () => void {
+  const oldPath = process.env.PATH;
+  if (value === undefined) delete process.env.PATH;
+  else process.env.PATH = value;
+  return () => {
+    if (oldPath === undefined) delete process.env.PATH;
+    else process.env.PATH = oldPath;
+  };
+}

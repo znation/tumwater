@@ -22,6 +22,7 @@ import { pidAlive } from "../src/process.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo } from "./fake-pi.js";
+import { pathReplace } from "./fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -155,14 +156,13 @@ test("runPi spawns the configured agentBin — a wrapper script behaves like the
 
   const config = defaultConfig();
   config.agentBin = wrapper;
-  const oldPath = process.env.PATH;
-  process.env.PATH = ""; // no pi anywhere on PATH — only agentBin can resolve
+  const restorePath = pathReplace(""); // no pi anywhere on PATH — only agentBin can resolve
   try {
     const result = await runPi(runPiFixture(dir, { config }));
     assert.equal(result.ok, true, `expected the wrapper-run pi to succeed: ${result.errorMessage}`);
     assert.match(result.finalText, /wrapped:1/, "the wrapper exported its env var before exec");
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 
@@ -857,15 +857,14 @@ test("a missing pi binary fails the tick with an error", async () => {
   await initProject(repo, "spawn failure test");
   // A PATH with git but no pi, so only the pi spawn fails.
   const binDir = gitOnlyBinDir();
-  const oldPath = process.env.PATH;
-  process.env.PATH = binDir;
+  const restorePath = pathReplace(binDir);
   try {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
     assert.match(String(runner.state.lastError), /failed to spawn pi/);
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 

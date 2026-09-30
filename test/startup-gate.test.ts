@@ -14,6 +14,7 @@ import {
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
+import { pathReplace } from "./fake-commands.js";
 
 // `tumwater run`'s startup gate (src/startup-gate.ts) in-process: the one answer cmdRun fails
 // fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with
@@ -84,13 +85,11 @@ test("each unmet repo precondition names its own fix: not a repo, no commits, no
   // With git absent from PATH entirely the verdict is the missing binary: the failed probe
   // must not be misread as "not a git repository", which would point at the wrong fix — the
   // exact confusion the binary check exists to prevent (the comment on it in startup-gate.ts).
-  const savedPath = process.env.PATH;
+  const restorePath = pathReplace("");
   try {
-    process.env.PATH = "";
     assert.equal(await repoNotReady(unborn), GIT_MISSING_MESSAGE);
   } finally {
-    if (savedPath === undefined) delete process.env.PATH;
-    else process.env.PATH = savedPath;
+    restorePath();
   }
 });
 

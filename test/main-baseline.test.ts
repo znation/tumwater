@@ -10,7 +10,7 @@ import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
-import { projManifest } from "./fake-commands.js";
+import { pathReplace, projManifest } from "./fake-commands.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -133,14 +133,13 @@ test("checkMainBaseline never caches red for an environmental skip: with npm mis
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node.
   const partialBin = gitOnlyBinDir("no-npm-");
-  const oldPath = process.env.PATH;
-  process.env.PATH = partialBin;
+  const restorePath = pathReplace(partialBin);
   try {
     const skipped = await checkMainBaseline(wt, CFG);
     assert.equal(skipped.baseline, null, "a skip never blocks authoring");
     assert.equal(skipped.skipReason, "no-npm");
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 
   // npm is back: the same SHA must be RE-CHECKED (the skip was never cached) and now reports red.

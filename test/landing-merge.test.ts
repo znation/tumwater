@@ -12,7 +12,7 @@ import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { projManifest, writeScript } from "./fake-commands.js";
+import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
@@ -484,13 +484,12 @@ test("an environmental skip of the re-check warns and still lands — never fail
   // environmental skip, not a red build. git alone is symlinked into the restricted bin dir,
   // so every other step of the landing resolves exactly as usual.
   const binDir = gitOnlyBinDir("no-npm-bin-");
-  const oldPath = process.env.PATH;
-  process.env.PATH = binDir;
+  const restorePath = pathReplace(binDir);
   let result: string;
   try {
     result = await mergeToMain(ctx, wt, "branch work");
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 
   assert.equal(result, "changed", "a skip is environmental — the landing proceeds (fail-open)");

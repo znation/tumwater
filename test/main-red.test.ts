@@ -8,7 +8,7 @@ import { readEvents } from "../src/events.js";
 import { shortSha } from "../src/text.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
-import { pathPrepend, writeScript } from "./fake-commands.js";
+import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
@@ -157,8 +157,7 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
   // A PATH that keeps git (the helper keys by HEAD) but drops npm — the real-world shape of a
   // machine without node. The skip must warn and proceed, never block authoring.
   const partialBin = gitOnlyBinDir("no-npm-");
-  const oldPath = process.env.PATH;
-  process.env.PATH = partialBin;
+  const restorePath = pathReplace(partialBin);
   try {
     assert.equal(await mainRedGate(root, ROLE, wt), null, "an environmental skip never blocks");
     assert.equal(runsOf(counter), 0, "nothing ran — npm could not even start");
@@ -180,7 +179,7 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
       `skip reason in warning: ${(warning as { message?: string }).message}`,
     );
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 
@@ -274,14 +273,13 @@ test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async
   const { root, wt } = baselineFixture(ROLE, script);
   // A PATH that keeps git but drops npm — the check cannot run, so it is not evidence of red.
   const partialBin = gitOnlyBinDir("no-npm-bugfix-");
-  const oldPath = process.env.PATH;
-  process.env.PATH = partialBin;
+  const restorePath = pathReplace(partialBin);
   try {
     assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
     assert.equal(runsOf(counter), 0, "nothing ran");
     assert.equal(eventsOfType(root, "warning").length, 0);
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 

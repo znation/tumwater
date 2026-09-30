@@ -12,7 +12,7 @@ import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { projManifest, writeScript } from "./fake-commands.js";
+import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -240,8 +240,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
   const gitBin = gitOnlyBinDir();
 
-  const oldPath = process.env.PATH;
-  process.env.PATH = `${piDir}:${gitBin}`; // pi + git only — no npm anywhere
+  const restorePath = pathReplace(`${piDir}:${gitBin}`); // pi + git only — no npm anywhere
   try {
     const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
@@ -265,6 +264,6 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     const harnessEvents = harnessWarnings(repo);
     assert.equal(harnessEvents.length, 0, `no verified-red warning for an unverified main:\n${JSON.stringify(harnessEvents)}`);
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });

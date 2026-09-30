@@ -14,6 +14,7 @@ import {
   withoutLaunchServicesCheckIn,
 } from "../src/process.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
 // The liveness probe underpins two recovery paths: lock.ts's stale-holder check (a dead
@@ -180,13 +181,11 @@ test("systemProcessProbe.cwds rejects when no lookup could run at all — no lso
   // hand back a silent empty map that would read as "no orphans" in doctor's check.
   if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
   const emptyBin = tmpdir("no-lsof-");
-  const originalPath = process.env.PATH;
-  process.env.PATH = emptyBin;
+  const restorePath = pathReplace(emptyBin);
   try {
     await assert.rejects(systemProcessProbe.cwds([process.pid]));
   } finally {
-    if (originalPath === undefined) delete process.env.PATH;
-    else process.env.PATH = originalPath;
+    restorePath();
   }
 });
 

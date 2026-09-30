@@ -7,7 +7,7 @@ import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/events.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
-import { writeScript } from "./fake-commands.js";
+import { pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
@@ -139,8 +139,7 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
   cfg.agentBin = stub;
   writeConfig(repo, cfg);
 
-  const oldPath = process.env.PATH;
-  process.env.PATH = binDir; // spawnCli copies process.env, so the child sees this PATH
+  const restorePath = pathReplace(binDir); // spawnCli copies process.env, so the child sees this PATH
   const s = spawnCli(repo, ["run"]);
   try {
     await s.waitFor(
@@ -153,7 +152,7 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
   } finally {
     s.kill();
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 

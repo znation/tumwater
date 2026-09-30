@@ -12,7 +12,7 @@ import { readEvents } from "../src/events.js";
 import { pidAlive } from "../src/process.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
-import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
+import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 /** True while any process in the group `pgid` exists — a signal-0 send to the whole group. */
@@ -550,14 +550,13 @@ test("runBuildCheck skips (not fails closed) when npm is missing from PATH", asy
   // A spawn failure before anything ran must classify as environmental: a machine without npm
   // would otherwise fail-closed and discard every code change through the strike cap.
   const emptyBin = tmpdir("no-npm-");
-  const oldPath = process.env.PATH;
-  process.env.PATH = emptyBin; // no npm (execFile resolves bare commands via PATH)
+  const restorePath = pathReplace(emptyBin); // no npm (execFile resolves bare commands via PATH)
   try {
     const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "skipped");
     assert.equal(outcome.skipReason, "no-npm");
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 
@@ -617,13 +616,12 @@ test("runBuildCheck proceeds when git is missing from PATH: a check that never t
     const found = sh(wt, "which", tool).trim();
     if (found) fs.symlinkSync(found, path.join(bin, tool));
   }
-  const oldPath = process.env.PATH;
-  process.env.PATH = bin; // node + npm + sh, no git
+  const restorePath = pathReplace(bin); // node + npm + sh, no git
   try {
     const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
     assert.equal(outcome.status, "passed");
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 

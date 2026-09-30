@@ -44,7 +44,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
-import { pathPrepend, writeScript } from "./fake-commands.js";
+import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, seedCommit, sh, tmpdir } from "./repo-fixtures.js";
 
 test("isGitRepo and hasCommits", async () => {
@@ -846,8 +846,7 @@ test("runGit names the spawn failure when git cannot be started (empty stderr)",
   const repo = makeRepo();
   // A PATH holding no git: execFile then fails with code "ENOENT" and an EMPTY stderr —
   // pre-fix, `e.stderr ?? String(err)` kept the empty string and the message ended in ": ".
-  const oldPath = process.env.PATH;
-  process.env.PATH = tmpdir("no-git-");
+  const restorePath = pathReplace(tmpdir("no-git-"));
   try {
     await assert.rejects(
       runGit(repo, ["status"]),
@@ -856,7 +855,7 @@ test("runGit names the spawn failure when git cannot be started (empty stderr)",
         err.message === `git status failed (ENOENT): spawn git ENOENT`,
     );
   } finally {
-    process.env.PATH = oldPath;
+    restorePath();
   }
 });
 
