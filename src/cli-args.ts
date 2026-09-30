@@ -157,6 +157,36 @@ interface FlagSpec {
   missingValue?: string;
 }
 
+/** A `--flag=value` token's flag name ("--role" from "--role=feature"), or null when the
+ * token is not in equals form. "--=x" and bare "--" carry no flag name and stay null. */
+function equalsFormFlag(arg: string): string | null {
+  if (!arg.startsWith("--")) return null;
+  const eq = arg.indexOf("=");
+  return eq > 2 ? arg.slice(0, eq) : null;
+}
+
+/** The one refusal for the `--flag=value` spelling this CLI does not accept: the flag named
+ * before the "=" is KNOWN, so the caller's generic "unknown argument" would misreport a real
+ * flag as a misspelling — instead name the offending token and the accepted space-separated
+ * spelling. Silent for tokens not in equals form or naming no known flag, so the caller's own
+ * unknown-argument error still fires. Runs in every parser's unknown-flag gate (the
+ * rejectUnknownArgs loop, parseInitArgs, parsePromptArgs), so no command accepts or
+ * misreports the form. */
+function rejectEqualsForm(
+  arg: string,
+  specs: readonly { names: readonly string[]; value?: boolean; valueName?: string }[],
+): void {
+  const name = equalsFormFlag(arg);
+  if (name === null) return;
+  const spec = specs.find((s) => s.names.includes(name));
+  if (!spec) return;
+  fail(
+    spec.value
+      ? `${arg} is not accepted — give the value as a separate token: \`${spec.names[0]} ${spec.valueName ?? "<value>"}\``
+      : `${arg} is not accepted — ${spec.names[0]} takes no value (give it on its own)`,
+  );
+}
+
 /** The missing-value error parseRoleFlag and parsePromptArgs share with ROLE_FLAG's trailing
  * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
 export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
@@ -217,6 +247,9 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
     const spec = claim.get(arg);
     if (spec === undefined) {
+      // An equals-form token names a real flag; refuse it with its own message before the
+      // generic "unknown argument" misreports `--role=feature` as a misspelling.
+      rejectEqualsForm(arg, specs);
       const valid = specs
         .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
         .join(", ");
@@ -245,9 +278,17 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
   if (extra !== undefined) fail(`unexpected argument ${JSON.stringify(extra)} — ${reason}`);
 }
 
-/** init's valueless flags (plans/portability.md §7/7, correction 1): each at most once, and
- * never prompt content. */
-const INIT_BOOLEAN_FLAGS: readonly string[] = ["--adopt", "--dry-run"];
+/** init's flag vocabulary (plans/portability.md §7/7, correction 1): --file and --branch take
+ * a value; --adopt and --dry-run are valueless and are never prompt content. One definition,
+ * shared by the unknown-flag loop and the `--flag=value` refusal inside it. */
+const INIT_FLAG_SPECS: readonly FlagSpec[] = [
+  { names: ["--file"], value: true, valueName: "<path>" },
+  { names: ["--branch"], value: true, valueName: "<name>" },
+  { names: ["--adopt"] },
+  { names: ["--dry-run"] },
+];
+/** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
+const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
 
 /** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
  * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
@@ -263,8 +304,11 @@ export function parseInitArgs(args: string[]): {
   adopt: boolean;
   dryRun: boolean;
 } {
-  const known = ["--file", "--branch", ...INIT_BOOLEAN_FLAGS];
+  const known = INIT_FLAG_SPECS.flatMap((s) => s.names);
   for (const arg of args) {
+    // An equals-form token names a real flag; refuse it with its own message before the
+    // generic unknown-argument error misreports `--branch=main` as a misspelling.
+    rejectEqualsForm(arg, INIT_FLAG_SPECS);
     if (arg.startsWith("--") && !known.includes(arg)) {
       fail(
         `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>, --adopt, --dry-run)`,
@@ -331,8 +375,18 @@ type PromptArgs =
  * "--foo text"). Single-dash positionals remain prompt content. `--list` and `--cancel` are
  * mutually exclusive and may not combine with positional text; `--role` is accepted in every
  * mode (PLANS.md "Per-role prompts 1/2") and is never prompt content. */
+/** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
+ * equals-form refusal inside it (ROLE_FLAG rides in with its shared missing-value wording). */
+const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
+  ROLE_FLAG,
+  { names: ["--list"] },
+  { names: ["--cancel"], value: true, valueName: "<n>" },
+];
+
 export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
+    // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
+    rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
     if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role") {
       fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --cancel <n>)`);
     }

@@ -551,3 +551,47 @@ test("durationLabel phrases a parsed duration back in the parser's vocabulary", 
   // A whole hour reads 1h, not 60m — the largest unit the duration divides into evenly wins.
   assert.equal(durationLabel(60 * 60_000), "1h");
 });
+
+// --- the --flag=value spelling ---
+
+test("rejectUnknownArgs names the equals form of a known flag instead of 'unknown argument'", () => {
+  // `--role=feature` is a real flag in a spelling this CLI does not accept: the refusal must
+  // name the token and the accepted space-separated form, not misreport a misspelling.
+  const valued = expectFail(() => rejectUnknownArgs("logs", ["--role=feature"], LOGS_SPECS));
+  assert.equal(valued.code, 1);
+  assert.match(valued.stderr, /tumwater: --role=feature is not accepted/);
+  assert.match(valued.stderr, /`--role <id>`/);
+
+  // Valueless flags get their own phrasing: there is no value to separate.
+  const valueless = expectFail(() => rejectUnknownArgs("gui", ["--all-interfaces=true"], GUI_SPECS));
+  assert.match(valueless.stderr, /--all-interfaces=true is not accepted/);
+  assert.match(valueless.stderr, /--all-interfaces takes no value/);
+
+  // An equals form naming NO known flag is still the generic unknown argument, with the
+  // valid flags listed — the original wording is unchanged for true misspellings.
+  const unknown = expectFail(() => rejectUnknownArgs("logs", ["--rol=feature"], LOGS_SPECS));
+  assert.match(unknown.stderr, /unknown argument: --rol=feature/);
+  assert.match(unknown.stderr, /valid flags for tumwater logs/);
+});
+
+test("parseInitArgs and parsePromptArgs apply the same equals-form refusal to their own flags", () => {
+  // init: a value flag and its boolean sibling, each with its own accepted spelling named.
+  const branch = expectFail(() => parseInitArgs(["--branch=main", "brief text"]));
+  assert.match(branch.stderr, /--branch=main is not accepted/);
+  assert.match(branch.stderr, /`--branch <name>`/);
+  const file = expectFail(() => parseInitArgs(["--file=prompt.md"]));
+  assert.match(file.stderr, /`--file <path>`/);
+  const adopt = expectFail(() => parseInitArgs(["--adopt=false", "brief text"]));
+  assert.match(adopt.stderr, /--adopt takes no value/);
+  // init: an equals form naming no known flag still reads as unknown argument.
+  const stray = expectFail(() => parseInitArgs(["--adoptt=x", "brief text"]));
+  assert.match(stray.stderr, /unknown argument: --adoptt=x/);
+
+  // prompt: all three flags, value-taking and valueless alike.
+  const role = expectFail(() => parsePromptArgs(["--role=qa", "ship it"]));
+  assert.match(role.stderr, /`--role <id>`/);
+  const cancel = expectFail(() => parsePromptArgs(["--cancel=2"]));
+  assert.match(cancel.stderr, /`--cancel <n>`/);
+  const list = expectFail(() => parsePromptArgs(["--list=true"]));
+  assert.match(list.stderr, /--list takes no value/);
+});
