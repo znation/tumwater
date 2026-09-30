@@ -5,7 +5,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### A reviewer that completes but emits no parseable VERDICT line is counted as a strike against the HEAD and, at three, its committed work is discarded — while the harness recovers the author's missing SUMMARY line with a capped follow-up turn, so a reviewer's formatting slip can destroy a finished, tested commit that one cheap turn would have reviewed (found by telemetry loop 2026-09-29)
+
+**Symptom:** The 2026-09-29 digest's Top review failure clusters carry `1× improve · 09-29 — "no parseable VERDICT line in the reviewer's reply"` — a reviewer run that completed and replied, but whose reply held no VERDICT line. The gate's response (src/review.ts, the `!verdict` branch after `parseVerdict`): log `review_failed`, then — because `pi.ok` is true, so the transport-failure exemption does not apply — increment `state.unreviewFailures` for this HEAD. At `REVIEW_FAILURE_LIMIT` (3, src/review.ts:29) consecutive verdict-less reviews of the same HEAD, `resetWorktreeToMain` runs `git reset --hard <main>` (src/worktree.ts:144) and the commit is gone from the role branch, announced only as `discarding unreviewed leftover after 3 failed reviews`.
+
+**Why the response is wrong:** The code's own distinction says a run that produced no reply is evidence about the backend and must never destroy committed work (BUGS.md 2026-09-20); but a run that completed and replied without the machine line is evidence about the reviewer's *output format*, not about the diff either — and it is just as recoverable. The harness already owns the recovery for the author side: `requestSummary` (src/loop-pi.ts) asks the tick's own session for the missing SUMMARY block in one tightly bounded follow-up turn, and the digest shows it firing the same day (`1× dry — reply had no SUMMARY line — recovered it with a follow-up turn`). A reviewer that wrote a full review and forgot the VERDICT line gets no such turn: the strike ladder runs straight from a formatting slip to `reset --hard` over a finished commit. A provider-side format drift (new model version, truncated reply at the verdict line) would burn all three strikes on good work and discard it, with every warning reading "failed reviews" about commits nobody ever judged.
+
+**Reproduce:** In the gating suite, script a reviewer fake that returns a complete, on-topic reply containing no `VERDICT:` line (prose only), then run three ticks that each commit work on the same role. After the third review the branch tip equals main, the commit is discarded, and the only trace is the `discarding unreviewed leftover` warning plus three `review_failed` events. The pins in test/loop-3.test.ts cover the transport-failure side (`pi.ok` false never counts a strike) and the discard counter, not the verdict-less-but-completed shape's recoverability.
+
+**Expected:** Before counting a strike against the HEAD, ask the reviewer's own session for the missing line — one capped follow-up turn mirroring `requestSummary` (`VERDICT: <approve|reject>` plus reasons, timeout and quiet caps like the SUMMARY request's). Only a follow-up that also yields no parseable verdict counts as the strike; the strike ladder then keeps its meaning (a reviewer that cannot answer about this diff) instead of punishing an answer that arrived in the wrong envelope.
+
+**Suspected cause:** The verdict-less branch was written when the only recovery machinery was the transport-retry ladder; `requestSummary` came later for the author path and was never carried across to the reviewer, whose prompt (src/gate-prompts.ts) demands the line but whose caller treats its absence as a verdict about the commit.
 
 ## Fixed
 
