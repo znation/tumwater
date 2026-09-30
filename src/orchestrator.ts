@@ -18,7 +18,7 @@ import {
   recordFallbackTick,
   startFallbackProbe,
 } from "./fallback-breaker.js";
-import { FLEET_OPEN, type FleetHold } from "./rate-limit-hold.js";
+import { FLEET_OPEN, type FleetHold } from "./fleet-hold.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, roleTier } from "./roles.js";
 import { openBugs, plannedPlans } from "./backlog.js";
 import { LoopRunner } from "./loop.js";
@@ -211,7 +211,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
   const pauseGateState = newPauseGateState();
-  // The fleet-wide failure hold's state across polls (src/rate-limit-hold.ts) — unlike the
+  // The fleet-wide failure hold's state across polls (src/fleet-hold.ts) — unlike the
   // budget gate's prevGate it is the gate's own memory (deadline, kind, relapse count), not
   // just the last value for edge-triggered events. In memory only: a restart starts open.
   let fleetHold: FleetHold = FLEET_OPEN;
@@ -320,7 +320,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // pause's set, both read fresh per cycle so a marker change lands on the next poll.
       const { userPaused, pausedRoles: pausedRolesSet } = pollPauseGates(root, pauseGateState);
 
-      // Fleet-wide failure hold (src/rate-limit-hold.ts): once two roles' runs have ended on
+      // Fleet-wide failure hold (src/fleet-hold.ts): once two roles' runs have ended on
       // the SAME provider failure kind within a short window — 429s, or a connection, timeout,
       // 5xx, or model-load backend failure — role loops start no new ticks — and the land
       // queue starts no new vet (the director's included), whose reviewer run has no retry

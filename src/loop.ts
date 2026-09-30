@@ -47,7 +47,7 @@ export class LoopRunner {
   }
   /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
-   * kinds the fleet-wide hold groups storms by (src/rate-limit-hold.ts). Same runner surface,
+   * kinds the fleet-wide hold groups storms by (src/fleet-hold.ts). Same runner surface,
    * same consumer. */
   get lastBackendFailure(): { at: number; kind: BackendFailureKind } | undefined {
     return this.usage.lastBackendFailure;

@@ -68,7 +68,7 @@ export interface HarnessEvent {
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
-    | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/rate-limit-hold.ts); role loops and the landing slot start nothing new until it re-opens; carries kind, roles, holdMs, escalation
+    | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/fleet-hold.ts); role loops and the landing slot start nothing new until it re-opens; carries kind, roles, holdMs, escalation
     | "rate_limit_resumed" // the hold (429 or backend-failure kind) reached its deadline; role loops tick again; carries the ended hold's kind
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)

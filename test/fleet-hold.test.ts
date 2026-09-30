@@ -10,9 +10,9 @@ import {
   type FleetHold,
   type HoldKind,
   type HoldObservation,
-} from "../src/rate-limit-hold.js";
+} from "../src/fleet-hold.js";
 
-// The fleet-wide backend-failure hold's policy (src/rate-limit-hold.ts; BUGS.md 2026-09-21
+// The fleet-wide backend-failure hold's policy (src/fleet-hold.ts; BUGS.md 2026-09-21
 // "A 429 storm still has no fleet-wide hold", generalized 2026-09-29 PLANS.md to the
 // connection/timeout/5xx/model-load kinds): pure, so every clause of the rule — distinct
 // roles, the window, per-kind storms, Retry-After, automatic re-open, per-kind relapse

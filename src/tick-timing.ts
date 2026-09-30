@@ -5,7 +5,7 @@ import { removeQuiet } from "./files.js";
 import type { LoopState } from "./loop-state.js";
 import type { InFlightLanding } from "./landing-drain.js";
 import { landingStatePath } from "./paths.js";
-import { fleetHold, type FleetHold, type HoldObservation } from "./rate-limit-hold.js";
+import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import type { BackendFailureKind } from "./pi.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
@@ -107,7 +107,7 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
   });
 }
 
-/** One poll of the fleet-wide backend-failure hold (src/rate-limit-hold.ts): gather each
+/** One poll of the fleet-wide backend-failure hold (src/fleet-hold.ts): gather each
  * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
  * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
  * timeout, server, and model-load kinds) — every role's, the director's included, since its

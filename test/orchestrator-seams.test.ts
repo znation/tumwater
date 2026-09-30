@@ -10,7 +10,7 @@ import {
 } from "../src/tick-timing.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
-import { FLEET_OPEN, HOLD_BASE_MS } from "../src/rate-limit-hold.js";
+import { FLEET_OPEN, HOLD_BASE_MS } from "../src/fleet-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/tick-outcome.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -245,7 +245,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
 
 // BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold": the orchestrator's per-poll
 // step reads every runner's latest 429 (LoopRunner.lastRateLimit), steps the pure gate
-// (rate-limit-hold.test.ts pins its rule), and logs exactly one event per crossing — the fleet
+// (fleet-hold.test.ts pins its rule), and logs exactly one event per crossing — the fleet
 // state transitions the digest's Fleet state changes section replays. Before the fix there was
 // no cross-role input at all: two roles 429ing seconds apart changed nothing.
 test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
