@@ -34,7 +34,8 @@ import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";
 
-/** Producer-side tests for the operator-intent protocol (src/operator-commands.ts). Its
+/** Producer-side tests for the operator-intent protocol (src/operator-intent.ts, with the
+ * CLI command layer in src/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */

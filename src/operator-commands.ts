@@ -1,5 +1,5 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig, loadConfigSafe } from "./config.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
+import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,
@@ -7,62 +7,32 @@ import {
   promptPreview,
   queuedPrompts,
   queuedRolePrompts,
-  submitRolePrompt,
 } from "./inbox.js";
-import { formatTime } from "./datetime.js";
 import { errorMessage } from "./text.js";
 import { errCode } from "./errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "./tick-outcome.js";
-import {
-  isFleetPaused,
-  orchestratorAlive,
-  pauseFleet,
-  pauseRole,
-  pausedRoles,
-  readOrchestratorInfo,
-  resumeFleet,
-  resumeRole,
-} from "./fleet-state.js";
+import { pauseFleet, pauseRole, pausedRoles, readOrchestratorInfo, resumeFleet, resumeRole } from "./fleet-state.js";
 import { pidAlive } from "./process.js";
-import { writeJsonFile } from "./json-files.js";
-import { abortRequestPath, resetRequestPath, wakeRequestPath } from "./paths.js";
+import {
+  markerApplyNote,
+  NO_HARNESS_ERROR,
+  PAUSE_FOR_MAX_MS,
+  requestAbort,
+  requestResetCounters,
+  requestWake,
+  rolePauseMessage,
+  roleResumeMessage,
+  submitRolePromptAndWake,
+  timedPauseBits,
+} from "./operator-intent.js";
 
-/** The CLI half of the operator-intent protocol (the consumer half is src/operator-requests.ts):
- * `reset-counters`, `wake`, `abort`, `pause`, and `resume` write the on-disk markers the fleet
- * reads, split out of cli.ts so the whole marker protocol — producer and consumer — is legible
- * in one place. Every command here is deliberately usable without a live harness except
- * `abort`, which has nothing to consume its one-shot marker when no fleet is up. */
-
-/** How a marker command reports when its marker takes effect, derived from one liveness
- * check: `live` says whether a fleet will consume it now, `when` is the " within ~2s" such a
- * fleet picks it up in, and `tail` names the fallback ("takes effect on the next `tumwater
- * run`") while no harness is running. Every marker command shares this so none can promise a
- * timing the others deny — the one place that user-facing contract lives. */
-function markerApplyNote(root: string): { live: boolean; when: string; tail: string } {
-  const live = orchestratorAlive(root);
-  return {
-    live,
-    when: live ? " within ~2s" : "",
-    tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`",
-  };
-}
-
-/** The trailing liveness clause of a one-shot marker command's confirmation (reset-counters
- * and wake): with a live fleet, "a running fleet <verb><when>"; without one, where the marker
- * lands instead. The two request* cores share this so their wording cannot drift — pause and
- * resume phrase their own confirmations around markerApplyNote's when/tail because their
- * sentences differ. */
-function applyClause(live: boolean, when: string, verb: string): string {
-  return live
-    ? `a running fleet ${verb}${when}`
-    : "takes effect on the next `tumwater run` (no harness is running)";
-}
-
-/** The error every live-harness-only command reports (abort, stop): one literal so the two
- * surfaces cannot drift on the message an operator sees when nothing is running. */
-const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater run` first";
+/** The CLI layer of the operator-intent protocol: the `reset-counters`, `wake`, `abort`,
+ * `pause`, `resume`, `stop`, `config`, and `prompt` commands, split out of cli.ts so the
+ * command bodies live beside their shared `--role` resolution. The marker-writing cores and
+ * shared confirmations they print live in src/operator-intent.ts (shared with the dashboard
+ * and TUI); the fleet-side consumer half is src/operator-requests.ts. Every command here is
+ * deliberately usable without a live harness except `abort` and `stop`, which have nothing
+ * to reach when no fleet is up. */
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
@@ -90,55 +60,11 @@ function targetRoles(root: string, args: string[]): string[] {
   return role ? [role] : Object.keys(loadConfig(root).roles);
 }
 
-/** The marker-writing core of `reset-counters`: zero each target's state file directly (works
- * while the harness is not running) and drop the fleet marker a running fleet consumes within
- * one poll cycle. Returns the confirmation the CLI prints verbatim. Unlike the wake/abort
- * request* cores the GUI's POST endpoints share, no dashboard route exposes reset-counters,
- * so this stays module-internal. */
-function requestResetCounters(root: string, roles: string[]): string {
-  for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
-  writeJsonFile(resetRequestPath(root), { at: Date.now(), roles });
-  // Only a live fleet consumes the marker; without one the state files are already zeroed and
-  // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
-  // rather than promising a ~2s pickup that no process will make.
-  const { live, when } = markerApplyNote(root);
-  return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
-}
-
 /** `tumwater reset-counters [--role <id>]`: zero the per-loop counters shown in the
  * dashboards so a fresh observation window can begin. Scheduling fields and pi session
  * continuity are untouched: loops keep sleeping/waking exactly as before. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   say(requestResetCounters(root, targetRoles(root, args)));
-}
-
-/** The marker-writing core of `wake`, shared with the GUI's POST /api/wake: clear the named
- * roles' backoff and pull nextRunAt to now (touching ONLY the schedule — counters, wake
- * tracking, and session continuity are untouched), and drop the marker a running fleet
- * consumes within one poll. Returns the confirmation the CLI prints verbatim and the GUI
- * flashes. */
-export function requestWake(root: string, roles: string[]): string {
-  const now = Date.now();
-  for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
-  writeJsonFile(wakeRequestPath(root), { at: now, roles });
-  // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
-  // marker, so say so instead of promising a poll that will not happen.
-  const { live, when } = markerApplyNote(root);
-  return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
-}
-
-/** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt
- * --role`, the dashboard's POST /api/prompt-role, and the TUI's Ctrl+R submit all share:
- * submitRolePrompt enqueues into the loop's own queue (length-capped by the shared rule)
- * and logs under the loop, then requestWake's single-role marker brings a live fleet's
- * loop in within one poll instead of whenever its backoff next expires (and is safe with
- * no fleet running — the same contract as `tumwater wake`). Returns requestWake's
- * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
- * call keeps a surface from ever queueing a prompt without the wake that delivers it
- * promptly — the pairing is the invariant, not each surface's private discipline. */
-export function submitRolePromptAndWake(root: string, role: string, text: string): string {
-  submitRolePrompt(root, role, text);
-  return requestWake(root, [role]);
 }
 
 /** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
@@ -163,84 +89,6 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
   if (!result.ok) fail(result.error);
   say(result.message);
 }
-
-/** The marker-writing core of `abort`, shared with the GUI's POST /api/abort: drop the
- * per-role marker a running fleet consumes within one poll cycle. Reports the liveness gate
- * and the director's discarded-prompt note structurally ({ok, message|error}) so the CLI can
- * fail() and the GUI can shape its 409/200 — neither re-derives the wording. */
-export function requestAbort(root: string, role: string): { ok: true; message: string } | { ok: false; error: string } {
-  if (!orchestratorAlive(root)) {
-    return { ok: false, error: NO_HARNESS_ERROR };
-  }
-  writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
-  let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
-  if (role === DIRECTOR_ROLE) {
-    // The director's in-flight prompt was dequeued from the inbox file at tick start and an
-    // abort discards it without re-queueing — say so, since the discard is otherwise silent.
-    confirmation +=
-      "; its current in-flight prompt will be discarded (re-submit with `tumwater prompt` if you want it retried)";
-  }
-  return { ok: true, message: confirmation };
-}
-
-/** The parsed `--for <duration>` of one pause command: the duration as typed (ms, for the
- * "for 30m" phrase) and the marker deadline it produced (ms epoch, for the resume-time
- * phrase). Kept together so the confirmation cannot phrase one without the other. */
-interface TimedPause {
-  ms: number;
-  untilMs: number;
-}
-
-/** The timed-pause clauses both pause confirmations share, in the plan's "… paused for
- * 30m — resumes automatically at 14:05" shape. The duration phrase comes from the parsed
- * value, not from until minus the message's own now — a few ms of clock skew between the two
- * reads must not turn "30m" into "1799999ms". Both empty for an indefinite pause, so
- * today's wording stands. */
-function timedPauseBits(timed: TimedPause | undefined): { forPhrase: string; note: string } {
-  if (!timed) return { forPhrase: "", note: "" };
-  return {
-    forPhrase: ` for ${durationLabel(timed.ms)}`,
-    note: ` — resumes automatically at ${formatTime(new Date(timed.untilMs))}`,
-  };
-}
-
-/** The per-role pause confirmation `tumwater pause --role` prints and the TUI's Ctrl+P
- * flashes — one literal so the two surfaces cannot drift (the same single-writer discipline
- * requestWake's wording already follows). `changed` is pauseRole's return: false reports the
- * idempotent no-op in the CLI's own words instead of a fresh confirmation. `timed` is the
- * deadline this command's `--for` set, echoed back with its wall-clock resume time; the TUI
- * (which cannot pass a deadline) omits it and keeps the plain wording. */
-export function rolePauseMessage(root: string, role: string, changed: boolean, timed?: TimedPause): string {
-  if (!changed) return `role ${role} is already paused`;
-  const { when, tail } = markerApplyNote(root);
-  const { forPhrase, note } = timedPauseBits(timed);
-  return `role ${role} paused${forPhrase} — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${note}${tail}`;
-}
-
-/** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
- * Ctrl+P for the same no-drift reason. Carries the fleet-pause interplay note cmdResume
- * phrases: the fleet pause is the stronger gate, so with its marker present a freshly
- * resumed role still starts no ticks (the director is exempt from that gate, so its
- * resumption is real) — saying nothing would promise ticking the scheduler then deny, the
- * same honest-confirmation contract markerApplyNote's tail serves. */
-export function roleResumeMessage(root: string, role: string, changed: boolean): string {
-  if (!changed) return `role ${role} was not paused`;
-  const { when, tail } = markerApplyNote(root);
-  const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
-    ? " (the fleet pause is still active — `tumwater resume` lifts it)"
-    : "";
-  return `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}`;
-}
-
-/** The `tumwater pause --for <duration>` cap: 90 days. A timed pause is meant to answer "step
- * away for a while and come back to a resumed fleet" — the same bound the report's day windows
- * enforce (REPORT_MAX_DAYS in event-window.ts), and comfortably past any absence a deadline
- * should encode. Beyond it the deadline stops being a timed pause and becomes a standing one:
- * bare `pause` (lifted with `resume`) is that, and it says so instead of silently accepting a
- * value whose wall-clock resume time no `Date` can even hold (a `--for 100000000d` once printed
- * "resumes automatically at NaN:NaN:NaN"). Lives beside the parse it guards so the CLI's one
- * `--for` surface cannot outgrow it unnoticed. */
-export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from starting new ticks —
  * in-flight ones finish, every other role (the director included) keeps running; without one,

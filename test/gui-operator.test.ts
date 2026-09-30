@@ -385,7 +385,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
 });
 
 // --- POST /api/wake and POST /api/abort — the dashboard's per-row controls, backed by the
-// same marker-writing cores (requestWake/requestAbort in operator-commands.ts) the CLI
+// same marker-writing cores (requestWake/requestAbort in operator-intent.ts) the CLI
 // commands call, so the two surfaces cannot drift on the state they write or the text they
 // report. The fleet-side marker consumption is pinned in test/orchestrator.e2e.test.ts;
 // here we pin the HTTP layer: the markers it writes, its validation, and its status codes.

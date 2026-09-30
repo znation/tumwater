@@ -22,7 +22,7 @@ import {
   rolePauseMessage,
   roleResumeMessage,
   submitRolePromptAndWake,
-} from "../operator-commands.js";
+} from "../operator-intent.js";
 import { snapshot } from "./status.js";
 import { renderStatusSpans, type StatusLine } from "./status-render.js";
 import { fleetAlerts } from "./fleet-alerts.js";

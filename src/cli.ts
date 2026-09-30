@@ -49,9 +49,10 @@ async function requireReadyRepo(root: string): Promise<void> {
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
 type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume";
 
-/** The marker-writing core of each marker command, keyed by its CLI name (the consumer half
- * lives in operator-commands.ts). One map so a new marker command registers its core beside
- * its case label instead of growing another copy of the guard sequence. */
+/** The CLI command layer of each marker command, keyed by its CLI name (the command bodies
+ * live in operator-commands.ts, the shared marker-writing cores in operator-intent.ts). One
+ * map so a new marker command registers its core beside its case label instead of growing
+ * another copy of the guard sequence. */
 const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) => Promise<void>> = {
   "reset-counters": cmdResetCounters,
   wake: cmdWake,

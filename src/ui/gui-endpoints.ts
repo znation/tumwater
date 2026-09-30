@@ -7,7 +7,7 @@
  * Each handler answers its request and touches no socket beyond its own `res`; server lifecycle, routing, the static page, and the token gate stay
  * in gui.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
  * report.ts, failure-data.ts, inbox.ts, config-write.ts, fleet-state.ts,
- * operator-commands.ts) — this module only adapts HTTP onto it.
+ * operator-intent.ts) — this module only adapts HTTP onto it.
  */
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
@@ -21,7 +21,7 @@ import {
 import { knownRoleIdsCached } from "../config.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "../operator-commands.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { collectReport } from "../report-data.js";
