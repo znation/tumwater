@@ -93,6 +93,23 @@ export function seedCommit(dir: string, name: string, content: string, message: 
   sh(dir, "git", "commit", "-m", message);
 }
 
+/** Seed a conflicting divergence for a rebase test: commit a "branch version" of `name` on
+ * the worktree's branch, then a different "main version" of the same file on the repo's main,
+ * so the next rebase of `wt` onto main stops mid-conflict. The one home of that seed pair,
+ * which git.test.ts hand-rolled eight times (in both orders — the two commits touch different
+ * branches, so the order is immaterial). The messages default to the shared "seed edit"
+ * vocabulary; tests seeding a differently named file pass their plainer "edit" variants. */
+export function seedConflict(
+  repo: string,
+  wt: string,
+  name = "seed.txt",
+  mainMsg = "main seed edit",
+  branchMsg = "branch seed edit",
+): void {
+  seedCommit(wt, name, "branch version\n", branchMsg);
+  seedCommit(repo, name, "main version\n", mainMsg);
+}
+
 /** `git init -b main` in `dir` with the fixtures' commit identity. The identity is appended to
  * .git/config directly — byte for byte what `git config user.name test` and `git config
  * user.email …` write — because fixture repos are made ~600 times a suite and each spawn

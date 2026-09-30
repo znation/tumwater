@@ -46,7 +46,7 @@ import {
 } from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
-import { loggingGit, mainSha, makeRepo, seedCommit, sh, tmpdir } from "./repo-fixtures.js";
+import { loggingGit, mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -252,9 +252,7 @@ test("rebaseOntoMain resolves divergence and aborts cleanly on conflict", async 
   assert.ok(await ffMainTo(repo, branchName("clean"), "main"));
 
   // Conflicting divergence aborts and leaves the worktree usable.
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
+  seedConflict(repo, wt);
   assert.ok(!(await rebaseOntoMain(wt, "main")));
   assert.ok(!(await isDirty(wt)));
 });
@@ -279,9 +277,7 @@ test("rebaseOntoMainLeaveConflicts leaves markers in place for a resolver", asyn
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "clean");
 
   // Conflicting divergence stops mid-rebase with markers in the worktree.
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
+  seedConflict(repo, wt);
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   const conflicted = fs.readFileSync(path.join(wt, "seed.txt"), "utf8");
   assert.match(conflicted, /<<<<<<< /);
@@ -297,9 +293,7 @@ test("continueRebase concludes a resolved conflict on top of main", async () => 
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "clean", "main");
 
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
+  seedConflict(repo, wt);
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   fs.writeFileSync(path.join(wt, "seed.txt"), "combined version\n");
@@ -318,9 +312,7 @@ test("continueRebase skips a resolution that leaves no unique content", async ()
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "clean", "main");
 
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
+  seedConflict(repo, wt);
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   // The resolver takes main's side entirely: the replayed commit is now empty and git
@@ -345,9 +337,7 @@ test("resetWorktreeToMain discards commits and untracked files", async () => {
 test("resetWorktreeToMain clears an interrupted rebase", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "dry", "main");
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
+  seedConflict(repo, wt);
   // Start a conflicting rebase and leave it in progress (a killed tick mid-resolution).
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   await resetWorktreeToMain(wt, "main");
@@ -391,9 +381,7 @@ test("conflictedFiles decodes C-quoted paths for non-ASCII filenames", async () 
   seedCommit(repo, "h\u00e9llo.ts", "base\n", "seed non-ascii file");
   const wt = await ensureWorktree(repo, "clean", "main");
 
-  fs.writeFileSync(path.join(wt, "h\u00e9llo.ts"), "branch version\n");
-  await commitAll(wt, "branch edit");
-  seedCommit(repo, "h\u00e9llo.ts", "main version\n", "main edit");
+  seedConflict(repo, wt, "h\u00e9llo.ts", "main edit", "branch edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   const files = await conflictedFiles(wt);
@@ -416,9 +404,7 @@ test("conflictedFiles decodes C-quoted quote/tab/newline/CR/backslash filenames"
   seedCommit(repo, name, "base\n", "seed special-char file");
   const wt = await ensureWorktree(repo, "clean", "main");
 
-  fs.writeFileSync(path.join(wt, name), "branch version\n");
-  await commitAll(wt, "branch edit");
-  seedCommit(repo, name, "main version\n", "main edit");
+  seedConflict(repo, wt, name, "main edit", "branch edit");
 
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   const files = await conflictedFiles(wt);
@@ -516,9 +502,7 @@ test("abortSync still aborts an interrupted rebase when state exists", async () 
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "dry", "main");
   // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
-  fs.writeFileSync(path.join(wt, "seed.txt"), "branch version\n");
-  await commitAll(wt, "branch seed edit");
-  seedCommit(repo, "seed.txt", "main version\n", "main seed edit");
+  seedConflict(repo, wt);
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
 
   const logFile = path.join(tmpdir(), "git-calls.log");
