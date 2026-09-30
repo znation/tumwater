@@ -46,6 +46,9 @@ with it the director prompt, to your whole network, so pair it with `--token <se
 
 Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
 (`maxDailyCostUsd`), and user-defined `customLoops`. Edits apply live while the fleet runs.
+From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
+<key>` reads one resolved value, and `tumwater config set <key> <value>` writes one top-level
+key.
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `provider` and `model` in
 `tumwater.json`. See [docs/backends.md](docs/backends.md) for requirements and a worked setup.
