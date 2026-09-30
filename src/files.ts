@@ -98,7 +98,8 @@ const TAIL_CHUNK_BYTES = 8 * 1024;
  * readTailText, the shared collection loop built on this. Each delivered chunk arrives with
  * `coveredEnd`, the byte offset the scan covers through — the file's size at scan time (the
  * whole-file delivery reports the bytes actually read, the chunked one the opened inode's
- * fstat size) — so a caller can position a follow at exactly where its read stopped. */
+ * fstat size) — so a caller can position a follow at where its read stopped; the follow-facing
+ * readTailTextWithEnd backs that raw end up to the last complete line's boundary. */
 export function forEachTailChunk(
   file: string,
   onChunk: (chunk: Buffer, coveredEnd: number) => boolean,
@@ -150,12 +151,19 @@ export function readTailText(
 }
 
 /** readTailText, plus the byte offset the scan covered through (forEachTailChunk's
- * `coveredEnd`): the file's size at read time, so a caller that seeds a follow from it cannot
- * skip an event appended between this read and a later stat — the race a fresh
- * `statOrNull(file).size` seed carries. Early stops and mid-scan appends leave the covered
- * region contiguous through `coveredEnd` either way: chunks are delivered newest-first from
- * the size the scan measured, so everything below that offset up to the delivered total was
- * read, and everything at or above it was not. */
+ * `coveredEnd`), backed up to the last complete line's boundary: the file's size at read time
+ * minus any trailing torn bytes the scan read but never parsed. A caller that seeds a follow
+ * from it can neither skip an event appended between this read and a later stat — the race a
+ * fresh `statOrNull(file).size` seed carries — nor land mid-line: followFile's offset must sit
+ * on a line boundary (readCompleteLines' contract), and a seed past a torn trailing line's
+ * start would deliver that line's tail as a garbled fragment once its writer completed it,
+ * its head never delivered. Early stops and mid-scan appends leave the covered region
+ * contiguous through the scan's EOF either way: chunks are delivered newest-first from the
+ * size the scan measured, so everything below that offset up to the delivered total was
+ * read, and everything at or above it was not. With no newline in the covered region the
+ * whole region is one torn fragment and the end backs up to its start, so the follow re-reads
+ * and delivers it whole once completed (an early stop requires newlines, so that region
+ * start is always the file's own start). */
 export function readTailTextWithEnd(
   file: string,
   onChunk: (chunk: Buffer, parts: Buffer[]) => boolean,
@@ -167,7 +175,12 @@ export function readTailTextWithEnd(
     parts.unshift(chunk);
     return onChunk(chunk, parts);
   });
-  return { text: Buffer.concat(parts).toString("utf8"), coveredEnd };
+  const raw = Buffer.concat(parts);
+  // Byte arithmetic on the raw buffer, not the decoded text: a torn write can end mid-character,
+  // where the decoded string's byte length no longer matches the bytes on disk.
+  const lastNl = raw.lastIndexOf(10);
+  const completeEnd = lastNl >= 0 ? coveredEnd - (raw.length - 1 - lastNl) : coveredEnd - raw.length;
+  return { text: raw.toString("utf8"), coveredEnd: completeEnd };
 }
 
 /** Ensure `dir` exists (created recursively if needed), so a write into it cannot fail on a

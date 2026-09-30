@@ -58,6 +58,30 @@ test("readEventsTailWithEnd reports the covered byte end, so a follow seeded fro
   assert.match(delivered[0] ?? "", /"tick":2/);
 });
 
+// The seed must sit on a line boundary even when the log's last line is torn (a write in
+// flight): readCompleteLines' offset contract. A seed past the torn line's start would make
+// the follow deliver the line's tail as a garbled fragment once the writer completes it,
+// its head never delivered.
+test("readEventsTailWithEnd's covered end stops at the last complete line when the log's last line is torn", () => {
+  const dir = tmpdir();
+  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1 });
+  const file = eventsLogPath(dir);
+  const torn = '{"loop":"clean","type":"tick_end","tick":1'; // A write in flight: no newline yet.
+  fs.appendFileSync(file, torn);
+
+  const { events, coveredEnd } = readEventsTailWithEnd(dir, 50);
+  assert.equal(events.length, 1, "the torn line is held back, not parsed");
+  assert.equal(coveredEnd, fs.statSync(file).size - Buffer.byteLength(torn));
+
+  // The writer completes the line; a follow seeded at coveredEnd delivers it whole, once.
+  fs.appendFileSync(file, ',"result":"no_change"}\n');
+  const delivered: string[] = [];
+  const stop = followFile(file, coveredEnd, (lines) => delivered.push(...lines));
+  stop();
+  assert.equal(delivered.length, 1, `the completed line, whole:\n${JSON.stringify(delivered)}`);
+  assert.match(delivered[0] ?? "", /"tick_end"/);
+});
+
 // And the boundary the seed must sit on exactly: coveredEnd is the read's EOF, so re-following
 // from it after the read re-delivers nothing already read.
 test("readEventsTailWithEnd on a missing log scans to nothing with coveredEnd 0", () => {

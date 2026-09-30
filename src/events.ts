@@ -263,8 +263,8 @@ const tailCache = new Map<string, StatKeyedValue<HarnessEvent[]>>();
 
 /** The backwards tail scan readEvents caches: read just enough bytes from the end to cover
  * `limit` lines, parse them, keep the newest `limit` complete ones. Also reports the byte end
- * the scan covered through (files.readTailTextWithEnd) for callers that seed a follow from
- * the same read. */
+ * the scan covered through (files.readTailTextWithEnd — the last complete line's boundary) for
+ * callers that seed a follow from the same read. */
 function scanEventTailWithEnd(file: string, limit: number): { events: HarnessEvent[]; coveredEnd: number } {
   let newlines = 0;
   const { text, coveredEnd } = readTailTextWithEnd(file, (chunk) => {
