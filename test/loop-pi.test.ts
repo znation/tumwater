@@ -323,6 +323,33 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
     assert.match(result!.finalText, /tidied the parser/);
     assert.equal(usage.length, 1);
     assert.match(runArgs(args)[0]!, /--continue/, "the follow-up continues the authoring session");
+    assert.match(fs.readFileSync(args, "utf8"), /required closing block/, "the run asks for the SUMMARY block, not a free-form reply");
+  } finally {
+    restore();
+  }
+});
+
+test("requestSummary returns the run even when it failed and still folds its usage", async () => {
+  // The follow-up asks the tick's own session for the missing SUMMARY block; the run can
+  // fail like any other (provider error, nonzero exit). The doc'd contract says the caller
+  // gets the run back regardless — it must be able to honor a shutdown abort on it — and
+  // the failed attempt's spend is folded into the tick's counters like every other run.
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = fakePi(`printf '%s\\n' "$*" >> "${args}"\nprintf '%s\\n' 'model exploded' >&2\nexit 1`);
+  try {
+    fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
+    const { loopPi, usage } = makeHost(root);
+    const result = await loopPi.requestSummary(root);
+    assert.ok(result, "a failed run is returned, not null — null means there was no session to ask");
+    assert.equal(result!.ok, false);
+    assert.match(result!.errorMessage ?? "", /model exploded/, "the failure's stderr names the cause");
+    assert.equal(usage.length, 1, "one run, one foldUsage — failures included");
+    assert.equal(usage[0], result, "the foldUsage'd run IS the returned run");
+    const recorded = fs.readFileSync(args, "utf8");
+    assert.match(recorded, /--continue/, "the failure still continued the authoring session");
+    assert.match(recorded, /required closing block/, "the failed run asked for the SUMMARY block");
   } finally {
     restore();
   }
