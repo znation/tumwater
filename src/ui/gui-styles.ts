@@ -96,7 +96,6 @@ export const GUI_STYLES = String.raw`
   .t-orange { --t: var(--orange); --t-bg: var(--orange-bg); --t-line: var(--orange-line); }
   .t-red { --t: var(--red); --t-bg: var(--red-bg); --t-line: var(--red-line); }
   .t-gray { --t: var(--gray); --t-bg: var(--gray-bg); --t-line: var(--gray-line); }
-  .t-accent { --t: var(--accent); --t-bg: var(--accent-bg); --t-line: var(--accent-line); }
 
   *, *::before, *::after { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
