@@ -98,6 +98,38 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 0);
 });
 
+test("a malformed flag value is named before the ready-repo gate", async () => {
+  // The missing-value gate above covers a flag whose value is ABSENT; this covers a value
+  // present but malformed (`--since bogus`, `-n 0`, `--port abc`): the same masking applied —
+  // outside an initialized repo the ready-repo gate reported "not a git repository" while the
+  // operator's actual typo went unnamed. Each spec now re-runs its command body's own pure
+  // shape parser at the gate, so the wording is the parser's, byte for byte, in both places.
+  const empty = tmpdir();
+  const cases: Array<[string[], RegExp]> = [
+    [["logs", "--since", "bogus"], /--since needs a duration like 45s, 90m, 2h, or 1d \(got "bogus"\)/],
+    [["history", "--since", "0s"], /--since needs a duration like 45s, 90m, 2h, or 1d \(got "0s"\)/],
+    [["report", "--since", "45"], /--since needs a duration like 45s, 90m, 2h, or 1d \(got "45"\)/],
+    [["logs", "-n", "0"], /-n needs a positive integer \(got "0"\)/],
+    [["history", "-n", "abc"], /-n needs a positive integer \(got "abc"\)/],
+    [["report", "--days", "abc"], /--days needs a positive integer \(got "abc"\)/],
+    [["gui", "--port", "abc"], /--port must be an integer between 1 and 65535 \(got "abc"\)/],
+    [["pause", "--for", "xyz"], /--for needs a duration like 45s, 90m, 2h, or 1d \(got "xyz"\)/],
+  ];
+  for (const [args, pattern] of cases) {
+    const r = await cli(empty, ...args);
+    assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, pattern, `tumwater ${args.join(" ")}`);
+    assert.doesNotMatch(r.stderr, /git repository/, `tumwater ${args.join(" ")}`);
+  }
+
+  // In a ready repo the same slips fail identically — the gate runs there too.
+  const repo = makeRepo();
+  await initProject(repo, "cli malformed flag value");
+  const ready = await cli(repo, "logs", "--since", "bogus");
+  assert.equal(ready.code, 1);
+  assert.match(ready.stderr, /--since needs a duration like 45s, 90m, 2h, or 1d \(got "bogus"\)/);
+});
+
 test("a valued flag left without its value is named before the ready-repo gate", async () => {
   // Outside an initialized repo, `pause --role` used to report "not a git repository": the
   // ready-repo gate sits between rejectUnknownArgs and each command's own parser, so the

@@ -3,10 +3,14 @@ import {
   fail,
   say,
   DURATION_FLAG,
+  N_FLAG,
+  parseCountFlag,
+  parsePortFlag,
   parsePromptArgs,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
+  SINCE_FLAG,
 } from "./cli-args.js";
 import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
@@ -97,7 +101,17 @@ async function main(): Promise<void> {
       break;
     case "gui":
       rejectUnknownArgs("gui", args, [
-        { names: ["--port"], value: true, valueName: "<n>" },
+        {
+          names: ["--port"],
+          value: true,
+          valueName: "<n>",
+          // gui is gui.ts's only flag, so the shape parser lives beside its one body; the
+          // gate's early report re-runs it so `gui --port abc` names the typo before the
+          // ready-repo gate can mask it.
+          validate: (value) => {
+            parsePortFlag(value);
+          },
+        },
         { names: ["--all-interfaces"] },
         { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
       ]);
@@ -131,9 +145,18 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
       // missing, so it runs (and prints an all-zero window) in any directory.
       rejectUnknownArgs("report", args, [
-        { names: ["--days"], value: true, valueName: "<n>" },
+        {
+          names: ["--days"],
+          value: true,
+          valueName: "<n>",
+          // The gate's early report re-runs cmdReport's own shape parser (report.ts), so
+          // `report --days abc` names the typo even though report has no ready-repo gate.
+          validate: (value) => {
+            parseCountFlag("--days", value);
+          },
+        },
         { names: ["--failures"] },
-        { names: ["--since"], value: true, valueName: "<duration>" },
+        SINCE_FLAG,
         { names: ["--json"] },
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
@@ -156,8 +179,8 @@ async function main(): Promise<void> {
     case "logs":
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },
-        { names: ["-n"], value: true, valueName: "<count>" },
-        { names: ["--since"], value: true, valueName: "<duration>" },
+        N_FLAG,
+        SINCE_FLAG,
         { names: ["--grep"], value: true, valueName: "<text>", missingValue: GREP_VALUE_ERROR },
         { names: ["--json"] },
         ROLE_FLAG,
@@ -168,8 +191,8 @@ async function main(): Promise<void> {
       break;
     case "history":
       rejectUnknownArgs("history", args, [
-        { names: ["-n"], value: true, valueName: "<count>" },
-        { names: ["--since"], value: true, valueName: "<duration>" },
+        N_FLAG,
+        SINCE_FLAG,
         { names: ["--json"] },
         ROLE_FLAG,
       ]);

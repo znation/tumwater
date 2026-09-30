@@ -155,6 +155,14 @@ interface FlagSpec {
    * the missing value more specifically, so this gate's early report — it runs before the
    * ready-repo gate and every command body — says exactly what that parser would have said. */
   missingValue?: string;
+  /** Validate the flag's value SHAPE at the gate: call the same pure parse helper the
+   * command body re-runs (parseCountFlag, parsePortFlag, parseDurationFlag) so a malformed
+   * value (`--since bogus`, `-n 0`, `--port abc`) is named with the parser's own wording
+   * before the ready-repo gate can mask it behind "not a git repository" — the same early
+   * report missingValue gives the no-value case. Shape only: caps and rival-flag rules stay
+   * in the command body, which orders them against its other flags deliberately. The body
+   * re-running the identical pure helper cannot drift from what the gate accepted. */
+  validate?: (value: string) => void;
 }
 
 /** A `--flag=value` token's flag name ("--role" from "--role=feature"), or null when the
@@ -207,8 +215,44 @@ export const ROLE_FLAG: FlagSpec = {
 
 /** The `--for <duration>` flag spec, accepted by `pause` alone (the timed pause): one
  * definition of the flag's spelling and value shape, beside ROLE_FLAG, so the gate's accepted
- * vocabulary and parseDurationFlag's error messages cannot drift apart. */
-export const DURATION_FLAG: FlagSpec = { names: ["--for"], value: true, valueName: "<duration>" };
+ * vocabulary and parseDurationFlag's error messages cannot drift apart. validate re-runs the
+ * shape parser at the gate, so `pause --for xyz` names the typo before the ready-repo gate
+ * can mask it; the 90-day cap stays in cmdPause beside the writers it feeds. */
+export const DURATION_FLAG: FlagSpec = {
+  names: ["--for"],
+  value: true,
+  valueName: "<duration>",
+  validate: (value) => {
+    parseDurationFlag("--for", value);
+  },
+};
+
+/** The `--since <duration>` flag spec, shared by the three windowed read-only views (logs,
+ * history, report): one definition of the flag's spelling and value shape, beside ROLE_FLAG
+ * and DURATION_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages
+ * cannot drift apart. validate re-runs the shape parser at the gate; each window's 7-day cap
+ * and its rival-flag rules stay in the command body beside the window read they bound. */
+export const SINCE_FLAG: FlagSpec = {
+  names: ["--since"],
+  value: true,
+  valueName: "<duration>",
+  validate: (value) => {
+    parseDurationFlag("--since", value);
+  },
+};
+
+/** The `-n <count>` flag spec, shared by the two tail views that take a row count (logs,
+ * history): one definition of the flag's spelling and value shape, beside SINCE_FLAG, so the
+ * gate's accepted vocabulary and parseCountFlag's error messages cannot drift apart. validate
+ * re-runs the shape parser at the gate; the bodies keep their own defaults and rival rules. */
+export const N_FLAG: FlagSpec = {
+  names: ["-n"],
+  value: true,
+  valueName: "<count>",
+  validate: (value) => {
+    parseCountFlag("-n", value);
+  },
+};
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), and `--role <id>`
@@ -263,6 +307,9 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
     seen.add(spec);
     if (spec.value && i === args.length - 1)
       fail(spec.missingValue ?? `${spec.names[0]} needs a value`);
+    // The value exists (the trailing-no-value case failed above): name a malformed one now,
+    // before the ready-repo gate or any environment check can mask it.
+    if (spec.value) spec.validate?.(args[i + 1] ?? "");
     const n = spec.value ? 2 : 1;
     for (let j = 0; j < n && i + j < args.length; j++) consumed[i + j] = true;
   }
