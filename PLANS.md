@@ -5,7 +5,52 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Windowed event reads span the rotation boundary: `readWindowEvents` continues into `events.jsonl.1` (planned 2026-09-29)
+
+- **Goal.** Every windowed consumer of the event log — `logs --since`, the usage report's
+  `--days`/`--since` collectors, the failure digest's day-windowed pass, and the GUI endpoints
+  that reuse them — reads only the live `events.jsonl`. The log rotates at 16 MB into
+  `events.jsonl.1` (files.ts `rotateIfLarge`), and on a busy fleet a 16 MB file holds less
+  than the default 14-day window, so the readers silently degrade to a truncated view plus a
+  "note: older events may have rotated out" line even though the missing events sit right
+  there in the archive on disk. The archive is written today and read by nothing.
+- **Approach.** `readWindowEvents` (src/event-window.ts) already scans the live file backwards
+  in chunks with an early stop and computes `coversFullWindow`. Split the per-file backwards
+  scan into a helper and call it twice: after the live-file scan, while `coversFullWindow` is
+  still false, scan `events.jsonl.1` the same way; its in-window events are strictly older
+  than the live file's, so prepending them keeps the oldest-first ordering every consumer
+  assumes, and the dedup-free concatenation is safe because rotation moves the whole file —
+  the two files share no lines. `coversFullWindow` becomes true when either file's oldest
+  retained event predates the window, so the existing rotation note (`ui/report.ts` line ~81,
+  `ui/log-commands.ts`'s covered check) stays exactly right in both directions: it vanishes
+  once the archive completes the window and still appears when even the archive starts inside
+  it. Add `eventsArchivePath` (root) → `eventsLogPath(root) + ".1"` to src/paths.ts as the
+  single home beside `eventsLogPath` — keep the one-archive retention as is (opinionated
+  default; the note still tells the truth when the archive itself is not old enough).
+  No consumer changes: src/ui/log-commands.ts, src/report-data.ts (both call sites), and
+  src/failure-data.ts get archive coverage through the shared reader unchanged. The
+  count-bounded scans (`readEvents`' default tail, history-data.ts's window ladder) are out
+  of scope — they answer "the last N ticks", not a time window.
+- **Files touched.** src/paths.ts (+4), src/event-window.ts (restructure of `readWindowEvents`,
+  roughly +40 net), test/event-window.test.ts (new rotation-boundary cases, ~100).
+- **Acceptance criteria.**
+  1. A fixture planting `events.jsonl.1` (older days) beside a live `events.jsonl` (today):
+     `readWindowEvents` with a window spanning the boundary returns events from both files,
+     oldest-first, in-window only; `collectReport`'s per-day series sums to the seeded totals
+     across the boundary.
+  2. `coversFullWindow` is true when the archive's oldest event predates the window start and
+     false when the archive's oldest event is still inside it — the report's and
+     `logs --since`'s rotation notes track it in both directions.
+  3. Missing or empty `events.jsonl.1` (the normal case): `readWindowEvents` returns exactly
+     today's `{ events, coversFullWindow }` behavior — the existing test/event-window.test.ts
+     cases pass unchanged.
+  4. Torn/corrupt lines in the archive follow the same skip policy as the live file
+     (`parseEventLine`), and a window that lies entirely inside the live file never touches
+     the archive.
+  5. `npm run test` green.
+
+
+## Done
 
 
 ## Done
