@@ -10,7 +10,7 @@ import { initProject } from "../src/init.js";
 import { inboxSize, queuedRolePrompts } from "../src/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
-import { startLocalGui } from "./gui-fixtures.js";
+import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 
@@ -135,19 +135,11 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
       "served payload is the CLI's plus serverBuildSha",
     );
 
-    const post = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "hello from the browser" }),
-    });
+    const post = await postJson(base, "/api/prompt", { text: "hello from the browser" });
     assert.equal(post.status, 200);
     assert.equal(inboxSize(repo), 1);
 
-    const bad = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "  " }),
-    });
+    const bad = await postJson(base, "/api/prompt", { text: "  " });
     assert.equal(bad.status, 400);
 
     // Malformed or non-object bodies are client errors too: 400 with an actionable message,
@@ -180,10 +172,9 @@ test("gui /api/prompt and /api/prompt-role save attached images beside the queue
   const { server, base } = await startLocalGui(repo);
   try {
     const png = Buffer.from("89504e470d0a1a0a", "hex");
-    const post = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "look at this", images: [{ name: "shot.png", dataBase64: png.toString("base64") }] }),
+    const post = await postJson(base, "/api/prompt", {
+      text: "look at this",
+      images: [{ name: "shot.png", dataBase64: png.toString("base64") }],
     });
     assert.equal(post.status, 200);
     // The queued prompt ends with one reference line per image, pointing at an absolute path
@@ -201,10 +192,10 @@ test("gui /api/prompt and /api/prompt-role save attached images beside the queue
     assert.equal(names[1]!.replace(/\.png$/, ""), names[0]!.replace(/\.md$/, ""), "same stem as the queue file");
 
     // The per-role endpoint shares the mechanics; the image lands in that loop's own queue.
-    const rolePost = await fetch(base + "/api/prompt-role", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role: "clean", text: "clean this shot", images: [{ name: "shot.png", dataBase64: png.toString("base64") }] }),
+    const rolePost = await postJson(base, "/api/prompt-role", {
+      role: "clean",
+      text: "clean this shot",
+      images: [{ name: "shot.png", dataBase64: png.toString("base64") }],
     });
     assert.equal(rolePost.status, 200);
     const roleQueued = queuedRolePrompts(repo, "clean")[0]!;
@@ -214,27 +205,21 @@ test("gui /api/prompt and /api/prompt-role save attached images beside the queue
     // Every rejected shape answers 400 naming the rule and writes nothing: no queue file,
     // no image.
     const before = fs.readdirSync(roleInboxDir(repo, "director")).length;
-    const badExtension = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "oops", images: [{ name: "notes.txt", dataBase64: png.toString("base64") }] }),
+    const badExtension = await postJson(base, "/api/prompt", {
+      text: "oops",
+      images: [{ name: "notes.txt", dataBase64: png.toString("base64") }],
     });
     assert.equal(badExtension.status, 400);
     assert.match(((await badExtension.json()) as { error: string }).error, /unsupported image type/);
-    const undecodable = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "oops", images: [{ name: "shot.png", dataBase64: "not@base64!" }] }),
+    const undecodable = await postJson(base, "/api/prompt", {
+      text: "oops",
+      images: [{ name: "shot.png", dataBase64: "not@base64!" }],
     });
     assert.equal(undecodable.status, 400);
     assert.match(((await undecodable.json()) as { error: string }).error, /valid base64/);
-    const tooMany = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        text: "oops",
-        images: Array.from({ length: 5 }, () => ({ name: "shot.png", dataBase64: png.toString("base64") })),
-      }),
+    const tooMany = await postJson(base, "/api/prompt", {
+      text: "oops",
+      images: Array.from({ length: 5 }, () => ({ name: "shot.png", dataBase64: png.toString("base64") })),
     });
     assert.equal(tooMany.status, 400);
     assert.match(((await tooMany.json()) as { error: string }).error, /at most 4 images/);
@@ -712,11 +697,7 @@ test("the token gate accepts the credential as a Bearer header or ?token=, then 
     const payload = (await status.json()) as { running: boolean };
     assert.equal(payload.running, false);
 
-    const post = await fetch(base + "/api/prompt?token=s3cret", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "hello fleet" }),
-    });
+    const post = await postJson(base, "/api/prompt?token=s3cret", { text: "hello fleet" });
     assert.equal(post.status, 200);
     assert.deepEqual(await post.json(), { ok: true });
     assert.equal(inboxSize(repo), 1, "the prompt actually landed behind the gate");

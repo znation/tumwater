@@ -10,7 +10,7 @@ import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, paused
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { DIRECTOR_PROMPT_MAX_CHARS, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";import { enqueueLanding } from "../src/landing-queue.js";
-import { withGui } from "./gui-fixtures.js";
+import { postJson, withGui } from "./gui-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 
@@ -21,9 +21,10 @@ import { makeRepo } from "./repo-fixtures.js";
 // dashboard and `tumwater pause`/`resume` cannot drift.
 
 // The dashboard tests read JSON responses the way gui-client's own postJson guard does;
-// this keeps each call site to one line instead of the double-await fetch idiom.
+// this keeps each call site to one line instead of the double-await fetch idiom. Bodies
+// arrive as raw string bytes (the 400 probes), so this bypasses fixtures' postJson.
 
-async function postJson<T>(base: string, path: string, body: string): Promise<T> {
+async function postRaw<T>(base: string, path: string, body: string): Promise<T> {
   return (await (await fetch(base + path, { method: "POST", body })).json()) as T;
 }
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
@@ -192,32 +193,20 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
   await withGui(repo, async ({ base }) => {
   const configFile = path.join(repo, "tumwater.json");
   // Whole dollars persist and come back in the response.
-  let res = await fetch(base + "/api/budget", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ maxDailyCostUsd: 25 }),
-  });
+  let res = await postJson(base, "/api/budget", { maxDailyCostUsd: 25 });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
   let onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 25);
 
   // Fractional dollars keep their cents (the badge renders them).
-  res = await fetch(base + "/api/budget", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ maxDailyCostUsd: 12.34 }),
-  });
+  res = await postJson(base, "/api/budget", { maxDailyCostUsd: 12.34 });
   assert.equal(res.status, 200);
   onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 12.34);
 
   // Zero disables the cap — a valid value, not an error.
-  res = await fetch(base + "/api/budget", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ maxDailyCostUsd: 0 }),
-  });
+  res = await postJson(base, "/api/budget", { maxDailyCostUsd: 0 });
   assert.equal(res.status, 200);
   onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 0);
@@ -239,7 +228,7 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
     const err = (await res.json()) as { error: string };
     assert.ok(err.error.length > 0, `actionable message for ${body}`);
   }
-  assert.match((await postJson<{ error: string }>(base, "/api/budget", '{"maxDailyCostUsd": -1}')).error, /-1/);
+  assert.match((await postRaw<{ error: string }>(base, "/api/budget", '{"maxDailyCostUsd": -1}')).error, /-1/);
   assert.equal(fs.readFileSync(configFile, "utf8"), before, "rejected bodies change nothing");
 
   // No tmp remnant from any of the writes above.
@@ -259,11 +248,7 @@ test("POST /api/budget answers 500 when a valid value fails server-side", async 
   // deliberately reads fresh and never overwrites a broken file with defaults — reports an error.
   fs.writeFileSync(configFile, "{ still editing");
   await withGui(repo, async ({ base }) => {
-  const res = await fetch(base + "/api/budget", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ maxDailyCostUsd: 25 }), // valid value — the failure is server-side
-  });
+  const res = await postJson(base, "/api/budget", { maxDailyCostUsd: 25 }); // valid value — the failure is server-side
   assert.equal(res.status, 500);
   const err = (await res.json()) as { error: string };
   assert.match(err.error, /not valid JSON/);
@@ -286,28 +271,16 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
   await initProject(repo, "gui pause route test");
   await withGui(repo, async ({ base }) => {
   // Pausing writes the persistent marker and reports the new state; a repeat is idempotent.
-  let res = await fetch(base + "/api/pause", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paused: true }),
-  });
+  let res = await postJson(base, "/api/pause", { paused: true });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, paused: true });
   assert.ok(fs.existsSync(pausedPath(repo)), "the pause marker exists");
-  res = await fetch(base + "/api/pause", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paused: true }),
-  });
+  res = await postJson(base, "/api/pause", { paused: true });
   assert.equal(res.status, 200);
   assert.ok(fs.existsSync(pausedPath(repo)), "a repeat pause leaves the marker in place");
 
   // Resuming removes it.
-  res = await fetch(base + "/api/pause", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paused: false }),
-  });
+  res = await postJson(base, "/api/pause", { paused: false });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, paused: false });
   assert.equal(fs.existsSync(pausedPath(repo)), false, "the pause marker is gone");
@@ -320,7 +293,7 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
     assert.ok(err.error.length > 0, `actionable message for ${body}`);
   }
   assert.equal(fs.existsSync(pausedPath(repo)), false, "rejected bodies leave the marker untouched");
-  assert.match((await postJson<{ error: string }>(base, "/api/pause", '{"paused": "true"}')).error, /boolean/);
+  assert.match((await postRaw<{ error: string }>(base, "/api/pause", '{"paused": "true"}')).error, /boolean/);
 
   // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
   res = await fetch(base + "/api/pause", {
@@ -339,11 +312,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
   await initProject(repo, "gui timed pause test");
   await withGui(repo, async ({ base }) => {
   const before = Date.now();
-  let res = await fetch(base + "/api/pause", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paused: true, forSeconds: 1800 }),
-  });
+  let res = await postJson(base, "/api/pause", { paused: true, forSeconds: 1800 });
   assert.equal(res.status, 200);
   const answer = (await res.json()) as { ok: boolean; paused: boolean; until: number };
   assert.equal(answer.paused, true);
@@ -388,11 +357,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   await withGui(repo, async ({ base }) => {
   // One named role: the row's wake link. The message is the CLI's own confirmation text
   // (no harness here, so the not-live form), and the marker + state-file edits match.
-  let res = await fetch(base + "/api/wake", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ role: "feature" }),
-  });
+  let res = await postJson(base, "/api/wake", { role: "feature" });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), {
     ok: true,
@@ -432,11 +397,7 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
   await withGui(repo, async ({ base }) => {
   // No harness running: the marker is valid but nothing can consume it — a conflict, not a
   // client error, so the CLI's not-live error rides out as 409 and nothing is written.
-  let res = await fetch(base + "/api/abort", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ role: "feature" }),
-  });
+  let res = await postJson(base, "/api/abort", { role: "feature" });
   assert.equal(res.status, 409);
   assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater run` first" });
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "not-live writes no marker");
@@ -483,12 +444,7 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
   await initProject(repo, "gui pause-role test");
   await withGui(repo, async ({ base }) => {
   // Pause one named role: the marker records it, and a repeat is idempotent (changed false).
-  const post = (payload: unknown) =>
-    fetch(base + "/api/pause-role", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  const post = (payload: unknown) => postJson(base, "/api/pause-role", payload);
   let res = await post({ role: "feature", paused: true });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: true, paused: true });
@@ -547,12 +503,7 @@ test("POST /api/prompt-role queues for the named loop and rejects bad bodies lik
   const repo = makeRepo();
   await initProject(repo, "gui prompt-role test");
   await withGui(repo, async ({ base }) => {
-  const post = (payload: unknown) =>
-    fetch(base + "/api/prompt-role", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  const post = (payload: unknown) => postJson(base, "/api/prompt-role", payload);
   const res = await post({ role: "feature", text: "  tighten the docs  " });
   assert.equal(res.status, 200);
   const body = (await res.json()) as { ok: boolean; message: string };

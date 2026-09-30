@@ -20,6 +20,26 @@ export async function startLocalGui(
   return { server, base: `http://127.0.0.1:${addr.port}`, port: addr.port };
 }
 
+/** POST a JSON body to a local GUI endpoint and return the raw Response: the four-line fetch
+ * scaffold (method, the JSON content-type header, JSON.stringify of the payload) every
+ * gui*.test.ts call site hand-rolled, shared so the request shape cannot drift between them.
+ * The Response itself comes back — callers assert on `status` and parse the body themselves,
+ * error bodies included. `extraHeaders` merges over the defaults (the cross-origin tests'
+ * Origin). Tests posting raw or malformed BYTES (the 413/400 probes) keep their own
+ * hand-rolled fetch: there the bytes are the point, and stringify would double-encode them. */
+export function postJson(
+  base: string,
+  path: string,
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  return fetch(base + path, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...extraHeaders },
+    body: JSON.stringify(body),
+  });
+}
+
 /** Run `body` against a freshly started local GUI server and close the server either way —
  * the try/finally (`server.close()` in the finally, so a throwing body can never leak a
  * listening server into the next test) every startLocalGui call site hand-rolls, as one

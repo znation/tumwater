@@ -14,7 +14,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/ui/gui.js";
-import { startLocalGui } from "./gui-fixtures.js";
+import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
@@ -39,11 +39,7 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
     assert.match(await res.text(), /body too large/);
 
     // The server stays healthy afterwards and still accepts normal prompts.
-    const ok = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "still alive" }),
-    });
+    const ok = await postJson(base, "/api/prompt", { text: "still alive" });
     assert.equal(ok.status, 200);
     assert.equal(inboxSize(repo), 1);
   } finally {
@@ -78,20 +74,12 @@ test("gui rejects a cross-origin POST with 403 while same-origin and Origin-less
     assert.equal(inboxSize(repo), 0);
 
     // The dashboard's own POSTs carry this server's host as their Origin — allowed.
-    const same = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json", origin: base },
-      body: JSON.stringify({ text: "from the dashboard" }),
-    });
+    const same = await postJson(base, "/api/prompt", { text: "from the dashboard" }, { origin: base });
     assert.equal(same.status, 200);
     assert.equal(inboxSize(repo), 1);
 
     // Non-browser clients (curl, scripts, the tests above) send no Origin — allowed.
-    const bare = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "from a script" }),
-    });
+    const bare = await postJson(base, "/api/prompt", { text: "from a script" });
     assert.equal(bare.status, 200);
     assert.equal(inboxSize(repo), 2);
   } finally {
@@ -117,11 +105,7 @@ test("gui refuses a POST whose Origin header does not parse as a URL", async () 
     assert.equal(inboxSize(repo), 0);
 
     // The server stays healthy and still accepts a normal prompt afterwards.
-    const ok = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "still alive" }),
-    });
+    const ok = await postJson(base, "/api/prompt", { text: "still alive" });
     assert.equal(ok.status, 200);
     assert.equal(inboxSize(repo), 1);
   } finally {
@@ -137,11 +121,7 @@ test("gui answers 400 for an over-long prompt and queues nothing", async () => {
     // An over-long prompt is a user-input error: the shared length rule (inbox.ts's
     // promptLengthProblem) answers 400 naming the length and the ceiling — not the outer
     // catch's 500, which is reserved for unexpected submit failures (see the EACCES test).
-    const res = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) }),
-    });
+    const res = await postJson(base, "/api/prompt", { text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) });
     assert.equal(res.status, 400);
     const body = (await res.json()) as { error: string };
     assert.match(body.error, new RegExp(`${DIRECTOR_PROMPT_MAX_CHARS + 1} chars`));
@@ -167,11 +147,7 @@ test("gui answers JSON 500 when a handler throws unexpectedly and keeps serving"
     // naming the failure and every later request still works.
     fs.chmodSync(inbox, 0o555);
 
-    const res = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "this write will fail" }),
-    });
+    const res = await postJson(base, "/api/prompt", { text: "this write will fail" });
     assert.equal(res.status, 500);
     const body = (await res.json()) as { error: string };
     assert.match(body.error, /EACCES|permission denied/);
@@ -407,11 +383,7 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
     // The dashboard survived the dropped connection and still serves: status answers and a
     // fresh, complete prompt is accepted end to end.
     assert.equal((await fetch(base + "/api/status")).status, 200);
-    const res = await fetch(base + "/api/prompt", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "sent after the abort" }),
-    });
+    const res = await postJson(base, "/api/prompt", { text: "sent after the abort" });
     assert.equal(res.status, 200);
     assert.equal(dequeuePrompt(repo), "sent after the abort");
   } finally {
@@ -480,11 +452,7 @@ test("gui rejects oversized prompt-role bodies with 413 and stays healthy", asyn
     assert.equal(res.status, 413);
     assert.match(await res.text(), /body too large/);
 
-    const ok = await fetch(base + "/api/prompt-role", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role: "clean", text: "still alive" }),
-    });
+    const ok = await postJson(base, "/api/prompt-role", { role: "clean", text: "still alive" });
     assert.equal(ok.status, 200);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["still alive"]);
   } finally {
@@ -503,12 +471,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     const first = enqueueRolePrompt(repo, DIRECTOR_ROLE, "first prompt");
     const second = enqueueRolePrompt(repo, DIRECTOR_ROLE, "second prompt");
     const clean = enqueueRolePrompt(repo, "clean", "clean prompt");
-    const post = (body: unknown) =>
-      fetch(base + "/api/prompt-cancel", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
+    const post = (payload: unknown) => postJson(base, "/api/prompt-cancel", payload);
 
     // Cancelling by file removes exactly that file, logs one prompt_cancelled event under
     // the director, and answers the preview for the flash line.
