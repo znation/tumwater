@@ -26,6 +26,27 @@ import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+
+/** Simulate an interrupted tick's leftover — the crash state every test in this file starts
+ * from: detach, commit work main does not contain, return to main, and pin the commit with the
+ * role's landing ref — the on-disk state a shutdown between the tick's commitAll and its
+ * landing leaves. Returns the pinned sha. */
+async function pinLeftover(
+  repo: string,
+  file: string,
+  content: string,
+  message: string,
+  role = "improve",
+): Promise<string> {
+  sh(repo, "git", "checkout", "--detach");
+  fs.writeFileSync(path.join(repo, file), content);
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", message);
+  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
+  sh(repo, "git", "checkout", "main");
+  await setRef(repo, landingRefName(role), sha);
+  return sha;
+}
 import { fakePi, firstRunThenIdle } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
@@ -36,13 +57,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
   const repo = await initializedRepo();
   // Simulate the crash: a commit not contained in main, pinned by the landing ref, with the
   // role branch back at main.
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, "crash.txt"), "interrupted work\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "interrupted tick's commit");
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
-  sh(repo, "git", "checkout", "main");
-  await setRef(repo, landingRefName("improve"), sha);
+  const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted tick's commit");
 
   // The next tick's recovery puts the pin on the land queue; the landing slot re-lands it
   // through the full gate: approve → land. The authoring branch would make a change, so a tick
@@ -107,13 +122,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
 // MERGE_CONFLICT_LIMIT recovery drops the pin and the tick authors on fresh main, told why.
 test("a pin at the merge-conflict cap is discarded and the tick authors, told what was dropped", async () => {
   const repo = await initializedRepo();
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, "stuck.txt"), "unmergeable work\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "work main outgrew");
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
-  sh(repo, "git", "checkout", "main");
-  await setRef(repo, landingRefName("improve"), sha);
+  const sha = await pinLeftover(repo, "stuck.txt", "unmergeable work\n", "work main outgrew");
 
   const prompts = path.join(tmpdir(), "prompts.log");
   const restore = fakePi(
@@ -152,14 +161,10 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
   const repo = await initializedRepo();
   // Simulate the crash: a pinned commit whose message carries the harness's Friction trailer and
   // the author's WHY/RISK/VERIFIED, with the role branch back at main.
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, "recovered.txt"), "work\n");
-  sh(repo, "git", "add", "-A");
-  sh(
+  const sha = await pinLeftover(
     repo,
-    "git",
-    "commit",
-    "-m",
+    "recovered.txt",
+    "work\n",
     [
       "tumwater(improve): slow but worthwhile",
       "",
@@ -171,9 +176,6 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
       "Friction: high (44 turns / 4m)",
     ].join("\n"),
   );
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
-  sh(repo, "git", "checkout", "main");
-  await setRef(repo, landingRefName("improve"), sha);
 
   const reviewArgs = path.join(tmpdir(), "recovery-review-args");
   const restore = fakePi(
@@ -205,13 +207,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
 // landing slot's to handle now: landing-drain.test.ts pins that it discards the pin.)
 test("a director tick that ends on leftover recovery puts its user prompt back", async () => {
   const repo = await initializedRepo();
-  sh(repo, "git", "checkout", "--detach");
-  fs.writeFileSync(path.join(repo, "crash.txt"), "interrupted work\n");
-  sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "interrupted director commit");
-  const sha = sh(repo, "git", "rev-parse", "HEAD").trim();
-  sh(repo, "git", "checkout", "main");
-  await setRef(repo, landingRefName("director"), sha);
+  const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");
   const ran = path.join(tmpdir(), "ran");
   const restore = fakePi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   try {
