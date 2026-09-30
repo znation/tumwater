@@ -108,11 +108,11 @@ export function pollFleetGates(
   // the bottom of this block.
   const { gate, roleConfig, spentUsd, capUsd, resumed: gateResumed, fallbackPair: leftPair } =
     pollBudgetGate(states.budget, {
-    root,
-    states: runners.map((r) => r.state),
-    liveConfig,
-    modelsPath,
-  });
+      root,
+      states: runners.map((r) => r.state),
+      liveConfig,
+      modelsPath,
+    });
   // Publish what observers cannot derive themselves: the demotion (the dashboards' gate
   // and `tumwater doctor` would otherwise read the price alone and advertise a dead
   // fallback) and the gate's own spend/cap pair — summed over the runners' live states,
