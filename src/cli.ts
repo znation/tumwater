@@ -2,6 +2,7 @@
 import {
   fail,
   say,
+  sayJsonOrRender,
   DURATION_FLAG,
   N_FLAG,
   parseCountFlag,
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
       // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
       // the render — the `report --json` precedent. The exit-code contract below holds in both
       // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
-      say(args.includes("--json") ? JSON.stringify(report, null, 2) : renderDoctor(report));
+      sayJsonOrRender(args, report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }
@@ -211,7 +212,7 @@ async function main(): Promise<void> {
       const role = parseRoleFlag(args, knownRoleIdsCached(root));
       if (role === null) fail("diff needs --role <id> (try `tumwater help diff`)");
       const change = await collectRoleChange(root, role);
-      say(args.includes("--json") ? JSON.stringify(change, null, 2) : renderRoleChange(change));
+      sayJsonOrRender(args, change, renderRoleChange);
       break;
     }
     case "backlog": {

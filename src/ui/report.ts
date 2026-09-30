@@ -8,7 +8,7 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say } from "../cli-args.js";
+import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say, sayJsonOrRender } from "../cli-args.js";
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.
@@ -154,7 +154,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
     const since = collectReportSince(root, ms);
-    say(args.includes("--json") ? JSON.stringify(since, null, 2) : renderSinceReportMarkdown(since));
+    sayJsonOrRender(args, since, renderSinceReportMarkdown);
     return;
   }
   const daysRaw = flagValue(args, "--days");

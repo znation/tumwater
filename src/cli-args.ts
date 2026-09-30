@@ -19,6 +19,15 @@ export function say(text: string): void {
   process.stdout.write(text + "\n");
 }
 
+/** Print a query command's result as `--json` or human text — the shared convention behind
+ * status/doctor/report/history/diff/backlog --json: the flag prints the collector's own
+ * payload pretty-printed, not a re-parse of the render, so every exit-0 output is parseable.
+ * Call it only after the payload is already collected (all three original sites computed it
+ * unconditionally), so the human path pays no extra collection. */
+export function sayJsonOrRender<T>(args: string[], payload: T, render: (payload: T) => string): void {
+  say(args.includes("--json") ? JSON.stringify(payload, null, 2) : render(payload));
+}
+
 /** The single uniform failure exit for CLI flag/argument validation and command preflight:
  * write a `tumwater: <message>` line to stderr and exit 1. Declared `never` because every
  * caller relies on it stopping execution — code after a fail() call is unreachable. */
