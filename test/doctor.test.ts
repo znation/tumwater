@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { runDoctor } from "../src/doctor.js";
 import {
   checkBrief,
   checkBuild,
@@ -15,8 +16,7 @@ import {
   checkAgentBinary,
   checkRepo,
   checkStateDir,
-  runDoctor,
-} from "../src/doctor.js";
+} from "../src/doctor-checks.js";
 import { renderDoctor } from "../src/ui/doctor-report.js";
 import { helpTopic } from "../src/help.js";
 import { GIT_MISSING_MESSAGE } from "../src/git.js";
