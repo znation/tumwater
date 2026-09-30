@@ -17,7 +17,7 @@ import { DEFER_MAX_MS } from "../src/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt, submitRolePrompt } from "../src/inbox.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import {
   freshLoopState,
   loadLoopState,

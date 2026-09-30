@@ -27,7 +27,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { applyTickOutcome } from "../src/tick-outcome.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing-queue.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry } from "../src/landing-queue.js";
 import type { PiRunResult } from "../src/pi.js";

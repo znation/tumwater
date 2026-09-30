@@ -6,7 +6,8 @@
  * prints" (column widths, terminal display padding), which change for different reasons —
  * and keeps core data collection out of the presentation layer, so a core consumer (as the
  * GUI's /api/history already is) never forces a core→ui import. */
-import { eventUsage, readEvents, tickSpanMs, tickStartMap, type HarnessEvent } from "./events.js";
+import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "./event-read.js";
+import type { HarnessEvent } from "./events.js";
 import { readEventsSince } from "./event-window.js";
 import { formatTimestamp } from "./datetime.js";
 import { squash } from "./text.js";

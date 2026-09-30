@@ -7,7 +7,7 @@ import type { BatchRoleWiring } from "../src/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";

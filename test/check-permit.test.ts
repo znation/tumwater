@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
 import { runScopedBuildCheck } from "../src/build-check.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 

@@ -4,7 +4,8 @@ import {
   readEventsSince,
   SPARSE_WINDOW_NOTE,
 } from "../event-window.js";
-import { parseEventLine, readEventsTailWithEnd, type HarnessEvent } from "../events.js";
+import { parseEventLine, readEventsTailWithEnd } from "../event-read.js";
+import type { HarnessEvent } from "../events.js";
 import { formatEvent } from "../event-format.js";
 import { followFile } from "../tail.js";
 import { createTranscriptRenderer } from "./transcript.js";

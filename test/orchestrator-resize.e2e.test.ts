@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";

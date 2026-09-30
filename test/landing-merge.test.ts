@@ -9,7 +9,7 @@ import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";

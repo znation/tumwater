@@ -14,7 +14,7 @@ import path from "node:path";
 import { MERGE_CONFLICT_LIMIT } from "../src/leftover.js";
 import { defaultConfig } from "../src/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { setRef } from "../src/git.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { ERROR_STREAK_WARN } from "../src/tick-outcome.js";

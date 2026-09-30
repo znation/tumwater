@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

@@ -6,7 +6,7 @@ import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/budget-ga
 import { recordDailyCost } from "../src/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/fallback-breaker.js";
 import { defaultConfig } from "../src/config.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { tmpdir } from "./repo-fixtures.js";

@@ -13,7 +13,7 @@ import { consumeAbortRequests } from "../src/operator-requests.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";

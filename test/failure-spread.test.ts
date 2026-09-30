@@ -8,7 +8,7 @@ import {
   type FailureSpread,
 } from "../src/failure-spread.js";
 import { pollFailureSpread, type HoldInputs } from "../src/fleet-polls.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The fleet-wide wide-shallow storm alarm (src/failure-spread.ts; BUGS.md 2026-09-30, part

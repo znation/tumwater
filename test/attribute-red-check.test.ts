@@ -6,7 +6,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop-state.js";
 import { refSha, setRef } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { shortSha } from "../src/text.js";
 import type { BuildCheck } from "../src/build-check-detect.js";
 import type { BuildCheckOutcome } from "../src/build-check.js";

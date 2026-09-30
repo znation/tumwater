@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork } from "../src/tick-timing.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { writeLandingMarker, readLandingMarker } from "../src/landing-slot.js";
 import type { InFlightLanding } from "../src/landing-pipeline.js";
 import { tmpdir } from "./repo-fixtures.js";

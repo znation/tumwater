@@ -1,5 +1,6 @@
 import { dayKey } from "./datetime.js";
-import { eventDayKey, parseEventLine, type HarnessEvent } from "./events.js";
+import { eventDayKey, parseEventLine } from "./event-read.js";
+import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "./paths.js";
 import { readTailText } from "./tail.js";
 

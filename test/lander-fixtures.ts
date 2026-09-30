@@ -7,7 +7,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { eventsLogPath, landingRefName } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";

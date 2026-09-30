@@ -8,7 +8,8 @@
  * in failure-cluster.ts, shared with the error-storm reducer. */
 import type { TickResult } from "./tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
-import { eventDayKey, eventRole, eventUsage, tickSpanMs, tickStartMap, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js";
+import type { HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, normalizeClusterKey, poolTimeoutKey, EXAMPLE_MAX, type Cluster } from "./failure-cluster.js";

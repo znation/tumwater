@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.js";
 import { defaultConfig } from "../src/config.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { shortSha } from "../src/text.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";

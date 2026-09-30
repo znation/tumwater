@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/leftover.js";
 import { commitTrailer } from "../src/commit-message.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { enqueueLanding, queuedLandings } from "../src/landing-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";

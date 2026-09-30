@@ -7,7 +7,7 @@ import { checkFailureReasons } from "../src/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
 import { errCode } from "../src/errno.js";
 import { detectBuildCheck, resolveFromNodeModules } from "../src/build-check-detect.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { pidAlive } from "../src/process.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";

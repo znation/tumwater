@@ -6,7 +6,7 @@ import {
   openQuestions,
   plannedPlanEntries,
 } from "../backlog.js";
-import { readEvents } from "../events.js";
+import { readEvents } from "../event-read.js";
 import { collectReport } from "../report-data.js";
 import { renderReportMarkdown } from "./report.js";
 import { REPORT_DEFAULT_DAYS } from "../event-window.js";

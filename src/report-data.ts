@@ -9,7 +9,8 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
-import { eventDayKey, eventRole, eventUsage, type HarnessEvent } from "./events.js";
+import { eventDayKey, eventRole, eventUsage } from "./event-read.js";
+import type { HarnessEvent } from "./events.js";
 import { entryDates } from "./backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 

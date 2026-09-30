@@ -14,7 +14,7 @@ import { pauseFleet, resumeFleet } from "../src/fleet-state.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./orchestrator-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { mainSha, makeRepo } from "./repo-fixtures.js";

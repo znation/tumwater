@@ -12,7 +12,7 @@ import path from "node:path";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import { defaultConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { loadLoopState, saveLoopState } from "../src/loop-state.js";
 import {
   abortRequestPath,

@@ -7,7 +7,7 @@ import { fallbackPair } from "./config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { queuedRolePromptCount, queuedRolePromptEntries } from "./inbox.js";
-import { readEvents } from "./events.js";
+import { readEvents } from "./event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "./git.js";
 import { statePath } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";

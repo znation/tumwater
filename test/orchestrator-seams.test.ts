@@ -8,7 +8,7 @@ import {
 } from "../src/tick-timing.js";
 import { pollFleetHold, type HoldInputs } from "../src/fleet-polls.js";
 import { Semaphore } from "../src/semaphore.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { FLEET_OPEN, HOLD_BASE_MS } from "../src/fleet-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/tick-outcome.js";

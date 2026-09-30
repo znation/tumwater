@@ -9,7 +9,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
-import { readEvents } from "../src/events.js";
+import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
