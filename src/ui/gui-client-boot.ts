@@ -7,7 +7,6 @@
  * when the serving build moves. Spliced into gui-client.ts's script as its last section,
  * reaching the shared state and the render helpers of every other section through that
  * concatenation. */
-/** Routing between views, global actions and keys, the theme toggle, and the poll loop. */
 export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures" };
   function switchView(v) {
