@@ -300,6 +300,50 @@ test("queuedPrompts skips a file that vanishes between listing and reading", (t)
   }
 });
 
+test("dequeue survives the queue directory vanishing before the attachment cleanup", (t) => {
+  const dir = tmpdir();
+  enqueuePrompt(dir, "with images");
+
+  // A concurrent cleanup (retention, an operator's rm -r) removes the whole queue directory
+  // between the prompt's removal and the attachment-sibling sweep: readdirSync hits ENOENT.
+  // The sweep is best-effort by contract ("a queue directory that is already gone leaves
+  // nothing to clean") — the dequeue must still hand back the prompt text, never the error.
+  // The first listing readdir (queuedFiles) must pass through; only the sweep's readdir fails.
+  const original = fs.readdirSync.bind(fs);
+  let calls = 0;
+  t.mock.method(fs, "readdirSync", ((...args: unknown[]) => {
+    if (++calls > 1) throw errnoError("ENOENT");
+    return original(...(args as [string, never]));
+  }) as typeof fs.readdirSync);
+  try {
+    assert.equal(dequeuePrompt(dir), "with images");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.deepEqual(queuedPrompts(dir), [], "the prompt was still taken off the queue");
+});
+
+test("cancel survives the queue directory vanishing before the attachment cleanup", (t) => {
+  const dir = tmpdir();
+  enqueuePrompt(dir, "raced cleanup");
+
+  // Same race on the cancel path: takeCancelledPrompt rides takeQueuedFile, so the same
+  // vanished-directory tolerance applies — the operator sees a clean cancellation, and the
+  // prompt_cancelled event is still logged.
+  const original = fs.readdirSync.bind(fs);
+  let calls = 0;
+  t.mock.method(fs, "readdirSync", ((...args: unknown[]) => {
+    if (++calls > 1) throw errnoError("ENOENT");
+    return original(...(args as [string, never]));
+  }) as typeof fs.readdirSync);
+  try {
+    assert.deepEqual(cancelPrompt(dir, 1), { status: "cancelled", text: "raced cleanup" });
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(eventsOfType(dir, "prompt_cancelled").length, 1, "the event still logged");
+});
+
 // --- Per-role queues (PLANS.md "Per-role prompts 1/2") ---
 
 test("a role prompt's over-cap error names the target loop's tick, not the director's", () => {
