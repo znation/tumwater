@@ -69,6 +69,34 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(data.totals.bugsFixed, 0);
 });
 
+test("collectReport skips a future-dated or timestamp-less event instead of folding into a missing day", () => {
+  // The usage fold indexes only the window's days: an event dated ahead of today (clock
+  // skew, a bad writer) has no bucket, and the reader can hand the fold such an event —
+  // scanEventsFile only drops lines OLDER than the window. The skip guard is load-bearing:
+  // without it the event would be folded into `undefined` and the whole `tumwater report`
+  // (and the GUI's report view with it) would crash on one skewed timestamp. The two
+  // timestamp-less lines document the layer beneath: the reader itself drops events whose
+  // day key is not a number, so the fold never sees them at all.
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(4), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    // Dated two days into the future: no bucket exists for it.
+    JSON.stringify({ ts: at(-2), loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 9999 }),
+    // ts present but not a number; eventDayKey returns null for it.
+    JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "tick_end", tick: 3, result: "changed", tokens: 8888 }),
+    // ts omitted entirely.
+    JSON.stringify({ loop: "dry", type: "tick_end", tick: 4, result: "changed", tokens: 7777 }),
+  ]);
+  const data = collectReport(root, 5);
+  // Only the in-window, well-timestamped event counts; the others vanish without a trace.
+  assert.equal(data.totals.tokensOut, 500);
+  assert.equal(data.totals.ticks, 1);
+  assert.deepEqual(data.series[0]?.ticksByRole, { feature: 1 });
+  for (const d of data.series) {
+    assert.deepEqual(Object.keys(d.ticksByRole), d.ticksByRole.feature ? ["feature"] : [], `${d.date} carries no phantom roles`);
+  }
+});
+
 test("collectReport folds landed/land_failed usage into the day and totals, with the landing share named", () => {
   const root = tmpdir();
   writeEvents(root, [
