@@ -483,6 +483,134 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
   }
 });
 
+test("systemProcessProbe.runMarkers on Linux reads /proc environ, skipping the scanner and vanished pids", async (t) => {
+  // The Linux branch reads /proc/<pid>/environ instead of shelling out to ps -wwE, and this
+  // dev box never takes it — so pin the platform and fake the kernel's environ surface. The
+  // contract under test: a marked environ becomes that pid's marker list, a pid whose read
+  // fails (exited meanwhile, or another user's process) is simply absent, and the scanner's
+  // own pid is skipped before any read — it holds its mark in memory, not in its environment.
+  const marker = makeRunMarker();
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const read = t.mock.method(fs, "readFileSync", (target: string) => {
+    if (target === "/proc/10/environ") return `PATH=/bin\0TUMWATER_RUN=${marker}`;
+    if (target === "/proc/11/environ") throw errnoError("ENOENT", "ENOENT: no such file");
+    return "PATH=/bin";
+  });
+  try {
+    const marks = await systemProcessProbe.runMarkers([10, 11, 12, process.pid]);
+    assert.deepEqual([...marks], [[10, [marker]]]);
+    assert.deepEqual(
+      read.mock.calls.map((c) => c.arguments[0]),
+      ["/proc/10/environ", "/proc/11/environ", "/proc/12/environ"],
+    );
+  } finally {
+    if (original) Object.defineProperty(process, "platform", original);
+  }
+});
+
+test("systemProcessProbe.runMarkers degrades to an empty map when the ps table cannot be read", async (t) => {
+  // A missing ps (or a wedged table) is a miss, never a failed doctor — the argv/cwd half of
+  // the probe still ran, so the sweep must hand back an empty answer rather than throw.
+  if (process.platform === "linux") t.skip("the ps fallback is not taken on Linux");
+  const emptyBin = tmpdir("no-ps-");
+  const restorePath = pathReplace(emptyBin);
+  try {
+    assert.deepEqual(await systemProcessProbe.runMarkers([process.pid]), new Map());
+  } finally {
+    restorePath();
+  }
+});
+
+test("sweepRunMarker on Linux walks /proc environ and signals only the marked pid", async (t) => {
+  // The Linux sweep reads /proc/<pid>/environ over a /proc readdir instead of ps -wwE — the
+  // same blind-spot fix that motivates the mac-side sweep (ps -E hides platform binaries),
+  // and this dev box never takes the branch. Pin the platform, fake the kernel's directory
+  // and environ surface, and let the sweep signal a REAL spawned orphan carrying the mark:
+  // non-numeric entries and the scanner's own pid must be skipped unread, a vanished pid's
+  // read failure must be absorbed, and the one marked victim must take the SIGTERM.
+  const marker = makeRunMarker();
+  const dir = tmpdir();
+  const pidFile = path.join(dir, "victim.pid");
+  const child = spawn(
+    process.execPath,
+    ["-e", "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)", pidFile],
+    { detached: true, stdio: "ignore", env: { ...process.env, TUMWATER_RUN: marker } },
+  );
+  child.unref();
+  const upDeadline = Date.now() + 10_000;
+  while (!fs.existsSync(pidFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
+  const victimPid = Number(fs.readFileSync(pidFile, "utf8").trim());
+  assert.ok(victimPid > 0, "the orphan recorded its pid");
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const readdir = t.mock.method(fs, "readdirSync", (target: string) => {
+    assert.equal(target, "/proc");
+    return [String(victimPid), String(process.pid), "self", "999999999"];
+  });
+  const read = t.mock.method(fs, "readFileSync", (target: string) => {
+    if (target === `/proc/${victimPid}/environ`) return `PATH=/bin\0TUMWATER_RUN=${marker}`;
+    throw errnoError("ENOENT", "ENOENT: no such file");
+  });
+  try {
+    const signaled = await sweepRunMarker(marker);
+    assert.equal(signaled, 1, "exactly the marked victim was signalled");
+    assert.deepEqual(readdir.mock.calls.map((c) => c.arguments[0]), ["/proc"]);
+    assert.deepEqual(
+      read.mock.calls.map((c) => c.arguments[0]).sort(),
+      [`/proc/${victimPid}/environ`, "/proc/999999999/environ"],
+      "the scanner's own pid is skipped unread; the vanished pid's read failure is absorbed",
+    );
+    const goneDeadline = Date.now() + 10_000;
+    while (pidAlive(victimPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(pidAlive(victimPid), false, "the marked victim is gone");
+  } finally {
+    if (original) Object.defineProperty(process, "platform", original);
+    try {
+      process.kill(victimPid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  }
+});
+
+test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGTERM leg", async (t) => {
+  // The sweep's escalation leg: a victim that ignores SIGTERM (a server trapping it) must
+  // still die 10 s later. The 10 s grace is covered with logical time — the timer is mocked,
+  // ticked past the grace, and the real SIGKILL lands on a real process that provably
+  // survived the first leg.
+  const marker = makeRunMarker();
+  const dir = tmpdir();
+  const readyFile = path.join(dir, "ready");
+  const child = spawn(
+    process.execPath,
+    ["-e", "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)", readyFile],
+    { detached: true, stdio: "ignore", env: { ...process.env, TUMWATER_RUN: marker } },
+  );
+  child.unref();
+  const upDeadline = Date.now() + 10_000;
+  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
+  assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the sweep");
+  const pid = child.pid as number;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const signaled = await sweepRunMarker(marker);
+    assert.equal(signaled, 1);
+    assert.equal(pidAlive(pid), true, "the victim survives the SIGTERM leg");
+    t.mock.timers.tick(10_000);
+  } finally {
+    t.mock.timers.reset();
+  }
+  const goneDeadline = Date.now() + 10_000;
+  while (pidAlive(pid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the survivor");
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+});
+
 test("terminateChild takes a live process group down promptly with the SIGTERM leg", async () => {
   // The full SIGTERM → SIGKILL escalation (10 s grace) is covered by build-check.test.ts with
   // logical time; here the real entry point must at least deliver the SIGTERM leg: a detached
