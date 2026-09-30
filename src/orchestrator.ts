@@ -54,7 +54,7 @@ import {
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
   pollErrorStorm,
-  pollRateLimitHold,
+  pollFleetHold,
   runTimedRoleTick,
   sleepInterruptible,
 } from "./tick-timing.js";
@@ -334,7 +334,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // both siblings, and a role tick already parked in the semaphore meets the same hold at
       // its permit (the start gate below) and hands its reservation back instead of starting
       // into the storm.
-      fleetHold = pollRateLimitHold(root, fleetHold, runners, now);
+      fleetHold = pollFleetHold(root, fleetHold, runners, now);
       const held = fleetHold.until !== null;
 
       // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks

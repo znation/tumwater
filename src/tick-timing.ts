@@ -5,7 +5,7 @@ import { removeQuiet } from "./files.js";
 import type { LoopState } from "./loop-state.js";
 import type { InFlightLanding } from "./landing-drain.js";
 import { landingStatePath } from "./paths.js";
-import { fleetHold, type FleetHold, type RateLimitObservation } from "./rate-limit-hold.js";
+import { fleetHold, type FleetHold, type HoldObservation } from "./rate-limit-hold.js";
 import type { BackendFailureKind } from "./pi.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
@@ -126,13 +126,13 @@ export type HoldInputs = {
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 };
 
-export function pollRateLimitHold(
+export function pollFleetHold(
   root: string,
   prev: FleetHold,
   runners: readonly HoldInputs[],
   now: number,
 ): FleetHold {
-  const observations: RateLimitObservation[] = runners.flatMap((r) => [
+  const observations: HoldObservation[] = runners.flatMap((r) => [
     ...(r.lastRateLimit
       ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
       : []),
@@ -169,7 +169,7 @@ export function pollRateLimitHold(
  * (a fleet timing out together means tickTimeoutSeconds does not fit the serving model).
  * Storms clear silently — the members' own recoveries already tell that story — and the
  * reducer's `prev` pass-through keeps a held storm event-free. Returns the new storm for the
- * caller to keep. Exported as a unit-test seam, like pollRateLimitHold above. */
+ * caller to keep. Exported as a unit-test seam, like pollFleetHold above. */
 export function pollErrorStorm(
   root: string,
   prev: ErrorStorm,

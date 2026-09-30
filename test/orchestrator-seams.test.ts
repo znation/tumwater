@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import {
   awaitLandingForHandoff,
   p75TickDurationMs,
-  pollRateLimitHold,
+  pollFleetHold,
   runTimedRoleTick,
   sleepInterruptible,
   type HoldInputs,
 } from "../src/tick-timing.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events.js";
-import { FLEET_OPEN, RATE_LIMIT_HOLD_BASE_MS } from "../src/rate-limit-hold.js";
+import { FLEET_OPEN, HOLD_BASE_MS } from "../src/rate-limit-hold.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
 import type { TickOutcome } from "../src/tick-outcome.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -248,7 +248,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
 // (rate-limit-hold.test.ts pins its rule), and logs exactly one event per crossing — the fleet
 // state transitions the digest's Fleet state changes section replays. Before the fix there was
 // no cross-role input at all: two roles 429ing seconds apart changed nothing.
-test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
+test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and re-opens at its deadline", () => {
   const root = tmpdir();
   const now = 1_000_000_000;
   const holdEvents = () =>
@@ -260,31 +260,31 @@ test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, a
   ];
 
   // One role's 429 is the per-run retry's business: no hold, no event.
-  let hold = pollRateLimitHold(root, FLEET_OPEN, runners, now);
+  let hold = pollFleetHold(root, FLEET_OPEN, runners, now);
   assert.equal(hold.until, null);
   assert.equal(holdEvents().length, 0);
 
   // A second role's run ends on a 429 inside the window: the hold trips, once.
   runners[2]!.lastRateLimit = { at: now };
-  hold = pollRateLimitHold(root, hold, runners, now);
-  assert.equal(hold.until, now + RATE_LIMIT_HOLD_BASE_MS);
+  hold = pollFleetHold(root, hold, runners, now);
+  assert.equal(hold.until, now + HOLD_BASE_MS);
   const [tripped] = holdEvents();
   assert.equal(tripped?.type, "rate_limit_hold");
   assert.equal(tripped?.loop, "harness");
   assert.deepEqual(tripped?.roles, ["bugfix", "clean"]);
-  assert.equal(tripped?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(tripped?.holdMs, HOLD_BASE_MS);
   assert.equal(tripped?.escalation, 0);
 
   // Steady polls while held log nothing more.
-  hold = pollRateLimitHold(root, hold, runners, now + 2_000);
-  hold = pollRateLimitHold(root, hold, runners, now + 4_000);
+  hold = pollFleetHold(root, hold, runners, now + 2_000);
+  hold = pollFleetHold(root, hold, runners, now + 4_000);
   assert.equal(holdEvents().length, 1);
 
   // At the deadline it re-opens by itself with one resumed event — and the 429s that tripped
   // it cannot re-trip it on the next poll.
-  hold = pollRateLimitHold(root, hold, runners, now + RATE_LIMIT_HOLD_BASE_MS);
+  hold = pollFleetHold(root, hold, runners, now + HOLD_BASE_MS);
   assert.equal(hold.until, null);
-  hold = pollRateLimitHold(root, hold, runners, now + RATE_LIMIT_HOLD_BASE_MS + 2_000);
+  hold = pollFleetHold(root, hold, runners, now + HOLD_BASE_MS + 2_000);
   assert.deepEqual(
     holdEvents().map((e) => e.type),
     ["rate_limit_hold", "rate_limit_resumed"],
@@ -292,21 +292,21 @@ test("pollRateLimitHold trips on two roles' 429s, logs one event per crossing, a
 
   // The storm resumes right after re-open — the director's 429 counts as evidence too, since it
   // is the same provider: the next hold doubles, and its event says so.
-  const relapseAt = now + RATE_LIMIT_HOLD_BASE_MS + 10_000;
+  const relapseAt = now + HOLD_BASE_MS + 10_000;
   runners[0]!.lastRateLimit = { at: relapseAt };
   runners[1]!.lastRateLimit = { at: relapseAt };
-  hold = pollRateLimitHold(root, hold, runners, relapseAt);
+  hold = pollFleetHold(root, hold, runners, relapseAt);
   const relapse = holdEvents().at(-1);
   assert.equal(relapse?.type, "rate_limit_hold");
   assert.deepEqual(relapse?.roles, ["bugfix", "director"]);
   assert.equal(relapse?.escalation, 1);
-  assert.equal(relapse?.holdMs, 2 * RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(relapse?.holdMs, 2 * HOLD_BASE_MS);
 });
 
 // The hold's generalization (PLANS.md 2026-09-29): the same poll gathers each runner's
 // lastBackendFailure beside its lastRateLimit, and a storm of one backend kind trips and
 // renders with the kind in the event payload — while a 429 storm keeps its exact wording.
-test("pollRateLimitHold trips on two roles' same-kind backend failures and names the kind", () => {
+test("pollFleetHold trips on two roles' same-kind backend failures and names the kind", () => {
   const root = tmpdir();
   const now = 1_000_000_000;
   const holdEvents = () =>
@@ -320,25 +320,25 @@ test("pollRateLimitHold trips on two roles' same-kind backend failures and names
   ];
 
   // Different kinds, one role each: no storm of either, no event.
-  let hold = pollRateLimitHold(root, FLEET_OPEN, runners, now);
+  let hold = pollFleetHold(root, FLEET_OPEN, runners, now);
   assert.equal(hold.until, null);
   assert.equal(holdEvents().length, 0);
 
   // The second connection error makes a connection storm; the timeout is not part of it.
   runners[2]!.lastBackendFailure = { at: now, kind: "connection" };
-  hold = pollRateLimitHold(root, hold, runners, now);
-  assert.equal(hold.until, now + RATE_LIMIT_HOLD_BASE_MS);
+  hold = pollFleetHold(root, hold, runners, now);
+  assert.equal(hold.until, now + HOLD_BASE_MS);
   const [tripped] = holdEvents();
   assert.equal(tripped?.type, "rate_limit_hold");
   assert.equal(tripped?.kind, "connection", "the event carries the hold's kind");
   assert.deepEqual(tripped?.roles, ["bugfix", "clean"]);
-  assert.equal(tripped?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(tripped?.holdMs, HOLD_BASE_MS);
 
   // A rate-limit storm still behaves exactly as before the generalization: kind "rate-limit".
   // The poll past the connection hold's deadline re-opens it first (its own resumed event),
   // and only the NEXT poll — with fresh 429s after that re-open — trips the 429 storm.
   const rlAt = now + 10 * 60_000;
-  hold = pollRateLimitHold(root, hold, runners, rlAt);
+  hold = pollFleetHold(root, hold, runners, rlAt);
   assert.equal(hold.until, null, "the connection hold re-opened at its deadline");
   // The resumed event carries the ended hold's kind (BUGS.md 2026-09-29), so the lift can
   // name the connection error it lifted instead of a 429 that never happened.
@@ -346,11 +346,11 @@ test("pollRateLimitHold trips on two roles' same-kind backend failures and names
   assert.equal(connectionResumed?.kind, "connection", "the resumed event carries the ended hold's kind");
   runners[0]!.lastRateLimit = { at: rlAt + 2_000 };
   runners[1]!.lastRateLimit = { at: rlAt + 2_000 };
-  hold = pollRateLimitHold(root, hold, runners, rlAt + 2_000);
+  hold = pollFleetHold(root, hold, runners, rlAt + 2_000);
   const rlTrip = holdEvents().filter((e) => e.type === "rate_limit_hold").at(-1);
   assert.equal(rlTrip?.kind, "rate-limit");
   assert.deepEqual(rlTrip?.roles, ["bugfix", "director"]);
-  assert.equal(rlTrip?.holdMs, RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(rlTrip?.holdMs, HOLD_BASE_MS);
 });
 
 // BUGS.md 2026-09-23 — the restart hand-off's bounded wait on an in-flight landing. A landing

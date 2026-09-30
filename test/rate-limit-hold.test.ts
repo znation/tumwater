@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import {
   FLEET_OPEN,
   fleetHold,
-  RATE_LIMIT_HOLD_BASE_MS,
-  RATE_LIMIT_HOLD_CAP_MS,
-  RATE_LIMIT_RELAPSE_MS,
-  RATE_LIMIT_STORM_WINDOW_MS,
+  HOLD_BASE_MS,
+  HOLD_CAP_MS,
+  HOLD_RELAPSE_MS,
+  HOLD_STORM_WINDOW_MS,
   type FleetHold,
   type HoldKind,
-  type RateLimitObservation,
+  type HoldObservation,
 } from "../src/rate-limit-hold.js";
 
 // The fleet-wide backend-failure hold's policy (src/rate-limit-hold.ts; BUGS.md 2026-09-21
@@ -21,7 +21,7 @@ import {
 
 const T0 = 1_000_000_000;
 
-function obs(role: string, at: number, kind: HoldKind = "rate-limit", retryAfterSeconds?: number): RateLimitObservation {
+function obs(role: string, at: number, kind: HoldKind = "rate-limit", retryAfterSeconds?: number): HoldObservation {
   return retryAfterSeconds === undefined ? { role, at, kind } : { role, at, kind, retryAfterSeconds };
 }
 
@@ -39,7 +39,7 @@ test("one role's 429s never trip the hold — the per-run retry already answers 
 
 test("two distinct roles' 429s within the window trip a base hold naming them", () => {
   const next = fleetHold(FLEET_OPEN, [obs("dry", T0), obs("clean", T0 + 6_000)], T0 + 6_000);
-  assert.equal(next.until, T0 + 6_000 + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(next.until, T0 + 6_000 + HOLD_BASE_MS);
   assert.deepEqual(next.roles, ["clean", "dry"], "distinct roles, sorted");
   assert.equal(next.kind, "rate-limit", "the hold names the failure kind it is about");
   assert.equal(next.escalation, 0, "a fresh storm starts at the base");
@@ -47,10 +47,10 @@ test("two distinct roles' 429s within the window trip a base hold naming them", 
 
 test("429s further apart than the storm window do not add up", () => {
   const stale = obs("readme", T0);
-  const now = T0 + RATE_LIMIT_STORM_WINDOW_MS + 1;
+  const now = T0 + HOLD_STORM_WINDOW_MS + 1;
   assert.equal(fleetHold(FLEET_OPEN, [stale, obs("bugfix", now)], now).until, null);
   // Exactly at the window's edge still counts.
-  const edge = T0 + RATE_LIMIT_STORM_WINDOW_MS;
+  const edge = T0 + HOLD_STORM_WINDOW_MS;
   assert.notEqual(fleetHold(FLEET_OPEN, [stale, obs("bugfix", edge)], edge).until, null);
 });
 
@@ -61,17 +61,17 @@ test("the hold honours the largest Retry-After seen, measured from its own 429, 
   assert.equal(held.until, T0 + 300_000);
   // A hint shorter than the base hold does not shorten it.
   const short = fleetHold(FLEET_OPEN, [obs("bugfix", T0, "rate-limit", 5), obs("coverage", T0, "rate-limit", 5)], T0);
-  assert.equal(short.until, T0 + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(short.until, T0 + HOLD_BASE_MS);
   // A generous hint is capped: one provider cannot park the fleet for hours.
   const huge = fleetHold(FLEET_OPEN, [obs("bugfix", T0, "rate-limit", 9_999), obs("coverage", T0)], T0);
-  assert.equal(huge.until, T0 + RATE_LIMIT_HOLD_CAP_MS);
+  assert.equal(huge.until, T0 + HOLD_CAP_MS);
 });
 
 test("backend failures of one kind trip the same hold, but carry no Retry-After", () => {
   // Two roles ending on connection errors trip a hold of that kind at the base — the
   // generalization of the 429 storm (PLANS.md 2026-09-29).
   const held = fleetHold(FLEET_OPEN, [obs("dry", T0, "connection"), obs("perf", T0 + 5_000, "connection")], T0 + 5_000);
-  assert.equal(held.until, T0 + 5_000 + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(held.until, T0 + 5_000 + HOLD_BASE_MS);
   assert.deepEqual(held.roles, ["dry", "perf"]);
   assert.equal(held.kind, "connection");
   // The other backend kinds work identically — the kind only groups, it does not change the
@@ -79,7 +79,7 @@ test("backend failures of one kind trip the same hold, but carry no Retry-After"
   // carry none), so the base is their whole first hold.
   for (const kind of ["timeout", "server", "model-load"] as const) {
     const heldKind = fleetHold(FLEET_OPEN, [obs("dry", T0, kind), obs("perf", T0, kind)], T0);
-    assert.equal(heldKind.until, T0 + RATE_LIMIT_HOLD_BASE_MS, `${kind} storms hold for the base`);
+    assert.equal(heldKind.until, T0 + HOLD_BASE_MS, `${kind} storms hold for the base`);
     assert.equal(heldKind.kind, kind);
   }
 });
@@ -106,7 +106,7 @@ test("two roles on the same backend kind storm even while others fail differentl
     [obs("dry", T0, "connection"), obs("perf", T0, "server"), obs("qa", T0 + 1_000, "connection")],
     T0 + 1_000,
   );
-  assert.equal(next.until, T0 + 1_000 + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(next.until, T0 + 1_000 + HOLD_BASE_MS);
   assert.equal(next.kind, "connection", "the first kind to reach two roles wins");
   assert.deepEqual(next.roles, ["dry", "qa"]);
 });
@@ -137,13 +137,13 @@ test("a storm that resumes right after re-open doubles the hold; one after a cal
   // Relapse 30 s after re-opening: the base hold was too short.
   const relapse = trip(hold, reopenedAt + 30_000);
   assert.equal(relapse.escalation, 1);
-  assert.equal(relapse.until, reopenedAt + 30_000 + 2 * RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(relapse.until, reopenedAt + 30_000 + 2 * HOLD_BASE_MS);
 
   // After a calm spell longer than the relapse window, the next storm is a new one.
   const calm = fleetHold(relapse, [], relapse.until!); // re-open
-  const fresh = trip(calm, calm.reopenedAt! + RATE_LIMIT_RELAPSE_MS + 1);
+  const fresh = trip(calm, calm.reopenedAt! + HOLD_RELAPSE_MS + 1);
   assert.equal(fresh.escalation, 0);
-  assert.equal(fresh.until! - (calm.reopenedAt! + RATE_LIMIT_RELAPSE_MS + 1), RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(fresh.until! - (calm.reopenedAt! + HOLD_RELAPSE_MS + 1), HOLD_BASE_MS);
 });
 
 test("a relapse is per kind: the same kind escalates, a different kind starts at the base", () => {
@@ -159,7 +159,7 @@ test("a relapse is per kind: the same kind escalates, a different kind starts at
   const otherKind = trip(hold, hold.reopenedAt! + 10_000, "connection");
   assert.equal(otherKind.escalation, 0, "a different kind after a re-open starts fresh");
   assert.equal(otherKind.kind, "connection");
-  assert.equal(otherKind.until, hold.reopenedAt! + 10_000 + RATE_LIMIT_HOLD_BASE_MS);
+  assert.equal(otherKind.until, hold.reopenedAt! + 10_000 + HOLD_BASE_MS);
 });
 
 test("a storm that outlasts every re-open escalates to the cap and stays there", () => {

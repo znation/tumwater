@@ -1,5 +1,5 @@
 import { eventUsage, type HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, compactTokens, padToWidth, rateLimitHoldPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
+import { backendKindPhrase, budgetPhrase, compactTokens, padToWidth, holdPhrase, shortSha, shortSpanPhrase, usd } from "./text.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -168,11 +168,11 @@ export function eventMessage(e: HarnessEvent): string {
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = Array.isArray(e.roles) ? (e.roles as unknown[]).join(", ") : "several roles";
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`;
-      return `429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${rateLimitHoldPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+        return `backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+      return `429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
     case "rate_limit_resumed": {
-      // The ended hold's kind rides the resumed event (pollRateLimitHold logs it), so the lift
+      // The ended hold's kind rides the resumed event (pollFleetHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
       if (e.kind && e.kind !== "rate-limit")

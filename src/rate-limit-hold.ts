@@ -20,32 +20,32 @@
  * retry; a hold is for the fleet collectively sustaining one failure. */
 
 /** Distinct roles whose pi runs ended on the SAME failure kind within
- * RATE_LIMIT_STORM_WINDOW_MS that trip the hold. Two, not one: a single role's failure is
+ * HOLD_STORM_WINDOW_MS that trip the hold. Two, not one: a single role's failure is
  * exactly what the per-run retry already answers, and the hold exists for the cross-role
  * amplification it cannot see. Two, not three: calibrated on the 2026-09-21 storm, whose
  * clusters (improve + coverage 48 s apart at 18:13, dry + feature 6 s apart at 19:06, bugfix +
  * perf 18 s apart on 09-22 05:50) had two roles in the window as often as three, while the six
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */
-const RATE_LIMIT_STORM_ROLES = 2;
+const HOLD_STORM_ROLES = 2;
 
 /** How recent a failure must be to count toward a storm. Two minutes: wide enough that roles
  * whose requests are staggered by a turn's generation time still read as one storm (the
  * observed clusters span 6–80 s), narrow enough that unrelated one-off failures minutes apart
  * never add up. */
-export const RATE_LIMIT_STORM_WINDOW_MS = 2 * 60_000;
+export const HOLD_STORM_WINDOW_MS = 2 * 60_000;
 
 /** The first hold of a fresh storm. One minute: provider rate limits are metered in
  * per-minute buckets, so a minute is the shortest pause that lets the bucket refill — and
  * short enough that a false trip barely dents the fleet's throughput. Backend-failure kinds
  * carry no Retry-After hint, so this base is their whole first hold too. */
-export const RATE_LIMIT_HOLD_BASE_MS = 60_000;
+export const HOLD_BASE_MS = 60_000;
 
 /** Upper bound on any single hold, whatever Retry-After or the relapse doubling asks for: one
  * generous hint, or a storm that outlasts every re-open (2026-09-21's ran from 16:00 to past
  * 23:30), must still re-probe the provider a few times an hour rather than park the fleet for
  * it. Doubling from the base reaches it on the fourth consecutive relapse (1, 2, 4, 8, 15 min). */
-export const RATE_LIMIT_HOLD_CAP_MS = 15 * 60_000;
+export const HOLD_CAP_MS = 15 * 60_000;
 
 /** A storm that trips again within this long of the previous hold re-opening is the same
  * storm — the hold was too short — so the next one doubles instead of restarting at the base.
@@ -54,7 +54,7 @@ export const RATE_LIMIT_HOLD_CAP_MS = 15 * 60_000;
  * its next storm starts fresh at the base. A RELAPSE IS PER KIND: the same kind re-tripping
  * inside the window escalates, while a different kind after a re-open is a new incident at the
  * base — one failure recovering into another says nothing about the first one's depth. */
-export const RATE_LIMIT_RELAPSE_MS = 5 * 60_000;
+export const HOLD_RELAPSE_MS = 5 * 60_000;
 
 /** The failure kinds a hold can be about: the rate-limit kind for 429 storms, and the
  * backend-failure kinds src/pi-stream.ts's classifier produces for the non-429 texts. */
@@ -63,7 +63,7 @@ export type HoldKind = "rate-limit" | "connection" | "timeout" | "server" | "mod
 /** One role's most recent pi run that ended on a provider failure (LoopRunner.lastRateLimit
  * for the "rate-limit" kind, LoopRunner.lastBackendFailure for the backend kinds). Only the
  * latest per role matters: the storm test counts distinct roles, never a role's repeats. */
-export interface RateLimitObservation {
+export interface HoldObservation {
   role: string;
   /** Which failure the run ended on — the field the storm test groups by. */
   kind: HoldKind;
@@ -89,7 +89,7 @@ export interface FleetHold {
    * The rate_limit_hold event's answer to "who saw it". */
   roles: string[];
   /** Consecutive relapses behind the current (or last) hold: 0 for a fresh storm, +1 for each
-   * hold that tripped within RATE_LIMIT_RELAPSE_MS of the previous re-open with the same
+   * hold that tripped within HOLD_RELAPSE_MS of the previous re-open with the same
    * kind. Doubles the base. */
   escalation: number;
   /** Epoch ms the last hold re-opened; null before the first. A failure observed at or before
@@ -105,16 +105,16 @@ export const FLEET_OPEN: FleetHold = { until: null, kind: null, roles: [], escal
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure
  * observations, decide what holds at `now`. A held fleet stays held until `until` and then
  * re-opens by itself — nothing can get stuck, the same guarantee the budget gate's stateless
- * re-evaluation gives. An open fleet trips when RATE_LIMIT_STORM_ROLES distinct roles each
+ * re-evaluation gives. An open fleet trips when HOLD_STORM_ROLES distinct roles each
  * ended a run on the same failure kind within the storm window (and after the last re-open) —
  * the first qualifying kind in observation order wins, since one poll can hold about only one
  * kind — for the longest of the escalated base hold and, for a rate-limit storm, the furthest
  * Retry-After deadline among those observations (each measured from its own 429, since that is
- * when the provider said it), capped at RATE_LIMIT_HOLD_CAP_MS. Returns `prev` itself when
+ * when the provider said it), capped at HOLD_CAP_MS. Returns `prev` itself when
  * nothing changed, so a caller can compare `until` across the step to find transitions. */
 export function fleetHold(
   prev: FleetHold,
-  observations: readonly RateLimitObservation[],
+  observations: readonly HoldObservation[],
   now: number,
 ): FleetHold {
   if (prev.until !== null) {
@@ -123,21 +123,21 @@ export function fleetHold(
     return { until: null, kind: prev.kind, roles: [], escalation: prev.escalation, reopenedAt: now };
   }
   const recent = observations.filter(
-    (o) => (prev.reopenedAt === null || o.at > prev.reopenedAt) && now - o.at <= RATE_LIMIT_STORM_WINDOW_MS,
+    (o) => (prev.reopenedAt === null || o.at > prev.reopenedAt) && now - o.at <= HOLD_STORM_WINDOW_MS,
   );
   // Group the recent failures by kind (in first-seen order, so the pick is deterministic) and
   // hold about the first kind that has enough distinct roles behind it.
-  const byKind = new Map<HoldKind, RateLimitObservation[]>();
+  const byKind = new Map<HoldKind, HoldObservation[]>();
   for (const o of recent) {
     const group = byKind.get(o.kind) ?? [];
     if (group.length === 0) byKind.set(o.kind, group);
     group.push(o);
   }
-  let storm: RateLimitObservation[] = [];
+  let storm: HoldObservation[] = [];
   let kind: HoldKind | null = null;
   for (const [k, group] of byKind) {
     const roles = new Set(group.map((o) => o.role));
-    if (roles.size >= RATE_LIMIT_STORM_ROLES) {
+    if (roles.size >= HOLD_STORM_ROLES) {
       storm = group;
       kind = k;
       break;
@@ -145,9 +145,9 @@ export function fleetHold(
   }
   if (kind === null) return prev;
   const roles = [...new Set(storm.map((o) => o.role))].sort();
-  const relapse = prev.kind !== null && prev.kind === kind && prev.reopenedAt !== null && now - prev.reopenedAt <= RATE_LIMIT_RELAPSE_MS;
+  const relapse = prev.kind !== null && prev.kind === kind && prev.reopenedAt !== null && now - prev.reopenedAt <= HOLD_RELAPSE_MS;
   const escalation = relapse ? prev.escalation + 1 : 0;
   const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));
-  const holdMs = Math.min(RATE_LIMIT_HOLD_CAP_MS, Math.max(RATE_LIMIT_HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
+  const holdMs = Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
   return { until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }

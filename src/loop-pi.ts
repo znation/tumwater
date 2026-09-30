@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { PiRunResult } from "./pi.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi.js";
-import { RATE_LIMIT_HOLD_BASE_MS } from "./rate-limit-hold.js";
+import { HOLD_BASE_MS } from "./rate-limit-hold.js";
 import { configForRole } from "./config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt.js";
 import { piLogPath, sessionDir } from "./paths.js";
@@ -19,7 +19,7 @@ const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
  * per-minute bucket the first request just emptied and burns the tick's only retry on a
  * near-certain second 429. A present hint always wins instead; the cap above still bounds
  * whatever the wait ends up being. */
-const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(RATE_LIMIT_HOLD_BASE_MS / 1000);
+const RATE_LIMIT_NO_HINT_RETRY_S = Math.round(HOLD_BASE_MS / 1000);
 
 /** The retry's pause on the real clock; tests inject host.sleep and never reach this. */
 function sleepFor(ms: number): Promise<void> {

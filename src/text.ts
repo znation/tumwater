@@ -207,7 +207,7 @@ export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
 }
 
 /** A short duration as `Ns` under two minutes, else whole `Nm` — the one home of that cutoff
- * and rounding, shared by rateLimitHoldPhrase ("for 60s") and the event feed's countdowns
+ * and rounding, shared by holdPhrase ("for 60s") and the event feed's countdowns
  * ("(in 90s)"), so the threshold or the units cannot drift between the two renderings. */
 export function shortSpanPhrase(ms: number): string {
   return ms < 120_000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms / 60_000)}m`;
@@ -219,7 +219,7 @@ export function shortSpanPhrase(ms: number): string {
  * (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse count is
  * named only when the storm resumed right after an earlier hold, the one fact that says the
  * hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
-export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): string {
+export function holdPhrase(holdMs: unknown, escalation: unknown): string {
   const ms = Math.max(0, Number(holdMs ?? 0)) || 0;
   const span = shortSpanPhrase(ms);
   const relapse = Number(escalation ?? 0);
@@ -228,7 +228,7 @@ export function rateLimitHoldPhrase(holdMs: unknown, escalation: unknown): strin
 
 /** The human phrase for a fleet hold's backend-failure kind — the one home of that phrasing,
  * shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
- * lines (failure-state-change.ts), like rateLimitHoldPhrase above. A "rate-limit" hold (or a
+ * lines (failure-state-change.ts), like holdPhrase above. A "rate-limit" hold (or a
  * hold with no readable kind — a torn line) never renders through this: those keep the 429
  * wording, which is the shape every historical event already has. */
 export function backendKindPhrase(kind: unknown): string {
