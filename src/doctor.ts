@@ -40,7 +40,7 @@ import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { type ProcessProbe, systemProcessProbe } from "./process.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "./launch-services.js";
-import { errorMessage, shortSha, truncate } from "./text.js";
+import { errorMessage, plural, shortSha, truncate } from "./text.js";
 import { formatTime } from "./datetime.js";
 import { type CheckOutcome, type DoctorReport } from "./doctor-checks.js";
 import type { FallbackDemotion } from "./fallback-breaker.js";
@@ -447,7 +447,7 @@ export async function runDoctor(
     { name: "mach ports", ...(await checkLaunchServicesPorts(probe)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
-  return { header, checks, verdict: problems === 0 ? "ready to run" : `${problems} problem${problems > 1 ? "s" : ""}` };
+  return { header, checks, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
 }
 
 

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "./paths.js";
 import { type ProcessProbe, type ProcessRow, pidAlive, systemProcessProbe } from "./process.js";
-import { errorMessage, truncate } from "./text.js";
+import { errorMessage, plural, truncate } from "./text.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one
@@ -195,7 +195,7 @@ export async function checkOrphans(
   const cut = [...roots].sort((a, b) => b.length - a.length);
   const listed = orphans.slice(0, ORPHANS_LISTED_MAX).map((r) => {
     const n = descendantCount(children, r.pid);
-    const tree = n > 0 ? `, +${n} descendant${n > 1 ? "s" : ""}` : "";
+    const tree = n > 0 ? `, +${plural(n, "descendant")}` : "";
     const command = cut.reduce((c, rt) => c.split(`${rt}/`).join(""), r.command);
     // A mark-caught orphan says which run marked it: the operator killing it wants to know
     // nothing else will, and the dead harness's pid is the evidence argv and cwd lacked.
@@ -204,7 +204,7 @@ export async function checkOrphans(
     return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${truncate(command, ORPHAN_COMMAND_MAX)}${marked}`;
   });
   const more = orphans.length - listed.length;
-  const count = `${orphans.length} orphaned process${orphans.length > 1 ? "es" : ""} (PPID 1)`;
+  const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
   return {
     level: "fail",
     detail:
