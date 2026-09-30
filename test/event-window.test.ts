@@ -4,7 +4,7 @@ import path from "node:path";
 import { readWindowEvents } from "../src/event-window.js";
 import { collectReport } from "../src/report-data.js";
 import { renderReportMarkdown } from "../src/ui/report.js";
-import { atLocalTs as tsDaysAgo } from "./oracles.js";
+import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 
@@ -12,12 +12,6 @@ import { writeLogLines } from "./log-fixtures.js";
 // once the oldest complete line in hand predates the window. The subtle parts — a line torn by
 // a chunk boundary, a chunk that ends inside a line, and the one-chunk log whose own oldest line
 // was never checked for an early stop — are what these tests pin.
-
-/** The `YYYY-MM-DD` local key `formatDate` would produce for `ms`. */
-function keyAt(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
   return JSON.stringify({ ts, loop: "feature", type: "tick_end", ...extra });
@@ -36,14 +30,14 @@ function writeArchive(root: string, lines: string[]): void {
 
 test("a missing or empty log reads as an empty window that does not cover", () => {
   const missing = tmpdir();
-  assert.deepEqual(readWindowEvents(missing, keyAt(tsDaysAgo(0))), {
+  assert.deepEqual(readWindowEvents(missing, dayKey(tsDaysAgo(0))), {
     events: [],
     coversFullWindow: false,
   });
 
   const empty = tmpdir();
   writeLog(empty, []);
-  assert.deepEqual(readWindowEvents(empty, keyAt(tsDaysAgo(0))), {
+  assert.deepEqual(readWindowEvents(empty, dayKey(tsDaysAgo(0))), {
     events: [],
     coversFullWindow: false,
   });
@@ -60,7 +54,7 @@ test("a single-chunk log returns in-window events oldest-first and skips bad lin
     eventLine(tsDaysAgo(1), { tick: 2 }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(oldest));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(oldest));
   // The window is inclusive: the event exactly on the boundary counts.
   assert.deepEqual(
     events.map((e) => e.tick),
@@ -74,14 +68,14 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
   const within = tmpdir();
   const recent = tsDaysAgo(1);
   writeLog(within, [eventLine(recent, { tick: 1 })]);
-  assert.deepEqual(readWindowEvents(within, keyAt(tsDaysAgo(5))), {
+  assert.deepEqual(readWindowEvents(within, dayKey(tsDaysAgo(5))), {
     events: [{ ts: recent, loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
   });
 
   const before = tmpdir();
   writeLog(before, [eventLine(tsDaysAgo(10), { tick: 1 })]);
-  const { events, coversFullWindow } = readWindowEvents(before, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(before, dayKey(tsDaysAgo(5)));
   assert.deepEqual(events, []);
   assert.equal(coversFullWindow, true);
 });
@@ -93,7 +87,7 @@ test("a single-chunk log whose own oldest line predates the window reports full 
     eventLine(tsDaysAgo(1), { tick: 2 }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     events.map((e) => e.tick),
     [2, 3],
@@ -111,7 +105,7 @@ test("the backwards scan early-stops when a line spanning chunks is older than t
     eventLine(tsDaysAgo(15), { tick: 2, pad: "y".repeat(20000) }),
     eventLine(recent, { tick: 3, note: "recent" }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.equal(coversFullWindow, true);
   assert.equal(events.length, 1, "only the in-window event survives");
   assert.equal(events[0]!.tick, 3);
@@ -125,7 +119,7 @@ test("a multi-chunk log with no line before the window reports an uncovered wind
     eventLine(tsDaysAgo(1), { tick: 2, pad: "b".repeat(20000) }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     events.map((e) => e.tick),
     [1, 2, 3],
@@ -149,7 +143,7 @@ test("a window spanning the rotation boundary reads both files, oldest-first, in
     eventLine(tsDaysAgo(1), { tick: 3 }),
     eventLine(tsDaysAgo(0), { tick: 4 }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   // The archive's day-6 event predates the window and drops out; the day-3 one comes first,
   // then the live file's two — archive events are strictly older than the live file's.
   assert.deepEqual(
@@ -186,7 +180,7 @@ test("coversFullWindow is false when even the archive starts inside the window",
     eventLine(tsDaysAgo(2), { tick: 2 }),
   ]);
   writeLog(root, [eventLine(tsDaysAgo(0), { tick: 3 })]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     events.map((e) => e.tick),
     [1, 2, 3],
@@ -223,7 +217,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
     eventLine(tsDaysAgo(1), { tick: 1 }),
     eventLine(tsDaysAgo(1, 13), { tick: 2 }),
   ]);
-  assert.deepEqual(readWindowEvents(missingArchive, keyAt(tsDaysAgo(1))), {
+  assert.deepEqual(readWindowEvents(missingArchive, dayKey(tsDaysAgo(1))), {
     events: [
       { ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 },
       { ts: tsDaysAgo(1, 13), loop: "feature", type: "tick_end", tick: 2 },
@@ -234,7 +228,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   const emptyArchive = tmpdir();
   writeArchive(emptyArchive, []);
   writeLog(emptyArchive, [eventLine(tsDaysAgo(1), { tick: 1 })]);
-  assert.deepEqual(readWindowEvents(emptyArchive, keyAt(tsDaysAgo(1))), {
+  assert.deepEqual(readWindowEvents(emptyArchive, dayKey(tsDaysAgo(1))), {
     events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
     coversFullWindow: false,
   });
@@ -253,7 +247,7 @@ test("the archive follows the live file's skip policy, and a covered window neve
     eventLine(tsDaysAgo(10), { tick: 99 }),
     eventLine(tsDaysAgo(0), { tick: 2 }),
   ]);
-  const { events, coversFullWindow } = readWindowEvents(root, keyAt(tsDaysAgo(5)));
+  const { events, coversFullWindow } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     events.map((e) => e.tick),
     [2],
@@ -267,7 +261,7 @@ test("the archive follows the live file's skip policy, and a covered window neve
     eventLine(tsDaysAgo(2), { tick: 1 }),
   ]);
   writeLog(archiveInside, [eventLine(tsDaysAgo(0), { tick: 2 })]);
-  const spanned = readWindowEvents(archiveInside, keyAt(tsDaysAgo(5)));
+  const spanned = readWindowEvents(archiveInside, dayKey(tsDaysAgo(5)));
   assert.deepEqual(
     spanned.events.map((e) => e.tick),
     [1, 2],

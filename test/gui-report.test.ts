@@ -8,7 +8,7 @@ import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/text.js";
 import { initProject } from "../src/init.js";
-import { atLocalTs as atNoon } from "./oracles.js";
+import { atLocalTs as atNoon, dayKey } from "./oracles.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -18,13 +18,8 @@ import { clientScope } from "./gui-client-scope.js";
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
 // container, and its pure SVG chart builders are extracted from a marked region and tested.
 
-/** Local calendar-day timestamps come from oracles.ts's atLocalTs — the report buckets by
- * LOCAL day, the same rule report.test.ts's fixtures follow. */
-
-function localDayKey(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+// Local calendar-day timestamps come from oracles.ts's atLocalTs and day keys from its dayKey
+// oracle — the report buckets by LOCAL day, the same rule report.test.ts's fixtures follow.
 
 test("gui /api/report serves collectReport's JSON and clamps days instead of erroring", async () => {
   const repo = makeRepo();
@@ -39,7 +34,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
       JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
     ]);
-  const today = localDayKey(Date.now());
+  const today = dayKey(Date.now());
   fs.writeFileSync(
     path.join(repo, "PLANS.md"),
     `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### A done plan (planned ${today}, done ${today})\n`,
@@ -57,9 +52,9 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
     const d = (await res.json()) as ReturnType<typeof collectReport>;
     assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
     // costByRole rides along in the JSON — split from the same tick_end events as costUsd.
-    const spendDay = d.series.find((x) => x.date === localDayKey(atNoon(3)));
+    const spendDay = d.series.find((x) => x.date === dayKey(atNoon(3)));
     assert.deepEqual(spendDay?.costByRole, { feature: 0.25 }, "/api/report carries costByRole per role");
-    const todayTick = d.series.find((x) => x.date === localDayKey(atNoon(0)));
+    const todayTick = d.series.find((x) => x.date === dayKey(atNoon(0)));
     assert.deepEqual(todayTick?.costByRole, { steward: 1.5 });
     assert.equal(d.totals.featuresDone, 1, "a dated Done heading counts as a feature done");
     assert.equal(d.totals.bugsFixed, 1, "a dated Fixed heading counts as a bug fixed");
