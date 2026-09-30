@@ -611,10 +611,44 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
   }
 });
 
+test("terminateChild escalates to SIGKILL when the group survives the SIGTERM leg", async (t) => {
+  // terminateChild's own escalation, the half sweepRunMarker's test cannot cover: a detached
+  // pi-like child that traps SIGTERM (a server ignoring the polite leg) must still die when
+  // the armed timer fires, 10 s later, by SIGKILL to its whole group. The grace is covered
+  // with logical time — the timer is mocked and ticked past it, and the real SIGKILL lands on
+  // a real process that provably survived the first leg.
+  const readyFile = path.join(tmpdir(), "ready");
+  const child = spawn(
+    process.execPath,
+    ["-e", "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)", readyFile],
+    { detached: true, stdio: "ignore" },
+  );
+  child.unref();
+  const upDeadline = Date.now() + 10_000;
+  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
+  assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the terminate");
+  const pid = child.pid as number;
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    terminateChild(child);
+    assert.equal(pidAlive(pid), true, "the victim survives the SIGTERM leg");
+    t.mock.timers.tick(10_000);
+  } finally {
+    t.mock.timers.reset();
+  }
+  const goneDeadline = Date.now() + 10_000;
+  while (pidAlive(pid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the SIGTERM-trapping survivor");
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    // Already gone.
+  }
+});
+
 test("terminateChild takes a live process group down promptly with the SIGTERM leg", async () => {
-  // The full SIGTERM → SIGKILL escalation (10 s grace) is covered by build-check.test.ts with
-  // logical time; here the real entry point must at least deliver the SIGTERM leg: a detached
-  // child exits by signal, fast, without the test waiting out any grace.
+  // The SIGTERM leg alone: a compliant detached child exits by signal, fast, without the
+  // test waiting out any grace — and the escalation timer above covers the stubborn case.
   const child = spawn("sleep", ["30"], { detached: true, stdio: "ignore" });
   terminateChild(child);
   const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
