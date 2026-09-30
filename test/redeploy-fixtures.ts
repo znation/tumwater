@@ -23,9 +23,10 @@ export const HEAD_D = "d".repeat(40);
 
 /** A controllable deps object: each effect resolves when the test says so. */
 export function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null } = {}) {
-  const calls = { compile: [] as string[], swap: [] as string[], green: [] as string[] };
+  const calls = { compile: [] as string[], swap: [] as string[], green: [] as string[], buildRed: [] as string[] };
   let resolveGreen: ((v: boolean) => void) | null = null;
   let resolveCompile: ((v: { ok: boolean; detail: string; rejected?: boolean }) => void) | null = null;
+  let resolveRed: ((v: boolean | null) => void) | null = null;
   const deps: RedeployDeps = {
     staleness: async () => over.stale ?? { stale: true, aheadCommits: 3 },
     mainGreen: (h) => {
@@ -40,6 +41,10 @@ export function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness 
       calls.swap.push(h);
     },
     bootProblem: async () => null, // a generation would boot: the startup gate passes
+    buildRed: (sha) => {
+      calls.buildRed.push(sha);
+      return new Promise((r) => (resolveRed = r));
+    },
     ...over,
   };
   return {
@@ -50,6 +55,9 @@ export function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness 
     },
     compiled(ok: boolean, detail = "", rejected = false) {
       resolveCompile?.({ ok, detail, rejected });
+    },
+    red(v: boolean | null) {
+      resolveRed?.(v);
     },
   };
 }

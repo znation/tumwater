@@ -128,6 +128,18 @@ export function noteGreenBaseline(sha: string): void {
   baselineCache.set(sha, { status: "green", sha });
 }
 
+/** The cached verdict for `sha` WITHOUT running anything — "green", "red", or undefined when
+ * this process holds none. The redeployer's urgency carve-out consults it first (BUGS.md
+ * 2026-09-30): a verdict already in hand answers the RUNNING build's redness for free — the
+ * warm path, a red observed here while that SHA was still main's tip. Undefined — a cold
+ * cache, e.g. a fresh orchestrator that inherited a stale build — sends the caller to run the
+ * check itself (redeploy.ts's witness worktree at the build SHA), which lands in this same
+ * cache and answers every later consult. Read-only: deciding a SHA's verdict is
+ * checkMainBaseline's alone. */
+export function cachedBaselineVerdict(sha: string): "green" | "red" | undefined {
+  return baselineCache.get(sha)?.status;
+}
+
 /** Verify main's own build/test suite at `wt`'s HEAD — which must be pristine main (the caller
  * is the fresh-tick path right after resetWorktreeToMain; a dirty or ahead worktree would
  * measure the wrong thing). Cache hit returns immediately; on miss runs detectBuildCheck +

@@ -10,11 +10,11 @@ import {
 } from "./build-info.js";
 import { buildCheckEvent } from "./build-check-events.js";
 import { defaultConfig, loadConfigCached } from "./config.js";
-import { mainIsGreen } from "./main-baseline.js";
+import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist, type CompileResult } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { autoRestartStampPath, mirrorWorktreePath } from "./paths.js";
+import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
 /** Self-redeploy for a self-hosting fleet (see build-info.ts for why): when main's build inputs
@@ -66,6 +66,14 @@ const RESTART_DRAIN_MAX_MS = 30 * 60_000;
  * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. */
 export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
 
+/** The cooldown's urgency carve-out (BUGS.md 2026-09-30): when the RUNNING build's own commit
+ * carries a red baseline verdict, the deferral is cut to this window instead of the full 12 h —
+ * a red running build is not churn but the exact predicament the self-redeploy exists to end,
+ * and the rate limit protects against storms, not against a fleet knowingly executing code its
+ * own tree fails. Still a real delay, so consecutive reds cannot storm: one episode per this
+ * window at most, each swap giving the fleet a chance to land on green. */
+export const RESTART_URGENT_COOLDOWN_MS = 15 * 60_000;
+
 /** How long a build may stay CONTINUOUSLY stale before the pin itself — not any one head's
  * failure — is warned about (BUGS.md 2026-09-29): under churn each per-head warning names a
  * different commit, so the aggregate — hours pinned on a stale build while every rebuild dies —
@@ -114,6 +122,15 @@ export interface RedeployDeps {
    * problem it would exit on, or null when it would boot — production asks startup-gate.ts's
    * runStartupProblem, the same function the child's own cmdRun runs (BUGS.md 2026-09-23). */
   bootProblem(): Promise<string | null>;
+  /** Does `buildSha` — the RUNNING build's own commit — carry a red baseline verdict? The
+   * cooldown's urgency carve-out asks this (BUGS.md 2026-09-30): a red running build cuts the
+   * 12 h deferral to RESTART_URGENT_COOLDOWN_MS. A verdict already in the fleet-shared cache
+   * answers free; a cold cache — no worktree has baselined this SHA in this process, which is
+   * the standing state for a stale build since checkMainBaseline only ever runs at main's tip
+   * — is recovered by running the baseline check ONCE on the build SHA itself, in a dedicated
+   * witness worktree, which fills the same cache for every later consult. null means no
+   * verdict was obtainable (no declared check, or an environmental skip) — never read as red. */
+  buildRed(buildSha: string): Promise<boolean | null>;
 }
 
 /** The record of COMPLETED auto-restarts — where poll reads the cooldown's start from and
@@ -223,11 +240,22 @@ export class Redeployer {
   /** When the sustained-pin warning last fired, or null — spaces the repeats (see
    * escalateIfSustained). Cleared with the episode. */
   private lastEscalationAt: number | null = null;
-  /** Whether the current cooldown episode's deferral was already warned about — one warning per
-   * episode, not one per poll and not one per head: the cooldown condition is head-independent,
-   * so a landing mid-cooldown adds no new information (BUGS.md 2026-09-19). Cleared when the
-   * deadline lapses, so the next episode warns once. */
-  private cooldownWarned = false;
+  /** The cooldown deadline the current episode's deferral was last warned about — one warning
+   * per distinct deadline, not one per poll and not one per head: the cooldown condition is
+   * head-independent, so a landing mid-cooldown adds no new information (BUGS.md 2026-09-19).
+   * Keyed to the deadline rather than a bare flag so an urgency onset mid-episode — the running
+   * build's red verdict arriving after the ordinary warning (BUGS.md 2026-09-30) — is a real
+   * transition and warns once more with the earlier deadline. Cleared when the deadline lapses,
+   * so the next episode warns once. */
+  private cooldownWarnedUntil: number | null = null;
+  /** The RUNNING build's own red verdict (the urgency carve-out's input), tracked in the
+   * background — poll must never await a suite run. Keyed to the SHA it was asked about: a
+   * verdict belongs to one immutable tree, and the SHA changes only when a swap (and with it a
+   * new process) replaces the build. A rejected check latches as unknown — never red — so a
+   * broken environment leaves the ordinary cooldown standing instead of retrying a doomed git
+   * call on every poll. */
+  private buildRed: Tracked<boolean | null> | null = null;
+  private buildRedSha: string | null = null;
   /** Pre-warm during a cooldown (BUGS.md 2026-09-30): the head whose restart the cooldown defers
    * still gets its green check and staged compile — once per SHA — so the lapse reaches the swap
    * directly instead of paying green-check + compile + drain from zero while the fleet sits on a
@@ -288,8 +316,11 @@ export class Redeployer {
       // Past it, a startup gate that keeps failing holds the fleet on the stale build just as
       // surely, and says why the same way (BUGS.md 2026-09-23).
       else if (s.stale && this.autoRestartOn) {
-        const until = this.cooldownUntil();
-        if (now < until) s.restartBlocked = `cooldown until ${new Date(until).toISOString()}`;
+        const { until, urgent } = this.effectiveCooldownUntil(now);
+        if (now < until)
+          s.restartBlocked =
+            `cooldown until ${new Date(until).toISOString()}` +
+            (urgent ? ` (the running build's own commit is red — cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min)` : "");
         else if (this.refusedReason !== null) s.restartBlocked = `the new build could not start: ${this.refusedReason}`;
       }
     }
@@ -299,6 +330,38 @@ export class Redeployer {
   /** When the current post-restart cooldown expires (epoch ms), or 0 when none is running. */
   private cooldownUntil(): number {
     return this.lastAutoRestartAt !== null ? this.lastAutoRestartAt + RESTART_COOLDOWN_MS : 0;
+  }
+
+  /** Start the RUNNING build's own baseline check in the background when the cooldown is
+   * deferring a restart and this process has no verdict for the build SHA yet (BUGS.md
+   * 2026-09-30). This is the cold-cache recovery the fleet-shared cache cannot give by itself:
+   * checkMainBaseline only ever runs at main's tip, so a stale build's SHA gains an entry no
+   * other way. The witness check costs at most one suite run per process per build SHA — the
+   * cache answers every later consult — and its result can only shorten the wait safely: a
+   * false red brings forward a restart the episode still gates on the new head's own green
+   * check, staged compile, and boot gate; anything but a settled red leaves the ordinary
+   * deadline standing. */
+  private ensureBuildRedCheck(): void {
+    if (this.buildRed !== null && this.buildRedSha === this.build.sha) return;
+    this.buildRedSha = this.build.sha;
+    this.buildRed = track(this.deps.buildRed(this.build.sha));
+  }
+
+  /** The deadline this deferral holds to: the ordinary 12 h rate limit, cut to the urgent
+   * window when the RUNNING build's own commit carries a settled red verdict (BUGS.md
+   * 2026-09-30). The verdict is whatever the background check has produced so far — an
+   * unsettled or unknown verdict reads as not-red, so a cold cache leaves the ordinary
+   * deadline standing until the check lands — and it is re-consulted on every poll, so a red
+   * arriving mid-cooldown shortens the remaining wait immediately. */
+  private effectiveCooldownUntil(now: number): { until: number; urgent: boolean } {
+    const until = this.cooldownUntil();
+    const red =
+      this.buildRed !== null &&
+      this.buildRedSha === this.build.sha &&
+      this.buildRed.done === true &&
+      this.buildRed.result === true;
+    if (until === 0 || now >= until || !red) return { until, urgent: false };
+    return { until: Math.min(until, (this.lastAutoRestartAt ?? 0) + RESTART_URGENT_COOLDOWN_MS), urgent: true };
   }
 
   /** Run the deferred head's green check, then — only after a green verdict — its staged compile,
@@ -397,19 +460,29 @@ export class Redeployer {
     // the lapse reaches the swap directly instead of paying green-check + compile + drain from
     // zero. This is re-evaluated on every poll rather than latched like blockedHead: once the
     // deadline passes, the same head proceeds even if main never moves again.
-    const cooldownUntil = this.cooldownUntil();
+    //
+    // The deferral has one urgency carve-out (BUGS.md 2026-09-30): when the RUNNING build's own
+    // commit carries a red baseline verdict, the deadline is cut to RESTART_URGENT_COOLDOWN_MS —
+    // a red running build is the exact predicament the self-redeploy exists to end, not churn.
+    // Its verdict is established in the background (ensureBuildRedCheck) and consulted fresh on
+    // every poll, so a red observed mid-cooldown shortens the remaining wait at once.
+    if (now < this.cooldownUntil()) this.ensureBuildRedCheck();
+    const { until: cooldownUntil, urgent } = this.effectiveCooldownUntil(now);
     if (now < cooldownUntil) {
-      if (!this.cooldownWarned) {
-        this.cooldownWarned = true;
+      if (this.cooldownWarnedUntil !== cooldownUntil) {
+        this.cooldownWarnedUntil = cooldownUntil;
         this.warn(
-          `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()} (at most one completed restart per 12 h)`,
+          `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()}` +
+            (urgent
+              ? ` (the running build ${shortSha(this.build.sha)} is red — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min)`
+              : " (at most one completed restart per 12 h)"),
         );
       }
       this.prewarm(mainHead);
       return this.endDrain();
     }
     // The cooldown has lapsed (or never started): the next episode warns once more.
-    this.cooldownWarned = false;
+    this.cooldownWarnedUntil = null;
 
     if (this.pendingHead === null) {
       // Before holding anything: could a new generation even boot here? A refusal here costs
@@ -676,6 +749,20 @@ export function redeployDeps(
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
     bootProblem,
+    // The urgency carve-out's verdict (BUGS.md 2026-09-30): a cached verdict answers free;
+    // otherwise the baseline check runs ONCE on the running build's own SHA, in a dedicated
+    // witness worktree — never the mirror, which the green check and compile serve at main's
+    // heads — and lands in the same fleet-shared cache every later consult reads.
+    buildRed: async (buildSha) => {
+      const cached = cachedBaselineVerdict(buildSha);
+      if (cached !== undefined) return cached === "red";
+      const baseline = await checkMainBaseline(
+        await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha),
+        loadConfigCached(root).config ?? defaultConfig(),
+        ({ outcome, durationMs }) => log(buildCheckEvent("harness", "baseline", outcome, durationMs)),
+      );
+      return baseline.baseline ? baseline.baseline.status === "red" : null;
+    },
   };
 }
 

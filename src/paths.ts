@@ -228,6 +228,15 @@ export function gateMainWorktreePath(root: string): string {
   return path.join(tumwaterDir(root), "worktrees", "_gate-main");
 }
 
+/** Detached worktree pinned at the RUNNING build's own SHA for the redeployer's urgency
+ * carve-out (redeploy.ts's buildRed): the baseline check that decides whether the build the
+ * fleet is executing is red runs here — its own checkout, not the redeploy mirror above, so a
+ * witness check at an old SHA can never repoint the mirror a green check or compile is using.
+ * The leading underscore follows the _main convention, so it can never collide with a role. */
+export function witnessWorktreePath(root: string): string {
+  return path.join(tumwaterDir(root), "worktrees", "_build");
+}
+
 /** A role's lander worktree (src/landing-core.ts): the detached checkout where its pinned commit is
  * reviewed and rebased onto main, outside the role's own worktree. One per role so two roles'
  * landings never wait on each other; the leading underscore follows the _main convention above,
