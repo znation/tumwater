@@ -138,7 +138,7 @@ export async function backlogStructureReason(
   const baseRev = (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
   for (const file of touched) {
     // A deleted file reads as empty: every heading the base had is gone — rule (b).
-    const head = (await readTextOrNull(path.join(wt, file))) ?? "";
+    const head = readTextOrNull(path.join(wt, file)) ?? "";
     const base = (await gitTry(wt, "show", `${baseRev}:${file}`)) ?? "";
     const headCounts = new Map<string, number>();
     for (const title of sectionTitles(head)) headCounts.set(title, (headCounts.get(title) ?? 0) + 1);
@@ -182,12 +182,8 @@ export async function backlogStructureReason(
  * unreadable, or clean — an unreadable or clean file gives no block, so the prompt is
  * unchanged in the common case. */
 export function renderBacklogStructureBlock(root: string): string | undefined {
-  let md: string | null;
-  try {
-    md = readTextOrNull(path.join(root, "PLANS.md"));
-  } catch {
-    md = null;
-  }
+  // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
+  const md = readTextOrNull(path.join(root, "PLANS.md"));
   if (md === null) return undefined;
   const stranded = strandedPlanEntries(md);
   if (stranded.length === 0) return undefined;
