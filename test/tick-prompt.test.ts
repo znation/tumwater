@@ -7,6 +7,7 @@ import { defaultConfig } from "../src/config.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
+import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath } from "../src/paths.js";
 import type { LoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -174,6 +175,24 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
   assert.match(result.prompt, /Flow coverage \(from this fleet's own record; least recently exercised first\)/);
   assert.match(result.prompt, /status — .* ago, passed/);
   assert.match(result.prompt, /init — never exercised/);
+});
+
+test("the telemetry role's prompt carries the failure digest rendered from its event log", () => {
+  const dir = root();
+  writeEvents(dir, [
+    { ts: Date.now(), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
+  ]);
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "telemetry",
+    state: state({ role: "telemetry" }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /Runtime failure digest of this harness's own event log/);
+  assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
+  // The digest is the telemetry role's evidence block, not the coverage ledger's.
+  assert.doesNotMatch(result.prompt, /Flow coverage/);
 });
 
 test("a role other than qa or telemetry gets neither evidence block", () => {
