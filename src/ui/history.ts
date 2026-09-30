@@ -9,23 +9,63 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
  * of the existing record, not a new one. The rows themselves are collected by history-data.ts
  * (beside report-data.ts and failure-data.ts); this module renders them and drives the CLI. */
 
-/** One aligned table line: fixed-width columns over the row set (the widths derive from the
- * rows actually shown, so a single-row table has no padding gap), then the free-text detail.
+/** The row's five padded columns as their unpadded strings — the one home for the cell values,
+ * shared by the renderer (which pads), the width pass (which measures), and the grep haystack
+ * (which needs the row as it renders when it is the widest row in each column). A tick with no
+ * reported duration shows the em dash. */
+function cellsOf(row: TickRow): { loop: string; tick: string; result: string; duration: string; usage: string } {
+  return {
+    loop: row.loop,
+    tick: String(row.tick),
+    result: row.result,
+    duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
+    usage: row.usage,
+  };
+}
+
+/** Each column's width from its unpadded cell. Text cells measure terminal display columns
+ * (displayWidth), not UTF-16 code units: a loop name holding CJK or emoji renders two columns
+ * per code point, and a code-unit padEnd lets that row's later columns drift right of its
+ * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
+ * outside the pad), and duration is ASCII, so both take plain length. */
+function widthsOf(cells: { loop: string; tick: string; result: string; duration: string; usage: string }): { loop: number; tick: number; result: number; duration: number; usage: number } {
+  return {
+    loop: displayWidth(cells.loop),
+    tick: cells.tick.length,
+    result: displayWidth(cells.result),
+    duration: cells.duration.length,
+    usage: displayWidth(cells.usage),
+  };
+}
+
+/** The per-column maxima over every row the table shows — the widths derive from the rows
+ * actually shown, so a single-row table has no padding gap. */
+function widestWidths(rows: TickRow[]): { loop: number; tick: number; result: number; duration: number; usage: number } {
+  const widths = { loop: 0, tick: 0, result: 0, duration: 0, usage: 0 };
+  for (const row of rows) {
+    const w = widthsOf(cellsOf(row));
+    widths.loop = Math.max(widths.loop, w.loop);
+    widths.tick = Math.max(widths.tick, w.tick);
+    widths.result = Math.max(widths.result, w.result);
+    widths.duration = Math.max(widths.duration, w.duration);
+    widths.usage = Math.max(widths.usage, w.usage);
+  }
+  return widths;
+}
+
+/** One aligned table line: fixed-width columns over the row set, then the free-text detail.
  * Every cell is padded to its column's width even when empty — usage is the one cell that can
  * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
  * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
 function renderRow(row: TickRow, widths: { loop: number; tick: number; result: number; duration: number; usage: number }): string {
-  const duration = row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs);
-  // Cells pad to terminal display columns (padToWidth), not UTF-16 code units: a loop name
-  // holding CJK or emoji renders two columns per code point, and a code-unit padEnd lets
-  // that row's later columns drift right of its ASCII neighbors.
+  const c = cellsOf(row);
   return [
     row.time,
-    padToWidth(row.loop, widths.loop),
-    `#${padToWidth(String(row.tick), widths.tick)}`,
-    padToWidth(row.result, widths.result),
-    padToWidth(duration, widths.duration),
-    padToWidth(row.usage, widths.usage),
+    padToWidth(c.loop, widths.loop),
+    `#${padToWidth(c.tick, widths.tick)}`,
+    padToWidth(c.result, widths.result),
+    padToWidth(c.duration, widths.duration),
+    padToWidth(c.usage, widths.usage),
     row.detail,
   ]
     .join("  ")
@@ -38,13 +78,7 @@ function renderRow(row: TickRow, widths: { loop: number; tick: number; result: n
  * ids (`tick_end`) are greppable the way logs --grep's haystack carries e.type. Built per row
  * because the filter runs before the widths of the rows actually shown are known. */
 function grepHaystack(row: TickRow): string {
-  return `tick_end ${renderRow(row, {
-    loop: displayWidth(row.loop),
-    tick: String(row.tick).length,
-    result: displayWidth(row.result),
-    duration: row.durationMs === null ? 1 : shortSpanPhrase(row.durationMs).length,
-    usage: displayWidth(row.usage),
-  })}`;
+  return `tick_end ${renderRow(row, widthsOf(cellsOf(row)))}`;
 }
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
@@ -125,15 +159,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     );
     return;
   }
-  // Widths in terminal display columns (displayWidth), for the same reason the cells pad
-  // with padToWidth below.
-  const widths = {
-    loop: Math.max(...rows.map((r) => displayWidth(r.loop))),
-    tick: Math.max(...rows.map((r) => String(r.tick).length)),
-    result: Math.max(...rows.map((r) => displayWidth(r.result))),
-    duration: Math.max(...rows.map((r) => (r.durationMs === null ? 1 : shortSpanPhrase(r.durationMs).length))),
-    usage: Math.max(...rows.map((r) => displayWidth(r.usage))),
-  };
+  const widths = widestWidths(rows);
   say(rows.map((r) => renderRow(r, widths)).join("\n"));
   // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows
   // (an empty window returned above), it never touches --json output, and it is the shared
