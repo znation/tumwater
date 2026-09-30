@@ -83,7 +83,9 @@ test("error strings differing only in volatile parts cluster; exit codes stay di
   const merged = data.errors.clusters.find((c) => c.count === 3);
   assert.equal(merged?.key, "ENOENT <path> <sha>");
   assert.deepEqual(merged?.roles, ["bugfix", "clean", "feature"]);
-  assert.equal(merged?.example, "ENOENT /Users/a/one.ts deadbeef0");
+  // Same-ts events arrive in write order, so the example is the last one seen — the newest
+  // occurrence at lastSeen (BUGS.md 2026-09-30); any of the three is a faithful display.
+  assert.equal(merged?.example, "ENOENT /Users/c/three.ts 1234567");
   assert.ok(data.errors.clusters.some((c) => c.key === "pi exited 1"));
   assert.ok(data.errors.clusters.some((c) => c.key === "pi exited null"));
 });
@@ -705,6 +707,26 @@ test("a mixed fleet of plain and progressing tick timeouts pools into one digest
   assert.equal(loss?.ticks, 2);
   assert.equal(loss?.ms, 5_400_000);
   assert.ok(Math.abs((loss?.costUsd ?? 0) - 0.3) < 1e-9, `summed cost: ${loss?.costUsd}`);
+});
+
+test("a cluster that outlived a config change labels itself with its newest message, not its oldest", () => {
+  // BUGS.md 2026-09-30: 23 900s review timeouts from 09-28/29 rendered as "timed out after
+  // 1800s" because both clusterMessages and the loss fold took the example from the first
+  // message seen — the retired value from before the timeout was lowered.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "review", type: "tick_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 },
+    { ts: at(0, 13), loop: "review", type: "tick_end", result: "error",
+      error: "timed out after 900s while still making progress — session and worktree edits preserved for resume",
+      durationMs: 900_000, costUsd: 0.20 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const cluster = data.errors.clusters.find((c) => c.key === "timed out after <dur>");
+  assert.ok(cluster, `the pooled timeout cluster exists: ${JSON.stringify(data.errors.clusters)}`);
+  assert.match(cluster?.example ?? "", /^timed out after 900s/, "the example is the newest occurrence");
+  const loss = data.lossCauses.find((c) => c.example.startsWith("timed out"));
+  assert.ok(loss, `the loss cause exists: ${JSON.stringify(data.lossCauses)}`);
+  assert.match(loss?.example ?? "", /^timed out after 900s/, "the loss fold follows the same rule");
 });
 
 test("report --failures --json prints the digest's collected data", async () => {

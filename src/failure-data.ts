@@ -83,8 +83,9 @@ interface TimeSpendRow {
 
 /** One ranked loss cause (PLANS.md, time-and-spend plan): either an error cluster — the
  * digest's own clustering, applied to the ticks that burned time — or a role's total
- * "no_change" spend, the quiet loss no cluster names. `example` is the first verbatim
- * occurrence for a cluster, "" for a no_change cause. */
+ * "no_change" spend, the quiet loss no cluster names. `example` is the newest verbatim
+ * occurrence for a cluster (the one at lastSeen, BUGS.md 2026-09-30), "" for a no_change
+ * cause. */
 interface LossCause {
   kind: "error-cluster" | "no_change";
   roles: string[]; // unique, sorted
@@ -113,6 +114,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 interface LossDraft {
   kind: "error-cluster" | "no_change";
   roles: Set<string>;
+  lastSeen: number;
   example: string;
   ticks: number;
   ms: number;
@@ -260,14 +262,25 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
       example = ev.error.trim().slice(0, EXAMPLE_MAX);
     }
     if (key === null) continue;
-    const draft = losses.get(key) ?? {
-      kind: cls === "no_change" ? "no_change" : "error-cluster",
-      roles: new Set<string>(),
-      example,
-      ticks: 0,
-      ms: 0,
-      costUsd: 0,
-    };
+    let draft = losses.get(key);
+    if (!draft) {
+      draft = {
+        kind: cls === "no_change" ? "no_change" : "error-cluster",
+        roles: new Set<string>(),
+        lastSeen: ev.ts,
+        example,
+        ticks: 0,
+        ms: 0,
+        costUsd: 0,
+      };
+      losses.set(key, draft);
+    }
+    // The example rides lastSeen, like clusterMessages': the cause as it happens now, not
+    // the first-seen value a config change retired (BUGS.md 2026-09-30).
+    if (ev.ts >= draft.lastSeen) {
+      draft.lastSeen = ev.ts;
+      draft.example = example;
+    }
     draft.roles.add(role);
     draft.ticks++;
     draft.ms += tickDurationMs(ev, starts);

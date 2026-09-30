@@ -68,9 +68,28 @@ test("clusterMessages aggregates by normalized key with sorted roles and seen bo
       roles: ["cleanup", "feature"],
       firstSeen: 100,
       lastSeen: 300,
-      example: "boom 2", // the first verbatim occurrence, not the normalized form
+      example: "boom 3", // the newest verbatim occurrence (at lastSeen), not the normalized form
     },
   ]);
+});
+
+test("clusterMessages labels the cluster with the NEWEST verbatim message, not the first seen", () => {
+  // The reported shape (BUGS.md 2026-09-30): a cluster outlives a config change, so its
+  // oldest message carries a retired value (1800s) while the knob now applies 900s. Events
+  // arrive oldest-first, so the first-seen example was the retired one.
+  const { clusters } = clusterMessages(
+    [
+      { message: "timed out after 1800s", role: "review", ts: 1 },
+      { message: "timed out after 900s while still making progress — session and worktree edits preserved for resume", role: "review", ts: 2 },
+      { message: "timed out after 900s", role: "bugfix", ts: 3 },
+    ],
+    10,
+  );
+  assert.equal(clusters.length, 1);
+  const pooled = clusters[0]!;
+  assert.equal(pooled.key, TICK_TIMEOUT_KEY);
+  assert.equal(pooled.lastSeen, 3);
+  assert.equal(pooled.example, "timed out after 900s", "the example is the message at lastSeen");
 });
 
 test("clusterMessages pools both tick-timeout shapes into one cluster", () => {
@@ -92,6 +111,9 @@ test("clusterMessages pools both tick-timeout shapes into one cluster", () => {
   assert.equal(pooled.key, TICK_TIMEOUT_KEY);
   assert.equal(pooled.count, 2);
   assert.deepEqual(pooled.roles, ["feature", "review"]);
+  // The pooled cluster's example is the newest message's verbatim text, whichever shape it
+  // took (BUGS.md 2026-09-30).
+  assert.match(pooled.example, /^timed out after 900s/);
 });
 
 test("clusterMessages keys a keyPrefix separately from the bare message", () => {

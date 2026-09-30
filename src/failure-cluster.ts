@@ -16,7 +16,7 @@ export interface Cluster {
   roles: string[]; // unique, sorted
   firstSeen: number; // epoch ms
   lastSeen: number;
-  example: string; // the first verbatim occurrence, trimmed for display
+  example: string; // the newest verbatim occurrence (at lastSeen), trimmed for display
 }
 
 /** A cluster key is the message with the volatile parts replaced, rules applied in this order:
@@ -62,7 +62,9 @@ interface ClusterDraft {
   example: string;
 }
 
-/** Group messages by their normalized key, newest/oldest tracked per cluster. `keyPrefix`
+/** Group messages by their normalized key, newest/oldest tracked per cluster. The example
+ * rides lastSeen: a cluster that outlived a config change labels itself with the message as
+ * it happens now, not the retired value it first emitted (BUGS.md 2026-09-30). `keyPrefix`
  * scopes a cluster to something the message itself omits (rejections key on role too) without
  * polluting the verbatim example. Returns the top-N clusters plus how many fell past the cut,
  * so the render can mark the truncation instead of presenting the survivors as the whole. */
@@ -78,7 +80,10 @@ export function clusterMessages(
       draft.count++;
       draft.roles.add(role);
       if (ts < draft.firstSeen) draft.firstSeen = ts;
-      if (ts > draft.lastSeen) draft.lastSeen = ts;
+      if (ts >= draft.lastSeen) {
+        draft.lastSeen = ts;
+        draft.example = message.trim().slice(0, EXAMPLE_MAX);
+      }
     } else {
       drafts.set(key, {
         key,
