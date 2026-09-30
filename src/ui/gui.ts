@@ -130,6 +130,24 @@ function parseRequestTarget(req: http.IncomingMessage): URL | null {
   }
 }
 
+/** True when a request's Origin header names a server other than this one — the browser's
+ * cross-origin signal. Browsers attach Origin to every cross-site POST (fetch and form
+ * alike) and to same-origin POSTs too, so a POST from the dashboard carries this server's
+ * own Host authority, while curl and scripts send no Origin at all. `Origin: null`
+ * (sandboxed frames, data: redirects) is the hostile shape and is refused too. Pure header
+ * reading, so the router can gate every POST route through it in one place. */
+function crossOriginRequest(req: http.IncomingMessage): boolean {
+  const raw = req.headers.origin;
+  if (raw === undefined) return false; // no Origin: not a browser — allow
+  const origin = Array.isArray(raw) ? raw[0] : raw;
+  if (origin === "null") return true;
+  try {
+    return new URL(origin).host.toLowerCase() !== (req.headers.host ?? "").toLowerCase();
+  } catch {
+    return true; // unparseable Origin — refuse a signal we cannot verify
+  }
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
@@ -170,6 +188,18 @@ export function startGui(
           sendJson(res, 401, { error: "token required" });
           return;
         }
+      }
+      // Cross-origin gate, ahead of every state-changing route: a hostile webpage can POST
+      // to the open localhost server with a CORS-safelisted text/plain body (no preflight,
+      // no readable response) and the side effect alone is the payload — a forged director
+      // prompt, a fleet pause, an abort. Browsers mark every cross-site POST with an Origin
+      // naming the hostile server, so one header check here refuses the forgery while the
+      // dashboard's own POSTs (same-host Origin) and non-browser clients (no Origin) pass.
+      if (req.method === "POST" && crossOriginRequest(req)) {
+        sendJson(res, 403, {
+          error: "cross-origin request rejected — dashboard POSTs must come from this dashboard's own origin",
+        });
+        return;
       }
       if (req.method === "GET" && (pathname === "/" || pathname === "/index.html")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });

@@ -51,6 +51,54 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
   }
 });
 
+test("gui rejects a cross-origin POST with 403 while same-origin and Origin-less POSTs pass", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui csrf test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // A hostile webpage's silent POST: the browser attaches the hostile page's origin,
+    // no preflight is needed (text/plain is CORS-safelisted), and the attacker never
+    // reads a response — the side effect alone is the payload.
+    const evil = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "http://evil.example" },
+      body: JSON.stringify({ text: "forged from another site" }),
+    });
+    assert.equal(evil.status, 403);
+    assert.match(await evil.text(), /cross-origin/);
+    assert.equal(inboxSize(repo), 0);
+
+    // `Origin: null` (sandboxed frames, data: redirects) is the hostile shape too.
+    const nulled = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "null" },
+      body: JSON.stringify({ text: "nulled origin" }),
+    });
+    assert.equal(nulled.status, 403);
+    assert.equal(inboxSize(repo), 0);
+
+    // The dashboard's own POSTs carry this server's host as their Origin — allowed.
+    const same = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: JSON.stringify({ text: "from the dashboard" }),
+    });
+    assert.equal(same.status, 200);
+    assert.equal(inboxSize(repo), 1);
+
+    // Non-browser clients (curl, scripts, the tests above) send no Origin — allowed.
+    const bare = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "from a script" }),
+    });
+    assert.equal(bare.status, 200);
+    assert.equal(inboxSize(repo), 2);
+  } finally {
+    server.close();
+  }
+});
+
 test("gui answers 400 for an over-long prompt and queues nothing", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui long prompt test");
