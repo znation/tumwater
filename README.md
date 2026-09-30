@@ -45,8 +45,9 @@ Then, from another terminal:
 with it the director prompt, to your whole network, so pair it with `--token <secret>`.
 
 Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
-(`maxDailyCostUsd`), the nightly quiet-hours window (`quietHours`, e.g. `"23:00-07:00"` local
-time), and user-defined `customLoops`. Edits apply live while the fleet runs.
+(`maxDailyCostUsd`), a nightly `quietHours` window (e.g. `"23:00-07:00"` local time) during
+which role loops start no new ticks (the director is exempt), and user-defined `customLoops`.
+Edits apply live while the fleet runs.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
 <key>` reads one resolved value, and `tumwater config set <key> <value>` writes one top-level
 key.

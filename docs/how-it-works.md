@@ -111,6 +111,11 @@ discards a role's in-flight landing.
   new local day), a tick that started on the fallback is handed back to the primary: it is
   interrupted resumably — session and worktree edits kept — and its next tick continues the
   same session on the budgeted model (`budget_handback` in the feed).
+- `quietHours` (default off; absent or empty) is a daily local-time window, `"HH:MM-HH:MM"`,
+  during which role loops start no new ticks — a tick due inside the window starts at window
+  end, and a window may wrap midnight (`"23:00-07:00"`). The director is exempt, exactly as
+  under the budget gate and the operator pause. Edits apply live, and each crossing into or
+  out of the window logs one `quiet_hours_started` / `quiet_hours_ended` event in the feed.
 - `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
