@@ -12,7 +12,13 @@ import { eventDayKey, eventRole, eventUsage, tickSpanMs, tickStartMap } from "./
 import type { HarnessEvent } from "./events.js";
 import { dayAt, dayWindow, formatDate } from "./datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
-import { clusterMessages, normalizeClusterKey, poolTimeoutKey, EXAMPLE_MAX, type Cluster } from "./failure-cluster.js";
+import {
+  clusterMessages,
+  normalizeClusterKey,
+  poolTimeoutKey,
+  truncateExample,
+  type Cluster,
+} from "./failure-cluster.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -260,7 +266,7 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
       key = `no_change\u0000${role}`;
     } else if (CLUSTERED_RESULTS.has(String(ev.result)) && typeof ev.error === "string" && ev.error !== "") {
       key = poolTimeoutKey(normalizeClusterKey(ev.error));
-      example = ev.error.trim().slice(0, EXAMPLE_MAX);
+      example = truncateExample(ev.error);
     }
     if (key === null) continue;
     let draft = losses.get(key);
@@ -440,7 +446,8 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     .map((ev) => ({
       ts: ev.ts,
       commit: typeof ev.commit === "string" ? ev.commit : "?",
-      summary: (typeof ev.summary === "string" ? ev.summary : "").trim().slice(0, SUMMARY_MAX),
+      summary:
+        typeof ev.summary === "string" ? truncateExample(ev.summary, SUMMARY_MAX) : "",
     }))
     .sort((a, b) => b.ts - a.ts);
   const landed = allLanded.slice(0, LANDED_TOP);

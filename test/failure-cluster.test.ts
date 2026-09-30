@@ -6,6 +6,7 @@ import {
   clusterMessages,
   normalizeClusterKey,
   poolTimeoutKey,
+  truncateExample,
 } from "../src/failure-cluster.js";
 
 // failure-cluster.ts is the shared grouping engine behind the failure digest and the
@@ -35,6 +36,54 @@ test("normalizeClusterKey trims whitespace and clips the key to EXAMPLE_MAX", ()
   assert.equal(normalizeClusterKey("   padded   "), "padded");
   const long = "x".repeat(EXAMPLE_MAX + 40);
   assert.equal(normalizeClusterKey(long).length, EXAMPLE_MAX);
+});
+
+test("truncateExample passes a message within the budget through untouched", () => {
+  assert.equal(truncateExample("short failure"), "short failure");
+  assert.equal(truncateExample("   padded   "), "padded");
+  assert.equal(truncateExample("x".repeat(EXAMPLE_MAX)), "x".repeat(EXAMPLE_MAX));
+});
+
+test("truncateExample marks a cut at a word boundary with the dropped char count", () => {
+  // The tail of an error is often the repro (BUGS.md 2026-09-30): a marked cut must never
+  // read as a complete message, and the cut lands at a whitespace boundary when one exists
+  // inside the budget rather than mid-word.
+  const message = `${"word ".repeat(40)}until main is green`;
+  const out = truncateExample(message);
+  const marker = /\u2026 \(\+(\d+) chars\)$/.exec(out);
+  assert.ok(marker, `marker appended: ${out}`);
+  assert.ok(!out.includes("until main"), "the dropped tail is gone");
+  // The marker names exactly what the cut dropped: body length + dropped = the message.
+  const kept = out.slice(0, marker.index).trimEnd();
+  assert.ok(kept.endsWith("word"), `the cut lands after a whole word, not mid-word: ${out}`);
+  assert.equal(Number(marker[1]), message.trim().length - kept.length);
+});
+
+test("truncateExample keeps the hard cut when no whitespace exists inside the budget", () => {
+  const message = "x".repeat(EXAMPLE_MAX + 37);
+  const out = truncateExample(message);
+  assert.ok(out.startsWith("x".repeat(EXAMPLE_MAX)));
+  assert.ok(out.endsWith("… (+37 chars)"));
+});
+
+test("truncateExample honors a caller's own cap, as the landed summaries do", () => {
+  const message = "alpha beta gamma delta";
+  const out = truncateExample(message, 10);
+  // The 10-char head is "alpha beta"; the last space inside it is after "alpha", so the cut
+  // drops " beta gamma delta" (17 chars) whole.
+  assert.equal(out, "alpha … (+17 chars)");
+});
+
+test("clusterMessages marks a truncated example instead of presenting a silent cut", () => {
+  const tail = " — fix: restore the missing PI_CODING_AGENT_DIR";
+  const message = `${"rejection cycle ".repeat(10)}${tail}`;
+  const { clusters } = clusterMessages([{ message, role: "bugfix", ts: 1 }], 5);
+  assert.equal(clusters.length, 1);
+  const cluster = clusters[0]!;
+  assert.ok(/\u2026 \(\+\d+ chars\)$/.test(cluster.example), cluster.example);
+  assert.ok(!cluster.example.includes(tail), "the tail is not silently present");
+  // The grouping key stays the bare normalized prefix — marking is display-only.
+  assert.ok(!cluster.key.includes("\u2026"), cluster.key);
 });
 
 test("poolTimeoutKey pools the progressing-timeout variant into the plain key", () => {

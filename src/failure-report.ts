@@ -101,8 +101,9 @@ function hoursPhrase(ms: number): string {
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only
  * with the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed
  * by src/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed
- * by the cut), and every free string is capped — cluster examples at 120 chars, landed
- * summaries at 100, a cluster's role list at 4 names plus a remainder count, and any loop id
+ * by the cut), and every free string is capped — cluster examples at 120 chars (plus a
+ * `… (+N chars)` cut marker when truncated, so a marked cut can never read as a complete
+ * message — BUGS.md 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4 names plus a remainder count, and any loop id
  * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
  * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state
  * changes section is capped at STATE_CHANGE_TOP lines with each payload at STATE_CHANGE_MAX and

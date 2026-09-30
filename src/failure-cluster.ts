@@ -9,6 +9,24 @@
  * failure-data.ts. */
 export const EXAMPLE_MAX = 120;
 
+/** Render a message as a display example of at most `max` chars, marking any cut. A bare
+ * slice leaves the reader unable to tell a complete message from a truncated one — and an
+ * example's tail is often the repro (the failing assertion's file, the recovery action, a
+ * rejection's distinguishing clause), so a cut example always carries `… (+N chars)` naming
+ * what was dropped (BUGS.md 2026-09-30). The body is cut at the last whitespace inside the
+ * budget when one exists, so the cut never lands mid-word where a boundary is available.
+ * The final string may exceed `max` by the marker's width; the cap governs the body. Cluster
+ * keys keep their bare slice (normalizeClusterKey) because grouping wants byte-stable
+ * prefixes, not marked display text. */
+export function truncateExample(message: string, max: number = EXAMPLE_MAX): string {
+  const trimmed = message.trim();
+  if (trimmed.length <= max) return trimmed;
+  const head = trimmed.slice(0, max);
+  const boundary = head.lastIndexOf(" ");
+  const kept = boundary > 0 ? head.slice(0, boundary) : head;
+  return `${kept.trimEnd()} … (+${trimmed.length - kept.length} chars)`;
+}
+
 /** A normalized cluster of like error/warning/rejection strings. */
 export interface Cluster {
   key: string; // the normalized form, the grouping key
@@ -89,7 +107,7 @@ export function clusterMessages(
       if (ts < draft.firstSeen) draft.firstSeen = ts;
       if (ts >= draft.lastSeen) {
         draft.lastSeen = ts;
-        draft.example = message.trim().slice(0, EXAMPLE_MAX);
+        draft.example = truncateExample(message);
       }
     } else {
       drafts.set(key, {
@@ -98,7 +116,7 @@ export function clusterMessages(
         roles: new Set([role]),
         firstSeen: ts,
         lastSeen: ts,
-        example: message.trim().slice(0, EXAMPLE_MAX),
+        example: truncateExample(message),
       });
     }
   }
