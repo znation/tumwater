@@ -1,6 +1,20 @@
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { sampleSleepClock, sleptMsBetween, type SleepSample } from "../src/host-sleep.js";
+
+/** Pin the platform for one test and restore it, the same pattern test/process.test.ts uses:
+ * the real clocks differ per OS, but the branch logic under test runs wherever the platform
+ * says it does. */
+async function withPlatform<T>(platform: string, run: () => Promise<T>): Promise<T> {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform });
+  try {
+    return await run();
+  } finally {
+    if (original) Object.defineProperty(process, "platform", original);
+  }
+}
 
 // Unit coverage for the measured host sleep (src/host-sleep.ts): the two measurement paths —
 // Linux's boottime-vs-monotonic divergence and macOS's sleep-start→wake span — driven by
@@ -48,4 +62,44 @@ test("sampleSleepClock reads the macOS sleep clocks", { skip: process.platform !
   assert.ok(sample.lastWakeMs !== undefined && Number.isFinite(sample.lastWakeMs));
   assert.ok(sample.lastWakeMs! <= Date.now());
   assert.ok(sample.lastSleepMs === undefined || sample.lastSleepMs <= sample.lastWakeMs!);
+});
+
+test("sampleSleepClock on Linux reads /proc/uptime's boottime clock beside the monotonic clock", async (t) => {
+  // The Linux branch reads /proc/uptime — the dev box is a Mac and never takes it, so pin the
+  // platform and fake the kernel's file. The contract under test: the first field (CLOCK_BOOTTIME
+  // seconds, which advances through suspend) is scaled to ms and paired with the monotonic
+  // hrtime taken at the same instant, so sleptMsBetween can difference the two clocks.
+  const read = t.mock.method(fs, "readFileSync", (path: fs.PathOrFileDescriptor) => {
+    assert.equal(path, "/proc/uptime");
+    return "12345.5 4021.8\n";
+  });
+  const sample = await withPlatform("linux", sampleSleepClock);
+  assert.equal(read.mock.calls.length, 1);
+  assert.equal(sample.bootMs, 12_345_500);
+  assert.equal(typeof sample.monoNs, "bigint");
+  assert.ok(sample.monoNs! > 0n, "the monotonic clock is past boot");
+});
+
+test("sampleSleepClock on Linux yields an empty sample when /proc/uptime is unreadable", async (t) => {
+  // A container or a hardened kernel can hide /proc/uptime; the contract is that a missing
+  // clock reads as an empty sample — no sleep evidence, never a wrong number.
+  t.mock.method(fs, "readFileSync", () => {
+    throw Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+  });
+  const sample = await withPlatform("linux", sampleSleepClock);
+  assert.deepEqual(sample, {});
+});
+
+test("sampleSleepClock on Linux yields an empty sample when /proc/uptime is not a number", async (t) => {
+  // A first field Number() cannot parse (a changed format, an empty file) fails the finite
+  // guard and degrades to an empty sample rather than NaN downstream.
+  t.mock.method(fs, "readFileSync", () => "n/a 0.0\n");
+  const sample = await withPlatform("linux", sampleSleepClock);
+  assert.deepEqual(sample, {});
+});
+
+test("sampleSleepClock yields an empty sample on a platform with neither clock", async () => {
+  // Neither darwin's sysctl pair nor Linux's /proc/uptime: no readable clock at all.
+  const sample = await withPlatform("sunos", sampleSleepClock);
+  assert.deepEqual(sample, {});
 });
