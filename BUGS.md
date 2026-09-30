@@ -5,7 +5,12 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### A flag-valued npm option before the subcommand hides a full-suite run from the reviewer tripwire: `npm --prefix /tmp/rev test` (and `npm -C <dir> test`) runs the whole suite in a copied tree but `runsFullSuite` reads the flag's value as the subcommand and never warns (found by coverage loop 2026-09-29 while covering suite-rerun.ts's shell-composition edges)
+
+- **Symptom:** A reviewer that copies the worktree to a scratch directory and runs the suite there via an option that takes the directory as its value — `npm --prefix /tmp/rev test`, `npm -C /tmp/rev run test`, `npm --cache /tmp/c test` — holds the landing slot and loads the shared host with a full suite run, and no `suite_rerun` warning event is logged: review.ts's tripwire stays silent, so the digest cannot count the behavior the 2026-09-23 rule exists for.
+- **Reproduce:** `node -e 'import("./dist/src/suite-rerun.js").then(m => console.log(m.runsFullSuite("npm --prefix /tmp/rev test")))'` prints `false`; `cd /tmp/rev && npm test` prints `true`. The npm branch of `segmentRunsFullSuite` finds the subcommand with `firstNonFlag(words, 1)`, which skips option tokens but not the values a flag consumes — `--prefix`'s `/tmp/rev` is a plain word, so it is read as the subcommand name, matches neither the test, run, nor ci alias sets, and the segment reads as an innocuous npm invocation.
+- **Suspected cause:** `firstNonFlag` has no notion of flags that take a separate value; distinguishing `--silent` (no value) from `--prefix <dir>` (value) needs npm's option table or a conservative heuristic, which is why this is a bug record rather than a drive-by fix. The module header accepts that some shapes slip through cheaply, but this one is precisely the copied-tree suite run the tripwire was built to catch, via a flag reviewers plausibly reach for.
+- **Suggested fix (for the bugfix loop to weigh):** in the npm branch, skip a flag token together with its value when the token is one of npm's value-taking global options (`--prefix`, `-C`, `--cache`, `--userconfig`, `--registry`, …) or uses `--flag=value` form, so the next non-flag word is the subcommand again; a conservative value-taking list errs toward flagging (a false positive costs one warning event, a false negative hides a host-loading run). The same value-skipping question applies to `node`'s branch if a reviewer uses `node --max-old-space-size 4096 …/test-runner.js`.
 
 ## Fixed
 

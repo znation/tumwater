@@ -33,6 +33,27 @@ test("runsFullSuite flags an unfiltered suite run or `npm ci`, however the line 
   }
 });
 
+test("runsFullSuite flags backgrounded suite runs and keeps &-redirects out of the filter check", () => {
+  // A reviewer who backgrounds the run (`npm test &`) still loads the shared host while the
+  // landing slot is held — the & must split the segment like ; or &&, not vanish into it.
+  for (const command of [
+    "npm test &",
+    "npm run test & tail -f /tmp/log",
+    "node dist/test/test-runner.js &",
+    "npm ci &",
+    "npm test < /dev/null &", // an input redirect target is not a filter either
+  ]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+
+  // &> and &>> are redirections, not backgrounding: the segment must not split at their &
+  // (a split would leave the redirect target looking like a fresh command) and the target
+  // must not read as a test filter.
+  for (const command of ["npm test &> /tmp/out.txt", "npm test &>> /tmp/out.txt"]) {
+    assert.ok(runsFullSuite(command), `flagged: ${command}`);
+  }
+});
+
 test("runsFullSuite leaves filtered runs and mere mentions of the runner alone", () => {
   for (const command of [
     "npm test gui 2>&1 | tail -15", // one test file, by filter
