@@ -181,13 +181,13 @@ export function renderRoleChange(view: RoleChangeView): string {
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
   if (view.ahead === 0 && view.dirtyFiles.length === 0) return `no pending change for ${view.role}`;
   const lines = [
-    `${view.role}: ${view.branch}, ${view.ahead} commit${view.ahead === 1 ? "" : "s"} ahead of ${view.mainBranch}` +
-      (view.dirtyFiles.length > 0 ? `, ${view.dirtyFiles.length} uncommitted file${view.dirtyFiles.length === 1 ? "" : "s"}` : ""),
+    `${view.role}: ${view.branch}, ${plural(view.ahead, "commit")} ahead of ${view.mainBranch}` +
+      (view.dirtyFiles.length > 0 ? `, ${plural(view.dirtyFiles.length, "uncommitted file")}` : ""),
   ];
   for (const c of view.commits) lines.push(`${c.sha} ${c.subject}`);
   if (view.diff) lines.push("", view.diff.trimEnd());
   if (view.dirtyFiles.length > 0) {
-    lines.push("", `uncommitted (${view.dirtyFiles.length} file${view.dirtyFiles.length === 1 ? "" : "s"}): ${view.dirtyFiles.join(", ")}`);
+    lines.push("", `uncommitted (${plural(view.dirtyFiles.length, "file")}): ${view.dirtyFiles.join(", ")}`);
     if (view.uncommittedDiff) lines.push("", view.uncommittedDiff.trimEnd());
   }
   return lines.join("\n");
