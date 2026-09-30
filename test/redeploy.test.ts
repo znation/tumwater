@@ -3,18 +3,25 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
-import type { BuildStaleness } from "../src/build-info.js";
 import { mainIsGreen } from "../src/main-baseline.js";
-import { defaultConfig } from "../src/config.js";
 import {
   autoRestartRecord,
   type AutoRestartRecord,
-  type RedeployDeps,
-  Redeployer,
   redeployDeps,
   RESTART_COOLDOWN_MS,
   RESTART_EXIT_CODE,
 } from "../src/redeploy.js";
+import {
+  BUILD,
+  CFG,
+  HEAD_B,
+  HEAD_C,
+  IDLE,
+  driveToRestart,
+  fakeDeps,
+  harness,
+  settle,
+} from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { initProject } from "../src/init.js";
@@ -24,78 +31,6 @@ import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { projManifest } from "./fake-commands.js";
 
-// The self-redeploy policy (src/redeploy.ts): drive the state machine with scripted effects so
-// every decision branch — stale detection, red main, compile failure, drain, swap — is pinned
-// without git, tsc, or a fleet. The helpers' own behavior — compileStaged/swapDist against a
-// temp project, mainIsGreen's boolean view, the mirror worktree — is pinned beside their modules
-// (build-stage.test.ts, main-baseline.test.ts, worktree.test.ts); the one test here that wires
-// the real check into the poll loop is the toolchain-broken end-to-end case at the bottom.
-
-const BUILD = { sha: "a".repeat(40), builtAt: 1, root: "/proj" };
-/** The live config mainIsGreen now requires (plans/portability.md §6/7): these tests exercise
- * npm auto-detection, so the defaults (no `check` configured) are the fixture. */
-const CFG = defaultConfig();
-const HEAD_B = "b".repeat(40);
-const HEAD_C = "c".repeat(40);
-const HEAD_D = "d".repeat(40);
-
-/** A controllable deps object: each effect resolves when the test says so. */
-function fakeDeps(over: Partial<RedeployDeps> & { stale?: BuildStaleness | null } = {}) {
-  const calls = { compile: [] as string[], swap: [] as string[], green: [] as string[] };
-  let resolveGreen: ((v: boolean) => void) | null = null;
-  let resolveCompile: ((v: { ok: boolean; detail: string; rejected?: boolean }) => void) | null = null;
-  const deps: RedeployDeps = {
-    staleness: async () => over.stale ?? { stale: true, aheadCommits: 3 },
-    mainGreen: (h) => {
-      calls.green.push(h);
-      return new Promise((r) => (resolveGreen = r));
-    },
-    compile: (h) => {
-      calls.compile.push(h);
-      return new Promise((r) => (resolveCompile = r));
-    },
-    swap: (h) => {
-      calls.swap.push(h);
-    },
-    bootProblem: async () => null, // a generation would boot: the startup gate passes
-    ...over,
-  };
-  return {
-    deps,
-    calls,
-    green(v: boolean) {
-      resolveGreen?.(v);
-    },
-    compiled(ok: boolean, detail = "", rejected = false) {
-      resolveCompile?.({ ok, detail, rejected });
-    },
-  };
-}
-
-function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: number, restartRecord?: AutoRestartRecord) {
-  const events: HarnessEventInput[] = [];
-  const r = new Redeployer(BUILD, selfHosted, deps, (e) => events.push(e), drainMaxMs, restartRecord);
-  return { r, events, types: () => events.map((e) => e.type) };
-}
-
-/** Let the tracked background promises settle (one macrotask is enough). */
-const settle = () => new Promise((r) => setTimeout(r, 5));
-
-const IDLE = { roleInFlight: 0, directorInFlight: 0 };
-
-/** Drive one episode (green → compile → idle swap) to its completed restart; returns the `now`
- * at which it landed — the cooldown's start for what follows. */
-async function driveToRestart(r: Redeployer, f: ReturnType<typeof fakeDeps>, head: string, startNow: number): Promise<number> {
-  let t = startNow;
-  assert.equal(await r.poll(head, IDLE, true, t), "hold");
-  f.green(true);
-  await settle();
-  assert.equal(await r.poll(head, IDLE, true, (t += 10)), "hold", "green: the compile starts");
-  f.compiled(true);
-  await settle();
-  assert.equal(await r.poll(head, IDLE, true, (t += 10)), "restart", "idle: swap and go");
-  return t;
-}
 test("a non-self-hosted harness never acts, whatever main does", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, false);
@@ -501,205 +436,6 @@ test("main moving during a pending restart supersedes it: the new head is evalua
   await settle();
   assert.equal(await r.poll(HEAD_C, { roleInFlight: 0, directorInFlight: 0 }, true), "hold");
   assert.deepEqual(f.calls.swap, [], "the superseded build is never swapped in");
-});
-
-test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
-  // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed
-  // swap — inside the 12 h window the fleet keeps ticking on the stale build instead of holding
-  // for another drain (BUGS.md).
-  const f = fakeDeps();
-  const { r, events, types } = harness(f.deps);
-  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
-  assert.equal(
-    await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 60 * 60_000),
-    "none",
-    "no hold: ticks continue on the stale build",
-  );
-  assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the deferred head's green check prewarms during the cooldown (BUGS.md 2026-09-30)");
-  assert.deepEqual(f.calls.compile, [HEAD_B], "no compile prewarm while the check is unresolved");
-  const status = r.status(swappedAt + 60 * 60_000);
-  assert.equal(status.stale, true, "staleness stays visible");
-  assert.equal(
-    status.restartBlocked,
-    `cooldown until ${new Date(swappedAt + RESTART_COOLDOWN_MS).toISOString()}`,
-    "the deadline is published through the restartBlocked channel",
-  );
-  assert.equal(status.restartPending, undefined);
-  // One warning per episode, not one per poll and not one per head: a landing mid-cooldown
-  // adds no new information, so a different head in the same episode stays silent
-  // (BUGS.md 2026-09-19).
-  assert.equal(
-    await r.poll(HEAD_D, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 61 * 60_000),
-    "none",
-    "a different head inside the same cooldown still defers",
-  );
-  const warnings = events.filter((e) => e.type === "warning");
-  assert.equal(warnings.length, 1, "one warning for the whole cooldown episode, not one per head");
-  assert.match(String(warnings[0]!.message), /cooldown until/);
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"]);
-});
-
-test("during the cooldown the deferred head's check and compile prewarm, so the lapse reaches the swap on its first poll", async () => {
-  // The 2026-09-30 shape: the fleet sat on a stale build for the full 12 h cooldown with the
-  // newer head unverified, then paid green-check + compile + drain from zero when it lapsed
-  // (BUGS.md). The prewarm runs both once per SHA inside the dead window, and the episode
-  // adopts the finished trackers, so a single idle poll past the deadline swaps.
-  const f = fakeDeps();
-  const { r, types } = harness(f.deps);
-  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none");
-  assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the green check prewarms once for the deferred head");
-  f.green(true);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000), "none");
-  assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_C], "a green verdict prewarms the staged compile");
-  f.compiled(true);
-  await settle();
-  assert.deepEqual(types(), ["build_stale", "restart_pending", "restart", "warning"], "the prewarm logs no state transitions of its own");
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
-    "hold",
-    "the lapse seeds the episode with the prewarmed verdicts already in hand",
-  );
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10),
-    "restart",
-    "no second check, no second compile: the next poll swaps",
-  );
-  assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "no second green check");
-  assert.deepEqual(f.calls.compile, [HEAD_B, HEAD_C], "no second compile");
-  assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
-});
-
-test("a prewarmed green check that could not run is not adopted — the episode re-runs it", async () => {
-  // A rejection is no verdict (BUGS.md 2026-09-16): adopting one would replay the same dead end
-  // on every retry, so the episode's own fresh check decides. The cooldown is injected directly
-  // via the restart record — no completed episode needed to arm it.
-  const f = fakeDeps();
-  const greenCalls: string[] = [];
-  const deps: RedeployDeps = {
-    ...f.deps,
-    mainGreen: (h) => {
-      greenCalls.push(h);
-      if (greenCalls.length === 1) return Promise.reject(new Error("mirror worktree broke")); // the prewarm's check
-      return Promise.resolve(true); // the episode's fresh check
-    },
-  };
-  const swappedAt = 1_000_000;
-  const { r } = harness(deps, true, undefined, { lastAt: swappedAt, record: () => {} });
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none", "the cooldown defers; the prewarm's check rejects");
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000), "none", "the rejection prewarms nothing further");
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
-    "hold",
-    "the lapse starts a FRESH green check instead of adopting the rejected one",
-  );
-  assert.deepEqual(greenCalls, [HEAD_C, HEAD_C]);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold", "green: the compile starts");
-  f.compiled(true);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 20), "restart");
-});
-
-test("a prewarmed compile that could not run is not adopted — the episode recompiles", async () => {
-  const f = fakeDeps();
-  const compileCalls: string[] = [];
-  let resolveFresh: (v: { ok: boolean; detail: string }) => void = () => {};
-  const deps: RedeployDeps = {
-    ...f.deps,
-    compile: (h) => {
-      compileCalls.push(h);
-      if (compileCalls.length === 1) return Promise.reject(new Error("staging dir unwritable")); // the prewarm's compile
-      return new Promise((r) => (resolveFresh = r)); // the episode's fresh compile
-    },
-  };
-  const swappedAt = 1_000_000;
-  const { r } = harness(deps, true, undefined, { lastAt: swappedAt, record: () => {} });
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none", "the cooldown defers; the prewarm's check runs");
-  f.green(true);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000), "none", "the prewarm's compile rejects");
-  await settle();
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
-    "hold",
-    "the lapse seeds the episode with the prewarmed green verdict",
-  );
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10),
-    "hold",
-    "the compile step starts a FRESH compile instead of adopting the rejected one",
-  );
-  assert.deepEqual(compileCalls, [HEAD_C, HEAD_C]);
-  resolveFresh({ ok: true, detail: "" });
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 20), "restart");
-});
-
-test("a prewarmed compile that finished FAILED is not adopted — the episode recompiles", async () => {
-  // A finished FAILED verdict ({ok:false, detail}, no rejected flag) IS a verdict about the
-  // tree — but a transient one (a tsc timeout under load, a staging hiccup) must not be
-  // latched into the episode's restart_blocked: the block decision rests on a verdict the
-  // episode's own step produced, so the lapse recompiles at the cost of one bounded recompile.
-  const f = fakeDeps();
-  const compileCalls: string[] = [];
-  let resolveFresh: (v: { ok: boolean; detail: string }) => void = () => {};
-  const deps: RedeployDeps = {
-    ...f.deps,
-    compile: (h) => {
-      compileCalls.push(h);
-      if (compileCalls.length === 1) return Promise.resolve({ ok: false, detail: "tsc exited 2" }); // the prewarm's FAILED verdict
-      return new Promise((r) => (resolveFresh = r)); // the episode's fresh compile
-    },
-  };
-  const swappedAt = 1_000_000;
-  const { r } = harness(deps, true, undefined, { lastAt: swappedAt, record: () => {} });
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000), "none", "the cooldown defers; the prewarm's check runs");
-  f.green(true);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000), "none", "the prewarm's compile finishes FAILED");
-  await settle();
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
-    "hold",
-    "the lapse seeds the episode with the prewarmed green verdict",
-  );
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10),
-    "hold",
-    "the compile step starts a FRESH compile instead of adopting the failed verdict",
-  );
-  assert.deepEqual(compileCalls, [HEAD_C, HEAD_C]);
-  resolveFresh({ ok: true, detail: "" });
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 20), "restart");
-});
-
-test("past the cooldown deadline the same head proceeds to a restart without main moving again", async () => {
-  // Re-evaluated on every poll rather than latched like blockedHead: once the deadline passes,
-  // the current head proceeds even if main never moves again (BUGS.md 2026-09-11).
-  const f = fakeDeps();
-  const { r } = harness(f.deps);
-  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS - 1), "none", "one ms short of the deadline still defers");
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS),
-    "hold",
-    "past it: the new episode starts its green check",
-  );
-  f.green(true);
-  await settle();
-  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold", "green: the compile starts");
-  f.compiled(true);
-  await settle();
-  assert.equal(
-    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_COOLDOWN_MS + 20),
-    "restart",
-    "the second restart lands past the deadline",
-  );
-  assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
 });
 
 test("the completion timestamp survives process restart via its state file", async () => {
