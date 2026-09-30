@@ -1,11 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { belowNodeFloor, nodeFloorProblem, packageEnginesNode, packageVersion } from "../src/version.js";
-import { writeMalformedJson } from "./repo-fixtures.js";
+import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 // The harness's own version (src/version.ts): `tumwater version` reads package.json beside
 // the compiled CLI. The happy path is pinned against the real file so the URL arithmetic
@@ -21,13 +20,13 @@ test("packageVersion reads the running harness's own package.json", () => {
 });
 
 test("packageVersion reports the reason when the file cannot be read", () => {
-  const result = packageVersion(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tw-ver-")), "absent.json"));
+  const result = packageVersion(path.join(tmpdir("tw-ver-"), "absent.json"));
   assert.equal(result.version, undefined);
   assert.match(result.problem ?? "", /^cannot read package.json \(the running harness's install looks broken\): ENOENT/);
 });
 
 test("packageVersion reports malformed JSON instead of throwing", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-ver-"));
+  const dir = tmpdir("tw-ver-");
   const file = path.join(dir, "package.json");
   writeMalformedJson(file);
   const result = packageVersion(file);
@@ -36,7 +35,7 @@ test("packageVersion reports malformed JSON instead of throwing", () => {
 });
 
 test("packageVersion fails a missing, blank, or non-string version field", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-ver-"));
+  const dir = tmpdir("tw-ver-");
   for (const body of ["null", "[]", "{}", '{"version":42}', '{"version":""}']) {
     const file = path.join(dir, `${body.replace(/\W/g, "_")}.json`);
     fs.writeFileSync(file, body);
@@ -53,7 +52,7 @@ test("packageEnginesNode reads the real package.json's engines spec", () => {
 });
 
 test("packageEnginesNode returns null on a missing, malformed, or engines-less file", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tw-eng-"));
+  const dir = tmpdir("tw-eng-");
   const write = (body: string): string => {
     const file = path.join(dir, `${body.replace(/\W/g, "_")}.json`);
     fs.writeFileSync(file, body);
