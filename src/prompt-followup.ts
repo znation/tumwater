@@ -18,6 +18,13 @@ import { NOTHING_TO_DO } from "./reply-contract.js";
  * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30). */
 type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
 
+/** The shared closing paragraph of the three resume bridges that hand the same task back
+ * unchanged (restart, hung-tool, budget-resumed): finish or redo what you started rather than
+ * picking a new one. Kept in one place so the wording cannot drift between causes — the cut-off
+ * and timeout bridges deliberately phrase their own finish instructions instead. */
+const CONTINUE_TASK_BRIDGE = `Continue the SAME task you were working on and finish it. If the work so far turns out to be
+unusable, redo it — but stay on this task rather than picking a new one.`;
+
 /** The follow-up prompt for resuming an interrupted tick. It is sent into the SAME pi session as
  * the interrupted run — which already carries the full original prompt, all rules, and the work
  * so far — so it only needs to bridge the gap. The bridge names the real cause: a run cut off at
@@ -38,8 +45,7 @@ leave the project working, and stop.`
       : cause === "hung-tool"
         ? `The harness killed your previous run as the "${roleId}" loop because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
 
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`
+${CONTINUE_TASK_BRIDGE}`
         : cause === "timeout"
           ? `Your previous run as the "${roleId}" loop reached the harness's tick time limit while
 it was still making progress — a slow run, not a failed one — so the harness preserved your
@@ -53,14 +59,12 @@ started on the fallback model — the harness has moved this session back to the
 is continuing it now. Your worktree is exactly as you left it, and this session carries everything
 you did so far.
 
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`
+${CONTINUE_TASK_BRIDGE}`
             : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 
-Continue the SAME task you were working on and finish it. If the work so far turns out to be
-unusable, redo it — but stay on this task rather than picking a new one.`;
+${CONTINUE_TASK_BRIDGE}`;
   return `${opening} All the original rules
 still apply, in particular:
 - Do exactly ONE focused task, then stop.
