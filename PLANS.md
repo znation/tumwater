@@ -249,7 +249,9 @@ test and one landing test next to part 2/4's.
   check, not a suite test: it reads this repo's history, not a fixture.
 - `npm run test` passes.
 
-### Image drag-and-drop into the GUI composer: dropped or pasted images are saved beside the queued prompt and the prompt text points the loop at them (planned 2026-09-30)
+## Done
+
+### Image drag-and-drop into the GUI composer: dropped or pasted images are saved beside the queued prompt and the prompt text points the loop at them (planned 2026-09-30, done 2026-09-30)
 
 **Goal.** Dropping image files onto the "Tell the fleet what to do next…" textarea in the GUI (and pasting an image from the clipboard) attaches them to the queued prompt: each image is stored on disk and the prompt text gains one `[image attached: <absolute path>]` line per image, so the receiving loop's pi agent can view the file with its read tool (pi renders images). Works for both the director target and a per-role target. The CLI `tumwater prompt` stays text-only — out of scope.
 
@@ -268,7 +270,9 @@ test and one landing test next to part 2/4's.
    - Render one chip per pending image (name, size, a remove ×) into a new `<div id="promptimages">` container inside `#promptform` in `src/ui/gui-page.ts`; an empty container stays hidden.
    - In the `promptform` submit handler: read each pending `File` as a data URL (`FileReader.readAsDataURL`, strip the `data:...;base64,` prefix), include them as `images: [{ name, dataBase64 }]` in the `sendPrompt` body (both `/api/prompt` and `/api/prompt-role`), clear the list only on success — a rejected submit keeps text and images so it can be fixed and resent, matching today's text behavior. Flash message names the attachment count when images rode along.
 
-**Files touched:** `src/inbox-attachments.ts` (new, ~90 lines), `src/inbox.ts`, `src/ui/gui-endpoints.ts`, `src/ui/http-body.ts`, `src/ui/gui-client-fleet.ts`, `src/ui/gui-page.ts`, tests (`test/inbox-attachments.test.ts` new; `test/cli-gui.test.ts` endpoint e2e; the http-body 413 test).
+**Files touched:** `src/inbox-attachments.ts` (new), `src/inbox.ts`, `src/pending-prompt.ts`, `src/operator-intent.ts`, `src/ui/gui-endpoints.ts`, `src/ui/http-body.ts`, `src/ui/gui-client-fleet.ts`, `src/ui/gui-page.ts`, `src/ui/gui-styles.ts`, tests (`test/inbox-attachments.test.ts` new; `test/gui.test.ts` endpoint e2e; the old-cap-pinned 413 tests in `test/http-body.test.ts`, `test/gui-server.test.ts`, `test/gui-operator.test.ts`).
+
+**Re-land 2026-09-30 by feature: the first attempt was rejected in review; two fixes ride in this landing.** (1) The client's pending-image entries are now a uniform `{ name, size, file }` record — the rejected version's `renderPromptImages` read `img.file.name` off entries that were raw `File`s and threw on every drop/paste. (2) Requeued prompts no longer carry dangling image references: `takeQueuedFile` removes an image with its prompt, so `PendingPrompt.requeueUnfulfilled` strips reference lines whose files are gone and records the loss in a note line the preview, `prompt --list`, and the next tick's agent all see. The endpoints also gained the one missing piece the first attempt needed to pass at all: a text-only POST (no `images` field) is distinct from an invalid one, and answers 200 instead of leaving the client hanging.
 
 **Acceptance criteria.**
 
@@ -279,8 +283,6 @@ test and one landing test next to part 2/4's.
 5. Client behavior (drop, paste, chips, clear-on-success, keep-on-failure) is implemented in the served client script and covered by the endpoint e2e for its server half; `npm run test` passes.
 
 Sizing: one run — ~90 new lines in the new module, ~40 across the two endpoints/inbox, ~80 client, ~180 tests. No sub-plans needed.
-
-## Done
 
 ### Land queue drawer: clicking the GUI sidebar's "Land queue" chip lists the queued changes (planned 2026-09-30, done 2026-09-30)
 

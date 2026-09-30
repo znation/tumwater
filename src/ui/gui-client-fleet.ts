@@ -9,6 +9,7 @@
  * getJson, postJson, plural, recall, fmtAgo, fmtTokens, fmtUsd, paintPanel, showFlash)
  * through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox.js";
+import { PROMPT_IMAGES_MAX_COUNT } from "../inbox-attachments.js";
 export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet status, budget and pause controls ----
   // post-action:start
   // Fire one POST and report its outcome in the flash bar — the derived success message, or
@@ -351,17 +352,80 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       $("promptform").requestSubmit();
     } else if (ev.key === "Escape") promptInput.blur();
   });
+  // composer-images:start
+  // Pending image attachments, dropped or pasted onto the composer. One list shared across
+  // targets (an image belongs to the message, not to the selector), each entry a
+  // { name, size, file } record so the chips render from plain fields and the submit reads
+  // the bytes off .file. Cleared only on a successful submit or manual removal — a rejected
+  // submit keeps text and images so they can be fixed and resent, like the text draft.
+  const promptImages = [];
+  const isImageFile = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name);
+  function addPromptImages(files) {
+    let added = 0;
+    for (const f of files) {
+      if (!isImageFile(f) || promptImages.length >= ${PROMPT_IMAGES_MAX_COUNT}) continue;
+      promptImages.push({ name: f.name, size: f.size, file: f });
+      added++;
+    }
+    if (added) renderPromptImages();
+    return added;
+  }
+  function fmtImageSize(n) {
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : n >= 1024 ? Math.round(n / 1024) + " KB" : n + " B";
+  }
+  function renderPromptImages() {
+    const box = $("promptimages");
+    box.hidden = promptImages.length === 0;
+    box.innerHTML = promptImages.map((img, i) =>
+      "<span class='chip'><span class='mono'>" + esc(img.name) + "</span><span class='dim'>" + fmtImageSize(img.size) + "</span>" +
+      "<button type='button' data-idx='" + i + "' title='Remove' aria-label='Remove " + esc(img.name) + "'>×</button></span>").join("");
+  }
+  $("promptimages").addEventListener("click", (ev) => {
+    const b = ev.target instanceof Element ? ev.target.closest("button[data-idx]") : null;
+    if (!b) return;
+    promptImages.splice(Number(b.dataset.idx), 1);
+    renderPromptImages();
+  });
+  // Drop an image file onto the composer (or paste one from the clipboard) to attach it;
+  // anything that is not an image is ignored. preventDefault on dragover is what makes the
+  // composer a valid drop target instead of the browser navigating to the file.
+  const promptForm = $("promptform");
+  promptForm.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    promptForm.classList.add("dragover");
+  });
+  promptForm.addEventListener("dragleave", () => promptForm.classList.remove("dragover"));
+  promptForm.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    promptForm.classList.remove("dragover");
+    if (ev.dataTransfer && ev.dataTransfer.files.length) addPromptImages(ev.dataTransfer.files);
+  });
+  promptInput.addEventListener("paste", (ev) => {
+    const files = ev.clipboardData && ev.clipboardData.files;
+    if (files && files.length && addPromptImages(files)) ev.preventDefault();
+  });
+  // One pending File's bytes as base64 — readAsDataURL's data:...;base64, prefix stripped.
+  function readImageAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(",") + 1));
+      r.onerror = () => reject(new Error("could not read " + file.name));
+      r.readAsDataURL(file);
+    });
+  }
   // composer-send:start
   // Queue a prompt for the director or for one loop, through the same endpoints the CLI's
   // "prompt" and "prompt --role" use. Resolves to the confirmation to show; rejects when the
-  // server did not take it (the caller keeps the text so it can be fixed and resent).
-  async function sendPrompt(target, text) {
+  // server did not take it (the caller keeps the text so it can be fixed and resent). Pending
+  // images ride along as { name, dataBase64 } and are named in the confirmation.
+  async function sendPrompt(target, text, images) {
+    const attached = images && images.length ? " with " + plural(images.length, "image") : "";
     if (target === "director") {
-      await postJson("/api/prompt", { text });
-      return "Queued for the director — it runs next";
+      await postJson("/api/prompt", images && images.length ? { text, images } : { text });
+      return "Queued for the director — it runs next" + attached;
     }
-    await postJson("/api/prompt-role", { role: target, text });
-    return "Queued for the " + target + " loop's next tick — it wakes now";
+    await postJson("/api/prompt-role", images && images.length ? { role: target, text, images } : { role: target, text });
+    return "Queued for the " + target + " loop's next tick — it wakes now" + attached;
   }
   // composer-send:end
   let sending = false;
@@ -372,16 +436,20 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const target = promptTarget;
     sending = true;
     $("promptsend").disabled = true;
+    const images = [];
     try {
-      showFlash(await sendPrompt(target, text));
+      for (const img of promptImages) images.push({ name: img.name, dataBase64: await readImageAsBase64(img.file) });
+      showFlash(await sendPrompt(target, text, images));
     } catch (e) {
-      // The prompt was not accepted: keep the text so it can be fixed and resent.
+      // The prompt was not accepted: keep the text and the images so they can be fixed and resent.
       showFlash("error: " + e.message);
       return;
     } finally {
       sending = false;
       $("promptsend").disabled = false;
     }
+    promptImages.length = 0;
+    renderPromptImages();
     promptInput.value = "";
     drafts[target] = "";
     if (target !== "director") setTarget("director");

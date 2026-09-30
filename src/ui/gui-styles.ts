@@ -249,6 +249,13 @@ export const GUI_STYLES = String.raw`
                        background: none; padding: 6px 4px; line-height: 1.45; font-size: 14.5px; }
   .composer textarea::placeholder { color: var(--text-4); }
   .composer .btn-primary { height: 34px; }
+  .composer.dragover { border-color: var(--primary); background: var(--accent-bg); }
+  #promptimages { padding: 6px 4px 0; }
+  #promptimages .chip { font-size: 12px; }
+  #promptimages .chip .dim { color: var(--text-3); }
+  #promptimages .chip button { border: 0; background: none; color: var(--text-3); cursor: pointer; font-size: 14px;
+                               line-height: 1; padding: 0 2px; }
+  #promptimages .chip button:hover { color: var(--text); }
   .composer-foot { display: flex; align-items: center; gap: 12px; padding: 4px 4px 0; font-size: 12.5px; color: var(--text-3); }
   .composer-meta { display: inline-flex; gap: 12px; margin-left: auto; white-space: nowrap; }
   .composer-meta a { color: var(--accent); text-decoration: none; font-weight: 600; }

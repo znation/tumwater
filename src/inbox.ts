@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readTextOrNull, writeTextAtomic } from "./files.js";
+import { ensureParentDir, readTextOrNull, writeTextAtomic } from "./files.js";
 import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
@@ -9,6 +9,12 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
 import { truncate } from "./text.js";
 import { errCode } from "./errno.js";
+import {
+  imageReferenceLines,
+  promptImagesProblem,
+  savePromptImages,
+  type PromptImageInput,
+} from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
@@ -36,13 +42,20 @@ let seq = 0;
  * loop.ts's re-queue of an unfulfilled prompt calls this directly. The write is atomic
  * (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll, `tumwater prompt
  * --list`, and the dequeuing loop — run in other processes, and a read that raced a plain
- * writeFileSync could see a truncated prompt and run a tick on a half user request. */
-export function enqueueRolePrompt(root: string, role: string, prompt: string): string {
+ * writeFileSync could see a truncated prompt and run a tick on a half user request. The
+ * optional decorate hook runs before that one write with the file's path and may return the
+ * final text instead — submitPromptWithImages uses it to save the prompt's images beside the
+ * queue file and append their reference lines, so the queue file is born complete and no
+ * reader can ever see a prompt whose image lines point at not-yet-written files. */
+export function enqueueRolePrompt(root: string, role: string, prompt: string, decorate?: (file: string) => string): string {
   const dir = roleInboxDir(root, role);
   // Timestamp orders across processes; the counter orders within one; pid breaks ties.
   const name = queueFileName(Date.now(), seq++, ".md");
   const file = path.join(dir, name);
-  writeTextAtomic(file, prompt);
+  // The decorate hook may write files beside the queue file (submitPromptWithImages's
+  // images), so the directory must exist before it runs — not only at the write below.
+  if (decorate) ensureParentDir(file);
+  writeTextAtomic(file, decorate ? decorate(file) : prompt);
   return file;
 }
 
@@ -134,7 +147,31 @@ export function takeQueuedFile(file: string): string | null {
     throw err;
   }
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
+  removeSameStemSiblings(file);
   return text;
+}
+
+/** Remove the image files a queued prompt's [image attached: …] lines pointed at — the
+ * same-stem siblings savePromptImages wrote beside the queue file (a name starting with the
+ * .md's stem whose next character is "." or "-" — an extension or a same-extension suffix;
+ * a sibling prompt's file differs before the stem ends, so it never matches). ENOENT-tolerant
+ * through removeQueueFile, and a queue directory that is already gone leaves nothing to
+ * clean. Called by takeQueuedFile, so both dequeue and cancel take the attachments with the
+ * prompt — an image never outlives the prompt that referenced it. */
+function removeSameStemSiblings(file: string): void {
+  const dir = path.dirname(file);
+  const stem = path.basename(file, ".md");
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return; // The queue directory itself is gone — nothing to clean.
+  }
+  for (const entry of entries) {
+    if (entry === path.basename(file) || !entry.startsWith(stem)) continue;
+    const next = entry.charAt(stem.length);
+    if (next === "." || next === "-") removeQueueFile(path.join(dir, entry));
+  }
 }
 
 
@@ -239,14 +276,42 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
  * an ellipsis like every other label and never carries a lone surrogate at the cut point.
  * Throws (before anything is queued or logged) when the trimmed prompt exceeds
  * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
- * operator. */
-export function submitRolePrompt(root: string, role: string, text: string): string {
+ * operator. An optional images array (the GUI composer's drop/paste attachments) rides
+ * through savePromptImages beside the queue file, with one [image attached: …] reference line
+ * per image appended to the queued text; image problems throw before anything is queued. */
+export function submitRolePrompt(root: string, role: string, text: string, images?: PromptImageInput[]): string {
   const problem = promptLengthProblem(text, role);
   if (problem) throw new Error(problem);
+  if (images && images.length > 0) {
+    const imageProblem = promptImagesProblem(images);
+    if (imageProblem) throw new Error(imageProblem);
+    return submitPromptWithImages(root, role, text, images);
+  }
   const prompt = text.trim();
   enqueueRolePrompt(root, role, prompt);
   logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
   return prompt;
+}
+
+/** submitRolePrompt's image-carrying path: save each image beside the queue file and queue the
+ * text with one reference line per image. The images are saved and the reference lines
+ * composed inside enqueueRolePrompt's decorate hook — a single atomic write, so the queue
+ * file is born complete: no poller can read a prompt whose image lines point at
+ * not-yet-written files, and the dequeuer's sibling cleanup cannot race the writes. The
+ * images were validated before the enqueue (submitRolePrompt above), so savePromptImages's
+ * own re-check failing here is unreachable — and if it ever fired, the decorate throw
+ * happens before writeTextAtomic, leaving no queue file behind at all. */
+function submitPromptWithImages(root: string, role: string, text: string, images: PromptImageInput[]): string {
+  const prompt = text.trim();
+  let final = prompt;
+  enqueueRolePrompt(root, role, prompt, (file) => {
+    const saved = savePromptImages(root, role, file, images);
+    if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
+    final = prompt + imageReferenceLines(saved.paths);
+    return final;
+  });
+  logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
+  return final;
 }
 
 // --- Director special cases: the director's queue IS the historical inbox root, so these thin
@@ -274,6 +339,6 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
 }
 
 /** A user submits a new director prompt; see submitRolePrompt. */
-export function submitPrompt(root: string, text: string): string {
-  return submitRolePrompt(root, DIRECTOR_ROLE, text);
+export function submitPrompt(root: string, text: string, images?: PromptImageInput[]): string {
+  return submitRolePrompt(root, DIRECTOR_ROLE, text, images);
 }

@@ -2,6 +2,7 @@ import { orchestratorAlive, isFleetPaused } from "./fleet-state.js";
 import { durationLabel } from "./cli-args.js";
 import { formatTime } from "./datetime.js";
 import { submitRolePrompt } from "./inbox.js";
+import type { PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { clearBackoff } from "./tick-outcome.js";
@@ -84,8 +85,8 @@ export function requestWake(root: string, roles: string[]): string {
  * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
  * call keeps a surface from ever queueing a prompt without the wake that delivers it
  * promptly — the pairing is the invariant, not each surface's private discipline. */
-export function submitRolePromptAndWake(root: string, role: string, text: string): string {
-  submitRolePrompt(root, role, text);
+export function submitRolePromptAndWake(root: string, role: string, text: string, images?: PromptImageInput[]): string {
+  submitRolePrompt(root, role, text, images);
   return requestWake(root, [role]);
 }
 

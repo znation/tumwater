@@ -28,8 +28,8 @@ test("gui rejects oversized prompt bodies with 413 instead of buffering them unb
   await initProject(repo, "gui body limit test");
   const { server, base } = await startLocalGui(repo);
   try {
-    // Just over the 64KB cap: a client error (413 Payload Too Large), not a server failure.
-    const huge = JSON.stringify({ text: "x".repeat(70 * 1024) });
+    // Just over the 32 MiB cap: a client error (413 Payload Too Large), not a server failure.
+    const huge = JSON.stringify({ text: "x".repeat(MAX_BODY_BYTES) });
     const res = await fetch(base + "/api/prompt", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -311,7 +311,7 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
   await initProject(repo, "gui body bound test");
   const { server, port } = await startLocalGui(repo);
   try {
-    // A raw chunked upload of ~4MB in 16KB frames. The 413 lands after the first ~64KB, but
+    // A raw chunked upload of ~33MB in 16KB frames. The 413 lands after the first ~32 MiB, but
     // this client keeps sending every frame to completion (a well-behaved HTTP client would
     // stop). The server must reject at the cap, release what it kept, and DRAIN without
     // buffering — before the fix each late chunk was still appended to the body string,
@@ -348,7 +348,7 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
       socket.once("error", reject);
       const next = (): void => {
         maxSeen = Math.max(maxSeen, bufferedBodyBytes());
-        if (i >= 256) return resolve();
+        if (i >= 2100) return resolve(); // 2100 × 16KB > the 32 MiB cap
         i++;
         socket.write(framed, next);
       };
@@ -424,9 +424,9 @@ test("gui rejects oversized wake and abort bodies with 413 and keeps serving", a
   await initProject(repo, "gui operator body limit test");
   const { server, base } = await startLocalGui(repo);
   try {
-    // Same shared readJsonObject guard as /api/prompt: just over the 64KB cap is a client
+    // Same shared readJsonObject guard as /api/prompt: just over the 32 MiB cap is a client
     // error, not a server failure, and no marker file is left behind by either endpoint.
-    const huge = JSON.stringify({ role: "feature", pad: "x".repeat(70 * 1024) });
+    const huge = JSON.stringify({ role: "feature", pad: "x".repeat(MAX_BODY_BYTES) });
     for (const endpoint of ["/api/wake", "/api/abort"]) {
       const res = await fetch(base + endpoint, {
         method: "POST",
@@ -471,7 +471,7 @@ test("gui rejects oversized prompt-role bodies with 413 and stays healthy", asyn
   await initProject(repo, "gui prompt-role body limit test");
   const { server, base } = await startLocalGui(repo);
   try {
-    const huge = JSON.stringify({ role: "clean", text: "x".repeat(70 * 1024) });
+    const huge = JSON.stringify({ role: "clean", text: "x".repeat(MAX_BODY_BYTES) });
     const res = await fetch(base + "/api/prompt-role", {
       method: "POST",
       headers: { "content-type": "application/json" },

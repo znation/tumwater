@@ -17,13 +17,15 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
   res.end(JSON.stringify(body));
 }
 
-/** Max request body for /api/prompt, in wire bytes. Over it the promise rejects
- * ("body too large: ... over the N byte (64 KiB) cap", naming both the cap and the rejected
- * size) and buffering STOPS — later chunks are drained and discarded, so a client
- * that keeps uploading after the cap cannot grow the buffer past ~one chunk over the limit.
- * Without the stop, every late chunk was still appended to the body long after the rejection:
- * an unbounded allocation on a network-facing endpoint. */
-export const MAX_BODY_BYTES = 64 * 1024;
+/** Max request body for the /api POST endpoints, in wire bytes. Sized for the prompt
+ * endpoints' image attachments: 4 images × 5 MiB × 4/3 base64 expansion ≈ 27 MiB must fit one
+ * POST, with headroom — the cap exists to bound memory on a local dashboard, not to be tight.
+ * Over it the promise rejects ("body too large: ... over the N byte (32 MiB) cap", naming both
+ * the cap and the rejected size) and buffering STOPS — later chunks are drained and discarded,
+ * so a client that keeps uploading after the cap cannot grow the buffer past ~one chunk over
+ * the limit. Without the stop, every late chunk was still appended to the body long after the
+ * rejection: an unbounded allocation on a network-facing endpoint. */
+export const MAX_BODY_BYTES = 32 * 1024 * 1024;
 
 /** Wire bytes readBody is holding right now, across all in-flight requests. Deliberately
  * observable: the oversized-body guarantee ("buffering stops at the cap, the buffer is
@@ -74,7 +76,7 @@ function readBody(req: http.IncomingMessage): Promise<string> {
         // instead of an unquantified "body too large".
         reject(
           new Error(
-            `body too large: request is ${bytes} bytes, over the ${MAX_BODY_BYTES} byte (${MAX_BODY_BYTES / 1024} KiB) cap`,
+            `body too large: request is ${bytes} bytes, over the ${MAX_BODY_BYTES} byte (${MAX_BODY_BYTES / (1024 * 1024)} MiB) cap`,
           ),
         );
         return;

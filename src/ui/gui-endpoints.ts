@@ -12,6 +12,7 @@
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
 import { cancelQueuedFile, promptPreview, queueFileNameProblem, submitPrompt } from "../inbox.js";
+import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
@@ -109,14 +110,35 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
 /** Handle POST /api/prompt: queue a director prompt. An over-long prompt
  * (DIRECTOR_PROMPT_MAX_CHARS) is a user-input error, not a server fault: the shared length
  * rule answers 400 — an unexpected submit failure (EACCES) still reaches the server's outer
- * catch as the 500 its gui-server test pins. */
+ * catch as the 500 its gui-server test pins. An optional images array (the composer's
+ * dropped/pasted attachments) is validated before anything is queued: a bad image — wrong
+ * extension, too many, undecodable, oversized — answers 400 naming the rule, with no queue
+ * file and no image written. */
 export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readJsonObject(req, res, '{"text": "..."}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
   const text = requirePromptText(res, body);
   if (text === null) return;
-  submitPrompt(root, text);
+  const images = checkedPromptImages(res, body);
+  if (images === null) return;
+  submitPrompt(root, text, images);
   sendJson(res, 200, { ok: true });
+}
+
+/** The images field of a prompt endpoint's body, validated before anything touches the disk.
+ * Three outcomes, deliberately distinct: `undefined` — no images field, a text-only submit,
+ * continue without attachments; an array — the field was present and valid, attach it (a
+ * present-but-empty array is fine and saves nothing); `null` — the field was present and
+ * invalid, the 400 naming the rule is already sent, stop. The absent and invalid cases must
+ * not share a value: a text-only POST is the common path and must proceed. */
+function checkedPromptImages(res: http.ServerResponse, body: Record<string, unknown>): PromptImageInput[] | undefined | null {
+  if (body.images === undefined) return undefined;
+  const problem = promptImagesProblem(body.images);
+  if (problem) {
+    sendJson(res, 400, { error: problem });
+    return null;
+  }
+  return body.images as PromptImageInput[];
 }
 
 /** Handle POST /api/prompt-role: queue a prompt for one loop — the dashboard's per-row
@@ -125,7 +147,8 @@ export async function handlePrompt(req: http.IncomingMessage, res: http.ServerRe
  * wake brings the live loop in within one poll; the wake message rides back for the flash).
  * The role validates exactly like /api/transcript (the shared rejectBadRole wording), and the
  * body discipline is /api/prompt's: readJsonObject → 400 malformed/non-object, 413 oversized,
- * text a non-empty string within the shared length rule → 400 otherwise. */
+ * text a non-empty string within the shared length rule → 400 otherwise — plus the same
+ * optional images array and its validate-before-anything-is-written discipline. */
 export async function handlePromptRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readJsonObject(req, res, '{"role": "feature", "text": "..."}');
   if (!body) return; // 4xx already sent — oversized or not a JSON object
@@ -133,7 +156,9 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const role = body.role as string;
   const text = requirePromptText(res, body, role);
   if (text === null) return;
-  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, text) });
+  const images = checkedPromptImages(res, body);
+  if (images === null) return;
+  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, text, images) });
 }
 
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —

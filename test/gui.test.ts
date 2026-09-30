@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import type os from "node:os";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { lanAddresses, startGui } from "../src/ui/gui.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
-import { inboxSize } from "../src/inbox.js";
+import { inboxSize, queuedRolePrompts } from "../src/inbox.js";
+import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -166,6 +169,77 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
 
     assert.equal((await fetch(base + "/nope")).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/prompt and /api/prompt-role save attached images beside the queued prompt and reject bad ones", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui image attachments");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const png = Buffer.from("89504e470d0a1a0a", "hex");
+    const post = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "look at this", images: [{ name: "shot.png", dataBase64: png.toString("base64") }] }),
+    });
+    assert.equal(post.status, 200);
+    // The queued prompt ends with one reference line per image, pointing at an absolute path
+    // that exists on disk, and the image sits beside the queue .md under the same stem.
+    const queued = queuedRolePrompts(repo, "director")[0]!;
+    const refs = queued.split("\n").filter((l) => l.startsWith("[image attached: "));
+    assert.equal(refs.length, 1);
+    const imagePath = refs[0]!.slice("[image attached: ".length, -1);
+    assert.ok(path.isAbsolute(imagePath), "the reference is absolute");
+    assert.ok(fs.existsSync(imagePath), "the referenced file exists");
+    assert.deepEqual(fs.readFileSync(imagePath), png);
+    const names = fs.readdirSync(roleInboxDir(repo, "director")).sort();
+    assert.equal(names.length, 2);
+    assert.ok(names[0]!.endsWith(".md") && names[1]!.endsWith(".png"));
+    assert.equal(names[1]!.replace(/\.png$/, ""), names[0]!.replace(/\.md$/, ""), "same stem as the queue file");
+
+    // The per-role endpoint shares the mechanics; the image lands in that loop's own queue.
+    const rolePost = await fetch(base + "/api/prompt-role", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ role: "clean", text: "clean this shot", images: [{ name: "shot.png", dataBase64: png.toString("base64") }] }),
+    });
+    assert.equal(rolePost.status, 200);
+    const roleQueued = queuedRolePrompts(repo, "clean")[0]!;
+    assert.match(roleQueued, /\[image attached: .+\/clean\/[^/]+\.png\]/);
+    assert.ok(fs.existsSync(roleQueued.split("[image attached: ")[1]!.split("]")[0]!));
+
+    // Every rejected shape answers 400 naming the rule and writes nothing: no queue file,
+    // no image.
+    const before = fs.readdirSync(roleInboxDir(repo, "director")).length;
+    const badExtension = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "oops", images: [{ name: "notes.txt", dataBase64: png.toString("base64") }] }),
+    });
+    assert.equal(badExtension.status, 400);
+    assert.match(((await badExtension.json()) as { error: string }).error, /unsupported image type/);
+    const undecodable = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "oops", images: [{ name: "shot.png", dataBase64: "not@base64!" }] }),
+    });
+    assert.equal(undecodable.status, 400);
+    assert.match(((await undecodable.json()) as { error: string }).error, /valid base64/);
+    const tooMany = await fetch(base + "/api/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: "oops",
+        images: Array.from({ length: 5 }, () => ({ name: "shot.png", dataBase64: png.toString("base64") })),
+      }),
+    });
+    assert.equal(tooMany.status, 400);
+    assert.match(((await tooMany.json()) as { error: string }).error, /at most 4 images/);
+    assert.equal(fs.readdirSync(roleInboxDir(repo, "director")).length, before, "rejected bodies write nothing");
+    assert.equal(inboxSize(repo, "director"), 1, "only the good prompt was queued");
   } finally {
     server.close();
   }

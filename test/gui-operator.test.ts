@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
+import { MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
@@ -324,7 +325,7 @@ test("POST /api/pause writes and removes the fleet pause marker and rejects bad 
   // An oversized body gets 413 (readJsonObject's shared guard), still touching nothing.
   res = await fetch(base + "/api/pause", {
     method: "POST",
-    body: JSON.stringify({ paused: true, pad: "x".repeat(70000) }),
+    body: JSON.stringify({ paused: true, pad: "x".repeat(MAX_BODY_BYTES) }),
   });
   assert.equal(res.status, 413);
   assert.equal(fs.existsSync(pausedPath(repo)), false, "an oversized body leaves the marker untouched");
@@ -417,7 +418,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   }
   fs.rmSync(wakeRequestPath(repo));
   // Malformed / non-object bodies get readJsonObject's shared 400, and an oversized body 413.
-  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", pad: "x".repeat(70000) })]) {
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", pad: "x".repeat(MAX_BODY_BYTES) })]) {
     const bad = await fetch(base + "/api/wake", { method: "POST", body });
     assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
   }
@@ -530,7 +531,7 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
     else assert.match(err, /paused must be a boolean/);
   }
   // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
-  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", paused: true, pad: "x".repeat(70000) })]) {
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", paused: true, pad: "x".repeat(MAX_BODY_BYTES) })]) {
     const bad = await fetch(base + "/api/pause-role", { method: "POST", body });
     assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
   }
@@ -580,7 +581,7 @@ test("POST /api/prompt-role queues for the named loop and rejects bad bodies lik
     assert.equal(queuedRolePrompts(repo, "feature").length, 1, "the rejected body queued nothing");
   }
   // Malformed / non-object bodies get readJsonObject's shared 400, an oversized body 413.
-  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", text: "x", pad: "y".repeat(70000) })]) {
+  for (const body of ["not json", "null", "[true]", JSON.stringify({ role: "feature", text: "x", pad: "y".repeat(MAX_BODY_BYTES) })]) {
     const bad = await fetch(base + "/api/prompt-role", { method: "POST", body });
     assert.equal(bad.status, body.includes("pad") ? 413 : 400, body.slice(0, 40));
   }

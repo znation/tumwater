@@ -1,5 +1,6 @@
 import type { LoopState } from "./loop-state.js";
 import { enqueueRolePrompt, takeQueuedFile } from "./inbox.js";
+import { stripVanishedImageReferences } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 
 /**
@@ -42,9 +43,14 @@ export class PendingPrompt {
    * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, red-main
    * gate). The queue is the role's own (the director's historical inbox for the director), so a
    * re-queued per-role request never leaks across loops. A fulfilled no_change never reaches
-   * here: re-queueing it would loop the prompt forever. */
+   * here: re-queueing it would loop the prompt forever. Image attachments ride along only
+   * while they still exist: takeQueuedFile removed them from disk when the prompt was
+   * dequeued, so reference lines whose files are gone are dropped and replaced by one note
+   * naming the loss — a re-queued prompt must never send the next tick's agent after files
+   * that are no longer on disk, and the loss is recorded in the queue itself where the
+   * preview and the agent both see it. */
   requeueUnfulfilled(userPrompt: string | null): void {
-    if (userPrompt) enqueueRolePrompt(this.root, this.role, userPrompt);
+    if (userPrompt) enqueueRolePrompt(this.root, this.role, stripVanishedImageReferences(userPrompt).text);
   }
 
   /** Re-queue whatever request is still recorded and drop it from memory: an exception between
