@@ -157,6 +157,14 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
     lastPaint[id] = html;
     return true;
   }
+  // The standard "this view could not load" panel: a title plus the server's error message,
+  // if any. cls is "empty" for the bare panels (history, drawer) and "card empty" where the
+  // view frames panels in cards (the report views). Drawer paints it through paintPanel so a
+  // retry loop does not repaint; callers that own the element assign it directly.
+  function errorPanel(title, err, cls) {
+    return "<div class='" + (cls || "empty") + "'><strong>" + esc(title) + "</strong>" +
+      esc(err && err.message ? err.message : "") + "</div>";
+  }
   // Per-viewer preferences (theme, open backlog tab, filters): best effort, never required.
   function store(key, value) {
     try { localStorage.setItem("tumwater-" + key, value); } catch { /* storage unavailable */ }

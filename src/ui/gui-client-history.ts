@@ -64,7 +64,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
       const d = await getJson("/api/history?n=" + histCount + (histRole ? "&role=" + encodeURIComponent(histRole) : ""));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
     } catch (e) {
-      $("histbody").innerHTML = "<div class='empty'><strong>History unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";
+      $("histbody").innerHTML = errorPanel("History unavailable", e);
       return;
     }
     renderHistory();

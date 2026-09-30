@@ -216,7 +216,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
           (!d.coversFullWindow ? " · oldest retained event lies inside this window; older events may have rotated out" : "") + "</p>" : "");
     } catch (e) {
       // Name the endpoint, status, and server error rather than a bare "unavailable".
-      $("usagebody").innerHTML = "<div class='card empty'><strong>Usage report unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";
+      $("usagebody").innerHTML = errorPanel("Usage report unavailable", e, "card empty");
     }
   }
 
@@ -237,7 +237,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         ? "<article class='card md'>" + renderMarkdown(md, true) + "</article>"
         : "<div class='card empty'><strong>No failure digest</strong>Nothing has been recorded in this window.</div>";
     } catch (e) {
-      $("failbody").innerHTML = "<div class='card empty'><strong>Failure digest unavailable</strong>" + esc(e && e.message ? e.message : "") + "</div>";
+      $("failbody").innerHTML = errorPanel("Failure digest unavailable", e, "card empty");
     }
   }
 

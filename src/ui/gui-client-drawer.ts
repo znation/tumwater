@@ -181,7 +181,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       d = await getJson("/api/backlog?file=" + encodeURIComponent(file) + "&index=" + encodeURIComponent(index));
     } catch (e) {
       // Keep what is shown; only a first load that fails says so.
-      if (lastPaint.entrybody === undefined) paintPanel("entrybody", "<div class='empty'><strong>Could not load this entry</strong>" + esc(e && e.message ? e.message : "") + "</div>");
+      if (lastPaint.entrybody === undefined) paintPanel("entrybody", errorPanel("Could not load this entry", e));
       return;
     }
     if (openEntryKey() !== file + ":" + index) return;
