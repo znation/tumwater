@@ -33,6 +33,9 @@ const RESULT_ORDER: Record<TickResult, number> = {
   user_aborted: 13,
 };
 
+/** The digest table's columns: every TickResult that at least one role logged in the window,
+ * ranked by RESULT_ORDER (ties alphabetical), so the table's shape follows the window's
+ * evidence instead of the whole fixed vocabulary — a fleet with no errors gets no error column. */
 function columns(outcomes: OutcomeRow[]): TickResult[] {
   const present = new Set<TickResult>();
   for (const row of outcomes) {
@@ -59,6 +62,8 @@ function rejectionCell(prevTicks: number, prevRejections: number, ticks: number,
   return `${prev} → ${cur}`;
 }
 
+/** An error rate as a whole percent, or "—" when the role ran no ticks (an absence is not
+ * a 0% rate, for the same reason deltaCell says "—"). */
 function rate(errors: number, ticks: number): string {
   if (ticks === 0) return "—";
   return `${Math.round((100 * errors) / ticks)}%`;
@@ -208,6 +213,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   return lines.join("\n");
 }
 
+/** Push one "Top … clusters" section: each cluster as a `**N×** roles · first → last — example`
+ * line (the collector supplies the order and the top-N cut), or a single `no <noun> in the
+ * window` placeholder when the section is empty. */
 function renderClusters(lines: string[], title: string, section: ClusterSection, noun: string): void {
   lines.push("");
   lines.push(`## ${title}`);
