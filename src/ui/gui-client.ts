@@ -201,7 +201,7 @@ const MODEL_JS = String.raw`  // view-model:start
   // loop-sort:end
   // The fleet table's section for each rank.
   const LOOP_GROUPS = [["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
-  // The payload's alerts (status-model.ts fleetAlerts — the TUI's attention lines use the same
+  // The payload's alerts (fleet-alerts.ts fleetAlerts — the TUI's attention lines use the same
   // list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",
     detail: "Retrying every second. Everything below is the last state it reported.", actions: [] };

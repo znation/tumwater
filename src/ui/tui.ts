@@ -25,7 +25,7 @@ import {
 } from "./operator-commands.js";
 import { snapshot } from "./status.js";
 import { renderStatusSpans, type StatusLine } from "./status-render.js";
-import { fleetAlerts } from "./status-model.js";
+import { fleetAlerts } from "./fleet-alerts.js";
 import { errorMessage, usdCap } from "../text.js";
 import { readTranscript } from "./transcript.js";
 import {
@@ -211,7 +211,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     roleIds = snap.loops.map((s) => s.role);
     view = Math.min(view, roleIds.length + 3); // clamp a stale index if roles changed
     const status = renderStatusSpans(root, snap, width);
-    // What needs the operator — the dashboard's alert banners (status-model's fleetAlerts), as
+    // What needs the operator — the dashboard's alert banners (fleet-alerts.ts's fleetAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
     const attention = alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];

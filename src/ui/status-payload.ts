@@ -4,7 +4,8 @@ import { readEvents, type HarnessEvent } from "../events.js";
 import { eventMessage, formatEvent } from "../event-format.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "./status.js";
-import { buildBadge, budgetBadge, fleetAlerts, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
+import { buildBadge, budgetBadge, isActivePhase, landingBadge, loopRowCells, mainCheckBadge, yieldMultiplierFor } from "./status-model.js";
+import { fleetAlerts } from "./fleet-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (landings, failures, questions) after it filters
@@ -148,7 +149,7 @@ export function statusPayload(root: string): object {
     plans: plannedPlans(root),
     bugs: openBugs(root),
     questions,
-    // What needs the operator (status-model's fleetAlerts): the dashboard's alert banners and
+    // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
     alerts: fleetAlerts(snap, questions, loops, Date.now()),
   };

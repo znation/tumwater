@@ -1,13 +1,14 @@
 /** The pieces of a TUI frame, pure so they test without a terminal: the run's styles and the
  * painter that turns toned status spans (status-render.ts) into escape-coded text; the
- * attention lines under the header (status-model's fleetAlerts — the dashboard's alert banners,
+ * attention lines under the header (fleet-alerts.ts's fleetAlerts — the dashboard's alert banners,
  * one line each); the view tab strip; the per-view key hints; the prompt line's target; and
  * the tones of activity and transcript lines. The TUI shares the dashboard's vocabulary — the
  * same view names (Activity, Transcript, Backlog, Usage, Failures), the same alert wording,
  * the same status colors — drawn in the terminal's base colors, so they follow its theme. */
 import type { HarnessEvent } from "../events.js";
 import { clipSpans, type StatusLine, type StatusSpan } from "./status-render.js";
-import { eventKind, resultTone, type FleetAlert, type Tone } from "./status-model.js";
+import { eventKind, resultTone, type Tone } from "./status-model.js";
+import type { FleetAlert } from "./fleet-alerts.js";
 import { displayWidth } from "../text.js";
 
 /** The run's escape codes: attributes plus one foreground color per tone. */
