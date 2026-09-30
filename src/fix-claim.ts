@@ -19,11 +19,10 @@
  * fence-blind. A `### ` line quoted inside a fenced code block counted as a Fixed heading,
  * and an entry body was cut at its own quoted fence — so base and head bodies truncated at
  * the same fence compared equal, and a rewrite confined to text after the fence (including
- * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences:
- * fixedHeadings walks parseEntryDetails — backlog.ts's fence-aware entry parser, the same
- * one the dashboards read — and bugEntryBody consults fenceTracker before treating any line
- * as entry structure — and as of 2026-09-29 both readers walk parseEntryDetails: one
- * fence-aware scanner serves headings and bodies alike, so the two cannot drift apart. */
+ * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences
+ * through parseEntryDetails — backlog.ts's fence-aware entry parser, the same one the
+ * dashboards read — with one scanner serving headings and bodies alike (as of 2026-09-29,
+ * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart. */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
