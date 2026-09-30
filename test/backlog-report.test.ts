@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { backlogPayload } from "../src/backlog.js";
 import { renderBacklogMarkdown } from "../src/ui/backlog-report.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { runCli } from "./cli-harness.js";
@@ -60,7 +61,7 @@ test("renderBacklogMarkdown lists the three sections with verbatim titles and in
   fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
   fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
   fs.writeFileSync(path.join(root, "QUESTIONS.md"), QUESTIONS_MD);
-  const md = renderBacklogMarkdown(root);
+  const md = renderBacklogMarkdown(backlogPayload(root));
   // The h1 plus the three section headings, in order.
   assert.match(md, /^# tumwater backlog\n/);
   assert.ok(md.indexOf("## Planned features") < md.indexOf("## Open bugs"));
@@ -83,7 +84,7 @@ test("renderBacklogMarkdown lists the three sections with verbatim titles and in
 });
 
 test("renderBacklogMarkdown renders three explicit empties on a bare root", () => {
-  const md = renderBacklogMarkdown(tmpdir()); // No backlog files at all — never throws.
+  const md = renderBacklogMarkdown(backlogPayload(tmpdir())); // No backlog files at all — never throws.
   assert.equal(md.match(/_\(none\)_/g)?.length, 3);
   for (const section of ["Planned features", "Open bugs", "Open questions"]) {
     assert.match(md, new RegExp(`## ${section}\\n\\n_\\(none\\)_`));

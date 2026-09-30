@@ -286,3 +286,7 @@ export function backlogPayload(root: string): {
     questions: openQuestionEntries(root),
   };
 }
+
+/** The payload's shape, named for the Markdown renderer (backlog-report.ts) that consumes
+ * the same collection the JSON document prints — one definition, two consumers. */
+export type BacklogPayload = ReturnType<typeof backlogPayload>;

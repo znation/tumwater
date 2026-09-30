@@ -259,14 +259,12 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
       // command prints three empty sections in any directory (report's rationale, not config's).
       rejectUnknownArgs("backlog", args, [{ names: ["--json"] }]);
-      if (args.includes("--json")) {
-        // Machine-readable backlog — the three entry arrays the Markdown view renders and the
-        // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern):
-        // a pretty-printed JSON document in every exit-0 case, never prose.
-        say(JSON.stringify(backlogPayload(root), null, 2));
-      } else {
-        say(renderBacklogMarkdown(root));
-      }
+      // Machine-readable backlog — the three entry arrays the Markdown view renders and the
+      // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern):
+      // a pretty-printed JSON document in every exit-0 case, never prose. The payload is a
+      // thunk, so whichever branch runs reads the three entry files exactly once — the
+      // Markdown renderer consumes the same arrays the JSON document prints.
+      sayJsonOrRender(args, () => backlogPayload(root), renderBacklogMarkdown);
       break;
     }
     case "prompt":

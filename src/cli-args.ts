@@ -22,12 +22,18 @@ export function say(text: string): void {
 }
 
 /** Print a query command's result as `--json` or human text — the shared convention behind
- * status/doctor/report/history/diff/backlog --json: the flag prints the collector's own
- * payload pretty-printed, not a re-parse of the render, so every exit-0 output is parseable.
- * Call it only after the payload is already collected (all three original sites computed it
- * unconditionally), so the human path pays no extra collection. */
-export function sayJsonOrRender<T>(args: string[], payload: T, render: (payload: T) => string): void {
-  say(args.includes("--json") ? JSON.stringify(payload, null, 2) : render(payload));
+ * doctor/report --since/diff/backlog --json: the flag prints the collector's own payload
+ * pretty-printed, not a re-parse of the render, so every exit-0 output is parseable. The
+ * payload may arrive already collected (doctor/report/diff's shape) or as a thunk (backlog's,
+ * whose Markdown view is its own collection of the same files): the `--json` branch is chosen
+ * FIRST, then the payload is resolved exactly once inside the branch that consumes it — a
+ * thunk never runs for a discarded result, so the human path never gathers the JSON document
+ * and vice versa. (status --json stays hand-rolled in cli.ts: its JSON document and human
+ * table collect different data, so neither branch can feed the other.) */
+export function sayJsonOrRender<T>(args: string[], payload: T | (() => T), render: (payload: T) => string): void {
+  const resolve = () => (typeof payload === "function" ? (payload as () => T)() : payload);
+  if (args.includes("--json")) say(JSON.stringify(resolve(), null, 2));
+  else say(render(resolve()));
 }
 
 /** The single uniform failure exit for CLI flag/argument validation and command preflight:
