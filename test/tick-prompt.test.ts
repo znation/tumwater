@@ -9,7 +9,7 @@ import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, read
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath } from "../src/paths.js";
-import type { LoopState } from "../src/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/tick-prompt.ts — the assembly of what one loop's tick actually runs
@@ -28,18 +28,10 @@ function root(): string {
 }
 
 function state(overrides: Partial<LoopState> = {}): LoopState {
-  return {
-    role: "coverage",
-    ticks: 0,
-    commits: 0,
-    nextRunAt: 0,
-    backoffSeconds: 0,
-    lastMainHead: "",
-    generatedTokens: 0,
-    peakContextTokens: 0,
-    totalCostUsd: 0,
-    ...overrides,
-  };
+  // The production constructor, not a hand-rolled literal: a copied field list drifts
+  // silently when loop-state.ts grows a field (this one had already dropped dayStamp and
+  // dayCostUsd), while a spread over freshLoopState picks the shape up automatically.
+  return { ...freshLoopState("coverage"), ...overrides };
 }
 
 test("a role tick prompt embeds the brief, principles, and the role's task — with no user prompt", () => {
