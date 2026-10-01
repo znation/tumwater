@@ -6,16 +6,14 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { isDirty, setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
-import { hasResumableSession } from "./pi.js";
 import { extractSummary } from "./commit-message.js";
-import { buildResumePrompt } from "./prompt-followup.js";
 import { assembleTickPrompt } from "./tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole } from "./config-views.js";
 import { applyConfigRequest } from "./config-write.js";
-import { RETRIABLE_LANDING_RESULTS } from "./landing-core.js";
+import { planTickStart } from "./tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
@@ -29,7 +27,7 @@ import { diagnoseNoChange } from "./no-change.js";
 import { handleRefusal, refusalContradiction } from "./refusal.js";
 import { extractFlow, type FlowResult } from "./reply-contract.js";
 import { recordFlow } from "./qa-coverage.js";
-import { landingRefName, sessionDir } from "./paths.js";
+import { landingRefName } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
@@ -427,49 +425,20 @@ export class LoopRunner {
 
   private async runTick(): Promise<TickOutcome> {
     const s = this.state;
-    // The last landing's failure, read before the clear below: a landing that failed
-    // non-terminally kept its pin (the lander's own vocabulary — review_error, merge_conflict,
-    // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
-    // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
-    const priorLandingFailure =
-      s.lastResult !== undefined && RETRIABLE_LANDING_RESULTS.has(s.lastResult)
-        ? (s.lastError ?? `landing failed: ${s.lastResult}`)
-        : undefined;
-    s.lastError = undefined;
-
-    // A tick interrupted by a harness shutdown left its pi session and its worktree's
-    // uncommitted edits in place: resume that session instead of starting fresh. The flag
-    // is consumed here so a resume that fails falls back to a normal fresh tick; another
-    // shutdown mid-resume sets it again. Nothing to resume (sessions pruned, or pi never
-    // started) also falls back to fresh.
-    const resumableSession = s.resumePending === true && hasResumableSession(sessionDir(this.root, this.role));
-    // Captured before the flag is consumed below; a stale cause must not leak into a later resume.
-    const pendingResumeCause = s.resumeCause;
-    s.resumePending = false;
-    s.resumeCause = undefined;
-    // An interruption during the review gate leaves the author's work fully committed — there
-    // is nothing left to finish in its session. Recover (and re-review) the leftover commits
-    // via a fresh tick instead: continuing the author session would burn a run on finished
-    // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
-    // path's reset below.
-    const resuming = resumableSession && s.phase !== "review";
-    // Reclaim the prompt the interrupted tick re-queued for its resume (src/pending-prompt.ts):
-    // the resumed session still owns that request in its context, so this tick's bookkeeping
-    // operates on the queue's copy. Consumed even when this tick does not resume, so a stale
-    // record never survives into a later resume.
-    this.pending.reclaimForResume(s, resuming);
-
-    // Why the resume: a named quiet-kill means the last run died on a stalled tool call (the
-    // bridge then warns against re-running it unchanged) or on the tick deadline while still
-    // making progress (the bridge asks for the smallest finish against the same limit); a
-    // cut-off streak means the last run ran out of context and pi compacted the session (the
-    // bridge asks for the smallest finish); otherwise a shutdown/crash.
-    const resumeCause = pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
-    let prompt = resuming ? buildResumePrompt(this.role, resumeCause) : this.tickPrompt();
-    if (prompt === null) return { result: "skipped" };
-    // The raw user prompt a director tick is executing (null for role loops), so an
-    // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
-    const userPrompt = this.pending.get();
+    // How this tick starts — resume the interrupted session or run fresh, and which prompt —
+    // is the resume policy, not runner mechanics: it lives in src/tick-resume.ts, which also
+    // consumes the resume flags and reclaims the interrupted tick's re-queued prompt. A null
+    // plan means the loop has nothing to run.
+    const plan = planTickStart({
+      root: this.root,
+      role: this.role,
+      state: s,
+      pending: this.pending,
+      tickPrompt: () => this.tickPrompt(),
+    });
+    if (plan === null) return { result: "skipped" };
+    const { priorLandingFailure, resuming, resumeCause, userPrompt } = plan;
+    let prompt = plan.prompt;
 
     const wt = await ensureWorktree(this.root, this.role, this.mainBranch);
     if (resuming) {

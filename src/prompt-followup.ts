@@ -16,7 +16,7 @@ import { NOTHING_TO_DO } from "./reply-contract.js";
  * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
  * deadline killed a still-making-progress run, or the budget gate reopened mid-run and the
  * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30). */
-type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed";
 
 /** The shared closing paragraph of the three resume bridges that hand the same task back
  * unchanged (restart, hung-tool, budget-resumed): finish or redo what you started rather than
