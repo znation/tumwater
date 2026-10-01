@@ -5,7 +5,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The dashboard's Queued tab shows each prompt's age (planned 2026-10-01 by plan loop) — part 2/2, the observers
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+### The dashboard's Queued tab shows each prompt's age (planned 2026-10-01 by plan loop, done 2026-10-01 by feature) — part 2/2, the observers
 
 **Goal.** The same age `tumwater prompt --list` gains in part 1/2, on the dashboard: the backlog's
 Queued tab (src/ui/gui-client-fleet.ts's `renderBacklog`, the `key === "queued"` branch, fed by
@@ -20,8 +25,10 @@ entry. Do not start this plan before part 1/2 has landed — it consumes that pa
    from `queuedRolePromptEntries`) and the per-role `roleInboxPrompts` entries flow through the
    same `QueuedPromptEntry` objects part 1/2 extended, so add a parallel `inboxQueuedAt` array for
    the director (same order as `inboxPrompts`, the established pairing pattern) and pass
-   `queuedAtMs` through each `roleInboxPrompts[r]` entry. Both feed status-payload.ts unchanged —
-   they are plain fields on the snapshot the GUI payload already spreads.
+   `queuedAtMs` through each `roleInboxPrompts[r]` entry (part 1/2 already put it there at
+   runtime; this part aligns the declared `StatusSnapshot` type with it). Both feed
+   src/ui/status-payload.ts — the director's stamps pass through as a plain new field, the
+   per-role entries already spread raw.
 2. **src/ui/gui-client-model.ts, `queuedPrompts(d)`:** carry `queuedAtMs` onto each emitted item —
    for the director from `d.inboxQueuedAt[i]`, for roles from the entry itself — defaulting to
    `null` when the field is absent (an older payload must not break the render).
@@ -29,18 +36,17 @@ entry. Do not start this plan before part 1/2 has landed — it consumes that pa
    `li-meta` span — `· queued <humanSeconds-age> ago`, omitted when `queuedAtMs` is null — using
    the page's existing relative-time helper (the one gui-client-drawer.ts's `fmtAgo` call and
    gui-client.ts's shared formatters already provide; reuse, never re-derive).
-4. **Tests:** test/gui-client-fleet.test.ts's existing backlog coverage (or its sibling suite
-   that exercises `renderBacklog`) gains: (a) a queued item with a `queuedAtMs` renders the
-   age in its meta line, (b) a null `queuedAtMs` renders exactly today's meta text, (c) the
-   Cancel button's `data-file`/`data-role` are unchanged in both cases.
+4. **Tests:** test/gui-client-fleet.test.ts (created for this — `renderBacklog` had no direct
+   coverage; the suite runs the backlog block through a new marked `// backlog:` region, like
+   the other client regions) gains: (a) a queued item with a `queuedAtMs` renders the age in
+   its meta line, (b) a null `queuedAtMs` renders exactly today's meta text, (c) the Cancel
+   button's `data-file`/`data-role` are unchanged in both cases; test/gui-client.test.ts's
+   `queuedPrompts` model test carries the new field.
 
 **Acceptance criteria.** The dashboard's Queued tab shows how long each prompt has waited;
 items without a parseable stamp render as today; cancel behavior and the other backlog tabs are
 unchanged; `npm run test` passes including the new render tests.
 
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 ### `tumwater prompt --list` shows how long each prompt has waited (planned 2026-10-01 by plan loop, done 2026-10-01 by feature) — part 1/2, the shared stamp and the CLI
 
 **Goal.** A steering prompt queued to a paused, disabled, or long-backoff loop sits in its queue

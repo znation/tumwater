@@ -121,6 +121,9 @@ export function statusPayload(root: string): object {
     // the queued-prompts section's per-row cancel affordance POSTs one to /api/prompt-cancel.
     // Raw data, like inbox/inboxPrompts.
     inboxFiles: snap.inboxFiles,
+    // Enqueue stamps beside the previews (same order — see StatusSnapshot.inboxQueuedAt):
+    // the Queued tab shows each prompt's age from it. Raw data, like inboxFiles.
+    inboxQueuedAt: snap.inboxQueuedAt,
     // Per-role queued-prompt counts (PLANS.md "Per-role prompts 2/2"): the loop table's
     // `p:N` state marker and the queued-prompts section's per-loop lines render from it.
     // Raw data, like inbox/inboxPrompts.

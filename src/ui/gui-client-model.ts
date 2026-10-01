@@ -117,9 +117,10 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // queue-file address its Cancel button sends (never a list position, so a stale frame can
   // never cancel the wrong prompt).
   function queuedPrompts(d) {
-    const out = (d.inboxPrompts || []).map((p, i) => ({ role: "director", preview: p, file: (d.inboxFiles || [])[i] || "" }));
+    const out = (d.inboxPrompts || []).map((p, i) => ({ role: "director", preview: p, file: (d.inboxFiles || [])[i] || "",
+      queuedAtMs: (d.inboxQueuedAt || [])[i] ?? null }));
     for (const r of Object.keys(d.roleInboxPrompts || {}).sort()) {
-      for (const e of d.roleInboxPrompts[r] || []) out.push({ role: r, preview: e.preview, file: e.file });
+      for (const e of d.roleInboxPrompts[r] || []) out.push({ role: r, preview: e.preview, file: e.file, queuedAtMs: e.queuedAtMs ?? null });
     }
     return out;
   }

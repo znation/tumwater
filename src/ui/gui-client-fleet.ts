@@ -198,6 +198,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     store("backlog", tab);
     if (lastStatus) renderBacklog(lastStatus);
   }
+  // backlog:start
   const BACKLOG = [
     ["questions", "Questions", "question", "indigo", "No open questions", "Loops post here when they need a decision from you."],
     ["plans", "Plans", "plan", "blue", "Nothing planned", "The plan loop files features in PLANS.md."],
@@ -216,7 +217,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
     else if (key === "queued") {
       html = list.map((q) => "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
-        "</span><span class='li-meta'>" + esc(q.role === "director" ? "for the director" : "for the " + q.role + " loop") + "</span></div>" +
+        "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + q.role + " loop") +
+          (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : "")) + "</span></div>" +
         "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'>Cancel</button></div>").join("");
     } else {
       const open = openEntryKey();
@@ -230,6 +232,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     }
     paintPanel("backlog", html);
   }
+  // backlog:end
   $("backlogtabs").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button[data-tab]");
     if (b) setBacklogTab(b.dataset.tab);

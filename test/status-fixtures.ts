@@ -56,6 +56,7 @@ export function snapshotWith(
     // the `p:N` state marker (PLANS.md "Per-role prompts 2/2"). With no previews there are
     // no cancel addresses and no per-role rows either.
     inboxFiles: [],
+    inboxQueuedAt: [],
     roleInboxPrompts: {},
     roleInbox,
     questions: 0,

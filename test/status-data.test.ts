@@ -393,6 +393,11 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
     `plain basenames: ${JSON.stringify(snap.inboxFiles)}`,
   );
   assert.notEqual(snap.inboxFiles[0], snap.inboxFiles[1]);
+  // The same inbox pass pairs each preview with its enqueue stamp (the dashboard's Queued
+  // tab shows the age from it): same order as inboxPrompts, parsed from the queue filename,
+  // and null for a hand-placed name.
+  assert.deepEqual(snap.inboxQueuedAt.length, snap.inboxPrompts.length);
+  assert.deepEqual(snap.inboxQueuedAt[0], queueFileStamp(snap.inboxFiles[0]!));
   const preview = snap.inboxPrompts[1]!;
   assert.ok(preview.length <= 80 && preview.endsWith("…"), `preview truncated: ${JSON.stringify(preview)}`);
 

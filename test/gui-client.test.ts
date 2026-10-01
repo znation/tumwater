@@ -22,7 +22,7 @@ type Model = {
   needsYou(alerts: Alert[]): number;
   eventKind(item: { type: string; result?: string }): string;
   splitTitle(t: string): { title: string; meta: string };
-  queuedPrompts(d: object): Array<{ role: string; preview: string; file: string }>;
+  queuedPrompts(d: object): Array<{ role: string; preview: string; file: string; queuedAtMs: number | null }>;
 };
 const model = clientScope<Model>(["format", "view-model"],
   ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts"]);
@@ -150,12 +150,18 @@ test("backlog titles split off their date notes; queued prompts list in executio
   assert.deepEqual(model.queuedPrompts({
     inboxPrompts: ["first", "second"],
     inboxFiles: ["a.md", "b.md"],
-    roleInboxPrompts: { qa: [{ file: "q.md", preview: "qa one" }], feature: [{ file: "f.md", preview: "feature one" }] },
+    inboxQueuedAt: [1000, null],
+    roleInboxPrompts: { qa: [{ file: "q.md", preview: "qa one", queuedAtMs: 2000 }], feature: [{ file: "f.md", preview: "feature one" }] },
   }), [
-    { role: "director", preview: "first", file: "a.md" },
-    { role: "director", preview: "second", file: "b.md" },
-    { role: "feature", preview: "feature one", file: "f.md" },
-    { role: "qa", preview: "qa one", file: "q.md" },
+    { role: "director", preview: "first", file: "a.md", queuedAtMs: 1000 },
+    { role: "director", preview: "second", file: "b.md", queuedAtMs: null },
+    { role: "feature", preview: "feature one", file: "f.md", queuedAtMs: null },
+    { role: "qa", preview: "qa one", file: "q.md", queuedAtMs: 2000 },
+  ]);
+  // An older payload without the stamps at all must not break the render — everything
+  // defaults to null (the age is omitted, not an error).
+  assert.deepEqual(model.queuedPrompts({ inboxPrompts: ["only"], inboxFiles: ["c.md"] }), [
+    { role: "director", preview: "only", file: "c.md", queuedAtMs: null },
   ]);
 });
 

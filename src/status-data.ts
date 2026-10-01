@@ -41,6 +41,12 @@ export interface StatusSnapshot {
    * not by list position, so a 1 s-stale poll can never cancel the wrong entry). Same single
    * inbox pass as inboxPrompts (queuedRolePromptEntries), so the two arrays cannot drift. */
   inboxFiles: string[];
+  /** The director queue's enqueue stamps (epoch ms parsed from each queue filename by
+   * queueFileStamp — null for a hand-placed name), same order as inboxPrompts — the
+   * established pairing pattern; the dashboard's Queued tab shows each prompt's age from it.
+   * Same single inbox pass as inboxPrompts (queuedRolePromptEntries), so the arrays cannot
+   * drift. */
+  inboxQueuedAt: Array<number | null>;
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
   /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
@@ -136,9 +142,10 @@ export interface StatusSnapshot {
    * them (the /api/prompt-cancel target), execution order — the dashboard renders one cancel
    * row per prompt instead of a bare count. Roles with an empty queue are absent (unlike
    * roleInbox, which lists every role with 0): there is no row to render. Same read pass as
-   * the previews (queuedRolePromptEntries, stat-keyed like the director's); filled only when
+   * the previews (queuedRolePromptEntries, stat-keyed like the director's — each entry also
+   * carries its enqueue stamp, queuedAtMs, for the Queued tab's age); filled only when
    * the count above is nonzero, so the common empty case costs one listing per role. */
-  roleInboxPrompts: Record<string, Array<{ file: string; preview: string }>>;
+  roleInboxPrompts: Record<string, Array<{ file: string; preview: string; queuedAtMs: number | null }>>;
   /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
    * empty) so `status --json` consumers see one stable shape: the number of committed-but-
    * unlanded changes in the landing pipeline, and — only while a landing is actually
@@ -326,13 +333,14 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   const loops = roles.map((r) => ({ ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) }));
-  // One inbox pass per poll serves all three director fields (queuedRolePromptEntries lists
+  // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists
   // the directory and reads each file once): the count is the entries' length, so a prompt
   // enqueued or dequeued mid-snapshot can never make the header badge disagree with its
   // numbered previews, and each preview keeps its queue-file address beside it.
   const queued = queuedRolePromptEntries(root, DIRECTOR_ROLE);
   const inboxPrompts = queued.map((e) => e.preview);
   const inboxFiles = queued.map((e) => e.file);
+  const inboxQueuedAt = queued.map((e) => e.queuedAtMs);
   // One directory listing per role per poll (no content reads — queuedRolePromptCount) fills
   // the per-role counts; the director is excluded because its queue is the shared inbox above.
   // A role with prompts queued gets one read pass for its cancel-addressable entries — the
@@ -388,6 +396,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     inbox: inboxPrompts.length,
     inboxPrompts,
     inboxFiles,
+    inboxQueuedAt,
     roleInbox,
     roleInboxPrompts,
     questions: openQuestions(root).length,
