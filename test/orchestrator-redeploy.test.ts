@@ -10,13 +10,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build-info.js";
 import type { Redeployer } from "../src/redeploy-policy.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
-import { fakePiIdle } from "./fake-pi.js";
+import { fakePi, fakePiIdle } from "./fake-pi.js";
+import { tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
 /** The build identity every fake publishes; the sha is what the startup event logs. */
@@ -163,6 +165,52 @@ test("the redeployer's build status is published at startup and republished when
     // verdict rides this write.
     await waitFor(() => readOrchestratorInfo(repo)?.build?.stale === true, "the republished stale verdict");
     assert.deepEqual(readOrchestratorInfo(repo)!.build, stale);
+  } finally {
+    controller.abort();
+    restore();
+    await done.catch(() => undefined);
+  }
+});
+
+test("a restart verdict cuts off a permit-holding tick instead of draining it", async () => {
+  const repo = await makeFastRepo("redeploy restart cutoff test", ["clean"]);
+  // The fake pi hangs far past the test: the role's startup tick stays a permit holder
+  // parked inside the pi run until the restart's abort cuts it off. A "finished" line in
+  // the run log would mean the shutdown drained the model run to completion instead.
+  const runLog = path.join(tmpdir("restart-cutoff-"), "pi-runs.log");
+  const script = `echo started >> '${runLog}'\nsleep 120\necho finished >> '${runLog}'\n`;
+  const restore = fakePi(script);
+  const controller = new AbortController();
+  // Several idle polls let the startup tick acquire its permit and park inside the hung pi
+  // run; only then does the restart verdict land, with a tick in flight.
+  const { redeployer } = scriptedRedeployer([{}, {}, {}, {}, {}, {}, { action: "restart" }]);
+  const done = runRepoOrchestrator(repo, {
+    signal: controller.signal,
+    pollMs: FAST_POLL_MS,
+    redeploy: redeployer,
+  });
+  // A restart verdict must end the run on its own; if the abort path breaks, the race turns
+  // the hang into a failure instead of a stalled suite.
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => reject(new Error("restart verdict did not end the run")), 30_000);
+    t.unref();
+  });
+  try {
+    await waitFor(
+      () => fs.existsSync(runLog) && fs.readFileSync(runLog, "utf8").includes("started"),
+      "the role tick's pi run to start",
+    );
+    const exit = await Promise.race([done, timeout]);
+    assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
+    assert.equal(
+      fs.readFileSync(runLog, "utf8").includes("finished"),
+      false,
+      "the in-flight pi run was cut off, not drained to completion",
+    );
+    // The tick was started but never completed: the cut-off reservation hands itself back
+    // with no tick_end of its own to record.
+    assert.ok(loadLoopState(repo, "clean").running || loadLoopState(repo, "clean").ticks >= 1,
+      "the tick was in flight when the restart landed");
   } finally {
     controller.abort();
     restore();
