@@ -27,8 +27,11 @@ const DETAIL_MAX = 72;
  * re-reads with a larger window only while the filtered rows fall short and the log may hold
  * more, and this bounds the worst case — readTailText reads bytes proportional to the limit's
  * line count, so the cap is also the largest byte read one command can cost. Comfortably
- * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. */
-const HISTORY_SCAN_MAX_EVENTS = 20_000;
+ * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. Exported as
+ * the one ceiling every read-only view's single ask scans under: ui/tick-detail.ts's
+ * readTickDetail reads the same bound, so no ask can re-read more log than any other and the
+ * cap cannot drift per consumer. */
+export const HISTORY_SCAN_MAX_EVENTS = 20_000;
 
 /** How far behind a since-shaped scan's cutoff the queued-row join reads its evidence: the
  * row set is ts-filtered to the cutoff, but a queued tick whose tick SPANS the cutoff logged

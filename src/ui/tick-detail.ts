@@ -8,18 +8,12 @@
  * tick's block contains. */
 import { fail, parseCountFlag, say, sayJson } from "../cli-args.js";
 import { knownRoleIdsCached } from "../config.js";
+import { HISTORY_SCAN_MAX_EVENTS } from "../history-data.js";
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../event-read.js";
 import { formatEvent, usageText } from "../event-format.js";
 import type { HarnessEvent } from "../events.js";
 import { unknownRoleMessage } from "../roles.js";
 import { shortSha, shortSpanPhrase } from "../text.js";
-
-/** The hard ceiling on one ask's scan window (events, not ticks), named like history-data.ts's
- * HISTORY_SCAN_MAX_EVENTS: one tick's block is small, but it can sit arbitrarily far back in a
- * long-lived fleet's log, and readTailText reads bytes proportional to the limit's line count —
- * so the cap is also the largest byte read one command can cost. Matches the history/report
- * ceiling, so the read-only views agree on the most log one ask may re-read. */
-const TICK_SCAN_MAX_EVENTS = 20_000;
 
 /** One tick's full event trail, as `tumwater tick <role> <n>` and the GUI's tick drill-down
  * serve it. `startTs`/`endTs` bound the tick's block: `endTs` is null while the tick is in
@@ -55,7 +49,12 @@ export interface TickDetail {
  * `startTs` null and a null duration (the unpaired rule); nothing at all in the scan is the
  * not-found case the caller renders as a not-found line. */
 export function readTickDetail(root: string, role: string, tick: number): TickDetail | null {
-  const events = readEvents(root, TICK_SCAN_MAX_EVENTS).filter((e) => e.loop === role);
+  // The scan rides history-data.ts's shared one-ask ceiling (HISTORY_SCAN_MAX_EVENTS): one
+  // tick's block is small, but it can sit arbitrarily far back in a long-lived fleet's log,
+  // and readTailText reads bytes proportional to the limit's line count — so the cap is also
+  // the largest byte read one command can cost, and every read-only view scans under the
+  // same bound.
+  const events = readEvents(root, HISTORY_SCAN_MAX_EVENTS).filter((e) => e.loop === role);
   // Newest tick_start for this loop+tick: the block's lower bound.
   let startIdx = -1;
   for (let i = events.length - 1; i >= 0; i--) {
