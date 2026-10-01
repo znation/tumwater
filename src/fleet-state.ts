@@ -93,17 +93,6 @@ export function pausedReason(root: string): string | undefined {
   return standingFleetPause(root)?.reason;
 }
 
-/** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
- * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
- * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
- * folded to one line (normalizePauseReason) and capped at PAUSE_REASON_MAX here — the
- * single shape every writer shares — and persisted only when non-empty, so a pause written
- * without one clears a stale reason (the
- * same last-write-wins rule as `until`: a fresh pause write carries its own note). Returns
- * whether this call changed state: false when the marker already existed, so the CLI can
- * report "already paused" and the dashboard's toggle stays idempotent — a no-op never
- * touches the standing reason. Lives here beside isFleetPaused so the producer (CLI, GUI)
- * and every consumer read the same path. */
 /** Fold an operator pause reason to the one line every pause surface renders (the marker
  * doc's "one-line reason", the status header's badge, the alerts title, the CLI's
  * confirmation): whitespace runs — newlines, tabs — collapse to single spaces and the ends
@@ -115,6 +104,17 @@ export function normalizePauseReason(reason: string | undefined): string | undef
   return oneLine ? oneLine : undefined;
 }
 
+/** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
+ * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
+ * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
+ * folded to one line (normalizePauseReason) and capped at PAUSE_REASON_MAX here — the
+ * single shape every writer shares — and persisted only when non-empty, so a pause written
+ * without one clears a stale reason (the same last-write-wins rule as `until`: a fresh
+ * pause write carries its own note). Returns whether this call changed state: false when an
+ * indefinite pause lands on an already-standing one, so the CLI can report "already paused"
+ * and the dashboard's toggle stays idempotent — a no-op never touches the standing reason
+ * (a timed `--for` on a standing pause overwrites the deadline instead). Lives here beside
+ * isFleetPaused so the producer (CLI, GUI) and every consumer read the same path. */
 export function pauseFleet(root: string, untilMs?: number, reason?: string): boolean {
   const marker = pausedPath(root);
   // An already-standing pause is the idempotent no-op it has always been — except under a
