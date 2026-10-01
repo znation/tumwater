@@ -305,6 +305,16 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
   assert.equal(pauseFleet(root), false, "a plain pause over a standing one stays the no-op");
   assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX, "a no-op keeps the standing reason");
 
+  // The one-line fold every writer shares: a multi-line operator note collapses its
+  // whitespace runs to single spaces, so the marker never carries the raw newline that
+  // would break the status header's one-line badge (BUGS.md 2026-09-30).
+  resumeFleet(root);
+  assert.equal(pauseFleet(root, undefined, "deploying\nthe new build\ttonight"), true);
+  assert.equal(pausedReason(root), "deploying the new build tonight", "the reason is one line");
+  resumeFleet(root);
+  assert.equal(pauseFleet(root, undefined, "   \n\t  "), true, "a whitespace-only note still pauses");
+  assert.equal(pausedReason(root), undefined, "a whitespace-only note stores no reason key");
+
   // A write without a reason clears the stale one — the note belongs to THIS pause.
   assert.equal(pauseFleet(root, later + 1), true, "a reasonless --for overwrite clears the stale reason");
   const plain = readJson(path.join(root, ".tumwater", "paused.json")) as { reason?: string };

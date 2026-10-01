@@ -14,7 +14,15 @@ import { errorMessage } from "./text.js";
 import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
 import { errCode } from "./errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
-import { pauseFleet, pauseRole, pausedRoles, readOrchestratorInfo, resumeFleet, resumeRole } from "./fleet-state.js";
+import {
+  normalizePauseReason,
+  pauseFleet,
+  pauseRole,
+  pausedRoles,
+  readOrchestratorInfo,
+  resumeFleet,
+  resumeRole,
+} from "./fleet-state.js";
 import { pidAlive } from "./process.js";
 import {
   markerApplyNote,
@@ -110,11 +118,14 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   const forMs = forRaw !== null ? parseDurationFlag("--for", forRaw) : undefined;
   // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted
   // the flag to this command, and its trailing-no-value slip to the spec's wording, so here
-  // a valueless or empty reason fails with that same line beside the writer it feeds.
+  // a valueless or empty reason fails with that same line beside the writer it feeds. The
+  // reason folds to one line (normalizePauseReason, the same home pauseFleet writes through)
+  // so the confirmation line, the marker, and every single-line surface carry the same text
+  // — a raw newline in the flag's value would otherwise break the header's one-line badge.
   const reasonRaw = flagValue(args, "--reason");
   if (reasonRaw !== null && (reasonRaw === undefined || reasonRaw.trim() === ""))
     fail("pause --reason needs a reason");
-  const reason = reasonRaw === null || reasonRaw === undefined ? undefined : reasonRaw.trim();
+  const reason = normalizePauseReason(reasonRaw ?? undefined);
   // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
   // standing pause in disguise, and the message names the command that is one (the same
   // capped-flag idiom the --since windows in cli.ts use).

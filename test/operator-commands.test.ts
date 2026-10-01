@@ -401,6 +401,15 @@ test("cmdPause --reason quotes the why in the confirmation and the marker", asyn
   assert.match(timed.stdout, /fleet paused for 30m — "deploys" — role loops stop starting new ticks/);
   const timedMarker = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(timedMarker.reason, "deploys");
+  // A multi-line operator note folds to the one line every pause surface renders — the
+  // confirmation line, the marker, the status header's badge — instead of breaking the
+  // header mid-badge (BUGS.md 2026-09-30: the raw newline flowed through verbatim).
+  await expectOk(() => cmdResume(root)); // the multiline pause must be a fresh write, not the standing no-op
+  const multiline = await expectOk(() => cmdPause(root, ["--reason", "deploying\nthe new build\ttonight"]));
+  assert.equal(multiline.stdout.trim().split("\n").length, 1, "the confirmation stays one line");
+  assert.match(multiline.stdout, /fleet paused — "deploying the new build tonight" — role loops/);
+  const foldedMarker = readJson(pausedPath(root)) as { reason?: string };
+  assert.equal(foldedMarker.reason, "deploying the new build tonight", "the marker carries the folded line");
 });
 
 test("cmdPause --reason on a standing pause stays the no-op and keeps the standing reason", async () => {

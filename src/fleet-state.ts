@@ -82,13 +82,25 @@ export function pausedReason(root: string): string | undefined {
 /** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
  * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
  * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
- * trimmed and capped at PAUSE_REASON_MAX here — the single cap every writer shares — and
- * persisted only when non-empty, so a pause written without one clears a stale reason (the
+ * folded to one line (normalizePauseReason) and capped at PAUSE_REASON_MAX here — the
+ * single shape every writer shares — and persisted only when non-empty, so a pause written
+ * without one clears a stale reason (the
  * same last-write-wins rule as `until`: a fresh pause write carries its own note). Returns
  * whether this call changed state: false when the marker already existed, so the CLI can
  * report "already paused" and the dashboard's toggle stays idempotent — a no-op never
  * touches the standing reason. Lives here beside isFleetPaused so the producer (CLI, GUI)
  * and every consumer read the same path. */
+/** Fold an operator pause reason to the one line every pause surface renders (the marker
+ * doc's "one-line reason", the status header's badge, the alerts title, the CLI's
+ * confirmation): whitespace runs — newlines, tabs — collapse to single spaces and the ends
+ * trim, undefined when nothing but whitespace remains. One home beside pauseFleet so the
+ * CLI path and any later GUI writer cannot drift on the shape the marker stores; the
+ * PAUSE_REASON_MAX cap stays in pauseFleet, applied after the fold. */
+export function normalizePauseReason(reason: string | undefined): string | undefined {
+  const oneLine = reason?.replace(/\s+/g, " ").trim();
+  return oneLine ? oneLine : undefined;
+}
+
 export function pauseFleet(root: string, untilMs?: number, reason?: string): boolean {
   const marker = pausedPath(root);
   // An already-standing pause is the idempotent no-op it has always been — except under a
@@ -97,7 +109,7 @@ export function pauseFleet(root: string, untilMs?: number, reason?: string): boo
   // pause after expiry reports a fresh pause, never the stale "already paused".
   const standing = standingMarker(marker);
   if (standing && untilMs === undefined) return false;
-  const trimmed = reason?.trim().slice(0, PAUSE_REASON_MAX);
+  const trimmed = normalizePauseReason(reason)?.slice(0, PAUSE_REASON_MAX);
   const body: PauseMarker =
     untilMs === undefined ? { at: Date.now() } : { at: Date.now(), until: untilMs };
   if (trimmed) body.reason = trimmed;
