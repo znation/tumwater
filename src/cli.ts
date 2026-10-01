@@ -28,7 +28,7 @@ import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { renderRoleMarkdown } from "./ui/role-report.js";
 import { rolePayload } from "./role-view.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./ui/history.js";
-import { cmdTick } from "./ui/tick-detail.js";
+import { cmdTick, TICK_USAGE } from "./ui/tick-detail.js";
 import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./status-data.js";
 import { renderStatus } from "./ui/status-render.js";
@@ -286,7 +286,7 @@ async function main(): Promise<void> {
       // Arity before the ready-repo gate (the config subcommands' precedent): a malformed
       // invocation fails with its usage no matter the directory. cmdTick keeps the guard too —
       // in-process callers reach it without this dispatcher.
-      if (positionals.length !== 2) fail("usage: tumwater tick <role> <n> [--json]");
+      if (positionals.length !== 2) fail(`usage: ${TICK_USAGE}`);
       await requireReadyRepo(root);
       await cmdTick(root, positionals, rest.includes("--json"));
       break;

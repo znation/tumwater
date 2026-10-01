@@ -15,6 +15,11 @@ import type { HarnessEvent } from "../events.js";
 import { unknownRoleMessage } from "../roles.js";
 import { shortSha, shortSpanPhrase } from "../text.js";
 
+/** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
+ * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
+ * when the command's shape changes. */
+export const TICK_USAGE = "tumwater tick <role> <n> [--json]";
+
 /** One tick's full event trail, as `tumwater tick <role> <n>` and the GUI's tick drill-down
  * serve it. `startTs`/`endTs` bound the tick's block: `endTs` is null while the tick is in
  * flight (no `tick_end` yet) or its end was lost to log rotation, `startTs` null when rotation
@@ -154,14 +159,14 @@ export function renderTickDetail(d: TickDetail): string {
 export async function cmdTick(root: string, positionals: string[], json: boolean): Promise<void> {
   // Positional arity is exactly <role> <n> — cli.ts has already peeled the flags off and gated
   // them (only --json is admitted), so anything left over that is not the pair is a mistake.
-  if (positionals.length !== 2) fail("usage: tumwater tick <role> <n> [--json]");
+  if (positionals.length !== 2) fail(`usage: ${TICK_USAGE}`);
   const [role, nRaw] = positionals as [string, string];
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
   // built-ins plus user-defined loops, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared
   // unknown-role wording plus the usage the positional command owes.
   const ids = knownRoleIdsCached(root);
-  if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: tumwater tick <role> <n> [--json])`);
+  if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`);
   // The tick number is a positive integer, through the shared count parser (a non-positive or
   // non-numeric n fails naming the shape; there is no cap — the number selects, it does not
   // size the scan).
