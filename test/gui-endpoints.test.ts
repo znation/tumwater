@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleReport, handleFailures, handleRestart } from "../src/ui/gui-endpoints.js";
+import { handleReport, handleFailures, handleRestart, handleTick } from "../src/ui/gui-endpoints.js";
+import { readTickDetail, renderTickDetail, type TickDetail } from "../src/ui/tick-detail.js";
 import { consumeRestartRequest } from "../src/operator-requests.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
@@ -195,6 +196,61 @@ test("the live server routes POST /api/restart to the handler and refuses other 
   } finally {
     server.close();
   }
+});
+
+function serveTick(root: string, query: string): { captured: Captured; data: unknown } {
+  const { res, captured } = fakeRes();
+  handleTick(new URLSearchParams(query), res, root);
+  return { captured, data: JSON.parse(captured.body) };
+}
+
+test("handleTick serves one tick's collector payload plus its pre-rendered text", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "review_verdict", verdict: "approve" }),
+    JSON.stringify({ ts: 47_000, loop: "clean", type: "tick_end", tick: 3, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 }),
+    // Another loop's same-numbered tick must not leak into clean's block.
+    JSON.stringify({ ts: 48_000, loop: "feature", type: "tick_end", tick: 3, result: "no_change" }),
+  ]);
+  const { captured, data } = serveTick(root, "?role=clean&tick=3");
+  const detail = readTickDetail(root, "clean", 3);
+  assert.ok(detail);
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  // The payload is the collector's own — the same object `tumwater tick --json` prints — plus
+  // `text`, the renderTickDetail rendering the browser shows instead of re-formatting events.
+  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!) });
+  const d = data as TickDetail & { text: string };
+  assert.equal(d.durationMs, 46_000, "duration pairs the tick's own tick_start");
+  assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "review_verdict", "tick_end"]);
+  assert.match(d.text, /^clean tick #3 — changed · 46s/);
+  assert.match(d.text, /tidy up/);
+});
+
+test("handleTick's error cases: role and tick 400s, a missed tick 404", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "tick_end", tick: 3, result: "no_change" }),
+  ]);
+  // The role is a target here, not a filter: missing and unknown are 400s naming the valid ids.
+  assert.equal(serveTick(root, "?tick=3").captured.status, 400);
+  const unknown = serveTick(root, "?role=nope&tick=3");
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role "nope"/);
+  // The tick is an explicit count: required, and a positive integer through intQuery.
+  assert.equal(serveTick(root, "?role=clean").captured.status, 400);
+  for (const bad of ["abc", "0", "-5", "1e3"]) {
+    const r = serveTick(root, `?role=clean&tick=${bad}`);
+    assert.equal(r.captured.status, 400, `tick=${bad} → 400`);
+    assert.match((r.data as { error: string }).error, /tick must be a positive integer/);
+  }
+  // A tick the scanned window does not hold — never ran, or rotation ate it — is a not-found
+  // status with the CLI's wording, not a crash.
+  const missing = serveTick(root, "?role=clean&tick=9");
+  assert.equal(missing.captured.status, 404);
+  assert.match((missing.data as { error: string }).error, /no tick #9 for clean in the scanned window/);
 });
 
 test("consumeRestartRequest forces the redeployer once and removes the marker", () => {

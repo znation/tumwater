@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop — sibling of the `tumwater tick` CLI plan above)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** The dashboard's History view (src/ui/gui-client-history.ts) shows the same one-line
 rows the CLI does; the only path to a failed tick's causes is the loop drawer's live transcript.
@@ -15,28 +21,36 @@ the page.
 
 **Approach.**
 - New GET-data handler `GET /api/tick?role=<id>&tick=<n>` in src/ui/gui-endpoints.ts, shaped like
-  the sibling GET handlers (`parseRequestTarget` for the repo root, JSON body). It calls
-  `readTickDetail` from `src/ui/tick-detail.ts` once that lands; if this plan is picked up
-  first, it filters the event feed directly with the same loop+ts-window rule and the collector
-  plan then adopts the shared module without changing the endpoint's payload.
-- In gui-client-history's row rendering, add a per-row details toggle button (the drawer's
-  existing control style) that expands an inline card beneath the row: the summary header and
-  the formatted events, fetched on first expand and cached until the view refetches. The row's
-  existing click-to-open-the-drawer behavior is unchanged; expansion is the button's alone.
+  the sibling GET handlers (the pre-parsed query, JSON body). It calls `readTickDetail` from
+  `src/ui/tick-detail.ts` — the collector the CLI plan landed — and serves its payload plus
+  `text`, the same payload through `renderTickDetail` pre-rendered server-side (the
+  /api/transcript precedent, so the browser shows the CLI's exact rendering). Routed in
+  src/ui/gui.ts beside the other GET-data routes.
+- In gui-client-history's row rendering, a per-row details toggle button (the drawer's btn-sm
+  control style, its own leading cell) expands an inline card beneath the row: the summary
+  header and the formatted events, fetched on first expand and cached per role#tick until the
+  view refetches. The card renderer branches explicitly on the entry's state — loading →
+  error → ok — so the Loading… placeholder can never fall into the fetched path and read as an
+  empty trail (an earlier attempt's review objection). The row's existing
+  click-to-open-the-drawer behavior is unchanged: expansion is the button's alone
+  (gui-client-boot's data-open handler skips data-tickdetail clicks).
 
-**Files touched.** `src/ui/gui-endpoints.ts`, `src/ui/gui-client-history.ts`, plus tests
-pinning the endpoint's payload and its error cases in the GUI endpoint test's style.
+**Files touched.** `src/ui/gui-endpoints.ts`, `src/ui/gui.ts` (the route),
+`src/ui/gui-client-history.ts`, `src/ui/gui-client-boot.ts` (the one-line data-tickdetail
+guard), `src/ui/gui-styles.ts` (the toggle and card styles), plus tests pinning the endpoint's
+payload and its error cases in the GUI endpoint test's style and the card's states in the GUI
+client history test's style.
 
 **Acceptance criteria.**
-- `GET /api/tick?role=bugfix&tick=3` serves the collector's payload; unknown role, non-positive
-  tick, or a tick absent from the scan window answers with a not-found status, not a crash.
-- A history row's toggle expands the detail card with that tick's events; collapsing and
-  re-expanding reuses the fetched card; the drawer still opens on the row itself.
+- `GET /api/tick?role=bugfix&tick=3` serves the collector's payload (plus its pre-rendered
+  text); a missing or unknown role and a missing or non-positive tick answer 400 naming the
+  rule; a tick absent from the scan window answers 404 with the CLI's not-found wording —
+  never a crash.
+- A history row's toggle expands the detail card with that tick's events (the Loading…
+  placeholder paints while the fetch is in flight); collapsing and re-expanding reuses the
+  fetched card; a failed fetch renders the server's message; the drawer still opens on the row
+  itself.
 - `npm run test` passes with the new tests in the suite.
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### `tumwater tick <role> <n>` — one completed tick's full event trail from the terminal (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

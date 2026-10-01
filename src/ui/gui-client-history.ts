@@ -43,7 +43,70 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
       renderHistory();
     });
     $("histrefresh").addEventListener("click", () => fetchHistory());
+    // The drill-down's details toggle: the button alone expands or collapses (the row's own
+    // click still opens the drawer — gui-client-boot's data-open handler skips clicks on a
+    // data-tickdetail button).
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-tickdetail]") : null;
+      if (!b) return;
+      toggleHistDetail(b.dataset.role, b.dataset.tick);
+    });
   }
+  // history-detail:start
+  // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
+  // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
+  // when one failed, { state: "ok", text } once /api/tick answered. Cached until the view
+  // refetches (fetchHistory clears the map), so collapsing and re-expanding reuses the card.
+  const histDetails = new Map();
+  let histDetailOpen = "";
+  function histDetailKey(role, tick) {
+    return role + "#" + tick;
+  }
+  // The expanded card's markup from its cache entry. The state is checked explicitly, in
+  // loading → error → ok order, so a placeholder can never fall into the fetched path and
+  // render as an empty trail: an absent or loading entry shows the Loading… placeholder, an
+  // errored fetch shows the server's message, and a fetched one shows the summary header plus
+  // the tick's events exactly as the server pre-rendered them (renderTickDetail's output —
+  // the tumwater tick rendering).
+  function histDetailCardHtml(entry) {
+    const state = entry && entry.state;
+    if (!state || state === "loading") return "<div class='empty'>Loading tick detail…</div>";
+    if (state === "error") return "<div class='empty'><strong>" + esc(entry.message || "Tick detail unavailable") + "</strong></div>";
+    const lines = String(entry.text || "").split("\n");
+    const head = lines.shift() || "";
+    const trail = lines.join("\n");
+    return "<div class='hist-detail'><div class='hist-detail-head mono'>" + esc(head) + "</div>" +
+      (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this tick's block.</div>") +
+      "</div>";
+  }
+  // Expand or collapse one row's card. Opening fetches the trail on first expand only — an
+  // already-cached entry (ok or error) is reused, and a re-expand while the fetch is in flight
+  // leaves that fetch to finish. The loading entry is installed and painted synchronously
+  // (renderHistory below), so the placeholder shows while the request runs.
+  function toggleHistDetail(role, tick) {
+    const key = histDetailKey(role, tick);
+    histDetailOpen = histDetailOpen === key ? "" : key;
+    if (histDetailOpen) fetchHistDetail(role, tick);
+    renderHistory();
+  }
+  async function fetchHistDetail(role, tick) {
+    const key = histDetailKey(role, tick);
+    const prev = histDetails.get(key);
+    if (prev && prev.state !== "loading") return; // cached until the view refetches
+    // The loading entry is the synchronous prefix: it is set before toggleHistDetail's
+    // renderHistory paints, so the card shows the Loading… placeholder while the request runs
+    // (and a re-expand during flight sees it and lets the first fetch finish).
+    histDetails.set(key, { state: "loading" });
+    try {
+      const d = await getJson("/api/tick?role=" + encodeURIComponent(role) + "&tick=" + encodeURIComponent(String(tick)));
+      if (!d || typeof d.text !== "string") throw new Error("malformed tick detail");
+      histDetails.set(key, { state: "ok", text: d.text });
+    } catch (e) {
+      histDetails.set(key, { state: "error", message: e && e.message ? e.message : "Tick detail unavailable" });
+    }
+    renderHistory();
+  }
+  // history-detail:end
   // The loop picker's options follow the fleet's role list (custom loops included).
   function syncHistoryRoles(d) {
     const select = $("histrole");
@@ -63,6 +126,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     try {
       const d = await getJson("/api/history?n=" + histCount + (histRole ? "&role=" + encodeURIComponent(histRole) : ""));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
+      // A refetch invalidates the drill-down cache: cached trails could disagree with the new
+      // rows, and an open card's tick may no longer be among them — close it; the next expand
+      // refetches.
+      histDetails.clear();
+      histDetailOpen = "";
     } catch (e) {
       $("histbody").innerHTML = errorPanel("History unavailable", e);
       return;
@@ -85,11 +153,22 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
       return "<div class='empty'><strong>" + (rows && rows.length ? "No ticks match this filter" : "No ticks yet") + "</strong>" +
         (rows && rows.length ? "Try another outcome or loop." : "Completed ticks show up here as the loops work.") + "</div>";
     }
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>When</th><th>Loop</th><th class='c-tick num'>Tick</th>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Loop</th><th class='c-tick num'>Tick</th>" +
       "<th>Result</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
       shown.map((r) => {
         const res = resultInfo(r.result);
-        return "<tr" + (known.has(r.loop) ? " class='clickable' data-open='" + esc(r.loop) + "'" : "") + ">" +
+        // The drill-down toggle rides the drawer's button style and lives in its own leading
+        // cell; only a fleet loop's row carries one, the same rows that open the drawer (the
+        // /api/tick endpoint validates the role, so an id the config no longer knows would
+        // only ever answer 400).
+        const key = histDetailKey(r.loop, r.tick);
+        const open = histDetailOpen === key;
+        const toggle = known.has(r.loop)
+          ? "<button type='button' class='btn btn-sm hist-x' data-tickdetail='1' data-role='" + esc(r.loop) +
+            "' data-tick='" + esc(r.tick) + "' aria-expanded='" + open + "' title='" + (open ? "Hide tick detail" : "Show tick detail") + "'>" + icon("chev") + "</button>"
+          : "";
+        const row = "<tr" + (known.has(r.loop) ? " class='clickable' data-open='" + esc(r.loop) + "'" : "") + ">" +
+          "<td class='c-x'>" + toggle + "</td>" +
           "<td title='" + esc(r.time) + "'><span class='clamp1'>" + esc(fmtAgo(r.ts)) + "</span></td>" +
           "<td class='mono'>" + esc(r.loop) + "</td>" +
           "<td class='c-tick num muted'>#" + esc(r.tick) + "</td>" +
@@ -97,6 +176,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='num c-dur'>" + (r.durationMs === null || r.durationMs === undefined ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
           "<td class='num c-usage muted'>" + esc(r.usage || "—") + "</td></tr>";
+        // The expanded card rides directly beneath its row, full width.
+        return open ? row + "<tr class='detail-row'><td colspan='8'>" + histDetailCardHtml(histDetails.get(key)) + "</td></tr>" : row;
       }).join("") + "</tbody></table></div>";
   }
   // history-table:end

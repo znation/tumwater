@@ -588,6 +588,46 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
   }
 });
 
+test("gui /api/tick serves one tick's detail over the live route, 404 when the scan misses", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick api test");
+  // The same seed the /api/history test uses: clean#9 is paired, feature#2 is end-only.
+  const events: HarnessEvent[] = [
+    { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent,
+    { ts: 46_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
+    { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
+    { ts: 48_000, loop: "clean", type: "tick_end", tick: 7, result: "no_change" } as HarnessEvent,
+    { ts: 49_000, loop: "feature", type: "tick_end", tick: 2, result: "skipped" } as HarnessEvent,
+    { ts: 50_000, loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
+    { ts: 96_000, loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+  ];
+  writeEvents(repo, events);
+
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // The paired tick answers the collector's payload plus the pre-rendered text.
+    const res = await fetch(base + "/api/tick?role=clean&tick=9");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { role: string; tick: number; durationMs: number | null; events: { type: string }[]; text: string };
+    assert.equal(d.role, "clean");
+    assert.equal(d.tick, 9);
+    assert.equal(d.durationMs, 46_000);
+    assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "tick_end"]);
+    assert.match(d.text, /^clean tick #9 — changed · 46s/);
+
+    // A tick the scan does not hold → 404 (never a crash); a bad role and a non-count tick →
+    // the shared 400s.
+    const missing = await fetch(base + "/api/tick?role=clean&tick=42");
+    assert.equal(missing.status, 404);
+    assert.match(((await missing.json()) as { error: string }).error, /no tick #42 for clean/);
+    assert.equal((await fetch(base + "/api/tick?role=nope&tick=9")).status, 400);
+    assert.equal((await fetch(base + "/api/tick?role=clean&tick=0")).status, 400);
+    assert.equal((await fetch(base + "/api/tick")).status, 400, "no role and no tick → 400");
+  } finally {
+    server.close();
+  }
+});
+
 test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
   // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
   // fills with a busy sibling loop's tick_ends, so the filtered rows fall short while the

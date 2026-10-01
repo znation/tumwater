@@ -74,7 +74,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     const act = t.closest("[data-act]");
     if (act) { ev.preventDefault(); runAct(act.dataset.act, act.dataset.arg || ""); return; }
     const open = t.closest("[data-open]");
-    if (open && !t.closest("#loops")) { ev.preventDefault(); toggleLoop(open.dataset.open); }
+    // A history row's drill-down button sits inside the row's data-open cell area but must not
+    // open the drawer — expansion is the button's alone (gui-client-history's own delegated
+    // handler toggles the card).
+    if (open && !t.closest("#loops") && !t.closest("[data-tickdetail]")) { ev.preventDefault(); toggleLoop(open.dataset.open); }
   });
   const typing = (el) => el instanceof Element && el.closest("input, textarea, select, [contenteditable]") !== null;
   document.addEventListener("keydown", (ev) => {

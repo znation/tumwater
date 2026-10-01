@@ -311,6 +311,17 @@ export const GUI_STYLES = String.raw`
                        font-size: 12px; font-weight: 600; color: var(--text-3); }
   .table tr.group:not(:first-child) td { border-top: 1px solid var(--line); }
   .table tr.group .badge { margin-left: 6px; }
+  /* The history view's tick drill-down: the rows' details toggle and the expanded card that
+     rides beneath its row, full width. */
+  .history .c-x { width: 40px; white-space: nowrap; }
+  .hist-x { padding: 0 6px; }
+  .hist-x svg { transition: transform 0.15s ease; }
+  .hist-x[aria-expanded='true'] svg { transform: rotate(90deg); }
+  .detail-row > td { padding: 0 16px 12px 56px; }
+  .hist-detail-head { font-size: 13px; font-weight: 600; padding-top: 8px; }
+  .hist-detail pre { margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--surface-2);
+                     border: 1px solid var(--line); overflow-x: auto; font-size: 12px; }
+  .hist-detail .empty { padding: 10px 0; text-align: left; }
   .sub { margin-top: 3px; font-size: 12.5px; color: var(--text-3); overflow-wrap: anywhere; }
   .sub.t-red, .sub.t-amber { color: var(--t); font-weight: 500; }
   .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

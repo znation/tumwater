@@ -23,6 +23,7 @@ import {
   handleReport,
   handleRestart,
   handleHistory,
+  handleTick,
   handleTranscript,
   handleWake,
 } from "./gui-endpoints.js";
@@ -236,6 +237,8 @@ export function startGui(
         handleHistory(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/transcript") {
         handleTranscript(target!.searchParams, res, root);
+      } else if (req.method === "GET" && pathname === "/api/tick") {
+        handleTick(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {
         handleBacklog(target!.searchParams, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt") {
