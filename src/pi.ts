@@ -5,7 +5,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
-import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./process-table.js";
+import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./run-marker.js";
 import { piArgs } from "./pi-args.js";
 import { PiStreamParser, STREAM_SEVERED, type BackendFailureKind } from "./pi-stream.js";
 import { commandBuffersOutput } from "./command-shape.js";
