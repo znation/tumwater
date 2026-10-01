@@ -44,6 +44,9 @@ export function snapshotWith(
   paused = false,
   pausedRoles: string[] = [],
   roleInbox: Record<string, number> = {},
+  // The per-role cap's held roles default to none — existing tables stay byte-identical; a
+  // test passes roles to exercise the `cap paused` cell (status-model/render tests).
+  capPaused: string[] = [],
 ): StatusSnapshot {
   return {
     running: false,
@@ -62,6 +65,7 @@ export function snapshotWith(
     budget,
     paused,
     pausedRoles,
+    capPaused,
     // Quiet hours default to off — no window, not inside one — so existing header
     // assertions stay byte-identical; a test sets quietHours/inQuietHours to exercise the
     // badge (status-header.test.ts).

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
-import { loopPhase, loopRowCells, sortLoopsByState, workingDetail } from "../src/ui/status-model.js";
+import { loopPhase, loopRank, loopRowCells, sortLoopsByState, workingDetail } from "../src/ui/status-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -260,6 +260,36 @@ test("loopPhase reads budget paused for idle role loops while the cap is reached
 
   // A stopped orchestrator still reads stopped (nothing is ticking at all).
   assert.equal(loopPhase(s, false, undefined, true), "stopped");
+});
+
+test("loopPhase reads cap paused for idle role loops held by their own per-role cap", () => {
+  const s = freshLoopState("feature");
+  // Not held: ordinary phase labels are untouched.
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "queued");
+  // Held by its own cap: the label names the specific spend state, ahead of its sleep/queue
+  // state and ahead of the fleet's budget pause (which is the less specific one).
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, true), "cap paused");
+  assert.equal(loopPhase(s, true, undefined, true, null, false, undefined, undefined, true), "cap paused");
+
+  // User intent still wins: an operator-paused loop reads `paused` even while over its cap.
+  assert.equal(loopPhase(s, true, undefined, false, null, true, undefined, undefined, true), "paused");
+
+  // A sleeping loop is cap-paused too (the cap holds it past nextRunAt).
+  const sleeping = freshLoopState("clean");
+  sleeping.nextRunAt = Date.now() + 3_600_000;
+  assert.equal(loopPhase(sleeping, true, undefined, false, null, false, undefined, undefined, true), "cap paused");
+
+  // The director is exempt from the cap, like the scheduler's gate: its phase never changes.
+  const d = freshLoopState("director");
+  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, true), "waiting for prompts");
+
+  // In-flight ticks finish even while held — only NEW ticks are blocked.
+  const running = freshLoopState("feature");
+  running.running = true;
+  assert.equal(loopPhase(running, true, undefined, false, null, false, undefined, undefined, true), "working");
+
+  // The held loop groups with the other paused states in the shared rank.
+  assert.equal(loopRank("cap paused"), 3);
 });
 
 test("loopPhase shows main red for idle loops whose last tick was blocked by a red main", () => {

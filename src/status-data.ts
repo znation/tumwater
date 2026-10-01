@@ -22,6 +22,7 @@ import {
 import { readLandingMarker, type LandingInFlight } from "./landing-slot.js";
 import type { TestCounts } from "./build-check.js";
 import { fleetDailyCost } from "./budget.js";
+import { roleCapPaused } from "./role-cap-gates.js";
 import { queuedLandings } from "./landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
@@ -78,6 +79,16 @@ export interface StatusSnapshot {
    * set): an idle loop in this set also reads `paused`, the same cell as under the fleet
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
+  /** The roles the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
+   * in this set reads `cap paused`, its own spend state — more specific than the fleet's
+   * `budget paused`. Computed with roleCapPaused against the caps of the same
+   * last-known-good config that produced the loop list (a transiently broken tumwater.json
+   * degrades with the whole config, like `quietHours`), so the verdict an operator sees is
+   * the scheduler's — the fleet budget gate's rule. The director is exempt, exactly as the
+   * gate exempts it (role-cap-gates.ts). Always present, empty when none — the `pausedRoles`
+   * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
+   * poll, and local midnight lifts the hold by itself. */
+  capPaused: string[];
   /** The fleet marker's standing deadline (ms epoch) while a timed pause
    * (`tumwater pause --for <duration>`) holds — undefined for an indefinite fleet pause, a
    * role-only pause, or an expired `until` (fleet-state's read side already treats expiry as
@@ -400,6 +411,9 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     },
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
+    capPaused: loops
+      .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
+      .map((l) => l.role),
     pausedUntil: fleetPause?.until,
     pauseReason: fleetPause?.reason,
     quietHours: quiet.window ?? undefined,

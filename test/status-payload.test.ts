@@ -327,3 +327,45 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
   assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
   assert.equal(clean.backoffSeconds, 90);
 });
+
+// The per-role cap on the payload surface (PLANS.md, per-role cap part 2/2): `status --json`
+// carries the held roles beside pausedRoles, and a held idle loop's phase reads
+// `cap paused` — the loopPhase ladder naming the specific spend state.
+test("the status payload carries capPaused; a held idle loop's phase reads cap paused", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui cap paused test");
+  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  writeOrchestratorMarker(repo, ["clean"]);
+
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsdPerRole = { clean: 1 };
+  saveConfig(repo, cfg);
+  const s = freshLoopState("clean");
+  s.dayStamp = todayStamp();
+  s.dayCostUsd = 1.25; // >= cap → held
+  saveLoopState(repo, s);
+
+  let payload = statusPayload(repo) as {
+    capPaused: string[];
+    pausedRoles: string[];
+    loops: Array<{ role: string; phase: string }>;
+  };
+  assert.deepEqual(payload.capPaused, ["clean"], "the held role rides the payload beside pausedRoles");
+  assert.deepEqual(payload.pausedRoles, []);
+  assert.equal(
+    payload.loops.find((l) => l.role === "clean")?.phase,
+    "cap paused",
+    "the held idle loop's phase names its own cap",
+  );
+  // The director is exempt — its phase keeps its own label even when a cap entry names it.
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+
+  // No caps configured: the field is present and empty, and the phase reverts to idle.
+  cfg.maxDailyCostUsdPerRole = {};
+  saveConfig(repo, cfg);
+  payload = statusPayload(repo) as typeof payload;
+  assert.deepEqual(payload.capPaused, []);
+  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "cap paused");
+
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
+});

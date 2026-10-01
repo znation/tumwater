@@ -232,6 +232,47 @@ test("snapshot prefers the running orchestrator's published budget over the pers
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
 // fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
 // never accumulate against the cap and the badge data carries `free` so both dashboards read n/a.
+// The per-role cap's observer side (PLANS.md, part 2/2): the snapshot lists the roles the
+// gate actually holds — roleCapPaused against the last-known-good config's caps, the director
+// exempt like the scheduler's gate.
+test("snapshot lists the roles held by their own per-role cap in capPaused", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cap paused snapshot test");
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsdPerRole = { clean: 1, dry: 5, director: 1 };
+  saveConfig(repo, cfg);
+
+  // clean is exactly at its cap (held); dry carries only yesterday's spend (a stale stamp
+  // reads $0 today — the hold is a daily figure); the director is exempt like the gate.
+  const clean = freshLoopState("clean");
+  recordDailyCost(clean, 1);
+  saveLoopState(repo, clean);
+  const dry = freshLoopState("dry");
+  dry.dayStamp = "2000-01-01";
+  dry.dayCostUsd = 99;
+  saveLoopState(repo, dry);
+  const director = freshLoopState("director");
+  recordDailyCost(director, 1);
+  saveLoopState(repo, director);
+
+  let snap = snapshot(repo);
+  assert.deepEqual(snap.capPaused, ["clean"]);
+
+  // A role with no cap entry is never held, however much it spent.
+  const organize = freshLoopState("organize");
+  recordDailyCost(organize, 99);
+  saveLoopState(repo, organize);
+  snap = snapshot(repo);
+  assert.deepEqual(snap.capPaused, ["clean"]);
+
+  // No per-role caps configured at all: the field stays present and empty — the
+  // pausedRoles shape, so consumers never test for the key.
+  cfg.maxDailyCostUsdPerRole = {};
+  saveConfig(repo, cfg);
+  snap = snapshot(repo);
+  assert.deepEqual(snap.capPaused, []);
+});
+
 test("snapshot marks the budget free when every fleet model is unpriced", async () => {
   const repo = makeRepo();
   await initProject(repo, "free fleet test");

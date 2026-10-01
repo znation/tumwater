@@ -180,6 +180,7 @@ export function loopPhase(
   userPaused = false,
   landing?: LandingCell | null,
   mainCheck?: StatusSnapshot["mainCheck"],
+  capPaused = false,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -217,6 +218,10 @@ export function loopPhase(
   }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from both gates
   if (userPaused) return "paused";
+  // The loop's OWN daily cap (PLANS.md, per-role cap part 2/2): the more specific spend
+  // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
+  // "user intent is more specific than spend state" argument extended one level down.
+  if (capPaused) return "cap paused";
   if (budgetPaused) return "budget paused";
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
@@ -305,6 +310,9 @@ export function loopRowCells(
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
     // between ticks (BUGS.md 2026-09-30) — the banner (fleetAlerts) reads this same phase.
     snap.mainCheck,
+    // The per-role cap's verdict, computed once per poll in the snapshot (status-data.ts
+    // roleCapPaused): an idle loop over its own cap reads `cap paused` on every surface.
+    snap.capPaused.includes(s.role),
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -323,14 +331,15 @@ export function isActivePhase(phase: string): boolean {
 /** A loop's rank in the rendered tables, from its phase label (loopPhase): 0 live work —
  * working, reviewing, landing (isActivePhase); 1 work waiting in the pipeline — a vetted change
  * awaiting the merge slot, or a tick parked awaiting a permit; 2 needs attention — failing, or
- * blocked by a red main; 3 paused — by the operator or by the budget; 4 everything else (idle:
- * sleeping, queued, the director waiting for prompts, a stopped fleet). The dashboard groups its
- * loop table by these ranks; the TUI/status table orders by them. */
+ * blocked by a red main; 3 paused — by the operator, by the budget, or by the loop's own
+ * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
+ * stopped fleet). The dashboard groups its loop table by these ranks; the TUI/status table
+ * orders by them. */
 export function loopRank(phase: string): number {
   if (isActivePhase(phase)) return 0;
   if (phase.startsWith("vetted") || phase.startsWith("awaiting slot")) return 1;
   if (phase === "failing" || phase === "main red") return 2;
-  if (phase === "paused" || phase === "budget paused") return 3;
+  if (phase === "paused" || phase === "budget paused" || phase === "cap paused") return 3;
   return 4;
 }
 

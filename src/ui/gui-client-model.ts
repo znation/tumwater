@@ -22,6 +22,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "main red") return { key: "mainred", label: "Main red", tone: "red", live: false, detail: "blocked until main's suite passes" };
     if (p === "paused") return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
     if (p === "budget paused") return { key: "budget", label: "Budget paused", tone: "amber", live: false, detail: "today's cap is spent" };
+    if (p === "cap paused") return { key: "cap", label: "Cap paused", tone: "amber", live: false, detail: "its own daily cap is spent" };
     if (p.startsWith("sleeping")) return { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
     if (p === "queued") return { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — waiting for a free slot" };
     if (p === "waiting for prompts") return { key: "waiting", label: "Waiting", tone: "gray", live: false, detail: "runs when you send it a prompt" };
@@ -66,7 +67,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (isActivePhase(p)) return 0;
     if (p.startsWith("vetted") || p.startsWith("awaiting slot")) return 1;
     if (p === "failing" || p === "main red") return 2;
-    if (p === "paused" || p === "budget paused") return 3;
+    if (p === "paused" || p === "budget paused" || p === "cap paused") return 3;
     return 4;
   }
   function sortLoops(loops) {

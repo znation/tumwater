@@ -40,6 +40,8 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     [loopPhase(at({}, "director"), true), "waiting", false],
     [loopPhase(at({}), true, undefined, false, null, true), "paused", false],
     [loopPhase(at({}), true, undefined, true), "budget", false],
+    [loopPhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
+    [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
     [loopPhase(at({ lastResult: "main_red" }), true), "mainred", false],
     [loopPhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [loopPhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
@@ -55,6 +57,9 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("landing 1m · build check").detail, "1m · build check");
   assert.equal(model.phaseInfo("awaiting slot 2m").detail, "for 2m");
+  // The per-role cap's label reads with the other held states (amber) and its own detail.
+  const cap = model.phaseInfo("cap paused");
+  assert.deepEqual([cap.label, cap.tone, cap.live], ["Cap paused", "amber", false], "cap paused reads like budget paused");
   // An unknown label still renders — as itself, neutrally.
   assert.deepEqual([model.phaseInfo("molting").key, model.phaseInfo("molting").label, model.phaseInfo("molting").tone], ["other", "molting", "gray"]);
 });
@@ -74,13 +79,14 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "broken", phase: "failing", lastTickEndedAt: t(2) },
     { role: "held", phase: "paused", lastTickEndedAt: t(9) },
     { role: "broke", phase: "budget paused", lastTickEndedAt: t(1) },
+    { role: "capped", phase: "cap paused", lastTickEndedAt: t(2) },
   ];
   const order = model.sortLoops(loops).map((l) => l.role);
   assert.deepEqual(order, [
     "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
     "parked-p", "vetted-v", // waiting in the pipeline
     "broken", "main-red", // needs attention
-    "held", "broke", // paused
+    "held", "capped", "broke", // paused, newest tick first
     "queued-z", "sleepy", "never-ticked", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
