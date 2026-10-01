@@ -51,7 +51,11 @@ export const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
  * counted as work: the drain waits on ticks that are already running, and folding queue wait
  * into the window would overstate how long they have left (the `tick_start`..`tick_end` span
  * the window was sized against excludes it too). Aborted ticks return null so their short
- * cut-off lengths cannot drag the window down. `now` is a test seam.
+ * cut-off lengths cannot drag the window down. So do ticks that ended with nothing to show
+ * (`no_change`, `skipped`): a `main moved` re-check runs the model and still finishes in
+ * seconds, and sampling it equally let a fleet's window collapse to the re-check scale and
+ * cut real work off minutes into its run (BUGS.md 2026-09-30) — only a work-bearing outcome
+ * says how long the work the drain waits on takes. `now` is a test seam.
  *
  * `held` is the fleet-wide hold on new ticks (today the restart drain's), re-checked at the one
  * moment a reserved tick actually begins: when its permit is granted. A tick scheduled before
@@ -74,6 +78,7 @@ export async function runTimedRoleTick(
     const startedAt = now();
     const outcome = await tick();
     if (outcome.result === "aborted" || outcome.result === "user_aborted") return null;
+    if (outcome.result === "no_change" || outcome.result === "skipped") return null;
     return now() - startedAt;
   } finally {
     release();

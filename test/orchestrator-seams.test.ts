@@ -69,6 +69,23 @@ test("runTimedRoleTick returns null for an aborted tick outcome so it cannot dra
   assert.equal(elapsed, 100);
 });
 
+test("runTimedRoleTick returns null for a tick that ended without work so the window is not sized to re-checks", async () => {
+  // The 2026-09-30 restart's drain window sampled 26 no_change re-checks out of 50 ticks and
+  // collapsed to 131 s — cutting a 14-minute coverage tick off minutes into its run. A tick
+  // that ended with nothing to show (no_change, or skipped with nothing to run) says nothing
+  // about how long the work the drain waits on takes, even when it did run the model.
+  for (const result of ["no_change", "skipped"] as const) {
+    const h = timedTickHarness([{ result }]);
+    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+    assert.equal(elapsed, null, `result ${result} must be excluded from the window`);
+    assert.equal(h.calls.release, 1);
+  }
+  // A work-bearing outcome still measures — queued included: the sample's whole point.
+  const h = timedTickHarness([{ result: "queued" }]);
+  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+  assert.equal(elapsed, 100);
+});
+
 test("runTimedRoleTick releases its permit when the tick throws", async () => {
   const h = timedTickHarness([]);
   const failing = async (): Promise<TickOutcome> => {

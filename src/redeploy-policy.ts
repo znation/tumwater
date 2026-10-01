@@ -46,7 +46,7 @@ export const RESTART_EXIT_CODE = 75;
  * without any cap (see poll).
  *
  * The live window tracks the fleet's real tick duration: the orchestrator passes the p75 of
- * recent completed role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of this
+ * recent completed work-bearing role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of this
  * constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not been
  * re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
  * timed out on 60% of ticks — paying the full idle cost of waiting plus the interruption cost of
@@ -90,8 +90,10 @@ interface InFlightCounts {
    * pending, so there is nothing of it to drain (BUGS.md 2026-09-23). */
   roleInFlight: number;
   directorInFlight: number;
-  /** p75 of recent completed role-tick durations (ms), or null/absent when too few samples: the
-   * drain window tracks the fleet's real tick duration instead of the cold-start constant
+  /** p75 of recent completed work-bearing role-tick durations (ms) — ticks that ended with
+   * something to show, never a seconds-long `no_change` re-check (runTimedRoleTick filters
+   * them out; BUGS.md 2026-09-30) — or null/absent when too few samples: the drain window
+   * tracks the fleet's real tick duration instead of the cold-start constant
    * (BUGS.md 2026-09-18). */
   roleTickP75Ms?: number | null;
 }

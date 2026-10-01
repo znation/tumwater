@@ -5,12 +5,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The restart drain window's p75 sample is dominated by trivial no-change ticks, so the window undercuts the real work in flight and aborts it (found by bugfix loop 2026-10-01 while fixing the landing-abort bug — split from that entry's Contributing note)
-
-- **Symptom:** the 2026-09-30 21:38 restart's drain window was 131 s (`drainWindowMs: 131357`), the p75 of the last 50 completed role ticks — 20 of them feature's 3–10 s `main moved` no_change ticks (19 samples under 20 s). The window therefore gave up on coverage's 14-minute in-flight tick after about two minutes, aborting a tick that was doing real work and putting a permit holder in play at the swap (which is what triggered the landing-abort bug fixed 2026-10-01).
-- **Cause:** `p75TickDurationMs` samples every completed role tick equally; a seconds-long no-change tick counts the same as a review-length tick, so a fleet with frequent trivial ticks computes a drain window far below the length of its real work.
-- **How to reproduce:** 20+ fast no_change ticks, then a long tick in flight when a restart is due: `drainWindowMs` lands at the no-change scale and the long tick is cut off mid-work.
-- **Expected:** the window reflects the duration of the work the drain actually waits on — e.g. sampling only ticks that ran the model — one sensible default, no knob.
+_None yet._
 
 ### The redeploy cooldown's "running build is red" carve-out acts on a single unretried baseline, and cuts the cooldown without saying so when the shortened deadline has already passed (found by human-directed investigation 2026-09-30)
 
@@ -45,6 +40,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected:** each test's timing assumptions hold under the fleet's own load.
 
 ## Fixed
+
+### The restart drain window's p75 sample is dominated by trivial no-change ticks, so the window undercuts the real work in flight and aborts it (found by bugfix loop 2026-10-01 while fixing the landing-abort bug — split from that entry's Contributing note; fixed 2026-10-01 by bugfix loop)
+
+- **Symptom:** the 2026-09-30 21:38 restart's drain window was 131 s (`drainWindowMs: 131357`), the p75 of the last 50 completed role ticks — 20 of them feature's 3–10 s `main moved` no_change ticks (19 samples under 20 s). The window therefore gave up on coverage's 14-minute in-flight tick after about two minutes, aborting a tick that was doing real work and putting a permit holder in play at the swap (which is what triggered the landing-abort bug fixed 2026-10-01).
+- **Cause:** `p75TickDurationMs` samples every completed role tick equally; a seconds-long no-change tick counts the same as a review-length tick, so a fleet with frequent trivial ticks computes a drain window far below the length of its real work.
+- **How to reproduce:** 20+ fast no_change ticks, then a long tick in flight when a restart is due: `drainWindowMs` lands at the no-change scale and the long tick is cut off mid-work.
+- **Expected:** the window reflects the duration of the work the drain actually waits on — e.g. sampling only ticks that ran the model — one sensible default, no knob.
+- **Fixed:** `runTimedRoleTick` (src/tick-timing.ts) no longer samples a tick that ended without work — a `no_change` or `skipped` outcome returns null exactly like an aborted tick — so the window is the p75 of work-bearing ticks only, and the orchestrator/redeploy-policy comments now say so. The entry's example filter ("ticks that ran the model") would not have fixed the incident: replaying the recorded window shows the trivial ticks DID run the model (248–856 output tokens, ~$0.003 apiece on their tick_end events) — the filter is the work-bearing outcome, not model contact. Replaying the 50 recorded samples before the restart reproduces the exact 131357 ms window; the same replay with the filter yields 178 s from the 24 remaining samples.
+- **Validation gap:** real-run-needed — the collapse only exists across a live restart's drain, so confirming it meant replaying the fleet's recorded tick_end samples (an exact 131357 ms match) rather than any offline path; the unit regression pins the filter, not the live window.
 
 ### A self-redeploy that has to abort a permit-holding role tick aborts the in-flight landing with it, so the bounded hand-off announces a 360 s wait and the landing dies 13 ms later (found by human-directed investigation 2026-09-30, fixed 2026-10-01 by bugfix loop)
 

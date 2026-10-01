@@ -530,8 +530,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
         // director never queues, so it is never a parked waiter.
         runner.state.parkedSince = usesSlot ? Date.now() : undefined;
-        // The tick's own run time (null when it never ran or was cut off): the drain-window
-        // sample is taken only for a tick that finished on its own.
+        // The tick's own run time (null when it never ran, was cut off, or ended without
+        // work): the drain-window sample is taken only for a work-bearing tick that finished
+        // on its own (runTimedRoleTick; BUGS.md 2026-09-30).
         let durationMs: number | null = null;
         // Whether runner.tick() was ever called — false when the start gate (or a shutdown)
         // turned the tick away at its permit.
