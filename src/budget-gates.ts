@@ -14,6 +14,7 @@ import {
   rekeyFallbackBreaker,
 } from "./fallback-breaker.js";
 import { applyFallbackModel, fallbackPair } from "./config-views.js";
+import { DIRECTOR_ROLE } from "./roles.js";
 import type { FallbackModelConfig } from "./config-schema.js";
 import { logEvent } from "./events.js";
 import { fallbackModelFree } from "./pi-models.js";
@@ -96,6 +97,20 @@ export function tickOnPair(
     tickModel.provider === pair.provider &&
     tickModel.model === pair.model
   );
+}
+
+/** The config a runner runs on while the budget gate stands: the director keeps the live
+ * config — an explicit human prompt outranks the autonomous-spend cap — and every other role
+ * takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
+ * rule, so the scheduler's per-poll assignment (src/gate-polls.ts) and a throwaway landing
+ * author's construction (src/landing-vetting.ts's resolveAuthor) cannot drift apart — say, an
+ * exemption granted to one more role in one copy and not the other. */
+export function gateRoleConfig(
+  role: string,
+  liveConfig: TumwaterConfig,
+  roleConfig: TumwaterConfig,
+): TumwaterConfig {
+  return role === DIRECTOR_ROLE ? liveConfig : roleConfig;
 }
 
 /** Poll the daily cost budget gate: once the fleet's spend for the local day has reached

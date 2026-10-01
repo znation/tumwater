@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { BudgetGate } from "./budget.js";
 import {
+  gateRoleConfig,
   newBudgetGateState,
   pollBudgetGate,
   tickOnPair,
@@ -137,10 +138,10 @@ export function pollFleetGates(
     writeJsonFile(infoFile, info);
   }
   // The director keeps the live config — an explicit human prompt outranks the
-  // autonomous-spend cap. Assigned every poll (not only on transitions) so a runner
-  // created mid-gate, or one left behind by a broken-file poll that skipped the reload,
-  // can never tick on the wrong model.
-  for (const r of runners) r.config = r.role === DIRECTOR_ROLE ? liveConfig : roleConfig;
+  // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
+  // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
+  // the reload, can never tick on the wrong model.
+  for (const r of runners) r.config = gateRoleConfig(r.role, liveConfig, roleConfig);
 
   // The budget reopened: a tick that started on the fallback keeps it until it ends, so
   // hand those ticks back — abort them resumably (session and worktree edits kept) and

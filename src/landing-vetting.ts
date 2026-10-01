@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { gateRoleConfig } from "./budget-gates.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, isMergedInto } from "./git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
@@ -40,12 +40,13 @@ export function vetLimit(maxConcurrent: number): number {
  * disabled before this process started has no runner, so a throwaway one supplies the same
  * wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and save
  * on. Both share the live config, like every runner — the director keeps liveConfig (its
- * budget-gate exemption), every other role takes roleConfig. */
+ * budget-gate exemption), every other role takes roleConfig (gateRoleConfig's single home
+ * for the rule; the scheduler assigns the live runners by it every poll). */
 function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
   const { root, mainBranch, signal, runners, liveConfig, roleConfig } = ctx;
   return (
     runners.find((r) => r.role === role) ??
-    new LoopRunner(root, role, role === DIRECTOR_ROLE ? liveConfig : roleConfig, mainBranch, signal)
+    new LoopRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig), mainBranch, signal)
   );
 }
 
