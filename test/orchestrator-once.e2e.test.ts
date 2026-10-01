@@ -8,42 +8,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runOrchestrator } from "../src/orchestrator.js";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { pauseFleet, resumeFleet } from "../src/fleet-state.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/event-read.js";
-import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./orchestrator-fixtures.js";
+import { fastConfig, makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { mainSha, makeRepo } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { assistantLine } from "./pi-events.js";
-
-/** Run one once round in-process with the repo's on-disk config, failing loudly if the round
- * does not exit on its own — a once round that hangs is the bug this feature exists to avoid.
- * `roleFilter` scopes the round to one role (`run --once --role <id>`, PLANS.md 2026-09-25). */
-function onceRound(
-  repo: string,
-  roleFilter?: string,
-): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
-    signal: new AbortController().signal,
-    pollMs: FAST_POLL_MS,
-    once: true,
-    roleFilter,
-  });
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
-    t.unref();
-  });
-  return Promise.race([done, timeout]);
-}
 
 test("once: a fleet where every role finds nothing to do exits on its own, one tick each", async () => {
   const repo = await makeFastRepo("once round test", ["clean", "dry"]);

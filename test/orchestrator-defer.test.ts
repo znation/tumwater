@@ -16,34 +16,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { readBranchHead } from "../src/git.js";
-import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
+import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType } from "./log-fixtures.js";
-
-/** Run one once round in-process with the repo's on-disk config, failing loudly if the round
- * does not exit on its own — the same guard orchestrator-once.test.ts applies (a once round
- * that hangs is the bug `--once` exists to avoid). */
-function onceRound(
-  repo: string,
-): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
-    signal: new AbortController().signal,
-    pollMs: FAST_POLL_MS,
-    once: true,
-  });
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
-    t.unref();
-  });
-  return Promise.race([done, timeout]);
-}
 
 /** The state a finished no_change tick on the current main head leaves on disk, due now. */
 function idleDueState(repo: string) {

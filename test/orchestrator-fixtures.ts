@@ -97,6 +97,32 @@ export function startLiveOrchestrator(
   };
 }
 
+/** Run one once round in-process with the repo's on-disk config, failing loudly if the round
+ * does not exit on its own — a once round that hangs is the bug `--once` exists to avoid, so
+ * the race against a 30s unref'd timeout turns a hang into a test failure. `roleFilter`
+ * scopes the round to one role (`run --once --role <id>`, PLANS.md 2026-09-25). The one home
+ * of this dance, which the once-mode tests (orchestrator-once.test.ts, orchestrator-defer.test.ts,
+ * orchestrator-once.e2e.test.ts) each carried as a near-identical local copy. */
+export function onceRound(
+  repo: string,
+  roleFilter?: string,
+): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
+  const done = runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal: new AbortController().signal,
+    pollMs: FAST_POLL_MS,
+    once: true,
+    roleFilter,
+  });
+  const timeout = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
+    t.unref();
+  });
+  return Promise.race([done, timeout]);
+}
+
 /** The idle-pi orchestrator prelude the e2e tests shared as a copy-pasted pair: install the
  * fake pi that prints TUMWATER_NOTHING_TO_DO forever and start a live orchestrator over it at
  * FAST_POLL_MS, returning both halves so the `restore()` in the test's finally and the `orch`

@@ -7,31 +7,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
-import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
+import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
-
-/** Run one once round in-process with the repo's on-disk config, failing loudly if the round
- * does not exit on its own — the same guard the e2e tier's onceRound helper applies. */
-function onceRound(
-  repo: string,
-): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
-    signal: new AbortController().signal,
-    pollMs: FAST_POLL_MS,
-    once: true,
-  });
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("once round did not exit on its own")), 30_000);
-    t.unref();
-  });
-  return Promise.race([done, timeout]);
-}
 
 test("once: an idle fleet exits on its own, ticks each role exactly once, and returns the once-mode shape", async () => {
   const repo = await makeFastRepo("once exit contract test", ["clean", "dry"]);
