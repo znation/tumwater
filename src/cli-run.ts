@@ -15,7 +15,7 @@ import { runOrchestrator } from "./orchestrator.js";
 import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
 import { createRedeployer } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
-import { plural } from "./text.js";
+import { plural } from "./phrases.js";
 import { fleetDownEvent, spawnRunChild, startParentDeathWatch, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./text.js";
 

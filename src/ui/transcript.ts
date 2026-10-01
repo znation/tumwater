@@ -1,6 +1,7 @@
 import { parsePiEventLine } from "../pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "../tail.js";
-import { collapseWhitespace, describeToolCall, squash, truncate } from "../text.js";
+import { collapseWhitespace, squash, truncate } from "../text.js";
+import { describeToolCall } from "../phrases.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its

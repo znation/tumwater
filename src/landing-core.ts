@@ -13,7 +13,7 @@ import { checkFailureReasons } from "./build-check-report.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
-import { mainRedPhrase } from "./text.js";
+import { mainRedPhrase } from "./phrases.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";

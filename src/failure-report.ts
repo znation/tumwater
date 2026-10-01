@@ -6,7 +6,8 @@
 import type { TickResult } from "./tick-outcome.js";
 import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { type SpendCell } from "./time-spend.js";
-import { plural, shortSha, usd } from "./text.js";
+import { plural } from "./phrases.js";
+import { shortSha, usd } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
 

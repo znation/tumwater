@@ -10,7 +10,8 @@ import {
   queuedPrompts,
   queuedRolePrompts,
 } from "./inbox.js";
-import { errorMessage, pauseReasonSuffix } from "./text.js";
+import { errorMessage } from "./text.js";
+import { pauseReasonSuffix } from "./phrases.js";
 import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
 import { errCode } from "./errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";

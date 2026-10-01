@@ -3,7 +3,7 @@
  * pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 
-import { plural } from "../text.js";
+import { plural } from "../phrases.js";
 import type { FleetChangeView, RoleChangeView } from "../change-data.js";
 
 /** Render the roster as the operator-facing text `tumwater diff` (no --role) prints: one

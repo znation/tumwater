@@ -6,7 +6,7 @@ import {
   toolUpdateHasContent,
   type OpenToolCall,
 } from "./pi-event-line.js";
-import { describeToolCall } from "./text.js";
+import { describeToolCall } from "./phrases.js";
 import { parseJsonObject } from "./json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or

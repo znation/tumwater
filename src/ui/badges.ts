@@ -2,7 +2,8 @@ import type { TestCounts } from "../build-check.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { pauseReasonSuffix, shortSha, usd, usdCap } from "../text.js";
+import { pauseReasonSuffix } from "../phrases.js";
+import { shortSha, usd, usdCap } from "../text.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload

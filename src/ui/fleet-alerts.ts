@@ -11,7 +11,8 @@
 import type { StatusSnapshot } from "../status-data.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
-import { pauseReasonSuffix, plural, usd, usdCap } from "../text.js";
+import { pauseReasonSuffix, plural } from "../phrases.js";
+import { usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,

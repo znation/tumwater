@@ -7,7 +7,8 @@
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, shortSha } from "./text.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase } from "./phrases.js";
+import { shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/fleet gates and the fleet hold, live-config edits, self-hosted redeploys, need-based

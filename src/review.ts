@@ -13,7 +13,8 @@ import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js"
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
-import { mainRedPhrase, shortSha } from "./text.js";
+import { mainRedPhrase } from "./phrases.js";
+import { shortSha } from "./text.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";

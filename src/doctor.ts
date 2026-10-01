@@ -3,7 +3,8 @@ import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
 import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "./launch-services.js";
-import { plural, shortSha } from "./text.js";
+import { plural } from "./phrases.js";
+import { shortSha } from "./text.js";
 import {
   checkAgentBinary,
   checkBrief,

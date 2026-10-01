@@ -9,7 +9,8 @@ import { knownRoleIdsCached } from "../config.js";
 import { readTickDetail, type TickDetail } from "../tick-detail-data.js";
 import { formatEvent } from "../event-format.js";
 import { unknownRoleMessage } from "../roles.js";
-import { shortSha, shortSpanPhrase } from "../text.js";
+import { shortSpanPhrase } from "../phrases.js";
+import { shortSha } from "../text.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
