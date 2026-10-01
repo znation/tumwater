@@ -34,7 +34,7 @@ Then, from another terminal:
 | To | Run |
 | --- | --- |
 | Watch the fleet | `tumwater tui`, or `tumwater gui` for the browser dashboard at http://127.0.0.1:7180 |
-| Watch per-tick history | `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`, or `tumwater history --json` for the rows as JSON |
+| Watch per-tick history | `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]`, or `tumwater history --json` for the rows as JSON; `tumwater tick <role> <n>` for one tick's full event trail (a summary header — when it ran, how long, result, usage — followed by the tick's events, oldest first; `--json` prints the payload as JSON, `null` when the log holds no such tick) |
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --json` (the event feed as NDJSON, for scripts), `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown), `tumwater backlog --json` (the backlog as JSON, for scripts), `tumwater role <id>` (one loop's standing prompt — find text, `instructions` override, resolved model and interval, enabled/paused state — plus its next tick's assembled prompt, which shows queued prompts without consuming them; `--json` for scripts) |
 | See a loop's pending change | `tumwater diff --role <id>` — that loop's branch's unlanded commits (with the patch) and its worktree's uncommitted edits (staged and unstaged); without `--role`, one line per loop holding pending work; `--json` prints the payload as data |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick |
