@@ -22,7 +22,7 @@ import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
 import { readTranscript } from "./transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history-data.js";
-import { readTickDetail, renderTickDetail } from "./tick-detail.js";
+import { readTickDetail, renderTickDetail, tickNotFoundMessage } from "./tick-detail.js";
 import { intQuery, rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds, windowDays } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import type http from "node:http";
@@ -116,7 +116,8 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
  * tick's block contains. The role is a target here, not a filter, so it validates through
  * rejectBadRole (unknown/missing → 400 naming the valid ids); the tick is an explicit count
  * through intQuery (missing or not a positive integer → 400); and a tick the scanned window
- * does not hold — never ran, or rotation ate it — answers 404 with the CLI's not-found wording,
+ * does not hold — never ran, or rotation ate it — answers 404 with tickNotFoundMessage, the
+ * CLI's exact not-found wording,
  * never a crash. Reads files directly, so it works whether or not the fleet is running. */
 export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
@@ -125,9 +126,7 @@ export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: s
   if (tick === null) return;
   const detail = readTickDetail(root, role as string, tick);
   if (detail === null) {
-    sendJson(res, 404, {
-      error: `no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`,
-    });
+    sendJson(res, 404, { error: tickNotFoundMessage(role as string, tick) });
     return;
   }
   sendJson(res, 200, { ...detail, text: renderTickDetail(detail) });

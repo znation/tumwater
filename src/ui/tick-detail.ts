@@ -20,6 +20,15 @@ import { shortSha, shortSpanPhrase } from "../text.js";
  * when the command's shape changes. */
 export const TICK_USAGE = "tumwater tick <role> <n> [--json]";
 
+/** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
+ * stdout line and the GUI /api/tick endpoint's 404 JSON error, one template so the CLI's prose
+ * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
+ * can act on: the tick number, the loop, and that the scanned window (not the world) is what
+ * came up empty. */
+export function tickNotFoundMessage(role: string, tick: number): string {
+  return `no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`;
+}
+
 /** One tick's full event trail, as `tumwater tick <role> <n>` and the GUI's tick drill-down
  * serve it. `startTs`/`endTs` bound the tick's block: `endTs` is null while the tick is in
  * flight (no `tick_end` yet) or its end was lost to log rotation, `startTs` null when rotation
@@ -178,7 +187,7 @@ export async function cmdTick(root: string, positionals: string[], json: boolean
     // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
     // prose line would end a jq pipe mid-fleet-incident.
     if (json) sayJson(null);
-    else say(`no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`);
+    else say(tickNotFoundMessage(role, tick));
     return;
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
