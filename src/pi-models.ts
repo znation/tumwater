@@ -46,7 +46,7 @@ function costIsFree(cost: unknown): boolean {
  * grows with the model catalog (every added provider/model entry), so an unchanged file costs
  * one stat per poll instead of a re-read plus JSON.parse of the whole catalog. Any write
  * invalidates via dev/ino/mtime/size (stat-cache.cachedByStat, same freshness check as the
- * other polled files in status-data.ts); a missing or malformed file yields null and is not cached,
+ * other polled files in status-polls.ts); a missing or malformed file yields null and is not cached,
  * so a mid-edit broken file recovers on the next poll exactly like before. */
 const providersCache = new Map<string, StatKeyedValue<Map<string, PiModelDef[]>>>();
 
