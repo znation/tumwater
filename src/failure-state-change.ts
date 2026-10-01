@@ -6,6 +6,7 @@
  * failure-data.ts. Every free string is sliced here, so the digest's byte bound holds for any
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
+import { truncateExample } from "./failure-cluster.js";
 import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase } from "./phrases.js";
 import { shortSha } from "./text.js";
@@ -40,9 +41,10 @@ export const STATE_CHANGE_TYPES = new Set<string>([
 ]);
 
 /** The Fleet state changes section's caps: newest N transitions, each line's payload capped at
- * STATE_CHANGE_MAX, each free field within it at STATE_CHANGE_FIELD_MAX. Together with the
- * fixed timestamp/role cells these make the section's bytes a constant, so the digest's ~6 KB
- * bound holds no matter how many transitions the window holds or how long a field is. */
+ * STATE_CHANGE_MAX (a marked word-boundary cut per truncateExample), each free field within it
+ * at STATE_CHANGE_FIELD_MAX. Together with the fixed timestamp/role cells these make the
+ * section's bytes a constant-plus-marker, so the digest's ~6 KB bound holds no matter how many
+ * transitions the window holds or how long a field is. */
 export const STATE_CHANGE_TOP = 6;
 const STATE_CHANGE_MAX = 72;
 const STATE_CHANGE_FIELD_MAX = 24;
@@ -54,8 +56,10 @@ function field(v: unknown): string {
 }
 
 /** A compact, bounded one-liner for one harness decision event, for the Fleet state changes
- * section. Every free string is sliced (field) and the whole line is capped again
- * (STATE_CHANGE_MAX) so the digest's byte bound holds for any event shape; the render adds the
+ * section. Every free string is sliced (field) and the whole line is capped again at
+ * STATE_CHANGE_MAX so the digest's byte bound holds for any event shape — the cap cut falls on
+ * a word boundary and carries truncateExample's `… (+N chars)` marker, so a cut line can never
+ * read as complete or stand mid-word where a key or value should be; the render adds the
  * timestamp and a roleCell-sliced role, so no unbounded field reaches the page. */
 export function describeStateChange(ev: HarnessEvent): string {
   let text: string;
@@ -114,10 +118,22 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `sessionRetentionDays ${field(ev.from)} → ${field(ev.to)}`;
       break;
     case "config_changed": {
-      const keys = Array.isArray(ev.keys)
-        ? (ev.keys as unknown[]).slice(0, 6).map(field)
-        : [];
+      // Whole keys only, and a marked drop when any are cut (BUGS.md 2026-10-01): the old
+      // slice(0, 6) could leave a mid-word fragment standing in for a key and hid the rest of
+      // the edit with no marker. Keys are dropped from the tail until the line — plus the
+      // marker naming the drop — fits the section cap, so the final STATE_CHANGE_MAX pass
+      // below can never cut the marker or a key mid-word.
+      const keys = Array.isArray(ev.keys) ? (ev.keys as unknown[]).map(field) : [];
       text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
+      let hidden = 0;
+      while (text.length > STATE_CHANGE_MAX) {
+        keys.pop();
+        hidden += 1;
+        text =
+          keys.length > 0
+            ? `config changed: ${keys.join(", ")} … +${hidden} more keys`
+            : `config changed … +${hidden} more keys`;
+      }
       break;
     }
     case "build_stale":
@@ -150,5 +166,5 @@ export function describeStateChange(ev: HarnessEvent): string {
     default:
       text = ev.type;
   }
-  return text.slice(0, STATE_CHANGE_MAX);
+  return truncateExample(text, STATE_CHANGE_MAX);
 }

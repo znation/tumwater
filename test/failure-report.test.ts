@@ -441,7 +441,9 @@ test("the digest replays harness decisions so a wrong response is visible", () =
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.match(md, /## Fleet state changes/);
-  assert.match(md, /budget fallback — \$10\.00 of \$10\.00 daily cost reached; on omlx\/Qwen3-32B/);
+  // Past the 72-char cap the line is cut on a word boundary with a remainder marker
+  // (BUGS.md 2026-10-01), so the cut model name can never read as complete.
+  assert.match(md, /budget fallback — \$10\.00 of \$10\.00 daily cost reached; on … \(\+26 chars\)/);
   assert.match(md, /fleet paused/);
   assert.ok(
     md.indexOf("## Fleet state changes") < md.indexOf("## Outcome by role"),
