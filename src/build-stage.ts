@@ -17,6 +17,51 @@ import { errorMessage, shortSha } from "./text.js";
 /** Hard cap on one compile of the harness; tsc on this codebase takes well under a minute. */
 const COMPILE_TIMEOUT_MS = 5 * 60_000;
 
+/** How old a superseded staged build may get before a later compile deletes it. A completed
+ * compile stays consumable for one episode's tail — the drain hold is capped at
+ * RESTART_DRAIN_MAX_MS (30 min) — so anything older than this grace cannot be swapped by any
+ * live episode and is pure disk: a fleet whose restarts stay blocked (red main, a failing boot
+ * gate) recompiles every new head it lands, and without a prune each landed commit left a full
+ * staged tree behind until the NEXT successful swap cleaned them all up — ~750 MB across one
+ * busy day (observed 2026-09-30: 128 staged builds, none swapped). A successful swap already
+ * wipes every staging; this bounds the accumulation between swaps. */
+export const STAGED_PRUNE_AFTER_MS = 45 * 60_000;
+
+/** Delete staged builds other than `keep` that no live episode can still swap: directories
+ * named for a head (40-hex SHA) whose mtime is older than STAGED_PRUNE_AFTER_MS. Everything
+ * else under the staging root — dist.prev mid-swap, any non-SHA scratch — stays for swapDist's
+ * own cleanup, and anything younger than the grace survives however the episode bookkeeping
+ * turns out. Best-effort: a vanished entry or an unreadable stat only skips that entry, and a
+ * failed deletion is left for the next compile or swap to retry — pruning must never turn a
+ * good compile into a failed one. Returns how many stagings were removed. */
+export function pruneStaleStagings(root: string, keep: string, now = Date.now()): number {
+  const stagingRoot = stagingRootDir(root);
+  let removed = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
+  } catch {
+    return 0; // No staging root yet (first compile) — nothing to prune.
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^[0-9a-f]{40}$/.test(entry.name)) continue;
+    const dir = path.join(stagingRoot, entry.name);
+    if (dir === keep) continue;
+    try {
+      if (now - fs.statSync(dir).mtimeMs < STAGED_PRUNE_AFTER_MS) continue;
+    } catch {
+      continue; // Vanished (or unreadable) mid-scan — nothing to decide about it.
+    }
+    try {
+      removeTree(dir);
+      removed += 1;
+    } catch {
+      // Left for the next compile or swap: dead weight one tick longer is fine.
+    }
+  }
+  return removed;
+}
+
 /** The outcome of one compile attempt. `rejected` marks a compile that produced no compiler
  * verdict — a missing toolchain, a spawn failure (ENOENT and friends), or a tsc that died by
  * signal: a rejection is not a verdict about the tree, so callers must not latch it the way a
@@ -95,6 +140,7 @@ export async function compileStaged(
     }
   }
   const stamped = await stampBuild(root, staged, mainHead);
+  if (stamped) pruneStaleStagings(root, staged); // Superseded stagings die with the new build's success.
   return stamped ? { ok: true, detail: "" } : { ok: false, detail: "could not stamp the compiled build" };
 }
 

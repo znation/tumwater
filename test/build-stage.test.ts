@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { readBuildInfo } from "../src/build-info.js";
-import { compileStaged, swapDist } from "../src/build-stage.js";
+import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build-stage.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
@@ -207,6 +207,39 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   // together, so nothing downstream can mistake a failed attempt's dir for a real build.
   assert.ok(fs.existsSync(path.join(stagingDir(root, bad), "src/a.js")), "the failed compile still emits partial output");
   assert.equal(readBuildInfo(stagingDir(root, bad)), null, "a failed compile leaves the staging dir unstamped");
+});
+
+test("a successful compile prunes superseded stagings past the grace, keeping young and non-SHA entries", async () => {
+  const root = makeRepo();
+  const head = tinyTsProject(root);
+  fs.mkdirSync(path.join(root, "node_modules"));
+  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
+  // Two superseded stagings from heads the fleet landed past: one older than the grace
+  // (dead weight a blocked restart let pile up), one younger (a live episode's drain hold
+  // can still swap it). A non-SHA entry — swapDist's own dist.prev scratch — is never
+  // this prune's concern, however old it is.
+  const old = stagingDir(root, "a".repeat(40));
+  const young = stagingDir(root, "e".repeat(40));
+  for (const dir of [old, young, path.join(stagingRootDir(root), "dist.prev")]) {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "marker"), "x\n");
+  }
+  const aged = (Date.now() - STAGED_PRUNE_AFTER_MS - 60_000) / 1000;
+  fs.utimesSync(old, aged, aged);
+  fs.utimesSync(path.join(stagingRootDir(root), "dist.prev"), aged, aged);
+
+  assert.deepEqual(await compileStaged(root, mirror, head), { ok: true, detail: "" });
+  assert.equal(fs.existsSync(old), false, "the superseded staging past the grace is deleted");
+  assert.equal(fs.existsSync(young), true, "a staging a live episode could still swap survives");
+  assert.equal(fs.existsSync(path.join(stagingRootDir(root), "dist.prev")), true, "non-SHA scratch stays for swapDist's cleanup");
+  assert.ok(fs.existsSync(path.join(stagingDir(root, head), "src/a.js")), "the fresh compile itself is untouched");
+
+  // The prune is idempotent and head-scoped when called directly: an already-gone dir is
+  // skipped, and the kept dir is never its own victim.
+  assert.equal(pruneStaleStagings(root, stagingDir(root, head)), 0, "nothing left past the grace to remove");
+  assert.equal(fs.existsSync(young), true);
+  assert.equal(fs.existsSync(stagingDir(root, head)), true, "the keep dir is never its own victim");
 });
 
 test("compileStaged borrows an ancestor's typescript: a project with no install of its own still rebuilds", async () => {
