@@ -10,7 +10,7 @@ import { enqueueLanding, queuedLandings } from "../src/landing-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
 import { shortSha } from "../src/text.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 // Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a
@@ -96,7 +96,7 @@ test("a pin whose landings hit the merge-conflict cap is discarded, not re-queue
   assert.deepEqual(recovered, { kind: "discarded", sha, summary: "stranded work", attempts: MERGE_CONFLICT_LIMIT });
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin is deleted");
   assert.deepEqual(queuedLandings(root), [], "nothing is queued");
-  const warned = eventsOfType(root, "warning").map((e) => String(e.message));
+  const warned = warningMessages(root);
   assert.ok(
     warned.some((m) => m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`)),
     "the discard is warned, naming the sha",

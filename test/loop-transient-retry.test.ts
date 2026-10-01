@@ -13,7 +13,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { firstRunThenIdle, withPi } from "./fake-pi.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { warningMessages } from "./log-fixtures.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
 
 test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
@@ -33,7 +33,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) => /retrying the pi run once/.test(w)),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
@@ -68,7 +68,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) => /rate-limited the request \(429/.test(w)),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,

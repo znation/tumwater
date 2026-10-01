@@ -14,7 +14,7 @@ import { readEvents } from "../src/event-read.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/landing-queue.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
@@ -336,7 +336,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
     assert.equal(runs.length, 2);
     assert.ok(!runs[0]!.includes("--continue"), "the first attempt was the fresh tick run");
     assert.ok(runs[1]!.includes("--continue"), "the retry continued the crashed run's session");
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
   });
 });
@@ -377,7 +377,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(await refSha(repo, landingRefName("improve")), null);
 
     // The failure is observable as a warning naming the recovery plan.
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) =>
         /failed to pin \S+ by its landing ref — leaving the commit on the branch for next-tick recovery/.test(w),

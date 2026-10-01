@@ -11,7 +11,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
@@ -531,7 +531,7 @@ test("a stalled tool call during review warns in the event feed while the watchd
     clock.advance(30_000);
     const result = await review;
     assert.equal(result.decision, "failed");
-    const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(root);
     assert.ok(
       warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
       `the review stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
@@ -572,7 +572,7 @@ test("a stalled tool call during the verdict follow-up warns in the event feed t
     const { result } = await review;
     assert.equal(result.decision, "failed");
     assert.ok(result.followUpRun); // the warned run's spend still folds into the totals
-    const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(root);
     assert.ok(
       warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
       `the follow-up stall warning names the hung command; got: ${JSON.stringify(warnings)}`,

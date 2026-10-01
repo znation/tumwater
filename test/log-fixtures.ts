@@ -94,6 +94,14 @@ export function eventsOfType(root: string, type: HarnessEvent["type"]): HarnessE
   return readEvents(root).filter((e) => e.type === type);
 }
 
+/** Every warning event's message, coerced to string (the schema leaves message unknown). This
+ * was the dominant way tests read the warnings — `eventsOfType(x, "warning").map((e) =>
+ * String(e.message))` appeared fifteen times across nine files — so the type+coercion pair lives
+ * here once and each call site names just the warnings it wants. */
+export function warningMessages(root: string): string[] {
+  return eventsOfType(root, "warning").map((e) => String(e.message));
+}
+
 /** The harness's own warnings (loop "harness") — the events tests assert on when pinning that a
  * misbehavior was reported instead of silently swallowed. */
 export function harnessWarnings(root: string): HarnessEvent[] {

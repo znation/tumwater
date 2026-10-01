@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { eventsOfType } from "./log-fixtures.js";
+import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -120,7 +120,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) => /refusal contradicted by its own reply/.test(w) && w.includes("seed.txt")),
       `warning names the kept work: ${JSON.stringify(warnings)}`,

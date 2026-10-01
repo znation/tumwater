@@ -13,7 +13,7 @@ import { enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
@@ -495,7 +495,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "dry"), "changed");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dry\): Update x\.txt$/);
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => /reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x\.txt"/.test(w)), JSON.stringify(warnings));
   });
 });
@@ -527,7 +527,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
     // Author run (fresh), follow-up (--continue), reviewer (fresh): the follow-up is the only
     // continuation, so the model sees its own work rather than a cold prompt.
     assert.equal(runs.filter((r) => r.includes("--continue")).length, 1, JSON.stringify(runs));
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => /recovered it with a follow-up turn/.test(w)), JSON.stringify(warnings));
   });
 });

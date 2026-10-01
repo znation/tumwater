@@ -12,7 +12,7 @@ import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config.js";
 import { validateConfig } from "../src/config-validation.js";
 import { piLogPath, worktreePath } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -89,7 +89,7 @@ test("a stalled tool call warns in the event feed with the command named", async
     clock.advance(30_000); // past the stall threshold, then past the quiet window
     const outcome = await tick;
     assert.equal(outcome.result, "quiet_killed");
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
       `the stall warning names the hung command; got: ${JSON.stringify(warnings)}`,

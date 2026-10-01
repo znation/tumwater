@@ -12,7 +12,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { landHead } from "./orchestrator-fixtures.js";
@@ -40,7 +40,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
     assert.ok(!runner.state.lastError);
     // Exactly one pi invocation: no harness-level retry of an already-healthy run.
     assert.equal(fs.readFileSync(counter, "utf8").trim().split("\n").length, 1);
-    const warnings = eventsOfType(repo, "warning").map((e) => String(e.message));
+    const warnings = warningMessages(repo);
     assert.ok(
       !warnings.some((w) => /retrying the pi run once/.test(w)),
       `no retry warning expected: ${JSON.stringify(warnings)}`,

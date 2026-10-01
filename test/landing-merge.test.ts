@@ -11,7 +11,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/event-read.js";
 import type { PiRunResult } from "../src/pi.js";
-import { eventsOfType } from "./log-fixtures.js";
+import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
@@ -642,7 +642,7 @@ test("a conflict resolution that duplicates ## Done is blocked with a warning, m
 
   assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  const warnings = warningMessages(root);
   assert.ok(
     warnings.some((m) => m.includes("PLANS.md") && m.includes("## Done")),
     `the warning names the file and the heading; got: ${JSON.stringify(warnings)}`,
@@ -673,7 +673,7 @@ test("a conflict resolution that files a new plan under a single ## Done is bloc
 
   assert.equal(result, "merge_blocked", "the misfiled new plan blocks the landing");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  const warnings = warningMessages(root);
   assert.ok(
     warnings.some((m) => m.includes("PLANS.md") && m.includes("## Planned")),
     `the warning names the file and where the plan belongs; got: ${JSON.stringify(warnings)}`,
@@ -707,7 +707,7 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
 
   assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
-  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  const warnings = warningMessages(root);
   assert.ok(
     warnings.some((m) => m.includes("PLANS.md") && m.includes('## Done')),
     `the warning is the structure reason, not a check failure; got: ${JSON.stringify(warnings)}`,
