@@ -13,8 +13,51 @@
  * registry (closeMenus, openMenu), the poll re-render (refresh, hoisted from gui-client-boot.ts
  * later in the join), the sound state it flips (soundMuted, setSoundMuted — gui-client-sound.ts
  * earlier in the join), and the shared page state it reads and invalidates (lastStatus,
- * lastPaint). */
-export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
+ * lastPaint). Its own two popovers share their scaffolding through openPopover (each
+ * supplies the html plus an onClosed that resets its flag and re-renders the slot), and
+ * its two POSTs share their send-toast-close-repaint tail through postAction. */
+export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
+  // The scaffolding both sidebar popovers share (the cap editor, the pause menu): close
+  // whatever is open, build the popover element into the slot's wrap, and register the
+  // global close that outside clicks and Esc route through — remove the popover, drop the
+  // slot's paint cache so the next poll repaints from scratch, and run onClosed, which
+  // resets the opener's flag and re-renders the slot from the last status.
+  function openPopover(wrapId, opts) {
+    closeMenus();
+    const wrap = $(wrapId);
+    const pop = document.createElement("div");
+    pop.className = "popover" + (opts.menu ? " menu" : "");
+    pop.setAttribute("role", opts.role);
+    if (opts.label) pop.setAttribute("aria-label", opts.label);
+    pop.innerHTML = opts.html;
+    wrap.appendChild(pop);
+    openMenu = {
+      root: wrap,
+      close: () => {
+        pop.remove();
+        delete lastPaint[wrapId];
+        opts.onClosed();
+      },
+    };
+    return pop;
+  }
+  // The tail both operator POSTs share: send it; on failure toast the error and leave the
+  // control showing what the server last reported, on success toast the ok message, close
+  // any open popover, and repaint from the next status poll.
+  async function postAction(url, body, okMsg) {
+    try {
+      await postJson(url, body);
+    } catch (e) {
+      showFlash("error: " + e.message);
+      return;
+    }
+    showFlash(okMsg);
+    closeMenus();
+    refresh();
+  }
+  // shared-operator:end
+
+  // budget-edit:start
   let budgetEditing = false;
   function budgetTone(b) {
     if (!(b.capUsd > 0)) return "";
@@ -46,31 +89,23 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
   function openBudgetEditor() {
     const b = lastStatus && lastStatus.budget;
     if (!b || b.free) return;
-    closeMenus();
-    budgetEditing = true;
-    const wrap = $("budgetwrap");
-    const pop = document.createElement("div");
-    pop.className = "popover";
-    pop.setAttribute("role", "dialog");
-    pop.setAttribute("aria-label", "Daily spend cap");
-    // Pre-filled with the current cap; empty means no cap.
-    pop.innerHTML = "<label for='budgetinput'>Daily spend cap</label>" +
-      "<div class='input-prefix'><span>$</span><input type='number' min='0' step='0.01' id='budgetinput' value='" +
-      esc(b.capUsd > 0 ? String(b.capUsd) : "") + "' placeholder='no cap'></div>" +
-      "<p class='hint'>" + esc("Spent today: " + fmtUsd(b.spentUsd) + ". At the cap the loops " +
-        (b.fallback ? "switch to the free fallback model" : "pause") + " until midnight. Leave it empty for no cap.") + "</p>" +
-      "<div class='popover-actions'><button type='button' class='btn btn-sm' id='budgetcancel'>Cancel</button>" +
-      "<button type='button' class='btn btn-sm btn-primary' id='budgetset'>Save</button></div>";
-    wrap.appendChild(pop);
-    openMenu = {
-      root: wrap,
-      close: () => {
-        pop.remove();
+    openPopover("budgetwrap", {
+      role: "dialog",
+      label: "Daily spend cap",
+      // Pre-filled with the current cap; empty means no cap.
+      html: "<label for='budgetinput'>Daily spend cap</label>" +
+        "<div class='input-prefix'><span>$</span><input type='number' min='0' step='0.01' id='budgetinput' value='" +
+        esc(b.capUsd > 0 ? String(b.capUsd) : "") + "' placeholder='no cap'></div>" +
+        "<p class='hint'>" + esc("Spent today: " + fmtUsd(b.spentUsd) + ". At the cap the loops " +
+          (b.fallback ? "switch to the free fallback model" : "pause") + " until midnight. Leave it empty for no cap.") + "</p>" +
+        "<div class='popover-actions'><button type='button' class='btn btn-sm' id='budgetcancel'>Cancel</button>" +
+        "<button type='button' class='btn btn-sm btn-primary' id='budgetset'>Save</button></div>",
+      onClosed: () => {
         budgetEditing = false;
-        delete lastPaint.budgetwrap;
         renderBudgetBadge(lastStatus);
       },
-    };
+    });
+    budgetEditing = true;
     const input = $("budgetinput");
     input.focus({ preventScroll: true });
     input.select();
@@ -86,15 +121,9 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
       return;
     }
     const value = input.value === "" ? 0 : Number(input.value);
-    try {
-      await postJson("/api/budget", { maxDailyCostUsd: value });
-    } catch (e) {
-      showFlash("error: " + e.message); // the editor stays open so the value can be fixed
-      return;
-    }
-    showFlash(value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed");
-    closeMenus();
-    refresh();
+    // A failure leaves the editor open so the value can be fixed.
+    await postAction("/api/budget", { maxDailyCostUsd: value },
+      value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed");
   }
   onClick((t, ev) => {
     if (t.closest("#budgetbadge")) {
@@ -145,43 +174,29 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // budget-edit:start
     paintPanel("pausewrap", pauseControlHtml(d));
   }
   function openPauseMenu() {
-    closeMenus();
-    pauseMenuOpen = true;
-    const wrap = $("pausewrap");
-    const pop = document.createElement("div");
-    pop.className = "popover menu";
-    pop.setAttribute("role", "menu");
-    pop.innerHTML = "<div class='menu-title'>Pause the fleet</div>" +
-      PAUSE_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-pause='" + c[0] + "'>" +
-        icon(c[0] ? "clock" : "pause") + esc(c[1]) + "</button>").join("") +
-      "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, and the director keeps running your prompts.</p>";
-    wrap.appendChild(pop);
-    openMenu = {
-      root: wrap,
-      close: () => {
-        pop.remove();
+    const pop = openPopover("pausewrap", {
+      menu: true,
+      role: "menu",
+      html: "<div class='menu-title'>Pause the fleet</div>" +
+        PAUSE_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-pause='" + c[0] + "'>" +
+          icon(c[0] ? "clock" : "pause") + esc(c[1]) + "</button>").join("") +
+        "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, and the director keeps running your prompts.</p>",
+      onClosed: () => {
         pauseMenuOpen = false;
-        delete lastPaint.pausewrap;
         renderPauseBadge(lastStatus);
       },
-    };
+    });
+    pauseMenuOpen = true;
     const first = pop.querySelector("button");
     if (first) first.focus({ preventScroll: true });
   }
   async function setFleetPause(paused, forSeconds) {
     const body = { paused: paused };
     if (paused && forSeconds > 0) body.forSeconds = forSeconds;
-    try {
-      await postJson("/api/pause", body);
-    } catch (e) {
-      showFlash("error: " + e.message); // nothing changed; the control still shows the real state
-      return;
-    }
-    showFlash(paused
+    // A failure changes nothing; the control still shows the real state.
+    await postAction("/api/pause", body, paused
       ? "Fleet paused" + (forSeconds > 0 ? " for " + humanSeconds(forSeconds) : "") + " — in-flight ticks finish"
       : "Fleet resumed");
-    closeMenus();
-    refresh();
   }
   onClick((t, ev) => {
     if (t.closest("#pausebadge")) {

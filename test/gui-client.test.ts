@@ -293,7 +293,7 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setFleetPause(paused: boolean, forSeconds?: number): Promise<void>;
-  }>(["format", "click-delegate", "budget-edit", "pause-control"], ["budgetCardHtml", "saveBudget", "pauseControlHtml", "setFleetPause"], {
+  }>(["format", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "saveBudget", "pauseControlHtml", "setFleetPause"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
