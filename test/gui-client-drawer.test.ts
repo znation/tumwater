@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
 import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui-client-drawer.js";
-import { iconStub } from "./gui-client-scope.js";
+import { clientRegion, ESC_LINE, iconStub } from "./gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui-client-drawer.ts): the open/close
 // state machine over loops, backlog entries, and the land queue with its #loop/<role> hash
@@ -37,20 +36,11 @@ type DrawerScope = {
   refreshDrawer(): Promise<void>;
 };
 
-/** One marked region of the served script (the same extraction clientScope does). */
-function region(name: string): string {
-  const start = GUI_CLIENT_JS.indexOf(`// ${name}:start`);
-  const end = GUI_CLIENT_JS.indexOf(`// ${name}:end`);
-  if (start < 0 || end < start) throw new Error(`no "${name}" region in the dashboard script`);
-  return GUI_CLIENT_JS.slice(start, end);
-}
-
 /** Run the drawer blob after the script's own esc() and the real format and view-model
  * regions, with `inject` bound as free variables, and hand back the names asked for. */
 function drawerScope(names: string[], inject: Record<string, unknown>): DrawerScope {
-  const escLine = GUI_CLIENT_JS.match(/^\s*const esc = .*$/m)?.[0] ?? "";
   const keys = Object.keys(inject);
-  const code = [escLine, region("format"), region("view-model"), GUI_CLIENT_DRAWER_JS,
+  const code = [ESC_LINE, clientRegion("format"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS,
     `return { ${names.join(", ")} };`].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => DrawerScope;
   return run(...keys.map((k) => inject[k]));
