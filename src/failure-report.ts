@@ -4,7 +4,8 @@
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
  * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
 import type { TickResult } from "./tick-outcome.js";
-import { type ClusterSection, type FailureReportData, type OutcomeRow, type SpendCell } from "./failure-data.js";
+import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
+import { type SpendCell } from "./time-spend.js";
 import { plural, shortSha, usd } from "./text.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
