@@ -1,15 +1,29 @@
+import {
+  BACKOFF_KEYS,
+  CHECK_KEYS,
+  CUSTOM_LOOP_KEYS,
+  CUSTOM_NAME_RE,
+  CUSTOM_TASK_MAX_CHARS,
+  HARNESS_PI_FLAGS,
+  MODEL_TRIPLE_KEYS,
+  REVIEW_KEYS,
+  ROLE_ENTRY_KEYS,
+  TOP_LEVEL_KEYS,
+  THINKING_LEVELS,
+  ROLE_INSTRUCTIONS_MAX_CHARS,
+} from "./config-schema.js";
 import { allRoleIds } from "./roles.js";
 import { isJsonObject } from "./json-object.js";
 import { truncate } from "./text.js";
 import { parseQuietHours } from "./quiet-hours.js";
 
-/** Schema validation for tumwater.json: the key lists (the one source of truth for what a valid
- * file may hold at each level, kept in sync with TumwaterConfig/BackoffConfig/RoleConfig in
- * config-schema.ts) and validateConfig, the gate every load and save passes through (config.ts's
- * load/save, config-write.ts's budget editing and director config requests). Split out of
- * config.ts — which keeps defaultConfig and the read side (load/save/cache, per-role views) —
- * because this is a self-contained concern with its own sync obligation: it depends only on the
- * role catalog (allRoleIds), not on any persistence. */
+/** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
+ * through (config.ts's load/save, config-write.ts's budget editing and director config
+ * requests), judged against the key allow-lists and value shapes that live beside the types
+ * they mirror in config-schema.ts. Split out of config.ts — which keeps defaultConfig and the
+ * read side (load/save/cache, per-role views) — because this is a self-contained concern:
+ * it depends only on the schema, the role catalog (allRoleIds), and message wording, not on
+ * any persistence. */
 
 /** The longest value rendered in an error message. A wrongly-typed section (the whole `roles`
  * object under `autoRestart`, say) would otherwise dump kilobytes into a message meant to be
@@ -34,95 +48,6 @@ function typeName(v: unknown): string {
   if (Array.isArray(v)) return "an array";
   return typeof v;
 }
-
-/** Every key tumwater.json may hold, by level. Anything else is a typo that would be
- * silently ignored at runtime — the intended setting falls back to its default with no
- * warning — so it fails fast here instead (e.g. `tickTimeoutSecondss` does nothing).
- * Keep in sync with TumwaterConfig/BackoffConfig/RoleConfig in config-schema.ts. */
-export const TOP_LEVEL_KEYS = [
-  "provider",
-  "model",
-  "thinking",
-  "baseBranch",
-  "agentBin",
-  "check",
-  "piArgs",
-  "maxConcurrent",
-  "landBatchMax",
-  "maxConcurrentChecks",
-  "minTickIntervalSeconds",
-  "tickTimeoutSeconds",
-  "quietTimeoutSeconds",
-  "toolCallStallSeconds",
-  "logMaxBytes",
-  "sessionRetentionDays",
-  "maxDailyCostUsd",
-  "quietHours",
-  "notify",
-  "fallbackModel",
-  "thrashTurns",
-  "thrashMinutes",
-  "idleBackoff",
-  "autoRestart",
-  "review",
-  "customLoops",
-  "roles",
-];
-const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
-const ROLE_ENTRY_KEYS = [
-  "enabled",
-  "instructions",
-  "provider",
-  "model",
-  "thinking",
-  "minTickIntervalSeconds",
-];
-const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
-/** The `check` section's keys (plans/portability.md §6/7): the project's own verification
- * command, the optional cheaper gate-only command (PLANS.md Land-queue speed 3e), their
- * working directory (relative to the worktree), and their timeout. */
-const CHECK_KEYS = ["command", "gateCommand", "cwd", "timeoutSeconds"];
-/** The provider/model/thinking triple every model-override section shares — top level,
- * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
- * mental model and one validator cover them all. */
-const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
-/** pi's accepted `--thinking` levels (pi's own `--help`). pi WARNS and falls back to its own
- * default on any other value rather than failing, so a misspelled level would silently run the
- * fleet at the wrong reasoning depth — the same silent-ignore class this validator exists to
- * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
-/** pi flags the harness passes itself (src/pi.ts's piArgs: `--print --mode json
- * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
- * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
- * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes
- * every tick's stream unparseable, `--model` spends on a model tumwater.json never named, and
- * `--continue` resumes a session the harness did not choose. Each flag maps to why it is
- * refused; the model triple points at the setting that owns it. */
-const HARNESS_PI_FLAGS = new Map<string, string>([
-  ["--print", "the harness already runs pi non-interactively"],
-  ["-p", "the harness already runs pi non-interactively"],
-  ["--mode", "the harness requires pi's json output mode"],
-  ["--session-dir", "the harness owns each role's session directory"],
-  ["--continue", "the harness decides when to resume a session"],
-  ["-c", "the harness decides when to resume a session"],
-  ["-n", "the harness names the session"],
-  ["--name", "the harness names the session"],
-  ["--provider", "set the top-level or per-role `provider` instead"],
-  ["--model", "set the top-level or per-role `model` instead"],
-  ["--thinking", "set the top-level or per-role `thinking` instead"],
-]);
-const CUSTOM_LOOP_KEYS = ["name", "task"];
-/** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
- * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
-const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-/** A custom loop's task rides into every one of that loop's tick prefills, so it is capped:
- * unbounded text would be a standing per-tick cost. */
-const CUSTOM_TASK_MAX_CHARS = 4096;
-
-/** A role's extra instructions ride into every one of that role's tick prefills, so they are
- * capped like a custom loop's task: unbounded text would be a standing per-tick cost (and
- * could crowd the prompt toward the model's context ceiling). */
-const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;
 
 /** Collect the keys present in `obj` but not in `known` into problems, naming where they
  * were found and listing what is valid so one edit fixes them. */

@@ -1,5 +1,8 @@
 /** The tumwater.json config schema shape: the types `config-validation.ts` validates a
- * loaded config into and every config read site consumes. Split out of the former
+ * loaded config into and every config read site consumes, plus the key allow-lists and
+ * value shapes (`TOP_LEVEL_KEYS` and friends) that say what a valid file may hold at each
+ * level — the schema facts, single-homed here so adding a key edits one file: its type,
+ * its default (config.ts), and its allow-list entry sit beside each other. Split out of the former
  * types.ts grab-bag — the runtime types a tick produces now live beside their consumers
  * (TickResult and TickOutcome in tick-outcome.ts, LoopState in loop-state.ts, HarnessEvent
  * in events.ts, LandingEntry in landing-queue.ts, the pi-run types in pi.ts) — so the
@@ -233,3 +236,104 @@ export interface TumwaterConfig {
   customLoops: CustomLoop[];
   roles: Record<string, RoleConfig>;
 }
+
+/** Every key tumwater.json may hold, by level. Anything else is a typo that would be
+ * silently ignored at runtime — the intended setting falls back to its default with no
+ * warning — so validation (config-validation.ts's checkKnownKeys, fed from these tables)
+ * fails fast instead (e.g. `tickTimeoutSecondss` does nothing). Kept in sync with the
+ * interfaces above in this same file: adding a key edits the interface and its level's
+ * list side by side. */
+export const TOP_LEVEL_KEYS = [
+  "provider",
+  "model",
+  "thinking",
+  "baseBranch",
+  "agentBin",
+  "check",
+  "piArgs",
+  "maxConcurrent",
+  "landBatchMax",
+  "maxConcurrentChecks",
+  "minTickIntervalSeconds",
+  "tickTimeoutSeconds",
+  "quietTimeoutSeconds",
+  "toolCallStallSeconds",
+  "logMaxBytes",
+  "sessionRetentionDays",
+  "maxDailyCostUsd",
+  "quietHours",
+  "notify",
+  "fallbackModel",
+  "thrashTurns",
+  "thrashMinutes",
+  "idleBackoff",
+  "autoRestart",
+  "review",
+  "customLoops",
+  "roles",
+];
+
+export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
+
+export const ROLE_ENTRY_KEYS = [
+  "enabled",
+  "instructions",
+  "provider",
+  "model",
+  "thinking",
+  "minTickIntervalSeconds",
+];
+
+export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
+
+/** The `check` section's keys (plans/portability.md §6/7): the project's own verification
+ * command, the optional cheaper gate-only command (PLANS.md Land-queue speed 3e), their
+ * working directory (relative to the worktree), and their timeout. */
+export const CHECK_KEYS = ["command", "gateCommand", "cwd", "timeoutSeconds"];
+
+/** The provider/model/thinking triple every model-override section shares — top level,
+ * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one
+ * mental model and one validator cover them all. */
+export const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
+
+/** pi's accepted `--thinking` levels (pi's own `--help`). pi WARNS and falls back to its own
+ * default on any other value rather than failing, so a misspelled level would silently run the
+ * fleet at the wrong reasoning depth — the same silent-ignore class validation exists to
+ * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
+export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+
+/** pi flags the harness passes itself (src/pi.ts's piArgs: `--print --mode json
+ * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
+ * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
+ * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes
+ * every tick's stream unparseable, `--model` spends on a model tumwater.json never named, and
+ * `--continue` resumes a session the harness did not choose. Each flag maps to why it is
+ * refused; the model triple points at the setting that owns it. */
+export const HARNESS_PI_FLAGS = new Map<string, string>([
+  ["--print", "the harness already runs pi non-interactively"],
+  ["-p", "the harness already runs pi non-interactively"],
+  ["--mode", "the harness requires pi's json output mode"],
+  ["--session-dir", "the harness owns each role's session directory"],
+  ["--continue", "the harness decides when to resume a session"],
+  ["-c", "the harness decides when to resume a session"],
+  ["-n", "the harness names the session"],
+  ["--name", "the harness names the session"],
+  ["--provider", "set the top-level or per-role `provider` instead"],
+  ["--model", "set the top-level or per-role `model` instead"],
+  ["--thinking", "set the top-level or per-role `thinking` instead"],
+]);
+
+export const CUSTOM_LOOP_KEYS = ["name", "task"];
+
+/** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
+ * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
+export const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+/** A custom loop's task rides into every one of that loop's tick prefills, so it is capped:
+ * unbounded text would be a standing per-tick cost. */
+export const CUSTOM_TASK_MAX_CHARS = 4096;
+
+/** A role's extra instructions ride into every one of that role's tick prefills, so they are
+ * capped like a custom loop's task: unbounded text would be a standing per-tick cost (and
+ * could crowd the prompt toward the model's context ceiling). */
+export const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;

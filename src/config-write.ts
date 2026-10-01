@@ -5,12 +5,12 @@
  * loading, saving, and the role-selection helpers — lives in config.ts, and the per-run
  * model derivations in config-views.ts. */
 import fs from "node:fs";
-import type { TumwaterConfig } from "./config-schema.js";
+import { TOP_LEVEL_KEYS, type TumwaterConfig } from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage, suggestClosest } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
-import { show, TOP_LEVEL_KEYS, validateConfig } from "./config-validation.js";
+import { show, validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
 import { parseQuietHours } from "./quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
