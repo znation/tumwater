@@ -33,11 +33,12 @@ interface ScriptedStep {
 }
 
 /** A Redeployer stand-in that answers each poll with its script's next step and publishes the
- * current step's build status. Cast through unknown: Redeployer is a class with private state,
+ * current step's build status. While `ready` returns false every poll answers "none" without
+ * advancing the script, so a step can wait on fleet state instead of a poll count. Cast through unknown: Redeployer is a class with private state,
  * and the orchestrator touches only poll/status/forceRestart plus the build sha it logs at
  * startup. Also returns how many polls ran, so a hold-length assertion cannot pass by accident
  * of a stalled run. */
-function scriptedRedeployer(steps: ScriptedStep[]): {
+function scriptedRedeployer(steps: ScriptedStep[], ready: () => boolean = () => true): {
   redeployer: Redeployer;
   polls: () => number;
 } {
@@ -50,6 +51,7 @@ function scriptedRedeployer(steps: ScriptedStep[]): {
       selfHosted: true,
       forceRestart() {},
       async poll() {
+        if (!ready()) return "none";
         const step = current();
         i = Math.min(i + 1, steps.length - 1);
         return step.action ?? "none";
@@ -181,25 +183,25 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
   const script = `echo started >> '${runLog}'\nsleep 120\necho finished >> '${runLog}'\n`;
   const restore = fakePi(script);
   const controller = new AbortController();
-  // Several idle polls let the startup tick acquire its permit and park inside the hung pi
-  // run; only then does the restart verdict land, with a tick in flight.
-  const { redeployer } = scriptedRedeployer([{}, {}, {}, {}, {}, {}, { action: "restart" }]);
+  // The restart verdict waits for the startup tick to park inside the hung pi run, so it lands
+  // with a tick in flight. A fixed count of idle polls raced the tick's worktree setup: under
+  // load the restart cut the tick off before pi ever started (2026-10-01 suite flake).
+  const piStarted = () => fs.existsSync(runLog) && fs.readFileSync(runLog, "utf8").includes("started");
+  const { redeployer } = scriptedRedeployer([{ action: "restart" }], piStarted);
   const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,
   });
-  // A restart verdict must end the run on its own; if the abort path breaks, the race turns
-  // the hang into a failure instead of a stalled suite.
-  const timeout = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error("restart verdict did not end the run")), 30_000);
-    t.unref();
-  });
   try {
-    await waitFor(
-      () => fs.existsSync(runLog) && fs.readFileSync(runLog, "utf8").includes("started"),
-      "the role tick's pi run to start",
-    );
+    await waitFor(piStarted, "the role tick's pi run to start");
+    // A restart verdict must end the run on its own; if the abort path breaks, the race turns
+    // the hang into a failure instead of a stalled suite. Armed only now, so a slow startup
+    // tick cannot spend the restart's budget.
+    const timeout = new Promise<never>((_, reject) => {
+      const t = setTimeout(() => reject(new Error("restart verdict did not end the run")), 30_000);
+      t.unref();
+    });
     const exit = await Promise.race([done, timeout]);
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
     assert.equal(
