@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-services.js";
-import type { ProcessProbe } from "../src/process-table.js";
+import { systemProcessProbe, type ProcessProbe } from "../src/process-table.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
@@ -49,6 +49,18 @@ test("a daemon fleet samples launchservicesd on its first poll and warns once th
     controller.abort();
     await done.catch(() => {});
     restore();
+  }
+});
+
+test("the real probe reads launchservicesd's port count off the live system without rejecting", async () => {
+  // The host-dependent check the gating tier carried until 2026-09-30 (BUGS.md): a saturated
+  // host could not finish `top -l 1` inside its timeout and marked main red. It lives here,
+  // in the e2e tier, so the wiring to the real `top` stays exercised without gating on it.
+  const ports = await systemProcessProbe.launchServicesPorts();
+  if (process.platform === "darwin") {
+    assert.ok(ports === null || (Number.isInteger(ports) && ports > 0), `a live count or an honest null: ${ports}`);
+  } else {
+    assert.equal(ports, null);
   }
 });
 

@@ -13,6 +13,7 @@ import {
 import {
   makeRunMarker,
   parseLsofCwds,
+  readLaunchServicesPorts,
   parsePsOutput,
   parseTopPorts,
   pidsMarkedInPs,
@@ -231,10 +232,31 @@ test("systemProcessProbe.cwds rejects when no lookup could run at all — no lso
   }
 });
 
-test("systemProcessProbe reads launchservicesd's port count on macOS, and none elsewhere", async () => {
-  const ports = await systemProcessProbe.launchServicesPorts();
-  if (process.platform === "darwin") assert.ok(Number.isInteger(ports) && (ports ?? 0) > 0, `a live count: ${ports}`);
-  else assert.equal(ports, null);
+test("readLaunchServicesPorts answers null off macOS without asking for a sample", async () => {
+  let ran = false;
+  const ports = await readLaunchServicesPorts(async () => {
+    ran = true;
+    return "";
+  });
+  if (process.platform === "darwin") assert.ok(ran, "on macOS the runner is asked for the sample");
+  else {
+    assert.equal(ports, null);
+    assert.equal(ran, false, "off macOS no sample is taken");
+  }
+});
+
+test("readLaunchServicesPorts parses an injected top sample on macOS and answers null when the sample fails", async () => {
+  const sample = ["PID    COMMAND          #PORTS", "574    launchservicesd  698"].join("\n");
+  if (process.platform === "darwin") {
+    assert.equal(await readLaunchServicesPorts(async () => sample), 698);
+  }
+  assert.equal(
+    await readLaunchServicesPorts(async () => {
+      throw new Error("top is wedged");
+    }),
+    null,
+    "a failing sample is a null, not a rejection",
+  );
 });
 
 test("parseTopPorts reads the named process's #PORTS from a top sample, the largest of several", () => {

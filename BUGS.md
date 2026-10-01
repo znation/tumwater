@@ -40,13 +40,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **How to reproduce:** make the first readiness assertion fail (e.g. a 0 ms deadline) and run `npm run test process`: the victim outlives the run with PPID 1.
 - **Expected:** cleanup is armed the moment the victim exists (`t.after` killing `child.pid`, or a `try` that begins right after `spawn`), so no assertion failure can strand it.
 
-### The gating suite's "systemProcessProbe reads launchservicesd's port count on macOS, and none elsewhere" test asserts a live `top` sample, so a host too loaded to finish `top -l 1` in 10 s marks main red (found by human-directed investigation 2026-09-30)
-
-- **Symptom:** the 2026-09-30 10:26:46 baseline at b683f57e failed one test, `a live count: null`, and the fleet logged "main b683f57e is red … code merges blocked until main is green" until improve's baseline passed at 10:30:08. That suite run took 212 s against its usual ~40 s, so the host was saturated.
-- **Cause:** the test (test/process.test.ts) calls the real `systemProcessProbe.launchServicesPorts()`, which runs `top -l 1 -stats pid,command,ports` under a 10 s timeout (PROBE_TIMEOUT_MS, src/process-table.ts) and turns any failure, timeout included, into null; on darwin the test then requires a positive integer. Its outcome depends on host load, not on the code.
-- **How to reproduce:** run the test while the machine is saturated, or with a `top` on PATH that takes longer than 10 s.
-- **Expected:** the gating tier does not hinge on a live system sample — e.g. inject the `top` output (parseTopPorts is already tested on its own) and keep any real-`top` check out of the tier that decides main's color.
-
 ### Three more suite tests failed under fleet load on 2026-09-30 and passed on the gate's retry, and a fourth flake cannot be named from the events (found by human-directed investigation 2026-09-30)
 
 - **Symptom:** the gate logged `gate check failed then passed on retry — flaky:` for each of these, none during a host sleep (the host was awake 09:37–11:13 and from 13:54 on):
@@ -59,6 +52,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected:** each test's timing assumptions hold under the fleet's own load.
 
 ## Fixed
+
+### The gating suite's "systemProcessProbe reads launchservicesd's port count on macOS, and none elsewhere" test asserts a live `top` sample, so a host too loaded to finish `top -l 1` in 10 s marks main red (found by human-directed investigation 2026-09-30, fixed 2026-10-01 by bugfix loop)
+
+- **Symptom:** the 2026-09-30 10:26:46 baseline at b683f57e failed one test, `a live count: null`, and the fleet logged "main b683f57e is red … code merges blocked until main is green" until improve's baseline passed at 10:30:08. That suite run took 212 s against its usual ~40 s, so the host was saturated.
+- **Cause:** the test (test/process.test.ts) calls the real `systemProcessProbe.launchServicesPorts()`, which runs `top -l 1 -stats pid,command,ports` under a 10 s timeout (PROBE_TIMEOUT_MS, src/process-table.ts) and turns any failure, timeout included, into null; on darwin the test then requires a positive integer. Its outcome depends on host load, not on the code.
+- **How to reproduce:** run the test while the machine is saturated, or with a `top` on PATH that takes longer than 10 s.
+- **Expected:** the gating tier does not hinge on a live system sample — e.g. inject the `top` output (parseTopPorts is already tested on its own) and keep any real-`top` check out of the tier that decides main's color.
+- **Fixed:** the probe's core is now `readLaunchServicesPorts(runTop)` (src/process-table.ts), which keeps the darwin guard and the never-rejects contract with the `top` runner injected; the gating suite feeds it a canned sample and a failing runner, and the real-`top` wiring check moved to the e2e tier (test/launch-services.e2e.test.ts), which the gate does not run.
+- **Validation gap:** slow-check — the only verification was a real `top -l 1` whose runtime under load could exceed the probe's own 10 s timeout, so the failure surfaced as a red main minutes after a change that had passed the gate; confirming a fix needed a hermetic injected sample, not a slower re-run.
 
 ### A no_change tick keeps the previous tick's summary, so both dashboards render "No change" beside the description of work that landed: `lastResult` is set on every completed tick but `lastSummary` only when the outcome carries one (found by human-directed investigation 2026-09-30, fixed 2026-09-30 by bugfix loop)
 

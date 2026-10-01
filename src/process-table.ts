@@ -104,6 +104,19 @@ export function parseTopPorts(stdout: string, command: string): number | null {
   return ports;
 }
 
+/** launchServicesPorts' core, with the `top` runner injected: the gating suite must not hinge
+ * on a live system sample (BUGS.md 2026-09-30), so tests feed a canned `top` output — or a
+ * failing runner — and the real probe keeps the platform guard and the timeout here. Null off
+ * macOS and when the sample cannot be read or parsed; never rejects. */
+export async function readLaunchServicesPorts(runTop: () => Promise<string>): Promise<number | null> {
+  if (process.platform !== "darwin") return null;
+  try {
+    return parseTopPorts(await runTop(), "launchservicesd");
+  } catch {
+    return null;
+  }
+}
+
 /** The host's real probe: one `ps` for the table, and for cwds one `lsof` call over every
  * asked pid (macOS and other non-Linux Unixes) or a readlink of `/proc/<pid>/cwd` each
  * (Linux, where the kernel suffixes a removed directory with " (deleted)"). `-A` and `-ww`
@@ -170,15 +183,12 @@ export const systemProcessProbe: ProcessProbe = {
     }
   },
   async launchServicesPorts() {
-    if (process.platform !== "darwin") return null;
-    try {
+    return readLaunchServicesPorts(async () => {
       const { stdout } = await execFileAsync("top", ["-l", "1", "-stats", "pid,command,ports"], {
         timeout: PROBE_TIMEOUT_MS,
       });
-      return parseTopPorts(stdout, "launchservicesd");
-    } catch {
-      return null;
-    }
+      return stdout;
+    });
   },
 };
 
