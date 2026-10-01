@@ -31,12 +31,26 @@ Usage:
                                    resolution); --json prints machine-readable usage data — the
                                    collector's own payload, not the Markdown render
   tumwater report --failures [--days N]
-                                   Markdown failure digest — tick outcomes, deltas, clustered errors, and fleet state changes (default 14 days)
+                                   Markdown failure digest — tick outcomes, deltas,
+                                   clustered errors, and fleet state changes (default
+                                   14 days)
   tumwater report --since <duration> [--json]
-                                   Totals over a trailing window (capped at 7d) — tokens/ticks/commits/cost since a point in time; totals also include landing runs (reviewer + conflict resolution); not combinable with --days or --failures
-  tumwater doctor [--json]         Pre-flight check: node, git, repo, config, fallback model, pi, locks, build, orphans, mach ports (read-only; exit 0/1; --json prints the report object — header, the checks array with level, name, and detail, and verdict)
+                                   Totals over a trailing window (capped at 7d) —
+                                   tokens/ticks/commits/cost since a point in time; totals
+                                   also include landing runs (reviewer + conflict
+                                   resolution); not combinable with --days or --failures
+  tumwater doctor [--json]         Pre-flight check: node, git, repo, config, fallback
+                                   model, pi, locks, build, orphans, mach ports
+                                   (read-only; exit 0/1; --json prints the report object —
+                                   header, the checks array with level, name, and detail,
+                                   and verdict)
   tumwater config [get <key> | set <key> <value>]
-                                   Show the effective config (defaults + tumwater.json) as JSON; get one key's resolved value as JSON; set one top-level key — quietHours ("23:00-07:00" or ""), maxDailyCostUsd, fallbackModel, among others (JSON-parsed when parseable, else a literal string) — and confirm it
+                                   Show the effective config (defaults + tumwater.json) as
+                                   JSON; get one key's resolved value as JSON; set one
+                                   top-level key — quietHours ("23:00-07:00" or ""),
+                                   maxDailyCostUsd, fallbackModel, among others
+                                   (JSON-parsed when parseable, else a literal string) —
+                                   and confirm it
   tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
@@ -88,14 +102,26 @@ Usage:
                                    and are NOT consumed); --json prints the collector's payload
                                    as machine-readable data
   tumwater prompt <text...>        Queue a prompt for the director loop
-  tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)
-  tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop (--json prints the {prompts} array as machine-readable data)
-  tumwater prompt --cancel <n>     Remove the Nth queued prompt as --list shows them; when several loops show that N, name one with --role <id>
-  tumwater reset-counters [--role <id>]   Zero lifetime ticks/commits/tokens/cost (fresh observation window; today's budget spend is kept — the daily cap cannot be reset past)
-  tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
-  tumwater abort --role <id>              Abort that loop's in-flight tick (work discarded; the loop keeps running)
-  tumwater pause [--role <id>] [--for <dur>] [--reason <text>]   Stop role loops (or just the named loop) starting new ticks; --reason states why the whole FLEET is paused (no per-role reason); --for auto-resumes (capped at 90d)
-  tumwater resume [--role <id>]           Lift a fleet or per-role pause
+  tumwater prompt --role <id> <text...>
+                                   Queue a prompt for that loop's next tick (wakes it)
+  tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop
+                                   (--json prints the {prompts} array as
+                                   machine-readable data)
+  tumwater prompt --cancel <n>     Remove the Nth queued prompt as --list shows them; when
+                                   several loops show that N, name one with --role <id>
+  tumwater reset-counters [--role <id>]
+                                   Zero lifetime ticks/commits/tokens/cost (fresh
+                                   observation window; today's budget spend is kept — the
+                                   daily cap cannot be reset past)
+  tumwater wake [--role <id>]      Wake a backed-off fleet — the named roles (or all) tick
+                                   within one poll
+  tumwater abort --role <id>       Abort that loop's in-flight tick (work discarded; the loop
+                                   keeps running)
+  tumwater pause [--role <id>] [--for <dur>] [--reason <text>]
+                                   Stop role loops (or just the named loop) starting new
+                                   ticks; --reason states why the whole FLEET is paused (no
+                                   per-role reason); --for auto-resumes (capped at 90d)
+  tumwater resume [--role <id>]    Lift a fleet or per-role pause
   tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
