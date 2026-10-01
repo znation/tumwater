@@ -13,7 +13,7 @@ import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, piRanMarker } from "./fake-pi.js";
 import {
   ROLE,
   REF,
@@ -320,7 +320,7 @@ test("a failing pre-check on a green main rejects the landing and spends no pi r
   const { root, sha } = await pinnedFixture();
   declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
   noteGreenBaseline(mainSha(root)); // what the last landing left behind
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`);
   try {
     const state = freshLoopState(ROLE);
@@ -408,7 +408,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
   sh(root, "git", "add", unique);
   sh(root, "git", "commit", "-m", "main moves on its own");
   const newMainSha = mainSha(root);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`);
   try {
     const state = freshLoopState(ROLE);

@@ -21,7 +21,7 @@ import { shortSha } from "../src/text.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { logPromptsTo, readPromptRuns, reviewerStub, withPi } from "./fake-pi.js";
+import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, withPi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
@@ -51,7 +51,7 @@ test("gate pre-check compiles the worktree against the root install — a health
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "wip change");
 
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
@@ -186,7 +186,7 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
   seedGreenMain(root);
 
   // Any pi run at all touches the marker: none may start — not a fix run, not the reviewer.
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -216,7 +216,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
   );
   seedGreenMain(root);
 
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -259,7 +259,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   );
   seedGreenMain(root);
 
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
@@ -283,7 +283,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
   const movedMainSha = uniqueMain(root);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const state = freshLoopState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
@@ -331,7 +331,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
       check: { command: "if [ -f change.txt ]; then echo 'boom'; exit 1; fi; sleep 5", timeoutSeconds: 0.5 },
     },
   };
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const state = freshLoopState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
@@ -436,7 +436,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
     "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
   );
   uniqueMain(root);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
@@ -452,7 +452,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
 
 test("gate pre-check timeout warns and still proceeds to the model review", async () => {
   const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
     const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed

@@ -103,6 +103,16 @@ export function reviewerStub(marker?: string): string {
   return marker === undefined ? reply : `touch '${marker}'\n${reply}`;
 }
 
+/** The marker-file convention for "proof this fake pi actually ran": a fresh path under the
+ * system temp that the test's fake-pi script `touch`es (reviewerStub builds that line in; a
+ * hand-rolled script spells `touch '<marker>'`) and the test asserts with existsSync — present
+ * means pi ran, absent means the harness stopped short of it. Twenty sites across four test
+ * files spelled `path.join(tmpdir(), "pi-ran")` inline; shared here so the marker's home and
+ * name cannot drift per file. */
+export function piRanMarker(): string {
+  return path.join(tmpdir(), "pi-ran");
+}
+
 /** A shell fragment list for fake-pi scripts: the phase gate the loop tests use to make a
  * fake pi do real work on its first run and idle on every later one — create `marker`, run
  * the `firstRun` lines, and on every later invocation emit the standard

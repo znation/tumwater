@@ -13,7 +13,7 @@ import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo, reviewerStub, TOUCH_SESSION } from "./fake-pi.js";
+import { fakePi, logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
@@ -323,7 +323,7 @@ test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empt
 
 test("gate fails closed on a verdict-less reply: commit kept for re-review", async () => {
   const { root, wt } = await gateFixture();
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(
     `touch '${marker}'\nprintf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
   );
@@ -589,7 +589,7 @@ test("gate exempts a doc-only diff without running pi", async () => {
   fs.writeFileSync(path.join(wt, "docs", "notes.md"), "a doc\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "doc only");
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { state, result } = await reviewGate(root, wt);
@@ -614,7 +614,7 @@ test("gate rejects an md-only diff that files a new plan directly under ## Done,
   );
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "misfiled plan");
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { result } = await reviewGate(root, wt);
@@ -629,7 +629,7 @@ test("gate rejects an md-only diff that files a new plan directly under ## Done,
 
 test("gate is a no-op when review.enabled is false", async () => {
   const { root, wt } = await gateFixture(); // code change — would be reviewed if enabled
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const config = defaultConfig();
@@ -644,7 +644,7 @@ test("gate is a no-op when review.enabled is false", async () => {
 
 test("gate skips the run when this exact HEAD was already approved", async () => {
   const { root, wt, head } = await gateFixture();
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const state = freshLoopState(ROLE);

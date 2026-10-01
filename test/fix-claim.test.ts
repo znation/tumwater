@@ -15,9 +15,9 @@ import {
 import { aheadOfMain } from "../src/git.js";
 import { readEvents } from "../src/event-read.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, piRanMarker } from "./fake-pi.js";
 
 // Regression coverage for the 2026-09-22 false-fix record (BUGS.md): commit 9cea8c3 was an
 // md-only BUGS.md edit that moved a bug to Fixed with a Fix paragraph naming runScriptGroup
@@ -388,7 +388,7 @@ sh(root, "git", "add", "-A");
 test("gate rejects an md-only BUGS.md fix claim with no code behind it, without running pi", async () => {
   const root = await falseFixFixture("runScriptGroup", false);
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { state, result } = await reviewGate(root, wt);
@@ -419,7 +419,7 @@ test("gate rejects an md-only rewrite of an already-Fixed record's narrative", a
   );
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "bugfix: refresh the record");
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { result } = await reviewGate(root, wt);
@@ -434,7 +434,7 @@ test("gate rejects an md-only rewrite of an already-Fixed record's narrative", a
 test("gate exempts an md-only BUGS.md fix claim whose symbols exist on the tree", async () => {
   const root = await falseFixFixture("signalTree", true);
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { result } = await reviewGate(root, wt);
@@ -472,7 +472,7 @@ async function duplicateDoneFixture(): Promise<string> {
 test("gate rejects an md-only diff that duplicates ## Done, without running pi or the check", async () => {
   const root = await duplicateDoneFixture();
   const wt = path.join(root, ".tumwater", "worktrees", ROLE);
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { state, result } = await reviewGate(root, wt);
@@ -494,7 +494,7 @@ test("gate rejects a code diff that breaks backlog structure before the build pr
   fs.writeFileSync(path.join(wt, "src.ts"), "export const x = 1;\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "code plus a duplicated heading");
-  const marker = path.join(tmpdir(), "pi-ran");
+  const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'`);
   try {
     const { result } = await reviewGate(root, wt);
