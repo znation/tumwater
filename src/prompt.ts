@@ -33,20 +33,33 @@ import { worktreePath } from "./paths.js";
 export const PRINCIPLES_MAX_CHARS = 4000;
 
 /** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
- * closing contract, shared verbatim by the tick/director prompts' ending list, SUMMARY_RULE (the
- * resume bridge), and prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers
- * a missing block), so they cannot drift (sibling of the NOTHING_TO_DO sentinel in
- * reply-contract.ts). */
+ * closing contract, shared verbatim by REPLY_ENDINGS (tick, director, and resume prompts) and
+ * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
+ * so they cannot drift (sibling of the NOTHING_TO_DO sentinel in reply-contract.ts). */
 export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
 
-/** The resume bridge's rule for ending a run that made changes — the exact SUMMARY/WHY/RISK/
- * VERIFIED block format commit-message.ts parses into the commit message. The tick/director rules
- * embed the same SUMMARY_BLOCK as the third of their three endings (commonRules). */
-export const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
-${SUMMARY_BLOCK}`;
+/** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
+ * exact SUMMARY/WHY/RISK/VERIFIED block commit-message.ts parses into the commit message as the
+ * last one. Shared by the tick and director rules (commonRules) and prompt-followup.ts's resume
+ * bridge, so a resumed run ends under the same contract as a fresh one. Written as an either/or
+ * list because, stated as separate rules, models filled in every one: 56 fleet ticks ended a
+ * SUMMARY block with the nothing sentinel too, and \`TUMWATER_REFUSED: none\` on completed work
+ * once made the harness discard it. The nothing ending says "end your reply with", not "reply with
+ * the single line", so a run that must report something first (the director's answer to a
+ * question, qa's FLOW line) can. */
+export const REPLY_ENDINGS = `- End with exactly ONE of these three endings:
+  1. Nothing worth doing for your role right now: make no changes, and end your reply with the
+     line ${NOTHING_TO_DO} — anything your task asks you to report (an answer, a FLOW line) goes
+     above it.
+  2. You refused the task (and recorded its **Refused …** note): end with the line
+     ${REFUSED_SENTINEL}: <the same one-line reason>
+     Use this line ONLY when refusing — never in any other reply, not even as
+     "${REFUSED_SENTINEL}: none", or the harness treats the whole tick as a refusal.
+  3. You made changes: end your reply with this block, one line each:
+${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
  * at the ceiling landing nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
@@ -83,21 +96,27 @@ export const CONTEXT_BUDGET_RULE = `- Your context window is finite: everything 
  * called "byte-identical" that was not, "all references updated" with one left, a suite count
  * off by one, a VERIFIED command that does not exist on the tree — and the next was an edit made
  * after the last green run, which the gate's build check then failed. Each rule names the check
- * that makes its claim true. The header says small changes are welcome on purpose: a first
+ * that makes its claim true, and none presumes a reviewer or a check exists: a doc-only diff skips
+ * the review gate (review.exemptPaths), and a project may declare no check — so the rules name
+ * what the run itself must do, and point verification at commonRules' check-aware bullet. Backlog
+ * files are included because this repo's own suite reads them (backlog-structure and
+ * validation-gap tests). The header says small changes are welcome on purpose: a first
  * wording ("one false claim rejects the whole change") made the improve role decline real, small
  * improvements in lab A/B runs, citing the reviewer. Must not mention the reviewer's VERDICT form
  * (prompt tests count it in the review prompt only). */
-export const CLAIMS_RULE = `Claims — a reviewer checks what your change says about itself against the code before it
-merges, so keep every claim accurate (a small, correct change is welcome; an inaccurate claim
-is what gets a change rejected):
+export const CLAIMS_RULE = `Claims — keep what your change says about itself accurate. Code changes are checked against
+the code by an adversarial reviewer before they merge, and an inaccurate claim is what gets a
+change rejected; a small, correct change is welcome:
 - State only what you verified. SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
-  PLANS.md/BUGS.md line you write are claims the reviewer checks against the code.
+  PLANS.md/BUGS.md line you write are claims about the code.
 - Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical",
   "unchanged" — with the check that proves it (a grep over the source, the tests, and the docs;
   a diff), or drop the word.
-- Never state test or suite counts: the harness runs the check and attests the numbers itself.
-- Run the project's check after your LAST edit. An edit made after the last green run is
-  unverified — run the check again before you end.`;
+- Never state test or suite counts: say what you ran and what you saw. When the landing gate runs
+  the project's check, the harness attests the numbers itself.
+- Verify after your LAST edit, per "Leave the project working" above: an edit made after the last
+  green run is unverified, so verify again before you end. Order your work so the final
+  verification comes after your last edit, backlog files included.`;
 
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
@@ -188,7 +207,8 @@ When to ask, when to refuse:
 - When a fork in the road is genuinely the user's call (product direction, an irreversible
   choice, taste), do not guess: append a question to QUESTIONS.md under ## Open with context,
   the options, and your own recommendation. Then continue with the parts that don't depend on
-  it, or end the run. Never block on an unanswered question, and do not re-ask an open question.
+  it, or end the run. Never block on an unanswered question; check QUESTIONS.md for answers at
+  the start of each tick and act on one that unblocks your work. Do not re-ask an open question.
 - If partway in you conclude the task would harm the project — it violates PRINCIPLES.md, grows
   complexity without justification, or keeps fighting back — refuse it. Revert nothing; append
   this note directly under the entry's heading in PLANS.md (a planned feature) or BUGS.md:
@@ -204,15 +224,7 @@ How to end your reply — the harness parses it, so the form matters:
 - Your last message is plain text: never a tool call, and never an announcement of what you would
   do next ("Let me check…") — either make the call or finish. If a tool result only repeats what
   you already have, do not call it again.
-- End with exactly ONE of these three endings:
-  1. Nothing worth doing for your role right now: make no changes, and reply with the single
-     line ${NOTHING_TO_DO}
-  2. You refused the task (the note above): end with the line
-     ${REFUSED_SENTINEL}: <the same one-line reason>
-     Use this line ONLY when refusing — never in any other reply, not even as
-     "${REFUSED_SENTINEL}: none", or the harness discards your work as a refusal.
-  3. You made changes: end your reply with this block, one line each:
-${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
+${REPLY_ENDINGS}`;
 }
 
 /** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty

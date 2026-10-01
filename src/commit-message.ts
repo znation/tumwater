@@ -34,7 +34,7 @@ export function fallbackSummary(files: string[], role: string, tick: number): st
 /** Cap on each commit-body field, so a verbose model cannot bloat every commit. */
 const COMMIT_BODY_FIELD_MAX = 200;
 
-/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_RULE
+/** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
  * contract declared by prompt.ts. Each field is optional: a non-compliant reply still commits
  * (subject + trailer). Module-private: every consumer — extractCommitBody, formatCommitBody,
  * buildCommitMessage — lives in this file, and tick-stage.ts works with the extracted values

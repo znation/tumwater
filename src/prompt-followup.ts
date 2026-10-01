@@ -1,4 +1,4 @@
-import { CONTEXT_BUDGET_RULE, SUMMARY_BLOCK, SUMMARY_RULE } from "./prompt.js";
+import { CONTEXT_BUDGET_RULE, REPLY_ENDINGS, SUMMARY_BLOCK } from "./prompt.js";
 import { NOTHING_TO_DO } from "./reply-contract.js";
 
 /** The prompts that pick a pi session back up where prompt.ts's builders start one: the resume
@@ -71,8 +71,7 @@ still apply, in particular:
 ${CONTEXT_BUDGET_RULE}
 - Never create, amend, or revert git commits — the harness handles all git operations.
 - Your last message is plain text — never a tool call or an announcement of a next step.
-- If you end up making no changes, reply with the single line ${NOTHING_TO_DO}.
-${SUMMARY_RULE}`;
+${REPLY_ENDINGS}`;
 }
 
 /** The one-turn follow-up sent into a tick's OWN session (--continue) when the run changed files

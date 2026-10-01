@@ -263,7 +263,8 @@ test("the readme prompt works from the delta since its own last commit", () => {
 });
 test("the readme prompt forbids per-tick landing narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
   const find = oneLine(readme!.find);
-  assert.match(find, /No per-tick landing narrative in the section/);
+  // Listed under "Keep these out of the status section" — the heading states the ban once.
+  assert.match(find, /Keep these out of the status section: .* - Per-tick landing narrative: landings are recorded/);
   assert.match(find, /landings are recorded by their owning loops in PLANS\.md\/BUGS\.md and git log/);
   // Deleting stale narrative is part of the update — the one-off collapse at 1f70a95 must not read as loss.
   assert.match(find, /stale narrative found in the section is deleted as part of updating it/);
@@ -393,4 +394,31 @@ test("the coverage role checks every importing test before calling anything unte
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /every test that imports it, not just the one named after it: `grep -rln '<module name>' test\/`/);
   assert.match(find, /Call a module or branch untested only when that check shows no test reaches it/);
+});
+
+test("qa's ending example is a template, never a real flow name a model could copy", () => {
+  const find = qa!.find;
+  // `logs` is a real QA_FLOWS name: a verbatim copy of a concrete example would record the wrong
+  // flow as passed and leave the one actually exercised stale at the top of the rotation.
+  assert.match(oneLine(find), /two lines in this form, with the name of the flow you actually exercised in place of <name>: FLOW: <name> — passed TUMWATER_NOTHING_TO_DO/);
+  assert.ok(!/^\s*FLOW: logs/m.test(find), "no concrete flow name in the ending example");
+});
+test("feature and bugfix verify last, after their backlog edits", () => {
+  // The suite reads the backlog files (backlog-structure, validation-gap tests), and the claims
+  // rule wants verification after the LAST edit — so the closing PLANS.md/BUGS.md move comes
+  // before the one final check rather than forcing a second one after it.
+  const feature = oneLine(roleById("feature")!.find);
+  assert.match(feature, /6\. Mark the plan done in PLANS\.md .* 7\. Verify last, after the PLANS\.md edit, so one run of the project's check covers everything you changed/);
+  const bugfix = oneLine(roleById("bugfix")!.find);
+  assert.match(bugfix, /4\. Mark it fixed in BUGS\.md .* 6\. Verify last, after the BUGS\.md edits, so one run of the project's check covers everything you changed/);
+});
+test("bugfix treats an all-refused Open section as nothing to do, and only an empty one as the hunt", () => {
+  const find = oneLine(roleById("bugfix")!.find);
+  assert.match(find, /when every open entry carries one, there is nothing to do/);
+  assert.match(find, /When `## Open` holds no entries at all, skip to the latent-bug hunt at the end instead/);
+});
+test("the steward's tally query stands as its own sentence, not inside a parenthetical", () => {
+  const find = oneLine(roleById("steward")!.find);
+  assert.match(find, /citing those entries\. One query counts both the verbatim line and the compressed `gap: <tag>` suffix:/);
+  assert.ok(!find.includes("uniq -c`.);"), "no sentence-in-parentheses rendering");
 });

@@ -124,7 +124,8 @@ Check, in this order:
 2. Are the VERIFIED claims consistent with the diff (commands, files, observations)? A claim you
    can disprove is a rejection. Suite counts are the harness's own attestation — they appear in
    the passed-check line above when the check ran green — so a count missing from VERIFIED is
-   not a finding.
+   not a finding, and neither is an author-stated count that differs from it: judge whether the
+   tests exist and exercise the change (check 3), not the author's arithmetic.
 3. Do new or changed tests exercise the new behavior — would they fail without the change?
 4. For a planned feature or recorded bug, does the change deliver what its PLANS.md/BUGS.md
    entry promises (files touched, acceptance criteria), and is the entry updated to match? An

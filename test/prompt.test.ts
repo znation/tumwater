@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   CLAIMS_RULE,
   PRINCIPLES_MAX_CHARS,
+  REPLY_ENDINGS,
   ROOT_FROM_WORKTREE,
   buildDirectorPrompt,
   buildTickPrompt,
@@ -457,12 +458,35 @@ test("every authoring prompt carries the claim-discipline rules ahead of the rep
     const prompt = buildTickPrompt({ role, initialPrompt: "" });
     const flat = oneLine(prompt);
     assert.ok(prompt.includes(CLAIMS_RULE), `${role.id} carries the rules`);
-    assert.match(flat, /keep every claim accurate \(a small, correct change is welcome; an inaccurate claim is what gets a change rejected\)/);
+    assert.match(flat, /keep what your change says about itself accurate\. Code changes are checked against the code by an adversarial reviewer/);
+    assert.match(flat, /a small, correct change is welcome/);
     assert.match(flat, /Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical"/);
-    assert.match(flat, /Never state test or suite counts/);
-    assert.match(flat, /Run the project's check after your LAST edit/);
+    assert.match(flat, /Never state test or suite counts: say what you ran and what you saw/);
+    // No presumption that a check or a reviewer exists: verification points at the check-aware
+    // "Leave the project working" bullet, and a doc-only diff skips the review gate.
+    assert.match(flat, /Verify after your LAST edit, per "Leave the project working" above/);
+    assert.ok(!flat.includes("the harness runs the check and attests"), "no claim that a check always runs");
     assert.ok(prompt.indexOf(CLAIMS_RULE) < prompt.indexOf("How to end your reply"), `${role.id}: rules precede the ending`);
   }
   assert.ok(buildDirectorPrompt("add x", "a project").includes(CLAIMS_RULE), "the director carries them too");
   assert.ok(!CLAIMS_RULE.includes("VERDICT"), "no review-verdict form outside the review prompt");
+});
+
+test("the three endings are one shared list, used by fresh and resumed runs alike", () => {
+  const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
+  assert.ok(tick.includes(REPLY_ENDINGS), "tick prompt carries the shared list");
+  assert.ok(buildDirectorPrompt("x", "y").includes(REPLY_ENDINGS), "director prompt carries it");
+  for (const cause of ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed"] as const) {
+    const resume = buildResumePrompt("clean", cause);
+    assert.ok(resume.trimEnd().endsWith(REPLY_ENDINGS.trimEnd()), `${cause} bridge ends with the shared list`);
+  }
+  // "End your reply with", not "reply with the single line": the director's answer to a question
+  // and qa's FLOW line go above the sentinel.
+  const flat = oneLine(REPLY_ENDINGS);
+  assert.match(flat, /make no changes, and end your reply with the line TUMWATER_NOTHING_TO_DO — anything your task asks you to report \(an answer, a FLOW line\) goes above it/);
+  assert.ok(!flat.includes("reply with the single line"));
+});
+test("the ask rule tells every loop to check QUESTIONS.md for answers at the start of each tick", () => {
+  const flat = oneLine(buildTickPrompt({ role: roleById("feature")!, initialPrompt: "" }));
+  assert.match(flat, /check QUESTIONS\.md for answers at the start of each tick and act on one that unblocks your work/);
 });

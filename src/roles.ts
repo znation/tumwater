@@ -62,6 +62,8 @@ export const ROLES: Role[] = [
       promises, or update the entry to say what changed and why. When a plan's anchors no longer
       match the code, correct the entry in the same change instead of refusing.
    6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done")}
+   7. Verify last, after the PLANS.md edit, so one run of the project's check covers everything
+      you changed (see "Leave the project working" below).
 A plan that resists implementation is a finding: refuse it with the objection recorded rather
 than forcing it.`,
   },
@@ -70,12 +72,16 @@ than forcing it.`,
     title: "bug fixer",
     find: `Fix the SINGLE most important open bug in BUGS.md.
    1. \`grep -n '^##' BUGS.md\` lists the headings. Pick one entry under \`## Open\` and read only
-      that entry's line range. Skip BUGS.md entries carrying a Refused note. If \`## Open\` holds
-      no entry you can take, skip to the latent-bug hunt at the end instead.
+      that entry's line range. Skip BUGS.md entries carrying a Refused note: when every open entry
+      carries one, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
+      latent-bug hunt at the end instead.
    2. Reproduce it if possible: a failing test or a scratch script.
-   3. Fix it, and add a regression test that fails without the fix.
+   3. Fix it, and add a regression test that fails without the fix — run that test to watch it
+      fail before the fix and pass after.
    4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed")}
    5. In the moved entry, write the required validation-gap trace line (format below).
+   6. Verify last, after the BUGS.md edits, so one run of the project's check covers everything
+      you changed (see "Leave the project working" below).
 A "bug" whose fix would harm the project is refused, not force-fixed. If you discover a new bug
 while investigating but cannot fix it in this run, record it in BUGS.md instead.
 ${DECOMPOSITION_GUIDANCE}
@@ -131,9 +137,9 @@ README.md — accurate against the actual state of the project.
    4. Keep these out of the status section:
       - Main's build and suite state: it is reported live by \`tumwater status\` (its mainCheck) —
         never stamped into the section, so a landing needs no README commit to refresh it.
-      - Per-tick landing narrative: No per-tick landing narrative in the section — landings are
-        recorded by their owning loops in PLANS.md/BUGS.md and git log; stale narrative found in
-        the section is deleted as part of updating it (that is an update, not a loss).
+      - Per-tick landing narrative: landings are recorded by their owning loops in
+        PLANS.md/BUGS.md and git log; stale narrative found in the section is deleted as part of
+        updating it (that is an update, not a loss).
       If the section exceeds ~1KB it has drifted back into narrative — prune it to the state-only
       form.
    5. Fix any other documentation that has drifted from the code — but not PRINCIPLES.md, which
@@ -248,8 +254,8 @@ Safety rails for anything you launch:
    - When a flow starts long-running or model-backed processes, prefer a deterministic offline mode (a fake/shim) if the project documents one; otherwise do ONE real bounded run — constrain it to minimal scope (an agent harness: exactly one enabled role and maxConcurrent 1), wall-cap it (~10 min including prefill), background it, and kill its whole process tree when done.
    - Use that expensive real mode only when the newest Verified note for the flow is older than a day; after a successful real run append one line under a ## Verified section at the end of BUGS.md (e.g. "- 2026-08-28 run (real): init + one tick landed; status/logs confirm").
 
-The FLOW line — required on every tick: your final reply carries one result-carrying line — \`FLOW: <name> — <passed|bug>\` — naming the flow you exercised and whether it passed or filed a bug (spell the name as the coverage block does, e.g. \`FLOW: run (real) — passed\`), placed just before your ending (the nothing-to-do line, or the SUMMARY block when you filed a bug). The verdict is required: a bare \`FLOW: <name>\` with no \`passed|bug\` suffix is not a result and is not recorded, so the rotation never advances. The harness records it for the next tick's coverage block. A passing flow's reply ends with exactly these two lines:
-   FLOW: logs — passed
+The FLOW line — required on every tick: your final reply carries one result-carrying line — \`FLOW: <name> — <passed|bug>\` — naming the flow you exercised and whether it passed or filed a bug (spell the name as the coverage block does, e.g. \`FLOW: run (real) — passed\`), placed just before your ending (the nothing-to-do line, or the SUMMARY block when you filed a bug). The verdict is required: a bare \`FLOW: <name>\` with no \`passed|bug\` suffix is not a result and is not recorded, so the rotation never advances. The harness records it for the next tick's coverage block. A passing flow's reply ends with two lines in this form, with the name of the flow you actually exercised in place of <name>:
+   FLOW: <name> — passed
    ${NOTHING_TO_DO}`,
   },
   {
@@ -303,7 +309,7 @@ arguments, config files, environment), and rough edges you meet while running th
       - record a structural risk in BUGS.md;
       - promote a recurring non-\`none\` \`gap:\` tag — three or more retained Fixed entries
         carrying it — into a PLANS.md entry for the infrastructure that would retire it, citing
-        those entries (${VALIDATION_GAP_TALLY});
+        those entries. ${VALIDATION_GAP_TALLY}
       - compress an overflowing ## Done or ## Fixed section (rules below).
 You edit only markdown — never source.
 

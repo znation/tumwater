@@ -3,28 +3,28 @@
  * thresholds, by appending one short note to the tool result that crosses each one. Loaded on
  * every pi run via `-e <this file>` from src/pi-args.ts, after bounded-output.
  *
- * Why: a run cannot see its own context usage, and pi never compacts mid-run, so a tick that
- * keeps reading simply runs into the window and lands nothing. That is the failure mode of the
- * budget fallback's local model (Qwen3.8-27B behind a ~127k window): its longest ticks peaked at
- * 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the prompt's
- * reading budget could only say "your window is finite". The note turns that into a number at the
- * moment it matters. On a large-window model the thresholds are rarely reached, so the extension
- * costs nothing there.
+ * Why: a run cannot see its own context usage. pi (0.87) does compact mid-run, but only once the
+ * projected context passes contextWindow − reserveTokens (16,384 by default — ~87% of the budget
+ * fallback's ~127k window), and that compaction replaces the run's earlier reads with a lossy
+ * summary; past it, a run that keeps reading hits the window and lands nothing. That is the failure
+ * mode of the fallback's local model (Qwen3.8-27B): its longest ticks peaked at 96–110k tokens
+ * (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the prompt's reading budget could
+ * only say "your window is finite". The notes turn that into a number early enough to finish
+ * before the forced compaction (the last one, 85%, sits just under it). On a large-window model
+ * the thresholds are rarely reached, so the extension costs nothing there.
  *
  * The threshold logic is a pure, exported function (`contextNote`) so it is unit-testable without
  * pi; the default export is a thin adapter over pi's `tool_result` event and `ctx.getContextUsage()`
  * (pi docs, extensions.md "Context and session changes"). One note per threshold per process: a
  * resumed session (--continue) starts a fresh process and re-warns at most once, at the highest
- * threshold it has already passed.
+ * threshold it has already passed. The token counts render through text.ts's compactTokens, the
+ * harness's one token format (text.ts imports nothing, so pi can load it beside this file).
  */
+
+import { compactTokens } from "../text.js";
 
 /** Context-usage percentages at which the model is told where it stands. */
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];
-
-/** Round a token count to whole thousands for the note ("64k"). */
-function kTokens(tokens: number): string {
-  return `${Math.round(tokens / 1000)}k`;
-}
 
 /** The note for a context usage reading, or null when no threshold above `lastWarned` has been
  * crossed. Returns the threshold it fired for, so the caller can remember it. Pure. */
@@ -40,7 +40,7 @@ export function contextNote(
   if (threshold === undefined) return null;
   const used =
     tokens !== null && tokens !== undefined && contextWindow > 0
-      ? ` (${kTokens(tokens)} of ${kTokens(contextWindow)} tokens)`
+      ? ` (${compactTokens(tokens)} of ${compactTokens(contextWindow)} tokens)`
       : "";
   const advice =
     threshold >= 85
@@ -74,11 +74,17 @@ interface PiExtensionApi {
   ): void;
 }
 
+/** The highest threshold — once it has fired, no further note is possible. */
+const LAST_THRESHOLD = CONTEXT_THRESHOLDS[CONTEXT_THRESHOLDS.length - 1] ?? 0;
+
 /** The pi extension entry point: append the context note to the tool result that crosses a
- * threshold, keeping the result's own content (as bounded-output left it) in front. */
+ * threshold, keeping the result's own content (as bounded-output left it) in front. Once the last
+ * threshold has fired it stops asking for usage at all — getContextUsage rebuilds the session
+ * projection and its token estimate on every call. */
 export default function contextBudget(pi: PiExtensionApi): void {
   let lastWarned = 0;
   pi.on("tool_result", (event, ctx) => {
+    if (lastWarned >= LAST_THRESHOLD) return undefined;
     let usage: ContextUsage | undefined;
     try {
       usage = ctx?.getContextUsage?.();

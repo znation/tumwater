@@ -199,6 +199,9 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   // the reviewer to the passed-check line instead of judging a stated total.
   assert.match(prompt, /Suite counts are the harness's own attestation/);
   assert.match(prompt, /a count missing from VERIFIED is not a finding/);
+  // A miscounted author-stated total is not a rejection on its own (2026-10-01: several fleet
+  // rejections of correct changes were off-by-one test counts) — the reviewer judges the tests.
+  assert.match(prompt, /neither is an author-stated count that differs from it: judge whether the tests exist and exercise the change \(check 3\), not the author's arithmetic/);
   assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);
   assert.match(prompt, /4\. For a planned feature or recorded bug, does the change deliver what its PLANS\.md\/BUGS\.md entry promises/);
   // A newer user instruction supersedes an older recorded entry ("latest instruction wins"): the
