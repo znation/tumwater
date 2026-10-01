@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { briefCandidates } from "./paths.js";
-import { truncateWithNote } from "./text.js";
+import { errorMessage, truncateWithNote } from "./text.js";
 
 /** The managed sections of the project brief (TUMWATER.md, with README.md as the
  * compatibility path — plans/portability.md §7a/7): marker constants, the templates a fresh
@@ -68,14 +68,27 @@ function ownsBrief(text: string): boolean {
 /** The first brief candidate (TUMWATER.md before README.md) that exists on disk and whose
  * text `accepts` — its basename and text, or null when none does. The one home of the
  * candidate-order scan (skip missing files, read the first present one) briefFile and
- * readInitialPrompt share; their difference is only the predicate applied to the text. */
+ * readInitialPrompt share; their difference is only the predicate applied to the text.
+ *
+ * A candidate that exists but cannot be read (README.md created as a directory, a
+ * permission-lost file) is an operator-visible break, not a silent skip: the brief is
+ * every loop's reason to exist, read each tick, so falling through to the next candidate
+ * could run the fleet on the wrong brief and throwing raw would crash every tick with an
+ * errno that names neither the file nor the fix — the message below names both. */
 function firstBriefText(
   root: string,
   accepts: (text: string) => boolean,
 ): { file: string; text: string } | null {
   for (const candidate of briefCandidates(root)) {
     if (!fs.existsSync(candidate)) continue;
-    const text = fs.readFileSync(candidate, "utf8");
+    let text: string;
+    try {
+      text = fs.readFileSync(candidate, "utf8");
+    } catch (err) {
+      throw new Error(
+        `cannot read the project brief ${JSON.stringify(path.basename(candidate))}: ${errorMessage(err)} — every loop reads this file's prompt each tick, so make it a readable file carrying the ${PROMPT_START}/${PROMPT_END} markers (or move it aside)`,
+      );
+    }
     if (accepts(text)) return { file: path.basename(candidate), text };
   }
   return null;

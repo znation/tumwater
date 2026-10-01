@@ -178,7 +178,15 @@ export function checkInit(root: string): CheckOutcome {
  * what a repo looks like between `git clone` and `tumwater init` on purpose (e.g. 7b's
  * `--dry-run`). */
 export function checkBrief(root: string): CheckOutcome {
-  const owner = briefFile(root);
+  // briefFile throws on a brief candidate that exists but cannot be read (a directory at
+  // the README.md path, a permission-lost file) — report it as the check's failure instead
+  // of crashing doctor: the fleet would run without its brief every tick.
+  let owner: string | null;
+  try {
+    owner = briefFile(root);
+  } catch (err) {
+    return { level: "fail", detail: errorMessage(err) };
+  }
   if (owner) return { level: "ok", detail: `brief in ${owner}` };
   if (fs.existsSync(path.join(root, "README.md"))) {
     return {

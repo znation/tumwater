@@ -157,6 +157,28 @@ test("surrounding whitespace around the prompt is trimmed", () => {
   assert.equal(readInitialPrompt(root), "The real prompt.");
 });
 
+test("an unreadable brief candidate throws naming the file, not a raw errno", () => {
+  const root = tmpdir();
+  // A present-but-unreadable candidate: a directory at the README.md path makes
+  // existsSync true and readFileSync fail with EISDIR, user-independently.
+  fs.mkdirSync(path.join(root, "README.md"));
+  assert.throws(
+    () => readInitialPrompt(root),
+    (err: unknown) => {
+      const message = (err as Error).message;
+      assert.ok(message.includes('"README.md"'), `names the brief file: ${message}`);
+      assert.ok(message.includes("EISDIR"), `carries the underlying errno: ${message}`);
+      assert.ok(
+        message.includes(PROMPT_START),
+        `names the markers the fix needs: ${message}`,
+      );
+      return true;
+    },
+  );
+  // briefFile (the doctor and prompt-builder path) reports the same problem.
+  assert.throws(() => briefFile(root), /cannot read the project brief/);
+});
+
 test("readInitialPrompt truncates a hand-edited over-long prompt", () => {
   const root = tmpdir();
   const long = "x".repeat(INITIAL_PROMPT_MAX_CHARS + 50);
