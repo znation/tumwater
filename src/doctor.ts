@@ -8,20 +8,18 @@ import { shortSha } from "./text.js";
 import {
   checkAgentBinary,
   checkBrief,
-  checkBacklogHeadings,
   checkBuild,
   checkBuildCheck,
   checkFallbackModel,
-  checkFixClaims,
   checkGitBinary,
   checkInit,
   checkMergeLock,
   checkNodeVersion,
   checkRepo,
   checkStateDir,
-  checkStrandedPlans,
   type DoctorReport,
 } from "./doctor-checks.js";
+import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
