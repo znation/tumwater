@@ -192,6 +192,13 @@ export async function cmdStop(root: string): Promise<void> {
     say("the orchestrator exited before the stop signal landed — nothing is running");
 }
 
+/** The config command's malformed-shapes usage line: cli.ts's arity gate fails a non-get/set
+ * or wrongly-shaped subcommand with it, and cmdConfig repeats it as the defensive tail for an
+ * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
+ * sites (mirrors tick-detail.ts's TICK_USAGE). */
+export const CONFIG_USAGE =
+  "usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)";
+
 /** `tumwater config [get <key> | set <key> <value>]`: with no arguments, print the effective
  * merged config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
  * debugging scheduling or custom-loop wiring sees what the fleet would actually load instead
@@ -229,8 +236,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
   }
   // Bare config, or anything else: the whole-config dump is the default, and cli.ts's arity
   // check has already rejected a malformed get/set — this usage line is the defensive tail.
-  if (sub !== undefined)
-    fail("usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)");
+  if (sub !== undefined) fail(CONFIG_USAGE);
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
   sayJson(config);

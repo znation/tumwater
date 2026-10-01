@@ -17,7 +17,7 @@ import {
   SINCE_FLAG,
 } from "./cli-args.js";
 import { parsePromptArgs } from "./cli-command-args.js";
-import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
+import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake, CONFIG_USAGE } from "./operator-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";
@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       // `set` exactly a key and a value. cmdConfig dispatches on the (now well-shaped) args.
       if (args.length > 0) {
         if (args[0] !== "get" && args[0] !== "set")
-          fail("usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)");
+          fail(CONFIG_USAGE);
         if (args[0] === "get" && args.length !== 2) fail("usage: tumwater config get <key>");
         if (args[0] === "set" && args.length !== 3) fail("usage: tumwater config set <key> <value>");
       }
