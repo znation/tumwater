@@ -124,6 +124,66 @@ test("a stack whose every change is doc-only lands with no batch check", async (
   }
 });
 
+test("a doc-only stack that breaks backlog structure is blocked, not waved through", async () => {
+  // The exemption is a fast path, not a blind eye: two changes each clean alone — each adds
+  // its own new "## Notes" section to PLANS.md — stack into a duplicate heading. landStack's
+  // exempt arm must run the same structure cross-check verifyLanding's does: warn with the
+  // one "landing blocked:" phrasing and hand the stack to the one-at-a-time fallback instead
+  // of landing a malformed backlog with no check ever running.
+  const roles = ["alpha", "beta"];
+  const { root, shas, wiringFor } = await batchFixture(roles, {
+    // A backlog on main for both pins' diffs to be measured against.
+    seed: (r) =>
+      fs.writeFileSync(
+        path.join(r, "PLANS.md"),
+        "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n_None yet._\n",
+      ),
+    edit: (r, role) => {
+      // Each change alone adds one new section title — the gate's structure check passes it.
+      // Stacked, the two additions duplicate "## Notes": the batch's exempt arm must catch it.
+      const md = fs.readFileSync(path.join(r, "PLANS.md"), "utf8");
+      fs.writeFileSync(
+        path.join(r, "PLANS.md"),
+        role === "alpha" ? md.replace("## Done", "## Notes\n\nalpha's notes\n\n## Done") : `${md}\n## Notes\n\nbeta's notes\n`,
+      );
+    },
+  });
+  // The check fails anything it actually runs on, so a skip that stops holding fails the
+  // test loudly instead of quietly via a count.
+  declareCheck(root, '#!/bin/sh\necho "a doc-only stack must never run me"; exit 1\n');
+  const mainBefore = mainSha(root);
+  const restore = fakePi(APPROVE_PI);
+  try {
+    const results = await runBatch(root, shas, roles, wiringFor);
+
+    // The stack is abandoned to one-at-a-time: alpha (clean alone) lands, beta's tree now
+    // duplicates "## Notes" on the moved main, so the in-lock re-check blocks it — ref kept
+    // for recovery, never a silent merge of the malformed backlog.
+    assert.deepEqual(results.map((r) => r.result), ["changed", "merge_blocked"]);
+    assert.equal(batchChecks(root).length, 0, "the doc-only stack runs no batch check");
+    assert.equal(
+      readEvents(root).filter((e) => e.type === "build_check").length,
+      0,
+      "no check of any scope ran — the structure block fires first",
+    );
+    const blocked = eventsOfType(root, "warning").filter((e) => String(e.message).includes("landing blocked"));
+    assert.equal(blocked.length, 2, JSON.stringify(eventsOfType(root, "warning")));
+    assert.ok(blocked.every((e) => String(e.message).includes('"## Notes"')));
+    assert.deepEqual(
+      [blocked[0]?.loop, blocked[1]?.loop],
+      ["alpha", "beta"],
+      "the stack's warning logs under the first entry's role, the fallback's under the blocked change's own",
+    );
+    assert.deepEqual(
+      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+      ["work by alpha"],
+      "only the structurally clean change reached main",
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("a red stack's doc-only remainder lands on the exemption, without another check", async () => {
   // The incident's shape: the code prefix lands through the bisect, and the size-1 doc-only
   // remainder landStack is then left with must not pay a suite run of its own.

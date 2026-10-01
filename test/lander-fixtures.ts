@@ -113,8 +113,16 @@ export const checkRunNumber = (base: string): string =>
 async function batchPinnedFixture(
   roles: string[],
   edit?: (root: string, role: string) => void,
+  seed?: (root: string) => void,
 ): Promise<{ root: string; shas: Record<string, string> }> {
   const root = makeRepo();
+  // Files every pin's diff is measured against (a seeded backlog the changes edit) go on main
+  // before the pins, so each pin stays a single clean commit on top of them.
+  if (seed) {
+    seed(root);
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-m", "seed the fixture");
+  }
   sh(root, "git", "checkout", "--detach");
   const shas: Record<string, string> = {};
   for (const role of roles) {
@@ -182,7 +190,11 @@ function makeWiring(
  * and `resolve` pass through to the fixture and wiring. */
 export async function batchFixture<R extends string>(
   roles: R[],
-  opts: { edit?: (root: string, role: string) => void; resolve?: (wt: string) => void } = {},
+  opts: {
+    edit?: (root: string, role: string) => void;
+    resolve?: (wt: string) => void;
+    seed?: (root: string) => void;
+  } = {},
 ): Promise<{
   root: string;
   shas: Record<string, string>;
@@ -191,7 +203,7 @@ export async function batchFixture<R extends string>(
   folded: Map<string, PiRunResult[]>;
   calls: PiCall[];
 }> {
-  const { root, shas } = await batchPinnedFixture(roles, opts.edit);
+  const { root, shas } = await batchPinnedFixture(roles, opts.edit, opts.seed);
   const states = Object.fromEntries(roles.map((role) => [role, freshLoopState(role)])) as Record<R, LoopState>;
   return { root, shas, states, ...makeWiring(states, opts.resolve) };
 }
