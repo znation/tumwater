@@ -146,9 +146,13 @@ export function pausedRolesLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "paused-roles.lock");
 }
 
+/** The event log's basename — the filename paths.ts builds the log's path from and the
+ * report headers name as their source, so a renamed log cannot leave either half behind. */
+export const EVENTS_LOG_BASENAME = "events.jsonl";
+
 /** The append-only harness event log (events.ts); the CLI, TUI, and status payload read it. */
 export function eventsLogPath(root: string): string {
-  return path.join(tumwaterDir(root), "log", "events.jsonl");
+  return path.join(tumwaterDir(root), "log", EVENTS_LOG_BASENAME);
 }
 
 /** The event log's one archived generation (files.ts rotateIfLarge renames the grown log to

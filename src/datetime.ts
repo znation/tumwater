@@ -8,6 +8,7 @@
  * string cutting, with its own tests. Presentation only: depends on node built-ins alone. */
 
 import { plural } from "./phrases.js";
+import { EVENTS_LOG_BASENAME } from "./paths.js";
 
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
@@ -74,7 +75,9 @@ export function dayLabel(days: number): string {
  * (singular at 1), and the event log it was read from. The failure digest appends its own tick
  * count. The rotation phrase is a required argument — eventsRotationLabel() supplies it from
  * events.ts's EVENTS_MAX_BYTES, so this header cannot keep claiming "16 MB" after the actual
- * threshold moves (this module stays presentation-only, owning no log facts of its own). */
+ * threshold moves (this module stays presentation-only, owning no log facts of its own). The
+ * source filename is paths.ts's EVENTS_LOG_BASENAME, the same name the log's path is built
+ * from — not a second copy that a rename would leave behind. */
 export function reportWindow(from: string, to: string, days: number, rotation: string): string {
-  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: events.jsonl (${rotation})`;
+  return `Window: ${from} → ${to} (${dayLabel(days)}) · source: ${EVENTS_LOG_BASENAME} (${rotation})`;
 }
