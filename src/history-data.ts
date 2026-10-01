@@ -28,7 +28,7 @@ const DETAIL_MAX = 72;
  * more, and this bounds the worst case — readTailText reads bytes proportional to the limit's
  * line count, so the cap is also the largest byte read one command can cost. Comfortably
  * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. Exported as
- * the one ceiling every read-only view's single ask scans under: ui/tick-detail.ts's
+ * the one ceiling every read-only view's single ask scans under: tick-detail-data.ts's
  * readTickDetail reads the same bound, so no ask can re-read more log than any other and the
  * cap cannot drift per consumer. */
 export const HISTORY_SCAN_MAX_EVENTS = 20_000;
