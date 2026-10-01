@@ -5,7 +5,155 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Per-role daily cost cap: a loop over its own cap stops starting ticks — the feed names it, the notify hook pages, midnight or an edit lifts it (planned 2026-09-30 by plan loop) — part 1/2, the gate
+
+**Goal.** The fleet has a fleet-wide daily cap (`maxDailyCostUsd`, src/budget-gates.ts) and the
+80% `budget_warning` — but per-role spend is only *visible* (the report's "Cost by role" line, the
+status table's `cost`/`today` columns, the GUI loops view), never *bounded*: one runaway role can
+eat the fleet cap and starve every other loop for the rest of the day. Add
+`maxDailyCostUsdPerRole` — a role id → USD map in tumwater.json — so a loop whose local-day spend
+has reached its own cap starts no new ticks until the next local day or a live config edit. This
+is docs/feature-per-role-spending.md stage 3 (the cap); its tracking and surfaces already exist
+(`LoopState.dayCostUsd` via `recordDailyCost`, the report's per-role lines). The stateless verdict
+follows the fleet budget gate's own rule (`budgetPaused`'s doc: "resume is stateless, so …
+crossing midnight flips it on the next cycle and nothing can get stuck"). Two deliberate
+differences from that doc's sketch, stated here so the implementer does not re-litigate them:
+the gate writes NO entry to the shared per-role pause marker (src/fleet-state.ts's `pauseRole` —
+it is anonymous, so after a restart across midnight the harness could not tell a cap pause from an
+operator's, and would either refuse to lift the operator's pause or orphan it), and an unknown role
+id in the map is a validation error matching the existing `roles.<id>` idiom (explicit misconfiguration
+never silently no-ops).
+
+**Approach.**
+1. **New `src/role-cap-gates.ts`** (sibling of src/streak-gate.ts — same shape: pure trip bookkeeping
+   here, the module owns the only event emission, orchestrator wires it):
+   - `export function roleCapPaused(state: Pick<LoopState, "dayStamp" | "dayCostUsd">, cap: number | undefined, now = Date.now()): boolean`
+     — true iff `cap` is a finite number, `cap > 0` (0 disables that role, like the fleet cap), and
+     `dailyCost(state, now) >= cap` (`dailyCost` from src/budget.ts). The role→cap lookup stays in
+     the caller (`caps?.[role]`), so part 2/2's observers share this single definition.
+   - `export interface RoleCapGateState { prev: Set<string> }`, `export function newRoleCapGateState()`,
+     and `export function pollRoleCapGate(root, state, runners: readonly Pick<LoopRunner, "role" | "state">[], caps: Record<string, number> | undefined, now): ReadonlySet<string>`:
+     per runner, skip `DIRECTOR_ROLE` (exempt like every autonomous gate); `paused =
+     roleCapPaused(r.state, caps?.[r.role], now)`; on ENTER (paused now, not in `prev`) `logEvent`
+     `{ loop: "harness", type: "role_cap_paused", role, spentUsd: dailyCost(r.state, now), capUsd: cap }`;
+     on EXIT log `{ loop: "harness", type: "role_cap_resumed", role }`; update `prev`; return the
+     current paused set. In-memory only, like every gate state — a restart with a still-over-cap role
+     re-logs one `role_cap_paused` on the first poll (the durable-cause honest report the streak-gate
+     doc accepts).
+2. `src/gate-polls.ts`: add `cap: RoleCapGateState` to `FleetGateStates` (seeded in
+   `newFleetGateStates`); in `pollFleetGates`, after the streak block, call
+   `pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now)` and add
+   `capPaused: ReadonlySet<string>` to `FleetGatePoll` (returned, not folded into `pausedRoles` —
+   that set is the marker's view, and the pause gates' edge bookkeeping must never see cap pauses).
+3. `src/orchestrator.ts`: destructure `capPaused` at the `pollFleetGates` call site; add
+   `capPaused.has(runner.role)` to the once-mode settle condition (the
+   `pausedRolesSet.has(runner.role) || operatorPauseBlocks(runner.role)` site) and to the per-role
+   pause skip (`if (pausedRolesSet.has(runner.role)) continue;`). No start-gate change: a parked
+   waiter finishes, exactly like every per-role pause (established semantics — in-flight ticks
+   finish, NEW ticks are gated at scheduling); a cap-paused role gets no fallback-probe exception
+   (its stop is about spend, and probing it adds noise, not signal). The lift is a live config edit
+   or local midnight — there is no marker for `resume --role` to touch.
+4. `src/events.ts`: add `"role_cap_paused"` (carries role, spentUsd, capUsd) and
+   `"role_cap_resumed"` (carries role) beside `role_streak_paused`.
+5. `src/event-format.ts`: render both, modeled on the `budget_paused`/`budget_resumed` cases — the
+   paused line names the role, its spend vs its cap, and the two lift paths (raise/remove the cap
+   in tumwater.json, or local midnight); the resumed line states the loop ticks again.
+6. `src/ui/tone.ts` `PROBLEM_EVENTS` AND the GUI client's duplicated list in
+   `src/ui/gui-client-model.ts`: add `"role_cap_paused"` to both (the budget_warning Done entry
+   records why the GUI list must follow the server one).
+7. `src/notify.ts`: add `"role_cap_paused"` to `NOTIFY_EVENT_TYPES` (page on entry; the resumed
+   event is not notified, as `budget_resumed` is not).
+8. `src/config-schema.ts`: optional `maxDailyCostUsdPerRole?: Record<string, number>` on
+   `TumwaterConfig` with a doc comment (per-role sibling of `maxDailyCostUsd`: a loop whose
+   local-day spend has reached its cap starts no new ticks until local midnight or a live edit;
+   0 disables that role; absent key = uncapped; the director is exempt); add
+   `"maxDailyCostUsdPerRole"` to the `TOP_LEVEL_KEYS` list.
+9. `src/config-validation.ts`: when present, a plain object; each key a known role id
+   (`allRoleIds()` ∪ the `customNames` set the same function already builds — the `roles.${id}`
+   wording idiom, so a typo cannot silently no-op a cap); each value a finite number ≥ 0 (the
+   `NON_NEGATIVE_OR_DISABLED` semantics).
+10. `README.md`: the settings paragraph names `maxDailyCostUsdPerRole` beside
+    `maxDailyCostUsd`; `docs/how-it-works.md`: one sentence in the budget section.
+
+**Tests.**
+- New `test/role-cap-gates.test.ts`: `roleCapPaused` boundaries (at-cap true, below false, 0/absent
+  false); `pollRoleCapGate` — a crossing logs exactly one `role_cap_paused` carrying spend/cap,
+  repeated over-cap polls log nothing, a next-local-day poll logs `role_cap_resumed` and a later
+  crossing re-logs, a cap removal/raise lifts, a fresh state holding an over-cap role logs exactly
+  one event on its first poll (the restart case), a director runner never enters the returned set,
+  and the returned set is exactly the currently paused roles.
+- `test/gate-polls.test.ts`: `pollFleetGates` returns `capPaused` reflecting the config's map, and
+  an absent key yields the empty set (add to the existing wiring test).
+- `test/config-validation.test.ts`: absent key ok; non-object, negative, non-numeric, and unknown
+  role id each fail with the named wording; a `customLoops` name is accepted; 0 is valid.
+- `test/event-format.test.ts`: both lines render with the role and its figures; `test/notify.test.ts`:
+  `role_cap_paused` is in `NOTIFY_EVENT_TYPES` (and `role_cap_resumed` is not).
+
+**Acceptance criteria.**
+- `npm run test` passes with the cases above.
+- With `{"maxDailyCostUsdPerRole": {"organize": 0.01}}` set and an organize tick crossing 0.01,
+  exactly one `role_cap_paused` appears in the feed per crossing, a configured notify command
+  receives `TUMWATER_EVENT_TYPE=role_cap_paused`, and organize starts no new ticks until the next
+  local day or a live edit — while every other role, the fleet-wide cap, and its fallback demotion
+  are untouched (a per-role cap never engages the fallback), and the pause marker/`pausedRoles`
+  stay exactly as before (no marker is written).
+- No key (or an all-zero map) → the gate returns the empty set, logs nothing, and behavior is
+  byte-identical to today.
+- README and docs/how-it-works.md describe the key and its lift paths.
+
+**Sizing.** One run: ~12 source files — most of them one-line additions at the anchors named
+above — plus four-to-five test files, well under 400 lines including tests; no design question left
+open (stateless verdict, event names, exemptions, and validation idiom are all decided above).
+Sibling: part 2/2 (the observers) depends on this plan's `roleCapPaused` and lands after it.
+
+### The cap-paused loop is legible: the status table, TUI, GUI, and `status --json` read the same cap verdict (planned 2026-09-30 by plan loop) — part 2/2, the observers
+
+**Goal.** Part 1/2 blocks a cap-paused loop at scheduling and pages the feed, but no observer
+surfaces the verdict: the shared state-cell ladder (`loopPhase`, src/ui/status-model.ts) reads
+"paused" only from the operator pause marker and the fleet budget gate, so an idle loop under its
+own cap reads as its ordinary sleep/queue state and `status --json` carries nothing to say it is
+held. Give every observer the same verdict the scheduler enforces — the fleet budget gate's rule
+that "what an operator sees is what the scheduler is doing": the snapshot computes the cap verdict
+per loop, the cell ladder names it, and the payload carries it. Depends on part 1/2 landing
+(it provides `roleCapPaused`); the two are otherwise independent.
+
+**Approach.**
+1. `src/status-data.ts`: add `capPaused: string[]` to `StatusSnapshot` — the ids of enabled loops
+   whose local-day spend has reached their cap, computed in the existing loops pass with
+   `roleCapPaused(s, caps?.[s.role])` (src/role-cap-gates.ts) against the caps from the same
+   last-known-good config that produced the loop list (a transiently broken tumwater.json degrades
+   with the whole config, like `quietHours`). Always present, empty when none — the `pausedRoles`
+   shape — fresh per poll.
+2. `src/ui/status-model.ts`: a new `capPaused` parameter on `loopPhase`, checked after `userPaused`
+   (user intent still wins) and before `budgetPaused` (the role's own cap is the more specific spend
+   state — the ladder's existing "user intent is more specific than spend state" argument extended
+   one level), returning `"cap paused"` for an idle loop; `loopRowCells` passes
+   `snap.capPaused.includes(s.role)`. That is the single ladder the status table and both
+   dashboards share, so the terminal `status`, the TUI, and the GUI's per-loop phase pill (which
+   renders the server-precomputed phase) all pick up the label from this one change — no browser
+   blob edit beyond verifying the pill renders the new string.
+3. `src/ui/status-payload.ts`: carry `capPaused` in the payload field list beside `pausedRoles`, so
+   `status --json`, the GUI, and the TUI read one shape.
+No new CLI flag, config key, or doc surface — the key's docs land in part 1/2.
+
+**Tests.**
+- `test/status-data.test.ts`: a fixture loop with today's `dayStamp` and `dayCostUsd` at/over its
+  cap, config holding `maxDailyCostUsdPerRole`, puts the role in `capPaused`; absent key → `[]`;
+  a stale-stamp loop (yesterday's spend) is never cap-paused.
+- `test/status-model.test.ts`: a cap-paused idle loop's `loopPhase`/`loopRowCells` reads
+  `cap paused`; an operator- AND cap-paused loop still reads `paused` (user intent wins); a
+  fleet-budget-paused AND cap-paused idle loop reads `cap paused` (more specific spend state).
+- `test/status-payload.test.ts`: the field is present in the payload.
+
+**Acceptance criteria.**
+- `npm run test` passes with the cases above.
+- `status --json` exposes `capPaused`; a cap-paused idle loop reads `cap paused` in the terminal
+  status table, the TUI, and the GUI's loop pill; an operator-paused cap-paused loop still reads
+  `paused`; in-flight ticks, the fleet budget badge, and every other cell are unchanged.
+
+**Sizing.** One run: three source files plus three test files, well under 200 lines including
+tests; no design question left open (the ladder position and the payload field are decided above).
+Sibling: part 1/2 (the gate), which this plan depends on.
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
