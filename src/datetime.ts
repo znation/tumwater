@@ -75,7 +75,7 @@ export function humanSeconds(s: number): string {
 }
 
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window
- * reads the same on either surface. Rendered through text.ts's plural, like every other
+ * reads the same on either surface. Rendered through phrases.ts's plural, like every other
  * count-plus-noun phrase in the harness. */
 export function dayLabel(days: number): string {
   return plural(days, "day");
