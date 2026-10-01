@@ -5,7 +5,66 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Budget warning at 80% of the daily cap: the notify hook pages before the gate bites, not after (planned 2026-09-30 by plan loop)
+
+**Goal.** Today the operator notify hook (`notify` in tumwater.json, src/notify.ts) only fires
+for `budget_paused` — the operator learns the fleet has *already* stopped ticking, with no
+chance to raise the cap or fix the fallback first. Add a `budget_warning` event fired once when
+the fleet's daily spend crosses 80% of `maxDailyCostUsd` while the gate is still open, so a
+c configured notify command pages the operator while there is still room to act. The threshold
+is a fixed 80% (a named constant, no config knob — opinionated defaults over configuration),
+and `budget_warning` joins the notify allowlist and the event feed; no other surface changes.
+
+**Approach.**
+1. `src/budget.ts`: add `export const BUDGET_WARNING_FRACTION = 0.8` and
+   `export function budgetWarning(budget: { spentUsd: number; capUsd: number } | null): boolean`
+   beside `budgetReached` — true iff the budget is non-null, `capUsd > 0` (a cap of 0 disables
+   the budget, so no warning), and `spentUsd >= capUsd * BUDGET_WARNING_FRACTION`.
+2. `src/budget-gates.ts`: add a `warned: boolean` field to `BudgetGateState` (default `false`
+   in `newBudgetGateState`). In `pollBudgetGate`, right after the `reached`/`gate` verdict is
+   computed and before the `prevGate` transition block: when `gate === "open"` and
+   `budgetWarning(...)` is true and `state.warned` is false, `logEvent` a `budget_warning`
+   event (`loop: "harness"`, `spentUsd`, `capUsd`) and set `state.warned = true`; when the
+   predicate is false, reset `state.warned = false`. The edge-trigger with reset-on-below is
+   the whole state machine: crossing local midnight drops `fleetDailyCost` back under the
+   threshold, which re-arms the warning for the new day with no extra day-stamp state; a cap
+   raise above the current spend disarms it the same way; a second crossing the same day warns
+   again. Warn only while the gate is `open` — a poll that engages `fallback`/`paused` already
+   logs its own transition event, so the warning never doubles the page.
+3. `src/events.ts`: add `"budget_warning"` to the `HarnessEvent`/`HarnessEventInput` type
+   unions next to the other `budget_*` members, commented "fleet daily spend crossed 80% of
+   maxDailyCostUsd; the gate is still open".
+4. `src/event-format.ts`: add a `case "budget_warning"` rendering
+   `budget warning — <budgetPhrase(e.spentUsd, e.capUsd)> of the daily cap spent; the gate is
+   still open` (the `budgetPhrase` helper already imported there).
+5. `src/ui/tone.ts`: add `"budget_warning"` to `PROBLEM_EVENTS` so the feed badge and GUI tone
+   match the other budget events.
+6. `src/notify.ts`: add `"budget_warning"` to `NOTIFY_EVENT_TYPES` (its comment block says the
+   allowlist is fixed — this extends the fixed list, one more type in the same shape).
+7. `README.md`: extend the `notify` trigger list in the settings paragraph with "a budget
+   warning (daily spend at 80% of the cap, gate still open)". `docs/how-it-works.md`: one
+   sentence in the budget-gate section naming the warning event and the fixed threshold.
+
+**Tests** (all offline, fake pi never invoked — these are pure-function/poll tests):
+- `test/budget-gates.test.ts`: a poll that crosses 80% from below logs exactly one
+  `budget_warning`; a second poll while still above logs none; spend dropping back below and
+  crossing again warns again (re-arm); a poll where `reached` is true logs the
+  `budget_fallback`/`budget_paused` transition and no warning; no warning at any spend when
+  `maxDailyCostUsd` is 0/absent; `newBudgetGateState` starts with `warned: false`.
+- `test/notify.test.ts`: `budget_warning` is in `NOTIFY_EVENT_TYPES`.
+- `test/event-format.test.ts`: the `budget_warning` line renders with the spend phrase.
+
+**Acceptance criteria.**
+- `npm run test` passes with the new cases above.
+- With a cap configured and spend crossing 80% of it without reaching it, exactly one
+  `budget_warning` event appears in the feed per crossing, `tumwater logs` renders it with the
+  problem tone, and a configured notify command receives `TUMWATER_EVENT_TYPE=budget_warning`.
+- No warning ever fires with no cap configured, while spend stays above 80% without dropping
+  back, or on the poll where the cap itself is reached.
+- README and docs/how-it-works.md describe the warning and its fixed threshold.
+
+**Sizing.** One run: ~8 files, well under 150 lines including tests; no design question left
+open (threshold, edge-trigger rule, and surfaces are all decided above).
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
