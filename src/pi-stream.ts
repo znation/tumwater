@@ -18,9 +18,23 @@ import { parseJsonObject } from "./json-object.js";
 interface PiMessage {
   role: string;
   content?: Array<{ type: string; text?: string }>;
-  usage?: { totalTokens?: number; output?: number; cost?: { total?: number } };
+  // Usage fields are `unknown`, not `number`: they cross the provider boundary unvalidated,
+  // and some OpenAI-compatible servers serialize usage numbers as JSON strings. The fold
+  // below runs every value through usageNumber before trusting it.
+  usage?: { totalTokens?: unknown; output?: unknown; cost?: { total?: unknown } };
   stopReason?: string;
   errorMessage?: string;
+}
+
+/** One wire number from the model server's usage block, or 0 when unusable. Only a finite,
+ * non-negative number passes: a string (some OpenAI-compatible servers serialize usage
+ * numbers as strings) would turn the `+=` accumulators into string concatenation and then
+ * NaN, a negative value would run the spend total backwards, and a non-finite one would
+ * poison every consumer — a NaN costUsd makes every budget-cap comparison false, so the
+ * daily cap would never trip while the dashboards render "$NaN". Unusable degrades to
+ * "ignore this turn's number", the same policy parseJsonObject takes to torn lines. */
+function usageNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
 /** The fields feedLine reads off one parsed pi event line. pi's stream is one JSON object per
@@ -321,9 +335,9 @@ export class PiStreamParser {
     }
     if (hasVerdictLine(text)) this.verdictText = text;
     this.turns += 1;
-    this.outputTokens += msg.usage?.output ?? 0;
-    this.peakContextTokens = Math.max(this.peakContextTokens, msg.usage?.totalTokens ?? 0);
-    this.costUsd += msg.usage?.cost?.total ?? 0;
+    this.outputTokens += usageNumber(msg.usage?.output);
+    this.peakContextTokens = Math.max(this.peakContextTokens, usageNumber(msg.usage?.totalTokens));
+    this.costUsd += usageNumber(msg.usage?.cost?.total);
     this.stopReason = msg.stopReason;
     if (msg.errorMessage) this.errorMessage = msg.errorMessage;
     else if (msg.stopReason !== "error") this.errorMessage = undefined;

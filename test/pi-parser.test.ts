@@ -28,6 +28,42 @@ test("parser keeps the last non-empty assistant text and sums usage", () => {
   assert.equal(parser.turns, 2, "one turn per assistant message_end");
 });
 
+test("parser ignores a model server's string-valued usage numbers instead of poisoning the totals", () => {
+  // Some OpenAI-compatible servers serialize usage numbers as JSON strings; `?? 0` would let
+  // one through, turning costUsd into a string and then NaN — a cap that never trips and a
+  // dashboard rendering "$NaN".
+  const parser = new PiStreamParser();
+  parser.feed(
+    JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "hi" }],
+        usage: { totalTokens: "120", output: "40", cost: { total: "0.01" } },
+        stopReason: "stop",
+      },
+    }) + "\n",
+  );
+  parser.feed(assistantLine("done", { tokens: 50, output: 10, cost: 0.02 }) + "\n");
+  assert.equal(parser.outputTokens, 10, "the string turn's usage is ignored, the good turn's kept");
+  assert.equal(parser.peakContextTokens, 50, "the string context is ignored, not NaN");
+  assert.ok(Math.abs(parser.costUsd - 0.02) < 1e-9, "only usable costs sum");
+});
+
+test("parser drops negative and non-finite usage numbers", () => {
+  const parser = new PiStreamParser();
+  // 1e999 overflows JSON.parse to Infinity; a negative output would run the token total
+  // backwards and a negative cost the spend total.
+  parser.feed(
+    '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"hi"}],'
+      + '"usage":{"totalTokens":-1,"output":-5,"cost":{"total":1e999}},"stopReason":"stop"}}\n',
+  );
+  parser.feed(assistantLine("done", { tokens: 50, output: 10, cost: 0.02 }) + "\n");
+  assert.equal(parser.outputTokens, 10);
+  assert.equal(parser.peakContextTokens, 50);
+  assert.ok(Math.abs(parser.costUsd - 0.02) < 1e-9);
+});
+
 test("parser counts zero turns when no assistant message completes", () => {
   // Structural events (turn boundaries), streaming updates, and user messages are not
   // completed assistant turns — only an assistant message_end counts one.
