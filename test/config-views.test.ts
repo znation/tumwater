@@ -4,6 +4,7 @@ import { defaultConfig } from "../src/config.js";
 import {
   applyFallbackModel,
   configForRole,
+  FALLBACK_REVIEW_TIMEOUT_S,
   fallbackPair,
   reviewConfig,
   reviewRunConfig,
@@ -105,4 +106,26 @@ test("applyFallbackModel installs the free pair and drops every model override",
   // No fallback configured: the same object back, so the non-fallback path costs nothing.
   const plain = defaultConfig();
   assert.equal(applyFallbackModel(plain), plain);
+});
+
+test("applyFallbackModel raises the reviewer's time budget to the fallback floor", () => {
+  // The budgeted model's 900 s review budget fit 4–7 local-model turns, so every fallback
+  // review timed out and no code change landed until midnight (BUGS.md 2026-09-30).
+  const config = defaultConfig();
+  config.tickTimeoutSeconds = 54_000;
+  config.fallbackModel = { provider: "omlx", model: "local-free" };
+  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, REVIEW_TIMEOUT_S, "the budgeted model keeps its own budget");
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+
+  // A configured budget below the floor is raised only on the fallback; one above it stands.
+  config.review.timeoutSeconds = 120;
+  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 120);
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  config.review.timeoutSeconds = 7200;
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, 7200);
+  assert.equal(config.review.timeoutSeconds, 7200, "the source config is untouched");
+
+  // The tick's own budget still caps the reviewer, fallback or not.
+  config.tickTimeoutSeconds = 600;
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, 600);
 });

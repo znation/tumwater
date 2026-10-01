@@ -48,6 +48,16 @@ export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
  * kills a wedged one in minutes instead of the tick's hours. */
 export const REVIEW_TIMEOUT_S = 900;
 
+/** The reviewer's wall-clock floor while the budget fallback carries the fleet. The free model
+ * is typically local and far slower per turn than the budgeted one it replaces, but a review
+ * still needs the same number of turns: measured 2026-09-30, 1,081 reviews on the budgeted
+ * model took 7 turns at p50 and 15 at p90, while the local fallback managed one turn every
+ * ~150–220 s — so REVIEW_TIMEOUT_S fit 4–7 turns, and none of the 21 reviews started in the
+ * 09-28..09-30 fallback windows ever returned a verdict (14 timed out; BUGS.md 2026-09-30).
+ * Every code change then looped review → timeout → re-land until midnight. An hour fits ~20
+ * turns, past the p90 review. */
+export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
+
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
  * the tick's. A smaller tickTimeoutSeconds still wins. */
@@ -82,9 +92,13 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
  * otherwise reach a priced model — an author run, its reviewer, a conflict resolver — resolves
  * to the one free pair. Dropping the overrides is the point: a role pinned to a paid model in
- * tumwater.json must not keep spending after the cap is reached. Everything else (intervals,
- * thresholds, exempt paths, the cap itself) is untouched, so the gate keeps re-evaluating
- * against the same numbers. Returns `config` unchanged when no fallback is configured. */
+ * tumwater.json must not keep spending after the cap is reached. The one other change is the
+ * reviewer's time budget, raised to at least FALLBACK_REVIEW_TIMEOUT_S: a budget sized for the
+ * budgeted model's turns times out every review on a slower free one (a configured
+ * `review.timeoutSeconds` above the floor stands, and reviewRunConfig still caps it at
+ * tickTimeoutSeconds). Everything else (intervals, thresholds, exempt paths, the cap itself) is
+ * untouched, so the gate keeps re-evaluating against the same numbers. Returns `config`
+ * unchanged when no fallback is configured. */
 export function applyFallbackModel(config: TumwaterConfig): TumwaterConfig {
   const pair = fallbackPair(config);
   if (!pair) return config;
@@ -97,7 +111,10 @@ export function applyFallbackModel(config: TumwaterConfig): TumwaterConfig {
     provider: pair.provider,
     model: pair.model,
     thinking: pair.thinking,
-    review: stripModel(config.review),
+    review: {
+      ...stripModel(config.review),
+      timeoutSeconds: Math.max(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S),
+    },
     roles: Object.fromEntries(Object.entries(config.roles).map(([id, rc]) => [id, stripModel(rc)])),
   };
 }

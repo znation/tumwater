@@ -48,7 +48,8 @@ merge step lands them, so other loops keep ticking while a change is under revie
   blocks the merge.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
-  `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`); one that runs over
+  `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`; at least 3600 while
+  the budget fallback carries the fleet, since a slower free model needs as many turns); one that runs over
   fails without a strike and the change re-lands on the author's next tick. An approval is keyed by the
   diff's patch-id, so an approved change re-landed after a clean rebase is not reviewed again;
   its build check still runs.
