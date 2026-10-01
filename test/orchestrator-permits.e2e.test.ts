@@ -10,9 +10,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../src/config.js";
+import { enqueuePrompt } from "../src/inbox.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/event-read.js";
-import { FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { makeRepo, seedOpenBug, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -122,6 +123,52 @@ test("a work-role tick that becomes due later jumps ahead of maintenance waiters
       order[2],
       "bugfix",
       `bugfix became due while clean was in flight and must jump ahead of parked dry (${order})`,
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+
+test("the director's tick starts immediately while every maxConcurrent slot is busy", async () => {
+  // The director never queues behind the author semaphore: a user prompt starts right away
+  // even when all slots are held (orchestrator.ts's usesSlot — only role ticks acquire). With
+  // one permit and clean's tick holding it for ~5s, the director's run must begin while clean
+  // is still in flight — its concurrency sample reads 2, proof it took no permit.
+  const repo = makeRepo();
+  await initProject(repo, "director bypasses the slot cap");
+  const cfg = fastConfig(["clean", "director"]);
+  cfg.maxConcurrent = 1;
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `f=$(mktemp "$d/run.XXXXXX")`,
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
+      `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
+      `printf '%s\\n' "$(basename "$PWD")" >> "${runDir}/order.log"`,
+      `case "$PWD" in`,
+      `*director*) ;;`,
+      `*) sleep 5 ;;`,
+      `esac`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `rm -f "$f"`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    // clean's startup tick grabs the only permit and holds it for ~5s; the queued prompt is
+    // consumed while that tick is still running.
+    await waitFor(() => readSamples(runDir)[0] === 1, "clean's startup tick holding the slot");
+    enqueuePrompt(repo, "steer me while clean holds the slot");
+    await awaitSettledTick(repo, "director", 1, "the director's tick to finish");
+    const order = readOrder(runDir);
+    const samples = readSamples(runDir);
+    assert.equal(order[1], "director", `the director started before clean's second tick (${order})`);
+    assert.equal(
+      samples[1],
+      2,
+      `the director's run began while clean still held the slot — it never queued (${samples})`,
     );
   } finally {
     await stopOrchestrator(orch, restore);
