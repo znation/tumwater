@@ -245,8 +245,14 @@ export interface RunsPi {
   runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
 }
 
+/** One run's spend folded into the owning loop's usage counters exactly once — the
+ * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
+ * belongs to the loop, not to the run itself (src/loop.ts's runPi). */
 export interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }
 
+/** A landing context that runs pi through the loop's shared wiring and folds each run's
+ * usage: both halves (RunsPi + FoldsUsage). LanderContext and BatchRoleWiring extend this;
+ * contexts needing only one half extend that half instead (MergeContext, VettedLanding). */
 export interface PiRunWiring extends RunsPi, FoldsUsage {}
