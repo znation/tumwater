@@ -324,3 +324,89 @@ test("mainRedGate proceeds unverified when the baseline run spanned a host sleep
   const clean = scriptedSampler([woke(1_000), woke(1_500)]);
   assert.equal((await mainRedGate(root, ROLE, wt, clean))?.result, "main_red");
 });
+
+// mainTipVerdict's own verdict arms, pinned at the seam the review gate and the landing
+// pipeline's attribution read. attributeRedCheck.test.ts reaches green/red/no-check through
+// the attribution step; these pin the function directly — including the two degradation arms
+// no other test can reach: a skip (npm off PATH) and a main ref that resolves to nothing.
+// The skip-vs-unverified precedence matters: a skipped check is an environmental miss, not
+// evidence about main, and the why must say which (BUGS.md 2026-09-30, the attribution
+// family that treated a slept run as the change's own verdict).
+
+test("mainTipVerdict reports green at main's tip, priced under the asking role", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture(ROLE, `echo tip-green >> ${counter}; exit 0`);
+  const restore = fakeNpm(`echo tip-green >> ${counter}; exit 0`);
+  try {
+    const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+    assert.deepEqual(verdict, { status: "green", sha: mainSha(root) });
+    assert.equal(runsOf(counter), 1, "the tip's check ran once");
+    const checks = eventsOfType(root, "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.loop, ROLE, "the run is priced under the role that asked");
+    assert.equal(checks[0]?.scope, "baseline");
+    assert.equal(checks[0]?.status, "passed");
+  } finally {
+    restore();
+  }
+});
+
+test("mainTipVerdict reports red with the fleet-wide warning, once per SHA", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture(ROLE, `echo tip-failure; echo run >> ${counter}; exit 1`);
+  const restore = fakeNpm(`echo tip-failure; echo run >> ${counter}; exit 1`);
+  try {
+    const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+    assert.ok(verdict.status === "red");
+    assert.equal(verdict.status === "red" ? verdict.sha : "", mainSha(root));
+    const sha = mainSha(root);
+    const warnings = harnessWarnings(root);
+    assert.equal(warnings.length, 1, "one harness-level warning for the newly-discovered red SHA");
+    const message = warnings[0] as { message?: string } | undefined;
+    assert.match(message?.message ?? "", new RegExp(shortSha(sha)));
+    assert.match(message?.message ?? "", /tip-failure/);
+
+    // A second ask at the same tip reads the cached red: no second run, no second warning —
+    // the same once-per-SHA guard the authoring gate shares.
+    const again = await mainTipVerdict(root, "feature", "main", defaultConfig());
+    assert.ok(again.status === "red");
+    assert.equal(runsOf(counter), 1, "the verdict is cached per SHA");
+    assert.equal(harnessWarnings(root).length, 1);
+  } finally {
+    restore();
+  }
+});
+
+test("mainTipVerdict reports the skip reason when the tip's check cannot run", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root } = baselineFixture(ROLE, `echo run >> ${counter}; exit 0`);
+  // A PATH that keeps git (the worktree add needs it) but drops npm: the check cannot run,
+  // so no verdict about main exists and the why must name the skip, not "no check".
+  const partialBin = gitOnlyBinDir("no-npm-tipverdict-");
+  const restorePath = pathReplace(partialBin);
+  try {
+    const verdict = await mainTipVerdict(root, ROLE, "main", defaultConfig());
+    assert.ok(verdict.status === "unavailable");
+    assert.match(verdict.status === "unavailable" ? verdict.why : "", /^its check was skipped \(no-npm\)$/);
+    assert.equal(runsOf(counter), 0, "nothing ran — npm could not even start");
+    // The skip is still logged (a skipped run is an outcome, priced under the asking role) —
+    // it is just not a verdict about main.
+    const checks = eventsOfType(root, "build_check");
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0]?.status, "skipped");
+    assert.equal(checks[0]?.loop, ROLE);
+  } finally {
+    restorePath();
+  }
+});
+
+test("mainTipVerdict reports unavailable when the named branch does not exist", async () => {
+  const root = makeRepo();
+  // A ref `git rev-parse` cannot resolve (no such branch): gitTry returns null, the gate's
+  // worktree is never touched, and the why is the unreadable-main arm — distinct from the
+  // throw path the dangling-ref test pins (an unresolvable ref is a caller or config bug,
+  // not a broken repo, but neither may reject the vet pipeline with an exception).
+  const verdict = await mainTipVerdict(root, ROLE, "no-such-branch", defaultConfig());
+  assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch is unreadable" });
+  assert.deepEqual(readEvents(root), [], "nothing ran, nothing to say");
+});
