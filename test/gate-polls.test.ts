@@ -17,6 +17,7 @@ import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gate-polls.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { MODELS_JSON } from "./models-fixtures.js";
 
 test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");
@@ -60,18 +61,6 @@ test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplica
   );
 });
 
-/** A models.json with one all-zero-cost provider (free) and a priced one (paid) — the
- * same shape the budget gate's own tests fake, so the fallback is priced at zero. */
-const MODELS_JSON = JSON.stringify({
-  providers: {
-    free: {
-      models: [{ id: "qwen-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
-    },
-    paid: {
-      models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }],
-    },
-  },
-});
 
 /** A minimal runner stand-in: pollFleetGates only reads a runner's role and state,
  * assigns its config, and — on a budget reopen — matches tickModel() against the

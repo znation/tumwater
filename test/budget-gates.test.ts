@@ -10,23 +10,7 @@ import { readEvents } from "../src/event-read.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { tmpdir } from "./repo-fixtures.js";
-
-/** A models.json with one all-zero-cost provider (free) and a priced one (paid). */
-const MODELS_JSON = JSON.stringify({
-  providers: {
-    free: {
-      models: [{ id: "qwen-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
-    },
-    paid: {
-      models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }],
-    },
-  },
-});
-
-/** Only priced models: the configured fallback cannot resolve to a free one. */
-const PAID_ONLY_JSON = JSON.stringify({
-  providers: { paid: { models: [{ id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.4 } }] } },
-});
+import { MODELS_JSON, PAID_ONLY_JSON } from "./models-fixtures.js";
 
 function writeModels(dir: string, content: string): string {
   fs.mkdirSync(dir, { recursive: true });
