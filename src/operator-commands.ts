@@ -3,6 +3,8 @@ import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag,
 import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,
+  type ListedCancelOutcome,
+  cancelListedPrompt,
   cancelRolePrompt,
   promptPreview,
   queuedPrompts,
@@ -282,9 +284,11 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // --role scope, at the cost of a broken config hiding a custom loop's queued section. The
   // state-changing modes (enqueue, cancel) instead read through loadConfig and fail loudly
   // when an id was given: before writing to a named loop's queue the operator is owed the
-  // config error, not a built-ins-only guess about whether the loop exists. With no --role
-  // neither state-changing mode reads the config at all — the director queue (inbox.ts) needs
-  // none, and a broken tumwater.json must not block steering the director.
+  // config error, not a built-ins-only guess about whether the loop exists. With no --role,
+  // enqueue touches only the director queue (inbox.ts) and never reads the config — a broken
+  // tumwater.json must not block steering the director — while cancel resolves its position
+  // across the per-loop sections --list prints, through the same cached, never-throwing id set
+  // --list uses, so it cancels exactly what the list showed even under a broken config.
   const validIds = parsed.mode === "list"
     ? knownRoleIdsCached(root)
     : parsed.role !== null
@@ -327,6 +331,28 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     return;
   }
   if (parsed.mode === "cancel") {
+    if (role === null) {
+      // No --role: the position addresses what --list shows — its per-loop sections, each
+      // numbered from 1 (the director first, then the roles in catalog order). Resolve across
+      // that scope: one loop holding the position cancels there, several are ambiguous (the
+      // list itself shows two "N." lines), none is a miss. The output names the loop, since
+      // the caller scoped nothing.
+      const scope = [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
+      const listed: ListedCancelOutcome = cancelListedPrompt(root, scope, parsed.position);
+      if (listed.status === "ambiguous") {
+        fail(`position ${parsed.position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
+      }
+      if (listed.status === "missing") {
+        fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
+      }
+      if (listed.outcome.status === "gone") {
+        // A concurrent dequeue is a normal race, not an error: report it and exit clean.
+        say(`prompt ${parsed.position} is no longer queued — ${listed.role} already took it`);
+      } else {
+        say(`cancelled (${listed.role}): ${promptPreview(listed.outcome.text)}`);
+      }
+      return;
+    }
     const target = role ?? DIRECTOR_ROLE;
     let outcome: CancelOutcome;
     try {

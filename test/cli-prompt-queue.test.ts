@@ -17,10 +17,11 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
 
   submitPrompt(repo, "alpha");
 
-  // Out of range: the error names the position and the queue size.
+  // Out of range: the error names the position and the size of the largest queue the list
+  // shows, since a no-`--role` cancel addresses every loop's numbered section, not just one.
   let r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no prompt at position 2 \(1 queued\)/);
+  assert.match(r.stderr, /no prompt at position 2 \(1 queued across all loops\)/);
 
   // Non-numeric or non-positive values are rejected by the parser before any file is touched.
   for (const bad of ["0", "abc", "1.5"]) {
@@ -71,7 +72,45 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
   assert.match(r.stdout, /queued for the director loop/);
   r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /cancelled: steer the director/);
+  assert.match(r.stdout, /cancelled \(director\): steer the director/);
+});
+
+// A no-`--role` cancel addresses the same per-loop numbered sections `--list` prints, not the
+// director's queue alone: one loop holding the position cancels there, several are an
+// ambiguity the error names with the --role escape hatch.
+test("prompt --cancel without --role cancels the entry --list shows, whichever loop holds it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel cross loop");
+
+  submitRolePrompt(repo, "qa", "qa task one");
+
+  // The bug's repro: --list shows the entry under qa, and the bare cancel removes it.
+  let r = await cli(repo, "prompt", "--list");
+  assert.match(r.stdout, /qa:\n1\. qa task one/);
+  r = await cli(repo, "prompt", "--cancel", "1");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /cancelled \(qa\): qa task one/);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), []);
+
+  // Several loops showing the same N is ambiguous — the list itself shows two "1." lines —
+  // so the error names the loops and the --role form, and touches no queue.
+  submitPrompt(repo, "director task");
+  submitRolePrompt(repo, "qa", "qa task two");
+  r = await cli(repo, "prompt", "--cancel", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /position 1 is queued for more than one loop \(director, qa\)/);
+  assert.match(r.stderr, /--role/);
+  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
+
+  // The documented --role form still wins outright, and the director stays the bare default
+  // when only its queue is long enough.
+  r = await cli(repo, "prompt", "--cancel", "1", "--role", "qa");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /cancelled: qa task two/);
+  r = await cli(repo, "prompt", "--cancel", "1");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /cancelled \(director\): director task/);
 });
 
 test("prompt --cancel reports a concurrently dequeued prompt as gone and exits clean", async () => {

@@ -411,7 +411,7 @@ test("prompt --cancel removes the Nth queued prompt and reports its text", async
   // Over-long text is reported through truncate (80 chars + ellipsis), like every other
   // one-line label — never a raw multi-hundred-character line.
   assert.ok(
-    r.stdout.includes(`cancelled: ${truncate(long, 80)}`),
+    r.stdout.includes(`cancelled (director): ${truncate(long, 80)}`),
     `expected the truncated report in:\n${r.stdout}`,
   );
 

@@ -206,6 +206,32 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
   return takeCancelledPrompt(root, role, file);
 }
 
+/** Outcome of cancelListedPrompt: a resolved cancel (naming the loop it landed in, since the
+ * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
+export type ListedCancelOutcome =
+  | { status: "cancelled"; role: string; outcome: CancelOutcome }
+  | { status: "ambiguous"; roles: string[] }
+  | { status: "missing"; queued: number };
+
+/** Cancel by the position numbering `tumwater prompt --list` prints with no --role: its per-loop
+ * sections, each numbered from 1, in `scope` order (the director first, then the roles). Only
+ * loops whose queue is long enough to hold the position are candidates — exactly one resolves to
+ * a cancel in that loop's queue (cancelRolePrompt's race policy and event), several are an
+ * ambiguity the caller reports with a --role escape hatch (the list itself shows two "N."
+ * lines there, so no silent default), and none is a miss carrying the largest queue length for
+ * the error's count. Sizes only — no queue content is read — so a cancel that resolves to
+ * nothing touches no file. */
+export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
+  const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
+  if (candidates.length === 0) {
+    return { status: "missing", queued: Math.max(0, ...scope.map((role) => queuedFiles(root, role).length)) };
+  }
+  if (candidates.length > 1) return { status: "ambiguous", roles: candidates };
+  const role = candidates[0];
+  if (!role) return { status: "missing", queued: 0 }; // Unreachable: candidates.length is 1.
+  return { status: "cancelled", role, outcome: cancelRolePrompt(root, role, position) };
+}
+
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
  * trusted only as a plain basename inside the loop's queue directory — anything containing a
  * path separator or equal to `..` could name a file elsewhere on disk, a NUL byte is not a
