@@ -242,6 +242,56 @@ test("a successful compile prunes superseded stagings past the grace, keeping yo
   assert.equal(fs.existsSync(stagingDir(root, head)), true, "the keep dir is never its own victim");
 });
 
+test("pruneStaleStagings swallows every staging-root fault: the prune trails a successful compile and must never fail one", () => {
+  // compileStaged prunes after the new build has already succeeded, so a thrown readdir,
+  // stat, or rm error here would reject a perfectly good build and pin the fleet on the
+  // stale dist (BUGS.md 2026-09-28's verdict-vs-rejection distinction, one step downstream).
+  // Each fault below is exercised for real, against the actual filesystem: an absent staging
+  // root (the first compile), entries the scan lists but cannot stat, and a stale dir whose
+  // removal the filesystem refuses.
+  const fresh = tmpdir();
+  assert.equal(pruneStaleStagings(fresh, path.join(fresh, "dist")), 0,
+    "no staging root yet — the first compile has nothing to prune and must not throw");
+
+  const root = tmpdir();
+  const stale = stagingDir(root, "a".repeat(40));
+  fs.mkdirSync(stale, { recursive: true });
+  fs.writeFileSync(path.join(stale, "marker"), "x\n");
+  const aged = (Date.now() - STAGED_PRUNE_AFTER_MS - 60_000) / 1000;
+  fs.utimesSync(stale, aged, aged);
+  const stagingRoot = stagingRootDir(root);
+
+  // Read without search (0o400): readdir still lists the entry, but every statSync of a child
+  // fails with EACCES — the "vanished (or unreadable) mid-scan" branch, no longer a race.
+  fs.chmodSync(stagingRoot, 0o400);
+  try {
+    assert.equal(pruneStaleStagings(root, path.join(root, "dist")), 0,
+      "unreadable entries are skipped in place, not fatal");
+    // existsSync itself cannot search the 0o400 root, so verify through readdir instead.
+    assert.ok(fs.readdirSync(stagingRoot).includes("a".repeat(40)),
+      "a stat failure leaves the dir for the next compile");
+  } finally {
+    fs.chmodSync(stagingRoot, 0o755);
+  }
+
+  // Read and search without write (0o555): the stat now succeeds, the dir reads as stale, and
+  // the removal itself fails — the "left for the next compile or swap" branch.
+  fs.chmodSync(stagingRoot, 0o555);
+  try {
+    assert.equal(pruneStaleStagings(root, path.join(root, "dist")), 0,
+      "a failed removal is swallowed, not thrown");
+    assert.equal(fs.existsSync(stale), true, "the unremovable staging survives one tick longer");
+  } finally {
+    fs.chmodSync(stagingRoot, 0o755);
+  }
+
+  // And once the filesystem heals, the same prune removes it: the swallow never wedged anything.
+  // (The failed rmSync already unlinked the marker, which freshened the dir's mtime — re-age.)
+  fs.utimesSync(stale, aged, aged);
+  assert.equal(pruneStaleStagings(root, path.join(root, "dist")), 1);
+  assert.equal(fs.existsSync(stale), false);
+});
+
 test("compileStaged borrows an ancestor's typescript: a project with no install of its own still rebuilds", async () => {
   // The shape of every tumwater worktree — no node_modules of its own, an installed root above
   // it — and the case that must not fail closed: demanding a local install here is what left
