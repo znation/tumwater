@@ -23,6 +23,14 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     refresh();
   }
   // post-action:end
+  // restart-button:start
+  // The restart affordance's exact markup — one home shared by the sidebar's stale-build row
+  // and alertParts()'s build alert, so styling and the global [data-act='restart'] handler
+  // serve both icons from one place.
+  function restartButton(glyph) {
+    return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>";
+  }
+  // restart-button:end
   function landingTitle(q) {
     const f = q.inFlight;
     const now = f ? " Landing now: " + f.role + " — " + (f.summary || "") + (f.stage ? " (" + String(f.stage).replace("-", " ") + ")" : "") : "";
@@ -43,12 +51,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         : row("gray", "<span class='dot'></span>", "Stopped", "Start it with tumwater run");
       if (d.build) {
         const stale = d.build.stale;
-        // A stale build's refresh icon IS the restart button — the exact markup alertParts()
-        // emits for the build alert, so styling and the global [data-act='restart'] handler
-        // serve both icons from one place; a fresh build's icon stays inert decoration.
-        const lead = stale
-          ? "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + icon("refresh") + "</button>"
-          : icon("refresh");
+        // A stale build's refresh icon IS the restart button — restartButton(), the same
+        // markup alertParts() emits for the build alert; a fresh build's icon stays inert
+        // decoration.
+        const lead = stale ? restartButton(icon("refresh")) : icon("refresh");
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", lead,
           "Build <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
           localizeInstants(("Running build" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
@@ -100,9 +106,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     // cooldown. Only the build alert carries it, and only while the build is actually stale —
     // a fresh build's icon stays inert decoration.
     const glyph = icon(ALERT_ICONS[a.key] || "info");
-    const iconHtml = restartable
-      ? "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>"
-      : "<span class='alert-icon'>" + glyph + "</span>";
+    const iconHtml = restartable ? restartButton(glyph) : "<span class='alert-icon'>" + glyph + "</span>";
     return {
       shell: iconHtml + "<div class='alert-body'><div class='alert-title'></div><div class='alert-detail'></div></div>" +
         (a.actions && a.actions.length ? "<div class='alert-actions'>" + a.actions.map((x) => "<button type='button' class='btn btn-sm' data-act='" + esc(x.act) +

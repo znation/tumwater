@@ -10,7 +10,7 @@ import { clientScope, iconStub } from "./gui-client-scope.js";
 function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<string, string> } {
   const panels: Record<string, string> = {};
   const { renderSidebar } = clientScope<{ renderSidebar: (d: unknown) => void }>(
-    ["sidebar"],
+    ["restart-button", "sidebar"],
     ["renderSidebar"],
     {
       offline: false,
