@@ -28,6 +28,22 @@ import { intQuery, rejectBadRole, requirePausedFlag, requirePromptText, validRol
 import { readJsonObject, sendJson } from "./http-body.js";
 import type http from "node:http";
 
+/** Every POST handler's shared opening: readJsonObject reads the body and — when it is
+ * oversized, malformed, or not a JSON object — has already written the 413/400 itself. Its
+ * null return therefore means the response is sent and the handler must stop without touching
+ * it again; each handler used to restate that contract in its own inline comment, and this is
+ * the one home for it. Handlers keep their own `if (!body) return` bail so the stop stays
+ * visible in their flow. */
+async function readPostBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  example: string,
+): Promise<Record<string, unknown> | null> {
+  const body = await readJsonObject(req, res, example);
+  if (body === null) return null; // 4xx already sent — oversized or not a JSON object
+  return body;
+}
+
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
@@ -141,8 +157,8 @@ export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: s
  * extension, too many, undecodable, oversized — answers 400 naming the rule, with no queue
  * file and no image written. */
 export async function handlePrompt(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"text": "..."}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"text": "..."}');
+  if (!body) return;
   const text = requirePromptText(res, body);
   if (text === null) return;
   const images = checkedPromptImages(res, body);
@@ -176,8 +192,8 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
  * text a non-empty string within the shared length rule → 400 otherwise — plus the same
  * optional images array and its validate-before-anything-is-written discipline. */
 export async function handlePromptRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"role": "feature", "text": "..."}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"role": "feature", "text": "..."}');
+  if (!body) return;
   if (rejectBadRole(root, res, body.role)) return;
   const role = body.role as string;
   const text = requirePromptText(res, body, role);
@@ -196,8 +212,8 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
  * dequeued the prompt, which is data for the flash line, not a server fault. Same body
  * discipline as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */
 export async function handlePromptCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}');
+  if (!body) return;
   if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
   const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
   const fileProblem = queueFileNameProblem(body.file);
@@ -220,8 +236,8 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
  * atomic setter the TUI's Ctrl+B uses, so both surfaces write tumwater.json identically and
  * the running orchestrator picks the change up on its next ~2 s poll. */
 export async function handleBudget(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"maxDailyCostUsd": 25}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"maxDailyCostUsd": 25}');
+  if (!body) return;
   const value = body.maxDailyCostUsd;
   if (value === undefined) {
     sendJson(res, 400, { error: "maxDailyCostUsd required" });
@@ -253,8 +269,8 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
  * a timed pause (the marker's `until`, capped like the CLI's `--for`); it only accompanies
  * `paused: true`. */
 export async function handlePause(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"paused": true, "forSeconds": 3600}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"paused": true, "forSeconds": 3600}');
+  if (!body) return;
   const value = requirePausedFlag(res, body);
   if (value === null) return;
   const forSeconds = body.forSeconds;
@@ -284,8 +300,8 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
  * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
  * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). */
 export async function handleWake(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"role": "feature"}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"role": "feature"}');
+  if (!body) return;
   if (rejectBadRole(root, res, body.role, true)) return;
   sendJson(res, 200, {
     ok: true,
@@ -300,8 +316,8 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
  * /api/wake (readJsonObject → 400 malformed/non-object, 413 oversized; the body itself is
  * ignored — there are no options to force a restart). */
 export async function handleRestart(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, "{}");
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
   const result = requestRestart(root);
   if (!result.ok) {
     sendJson(res, 409, { error: result.error });
@@ -316,8 +332,8 @@ export async function handleRestart(req: http.IncomingMessage, res: http.ServerR
  * nothing can consume it, a conflict rather than a client 400. The director variant's
  * message (the discarded-prompt note) rides through verbatim. */
 export async function handleAbort(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"role": "feature"}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"role": "feature"}');
+  if (!body) return;
   if (rejectBadRole(root, res, body.role)) return;
   const result = requestAbort(root, body.role as string);
   if (!result.ok) {
@@ -336,8 +352,8 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
  * (readJsonObject → 400 malformed/non-object, 413 oversized; the role validates through the
  * shared rejectBadRole wording). */
 export async function handlePauseRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readJsonObject(req, res, '{"role": "feature", "paused": true}');
-  if (!body) return; // 4xx already sent — oversized or not a JSON object
+  const body = await readPostBody(req, res, '{"role": "feature", "paused": true}');
+  if (!body) return;
   if (rejectBadRole(root, res, body.role)) return;
   const value = requirePausedFlag(res, body);
   if (value === null) return;
