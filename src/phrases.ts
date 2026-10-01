@@ -62,7 +62,7 @@ export function shortSpanPhrase(ms: number): string {
 
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one
  * home of that phrasing, shared by the event feed (event-format.ts) and the failure digest's
- * Fleet state changes lines (failure-data.ts), like budgetPhrase. The duration is shortSpanPhrase
+ * Fleet state changes lines (failure-state-change.ts), like budgetPhrase. The duration is shortSpanPhrase
  * (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse count is
  * named only when the storm resumed right after an earlier hold, the one fact that says the
  * hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
