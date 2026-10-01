@@ -85,6 +85,18 @@ export function setDailyBudgetUsd(
   return writeConfigMutation(root, (cfg) => ({ ...cfg, maxDailyCostUsd: value }));
 }
 
+/** The error `tumwater config get <key>` and `config set <key> <value>` both surface for a
+ * key outside TOP_LEVEL_KEYS — the valid-keys list plus text.ts's did-you-mean suggestion —
+ * or null when the key is known. One home for the phrasing so whichever verb misspells a
+ * key, the typo reads the same. */
+export function unknownConfigKeyError(key: string): string | null {
+  if ((TOP_LEVEL_KEYS as readonly string[]).includes(key)) return null;
+  const suggestion = suggestClosest(key, TOP_LEVEL_KEYS as readonly string[]);
+  return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${
+    suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+  }`;
+}
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -101,18 +113,8 @@ export function setConfigKey(
   key: string,
   rawValue: string,
 ): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
-  if (!(TOP_LEVEL_KEYS as readonly string[]).includes(key)) {
-    // The same did-you-mean the unknown-command error carries: a typo'd key (modle → model)
-    // gets pointed at its real spelling when one sits within two edits; otherwise the valid
-    // keys list alone answers. text.ts's suggestClosest keeps the distance rule single-homed.
-    const suggestion = suggestClosest(key, TOP_LEVEL_KEYS as readonly string[]);
-    return {
-      ok: false,
-      error: `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${
-        suggestion ? ` — did you mean \`${suggestion}\`?` : ""
-      }`,
-    };
-  }
+  const unknown = unknownConfigKeyError(key);
+  if (unknown) return { ok: false, error: unknown };
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
