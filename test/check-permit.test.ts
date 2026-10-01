@@ -7,12 +7,11 @@ import { runScopedBuildCheck } from "../src/build-check.js";
 import { readEvents } from "../src/event-read.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { sleep } from "./wait.js";
 
 // A held permit is module-global state, so every test must let its work finish (and any
 // rejected run hand its permit back) before the next one starts — a leaked permit would
 // park every later acquire in this file.
-
-const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // Flush microtasks so "has the caller queued yet" is deterministic rather than
 // timing-dependent (same pattern as test/semaphore.test.ts).
@@ -26,7 +25,7 @@ test("withCheckPermit bounds concurrency to the configured cap", async () => {
     withCheckPermit(cfg, CHECK_TIER.other, async () => {
       running += 1;
       peak = Math.max(peak, running);
-      await delay(15);
+      await sleep(15);
       running -= 1;
     }),
   );
@@ -44,7 +43,7 @@ test("a valid config raises the cap for the next checks", async () => {
     withCheckPermit(cfg, CHECK_TIER.other, async () => {
       running += 1;
       peak = Math.max(peak, running);
-      await delay(15);
+      await sleep(15);
       running -= 1;
     }),
   );
@@ -62,7 +61,7 @@ test("an invalid or missing config falls back to the default cap", async () => {
     withCheckPermit(undefined as never, CHECK_TIER.other, async () => {
       running += 1;
       peak = Math.max(peak, running);
-      await delay(15);
+      await sleep(15);
       running -= 1;
     });
   // Missing, sub-one, and non-integer caps must all take the default, never a value the
@@ -71,9 +70,9 @@ test("an invalid or missing config falls back to the default cap", async () => {
   assert.equal(peak, 2);
 
   await Promise.all([
-    withCheckPermit({ maxConcurrentChecks: 0 }, CHECK_TIER.other, () => delay(15)),
-    withCheckPermit({ maxConcurrentChecks: 1.5 }, CHECK_TIER.other, () => delay(15)),
-    withCheckPermit({ maxConcurrentChecks: -2 }, CHECK_TIER.other, () => delay(15)),
+    withCheckPermit({ maxConcurrentChecks: 0 }, CHECK_TIER.other, () => sleep(15)),
+    withCheckPermit({ maxConcurrentChecks: 1.5 }, CHECK_TIER.other, () => sleep(15)),
+    withCheckPermit({ maxConcurrentChecks: -2 }, CHECK_TIER.other, () => sleep(15)),
   ]);
 });
 
@@ -92,7 +91,7 @@ test("a failing check still releases its permit", async () => {
     withCheckPermit(cfg, CHECK_TIER.other, async () => {
       released = true;
     }),
-    delay(1000).then(() => {
+    sleep(1000).then(() => {
       throw new Error("permit was not released after a failing check");
     }),
   ]);
