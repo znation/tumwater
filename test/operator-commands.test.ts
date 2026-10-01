@@ -460,6 +460,21 @@ test("signalOrchestrator names the pid and the remedy when delivery fails for an
   assert.deepEqual(kill.mock.calls.map((c) => c.arguments), [[4242, "SIGTERM"]]);
 });
 
+test("signalOrchestrator rethrows a delivery error that is neither ESRCH nor EPERM", (t) => {
+  // An unexpected errno must reach the caller untouched — the ESRCH and EPERM mappings are
+  // the only two the command interprets; anything else is a bug or an environment the
+  // operator needs to see raw, not a message the harness invents around it.
+  const original = errnoError("EINVAL", "invalid argument");
+  t.mock.method(process, "kill", (() => {
+    throw original;
+  }) as typeof process.kill);
+  assert.throws(
+    () => signalOrchestrator(4242),
+    (err: unknown) => err === original,
+    "the original error object is rethrown, not wrapped or swallowed",
+  );
+});
+
 test("signalOrchestrator reads a vanished pid as gone, never throwing", () => {
   // A pid beyond any pid space (Linux caps pids at 2^22, macOS at 99999): the signal finds
   // nothing and the ESRCH mapping answers "gone" — the caller reports the goal as met.

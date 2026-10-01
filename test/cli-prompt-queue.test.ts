@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
-import { inboxDir } from "../src/paths.js";
+import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
@@ -237,4 +237,44 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
   assert.deepEqual(queuedRolePrompts(repo, "readme"), ["docs task"]);
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
+});
+
+test("prompt --cancel --role fails on an out-of-range position with the loop's count and no side effects", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel role range");
+
+  // The scoped form routes the position straight into cancelRolePrompt, so an out-of-range
+  // position surfaces that throw (with the loop's own queue length, not the cross-loop
+  // count the flagless form reports) as a failed command — and leaves the queue untouched.
+  submitRolePrompt(repo, "qa", "qa task one");
+  const r = await cli(repo, "prompt", "--cancel", "5", "--role", "qa");
+  assert.equal(r.code, 1, `expected a failed exit:\n${r.stdout}`);
+  assert.match(r.stderr, /no prompt at position 5 \(1 queued\)/);
+
+  // No side effects: the sole prompt is still queued and nothing was logged.
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
+  const logs = await cli(repo, "logs", "-n", "10");
+  assert.equal(logs.code, 0);
+  assert.ok(!logs.stdout.includes("prompt cancelled"), `no cancel event logged:\n${logs.stdout}`);
+});
+
+test("prompt --cancel --role reports a concurrently dequeued prompt as gone and exits clean", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel role race");
+
+  // The same dangling-symlink stand-in as the flagless race test, planted in the role's own
+  // queue directory: readdir lists it, readFileSync hits ENOENT — the role loop dequeued the
+  // prompt between the operator's listing and the cancel.
+  submitRolePrompt(repo, "qa", "qa task one");
+  const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
+  fs.symlinkSync(path.join(repo, "no-such-prompt.md"), raced);
+
+  const r = await cli(repo, "prompt", "--cancel", "2", "--role", "qa");
+  assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
+  assert.match(r.stdout, /prompt 2 is no longer queued/);
+  assert.match(r.stdout, /qa already took it/);
+
+  // The vanished file was left untouched and the real prompt is still queued.
+  assert.ok(fs.lstatSync(raced).isSymbolicLink(), "the vanished file was left untouched");
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
 });
