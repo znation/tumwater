@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type http from "node:http";
 import {
   rejectBadRole,
   intQuery,
@@ -12,6 +11,7 @@ import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { fakeRes } from "./fake-res.js";
 
 // The dashboard's request-argument validators (src/ui/gui-args.ts), exercised at the unit
 // level: they have no other direct coverage — the server-level tests (gui.test.ts,
@@ -21,26 +21,6 @@ import { tmpdir } from "./repo-fixtures.js";
 // the window's degrade-to-default rule, and the prompt/pause body checks both endpoint
 // variants must answer identically. Each helper either answers through sendJson on the
 // response or returns its parsed value, so a fake res capturing writeHead/end is enough.
-
-interface Captured {
-  status?: number;
-  contentType?: string;
-  body: string;
-}
-
-function fakeRes(): { res: http.ServerResponse; captured: Captured } {
-  const captured: Captured = { body: "" };
-  const res = {
-    writeHead(status: number, headers: Record<string, string>) {
-      captured.status = status;
-      captured.contentType = headers["content-type"];
-    },
-    end(body?: string) {
-      captured.body = body ?? "";
-    },
-  } as unknown as http.ServerResponse;
-  return { res, captured };
-}
 
 // A configless temp root: knownRoleIdsCached falls back to the built-in catalog there, so
 // the valid-id list in the 400s is allRoleIds() and any catalog id validates.

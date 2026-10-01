@@ -13,6 +13,7 @@ import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { startLocalGui } from "./gui-fixtures.js";
+import { fakeRes, type Captured } from "./fake-res.js";
 
 // The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -20,26 +21,6 @@ import { startLocalGui } from "./gui-fixtures.js";
 // Both handlers only read the parsed query (the server threads it down from the one
 // parseRequestTarget call) and write one JSON response, so a fake res that captures
 // writeHead/end is enough; the domain work runs for real against a seeded repo.
-
-interface Captured {
-  status?: number;
-  contentType?: string;
-  body: string;
-}
-
-function fakeRes(): { res: http.ServerResponse; captured: Captured } {
-  const captured: Captured = { body: "" };
-  const res = {
-    writeHead(status: number, headers: Record<string, string>) {
-      captured.status = status;
-      captured.contentType = headers["content-type"];
-    },
-    end(body?: string) {
-      captured.body = body ?? "";
-    },
-  } as unknown as http.ServerResponse;
-  return { res, captured };
-}
 
 function serveReport(root: string, query = ""): { captured: Captured; data: unknown } {
   const { res, captured } = fakeRes();
