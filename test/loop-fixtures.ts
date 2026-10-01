@@ -10,7 +10,7 @@ import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
-import { projManifest, writeScript } from "./fake-commands.js";
+import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
 import { ensureParentDir } from "../src/files.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
@@ -59,6 +59,16 @@ export function buildCheckFixture(): { root: string; wt: string } {
  * detectBuildCheck walks up to, gitignored in real projects. Each fixture gets its own temp
  * dir, hence its own SHA: the gate's verdict cache and red-SHA warning state are module-level,
  * so tests must never share a HEAD. */
+/** A fake `npm` executable at the front of PATH for the duration of a test (the repo's real
+ * npm must never run in unit tests) — writeScript + pathPrepend assembled into the one shape
+ * the baseline-gate tests need: a body script, a restore function. Shared by the main-red and
+ * attribute-red-check suites, which both stage their gate scenarios over baselineFixture. */
+export function fakeNpm(script: string): () => void {
+  const dir = tmpdir("fake-npm-");
+  writeScript(path.join(dir, "npm"), script);
+  return pathPrepend(dir);
+}
+
 export function baselineFixture(role: string, testScript: string): { root: string; wt: string } {
   const root = path.join(tmpdir("baseline-"), "project");
   fs.mkdirSync(root, { recursive: true });

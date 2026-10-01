@@ -7,8 +7,8 @@ import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/event-read.js";
 import { shortSha } from "../src/text.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
-import { baselineFixture, runsOf } from "./loop-fixtures.js";
-import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
+import { baselineFixture, fakeNpm, runsOf } from "./loop-fixtures.js";
+import { pathReplace } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
 
@@ -19,14 +19,6 @@ import { scriptedSampler, woke } from "./sleep-clock.js";
 // execution, and per-SHA cache machinery is covered in build-check.test.ts.
 
 const ROLE = "coverage"; // a BASELINE_BLOCKED_ROLES member (code-producing)
-
-/** A fake `npm` executable at the front of PATH for the duration of a test (the repo's real
- * npm must never run in unit tests). Returns a restore function. */
-function fakeNpm(script: string): () => void {
-  const dir = tmpdir("fake-npm-");
-  writeScript(path.join(dir, "npm"), script);
-  return pathPrepend(dir);
-}
 
 test("mainRedGate lets a non-blocked role through without running the check", async () => {
   const counter = path.join(tmpdir(), "runs");

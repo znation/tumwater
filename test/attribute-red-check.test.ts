@@ -10,9 +10,8 @@ import { readEvents } from "../src/event-read.js";
 import { shortSha } from "../src/text.js";
 import type { BuildCheck } from "../src/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build-check.js";
-import { pathPrepend, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
-import { baselineFixture } from "./loop-fixtures.js";
+import { baselineFixture, fakeNpm } from "./loop-fixtures.js";
 
 // Unit coverage for attributeRedCheck (src/landing-core.ts): the gate's final attribution
 // step, shared by a batch bisect's last move and a single landing's in-lock check at the
@@ -41,13 +40,6 @@ function seededState(root: string): LoopState {
   s.unreviewFailures = 3;
   saveLoopState(root, s);
   return s;
-}
-
-/** A fake `npm` whose exit decides main's baseline verdict for the duration of a test. */
-function fakeNpm(script: string): () => void {
-  const dir = tmpdir("fake-npm-");
-  writeScript(path.join(dir, "npm"), script);
-  return pathPrepend(dir);
 }
 
 function reviewRejectedEvents(root: string): { loop: string; head: string; reasons: string[] }[] {
