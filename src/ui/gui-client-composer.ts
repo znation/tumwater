@@ -147,6 +147,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
       r.readAsDataURL(file);
     });
   }
+  // composer-images:end
   // composer-send:start
   // Queue a prompt for the director or for one loop, through the same endpoints the CLI's
   // "prompt" and "prompt --role" use. Resolves to the confirmation to show; rejects when the
