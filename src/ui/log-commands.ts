@@ -19,6 +19,15 @@ import { eventsLogPath, piLogPath } from "../paths.js";
  * the event formatter, the transcript renderer, and the file-following helpers, so placing it
  * here keeps the documented rule that src/ui/ is imported only by itself and cli.ts. */
 
+/** Print one event as the feed line: formatEvent's rendered line, or — in `--json` mode — the
+ * raw HarnessEvent serialized exactly as stored in the log. The one home of the
+ * render-or-serialize choice the -n dump, the --since window, and the follow stream share, so
+ * the three cannot drift on what `logs --json` emits (the sayJson precedent: one place decides
+ * what the machine-readable form looks like). */
+function sayEventLine(e: HarnessEvent, json: boolean): void {
+  say(json ? JSON.stringify(e) : formatEvent(e));
+}
+
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
  * `--role` swaps in a pi transcript rather than the event log (--prompt requires --role, so
  * it is excluded with it), so each such flag fails naming both. One wording for all of them —
@@ -89,7 +98,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       if (!json) say(`no events in ${durationLabel(ms)}`);
       return;
     }
-    for (const e of events) say(json ? JSON.stringify(e) : formatEvent(e));
+    for (const e of events) sayEventLine(e, json);
     // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
@@ -115,7 +124,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
   const shown = grepLower ? tail.events.filter((e) => matchesGrep(e, grepLower)) : tail.events;
-  for (const e of shown) say(json ? JSON.stringify(e) : formatEvent(e));
+  for (const e of shown) sayEventLine(e, json);
   if (!follow) {
     // The empty-match line is prose: in JSON mode the empty output is the answer.
     if (grepPattern !== null && shown.length === 0 && !json)
@@ -137,7 +146,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
       if (e && (grepLower === null || matchesGrep(e, grepLower)))
-        say(json ? JSON.stringify(e) : formatEvent(e));
+        sayEventLine(e, json);
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.
