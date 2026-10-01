@@ -4,13 +4,95 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, submitPrompt, queuedRolePrompts, submitRolePrompt } from "../src/inbox.js";
+import { truncate } from "../src/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 
-// The prompt queue's child-process tests: cancel/list/flag-validation, per-role queues, and
-// the broken-config policy the list mode follows. Spawned via the CLI so node --test can run
+// The prompt queue's child-process tests — enqueue/list/cancel basics first, then
+// flag-validation, per-role queues, and the broken-config policy the list mode follows. Spawned
+// via the CLI so node --test can run
 // them in parallel processes; the shared spawn helpers live in cli-harness.ts.
+test("prompt queues for the director and logs an event; empty text fails", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt test");
+
+  let r = await cli(repo, "prompt");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /prompt text required/);
+
+  r = await cli(repo, "prompt", "add dark mode");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /queued for the director loop/);
+  assert.equal(inboxSize(repo), 1);
+  assert.equal(dequeuePrompt(repo), "add dark mode");
+
+  // The queueing is visible in `logs`.
+  r = await cli(repo, "logs", "-n", "5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /user prompt queued: add dark mode/);
+});
+test("prompt --list shows queued prompts numbered in execution order", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list");
+
+  // An empty set of queues is a clean one-liner, not an error.
+  let r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /nothing queued/);
+
+  submitPrompt(repo, "first task");
+  // Full text verbatim — including newlines: --list is the inspection command that shows
+  // what a queued prompt actually says before you cancel it.
+  submitPrompt(repo, "second\nwith a newline");
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. first task$/m);
+  assert.match(r.stdout, /^2\. second\nwith a newline$/m);
+});
+
+// The empty side of --role scoping: a role with nothing queued gets its own one-liner, the
+// same clean answer the unscoped empty list gives — the grouped-listing test below covers the
+// populated side.
+test("prompt --list --role with an empty queue names the role, not an error", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list role empty");
+
+  const r = await cli(repo, "prompt", "--list", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^nothing queued for qa$/m);
+});
+
+test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt cancel");
+
+  submitPrompt(repo, "alpha");
+  const long = `fix the ${"x".repeat(100)} bug`;
+  submitPrompt(repo, long);
+  submitPrompt(repo, "gamma");
+
+  let r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 0);
+  // Over-long text is reported through truncate (80 chars + ellipsis), like every other
+  // one-line label — never a raw multi-hundred-character line.
+  assert.ok(
+    r.stdout.includes(`cancelled (director): ${truncate(long, 80)}`),
+    `expected the truncated report in:\n${r.stdout}`,
+  );
+
+  // The removal renumbers the queue and is visible in --list and logs.
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. alpha$/m);
+  assert.match(r.stdout, /^2\. gamma$/m);
+  assert.ok(!r.stdout.includes("fix the"), "the cancelled prompt is gone from the list:\n" + r.stdout);
+
+  r = await cli(repo, "logs", "-n", "5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /user prompt cancelled: /);
+});
+
 test("prompt --cancel fails on out-of-range or non-numeric positions without side effects", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel validation");

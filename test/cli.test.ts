@@ -7,8 +7,6 @@ import { initProject } from "../src/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
-import { dequeuePrompt, inboxSize, submitPrompt } from "../src/inbox.js";
-import { truncate } from "../src/text.js";
 import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
@@ -20,8 +18,8 @@ import { seedCounters } from "./loop-fixtures.js";
 //
 // Split across files so node --test runs them in parallel processes — nearly every test here
 // spawns the CLI, so each file is CPU-bound on its own. This file holds help/version, status,
-// init, and the prompt queue's enqueue/list basics; cli-prompt-queue.test.ts carries the
-// queue's cancel/role cases, cli-preflight.test.ts run's startup preflight, and
+// and init; cli-prompt-queue.test.ts carries the prompt queue, cli-preflight.test.ts run's
+// startup preflight, and
 // cli-arg-strictness.test.ts the argument-strictness tests; the other child-process CLI tests
 // live in their command's topic file: cli-gui.test.ts
 // (gui), cli-run-live.test.ts (run's lifecycle), doctor.test.ts, report.test.ts,
@@ -343,90 +341,6 @@ test("init rejects unknown flags and stray positionals instead of baking them in
   assert.equal(r.code, 0);
   assert.equal(readInitialPrompt(bare2), "- Build A - Build B");
 });
-
-test("prompt queues for the director and logs an event; empty text fails", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt test");
-
-  let r = await cli(repo, "prompt");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /prompt text required/);
-
-  r = await cli(repo, "prompt", "add dark mode");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the director loop/);
-  assert.equal(inboxSize(repo), 1);
-  assert.equal(dequeuePrompt(repo), "add dark mode");
-
-  // The queueing is visible in `logs`.
-  r = await cli(repo, "logs", "-n", "5");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /user prompt queued: add dark mode/);
-});
-
-// --- prompt --list / --cancel: inspecting and removing queued prompts from the CLI ---
-
-test("prompt --list shows queued prompts numbered in execution order", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt list");
-
-  // An empty set of queues is a clean one-liner, not an error.
-  let r = await cli(repo, "prompt", "--list");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /nothing queued/);
-
-  submitPrompt(repo, "first task");
-  // Full text verbatim — including newlines: --list is the inspection command that shows
-  // what a queued prompt actually says before you cancel it.
-  submitPrompt(repo, "second\nwith a newline");
-  r = await cli(repo, "prompt", "--list");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^1\. first task$/m);
-  assert.match(r.stdout, /^2\. second\nwith a newline$/m);
-});
-
-// The empty side of --role scoping: a role with nothing queued gets its own one-liner, the
-// same clean answer the unscoped empty list gives — the grouped-listing test below covers the
-// populated side.
-test("prompt --list --role with an empty queue names the role, not an error", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt list role empty");
-
-  const r = await cli(repo, "prompt", "--list", "--role", "qa");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^nothing queued for qa$/m);
-});
-
-test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli prompt cancel");
-
-  submitPrompt(repo, "alpha");
-  const long = `fix the ${"x".repeat(100)} bug`;
-  submitPrompt(repo, long);
-  submitPrompt(repo, "gamma");
-
-  let r = await cli(repo, "prompt", "--cancel", "2");
-  assert.equal(r.code, 0);
-  // Over-long text is reported through truncate (80 chars + ellipsis), like every other
-  // one-line label — never a raw multi-hundred-character line.
-  assert.ok(
-    r.stdout.includes(`cancelled (director): ${truncate(long, 80)}`),
-    `expected the truncated report in:\n${r.stdout}`,
-  );
-
-  // The removal renumbers the queue and is visible in --list and logs.
-  r = await cli(repo, "prompt", "--list");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^1\. alpha$/m);
-  assert.match(r.stdout, /^2\. gamma$/m);
-  assert.ok(!r.stdout.includes("fix the"), "the cancelled prompt is gone from the list:\n" + r.stdout);
-
-  r = await cli(repo, "logs", "-n", "5");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /user prompt cancelled: /);
-});
-
 
 
 // --- `status --json` through the real CLI entry point: the machine-readable fleet state --
