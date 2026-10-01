@@ -238,6 +238,12 @@ export class Redeployer {
    * transition and warns once more with the earlier deadline. Cleared when the deadline lapses,
    * so the next episode warns once. */
   private cooldownWarnedUntil: number | null = null;
+  /** The ordinary cooldown deadline whose urgent lapse has already warned: when the red-carved
+   * deadline sits in the past, the deferred-branch warning above cannot fire, and the episode
+   * would otherwise start with no event naming why the announced 12 h deadline was abandoned
+   * (BUGS.md 2026-09-30). Keyed to the ordinary deadline — one warning per cooldown, the same
+   * discipline as cooldownWarnedUntil. */
+  private urgentLapseWarnedFor: number | null = null;
   /** The RUNNING build's own red verdict (the urgency carve-out's input), tracked in the
    * background — poll must never await a suite run. Keyed to the SHA it was asked about: a
    * verdict belongs to one immutable tree, and the SHA changes only when a swap (and with it a
@@ -503,6 +509,19 @@ export class Redeployer {
     }
     // The cooldown has lapsed (or never started): the next episode warns once more.
     this.cooldownWarnedUntil = null;
+    // The carve-out's second silence (BUGS.md 2026-09-30): a red verdict arriving after the
+    // 15 min urgent window has passed cuts the deadline to a point already gone, so the
+    // deferred-branch warning above never ran and the episode below started with no word of
+    // why the announced 12 h deadline was abandoned. urgent here means now is still inside the
+    // ordinary cooldown and the running build is red — say why the episode starts early, once
+    // per ordinary deadline.
+    if (urgent && this.urgentLapseWarnedFor !== this.cooldownUntil()) {
+      this.urgentLapseWarnedFor = this.cooldownUntil();
+      this.warn(
+        `auto-restart of ${shortSha(mainHead)} proceeding early — the running build ${shortSha(this.build.sha)} is red, ` +
+          `the cooldown was cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min and that deadline has already passed`,
+      );
+    }
 
     if (this.pendingHead === null) {
       // Before holding anything: could a new generation even boot here? A refusal here costs

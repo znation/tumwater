@@ -1,5 +1,6 @@
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { buildCheckEvent } from "./build-check-events.js";
+import { type BuildCheckOutcome } from "./build-check.js";
 import { liveConfig } from "./config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
@@ -61,18 +62,25 @@ export function redeployDeps(
     swap: (mainHead) => swapDist(root, dist, mainHead),
     bootProblem,
     // The urgency carve-out's verdict (BUGS.md 2026-09-30): a cached verdict answers free;
-    // otherwise the baseline check runs ONCE on the running build's own SHA, in a dedicated
-    // witness worktree — never the mirror, which the green check and compile serve at main's
-    // heads — and lands in the same fleet-shared cache every later consult reads.
+    // otherwise the baseline check runs on the running build's own SHA, in a dedicated witness
+    // worktree — never the mirror, which the green check and compile serve at main's heads —
+    // and lands in the same fleet-shared cache every later consult reads. A fresh red is
+    // provisional (BUGS.md 2026-09-30): the gate's flake rule applies here too, so one
+    // immediate re-run must confirm it before the carve-out may cut the cooldown on it — a
+    // green on the re-run promotes the SHA fleet-wide, and a skipped re-run leaves the verdict
+    // unsettled (null), which the policy reads as not-red.
     buildRed: async (buildSha) => {
       const cached = cachedBaselineVerdict(buildSha);
       if (cached !== undefined) return cached === "red";
-      const baseline = await checkMainBaseline(
-        await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha),
-        liveConfig(root),
-        ({ outcome, durationMs }) => log(buildCheckEvent("harness", "baseline", outcome, durationMs)),
-      );
-      return baseline.baseline ? baseline.baseline.status === "red" : null;
+      const witness = await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha);
+      const onRun = ({ outcome, durationMs }: { outcome: BuildCheckOutcome; durationMs: number }) =>
+        log(buildCheckEvent("harness", "baseline", outcome, durationMs));
+      const baseline = await checkMainBaseline(witness, liveConfig(root), onRun);
+      if (!baseline.baseline || baseline.baseline.status !== "red") {
+        return baseline.baseline ? false : null;
+      }
+      const retry = await checkMainBaseline(witness, liveConfig(root), onRun, true);
+      return retry.baseline ? retry.baseline.status === "red" : null;
     },
   };
 }

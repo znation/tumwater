@@ -412,9 +412,10 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the prewarmed verdict is adopted, not re-run");
   const warnings = events.filter((e) => e.type === "warning");
-  assert.equal(warnings.length, 2, "one warning per distinct deadline: ordinary, then urgent");
+  assert.equal(warnings.length, 3, "one warning per distinct deadline: ordinary, urgent, then the urgent lapse");
   assert.match(String(warnings[0]!.message), /per 12 h/);
   assert.match(String(warnings[1]!.message), /is red — the cooldown is cut to 15 min/);
+  assert.match(String(warnings[2]!.message), /is red, the cooldown was cut to 15 min and that deadline has already passed/);
 });
 
 test("the urgency onset mid-cooldown warns once more with the earlier deadline", async () => {
@@ -487,6 +488,36 @@ test("a red RUNNING build after the urgent window already passed keeps the episo
     "hold",
     "the ordinary lapse starts the episode — the red verdict does not resurrect a deferral",
   );
+});
+
+test("a red RUNNING build whose cut deadline already passed proceeds early with a warning, not in silence", async () => {
+  // BUGS.md 2026-09-30: the incident's red arrived when the 15 min urgent window it cuts to had
+  // already lapsed, so the deferred-branch warning never fired and the fleet restarted hours
+  // before its announced 12 h deadline with no event naming why. A lapse the carve-out caused
+  // must say so — once per ordinary deadline.
+  const f = fakeDeps();
+  const { r, events } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60_000), "none");
+  f.red(true);
+  await settle();
+  // Past the 15 min urgent window, still inside the ordinary 12 h cooldown: the carve-out is
+  // what lets this poll into the episode, so it must say so.
+  assert.equal(
+    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 60_000),
+    "hold",
+    "the red cut the deadline into the past: the episode proceeds now",
+  );
+  const warnings = events.filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 2, "the ordinary cooldown warning, then the early-lapse one");
+  assert.match(String(warnings[1]!.message), /is red/);
+  assert.match(String(warnings[1]!.message), /already passed/);
+  assert.equal(
+    await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 120_000),
+    "hold",
+    "the episode is pending: the next poll continues it",
+  );
+  assert.equal(events.filter((e) => e.type === "warning").length, 2, "one warning per cooldown, not per poll");
 });
 
 test("the completion timestamp survives process restart via its state file", async () => {

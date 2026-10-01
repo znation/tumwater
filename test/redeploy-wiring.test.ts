@@ -76,24 +76,60 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   );
 
   // Cold-cache recovery: a third commit no check has ever seen in this process. buildRed must
-  // establish the verdict from the tree itself — one suite run in the witness worktree — instead
-  // of waiting for role ticks that will never baseline a SHA that is no longer main's tip.
+  // establish the verdict from the tree itself — a witness check plus its confirmation re-run
+  // (the gate's flake rule, BUGS.md 2026-09-30) — instead of waiting for role ticks that will
+  // never baseline a SHA that is no longer main's tip.
   sh(root, "git", "commit", "-q", "--allow-empty", "-m", "another red tree, never baselined");
   const coldRedHead = sh(root, "git", "rev-parse", "HEAD");
-  assert.equal(await deps.buildRed(coldRedHead), true, "a cold-cache red verdict is established by the witness check");
+  assert.equal(
+    await deps.buildRed(coldRedHead),
+    true,
+    "a cold-cache red verdict is established by the witness check and survives its confirmation re-run",
+  );
   assert.equal(
     sh(witnessWorktreePath(root), "git", "rev-parse", "HEAD"),
     coldRedHead,
     "the witness worktree sits at the build SHA it verified",
   );
   const baselineEvents = events.filter((e) => e.type === "build_check" && e.scope === "baseline");
-  assert.equal(baselineEvents.length, baselineCountAfterWarm + 1, "exactly one new suite run — the witness check");
-  assert.equal(baselineEvents[baselineEvents.length - 1]!.status, "failed");
+  assert.equal(
+    baselineEvents.length,
+    baselineCountAfterWarm + 2,
+    "a cold red pays the witness check plus its confirmation re-run",
+  );
+  assert.deepEqual(
+    baselineEvents.slice(-2).map((e) => e.status),
+    ["failed", "failed"],
+    "both runs failed: the red was real, not a flake",
+  );
   assert.equal(await deps.buildRed(coldRedHead), true, "the second consult reads the cache — no second run");
   assert.equal(
     events.filter((e) => e.type === "build_check" && e.scope === "baseline").length,
-    baselineCountAfterWarm + 1,
-    "no second suite run",
+    baselineCountAfterWarm + 2,
+    "no further suite run",
+  );
+
+  // A witness red that does not reproduce on the immediate re-run is a flake, not a red tree
+  // (BUGS.md 2026-09-30): one suite run failing 1 of 2,458 tests must not cut a 12 h cooldown
+  // to 15 min. The script fails its first run and passes every later one — exactly the
+  // load-flake shape the gate's rule exists for.
+  const failOnce = "node -e 'const fs=require(\"fs\"),p=\".flake-marker\";if(fs.existsSync(p))process.exit(0);fs.writeFileSync(p,\"x\");process.exit(1)'";
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: failOnce }));
+  sh(root, "git", "commit", "-aqm", "a suite that fails once, then passes");
+  const flakeHead = sh(root, "git", "rev-parse", "HEAD");
+  assert.equal(
+    await deps.buildRed(flakeHead),
+    false,
+    "a red that passes its confirmation re-run reads not red — the ordinary cooldown stands",
+  );
+  const flakeEvents = events.filter((e) => e.type === "build_check" && e.scope === "baseline").slice(-2);
+  assert.deepEqual(flakeEvents.map((e) => e.status), ["failed", "passed"], "the re-run reproduced nothing");
+  // The re-run's green promoted the SHA in the fleet-shared cache: later consults stay free.
+  assert.equal(await deps.buildRed(flakeHead), false, "the promoted green answers the second consult");
+  assert.equal(
+    events.filter((e) => e.type === "build_check" && e.scope === "baseline").length,
+    baselineCountAfterWarm + 4,
+    "the flake head cost exactly its two runs",
   );
 });
 
