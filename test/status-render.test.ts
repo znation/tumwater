@@ -4,15 +4,19 @@
  * fixtures both assemble snapshots from are in status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { displayWidth } from "../src/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import type { StatusSnapshot } from "../src/status-data.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { snapshot, type StatusSnapshot } from "../src/status-data.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
 import { defaultConfig } from "../src/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
-import { tmpdir } from "./repo-fixtures.js";
+import { initProject } from "../src/init.js";
+import { orchestratorStatePath } from "../src/paths.js";
+import { tmpdir, makeRepo } from "./repo-fixtures.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import {
   DEFAULT_BUDGET,
@@ -743,4 +747,51 @@ test("a loop with queued prompts carries a p:N marker on its state cell", () => 
   const dryRow = lines.find((l) => l.startsWith("dry")) ?? "";
   assert.doesNotMatch(dryRow, /p:/, "an empty queue renders no marker");
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
+});
+
+
+test("snapshot and renderStatus cover all enabled loops", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  const state = freshLoopState("clean");
+  state.ticks = 3;
+  state.commits = 2;
+  state.lastResult = "changed";
+  state.lastSummary = "tidy something";
+  saveLoopState(repo, state);
+
+  const snap = snapshot(repo);
+  assert.equal(snap.running, false);
+  assert.ok(snap.loops.some((l) => l.role === "clean" && l.ticks === 3));
+  const text = renderStatus(repo, snap);
+  assert.match(text, /not running/);
+  assert.match(text, /tidy something/);
+  for (const role of ["organize", "coverage", "clean", "dry", "feature", "bugfix", "plan", "readme", "improve", "director"]) {
+    assert.match(text, new RegExp(role));
+  }
+});
+
+
+test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+  // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
+  writeOrchestratorMarker(repo, []);
+  // One permit-holding tick (running, no parkedSince) and two parked waiters.
+  const holder = freshLoopState("feature");
+  holder.running = true;
+  holder.lastTickStartedAt = Date.now() - 5_000; // renders the elapsed working detail
+  saveLoopState(repo, holder);
+  for (const role of ["clean", "organize"]) {
+    const parked = freshLoopState(role);
+    parked.running = true;
+    parked.parkedSince = Date.now() - 5_000;
+    saveLoopState(repo, parked);
+  }
+  const text = renderStatus(repo, snapshot(repo));
+  // The waiters show their true state, not `working`.
+  assert.equal(text.split("\n").filter((l) => l.includes("awaiting slot")).length, 2);
+  // Exactly one active working row: the only real permit holder.
+  assert.equal(text.split("\n").filter((l) => /\bworking \d/.test(l)).length, 1);
+  fs.rmSync(orchestratorStatePath(repo), { force: true });
 });

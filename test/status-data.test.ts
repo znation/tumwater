@@ -1,30 +1,33 @@
+// The status-data suite: snapshot() — what the status collector reads from disk and the
+// derived fleet fields it publishes to both dashboards. Split out of the former
+// status.test.ts, which had grown into the tests of five modules; the display model's tests
+// live in status-model.test.ts, the rendered table's in status-render.test.ts, the payload
+// contract's in status-payload.test.ts, and the `status` CLI's in cli.test.ts.
+
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { loadConfig, saveConfig } from "../src/config.js";
-import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
-import { allRoleIds } from "../src/roles.js";
 import { snapshot } from "../src/status-data.js";
 import { quietHoursStatus } from "../src/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
-import { renderStatus } from "../src/ui/status-render.js";
-import { loopPhase, sortLoopsByState } from "../src/ui/status-model.js";
-import { enqueueLanding, queuedLandingFiles } from "../src/landing-queue.js";
-import { freshLoopState, saveLoopState } from "../src/loop-state.js";
-import { recordDailyCost } from "../src/budget.js";
 import { initProject } from "../src/init.js";
-import { landingStatePath, landQueueDir, orchestratorStatePath, pausedPath } from "../src/paths.js";
-import { pauseFleet, pauseRole } from "../src/fleet-state.js";
-import { writeJsonFile } from "../src/json-files.js";
-import { makeRepo, mainSha, tmpdir, writeConfig } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
-import { seedCounters } from "./loop-fixtures.js";
+import { mainSha, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { ensureParentDir } from "../src/files.js";
+import { loadConfig, saveConfig } from "../src/config.js";
+import { allRoleIds } from "../src/roles.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { withCountedReads } from "./fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { recordDailyCost } from "../src/budget.js";
+import { renderStatus } from "../src/ui/status-render.js";
+import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
+import { writeJsonFile } from "../src/json-files.js";
+import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
+import { enqueueLanding, queuedLandingFiles } from "../src/landing-queue.js";
+import { pauseFleet, pauseRole } from "../src/fleet-state.js";
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the snapshot carries the
 // configured window and the in-window flag — present only while the value parses to a real
@@ -65,26 +68,6 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
   assert.equal(fromDefaults.inQuietHours, false);
 });
 
-test("snapshot and renderStatus cover all enabled loops", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "test project");
-  const state = freshLoopState("clean");
-  state.ticks = 3;
-  state.commits = 2;
-  state.lastResult = "changed";
-  state.lastSummary = "tidy something";
-  saveLoopState(repo, state);
-
-  const snap = snapshot(repo);
-  assert.equal(snap.running, false);
-  assert.ok(snap.loops.some((l) => l.role === "clean" && l.ticks === 3));
-  const text = renderStatus(repo, snap);
-  assert.match(text, /not running/);
-  assert.match(text, /tidy something/);
-  for (const role of ["organize", "coverage", "clean", "dry", "feature", "bugfix", "plan", "readme", "improve", "director"]) {
-    assert.match(text, new RegExp(role));
-  }
-});
 
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
@@ -118,6 +101,7 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 
+
 test("snapshot serves unchanged loop state from the stat-keyed cache without re-reading", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -149,6 +133,7 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
 });
 
+
 test("snapshot reads the orchestrator info file once per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -168,6 +153,7 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   );
   assert.equal(reads, 1); // one read serves both — not two
 });
+
 
 test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {
   const repo = makeRepo();
@@ -199,6 +185,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   snap = snapshot(repo);
   assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false, fallback: null });
 });
+
 
 test("snapshot prefers the running orchestrator's published budget over the persisted sum", async () => {
   const repo = makeRepo();
@@ -240,6 +227,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   assert.equal(snapshot(repo).budget.spentUsd, 1);
 });
 
+
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
 // fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
 // never accumulate against the cap and the badge data carries `free` so both dashboards read n/a.
@@ -275,6 +263,7 @@ test("snapshot marks the budget free when every fleet model is unpriced", async 
   snap = snapshot(repo, modelsFile);
   assert.equal(snap.budget?.free, false, "one paid model keeps the dollar figure");
 });
+
 
 // The cost n/a fallback model (plans/fallback-model.md): the snapshot carries it only when the
 // budget gate could actually engage it, so the dashboards' three-valued gate matches the
@@ -341,6 +330,7 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   assert.deepEqual(snapshot(repo, modelsFile).budget.fallback, { provider: "local", model: "local-free" });
 });
 
+
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "inbox snapshot test");
@@ -371,6 +361,7 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
+
 // The `custom` flag marks user-defined loops (tumwater.json's customLoops) for the
 // dashboards' asterisk. It is computed in snapshot from the same last-known-good config that
 // produced the role list — so a transiently broken file keeps marking its customs rather than
@@ -396,66 +387,6 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "broken file keeps last-known-good customs");
 });
 
-test("loopPhase describes each loop state", () => {
-  const s = freshLoopState("clean");
-  assert.equal(loopPhase(s, false), "stopped");
-  assert.equal(loopPhase(s, true), "queued");
-  s.running = true;
-  assert.equal(loopPhase(s, true), "working");
-  s.running = false;
-  s.nextRunAt = Date.now() + 90_000;
-  // Sleeping is a present state: the label shows the remaining duration ("for …"),
-  // not a future start ("in …"). 90s buckets to "2m" in humanSeconds.
-  assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
-  const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true), "waiting for prompts");
-});
-
-// BUGS.md 2026-09-24 — the display must mirror the concurrency cap: a tick parked in the
-// semaphore queue holds no permit, so it renders its true state (`awaiting slot`) and stays
-// out of the active set an operator counts against maxConcurrent.
-test("a parked waiter renders `awaiting slot` and stays out of the active set", () => {
-  const s = freshLoopState("clean");
-  s.running = true;
-  s.parkedSince = Date.now() - 5_000;
-  assert.match(loopPhase(s, true), /^awaiting slot 5s$/);
-  // Permit granted (the orchestrator clears parkedSince at acquire): the same loop becomes
-  // an active, permit-holding working tick again.
-  s.parkedSince = undefined;
-  assert.equal(loopPhase(s, true), "working");
-  // The parked label is not an active phase: sortLoopsByState puts it behind the working and
-  // landing rows, so active-row counting never includes a waiter.
-  const sorted = sortLoopsByState([
-    { role: "clean", phase: "awaiting slot 5s" },
-    { role: "feature", phase: "working 5s" },
-    { role: "bugfix", phase: "landing 5s" },
-  ]);
-  assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
-});
-
-test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "test project");
-  // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
-  writeOrchestratorMarker(repo, []);
-  // One permit-holding tick (running, no parkedSince) and two parked waiters.
-  const holder = freshLoopState("feature");
-  holder.running = true;
-  holder.lastTickStartedAt = Date.now() - 5_000; // renders the elapsed working detail
-  saveLoopState(repo, holder);
-  for (const role of ["clean", "organize"]) {
-    const parked = freshLoopState(role);
-    parked.running = true;
-    parked.parkedSince = Date.now() - 5_000;
-    saveLoopState(repo, parked);
-  }
-  const text = renderStatus(repo, snapshot(repo));
-  // The waiters show their true state, not `working`.
-  assert.equal(text.split("\n").filter((l) => l.includes("awaiting slot")).length, 2);
-  // Exactly one active working row: the only real permit holder.
-  assert.equal(text.split("\n").filter((l) => /\bworking \d/.test(l)).length, 1);
-  fs.rmSync(orchestratorStatePath(repo), { force: true });
-});
 
 // Merge queue 4/5 — the snapshot's landQueue: depth from the queue files, and inFlight only
 // when the 4/5 marker, a matching queue entry, and a live orchestrator all agree. The
@@ -555,6 +486,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.entries, undefined);
 });
 
+
 // The marker carries one record per change the landing pipeline holds, and the snapshot
 // cross-checks each against its still-queued entry: every row then reads its OWN change's
 // state, and a change the merge is done with shows nothing (BUGS.md 2026-09-23 — a head-only
@@ -609,20 +541,6 @@ test("the marker is cross-checked per change and each row reads its own change's
   fs.rmSync(orchestratorStatePath(repo));
 });
 
-test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "payload schedule test");
-  const state = freshLoopState("clean");
-  state.nextRunAt = 1_758_800_000_000;
-  state.backoffSeconds = 90;
-  saveLoopState(repo, state);
-
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
-  const clean = payload.loops.find((l) => l.role === "clean");
-  assert.ok(clean, "the loop has a payload row");
-  assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
-  assert.equal(clean.backoffSeconds, 90);
-});
 
 test("snapshot counts each role's own prompt queue and leaves the director to inbox", async () => {
   const repo = makeRepo();
@@ -646,6 +564,7 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   ]);
   assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });
+
 
 // --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
 
@@ -674,62 +593,6 @@ test("pausedUntil carries only a standing fleet timed-pause deadline", async () 
   assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
 });
 
-// --- `status --json` through the real CLI entry point: the machine-readable fleet state --
-// the same document GET /api/status serves, printed with no server. The CLI runs as a child
-// process, so the deep-equal below compares its parsed stdout against statusPayload(root)
-// computed in this process for the same root; both read only from disk and nothing mutates
-// the temp repo between the reads.
-
-test("status --json prints the /api/status payload; bare status keeps the table", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli status json");
-  seedCounters(repo, "feature");
-
-  let r = await cli(repo, "status", "--json");
-  assert.equal(r.code, 0);
-  const doc = JSON.parse(r.stdout) as Record<string, unknown>;
-  // Top-level fields -- the same document GET /api/status serves for this root. `pid` is
-  // absent while no harness runs (undefined does not survive JSON.stringify).
-  for (const field of ["running", "inbox", "inboxPrompts", "budget", "loops", "events", "plans", "bugs", "questions"]) {
-    assert.ok(field in doc, `top-level ${field} present`);
-  }
-  assert.equal(doc.running, false, "no harness running");
-  assert.ok(!("pid" in doc), "no pid while the harness is not running");
-
-  // Per-loop fields on every row.
-  const loops = doc.loops as Array<Record<string, unknown>>;
-  assert.ok(loops.length > 0);
-  for (const l of loops) {
-    for (const field of ["role", "phase", "ticks", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastTickEndedAt"]) {
-      assert.ok(field in l, `loop field ${field} present`);
-    }
-  }
-  // Seeded counters surface verbatim -- the JSON is state-file data, not a re-rendering.
-  const feature = loops.find((l) => l.role === "feature");
-  assert.ok(feature, "feature loop row present");
-  assert.equal(feature!.ticks, 7);
-  assert.equal(feature!.commits, 3);
-  assert.equal(feature!.generated, 424242);
-  assert.equal(feature!.costUsd, 1.5);
-
-  // Deep-equal against the same root's payload in this process -- one definition of fleet
-  // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
-  // Both sides go through a JSON round-trip: that is exactly what the endpoint and the flag
-  // emit.
-  assert.deepEqual(doc, JSON.parse(JSON.stringify(statusPayload(repo))));
-
-  // Bare status still renders the table -- same command, human surface unchanged.
-  r = await cli(repo, "status");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /loop/);
-  assert.match(r.stdout, /last result/);
-  assert.match(r.stdout, /feature/);
-
-  // A misspelled flag is rejected like every other unknown argument.
-  r = await cli(repo, "status", "--jsonn");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --jsonn/);
-});
 
 test("snapshot carries mainCheck from the newest merge-scope build_check event", () => {
   const repo = makeRepo();

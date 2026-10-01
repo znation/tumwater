@@ -311,3 +311,19 @@ test("the status payload carries each loop's last error for the rows that failed
   assert.equal(payload.loops.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
   assert.equal(payload.loops.find((l) => l.role === "clean")?.lastError, null);
 });
+
+
+test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload schedule test");
+  const state = freshLoopState("clean");
+  state.nextRunAt = 1_758_800_000_000;
+  state.backoffSeconds = 90;
+  saveLoopState(repo, state);
+
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
+  const clean = payload.loops.find((l) => l.role === "clean");
+  assert.ok(clean, "the loop has a payload row");
+  assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
+  assert.equal(clean.backoffSeconds, 90);
+});

@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
-import { loopPhase, loopRowCells, workingDetail } from "../src/ui/status-model.js";
+import { loopPhase, loopRowCells, sortLoopsByState, workingDetail } from "../src/ui/status-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -532,4 +532,42 @@ test("a new landing's reviewing cell starts at its run's label line, not at the 
     stage: "reviewing",
   });
   assert.match(phase, /^landing \ds · reviewing · turn 1$/, `the previous review bled through: ${phase}`);
+});
+
+test("loopPhase describes each loop state", () => {
+  const s = freshLoopState("clean");
+  assert.equal(loopPhase(s, false), "stopped");
+  assert.equal(loopPhase(s, true), "queued");
+  s.running = true;
+  assert.equal(loopPhase(s, true), "working");
+  s.running = false;
+  s.nextRunAt = Date.now() + 90_000;
+  // Sleeping is a present state: the label shows the remaining duration ("for …"),
+  // not a future start ("in …"). 90s buckets to "2m" in humanSeconds.
+  assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
+  const d = freshLoopState("director");
+  assert.equal(loopPhase(d, true), "waiting for prompts");
+});
+
+
+// BUGS.md 2026-09-24 — the display must mirror the concurrency cap: a tick parked in the
+// semaphore queue holds no permit, so it renders its true state (`awaiting slot`) and stays
+// out of the active set an operator counts against maxConcurrent.
+test("a parked waiter renders `awaiting slot` and stays out of the active set", () => {
+  const s = freshLoopState("clean");
+  s.running = true;
+  s.parkedSince = Date.now() - 5_000;
+  assert.match(loopPhase(s, true), /^awaiting slot 5s$/);
+  // Permit granted (the orchestrator clears parkedSince at acquire): the same loop becomes
+  // an active, permit-holding working tick again.
+  s.parkedSince = undefined;
+  assert.equal(loopPhase(s, true), "working");
+  // The parked label is not an active phase: sortLoopsByState puts it behind the working and
+  // landing rows, so active-row counting never includes a waiter.
+  const sorted = sortLoopsByState([
+    { role: "clean", phase: "awaiting slot 5s" },
+    { role: "feature", phase: "working 5s" },
+    { role: "bugfix", phase: "landing 5s" },
+  ]);
+  assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
 });
