@@ -5,7 +5,77 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater tick <role> <n>` — one completed tick's full event trail from the terminal (planned 2026-09-30 by plan loop)
+
+**Goal.** History renders each tick as one line (src/history-data.ts `TickRow`), and `tumwater
+logs` filters only by role/grep/since — so when a tick reads "problem · 12m · $0.08" the operator
+greps the raw event feed by hand to learn why. Add a read-only command that prints one tick's
+whole event block: `tumwater tick <role> <n>` (the `loop` + `tick` number every event carries and
+every history row names).
+
+**Approach.**
+- New `src/ui/tick-detail.ts`: `readTickDetail(root, role, tick)` reads a bounded window of the
+  event log via `readEvents` (src/event-read.ts) with its own named scan cap (documented like
+  history-data's `HISTORY_SCAN_MAX_EVENTS`), selects the events whose `loop` matches and whose
+  `ts` falls inside the `tick_start`…`tick_end` pair with `tick === n` for that loop (so
+  tick-less in-tick events — `review_verdict`, `build_check`, `warning` — are included, while
+  other loops' events are excluded), and returns a `TickDetail` payload: role, tick, startTs,
+  endTs (null while the tick is in flight or its end is lost to rotation), `durationMs` via
+  `tickSpanMs`, result/tokens/costUsd from the `tick_end` event via `eventUsage`, and the events
+  oldest-first. Pure collector, shared by the CLI and later by the GUI (see the sibling plan).
+- A `renderTickDetail` in the same module prints a short summary header (result, duration,
+  usage, commit sha when a `land_queued`/`landed` event carries one) and then each event through
+  `formatEvent` (src/event-format.ts) — no new formatting of event bodies.
+- `cmdTick` dispatched from a new `case "tick"` in src/cli.ts behind `requireReadyRepo`, shaped
+  like `cmdHistory` (src/ui/history.ts): `rejectUnknownArgs` admits only `--json`; positional
+  arity is exactly `<role> <n>` with `n` a positive integer. A tick with no events in the scan
+  prints a not-found line and exits 0 (history's empty-output convention). `--json` prints the
+  `TickDetail` payload as data.
+- One stanza in src/help.ts's listing (the suggestion machinery derives from it).
+
+**Files touched.** `src/ui/tick-detail.ts` (new), `src/cli.ts`, `src/help.ts`,
+`test/tick-detail.test.ts` (new) — window bracketing (a neighbor loop's tick with the same
+number contributes nothing), in-flight behavior, the `--json` shape, and the arg-error cases
+alongside the existing cli arg-strictness tests.
+
+**Acceptance criteria.**
+- `tumwater tick bugfix 3` on a fixture log prints the tick's summary and exactly that loop's
+  tick-3 events in ts order; a still-running tick prints its events so far marked in flight.
+- `tumwater tick bugfix 3 --json` emits the payload with durationMs null on an unpaired tick.
+- `tumwater tick` with a missing/unknown role, a non-positive or non-numeric `n`, an unknown
+  flag, or stray extra args fails with usage naming the expected shape.
+- `npm run test` passes with the new tests in the suite.
+
+### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop — sibling of the `tumwater tick` CLI plan above)
+
+**Goal.** The dashboard's History view (src/ui/gui-client-history.ts) shows the same one-line
+rows the CLI does; the only path to a failed tick's causes is the loop drawer's live transcript.
+Give each row an expandable detail card served by the same collector the CLI plan introduces, so
+a click shows the tick's events (review verdict, build check, landing outcome) without leaving
+the page.
+
+**Approach.**
+- New GET-data handler `GET /api/tick?role=<id>&tick=<n>` in src/ui/gui-endpoints.ts, shaped like
+  the sibling GET handlers (`parseRequestTarget` for the repo root, JSON body). It calls
+  `readTickDetail` from `src/ui/tick-detail.ts` once that lands; if this plan is picked up
+  first, it filters the event feed directly with the same loop+ts-window rule and the collector
+  plan then adopts the shared module without changing the endpoint's payload.
+- In gui-client-history's row rendering, add a per-row details toggle button (the drawer's
+  existing control style) that expands an inline card beneath the row: the summary header and
+  the formatted events, fetched on first expand and cached until the view refetches. The row's
+  existing click-to-open-the-drawer behavior is unchanged; expansion is the button's alone.
+
+**Files touched.** `src/ui/gui-endpoints.ts`, `src/ui/gui-client-history.ts`, plus tests
+pinning the endpoint's payload and its error cases in the GUI endpoint test's style.
+
+**Acceptance criteria.**
+- `GET /api/tick?role=bugfix&tick=3` serves the collector's payload; unknown role, non-positive
+  tick, or a tick absent from the scan window answers with a not-found status, not a crash.
+- A history row's toggle expands the detail card with that tick's events; collapsing and
+  re-expanding reuses the fetched card; the drawer still opens on the row itself.
+- `npm run test` passes with the new tests in the suite.
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
 ## Done
 
