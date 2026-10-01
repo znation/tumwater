@@ -23,7 +23,7 @@ test("prompt rejects unknown double-dash flags instead of baking them into conte
   const r = await cli(repo, "prompt", "--foo", "text");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /--list, --cancel <n>/);
+  assert.match(r.stderr, /--list, --json, --cancel <n>/);
   assert.equal(inboxSize(repo), 0, "the flag was not baked into queued content");
 });
 

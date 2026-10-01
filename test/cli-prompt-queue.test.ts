@@ -278,3 +278,74 @@ test("prompt --cancel --role reports a concurrently dequeued prompt as gone and 
   assert.ok(fs.lstatSync(raced).isSymbolicLink(), "the vanished file was left untouched");
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
 });
+
+// --- prompt --list --json: the machine-readable render of the same listing (PLANS.md
+// "prompt --list --json") — prose and JSON share one payload, so the positions --cancel
+// consumes can never disagree with what a script reads.
+test("prompt --list --json prints one JSON document matching the rendered list", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list json");
+
+  submitPrompt(repo, "director task");
+  submitRolePrompt(repo, "qa", "qa task one");
+  submitRolePrompt(repo, "qa", "qa task two");
+  submitRolePrompt(repo, "readme", "docs task");
+
+  // The payload holds every queued prompt — director first, then catalog order, empty
+  // queues omitted — with per-loop positions and full verbatim text.
+  let r = await cli(repo, "prompt", "--list", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  const payload = JSON.parse(r.stdout);
+  assert.deepEqual(payload, {
+    prompts: [
+      { role: "director", position: 1, text: "director task" },
+      { role: "readme", position: 1, text: "docs task" },
+      { role: "qa", position: 1, text: "qa task one" },
+      { role: "qa", position: 2, text: "qa task two" },
+    ],
+  });
+
+  // The JSON positions are the same numbers the prose render prints: render both and
+  // cross-check them, so the two shapes cannot drift. Only a group's first numbered line
+  // follows the `role:` header, so the per-prompt check is the line itself.
+  const prose = await cli(repo, "prompt", "--list");
+  assert.equal(prose.code, 0);
+  for (const p of payload.prompts) {
+    assert.ok(prose.stdout.includes(`${p.position}. ${p.text}`), `prose missing ${p.role} ${p.position}`);
+  }
+
+  // Scoped by --role: that loop's queue alone, numbered from 1.
+  r = await cli(repo, "prompt", "--list", "--role", "qa", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    prompts: [
+      { role: "qa", position: 1, text: "qa task one" },
+      { role: "qa", position: 2, text: "qa task two" },
+    ],
+  });
+
+  // An empty queue still prints the document — the history --json empty-rows precedent.
+  r = await cli(repo, "prompt", "--list", "--role", "clean", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { prompts: [] });
+
+  // --json is list-only: in enqueue or cancel mode it is refused by name, never prompt text
+  // or a silent rider on a state change, and nothing reaches the queues.
+  r = await cli(repo, "prompt", "hello", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json only applies to --list/);
+  r = await cli(repo, "prompt", "--cancel", "1", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json only applies to --list/);
+  r = await cli(repo, "prompt", "--list", "--json", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json may only be given once/);
+  r = await cli(repo, "prompt", "--list=true");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--list takes no value/);
+  r = await cli(repo, "prompt", "--json=true");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--json takes no value/);
+  assert.deepEqual(queuedPrompts(repo), ["director task"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+});

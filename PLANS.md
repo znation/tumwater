@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30 by plan loop)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** Every read command offers `--json` for scripts — `status`, `report`, `doctor`, `logs`,
 `history`, `tick`, `diff`, `backlog`, `role` — but `prompt --list`, the inspection command that
@@ -60,10 +66,6 @@ list prints, so the two can never disagree.
 **Size.** Three source files plus their tests, well under a hundred lines of change. One run,
 no open design questions (the flat `{role, position, text}` shape is decided here; `--cancel`
 gains no `--json` — it is a state change, like pause/wake, which print prose).
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

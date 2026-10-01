@@ -275,6 +275,29 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   say(`fleet resumed — role loops tick again${when}${roleNote}${tail}`);
 }
 
+/** One traversal of the queues behind `prompt --list`'s render: with `--role`, that loop's
+ * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
+ * remaining catalog ids in order, empty queues skipped — exactly the sections the prose
+ * prints. `position` is the 1-based per-loop number the prose prints and `--cancel`
+ * consumes; `text` is the full verbatim prompt, not a preview. */
+function promptListPayload(
+  root: string,
+  role: string | null,
+  validIds: string[],
+): { prompts: { role: string; position: number; text: string }[] } {
+  const prompts: { role: string; position: number; text: string }[] = [];
+  if (role !== null) {
+    queuedRolePrompts(root, role).forEach((text, i) => prompts.push({ role, position: i + 1, text }));
+    return { prompts };
+  }
+  queuedPrompts(root).forEach((text, i) => prompts.push({ role: DIRECTOR_ROLE, position: i + 1, text }));
+  for (const r of validIds) {
+    if (r === DIRECTOR_ROLE) continue;
+    queuedRolePrompts(root, r).forEach((text, i) => prompts.push({ role: r, position: i + 1, text }));
+  }
+  return { prompts };
+}
+
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
  * director (default) or one role's queue, list what is queued with per-loop position
  * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
@@ -308,35 +331,33 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   const role = parsed.role;
   if (parsed.mode === "list") {
-    // Full text, verbatim: this is the inspection command that tells you what a queued
-    // prompt actually says before you cancel it.
-    if (role !== null) {
-      const prompts = queuedRolePrompts(root, role);
-      if (prompts.length === 0) {
-        say(`nothing queued for ${role}`);
-      } else {
-        say(`${role}:`);
-        prompts.forEach((p, i) => say(`${i + 1}. ${p}`));
-      }
+    // One payload, two shapes: the prose render and the --json output both come from the
+    // same array, so the per-loop positions --cancel consumes can never disagree with the
+    // data a script reads. Full text, verbatim: this is the inspection command that tells
+    // you what a queued prompt actually says before you cancel it.
+    const payload = promptListPayload(root, role, validIds as string[]);
+    if (parsed.json) {
+      // An empty queue still prints the document, the history --json empty-rows precedent.
+      sayJson(payload);
+      return;
+    }
+    if (payload.prompts.length === 0) {
+      say(role !== null ? `nothing queued for ${role}` : "nothing queued");
       return;
     }
     const sections: string[] = [];
-    const director = queuedPrompts(root);
-    if (director.length > 0) {
-      sections.push(`director:\n${director.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
-    }
-    for (const r of validIds as string[]) {
-      if (r === DIRECTOR_ROLE) continue;
-      const prompts = queuedRolePrompts(root, r);
-      if (prompts.length > 0) {
-        sections.push(`${r}:\n${prompts.map((p, i) => `${i + 1}. ${p}`).join("\n")}`);
+    let currentRole: string | null = null;
+    let lines: string[] = [];
+    for (const p of payload.prompts) {
+      if (p.role !== currentRole) {
+        if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
+        currentRole = p.role;
+        lines = [];
       }
+      lines.push(`${p.position}. ${p.text}`);
     }
-    if (sections.length === 0) {
-      say("nothing queued");
-    } else {
-      say(sections.join("\n"));
-    }
+    if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
+    say(sections.join("\n"));
     return;
   }
   if (parsed.mode === "cancel") {

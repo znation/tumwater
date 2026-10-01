@@ -196,11 +196,11 @@ test("parsePromptArgs rejects unknown double-dash flags instead of baking them i
   const r = expectFail(() => parsePromptArgs(["--foo", "text"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --cancel <n>/);
+  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>/);
 });
 
 test("parsePromptArgs --list: exact mode, no text allowed", () => {
-  assert.deepEqual(expectOk(() => parsePromptArgs(["--list"])), { mode: "list", role: null });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list"])), { mode: "list", role: null, json: false });
 
   // A stray positional — before or after the flag — would otherwise be silently ignored.
   for (const args of [["--list", "extra"], ["extra", "--list"]]) {
@@ -259,7 +259,7 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
     expectOk(() => parsePromptArgs(["hello", "--role", "qa", "world"])),
     { mode: "enqueue", role: "qa", text: "hello world" },
   );
-  assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa" });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa", json: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2", "--role", "qa"])), {
     mode: "cancel",
     role: "qa",
@@ -299,4 +299,26 @@ test("parseInitArgs and parsePromptArgs apply the same equals-form refusal to th
   assert.match(cancel.stderr, /`--cancel <n>`/);
   const list = expectFail(() => parsePromptArgs(["--list=true"]));
   assert.match(list.stderr, /--list takes no value/);
+  const json = expectFail(() => parsePromptArgs(["--json=true"]));
+  assert.match(json.stderr, /--json takes no value/);
+});
+
+test("parsePromptArgs --json: list-only, at most once, never prompt content", () => {
+  // Valid with --list, alone or scoped by --role; the flag is claimed, not text.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--list", "--json"])), { mode: "list", role: null, json: true });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--json", "--role", "qa", "--list"])), {
+    mode: "list",
+    role: "qa",
+    json: true,
+  });
+
+  // Alone (enqueue mode) or beside --cancel it is refused by name, never baked into text.
+  const alone = expectFail(() => parsePromptArgs(["hello", "--json"]));
+  assert.match(alone.stderr, /--json only applies to --list/);
+  const cancel = expectFail(() => parsePromptArgs(["--cancel", "1", "--json"]));
+  assert.match(cancel.stderr, /--json only applies to --list/);
+
+  // A duplicate fails like --list/--cancel do.
+  const dup = expectFail(() => parsePromptArgs(["--list", "--json", "--json"]));
+  assert.match(dup.stderr, /--json may only be given once/);
 });

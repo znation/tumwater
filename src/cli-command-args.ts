@@ -106,10 +106,10 @@ export function parseInitArgs(args: string[]): {
 /** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the
  * queue, or cancel one entry by its 1-based position. `role` is the raw `--role <id>` value
  * (null when absent) — cli.ts validates it against the live config, since this parser has no
- * config to read. */
+ * config to read. `json` is list-only: the machine-readable render of the same listing. */
 type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string }
-  | { mode: "list"; role: string | null }
+  | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number };
 
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
@@ -117,6 +117,7 @@ type PromptArgs =
 const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   ROLE_FLAG,
   { names: ["--list"] },
+  { names: ["--json"] },
   { names: ["--cancel"], value: true, valueName: "<n>" },
 ];
 
@@ -131,12 +132,13 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
     // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
     rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
-    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role") {
-      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --cancel <n>)`);
+    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>)`);
     }
   }
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
+  if (args.filter((a) => a === "--json").length > 1) fail("--json may only be given once");
   if (args.filter((a) => a === "--list").length > 1) fail("--list may only be given once");
   if (args.filter((a) => a === "--cancel").length > 1) fail("--cancel may only be given once");
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
@@ -150,9 +152,14 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // when actually present — negative indexes would over-claim real tokens.
   const roleClaim = roleFlag >= 0 ? [roleFlag, roleFlag + 1] : [];
 
+  // --json is list-only: in enqueue or cancel mode it must never silently ride along as
+  // prompt text (or beside a state change), so it is refused before either branch runs.
+  const jsonFlags = args.map((a, i) => (a === "--json" ? i : -1)).filter((i) => i >= 0);
+  if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
+
   if (listFlag >= 0) {
-    failStrayArg(args, "with --list there is no prompt text", listFlag, ...roleClaim);
-    return { mode: "list", role };
+    failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim);
+    return { mode: "list", role, json: jsonFlags.length > 0 };
   }
 
   if (cancelFlag >= 0) {

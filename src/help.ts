@@ -89,7 +89,7 @@ Usage:
                                    as machine-readable data
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --role <id> <text...>   Queue a prompt for that loop's next tick (wakes it)
-  tumwater prompt --list           Show queued prompts, numbered, grouped by loop
+  tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop (--json prints the {prompts} array as machine-readable data)
   tumwater prompt --cancel <n>     Remove the Nth queued prompt as --list shows them; when several loops show that N, name one with --role <id>
   tumwater reset-counters [--role <id>]   Zero lifetime ticks/commits/tokens/cost (fresh observation window; today's budget spend is kept — the daily cap cannot be reset past)
   tumwater wake [--role <id>]             Wake a backed-off fleet — the named roles (or all) tick within one poll
