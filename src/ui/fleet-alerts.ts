@@ -176,10 +176,10 @@ export function fleetAlerts(
       key: "paused",
       tone: "amber",
       // The operator's pause reason (`pause --reason <text>`) states verbatim, so an
-    // operator returning to a paused fleet knows why without digging through history.
-    title: left
-      ? `The fleet is paused and resumes in ${left}${reasonSuffix(snap.pauseReason)}`
-      : `The fleet is paused${reasonSuffix(snap.pauseReason)}`,
+      // operator returning to a paused fleet knows why without digging through history.
+      title: left
+        ? `The fleet is paused and resumes in ${left}${reasonSuffix(snap.pauseReason)}`
+        : `The fleet is paused${reasonSuffix(snap.pauseReason)}`,
       detail: "Loops start no new ticks. In-flight ticks finish, and the director still runs your prompts.",
       actions: [{ label: "Resume now", act: "resume" }],
     });
