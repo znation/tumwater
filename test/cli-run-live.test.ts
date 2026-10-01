@@ -10,11 +10,12 @@ import { readEvents } from "../src/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathReplace, writeScript } from "./fake-commands.js";
-import { gitOnlyBinDir, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
+import { waitForFile } from "./wait.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the
 // supervisor's shutdown semantics. These are the long-running commands, spawned with a live
@@ -267,8 +268,24 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
   await initProject(repo, "cli run double sigint");
 
   onlyCleanRole(repo);
-  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
+  // The graceful stop must still be pending when the second Ctrl+C lands: with an instant pi
+  // nothing is in flight, the first stop finishes inside the 100 ms gap, and the second kill
+  // hits a gone pid (ESRCH, CI 2026-10-01). This pi ignores the abort's SIGTERM, so the stop
+  // waits on it until terminateChild's SIGKILL grace — far longer than the gap. The forced
+  // exit skips that grace, so the test reaps pi's group (it leads its own) itself.
+  const started = path.join(tmpdir("double-sigint-"), "pi-pid");
+  await withRunningFleet(repo, fakePi(`trap '' TERM; echo $$ > '${started}'; sleep 5`), async (s) => {
     const info = readJson(orchestratorStatePath(repo)) as { pid: number };
+    await waitForFile(started);
+    s.child.once("exit", () => {
+      const piPid = Number(fs.readFileSync(started, "utf8"));
+      if (!(piPid > 0)) return; // Never kill(-0): that is this test's own process group.
+      try {
+        process.kill(-piPid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    });
 
     // The first Ctrl+C starts the graceful stop; the second must not queue behind it —
     // the operator pressed it to force the issue, so the generation exits 130 at once.

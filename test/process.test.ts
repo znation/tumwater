@@ -192,7 +192,10 @@ test("systemProcessProbe.cwds takes the lsof success path when every named pid i
   // The vanished-pid test above only reaches lsof's exit-1 partial-result path; this is the
   // other half of the same branch — every pid readable, lsof exits 0, and the map comes
   // straight from its output.
-  if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
+  if (process.platform === "linux") {
+    t.skip("the lsof path is not taken on Linux");
+    return;
+  }
   const cwds = await systemProcessProbe.cwds([process.pid]);
   assert.deepEqual([...cwds], [[process.pid, fs.realpathSync(process.cwd())]]);
 });
@@ -201,7 +204,10 @@ test("systemProcessProbe.cwds rejects when no lookup could run at all — no lso
   // A missing lsof (or a timeout, or a signal) is a real failure, not an empty answer: the
   // error carries no numeric exit status with stdout, so the probe must reject rather than
   // hand back a silent empty map that would read as "no orphans" in doctor's check.
-  if (process.platform === "linux") t.skip("the lsof path is not taken on Linux");
+  if (process.platform === "linux") {
+    t.skip("the lsof path is not taken on Linux");
+    return;
+  }
   const emptyBin = tmpdir("no-lsof-");
   const restorePath = pathReplace(emptyBin);
   try {
@@ -413,7 +419,10 @@ test("systemProcessProbe.runMarkers on Linux reads /proc environ, skipping the s
 test("systemProcessProbe.runMarkers degrades to an empty map when the ps table cannot be read", async (t) => {
   // A missing ps (or a wedged table) is a miss, never a failed doctor — the argv/cwd half of
   // the probe still ran, so the sweep must hand back an empty answer rather than throw.
-  if (process.platform === "linux") t.skip("the ps fallback is not taken on Linux");
+  if (process.platform === "linux") {
+    t.skip("the ps fallback is not taken on Linux");
+    return;
+  }
   const emptyBin = tmpdir("no-ps-");
   const restorePath = pathReplace(emptyBin);
   try {
