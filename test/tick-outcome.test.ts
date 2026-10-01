@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyLandingOutcome, applyTickOutcome, QUIET_KILL_RESUME_LIMIT } from "../src/tick-outcome.js";
+import {
+  applyLandingOutcome,
+  applyTickOutcome,
+  ERROR_STREAK_WARN,
+  QUIET_KILL_RESUME_LIMIT,
+} from "../src/tick-outcome.js";
 import {
   clearBackoff,
+  ERROR_BACKOFF,
   nextBackoffSeconds,
   restoreMidTickWake,
   YIELD_RING,
@@ -283,6 +289,44 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   assert.equal(a.lastResult, "aborted");
   assert.equal(a.commits, 0);
   assert.equal(a.phase, "review");
+});
+
+test("a rejection past the warn bar backs the re-author off on the error ladder", () => {
+  // BUGS.md 2026-09-30: the rejection episode's accumulation point is applyLandingOutcome's
+  // rejected branch — the authoring tick ends `queued`, which only preserves the streak — so
+  // the ladder the tick-side errors climb must be reachable from here too. The rung derives
+  // from the streak, because every queued tick zeroes backoffSeconds on its way out (a rung
+  // read from backoffSeconds would be pinned at its first value); below the warn bar the fast
+  // first retries keep the queued tick's minimum-interval schedule untouched.
+  const cfg = testConfig();
+  const change = { sha: PINNED, summary: "did it" };
+  const s = freshLoopState("feature");
+  const rungs: number[] = [];
+  for (let i = 1; i <= 10; i++) {
+    applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
+    assert.equal(s.backoffSeconds, 0, `queued tick ${i} zeroes the ladder on its way out`);
+    const scheduledAt = s.nextRunAt!;
+    applyLandingOutcome(s, "rejected", change);
+    assert.equal(s.consecutiveErrors, i, `rejection ${i} feeds the streak`);
+    rungs.push(s.backoffSeconds);
+    if (i < ERROR_STREAK_WARN) {
+      assert.equal(s.backoffSeconds, 0, `rejection ${i} sits below the warn bar`);
+      assert.equal(s.nextRunAt, scheduledAt, `rejection ${i} keeps the min-interval schedule`);
+    } else {
+      const rung = Math.min(
+        ERROR_BACKOFF.initialSeconds * 2 ** (i - ERROR_STREAK_WARN),
+        ERROR_BACKOFF.maxSeconds,
+      );
+      assert.equal(s.backoffSeconds, rung, `rejection ${i} sits on the error-ladder rung`);
+      assert.ok(s.nextRunAt! >= scheduledAt, `rejection ${i} never pulls the next run earlier`);
+      assert.ok(
+        s.nextRunAt! >= Date.now() + rung * 1000 - 1_000,
+        `rejection ${i} waits out its rung`,
+      );
+    }
+  }
+  // Same ladder the tick-side errors climb (30 → 600 cap), just entered at the warn bar.
+  assert.deepEqual(rungs, [0, 0, 30, 60, 120, 240, 480, 600, 600, 600]);
 });
 
 // A pin that keeps failing to merge used to re-queue forever (land-queue speed 3c made recovery

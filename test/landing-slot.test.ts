@@ -25,7 +25,7 @@ import { landingRefName, landingStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
-import { applyTickOutcome } from "../src/tick-outcome.js";
+import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick-outcome.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing-queue.js";
 import { readEvents } from "../src/event-read.js";
 import { LoopRunner } from "../src/loop.js";
@@ -155,6 +155,47 @@ test("the write-back pairs the landing's result with the queued tick's summary, 
   assert.equal(saved.lastResult, "rejected");
   assert.equal(saved.lastSummary, "add a thing (high friction: 90 turns / 45m)");
   assert.equal(saved.queuedSummary, undefined, "the persisted stash is consumed");
+});
+
+test("a rejection crossing the error-streak bar warns from the landing side, once per episode", () => {
+  // BUGS.md 2026-09-30: a review rejection resolves AFTER the tick's end-save, so the
+  // streak-crossing warn belongs to writeLandingOutcome — same bar, same once-per-episode
+  // shape the tick side (finalizeTick) upholds. The two sites share one episode: a queued
+  // tick preserves the streak it was given, so a streak the tick side already warned at
+  // must not warn again here, and a crossing the tick side never saw (2 → 3 at the
+  // landing) warns from here instead.
+  const cfg = defaultConfig();
+  const root = makeRepo();
+  const warnings = () => readEvents(root, 50).filter((e) => e.type === "warning");
+
+  // Below the bar: the fast first retries stay silent.
+  const low = freshLoopState("improve");
+  const first = queued(root);
+  writeLandingOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0 }, first.file);
+  assert.equal(low.consecutiveErrors, 1, "the rejection counts even below the bar");
+  assert.equal(warnings().length, 0, "a below-bar rejection warns nothing");
+
+  // The crossing the tick side never saw: two failed ticks, a queued tick preserving the
+  // streak, then the landing's rejection does 2 → 3.
+  const crossing = freshLoopState("improve");
+  applyTickOutcome(crossing, cfg, "improve", { result: "error" });
+  applyTickOutcome(crossing, cfg, "improve", { result: "error" });
+  applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
+  const second = queued(root);
+  writeLandingOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0 }, second.file);
+  assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the landing did the crossing");
+  const crossed = warnings();
+  assert.equal(crossed.length, 1, "the landing-side crossing warns exactly once");
+  assert.equal(crossed[0]!.loop, "improve");
+  assert.match(crossed[0]!.message as string, /^3 consecutive tick failures: /);
+
+  // The other half of the invariant: a rejection landing onto a streak the episode already
+  // warned at (preserved across the queued tick at the bar) must not warn again.
+  const third = queued(root);
+  applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: third.entry.sha });
+  writeLandingOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0 }, third.file);
+  assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN + 1);
+  assert.equal(warnings().length, 1, "one warning per episode across both warn sites");
 });
 
 test("a failed landing logs land_failed with its usage and counts no commit", () => {

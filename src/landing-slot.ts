@@ -2,9 +2,9 @@ import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
-import { applyLandingOutcome } from "./tick-outcome.js";
+import { applyLandingOutcome, ERROR_STREAK_WARN } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
-import { logEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events.js";
 import { dropLanding } from "./landing-queue.js";
 import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { removeQuiet } from "./files.js";
@@ -248,6 +248,16 @@ export function writeLandingOutcome(
 ): void {
   applyLandingOutcome(state, result, entry);
   saveLoopState(root, state);
+  // One warning per error episode, landing side (BUGS.md 2026-09-30): a review rejection
+  // feeds the same streak the tick-side warn reads (src/tick-finalize.ts), but it resolves
+  // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
+  if (result === "rejected" && (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
+    warnEvent(
+      root,
+      entry.role,
+      `${state.consecutiveErrors} consecutive tick failures: ${state.lastError ?? "review rejected"}`,
+    );
+  }
   // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's bookkeeping:
   // the slot picked the entry up (land_queued, logged at enqueue) and finished with or
   // without landing.

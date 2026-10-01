@@ -75,10 +75,16 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   restoreMidTickWake(s);
   saveLoopState(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every loop failing identically
-  // looked like a quiet fleet). applyTickOutcome increments the streak on error and
-  // resets it on any other result, so the streak equals the threshold exactly once per
-  // episode — the crossing — and re-warns only after a healthy tick re-armed it.
-  if ((s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
+  // looked like a quiet fleet). applyTickOutcome increments the streak on error-class
+  // outcomes, preserves it across a plain `queued` tick (the tick's landing resolves it),
+  // and resets it on any other completed result — so warn only when THIS outcome incremented
+  // the streak up to the threshold: a preserved streak already sitting at the bar must not
+  // re-warn on the queued tick's end. A rejection's crossing warns from the landing side
+  // instead (writeLandingOutcome, src/landing-slot.ts), which is where rejections resolve.
+  if (
+    (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
+    (s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN
+  ) {
     warnEvent(
       root,
       role,

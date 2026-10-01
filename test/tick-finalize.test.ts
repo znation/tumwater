@@ -5,7 +5,11 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop-state.js";
 import { TickUsage } from "../src/tick-usage.js";
 import type { TickOutcome } from "../src/tick-outcome.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../src/tick-outcome.js";
+import {
+  applyLandingOutcome,
+  ERROR_STREAK_WARN,
+  QUIET_KILL_RESUME_LIMIT,
+} from "../src/tick-outcome.js";
 import type { LoopState } from "../src/loop-state.js";
 import { initializedRepo } from "./repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
@@ -112,6 +116,38 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   await run(root, "organize", s, error(2));
   await run(root, "organize", s, error(3));
   assert.equal(eventsOfType(root, "warning").length, 2);
+});
+
+test("a queued tick preserving the streak at the bar does not re-warn — the landing resolves the episode", async () => {
+  // BUGS.md 2026-09-30: with review rejections feeding the streak, an authoring tick ends
+  // `queued` while the streak stands at the bar — the old `=== ERROR_STREAK_WARN` gate would
+  // re-warn on every such tick's end. The warn belongs to the outcome that did the
+  // incrementing; the rejection's own crossing warns from the landing side
+  // (writeLandingOutcome, pinned in the landing-slot tests).
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  const error = (n: number): TickOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
+  await run(root, "organize", s, error(1));
+  await run(root, "organize", s, error(2));
+  await run(root, "organize", s, error(3));
+  assert.equal(eventsOfType(root, "warning").length, 1);
+  // The authoring run succeeds and enqueues: the streak stands preserved at the bar, and the
+  // queued tick's end must not re-warn on it.
+  await run(root, "organize", s, { result: "queued", commit: "a".repeat(40) });
+  assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN, "the queued tick preserves the streak");
+  assert.equal(eventsOfType(root, "warning").length, 1, "no re-warn from the preserved streak");
+  // The landing rejects: the streak climbs past the bar, still one episode, one warning.
+  applyLandingOutcome(s, "rejected", { sha: "a".repeat(40), summary: "x" });
+  assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN + 1);
+  assert.equal(eventsOfType(root, "warning").length, 1);
+  // A landed change ends the episode (the landing is its clean verdict); the next one
+  // re-arms from scratch and warns again at its own crossing.
+  applyLandingOutcome(s, "changed", { sha: "b".repeat(40), summary: "y" });
+  assert.equal(s.consecutiveErrors, 0);
+  await run(root, "organize", s, error(1));
+  await run(root, "organize", s, error(2));
+  await run(root, "organize", s, error(3));
+  assert.equal(eventsOfType(root, "warning").length, 2, "the next episode warns again");
 });
 
 test("finalizeTick warns once at the quiet-kill streak crossing", async () => {

@@ -148,8 +148,17 @@ export function applyTickOutcome(
   // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21). loop.ts emits
   // one warning when the streak crosses ERROR_STREAK_WARN — once per episode, since the reset
   // re-arms it — and the dashboards read "failing" from the same field.
+  // A plain `queued` tick is not yet a verdict about anything: it committed and enqueued, and
+  // its LANDING resolves the streak — applyLandingOutcome resets it when the change lands and
+  // counts a review rejection into it (BUGS.md 2026-09-30: review-rejected authoring, the
+  // digest's #1 loss cause, fell straight through — the tick's `queued` reset and the landing's
+  // `rejected` increment met nowhere, so the streak read 0 through the whole episode and the
+  // re-author ran at min interval, warning-free and pause-proof). Resetting here would pin a
+  // rejection streak at 1 forever, since every authoring tick in a rejection episode ends
+  // `queued` before its landing is decided.
   const failed = outcome.result === "error" || outcome.recoveryFailure !== undefined;
-  s.consecutiveErrors = failed ? (s.consecutiveErrors ?? 0) + 1 : 0;
+  if (failed) s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
+  else if (outcome.result !== "queued") s.consecutiveErrors = 0;
   // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
   // loop.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
@@ -302,8 +311,41 @@ export function applyLandingOutcome(
   s.lastResult = result;
   s.lastSummary = s.queuedSummary?.sha === change.sha ? s.queuedSummary.summary : change.summary;
   s.queuedSummary = undefined;
-  if (result === "changed") s.commits += 1;
-  if (result === "changed") s.lastApprovedPatchId = undefined; // see applyTickOutcome
+  if (result === "changed") {
+    s.commits += 1;
+    s.lastApprovedPatchId = undefined; // see applyTickOutcome
+    // A landed change resets the error streak exactly as an error-free tick does (BUGS.md
+    // 2026-09-30): the queued tick that authored it preserved the streak — a rejection counts
+    // into it below — so the landing, the episode's only clean verdict, ends it.
+    s.consecutiveErrors = 0;
+  }
+  if (result === "rejected") {
+    // A review rejection is a failure the streak must count (BUGS.md 2026-09-30): the
+    // authoring tick ended `queued`, which no longer resets the streak (see applyTickOutcome),
+    // so this landing outcome is the episode's accumulation point — the same field the warn,
+    // the breaker (src/streak-gate.ts), and the error-storm observation (src/fleet-polls.ts)
+    // already read. No new machinery, no new constants: the warn bar and the breaker bar are
+    // ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
+    s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
+    const reason = s.lastReview?.verdict === "reject" ? s.lastReview.reasons[0] : undefined;
+    s.lastError = `review rejected: ${(reason ?? "no reasons given").slice(0, 200)}`;
+    // Past the warn bar the re-author backs off on the error ladder instead of the minimum
+    // interval the queued tick scheduled: the fast first retries stay — the rejected branch's
+    // design intent, letting the author address the recorded reasons at once — but a
+    // non-converging author slows down instead of re-authoring at full price all day. The
+    // rung derives from the streak (not from backoffSeconds, which every queued tick zeroes
+    // on its way out, pinning a state-derived ladder at its first rung), and never pulls
+    // nextRunAt earlier than the already-scheduled minimum interval.
+    const streak = s.consecutiveErrors;
+    if (streak >= ERROR_STREAK_WARN) {
+      const rung = Math.min(
+        ERROR_BACKOFF.initialSeconds * 2 ** (streak - ERROR_STREAK_WARN),
+        ERROR_BACKOFF.maxSeconds,
+      );
+      s.backoffSeconds = rung;
+      s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
+    }
+  }
   // The conflict streak counts failed resolutions of one pinned sha; a landing or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
   if (result === "merge_conflict") {

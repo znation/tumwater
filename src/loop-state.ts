@@ -97,7 +97,9 @@ export interface LoopState {
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
    * identical tick failures looked like a quiet fleet; BUGS.md 2026-09-21: a dead reviewer
    * backend left every recovery landing failing silently and reset this streak each tick).
-   * Reset by any result that is neither. */
+   * A review-rejected landing counts in too (BUGS.md 2026-09-30): the authoring tick ends
+   * `queued`, which preserves the streak, and applyLandingOutcome's rejected branch is the
+   * accumulation point; a landed change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
   /** Where in its cycle the loop was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the

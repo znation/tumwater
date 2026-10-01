@@ -7,6 +7,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { newStreakGateState, pollStreakGate } from "../src/streak-gate.js";
+import {
+  applyLandingOutcome,
+  applyTickOutcome,
+  ERROR_STREAK_BREAKER,
+} from "../src/tick-outcome.js";
+import { freshLoopState } from "../src/loop-state.js";
+import { defaultConfig } from "../src/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/fleet-state.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -133,4 +140,40 @@ test("pollStreakGate: the director trips like any role", () => {
   ]);
   assert.deepEqual(pausedRoles(root), ["director"]);
   assert.equal(streakEvents(root).length, 1);
+});
+
+test("pollStreakGate: a rejection-fed streak trips the breaker through the real accumulation path", () => {
+  // BUGS.md 2026-09-30: review rejections accumulate in the same consecutiveErrors field the
+  // gate polls — the authoring tick ends `queued` (preserving the streak) and the landing's
+  // rejected branch increments it — so ERROR_STREAK_BREAKER rejections must pause the role,
+  // with the rejection's own text as the recorded lastError. This drives the real
+  // queued→rejected flow, not a hand-set streak, so the gate cannot pass while the
+  // accumulation point leaks.
+  const root = tmpdir("streak-gate-reject-");
+  const cfg = defaultConfig();
+  const s = freshLoopState("coverage");
+  const change = { sha: "a".repeat(40), summary: "address the objections" };
+  for (let i = 1; i < ERROR_STREAK_BREAKER; i++) {
+    applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
+    applyLandingOutcome(s, "rejected", change);
+    assert.equal(s.consecutiveErrors, i, `rejection ${i} feeds the streak the gate reads`);
+  }
+  const state = newStreakGateState();
+  const observation = { role: "coverage", state: s };
+  assert.deepEqual(
+    pollStreakGate(root, state, [observation], new Set()),
+    [],
+    "ERROR_STREAK_BREAKER - 1 rejections leave the role running",
+  );
+  // The tenth rejection crosses the bar: the gate pauses the role and names the rejection.
+  applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
+  applyLandingOutcome(s, "rejected", change);
+  assert.equal(s.consecutiveErrors, ERROR_STREAK_BREAKER);
+  assert.deepEqual(pollStreakGate(root, state, [observation], new Set()), ["coverage"]);
+  assert.deepEqual(pausedRoles(root), ["coverage"]);
+  const events = streakEvents(root);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.role, "coverage");
+  assert.equal(events[0]!.streak, ERROR_STREAK_BREAKER);
+  assert.match(events[0]!.lastError as string, /^review rejected:/);
 });
