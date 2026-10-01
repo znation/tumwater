@@ -6,7 +6,7 @@
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "./config-schema.js";
-import { budgetGate, budgetReached, budgetSpend, type BudgetGate } from "./budget.js";
+import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "./budget.js";
 import {
   type FallbackBreaker,
   fallbackServing,
@@ -38,12 +38,22 @@ export interface BudgetGateState {
    * breaker-demoted pause): the free pair installed top-level and every per-role/reviewer
    * model override dropped, so no seam can reach a priced model. */
   fallbackConfig: TumwaterConfig;
+  /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
+   * the transitions — set when the warning logs, reset whenever spend falls back below the
+   * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
+  warned: boolean;
 }
 
 /** A fresh budget-gate poll state: gate open, fallback breaker idle, no fallback view cached
  * yet (so the first poll of an unchanged config logs nothing). */
 export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
-  return { prevGate: "open", breaker: IDLE_FALLBACK_BREAKER, from: null, fallbackConfig: config };
+  return {
+    prevGate: "open",
+    breaker: IDLE_FALLBACK_BREAKER,
+    from: null,
+    fallbackConfig: config,
+    warned: false,
+  };
 }
 
 /** One poll's gate decision, handed back for the orchestrator's wiring: which gate holds this
@@ -125,6 +135,19 @@ export function pollBudgetGate(
   const gate = budgetGate(reached, fallbackReady, fallbackServing(state.breaker));
   // Read before prevGate is advanced below: true on exactly the reopening transition.
   const resumed = gate === "open" && (state.prevGate === "fallback" || state.prevGate === "paused");
+  // The 80% early warning (PLANS.md 2026-09-30), edge-triggered with reset-on-below — the
+  // whole state machine: crossing the threshold while the gate is still open logs one
+  // budget_warning, midnight or a cap raise drops spend back under and re-arms it, and a
+  // second crossing the same day warns again. Warn only while the gate is open: a poll that
+  // engages fallback/paused already logs its own transition event, so the warning never
+  // doubles the page on the poll the cap itself is reached.
+  const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
+  if (warn && !state.warned) {
+    logEvent(root, { loop: "harness", type: "budget_warning", spentUsd, capUsd });
+    state.warned = true;
+  } else if (!warn) {
+    state.warned = false;
+  }
   if (gate !== state.prevGate) {
     logEvent(root, {
       loop: "harness",

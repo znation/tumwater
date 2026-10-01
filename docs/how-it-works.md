@@ -102,7 +102,10 @@ discards a role's in-flight landing.
 ## Spend and pausing
 
 - `maxDailyCostUsd` (default $50; 0 disables) stops new role ticks for the rest of the local
-  day once reached. In-flight ticks finish, and the director keeps running.
+  day once reached. In-flight ticks finish, and the director keeps running. Before that, the
+  fleet logs one `budget_warning` event when spend crosses a fixed 80% of the cap while the
+  gate is still open — re-armed when spend falls back below (a new day, a raised cap) — so a
+  configured notify command can page the operator while there is still room to act.
 - `fallbackModel` names a free model that role loops switch to at the cap instead of stopping.
   Only a model pi's `models.json` prices at zero is accepted; anything else leaves the fleet
   paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive

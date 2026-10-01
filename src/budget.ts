@@ -57,6 +57,21 @@ export function budgetReached(budget: { spentUsd: number; capUsd: number } | nul
   return budget !== null && budget.capUsd > 0 && budget.spentUsd >= budget.capUsd;
 }
 
+/** The fixed fraction of the daily cap at which the fleet pages the operator that spend is
+ * closing in on it (PLANS.md 2026-09-30): opinionated default, no config knob. */
+export const BUDGET_WARNING_FRACTION = 0.8;
+
+/** True when today's spend has crossed `BUDGET_WARNING_FRACTION` of the daily cap while the
+ * budget gate is still open — the early heads-up beside budgetReached, which fires only once
+ * the cap itself is reached and the fleet has already stopped (or demoted) its ticks. Same
+ * guard terms as budgetReached (non-null view, a cap of 0 disables the budget), scaled by the
+ * warning fraction, so the two views can never disagree about whether the budget is on. */
+export function budgetWarning(budget: { spentUsd: number; capUsd: number } | null): boolean {
+  return (
+    budget !== null && budget.capUsd > 0 && budget.spentUsd >= budget.capUsd * BUDGET_WARNING_FRACTION
+  );
+}
+
 /** True while the fleet's spend for the local day has reached `maxDailyCostUsd` (a cap of 0
  * disables the budget). The orchestrator re-evaluates this every poll from its runners' live
  * states and the freshly reloaded config — resume is stateless, so raising/disabling the cap

@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/budget-gates.js";
-import { recordDailyCost } from "../src/budget.js";
+import { BUDGET_WARNING_FRACTION, recordDailyCost } from "../src/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/fallback-breaker.js";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/event-read.js";
@@ -152,6 +152,53 @@ test("resumed is true on exactly the reopening poll, with the fallback pair it l
   // Open from the start (no transition at all): not a resume.
   const state3 = newBudgetGateState(cfg);
   assert.equal(poll(root, state3, cfg, models, [spent(5)]).resumed, false);
+});
+
+test("crossing 80% of the cap warns once while the gate is open, and re-arms after dropping below", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  assert.equal(state.warned, false); // a fresh poll state starts unarmed
+  const threshold = 10 * BUDGET_WARNING_FRACTION; // 8 of a 10 cap
+
+  // Under the threshold: silent.
+  poll(root, state, cfg, models, [spent(threshold - 2)]);
+  assert.deepEqual(readEvents(root), []);
+
+  // Crossing 80% with the gate still open: exactly one budget_warning.
+  poll(root, state, cfg, models, [spent(threshold)]);
+  let events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_warning"]);
+  assert.equal(events[0]!.loop, "harness");
+  assert.equal(events[0]!.capUsd, 10);
+  assert.equal(events[0]!.spentUsd, threshold);
+
+  // Still above the threshold: edge-triggered, no second warning.
+  poll(root, state, cfg, models, [spent(threshold + 1)]);
+  assert.equal(readEvents(root).length, 1);
+
+  // Dropping back below (a new local day, a raised cap) re-arms: crossing again warns again.
+  poll(root, state, cfg, models, [spent(threshold - 3)]); // still open the whole time: no transition events
+  poll(root, state, cfg, models, [spent(threshold)]);
+  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_warning", "budget_warning"]);
+});
+
+test("no budget warning at the cap itself, and none with the cap disabled", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+
+  // Straight to the cap: the fallback transition logs its own event, the warning never
+  // doubles the page on the poll the gate stops being open.
+  poll(root, state, cfg, models, [spent(10)]);
+  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback"]);
+
+  // A cap of 0 disables the budget entirely: no warning at any spend.
+  const state2 = newBudgetGateState(configWith(0));
+  poll(root, state2, configWith(0), models, [spent(100)]);
+  assert.deepEqual(readEvents(root).map((e) => e.type), ["budget_fallback"]);
 });
 
 test("tickOnPair matches only an in-flight tick on the fallback pair", () => {

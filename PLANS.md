@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Budget warning at 80% of the daily cap: the notify hook pages before the gate bites, not after (planned 2026-09-30 by plan loop)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### Budget warning at 80% of the daily cap: the notify hook pages before the gate bites, not after (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** Today the operator notify hook (`notify` in tumwater.json, src/notify.ts) only fires
 for `budget_paused` — the operator learns the fleet has *already* stopped ticking, with no
@@ -38,7 +44,9 @@ and `budget_warning` joins the notify allowlist and the event feed; no other sur
    `budget warning — <budgetPhrase(e.spentUsd, e.capUsd)> of the daily cap spent; the gate is
    still open` (the `budgetPhrase` helper already imported there).
 5. `src/ui/tone.ts`: add `"budget_warning"` to `PROBLEM_EVENTS` so the feed badge and GUI tone
-   match the other budget events.
+   match the other budget events. As implemented this also added the same literal to the GUI
+   client's own duplicated list (`src/ui/gui-client-model.ts` PROBLEM_EVENTS) — tone.ts's set is
+   server-side only, so without it the GUI activity feed would have ranked the warning "info".
 6. `src/notify.ts`: add `"budget_warning"` to `NOTIFY_EVENT_TYPES` (its comment block says the
    allowlist is fixed — this extends the fixed list, one more type in the same shape).
 7. `README.md`: extend the `notify` trigger list in the settings paragraph with "a budget
@@ -65,10 +73,6 @@ and `budget_warning` joins the notify allowlist and the event feed; no other sur
 
 **Sizing.** One run: ~8 files, well under 150 lines including tests; no design question left
 open (threshold, edge-trigger rule, and surfaces are all decided above).
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### `tumwater pause --reason <text>` — the operator pause records why, and every observer states it (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

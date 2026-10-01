@@ -39,7 +39,10 @@ function parseLine(line: string): { type: string; loop: string; message: string 
 test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowlist and gap", () => {
   // Pinned to the literals, not recomputed: a recomputation would pass even if the values
   // drifted (the same pinning convention as eventsRotationLabel's rotation phrase).
-  assert.deepEqual(NOTIFY_EVENT_TYPES, ["budget_paused", "role_streak_paused", "land_failed", "restart_blocked"]);
+  assert.deepEqual(
+    NOTIFY_EVENT_TYPES,
+    ["budget_warning", "budget_paused", "role_streak_paused", "land_failed", "restart_blocked"],
+  );
   assert.equal(NOTIFY_MIN_GAP_MS, 60_000);
 });
 

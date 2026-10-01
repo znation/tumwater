@@ -47,7 +47,8 @@ with it the director prompt, to your whole network, so pair it with `--token <se
 Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
 (`maxDailyCostUsd`), a nightly `quietHours` window (e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), user-defined `customLoops`, and an
-optional `notify` shell command run when the fleet needs a human (a budget pause, an error-streak
+optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
+at 80% of the cap while the gate is still open, an error-streak
 breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER_EVENT_TYPE`,
 `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment).
 Edits apply live while the fleet runs.

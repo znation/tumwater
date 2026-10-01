@@ -54,7 +54,7 @@ type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
 
 const PROBLEM_RESULTS = new Set(["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"]);
 const ROUTINE_EVENTS = new Set(["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]);
-const PROBLEM_EVENTS = new Set(["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_paused", "supervisor_exit", "warning"]);
+const PROBLEM_EVENTS = new Set(["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "supervisor_exit", "warning"]);
 
 /** Which EventKind one event is, checked in precedence order: the two hard-coded news types
  * first (merged, question_posted), then the result-carrying types by their result — a tick_end

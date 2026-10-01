@@ -233,6 +233,17 @@ test("formatEvent renders the resume event", () => {
 // The daily cost budget's transition events (plans/daily-cost-budget.md): routine state
 // changes like counters_reset — plain lines carrying the spend and cap that triggered them,
 // no warning prefix.
+test("formatEvent renders the budget warning with the spend phrase and the still-open gate", () => {
+  const warned = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_warning",
+    spentUsd: 40.005,
+    capUsd: 50,
+  } as never);
+  assert.match(warned, /harness\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; the gate is still open/);
+});
+
 test("formatEvent renders the budget transition events plainly with spend and cap", () => {
   const paused = formatEvent({
     ts: 0,

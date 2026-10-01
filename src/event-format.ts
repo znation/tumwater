@@ -144,6 +144,10 @@ export function eventMessage(e: HarnessEvent): string {
       // build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
       return `build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
+    case "budget_warning":
+      // The early page beside budget_paused: the cap is not reached yet, so say so — the
+      // operator still has room to raise it or fix the fallback before the fleet stops.
+      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent; the gate is still open`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the fleet stopped instead of

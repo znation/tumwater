@@ -20,6 +20,7 @@ import { errorMessage } from "./text.js";
  * the harness hands it: TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE
  * (the exact line `tumwater logs` renders, via formatEvent). */
 export const NOTIFY_EVENT_TYPES = [
+  "budget_warning", // daily spend crossed 80% of the cap, gate still open — time to raise it or fix the fallback before the page below
   "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "land_failed", // the landing slot finished without landing a change
