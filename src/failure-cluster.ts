@@ -3,6 +3,7 @@
  * both count by these keys, so the normalization, the two tick-timeout shapes and their
  * pooling, and the grouping engine live here rather than inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
+import { rankByCount } from "./rank.js";
 
 /** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
  * The digest's other caps (top-N counts, summary width) live beside their consumers in
@@ -130,7 +131,7 @@ export function clusterMessages(
       });
     }
   }
-  const sorted = [...drafts.values()].sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+  const sorted = rankByCount(drafts.values(), (d) => d.count, (d) => d.key);
   return {
     clusters: sorted.slice(0, top).map((d) => ({
       key: d.key,

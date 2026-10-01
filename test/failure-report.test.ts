@@ -47,6 +47,29 @@ test("collectFailureReport tallies tick_end results per role", () => {
   assert.deepEqual(unnamed?.counts, { queued: 1 });
 });
 
+test("equal-total roles tie in ascending key order in the outcome and time-spend tables", () => {
+  // The outcome table ranks by total tick count, the time-spend table by summed wall-clock
+  // ms; both must break ties by ascending role name, matching the rank.ts rule everywhere
+  // else that ranks counters (the old sort-ascending-then-reverse idiom here flipped ties
+  // into reverse-alphabetical order).
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "zed", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "alpha", type: "tick_end", result: "no_change" },
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.deepEqual(
+    data.outcomes.map((o) => o.role),
+    ["alpha", "zed"],
+    "equal totals (1 tick each) read alphabetically",
+  );
+  assert.deepEqual(
+    data.timeSpend.map((r) => r.role),
+    ["alpha", "zed"],
+    "zero-ms ties read alphabetically",
+  );
+});
+
 test("a main_red tick's cause is clustered with the tick errors, not left a bare count", () => {
   const root = tmpdir();
   writeEvents(root, [

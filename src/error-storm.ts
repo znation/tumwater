@@ -10,6 +10,7 @@
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
+import { rankByCount } from "./rank.js";
 import { ERROR_STREAK_WARN } from "./tick-outcome.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
@@ -76,9 +77,11 @@ export function errorStorm(prev: ErrorStorm, observations: readonly ErrorStormOb
     roles.add(role);
     rolesByKey.set(key, roles);
   }
-  const storms = [...rolesByKey]
-    .filter(([, roles]) => roles.size >= ERROR_STORM_ROLES)
-    .sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]));
+  const storms = rankByCount(
+    [...rolesByKey].filter(([, roles]) => roles.size >= ERROR_STORM_ROLES),
+    ([, roles]) => roles.size,
+    ([key]) => key,
+  );
   const top = storms[0];
   if (!top) return ERROR_STORM_QUIET;
   const [key, roles] = top;

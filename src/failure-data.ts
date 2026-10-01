@@ -20,6 +20,7 @@ import {
   truncateExample,
   type Cluster,
 } from "./failure-cluster.js";
+import { rankByCount } from "./rank.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -295,9 +296,11 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
     draft.costUsd += eventUsage(ev).costUsd;
     losses.set(key, draft);
   }
-  const timeSpend: TimeSpendRow[] = [...byRole.entries()]
-    .map(([role, classes]) => ({ role, classes }))
-    .sort((a, b) => sumMs(b.classes) - sumMs(a.classes) || a.role.localeCompare(b.role));
+  const timeSpend: TimeSpendRow[] = rankByCount(
+    [...byRole.entries()].map(([role, classes]) => ({ role, classes })),
+    (row) => sumMs(row.classes),
+    (row) => row.role,
+  );
   const lossCauses: LossCause[] = [...losses.values()]
     .map((d) => ({
       kind: d.kind,
@@ -341,10 +344,15 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     counts[result] = (counts[result] ?? 0) + 1;
     outcomeMap.set(role, counts);
   }
-  const outcomes: OutcomeRow[] = [...outcomeMap.entries()]
-    .map(([role, counts]) => ({ role, counts }))
-    .sort((a, b) => total(a.counts) - total(b.counts) || a.role.localeCompare(b.role))
-    .reverse();
+  // rankByCount orders strongest role first with the ascending-key tiebreak. The old
+  // sort-ascending-then-reverse idiom accidentally flipped equal-total ties into
+  // reverse-alphabetical order; equal-total roles now follow the stated deterministic rule
+  // (pinned by the tie test in test/failure-report.test.ts).
+  const outcomes: OutcomeRow[] = rankByCount(
+    [...outcomeMap.entries()].map(([role, counts]) => ({ role, counts })),
+    (row) => total(row.counts),
+    (row) => row.role,
+  );
 
   // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
