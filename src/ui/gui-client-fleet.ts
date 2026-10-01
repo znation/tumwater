@@ -93,10 +93,30 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     paintPanel("statuschips", rows);
     renderBudgetBadge(d);
     renderPauseBadge(d);
+    renderSoundBadge();
   }
   // sidebar:end
 
   // ---- alerts ----
+  // needs-you-cue:start
+  // The sound half of the alerts band: when this poll's alerts carry a needs-you key the last
+  // poll lacked, play that alert's cue (playAlertCue, gui-client-sound.ts, no-ops while muted
+  // or before the first gesture). Each fresh alert books its own cue 2 s apart, so one poll
+  // delivering several new alerts still sounds one cue per alert while the rate limit holds
+  // across polls. The keys seen now are kept for the next poll's diff; lastNeedsYouKeys starts
+  // null, so a page opened onto an already-alerting fleet cues once. now passes through to
+  // playAlertCue so tests can step time across the rate limit.
+  let lastNeedsYouKeys = null;
+  function cueNewNeedsYou(alerts, now) {
+    const fresh = newNeedsYouKeys(lastNeedsYouKeys, alerts);
+    lastNeedsYouKeys = needsYouKeys(alerts);
+    fresh.forEach((key, i) => {
+      const a = alerts.find((x) => x.key === key);
+      if (a) playAlertCue(a.tone, now === undefined ? undefined : now + i * 2000);
+    });
+    return fresh;
+  }
+  // needs-you-cue:end
   // Alerts are patched by key, and only their text is rewritten in place: a stall alert's
   // "no pi output for 9m47s" ticks every second, and rebuilding it would swap its buttons out
   // from under a click in progress.
@@ -116,6 +136,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   }
   function renderAlerts(d) {
     const alerts = pageAlerts(d, offline);
+    cueNewNeedsYou(alerts);
     const box = $("alerts");
     const keep = new Set(alerts.map((a) => a.key));
     for (const el of Array.from(box.children)) if (!keep.has(el.dataset.key)) el.remove();

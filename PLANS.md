@@ -7,7 +7,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The dashboard speaks when the fleet needs you: a synthesized audio cue on a new needs-you alert, with a mute toggle (planned 2026-10-01 by plan loop)
+_None yet._
+
+## Done
+
+### The dashboard speaks when the fleet needs you: a synthesized audio cue on a new needs-you alert, with a mute toggle (planned 2026-10-01 by plan loop, done 2026-10-01 by feature)
 
 **Goal.** The dashboard's alerts band (src/ui/gui-client-fleet.ts's `renderFleet`, the `// alerts ----`
 section fed by `pageAlerts` in src/ui/gui-client-model.ts) already computes exactly which entries
@@ -21,9 +25,9 @@ needs a human — and leaves tick-complete/landed cues for a possible follow-up)
 
 **Approach.**
 1. **src/ui/gui-client-sound.ts (new):** export `GUI_CLIENT_SOUND_JS`, a String.raw module spliced
-   into the `GUI_CLIENT_JS` array in src/ui/gui-client.ts (before `GUI_CLIENT_BOOT_JS`), delimited
-   by `// sound:start` / `// sound:end` region markers so clientScope can test it like the other
-   modules. Contents: (a) `soundMuted` read once via the existing `recall("sound")` helper
+   into the `GUI_CLIENT_JS` array in src/ui/gui-client.ts (after `GUI_CLIENT_MARKDOWN_JS`, before
+   `GUI_CLIENT_OPERATOR_JS`), delimited by `// sound:start` / `// sound:end` region markers so
+   clientScope can test it like the other modules. Contents: (a) `soundMuted` read once via the existing `recall("sound")` helper
    (gui-client.ts's CORE_JS already ships `store`/`recall` localStorage wrappers) — default
    unmuted; (b) `armAudio()`, called on the first pointerdown/keydown (the boot module wires the
    one-time document listener) which lazily creates the `AudioContext` — autoplay policies keep
@@ -34,16 +38,21 @@ needs a human — and leaves tick-complete/landed cues for a possible follow-up)
 2. **src/ui/gui-client-model.ts:** a pure `newNeedsYouKeys(prev, next)` helper — the set of alert
    keys with a needs-you tone present in `next` but not `prev` — so the poll diff is testable
    headless. `pageAlerts` already stamps each alert with a stable `key`.
-3. **src/ui/gui-client-fleet.ts, `renderFleet`:** after computing `alerts`, diff the needs-you keys
-   against the previous poll's set (a `lastNeedsYouKeys` module variable alongside `lastStatus` in
-   gui-client.ts's CORE_JS state block) and call `playAlertCue` with the new alert's tone when the
-   diff is nonempty, audio is armed, and sound is unmuted. First poll diffing against an empty
-   previous set is fine — a page opened onto an already-alerting fleet chirps once; the muted or
-   never-gestured case stays silent.
+3. **src/ui/gui-client-fleet.ts, `renderAlerts` (corrected anchor: renderAlerts computes
+   `alerts` and runs on every poll whatever the view — renderFleet never sees them):** after
+   computing `alerts`, diff the needs-you keys against the previous poll's set (a
+   `lastNeedsYouKeys` variable in the fleet module's needs-you-cue region, its only use) and call
+   `playAlertCue` with each new alert's tone, each booking its own cue 2 s apart so one poll
+   bearing several new alerts still sounds one cue per alert while the rate limit holds across
+   polls. First poll diffing against a null previous set is fine — a page opened onto an
+   already-alerting fleet chirps once; the muted or never-gestured case stays silent.
 4. **src/ui/gui-client-operator.ts:** a `soundControlHtml()` beside `pauseControlHtml` — a small
-   masthead button (id `soundtoggle`) whose label/title flips between the muted and unmuted icon,
-   persisting via `store("sound", ...)` and taking effect on the next cue (no server call, no
-   config key — a per-browser preference, not fleet state).
+   sidebar-top button beside the theme toggle (id `soundtoggle`, painted into the new `#soundwrap`
+   slot in gui-page.ts; corrected anchor: the page has no masthead, the sidebar top is its
+   closest surface) whose label/title flips between the muted and unmuted icon, persisting via
+   `store("sound", ...)` and taking effect on the next cue (no server call, no config key — a
+   per-browser preference, not fleet state). Toggling goes through a `toggleSound()` the click
+   handler calls, so tests exercise it without a DOM Element.
 5. **Tests: test/gui-client-sound.test.ts (new),** following the gui-client-scope.ts pattern with
    a stubbed AudioContext: (a) a new red key plays, a repeated key does not; (b) a muted state
    plays nothing; (c) the 2 s rate limit drops a second cue; (d) `newNeedsYouKeys` returns only
@@ -61,7 +70,10 @@ silent, the mute toggle persists across reloads, a page opened onto an already-a
 cues once, browsers without AudioContext (and the pre-gesture window) render and poll normally
 with no sound and no errors, and `npm run test` passes including the new suite.
 
-## Done
+_Implemented 2026-10-01 by feature with the three anchor corrections noted inline (renderAlerts
+not renderFleet; the splice sits with the other content modules; the toggle lives in the sidebar
+top beside the theme toggle). test/gui.test.ts's shell-id list gained `soundwrap`, and
+test/gui-client-sidebar.test.ts's renderSidebar scope stubs the new `renderSoundBadge` call._
 ### The dashboard's Queued tab shows each prompt's age (planned 2026-10-01 by plan loop, done 2026-10-01 by feature) — part 2/2, the observers
 
 **Goal.** The same age `tumwater prompt --list` gains in part 1/2, on the dashboard: the backlog's

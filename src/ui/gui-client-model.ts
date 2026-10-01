@@ -93,9 +93,21 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   }
   const ALERT_ICONS = { offline: "offline", budget: "dollar", fallback: "info", mainred: "fail", failing: "fail", stuck: "clock",
     build: "refresh", questions: "question", paused: "pause", quiet: "pause", stopped: "info" };
+  // needs-you:start
   // Alerts that ask something of the operator (the page title counts them); blue and gray ones
   // are information.
-  const needsYou = (alerts) => alerts.filter((a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo").length;
+  const NEEDS_YOU = (a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo";
+  const needsYou = (alerts) => alerts.filter(NEEDS_YOU).length;
+  // The needs-you alerts' keys — the set the sound cue diffs each poll against the last poll's.
+  const needsYouKeys = (alerts) => alerts.filter(NEEDS_YOU).map((a) => a.key);
+  // The needs-you keys of the given alerts that prevKeys (the previous poll's set, or null on
+  // the first poll) lacks — exactly the alerts a new cue should announce. A null prev yields
+  // every needs-you key, so a page opened onto an already-alerting fleet cues once.
+  const newNeedsYouKeys = (prevKeys, alerts) => {
+    const prior = new Set(prevKeys || []);
+    return needsYouKeys(alerts).filter((k) => !prior.has(k));
+  };
+  // needs-you:end
   // An activity item's kind — its icon and tone, and whether the Notable filter keeps it.
   const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"];
   const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];

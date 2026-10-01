@@ -90,6 +90,11 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       focusComposer();
     }
   });
+  // Sound: the browser keeps an AudioContext created before the first user gesture suspended,
+  // so the first pointerdown or keydown arms it (armAudio, gui-client-sound.ts). One-time
+  // listeners: once armed, later gestures have nothing to do.
+  document.addEventListener("pointerdown", armAudio, { once: true });
+  document.addEventListener("keydown", armAudio, { once: true });
   $("themetoggle").addEventListener("click", () => {
     const root = document.documentElement;
     const current = root.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");

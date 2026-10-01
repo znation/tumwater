@@ -120,6 +120,7 @@ export const GUI_STYLES = String.raw`
   .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px; padding: 16px 12px;
              border-right: 1px solid var(--line); background: var(--surface); overflow-y: auto; }
   .side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 6px; }
+  .side-top-actions { display: flex; align-items: center; gap: 4px; }
   .brand { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-size: 15.5px; font-weight: 650;
            letter-spacing: -0.01em; }
   .logo { width: 26px; height: 26px; flex: none; }

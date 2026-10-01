@@ -34,6 +34,8 @@ export const ICON_PATHS: Record<string, string> = {
   dot: `<circle cx="12" cy="12" r="3" ${FILLED}/>`,
   fail: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.3M14.8 10.3A10 10 0 0 1 19 12.6M12 20h.01"/>',
+  sound: '<path d="M4 9.5v5h3l4.5 4v-13L7 9.5z"/><path d="M15.5 8.7a5 5 0 0 1 0 6.6M18 6.2a9 9 0 0 1 0 11.6"/>',
+  mute: '<path d="M4 9.5v5h3l4.5 4v-13L7 9.5z"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
 };
 
 /** One icon's markup — the same shape the browser script's icon() builds. */

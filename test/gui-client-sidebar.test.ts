@@ -24,6 +24,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       paintPanel: (id: string, html: string) => { panels[id] = html; },
       renderBudgetBadge: () => {},
       renderPauseBadge: () => {},
+      renderSoundBadge: () => {},
     },
   );
   return { renderSidebar, panels };

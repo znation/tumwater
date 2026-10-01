@@ -31,7 +31,10 @@ export const GUI_PAGE = `<!doctype html>
 <aside class="sidebar" aria-label="Fleet">
   <div class="side-top">
     <a class="brand" href="#fleet" aria-label="tumwater fleet">${LOGO_SVG}<span>tumwater</span></a>
-    <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
+    <div class="side-top-actions">
+      <span id="soundwrap"></span>
+      <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
+    </div>
   </div>
   <div class="side-project">
     <div class="side-label">Project</div>

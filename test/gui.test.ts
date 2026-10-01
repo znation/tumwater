@@ -718,7 +718,7 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
     assert.match(GUI_PAGE, new RegExp(`<a href="${href}" id="${id}" class="tab`), `${id} links to ${href}`);
   }
   // Each view's container, the composer (with its target picker), the alerts, and the drawer.
-  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "loops", "backlog", "feed", "drawer", "budgetwrap", "pausewrap"]) {
+  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "loops", "backlog", "feed", "drawer", "soundwrap", "budgetwrap", "pausewrap"]) {
     assert.match(GUI_PAGE, new RegExp(`id="${id}"`), `#${id} is in the shell`);
   }
   // The page makes no request off its own server: no remote scripts, styles, fonts, or images.
