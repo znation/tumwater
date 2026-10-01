@@ -143,3 +143,56 @@ test("buildRed with no declared check answers unknown (null), not not-red", asyn
   assert.equal(await deps.buildRed(head), null, "no check means no verdict, not a green one");
   assert.deepEqual(events, [], "a null verdict costs no suite run and logs no build_check");
 });
+
+test("the staleness, compile, and swap closures drive the real mechanics in a fixture repo", async () => {
+  // The other wiring here covers mainGreen and buildRed; these three are the rest of
+  // redeployDeps and none had ever run under test: staleness decides a restart is due at all,
+  // compile stages the successor build, and swap moves it into dist — a swapped argument or a
+  // lost mirror in any of them would silently break or misfire the self-redeploy. A fixture
+  // drives each closure for real: git reads, a detached mirror worktree, the staged-compile
+  // resolution, and the swap's own guard.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(0)'" }));
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "project");
+  const buildSha = sh(root, "git", "rev-parse", "HEAD");
+  const deps = redeployDeps(root, { sha: buildSha, builtAt: 1, root }, () => {}, async () => null);
+
+  // A build sitting at main's head is fresh. A commit touching none of the build inputs
+  // leaves it fresh too — the inputs filter is the difference between redeploying on every
+  // docs commit and redeploying only when the code moved.
+  assert.deepEqual(await deps.staleness(buildSha), { stale: false, aheadCommits: 0 });
+  fs.writeFileSync(path.join(root, "NOTES.md"), "docs only\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-q", "-m", "docs");
+  const docsHead = sh(root, "git", "rev-parse", "HEAD");
+  assert.deepEqual(await deps.staleness(docsHead), { stale: false, aheadCommits: 1 });
+
+  // One package.json commit later the same closure reads stale with the ahead count the
+  // dashboards publish.
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ test: "node -e 'process.exit(1)'" }));
+  sh(root, "git", "commit", "-aqm", "move main");
+  const newHead = sh(root, "git", "rev-parse", "HEAD");
+  assert.deepEqual(await deps.staleness(newHead), { stale: true, aheadCommits: 2 });
+
+  // A sha that is no commit of this repo reads null — the "not our build" verdict isSelfHosted
+  // also answers, so a foreign sha can never order a restart.
+  assert.equal(await deps.staleness("f".repeat(40)), null);
+
+  // The compile closure serves its compile from the mirror worktree, repointed at the asked
+  // head. The fixture installs no typescript at or above itself, so the staged compile rejects
+  // without running tsc — the same verdict a real mirror without an install gets — but the
+  // mirror it built for the attempt is real and sits exactly where main points.
+  const compiled = await deps.compile(newHead);
+  assert.equal(compiled.ok, false, "a fixture without typescript cannot stage a build");
+  assert.match(compiled.detail, /typescript is not installed/);
+  assert.equal(
+    sh(mirrorWorktreePath(root), "git", "rev-parse", "HEAD"),
+    newHead,
+    "the compile's mirror sits at the head it was to compile",
+  );
+
+  // The swap guard fires through the closure too: with nothing staged for the head it names
+  // the head rather than leaking a bare ENOENT from the rename below it.
+  assert.throws(() => deps.swap(newHead), /no staged build for/);
+});
