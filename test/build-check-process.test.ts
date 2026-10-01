@@ -8,7 +8,7 @@ import { pidAlive } from "../src/process.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { projManifest } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 // The build check's process-tree teardown hygiene, split out of build-check.test.ts beside its
 // local helpers (groupAlive, checkClock, readPid): what a timed-out check owes its process tree
@@ -192,18 +192,32 @@ test("a timed-out check does not settle on its leader's close while a grandchild
 
 // The other half of the bound: a tree the SIGTERM takes down does not wait out the grace, so
 // the common timeout costs the deadline and not the deadline plus ten seconds.
-test("a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace", async () => {
+test("a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace", async (t) => {
   const wt = tmpdir();
-  const started = performance.now();
-  const outcome = await runBuildCheck(
+  // On logical time (checkClock): the wall clock moves only the tree's real death, never the
+  // check's timers, so a loaded host cannot push the settle toward the grace. Pre-fix-shaped
+  // behaviour (settling only at the SIGKILL) never settles on the clock budget below.
+  const advance = checkClock(t);
+  let settled = false;
+  const check = runBuildCheck(
     wt,
     { kind: "command", command: "echo $$ > pgid; sleep 30", cwd: wt, timeoutMs: 1_000 },
     30_000,
     5_000,
-  );
-  const elapsed = performance.now() - started;
+  ).finally(() => (settled = true));
+  await waitFor(() => readPid(path.join(wt, "pgid")) > 0, "the check's pgid file", 30_000);
   const pgid = readPid(path.join(wt, "pgid"));
+  advance(1_000); // the deadline's SIGTERM
+  // The group's death is real time; wait it out with the check's clock frozen, then step the
+  // clock (the group poll) until the run settles — well inside the 5 s grace.
+  await waitFor(() => !groupAlive(pgid), "the SIGTERMed group to die", 30_000);
+  for (let stepped = 0; !settled && stepped < 2_500; stepped += 50) {
+    advance(50);
+    await sleep(20);
+  }
+  assert.ok(settled, "the check settled within 2.5 s of logical time after the deadline, not at the 5 s grace");
+  const outcome = await check;
   assert.equal(outcome.skipReason, "timeout");
-  assert.ok(elapsed < 1_000 + 2_500, `settled ${Math.round(elapsed)}ms after the call, not after the 5 s grace`);
-  assert.ok(pgid > 0 && !groupAlive(pgid), "the group was already gone when the check settled");
+  const ran = outcome.run!.settledAt - outcome.run!.spawnedAt;
+  assert.ok(ran <= 1_000 + 2_500, `settled ${ran}ms after the spawn, not after the 5 s grace`);
 });

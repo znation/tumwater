@@ -165,12 +165,13 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     const done = runRepoOrchestrator(repo, {
       config,
       signal: controller.signal,
-      pollMs: 5000, // Long poll so the shutdown-ceiling assertion below is unambiguous under load.
+      // A two-minute poll: a shutdown that waited out the sleep would take that long, so the
+      // shutdown bound below can be generous enough that no host load reaches it, while a
+      // regression still frees the test file within minutes.
+      pollMs: 120_000,
     });
     // The info file is written before the first poll; wait for it.
-    const deadline = Date.now() + 5000;
-    while (!readOrchestratorInfo(repo) && Date.now() < deadline)
-      await new Promise((r) => setTimeout(r, 25));
+    await waitFor(() => readOrchestratorInfo(repo) !== null, "the orchestrator info file");
     const info = readOrchestratorInfo(repo);
     assert.ok(info, "orchestrator state file exists while running");
     assert.equal(info.pid, process.pid);
@@ -187,20 +188,20 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
         }),
       "both startup ticks to finish",
     );
-    // Shutdown must not wait out the current poll sleep: abort wakes the loop immediately, so
-    // this resolves in milliseconds. The 5s poll makes the ceiling unambiguous even under full-
-    // suite load — a woken shutdown stays far below 2s (observed worst ~1s), while old,
-    // non-interruptible behavior would wait out up to the whole 5s sleep and blow it often.
+    // Shutdown must not wait out the current poll sleep: abort wakes the loop immediately. The
+    // bound is a race, not a ceiling on a measurement: 60 s is far beyond a woken shutdown even
+    // on a saturated host (2066 ms broke the original 2 s limit, BUGS.md 2026-09-18) and half
+    // the poll sleep a non-waking shutdown would wait out — which then fails here, not at the
+    // test timeout.
     const tAbort = Date.now();
     controller.abort();
-    await done;
-    // 3.5s, not 2s: the poll sleep is 5s, so anything comfortably under it still proves the
-    // abort WOKE the sleep rather than being waited out — which is the invariant — while
-    // surviving the scheduling jitter that made this fail at 2066ms (BUGS.md 2026-09-18).
-    assert.ok(
-      Date.now() - tAbort < 3500,
-      `shutdown took ${Date.now() - tAbort}ms — it waited out the poll sleep instead of waking on abort`,
-    );
+    let bound: NodeJS.Timeout | undefined;
+    const woke = await Promise.race([
+      done.then(() => true),
+      new Promise<boolean>((resolve) => (bound = setTimeout(() => resolve(false), 60_000))),
+    ]);
+    clearTimeout(bound);
+    assert.ok(woke, `shutdown still running ${Date.now() - tAbort}ms after abort — it is waiting out the poll sleep`);
 
     // Shutdown removed the state file and logged both lifecycle events.
     assert.equal(readOrchestratorInfo(repo), null, "state file removed on shutdown");
