@@ -176,6 +176,19 @@ function withPausedRolesLock<T>(root: string, fn: () => T): T {
   return withSyncLock(lock, fn, PAUSED_ROLES_LOCK_TIMEOUT_MS);
 }
 
+/** The paused-roles marker's standing shared deadline, read raw so the rewrite paths can carry
+ * it forward: pauseRole's fresh-add and resumeRole's remaining-set write rebuild the marker
+ * body from scratch, and dropping the field there silently converted the other paused roles'
+ * timed pause into a standing one — the operator's `--for` auto-resume promise revoked by a
+ * command that named a different role (BUGS.md 2026-09-30). undefined when the file is
+ * missing, unreadable, or carries no `until` — or a non-numeric or already-expired one, the
+ * same wrong-shape-reads-as-absent discipline standingMarker applies to the fleet marker. */
+function standingRolesUntil(path: string): number | undefined {
+  const state = readJsonFile<{ until?: unknown }>(path);
+  const until = state?.until;
+  return typeof until === "number" && until > Date.now() ? until : undefined;
+}
+
 /** Pause one role by adding it to the paused-roles marker; returns whether this call changed
  * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
@@ -195,7 +208,17 @@ export function pauseRole(root: string, role: string, untilMs?: number): boolean
       writeJsonAtomic(path, { roles: current, at: Date.now(), until: untilMs });
       return true;
     }
-    writeJsonAtomic(path, untilMs === undefined ? { roles: [...current, role], at: Date.now() } : { roles: [...current, role], at: Date.now(), until: untilMs });
+    // A standing join keeps the set's standing shared deadline: this write rebuilds the
+    // marker body, and dropping the field here would silently convert the already-paused
+    // roles' timed pause into a standing one (BUGS.md 2026-09-30). A `--for` on this call
+    // overwrites, the same last-write-wins rule as the branch above.
+    const joinUntil = untilMs ?? standingRolesUntil(path);
+    writeJsonAtomic(
+      path,
+      joinUntil === undefined
+        ? { roles: [...current, role], at: Date.now() }
+        : { roles: [...current, role], at: Date.now(), until: joinUntil },
+    );
     return true;
   });
 }
@@ -209,7 +232,17 @@ export function resumeRole(root: string, role: string): boolean {
     if (!current.includes(role)) return false;
     const remaining = current.filter((r) => r !== role);
     if (remaining.length === 0) removeQuiet(pausedRolesPath(root));
-    else writeJsonAtomic(pausedRolesPath(root), { roles: remaining, at: Date.now() });
+    else {
+      // The survivors keep the set's standing shared deadline (BUGS.md 2026-09-30): this
+      // rewrite rebuilds the marker body, and a dropped `until` would stand the remaining
+      // roles' timed pause up past the deadline their operator set. Only the last removal
+      // drops the field, with the marker itself.
+      const until = standingRolesUntil(pausedRolesPath(root));
+      writeJsonAtomic(
+        pausedRolesPath(root),
+        until === undefined ? { roles: remaining, at: Date.now() } : { roles: remaining, at: Date.now(), until },
+      );
+    }
     return true;
   });
 }

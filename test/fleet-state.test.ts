@@ -168,6 +168,36 @@ function pauseOnceProcess(root: string, role: string, startFile: string): Promis
   });
 }
 
+test("a sibling pause or resume keeps the paused-roles marker's standing shared deadline", () => {
+  // Regression: the fresh-add and remaining-set writes rebuilt the marker body from scratch
+  // and carried no `until` unless the current call had one, so `pause --role bugfix` after
+  // `pause --role qa --for 1h` silently converted qa's timed pause into a standing one (the
+  // marker lost its deadline and never expired), and resuming the sibling did the same to the
+  // survivor. The deadline is the marker's one shared field: only a fresh `--for` overwrites
+  // it, and the last removal drops it with the marker itself.
+  const root = tmpdir();
+  const until = Date.now() + 3_600_000;
+  assert.equal(pauseRole(root, "qa", until), true);
+  assert.equal(pauseRole(root, "bugfix"), true, "a standing join changes state");
+  assert.equal(
+    (readJson(pausedRolesPath(root)) as { until: number }).until,
+    until,
+    "joining a role standing keeps the set's timed auto-resume",
+  );
+  assert.deepEqual(pausedRoles(root), ["qa", "bugfix"]);
+  assert.equal(resumeRole(root, "bugfix"), true);
+  assert.equal(
+    (readJson(pausedRolesPath(root)) as { until: number }).until,
+    until,
+    "resuming a sibling keeps the survivor's timed auto-resume",
+  );
+  assert.deepEqual(pausedRoles(root), ["qa"]);
+  // Last-write-wins stays: a `--for` on a later join overwrites the shared deadline.
+  const sooner = Date.now() + 60_000;
+  assert.equal(pauseRole(root, "dry", sooner), true);
+  assert.equal((readJson(pausedRolesPath(root)) as { until: number }).until, sooner);
+});
+
 test("simultaneous cross-process pauseRole calls all survive in the marker", async () => {
   // Regression: the marker's whole-set overwrite was written unlocked, so concurrent
   // read-modify-write writers (CLI `pause --role` vs the dashboard's per-row toggle) raced and
