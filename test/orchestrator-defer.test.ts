@@ -13,6 +13,10 @@
  * - Episodes end and restart cleanly: across a live run's polls, a queued prompt that makes a
  *   deferred role due via its inbox silently ends the deferral episode (no event — the tick
  *   itself is the answer), and the next scheduled deferral is a NEW episode that logs again.
+ * - Search mode: bugfix is not a maintenance role, but while BUGS.md `## Open` is empty it
+ *   defers like one — keyed on the work-landed verdict ALONE (the backlog-open shortcut must
+ *   not stand in for the git-range query), so an idle search tick with nothing new on main
+ *   waits and an empty backlog never blocks it from ticking once work has landed.
  */
 
 import test from "node:test";
@@ -88,6 +92,35 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the tick really ran");
     assert.deepEqual(eventsOfType(repo, "tick_deferred"), [], "no deferral episode: the demand preempted it");
+  } finally {
+    restore();
+  }
+});
+
+test("once: bugfix in search mode defers on the work-landed verdict alone, backlog or none", async () => {
+  const repo = await makeFastRepo("once search-mode deferral test", ["bugfix"]);
+  // The backlog is left at initProject's empty template: BUGS.md `## Open` and PLANS.md
+  // `## Planned` both empty, so workBacklogOpen is false and the deferral rests entirely on
+  // the work-landed query — the seeded state's lastMainHead IS main's head, so nothing has
+  // landed since the idle tick and the search waits. The seed must carry the bugfix role
+  // itself: saveLoopState keys the state file off the state's role field.
+  saveLoopState(repo, { ...idleDueState(repo), role: "bugfix" });
+  const restore = fakePiIdle();
+  try {
+    const exit = await onceRound(repo);
+    assert.equal(exit.restart, false);
+    assert.equal(
+      exit.settled?.get("bugfix"),
+      "deferred",
+      "an idle search tick with nothing new on main defers even with the backlog empty",
+    );
+    assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
+    assert.equal(loadLoopState(repo, "bugfix").ticks, 1, "nothing ticked past the seeded history");
+    assert.deepEqual(
+      eventsOfType(repo, "tick_deferred").map((e) => e.loop),
+      ["bugfix"],
+      "the search-mode deferral logs its episode like any other",
+    );
   } finally {
     restore();
   }
