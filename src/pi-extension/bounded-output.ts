@@ -40,6 +40,17 @@ function chars(text: string): string[] {
   return Array.from(text);
 }
 
+/** The bounders' shared under-limit test. A string's code-point count never exceeds its
+ * UTF-16 length, so a length within the limit proves the text is under the limit without
+ * allocating the code-point array — the common case for every short-enough result, and
+ * the reason boundBashResult can decide "never earns a disk write" cheaply. Returns the
+ * code-point array when the text needs bounding, null when it passes through untouched. */
+function cpsWhenOverLimit(text: string, limitChars: number): string[] | null {
+  if (text.length <= limitChars) return null;
+  const cps = chars(text);
+  return cps.length <= limitChars ? null : cps;
+}
+
 /** Core bounding: keep head+tail around a marker naming the omitted character count and,
  * when known, where the complete output lives. Under the limit the text is returned
  * byte-identical. The result is always at most `limitChars` code points long. */
@@ -49,12 +60,8 @@ export function boundText(
   fullPath?: string | null,
 ): string {
   if (!text) return text;
-  // UTF-16 fast path: a string's code-point count never exceeds its UTF-16 length, so
-  // a length within the limit proves the text is under the limit without allocating
-  // the code-point array — the common case for every short-enough result.
-  if (text.length <= limitChars) return text;
-  const cps = chars(text);
-  if (cps.length <= limitChars) return text;
+  const cps = cpsWhenOverLimit(text, limitChars);
+  if (cps === null) return text;
 
   const marker = (omitted: number): string =>
     `...${omitted} chars truncated${fullPath ? `; complete output in ${fullPath}` : ""}...`;
@@ -108,10 +115,8 @@ export function boundReadResult(
 ): string {
   if (!text) return text;
   if (input && (input.offset !== undefined || input.limit !== undefined)) return text;
-  // UTF-16 fast path, as in boundText: length within the limit proves under-limit.
-  if (text.length <= limitChars) return text;
-  const cps = chars(text);
-  if (cps.length <= limitChars) return text;
+  const cps = cpsWhenOverLimit(text, limitChars);
+  if (cps === null) return text;
 
   const marker = (omitted: number): string =>
     `...${omitted} chars of this read were omitted — re-read ${input?.path ?? "the file"} with offset/limit to see the missing middle...`;
@@ -149,12 +154,11 @@ export function boundBashResult(
   limitChars: number = BASH_LIMIT_CHARS,
 ): string {
   if (!text) return text;
-  // UTF-16 fast path: length within the limit proves under-limit without allocating.
-  if (text.length <= limitChars) return text;
-  // Astral-heavy text can have a UTF-16 length past the limit while its code-point
-  // count stays within it — still under-limit, so it must pass through here, before
-  // writeFullOutput: an output that will not be truncated never earns a disk write.
-  if (chars(text).length <= limitChars) return text;
+  // The second half of the shared test matters before writeFullOutput: astral-heavy text
+  // can have a UTF-16 length past the limit while its code-point count stays within it —
+  // still under-limit, so it must pass through here: an output that will not be truncated
+  // never earns a disk write.
+  if (cpsWhenOverLimit(text, limitChars) === null) return text;
   const fullPath = details?.fullOutputPath ?? writeFullOutput?.(text) ?? null;
   return boundText(text, limitChars, fullPath);
 }
