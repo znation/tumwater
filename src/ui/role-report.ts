@@ -27,10 +27,17 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
   return [`## ${label}`, "", fence, text.replace(/\n+$/, ""), fence, ""];
 }
 
+/** The provider/model wiring as one readable token — `provider/model` when both are named,
+ * `model` alone when only the model is (the join simply drops unset halves) — shared by the
+ * main line and the budget-fallback line, so the two render the same wiring the same way. */
+function modelPair(provider: string | undefined, model: string | undefined): string {
+  return [provider, model].filter(Boolean).join("/");
+}
+
 /** The provider/model wiring as one readable token: `provider/model` when both resolve,
  * `model` alone when only the model is named, and the pi-default note when neither is. */
 function modelLine(p: RoleViewPayload): string {
-  const pair = [p.provider, p.model].filter(Boolean).join("/");
+  const pair = modelPair(p.provider, p.model);
   const thinking = p.thinking ? ` (thinking: ${p.thinking})` : "";
   return pair ? `${pair}${thinking}` : `pi default${thinking}`;
 }
@@ -44,7 +51,7 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
   lines.push(`- Model: ${modelLine(p)}`);
   if (p.fallback) {
-    const pair = [p.fallback.provider, p.fallback.model].filter(Boolean).join("/") || "pi default";
+    const pair = modelPair(p.fallback.provider, p.fallback.model) || "pi default";
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
