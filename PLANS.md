@@ -54,6 +54,41 @@ No new CLI flag, config key, or doc surface — the key's docs land in part 1/2.
 tests; no design question left open (the ladder position and the payload field are decided above).
 Sibling: part 1/2 (the gate), which this plan depends on.
 
+### The sidebar's Build row refresh icon restarts the build, like the build alert's icon (planned 2026-10-01 by director)
+
+**Goal.** The dashboard's build-stale alert carries a clickable refresh icon that restarts the
+fleet onto main's head (`alertParts`' `restartable` branch in src/ui/gui-client-fleet.ts,
+wired to `data-act='restart'` → `runAct` in src/ui/gui-client-boot.ts → `handleRestart` in
+src/ui/gui-endpoints.ts). The sidebar's Build row in the left nav (the `d.build` branch of
+`renderSidebar`, src/ui/gui-client-fleet.ts) shows the same refresh glyph but as inert
+decoration. Make the sidebar icon the same restart affordance, under the same condition the
+alert uses: clickable when the build is stale (`d.build.stale`), inert decoration when fresh.
+Match the alert's rule exactly — including when `restartBlocked` is set — so one mental model
+covers both icons: the click posts the same request, and a blocked restart surfaces the same
+409 refusal message via `postAction`'s existing error toast.
+
+**Approach.**
+1. **src/ui/gui-client-fleet.ts, `renderSidebar()`'s build row:** when `d.build && d.build.stale`,
+   render the row's lead as `<button type='button' class='alert-icon' data-act='restart'
+   title='Restart onto the new build now'>` + `icon("refresh")` + `</button>` instead of bare
+   `icon("refresh")` — the exact markup `alertParts()` already emits, so styling and behavior
+   come from the same place and cannot drift. Keep the plain glyph when the build is fresh.
+   No new click wiring: the global delegated handler in gui-client-boot.ts already dispatches
+   any `[data-act='restart']`, and `handleRestart` needs no server change.
+2. **src/ui/gui-styles.ts:** reuse the `.alert-icon` button styling (it already strips native
+   button chrome per its comment). Only add a narrow rule if the button visibly misbehaves
+   inside `.side-status .row` (e.g. inherits a button background) — prefer zero new CSS when
+   the alert's rule already renders correctly there.
+3. **test/gui-client-sidebar.test.ts:** extend the existing harness (`clientScope` +
+   `paintPanel` capture) with tests named for the behavior: (a) a stale build renders the
+   Build row's lead as the `data-act='restart'` button, (b) a fresh build keeps the inert
+   glyph (no `data-act`), (c) the row's text and behind-count are unchanged in both cases.
+
+**Acceptance criteria.** With the fleet running an old build, clicking the sidebar's refresh
+icon triggers the same restart as the alert's icon (toast confirms, poll applies it); with a
+current build the icon is inert as today; `npm run test` passes including the new sidebar
+tests.
+
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
 ## Done
