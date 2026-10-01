@@ -274,6 +274,16 @@ export function loadConfigCached(root: string): { config?: TumwaterConfig; error
   }
 }
 
+/** The live resolved config for `root`: the stat-cached read (loadConfigCached) with a broken
+ * or vanished file degrading to the defaults — the one home of that fallback, shared by every
+ * mid-run reader that must keep working when tumwater.json is briefly broken (the baseline
+ * check's per-call config, the red-main gate, the stall threshold), so a change to the policy
+ * (what degrades, what logs) cannot drift between them. Missing is degraded here too, unlike
+ * loadConfigCached's own contract — callers of this helper want A config, never an incident. */
+export function liveConfig(root: string): TumwaterConfig {
+  return loadConfigCached(root).config ?? defaultConfig();
+}
+
 /** Persist a config after validating it, so an invalid tumwater.json can never be written.
  * Written atomically (writeJsonAtomic, trailing newline — the POSIX-newline convention here
  * and at config-write.ts, the file's other writers): the config-live poller re-reads the file

@@ -1,7 +1,7 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "./pi-event-line.js";
 import { commandBuffersOutput } from "./command-shape.js";
 import { describeToolCall, squash } from "./text.js";
-import { defaultConfig, loadConfigCached } from "./config.js";
+import { defaultConfig, liveConfig } from "./config.js";
 import { landWorktreePath } from "./paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "./tail.js";
 
@@ -240,12 +240,10 @@ export function parseProgress(lines: string[], quietMs: number): LiveProgress {
 
 /** The configured threshold for flagging an open tool call as stalled, in ms (0 when
  * disabled) — the same value runPi's stall warning uses, so the state cell and the event feed
- * agree on "stalled". Resolved through loadConfigCached: stat-keyed, so an unedited
- * tumwater.json costs one stat per poll. */
+ * agree on "stalled". Resolved through liveConfig (the stat-cached read with defaults
+ * fallback): an unedited tumwater.json costs one stat per poll. */
 export function toolCallStallMs(root: string): number {
-  const loaded = loadConfigCached(root);
-  const seconds = loaded.config?.toolCallStallSeconds ?? defaultConfig().toolCallStallSeconds;
-  return Math.max(0, seconds) * 1000;
+  return Math.max(0, liveConfig(root).toolCallStallSeconds) * 1000;
 }
 
 /** The label of the first open tool call that has been silent for at least `stallMs` — the

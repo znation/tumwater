@@ -1,6 +1,6 @@
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { buildCheckEvent } from "./build-check-events.js";
-import { defaultConfig, loadConfigCached } from "./config.js";
+import { liveConfig } from "./config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
@@ -54,7 +54,7 @@ export function redeployDeps(
       // does everywhere else); a broken file degrades to defaults — no declared check.
       mainIsGreen(
         await mirror(mainHead),
-        loadConfigCached(root).config ?? defaultConfig(),
+        liveConfig(root),
         ({ outcome, durationMs }) => log(buildCheckEvent("harness", "baseline", outcome, durationMs)),
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
@@ -69,7 +69,7 @@ export function redeployDeps(
       if (cached !== undefined) return cached === "red";
       const baseline = await checkMainBaseline(
         await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha),
-        loadConfigCached(root).config ?? defaultConfig(),
+        liveConfig(root),
         ({ outcome, durationMs }) => log(buildCheckEvent("harness", "baseline", outcome, durationMs)),
       );
       return baseline.baseline ? baseline.baseline.status === "red" : null;

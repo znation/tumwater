@@ -1,5 +1,5 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
-import { defaultConfig, isCustomRole, loadConfigCached } from "./config.js";
+import { isCustomRole, liveConfig } from "./config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { failureHeadline } from "./build-check-report.js";
 import type { BuildCheckOutcome } from "./build-check.js";
@@ -71,7 +71,7 @@ function baselineCheckLogger(
 export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
   // The declared check is detected through the live config (plans/portability.md §6/7); a
   // broken file degrades to defaults, which declare none — the tick then proceeds as before.
-  const config = loadConfigCached(root).config ?? defaultConfig();
+  const config = liveConfig(root);
   const baseline = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
   if (red?.status !== "red") return undefined;
@@ -97,7 +97,7 @@ export async function mainRedGate(
   // at the gate's pre-check — an authoring run would be pure waste. Customs come from tumwater.json,
   // not the catalog, so read the live config (stat-cached; a broken file degrades to defaults,
   // which know no customs).
-  const cfg = loadConfigCached(root).config ?? defaultConfig();
+  const cfg = liveConfig(root);
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
   const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, sampleSleep);
   if (baseline.unverified) {
