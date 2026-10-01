@@ -57,8 +57,8 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
     quietBadge(set.quietHours, set.inQuietHours),
   );
 
-  // A malformed value degrades with the whole config — configForStatus serves the
-  // last-known-good one, so the badge never flashes off on a single broken write.
+  // A malformed value degrades with the whole config — status-polls.ts's configForStatus
+  // serves the last-known-good one, so the badge never flashes off on a single broken write.
   writeConfig(repo, { quietHours: "23:00" });
   const broken = snapshot(repo);
   assert.equal(broken.quietHours, "23:00-07:00", "a broken config serves the last-known-good window");
