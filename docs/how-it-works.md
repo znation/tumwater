@@ -120,7 +120,9 @@ discards a role's in-flight landing.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not
   exempt — its queued prompts simply wait in the inbox. `pause --for <duration>` (e.g. `2h`)
-  lifts itself when the deadline passes, so a quieted fleet resumes without an operator.
+  lifts itself when the deadline passes, so a quieted fleet resumes without an operator. A
+  fleet pause may carry `--reason <text>` — the why behind the pause, surfaced on `status`,
+  the TUI, and the dashboard (a per-role pause carries no reason).
 - The error-streak circuit breaker acts on the same evidence the per-role warning uses: after
   10 consecutive failed ticks a role is paused through the same per-role marker (a
   `role_streak_paused` event names the streak and the cause), so a loop failing on its own
