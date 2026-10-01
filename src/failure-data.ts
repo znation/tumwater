@@ -109,6 +109,30 @@ function section(
   return { ...clustered, total };
 }
 
+/** Cluster one type's message-bearing events on (role, message), as a section whose total
+ * counts the selected events. The one home of the filter-then-cluster shape the warnings and
+ * review-failure sections share, and of the guard that skips an event whose `message` is
+ * missing, non-string, or empty instead of crashing the digest on a torn line. The errors
+ * section does not render through it — its text lives on `error`, not `message`, with a
+ * fallback phrase — and rejections key on reasons[0] and prefix their cluster keys, so both
+ * keep their own blocks. */
+function messageSection(
+  events: HarnessEvent[],
+  type: HarnessEvent["type"],
+  top: number,
+): ClusterSection {
+  const selected = events.filter(
+    (ev) => ev.type === type && typeof ev.message === "string" && ev.message !== "",
+  );
+  return section(
+    clusterMessages(
+      selected.map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
+      top,
+    ),
+    selected.length,
+  );
+}
+
 /** One role's window metrics, used for the delta row: ticks/errors/quiet kills from
  * `tick_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
 interface RoleStats {
@@ -240,13 +264,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     ),
     errorEvents.length,
   );
-  const warningEvents = current.filter(
-    (ev) => ev.type === "warning" && typeof ev.message === "string" && ev.message !== "",
-  );
-  const warnings = section(
-    clusterMessages(warningEvents.map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })), WARNING_TOP),
-    warningEvents.length,
-  );
+  const warnings = messageSection(current, "warning", WARNING_TOP);
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
   // different rejection reasons from the same role stay separate rows. The section's total
   // counts every `review_rejected` in the window, reasons or not, so it equals the Deltas
@@ -271,16 +289,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
   // `tick_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
   // failing without misreading it as a tick error (BUGS.md 2026-09-21).
-  const reviewFailures = section(
-    clusterMessages(
-      current
-        .filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
-        .map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
-      REVIEW_FAILURE_TOP,
-    ),
-    current.filter((ev) => ev.type === "review_failed" && typeof ev.message === "string" && ev.message !== "")
-      .length,
-  );
+  const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
 
   // The newest LANDED_TOP merges, newest first. The pre-slice count rides along, as it does for
   // the state changes below, so the render can name what the cut left out — a busy window must
