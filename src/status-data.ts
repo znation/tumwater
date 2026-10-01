@@ -86,6 +86,12 @@ export interface StatusSnapshot {
    * fleet. JSON.stringify drops the undefined field, so `status --json` carries it only while
    * a timed fleet pause stands. Fresh per poll, like `paused`. */
   pausedUntil?: number;
+  /** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), absent
+   * for a reasonless pause, a role-only pause, or no pause at all — read from the same
+   * standing marker read as `paused`/`pausedUntil`, so a reason is never advertised after
+   * the pause it describes has lifted or been replaced (last write wins). JSON.stringify
+   * drops the undefined field. Fresh per poll, like `paused`. */
+  pauseReason?: string;
   /** The configured quiet-hours window as written (trimmed — "Quiet hours … part 2/2,
    * observability"), present only while the config's `quietHours` parses to a real window:
    * absent when unset or empty (off), because a schedule the gate is not holding must never
@@ -395,6 +401,7 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
     pausedUntil: fleetPause?.until,
+    pauseReason: fleetPause?.reason,
     quietHours: quiet.window ?? undefined,
     inQuietHours: quiet.inWindow,
     landQueue,

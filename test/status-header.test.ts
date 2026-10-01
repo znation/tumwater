@@ -59,6 +59,28 @@ test("the status header shows the timed-pause countdown only while the fleet dea
   assert.doesNotMatch(renderStatus(tmpdir(), snap).split("\n")[0] ?? "", /auto-resumes/);
 });
 
+// The operator pause's why (`pause --reason <text>`) rides the header after the countdown —
+// and a reason makes the untimed pause visible up here (`· paused — "why"`), while a
+// reasonless pause keeps today's byte-identical header.
+test("the status header states the operator pause's reason, timed or not", () => {
+  const anonymous = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
+  anonymous.pausedUntil = Date.now() + 3 * 3_600_000;
+  const bare = renderStatus(tmpdir(), anonymous).split("\n")[0] ?? "";
+  assert.match(bare, /· paused — auto-resumes in 3h$/);
+
+  const timed = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
+  timed.pausedUntil = Date.now() + 3 * 3_600_000;
+  timed.pauseReason = "deploying to prod";
+  assert.match(renderStatus(tmpdir(), timed).split("\n")[0] ?? "", /· paused — auto-resumes in 3h — "deploying to prod"$/);
+
+  const untimed = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
+  untimed.pauseReason = "deploying to prod";
+  assert.match(renderStatus(tmpdir(), untimed).split("\n")[0] ?? "", /· paused — "deploying to prod"$/);
+
+  const quiet = snapshotWith([{ role: "clean" }]);
+  assert.doesNotMatch(renderStatus(tmpdir(), quiet).split("\n")[0] ?? "", /paused/);
+});
+
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the window rides the
 // header LAST, after the pause badge, as standing information once configured — the plain
 // window string outside it, the active `quiet until <end>` reading inside — and a fleet

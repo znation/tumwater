@@ -6,6 +6,7 @@ import {
   sayJsonOrRender,
   flagValue,
   DURATION_FLAG,
+  REASON_FLAG,
   grepFlagSpec,
   N_FLAG,
   parseCountFlag,
@@ -111,9 +112,10 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
  * dispatch to its operator-commands core. One copy of the guard sequence so the five cannot
  * drift on validation order or gating. */
 async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
-  // `pause` alone accepts `--for <duration>` (the timed pause); the other marker commands keep
-  // the plain --role vocabulary, so a stray --for fails fast instead of being silently ignored.
-  rejectUnknownArgs(command, args, command === "pause" ? [ROLE_FLAG, DURATION_FLAG] : [ROLE_FLAG]);
+  // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
+  // operator pause's why); the other marker commands keep the plain --role vocabulary, so a
+  // stray --for or --reason fails fast instead of being silently ignored.
+  rejectUnknownArgs(command, args, command === "pause" ? [ROLE_FLAG, DURATION_FLAG, REASON_FLAG] : [ROLE_FLAG]);
   await requireReadyRepo(root);
   await markerCommandCores[command](root, args);
 }

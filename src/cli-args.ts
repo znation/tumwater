@@ -277,6 +277,20 @@ export const DURATION_FLAG: FlagSpec = {
   },
 };
 
+/** The `--reason <text>` flag spec, accepted by `pause` alone (the operator pause's why):
+ * one definition of the flag's spelling and value shape, beside ROLE_FLAG and DURATION_FLAG,
+ * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value
+ * wording names its only command (the GREP_VALUE_ERROR idiom — each command's parser names
+ * itself); the 200-char cap stays in pauseFleet beside the marker it bounds, and per-role
+ * pauses carry no reason, so cmdPause rejects the `--role` + `--reason` combination.
+ * Exported so the gate and the command body share one definition of what `pause` accepts. */
+export const REASON_FLAG: FlagSpec = {
+  names: ["--reason"],
+  value: true,
+  valueName: "<text>",
+  missingValue: "pause --reason needs a reason",
+};
+
 /** The `--since <duration>` flag spec, shared by the three windowed read-only views (logs,
  * history, report): one definition of the flag's spelling and value shape, beside ROLE_FLAG
  * and DURATION_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages

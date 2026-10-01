@@ -32,11 +32,22 @@ export function isFleetPaused(root: string): boolean {
  * (`tumwater pause [--role <id>] --for <duration>`), the ms-epoch deadline. One shared
  * deadline per marker — a set is paused or it is not, and each new pause write carries its
  * own `until` (the last write winning), so per-role deadlines would buy a map plus per-role
- * transition logic for no observed need. */
+ * transition logic for no observed need. The FLEET marker alone may also carry the
+ * operator's one-line `reason` (`tumwater pause --reason <text>`): same last-write-wins
+ * rule as `until`, and a pause written without one clears a stale reason — the reason is
+ * the note on THIS pause, not a standing fleet property. The per-role marker body
+ * (`pauseRole`'s {roles, at, until}) stays anonymous: a per-role reason would need a
+ * per-role map for no observed need. */
 interface PauseMarker {
   at: number;
   until?: number;
+  reason?: string;
 }
+
+/** The reason cap every writer of a pause reason shares (chars): one constant so the CLI
+ * path and any later GUI path cannot drift on how long an operator note may be — a writer
+ * that wants to state the reason reads it back trimmed by this same cap, never its own. */
+export const PAUSE_REASON_MAX = 200;
 
 /** Read a pause marker as the standing pause it represents: null when the file is missing,
  * unreadable, or carries an `until` in the past. The expiry rule is the read side of the
@@ -60,12 +71,25 @@ export function pausedUntil(root: string): number | undefined {
   return standingFleetPause(root)?.until;
 }
 
+/** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), undefined
+ * when the fleet is not paused or the standing pause carries none — same read (and the same
+ * never-throws, expiry-honoring contract) as pausedUntil beside which it lives, so a caller
+ * wanting both pays one standingFleetPause read, not two. */
+export function pausedReason(root: string): string | undefined {
+  return standingFleetPause(root)?.reason;
+}
+
 /** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
  * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
- * written. Returns whether this call changed state: false when the marker already existed, so
- * the CLI can report "already paused" and the dashboard's toggle stays idempotent. Lives here
- * beside isFleetPaused so the producer (CLI, GUI) and every consumer read the same path. */
-export function pauseFleet(root: string, untilMs?: number): boolean {
+ * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
+ * trimmed and capped at PAUSE_REASON_MAX here — the single cap every writer shares — and
+ * persisted only when non-empty, so a pause written without one clears a stale reason (the
+ * same last-write-wins rule as `until`: a fresh pause write carries its own note). Returns
+ * whether this call changed state: false when the marker already existed, so the CLI can
+ * report "already paused" and the dashboard's toggle stays idempotent — a no-op never
+ * touches the standing reason. Lives here beside isFleetPaused so the producer (CLI, GUI)
+ * and every consumer read the same path. */
+export function pauseFleet(root: string, untilMs?: number, reason?: string): boolean {
   const marker = pausedPath(root);
   // An already-standing pause is the idempotent no-op it has always been — except under a
   // fresh `--for`, which overwrites the deadline (extend or shorten): the operator asked for
@@ -73,7 +97,11 @@ export function pauseFleet(root: string, untilMs?: number): boolean {
   // pause after expiry reports a fresh pause, never the stale "already paused".
   const standing = standingMarker(marker);
   if (standing && untilMs === undefined) return false;
-  writeJsonAtomic(marker, untilMs === undefined ? { at: Date.now() } : { at: Date.now(), until: untilMs });
+  const trimmed = reason?.trim().slice(0, PAUSE_REASON_MAX);
+  const body: PauseMarker =
+    untilMs === undefined ? { at: Date.now() } : { at: Date.now(), until: untilMs };
+  if (trimmed) body.reason = trimmed;
+  writeJsonAtomic(marker, body);
   return true;
 }
 

@@ -215,12 +215,12 @@ test("pause and resume reject stray arguments without touching the marker", asyn
 
   // Both reject any argument they do not understand instead of ignoring it; since --role
   // became valid, the rejection names the flag list rather than a no-arguments rule. Pause
-  // additionally accepts --for (the timed pause), so its list is longer — and the other
-  // marker commands keep rejecting --for, so a stray deadline fails fast instead of being
-  // silently ignored.
+  // additionally accepts --for (the timed pause) and --reason (the operator pause's why),
+  // so its list is longer — and the other marker commands keep rejecting both, so a stray
+  // deadline or note fails fast instead of being silently ignored.
   let r = await cli(repo, "pause", "--x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>, --for <duration>\)/);
+  assert.match(r.stderr, /unknown argument: --x \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>\)/);
   r = await cli(repo, "resume", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: extra \(valid flags for tumwater resume: --role <id>\)/);

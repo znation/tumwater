@@ -53,6 +53,13 @@ function localizeInstants(text: string): string {
   return text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => formatTimestamp(Date.parse(iso)));
 }
 
+/** The ` — "<reason>"` suffix a pause title carries when the operator stated a why
+ * (`pause --reason <text>`); no reason, no change to today's byte-exact title. One home so
+ * the timed and untimed titles cannot drift on the quoting. */
+function reasonSuffix(reason: string | undefined): string {
+  return reason ? ` — "${reason}"` : "";
+}
+
 /** Everything about the fleet that needs the operator, most urgent first: a spent budget, a red
  * main, loops failing tick after tick, loops that look stuck, a stale running build, open
  * questions, a pause, a stopped fleet. `now` is passed so a timed pause's countdown agrees with
@@ -60,7 +67,7 @@ function localizeInstants(text: string): string {
 export function fleetAlerts(
   snap: Pick<
     StatusSnapshot,
-    "running" | "budget" | "build" | "paused" | "pausedUntil" | "quietHours" | "inQuietHours"
+    "running" | "budget" | "build" | "paused" | "pausedUntil" | "pauseReason" | "quietHours" | "inQuietHours"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -168,7 +175,11 @@ export function fleetAlerts(
     out.push({
       key: "paused",
       tone: "amber",
-      title: left ? `The fleet is paused and resumes in ${left}` : "The fleet is paused",
+      // The operator's pause reason (`pause --reason <text>`) states verbatim, so an
+    // operator returning to a paused fleet knows why without digging through history.
+    title: left
+      ? `The fleet is paused and resumes in ${left}${reasonSuffix(snap.pauseReason)}`
+      : `The fleet is paused${reasonSuffix(snap.pauseReason)}`,
       detail: "Loops start no new ticks. In-flight ticks finish, and the director still runs your prompts.",
       actions: [{ label: "Resume now", act: "resume" }],
     });

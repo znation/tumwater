@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater pause --reason <text>` — the operator pause records why, and every observer states it (planned 2026-09-30 by plan loop)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### `tumwater pause --reason <text>` — the operator pause records why, and every observer states it (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** An operator who pauses the fleet (`tumwater pause`, GUI pause control) is leaving a
 note the whole team will read hours later — but today the pause is anonymous: the dashboards
@@ -72,9 +78,7 @@ operators want one. Per-role pause reasons likewise stay out.
   and test/status-header.test.ts (badge with and without reason), test/fleet-alerts.test.ts
   (alert title with and without reason).
 
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
+**Landing note (2026-09-30, feature).** The reviewer's objection to the first attempt — `pause --role <id> --reason` succeeded and silently dropped the note — is closed by failing fast instead: cmdPause rejects the `--role` + `--reason` combination with a message naming the fleet-only scope, before any marker is written, and the help line states that scope. Everything else landed exactly as written here.
 
 ### `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

@@ -68,6 +68,13 @@ test("pauseBadge counts down a standing fleet timed pause and stays empty otherw
   assert.equal(pauseBadge(now + 45_000, now), " · paused — auto-resumes in 45s", "sub-minute reads seconds");
   assert.equal(pauseBadge(now + 12 * 60_000, now), " · paused — auto-resumes in 12m", "sub-hour reads minutes");
   assert.equal(pauseBadge(now + 3 * 3_600_000, now), " · paused — auto-resumes in 3h", "hours read hours");
+
+  // The operator's why (`pause --reason <text>`) rides after the countdown; a reason also
+  // makes the untimed pause visible (`· paused — "why"`), the one change to today's form.
+  assert.equal(pauseBadge(now + 45_000, now, "deploying"), " · paused — auto-resumes in 45s — \"deploying\"");
+  assert.equal(pauseBadge(undefined, now, "deploying"), " · paused — \"deploying\"");
+  assert.equal(pauseBadge(undefined, now), "", "no reason, no change: an indefinite pause stays invisible");
+  assert.equal(pauseBadge(now - 1, now, "deploying"), " · paused — \"deploying\"");
 });
 
 // pauseCountdown is the guard + rounding behind both pause countdowns (the badge and the

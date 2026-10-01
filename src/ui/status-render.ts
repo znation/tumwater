@@ -195,7 +195,7 @@ export function renderStatusSpans(
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
     ...badgeSpans(budgetBadge(snap.budget), budgetTone(snap.budget)),
     ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck ? (snap.mainCheck.status === "passed" ? "green" : snap.mainCheck.status === "failed" ? "red" : "yellow") : undefined),
-    ...badgeSpans(pauseBadge(snap.pausedUntil, now), "yellow"),
+    ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it
     // is configured, the yellow `quiet until <end>` reading while the hold is on — the same
     // ask-me-nothing informality the pause badge's countdown uses, without stealing its

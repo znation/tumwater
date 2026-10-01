@@ -125,10 +125,19 @@ export function landingBadge(landQueue: { depth: number }): string {
  * pauseCountdown, the one home of that guard and rounding. renderStatus renders it in
  * the TUI/status header after the budget badge; the GUI recomputes the ticking number
  * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
- * humanSeconds copy, pinned against this one by test. */
-export function pauseBadge(pausedUntil: number | undefined, now: number): string {
+ * humanSeconds copy, pinned against this one by test. `reason` (the operator's
+ * `pause --reason <text>` note) rides after the countdown — and makes the untimed pause
+ * visible as ` · paused — "<reason>"`, the one case an indefinite pause shows up here;
+ * without a reason the badge keeps today's byte-exact form. */
+export function pauseBadge(pausedUntil: number | undefined, now: number, reason?: string): string {
   const left = pauseCountdown(pausedUntil, now);
-  return left ? ` · paused — auto-resumes in ${left}` : "";
+  // The operator's why rides after the countdown (`pause --reason <text>`); a reasonless
+  // badge keeps today's byte-exact form, including the empty badge an indefinite pause
+  // has always had — a reason standing is the one thing that makes the untimed pause
+  // visible up here, because the operator wrote down why and the header should say it.
+  const why = reason ? ` — "${reason}"` : "";
+  if (!left && !reason) return "";
+  return left ? ` · paused — auto-resumes in ${left}${why}` : ` · paused${why}`;
 }
 
 /** The countdown a timed fleet pause has left, as humanSeconds — `null` when there is none

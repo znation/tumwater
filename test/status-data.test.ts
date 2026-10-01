@@ -29,7 +29,7 @@ import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } fro
 import { writeJsonFile } from "../src/json-files.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts, submitPrompt } from "../src/inbox.js";
 import { enqueueLanding, queuedLandingFiles } from "../src/landing-queue.js";
-import { pauseFleet, pauseRole } from "../src/fleet-state.js";
+import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet-state.js";
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the snapshot carries the
 // configured window and the in-window flag — present only while the value parses to a real
@@ -592,6 +592,33 @@ test("pausedUntil carries only a standing fleet timed-pause deadline", async () 
   // JSON.stringify drops the undefined field, so `status --json` carries it only while a
   // timed fleet pause stands.
   assert.ok(!("pausedUntil" in JSON.parse(JSON.stringify(statusPayload(repo)))));
+});
+
+// --- pauseReason: the standing fleet pause's operator reason (`pause --reason <text>`) ---
+
+test("pauseReason carries only a standing fleet pause's operator reason", async () => {
+  const repo = tmpdir();
+  await initProject(repo, "pause reason");
+  assert.equal(snapshot(repo).pauseReason, undefined, "no marker: absent");
+
+  pauseFleet(repo);
+  assert.equal(snapshot(repo).pauseReason, undefined, "an anonymous pause exposes no reason");
+  assert.ok(!("pauseReason" in JSON.parse(JSON.stringify(statusPayload(repo)))), "the payload omits the key entirely");
+
+  // A reason applies only on a fresh pause write: resume the anonymous pause first.
+  resumeFleet(repo);
+  pauseFleet(repo, undefined, "deploying to prod");
+  assert.equal(snapshot(repo).pauseReason, "deploying to prod");
+  assert.equal((statusPayload(repo) as { pauseReason?: string }).pauseReason, "deploying to prod");
+
+  // A role-only pause is not a fleet pause: no fleet marker, no fleet reason.
+  fs.rmSync(pausedPath(repo));
+  pauseRole(repo, "clean");
+  assert.equal(snapshot(repo).pauseReason, undefined);
+
+  // An expired marker reads as unpaused — the reason cannot outlive its pause.
+  fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000, reason: "stale why" }));
+  assert.equal(snapshot(repo).pauseReason, undefined, "an expired pause's reason is absent");
 });
 
 

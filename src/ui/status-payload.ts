@@ -143,6 +143,9 @@ export function statusPayload(root: string): object {
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
     // client-side (PLANS.md "Pause countdown").
     pausedUntil: snap.pausedUntil,
+    // The standing pause's operator reason (`pause --reason <text>`), absent when none
+    // stands — same omit-undefined idiom as pausedUntil beside which it ships.
+    pauseReason: snap.pauseReason,
     // The configured quiet-hours window ("Quiet hours … part 2/2"): the raw string and
     // in-window flag are machine-readable for `status --json` and drive the GUI sidebar's
     // chip; absent (undefined drops from the JSON) when no window is configured or the

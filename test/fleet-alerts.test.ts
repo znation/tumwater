@@ -92,6 +92,12 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   // A standing pause has no countdown; an expired deadline is not claimed.
   assert.equal(fleetAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The fleet is paused");
   assert.equal(fleetAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The fleet is paused");
+
+  // The operator's why (`pause --reason <text>`) states verbatim in the title, timed or not.
+  const withWhy = fleetAlerts({ ...base, paused: true, pauseReason: "deploying to prod" }, [], [], now);
+  assert.equal(withWhy[0]?.title, "The fleet is paused — \"deploying to prod\"");
+  const timedWhy = fleetAlerts({ ...base, paused: true, pausedUntil: now + 12 * 60_000, pauseReason: "deploying to prod" }, [], [], now);
+  assert.equal(timedWhy[0]?.title, "The fleet is paused and resumes in 12m — \"deploying to prod\"");
 });
 
 // The alert copy's count forms beyond the two-loop case above: a lone loop reads singular,

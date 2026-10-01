@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
-import { resetRequestPath } from "../src/paths.js";
+import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { seedCounters } from "./loop-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
@@ -64,6 +64,14 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   r = await cli(repo, "logs", "-ff");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: -ff/);
+
+  // `--reason` is pause's flag alone: wake must fail fast instead of silently ignoring it
+  // (the same hole a prior pause --reason attempt left open on the per-role branch).
+  r = await cli(repo, "wake", "--reason", "fixed");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --reason/);
+  assert.match(r.stderr, /valid flags for tumwater wake: --role <id>/);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker written");
 
   // `run` takes exactly one flag (--branch); anything else is rejected and names it.
   r = await cli(repo, "run", "--verbose");
@@ -140,6 +148,12 @@ test("a valued flag left without its value is named before the ready-repo gate",
   assert.equal(r.code, 1);
   assert.match(r.stderr, /tumwater: --role needs a role id/);
   assert.doesNotMatch(r.stderr, /git repository/);
+
+  // The pause reason's missing value names its own command, the same masking rule.
+  const reasonless = await cli(empty, "pause", "--reason");
+  assert.equal(reasonless.code, 1);
+  assert.match(reasonless.stderr, /tumwater: pause --reason needs a reason/);
+  assert.doesNotMatch(reasonless.stderr, /git repository/);
 
   // prompt has no rejectUnknownArgs (free-form positionals), so its parse runs before the
   // gate instead — the same slip, the same wording, no environment error.

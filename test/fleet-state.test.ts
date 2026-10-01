@@ -7,7 +7,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   isFleetPaused,
+  PAUSE_REASON_MAX,
   pauseRole,
+  pausedReason,
   pausedRoles,
   pausedUntil,
   resumeRole,
@@ -281,6 +283,38 @@ test("an expired fleet deadline reads as unpaused everywhere and a re-pause star
   };
   assert.equal(marker.until, undefined, "an indefinite re-pause writes the plain { at } marker");
   assert.equal(isFleetPaused(root), true);
+});
+
+// The operator pause's why (`tumwater pause --reason <text>`): the marker carries the
+// trimmed, capped note, a fresh write replaces it (last write wins, like `until`), a
+// reasonless write clears a stale one, and the idempotent no-op never touches it.
+test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, cleared by a reasonless write", () => {
+  const root = tmpdir();
+  assert.equal(pauseFleet(root, undefined, "  deploying to prod  "), true);
+  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as { at: number; reason?: string };
+  assert.equal(marker.reason, "deploying to prod", "the reason is trimmed, quoted verbatim otherwise");
+  assert.equal(pausedReason(root), "deploying to prod", "the standing reason is what pausedReason exposes");
+
+  // The cap every writer shares: a longer note is stored truncated, not rejected. Only a
+  // fresh pause or a --for overwrite applies a reason — the idempotent no-op returns false
+  // and never touches the standing note (the same rule as the deadline).
+  const long = "x".repeat(PAUSE_REASON_MAX + 50);
+  const later = Date.now() + 30 * 60_000;
+  assert.equal(pauseFleet(root, later, long), true, "a --for overwrite applies its own reason");
+  assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX);
+  assert.equal(pauseFleet(root), false, "a plain pause over a standing one stays the no-op");
+  assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX, "a no-op keeps the standing reason");
+
+  // A write without a reason clears the stale one — the note belongs to THIS pause.
+  assert.equal(pauseFleet(root, later + 1), true, "a reasonless --for overwrite clears the stale reason");
+  const plain = readJson(path.join(root, ".tumwater", "paused.json")) as { reason?: string };
+  assert.equal(plain.reason, undefined, "no reason key survives a reasonless write");
+  assert.equal(resumeFleet(root), true);
+  assert.equal(pauseFleet(root, undefined, "first why"), true, "a fresh pause applies its own reason");
+  assert.equal(pausedReason(root), "first why");
+  resumeFleet(root);
+  assert.equal(pauseFleet(root), true, "a fresh pause after a resume reports fresh");
+  assert.equal(pausedReason(root), undefined, "a fresh reasonless pause clears the stale reason");
 });
 
 test("a fresh --for over a standing fleet pause overwrites the deadline; a plain pause no-ops", () => {

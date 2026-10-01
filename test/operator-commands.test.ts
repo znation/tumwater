@@ -384,6 +384,52 @@ test("cmdPause --role --for writes the role marker with the deadline and overwri
   assert.equal(readUntil(), NOON + 60 * 60_000);
 });
 
+// --- the operator pause's reason (`pause --reason <text>`) ---
+
+// The reason rides the fresh pause write (or a --for overwrite) as last-write-wins: the
+// confirmation quotes it verbatim, an "already paused" no-op keeps the standing note, and
+// a per-role pause carries no reason — `--role` + `--reason` fails fast rather than
+// silently dropping the note (the exact hole the plan called out after a prior attempt).
+test("cmdPause --reason quotes the why in the confirmation and the marker", async () => {
+  const root = tmpdir();
+  const { stdout } = await expectOk(() => cmdPause(root, ["--reason", "deploying to prod"]));
+  assert.match(stdout, /fleet paused — "deploying to prod" — role loops stop starting new ticks/);
+  const marker = readJson(pausedPath(root)) as { reason?: string };
+  assert.equal(marker.reason, "deploying to prod");
+  // A --for overwrite carries its own reason beside the refreshed deadline.
+  const timed = await expectOk(() => cmdPause(root, ["--for", "30m", "--reason", "deploys"], NOON));
+  assert.match(timed.stdout, /fleet paused for 30m — "deploys" — role loops stop starting new ticks/);
+  const timedMarker = readJson(pausedPath(root)) as { reason?: string };
+  assert.equal(timedMarker.reason, "deploys");
+});
+
+test("cmdPause --reason on a standing pause stays the no-op and keeps the standing reason", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root, ["--reason", "first why"]));
+  const again = await expectOk(() => cmdPause(root, ["--reason", "second why"]));
+  assert.equal(again.stdout.trim(), "already paused");
+  const marker = readJson(pausedPath(root)) as { reason?: string };
+  assert.equal(marker.reason, "first why", "only a fresh pause or a --for overwrite applies a reason");
+});
+
+test("cmdPause --role --reason fails fast and writes no role marker", async () => {
+  const root = tmpdir();
+  const { code, stderr } = await expectFail(() => cmdPause(root, ["--role", "clean", "--reason", "why"]));
+  assert.equal(code, 1);
+  assert.match(stderr, /pause --reason states why the whole fleet is paused/);
+  assert.match(stderr, /a per-role pause carries no reason/);
+  assert.ok(!fs.existsSync(pausedRolesPath(root)), "no role pause was recorded");
+  assert.ok(!fs.existsSync(pausedPath(root)), "no fleet pause was recorded either");
+});
+
+test("cmdPause --reason without a value fails with the gate's own wording", async () => {
+  const root = tmpdir();
+  const { code, stderr } = await expectFail(() => cmdPause(root, ["--reason"]));
+  assert.equal(code, 1);
+  assert.match(stderr, /pause --reason needs a reason/);
+  assert.ok(!fs.existsSync(pausedPath(root)), "nothing was written");
+});
+
 // --- stop ---
 
 // cmdStop is the one operator command that reaches a real process instead of a disk marker,

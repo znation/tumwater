@@ -108,6 +108,13 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // writers it feeds.
   const forRaw = flagValue(args, "--for");
   const forMs = forRaw !== null ? parseDurationFlag("--for", forRaw) : undefined;
+  // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted
+  // the flag to this command, and its trailing-no-value slip to the spec's wording, so here
+  // a valueless or empty reason fails with that same line beside the writer it feeds.
+  const reasonRaw = flagValue(args, "--reason");
+  if (reasonRaw !== null && (reasonRaw === undefined || reasonRaw.trim() === ""))
+    fail("pause --reason needs a reason");
+  const reason = reasonRaw === null || reasonRaw === undefined ? undefined : reasonRaw.trim();
   // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
   // standing pause in disguise, and the message names the command that is one (the same
   // capped-flag idiom the --since windows in cli.ts use).
@@ -128,6 +135,14 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // format or idempotence; a false return means the role was already in the set.
   const role = namedRole(root, args);
   if (role) {
+    // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
+    // for no observed need), so a reason aimed at a role pause fails fast here — accepting
+    // the flag and silently dropping the note would tell the operator the reason stands
+    // when no marker carries it. Before any marker is written, beside the other fail-fasts.
+    if (reason !== undefined)
+      fail(
+        "pause --reason states why the whole fleet is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
+      );
     // pauseRole in src/fleet-state.ts is the single writer of the role marker (the TUI's
     // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
     // return means the role was already in the set, which rolePauseMessage words — unless a
@@ -139,14 +154,17 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there (a `--for` never
   // no-ops: it overwrites the standing deadline instead).
-  if (!pauseFleet(root, untilMs)) {
+  // The reason rides the fresh pause write (or a `--for` overwrite): the same last-write-wins
+  // rule as the deadline, so an "already paused" no-op keeps the standing note as-is.
+  if (!pauseFleet(root, untilMs, reason)) {
     say("already paused");
     return;
   }
   const { when, tail } = markerApplyNote(root);
   const { forPhrase, note } = timedPauseBits(timed, now);
+  const why = reason ? ` — "${reason}"` : "";
   say(
-    `fleet paused${forPhrase} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
+    `fleet paused${forPhrase}${why} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
   );
 }
 
