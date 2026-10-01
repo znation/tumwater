@@ -11,6 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { backdate } from "./backdate.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling.js";
@@ -446,8 +447,7 @@ function seedOldSession(repo: string, role: string, days: number): string {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `old-${Date.now()}.jsonl`);
   fs.writeFileSync(file, '{"type":"message_start"}\n');
-  const t = (Date.now() - days * 24 * 3600 * 1000) / 1000;
-  fs.utimesSync(file, t, t);
+  backdate(file, days * 24 * 3600 * 1000);
   return file;
 }
 
@@ -458,8 +458,7 @@ function seedOldToolOutput(repo: string, days: number): string {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `call-old-${Date.now()}.log`);
   fs.writeFileSync(file, "tool output\n");
-  const t = (Date.now() - days * 24 * 3600 * 1000) / 1000;
-  fs.utimesSync(file, t, t);
+  backdate(file, days * 24 * 3600 * 1000);
   return file;
 }
 

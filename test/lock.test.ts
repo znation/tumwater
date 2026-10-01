@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/lock.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
+import { backdate } from "./backdate.js";
 
 test("readLockPid accepts plain-decimal pids and rejects torn or foreign content", () => {
   const dir = path.join(tmpdir(), "pid-read.lock");
@@ -33,10 +34,6 @@ test("classifyLock places each lock shape in absent/live/stale directly", () => 
   // The verdict withLock acts on and doctor reports is asserted here on its own, so the
   // four-way branch matrix cannot drift without this test failing — the withLock tests
   // below only see its consequences through steal-or-wait outcomes.
-  const setAge = (dir: string, msAgo: number) => {
-    const when = new Date(Date.now() - msAgo);
-    fs.utimesSync(dir, when, when);
-  };
 
   // No dir at all — nothing held, nothing stale.
   assert.equal(classifyLock(path.join(tmpdir(), "classify-absent.lock")), "absent");
@@ -58,7 +55,7 @@ test("classifyLock places each lock shape in absent/live/stale directly", () => 
   const old = path.join(tmpdir(), "classify-old.lock");
   fs.mkdirSync(old);
   fs.writeFileSync(path.join(old, "pid"), String(process.pid));
-  setAge(old, 11 * 60 * 1000);
+  backdate(old, 11 * 60 * 1000);
   assert.equal(classifyLock(old), "stale");
 
   // No readable pid: live within the NO_PID_GRACE_MS grace (the creator may still be
@@ -68,7 +65,7 @@ test("classifyLock places each lock shape in absent/live/stale directly", () => 
   assert.equal(classifyLock(freshOrphan), "live");
   const orphan = path.join(tmpdir(), "classify-orphan.lock");
   fs.mkdirSync(orphan);
-  setAge(orphan, 6 * 1000);
+  backdate(orphan, 6 * 1000);
   assert.equal(classifyLock(orphan), "stale");
 
   // A torn pid file reads as no pid at all, so it falls into the same grace path:
@@ -77,7 +74,7 @@ test("classifyLock places each lock shape in absent/live/stale directly", () => 
   fs.mkdirSync(torn);
   fs.writeFileSync(path.join(torn, "pid"), "12 34");
   assert.equal(classifyLock(torn), "live");
-  setAge(torn, 6 * 1000);
+  backdate(torn, 6 * 1000);
   assert.equal(classifyLock(torn), "stale");
 });
 
@@ -133,8 +130,7 @@ test("withLock steals an old lock even when its pid is still alive", async () =>
   const lock = path.join(tmpdir(), "x.lock");
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), String(process.pid)); // alive on purpose
-  const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
-  fs.utimesSync(lock, elevenMinutesAgo, elevenMinutesAgo);
+  backdate(lock, 11 * 60 * 1000);
   let ran = false;
   await withLock(
     lock,
@@ -152,8 +148,7 @@ test("withLock breaks an orphaned lock whose holder died before writing its pid"
   // every merge timed out after 120s forever; now it is stolen once past the grace.
   const lock = path.join(tmpdir(), "orphan.lock");
   fs.mkdirSync(lock);
-  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
-  fs.utimesSync(lock, sixSecondsAgo, sixSecondsAgo);
+  backdate(lock, 6 * 1000);
   let ran = false;
   await withLock(
     lock,
@@ -197,8 +192,7 @@ test("withLock swallows a failed cleanup of a stale lock and waits instead of cr
   const lock = path.join(root, "unremovable.lock");
   fs.mkdirSync(lock);
   fs.writeFileSync(path.join(lock, "pid"), "999999999"); // dead holder: stale by pid
-  const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
-  fs.utimesSync(lock, elevenMinutesAgo, elevenMinutesAgo);
+  backdate(lock, 11 * 60 * 1000);
   fs.chmodSync(root, 0o555); // no write on the parent: the stale dir cannot be removed
   let ran = false;
   try {
@@ -371,8 +365,7 @@ test("withSyncLock steals a crashed writer's lock: a dead pid, or an empty pid p
   const empty = path.join(root, "empty.lock");
   fs.mkdirSync(empty);
   fs.writeFileSync(path.join(empty, "pid"), "");
-  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
-  fs.utimesSync(empty, sixSecondsAgo, sixSecondsAgo);
+  backdate(empty, 6 * 1000);
   assert.equal(withSyncLock(empty, () => "empty", 5000), "empty", "an empty-pid orphan is stolen");
 
   // Crash after the pid write: the recorded pid is dead, so the lock is stale immediately.

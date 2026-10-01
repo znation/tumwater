@@ -18,6 +18,7 @@ import {
   type OrchestratorInfo,
 } from "../src/fleet-state.js";
 import { pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
+import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
@@ -237,8 +238,7 @@ test("a crashed pause writer's lock is stolen, not waited on forever", () => {
   const empty = pausedRolesLockPath(root);
   fs.mkdirSync(empty);
   fs.writeFileSync(path.join(empty, "pid"), "");
-  const sixSecondsAgo = new Date(Date.now() - 6 * 1000);
-  fs.utimesSync(empty, sixSecondsAgo, sixSecondsAgo);
+  backdate(empty, 6 * 1000);
   assert.equal(pauseRole(root, "docs"), true, "an empty-pid orphan past the grace is stolen");
   assert.deepEqual(pausedRoles(root), ["docs"]);
   assert.equal(fs.existsSync(empty), false, "the stolen orphan leaves no remnant after release");

@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { backdate } from "./backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
 import { loopPhase, loopRowCells, sortLoopsByState, workingDetail } from "../src/ui/status-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
@@ -52,12 +53,10 @@ test("workingDetail flags a stalled run only after at least five minutes of sile
   const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
   assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
   // Four minutes of silence is still below the five-minute threshold.
-  const fourMinAgo = new Date(Date.now() - 4 * 60_000);
-  fs.utimesSync(file, fourMinAgo, fourMinAgo);
+  backdate(file, 4 * 60_000);
   assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
   // Six minutes of silence crosses it.
-  const sixMinAgo = new Date(Date.now() - 6 * 60_000);
-  fs.utimesSync(file, sixMinAgo, sixMinAgo);
+  backdate(file, 6 * 60_000);
   assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
 });
 
@@ -70,8 +69,7 @@ test("a tick's baseline check shows no previous run's detail and no false quiet 
     assistantLine("the earlier tick's work", { tokens: 44_200 }),
     toolStart("read", { path: "src/change-preview.ts" }),
   ]);
-  const stale = new Date(Date.now() - 29 * 60_000);
-  fs.utimesSync(file, stale, stale);
+  backdate(file, 29 * 60_000);
   // A new tick started 99s ago and is still in its baseline check: pi has written nothing yet.
   const s = freshLoopState("clean");
   s.running = true;
@@ -96,8 +94,7 @@ test("a quiet tail predating the tick never reaches the token metrics either", a
     SESSION,
     assistantLine("the earlier run", { tokens: 12_000, output: 800 }),
   ]);
-  const stale = new Date(Date.now() - 29 * 60_000);
-  fs.utimesSync(file, stale, stale);
+  backdate(file, 29 * 60_000);
   const s = freshLoopState("feature");
   s.generatedTokens = 1_000;
   s.peakContextTokens = 6_000;
@@ -201,7 +198,7 @@ test("loopPhase shows the reviewer run's live detail while a tick is under revie
 test("loopPhase flags a stalled reviewer run after five minutes of silence", () => {
   const root = tmpdir();
   const file = writePiLog(root, "feature", [SESSION, assistantLine("reviewing", { tokens: 100 })]);
-  fs.utimesSync(file, new Date(Date.now() - 6 * 60_000), new Date(Date.now() - 6 * 60_000));
+  backdate(file, 6 * 60_000);
   const s = freshLoopState("feature");
   s.running = true;
   s.phase = "review";
@@ -235,7 +232,7 @@ test("workingDetail's stall flag uses the hours bucket for long silences", () =>
   const root = tmpdir();
   const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
   // Ninety minutes without pi output: the stall part must read 1h30m, not 90m.
-  fs.utimesSync(file, new Date(Date.now() - 5400_000), new Date(Date.now() - 5400_000));
+  backdate(file, 5400_000);
   assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 1h30m/);
 });
 
@@ -464,7 +461,7 @@ test("the build-check and merging landing stages render their label and never re
     assistantLine("an old review", { tokens: 40_000 }),
     toolStart("bash", { command: "npm test" }),
   ]);
-  fs.utimesSync(file, new Date(Date.now() - 10 * 60_000), new Date(Date.now() - 10 * 60_000));
+  backdate(file, 10 * 60_000);
   const s = freshLoopState("clean");
   const startedAt = Date.now() - 90_000;
   for (const [stage, label] of [

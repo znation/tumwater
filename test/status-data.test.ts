@@ -6,6 +6,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readJson } from "./json-read.js";
+import { backdate } from "./backdate.js";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -129,8 +130,7 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   const bumped = freshLoopState("clean");
   bumped.ticks = 4;
   saveLoopState(repo, bumped);
-  const t = new Date(Date.now() + 5000);
-  fs.utimesSync(path.join(repo, ".tumwater", "state", "clean.json"), t, t);
+  backdate(path.join(repo, ".tumwater", "state", "clean.json"), -5000);
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
 });
 

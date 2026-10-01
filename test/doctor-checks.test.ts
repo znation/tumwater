@@ -24,6 +24,7 @@ import { loadConfig } from "../src/config.js";
 import { allRoleIds } from "../src/roles.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
+import { backdate } from "./backdate.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 
@@ -390,8 +391,7 @@ test("checkMergeLock classifies absent, live (with and without pid), and stale l
 
     // Age alone breaks a lock even when its pid is still alive (a reused pid).
     fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid));
-    const elevenMinutesAgo = new Date(Date.now() - 11 * 60 * 1000);
-    fs.utimesSync(lockDir, elevenMinutesAgo, elevenMinutesAgo);
+    backdate(lockDir, 11 * 60 * 1000);
     assert.deepEqual(checkMergeLock(root), { level: "warn", detail: "stale — will be broken on next merge" });
   } finally {
     fs.rmSync(lockDir, { recursive: true, force: true });

@@ -11,6 +11,7 @@ import {
   writeTextAtomic,
 } from "../src/files.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
+import { backdate } from "./backdate.js";
 import { failRenameSyncOn } from "./fs-faults.js";
 
 test("rotateIfLarge rotates once over the cap and replaces the previous rotation", () => {
@@ -39,9 +40,8 @@ test("pruneOldFiles removes only files older than the retention window", () => {
   fs.mkdirSync(deepDir, { recursive: true });
   const deepOldFile = path.join(deepDir, "deep.jsonl");
   fs.writeFileSync(deepOldFile, "old");
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
-  fs.utimesSync(oldFile, tenDaysAgo, tenDaysAgo);
-  fs.utimesSync(deepOldFile, tenDaysAgo, tenDaysAgo);
+  backdate(oldFile, 10 * 24 * 3600 * 1000);
+  backdate(deepOldFile, 10 * 24 * 3600 * 1000);
   assert.equal(pruneOldFiles(dir, 7), 2);
   assert.ok(!fs.existsSync(oldFile));
   assert.ok(fs.existsSync(newFile));
@@ -111,13 +111,12 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
   const dir = tmpdir();
   const lockedDir = path.join(dir, "locked");
   fs.mkdirSync(lockedDir);
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
   const lockedOld = path.join(lockedDir, "old.jsonl");
   fs.writeFileSync(lockedOld, "old");
-  fs.utimesSync(lockedOld, tenDaysAgo, tenDaysAgo);
+  backdate(lockedOld, 10 * 24 * 3600 * 1000);
   const freeOld = path.join(dir, "free.jsonl");
   fs.writeFileSync(freeOld, "old");
-  fs.utimesSync(freeOld, tenDaysAgo, tenDaysAgo);
+  backdate(freeOld, 10 * 24 * 3600 * 1000);
 
   try {
     if (!asRoot) fs.chmodSync(lockedDir, 0o555); // readable and searchable, not writable
@@ -145,12 +144,10 @@ test("pruneOldFiles skips symlinks: it neither deletes a linked file nor walks a
   // window does not own and may sit far outside the pruned tree.
   const dir = tmpdir();
   const outside = tmpdir();
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 3600 * 1000);
-
   // An old file outside the prune root, linked from inside it.
   const linkedFile = path.join(outside, "old.jsonl");
   fs.writeFileSync(linkedFile, "old");
-  fs.utimesSync(linkedFile, tenDaysAgo, tenDaysAgo);
+  backdate(linkedFile, 10 * 24 * 3600 * 1000);
   fs.symlinkSync(linkedFile, path.join(dir, "link.jsonl"));
 
   // Same stake one level deeper: a linked directory must not be recursed into, or the
@@ -159,7 +156,7 @@ test("pruneOldFiles skips symlinks: it neither deletes a linked file nor walks a
   fs.mkdirSync(linkedDir);
   const linkedDirOld = path.join(linkedDir, "old.jsonl");
   fs.writeFileSync(linkedDirOld, "old");
-  fs.utimesSync(linkedDirOld, tenDaysAgo, tenDaysAgo);
+  backdate(linkedDirOld, 10 * 24 * 3600 * 1000);
   fs.symlinkSync(linkedDir, path.join(dir, "tree-link"), "dir");
 
   // A dangling link: skipped like any non-regular entry, never a crash mid-walk.

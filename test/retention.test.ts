@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/retention.js";
 import { sessionsRootDir, toolOutputDir } from "../src/paths.js";
+import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 
@@ -29,8 +30,7 @@ function staleFile(dir: string, name: string): string {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, name);
   fs.writeFileSync(file, "x");
-  const old = new Date(Date.now() - 30 * 24 * 3600 * 1000);
-  fs.utimesSync(file, old, old);
+  backdate(file, 30 * 24 * 3600 * 1000);
   return file;
 }
 

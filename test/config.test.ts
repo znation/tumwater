@@ -22,6 +22,7 @@ import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
+import { backdate } from "./backdate.js";
 import { withCountedReads } from "./fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
@@ -248,8 +249,7 @@ test("a same-size tumwater.json edit is picked up via mtime, not just size", () 
   const edited = JSON.stringify({ model: "opus-4" });
   assert.equal(edited.length, JSON.stringify({ model: "sonnet" }).length);
   fs.writeFileSync(path.join(dir, "tumwater.json"), edited);
-  const t = new Date(Date.now() + 5000);
-  fs.utimesSync(path.join(dir, "tumwater.json"), t, t);
+  backdate(path.join(dir, "tumwater.json"), -5000);
   assert.equal(loadConfigCached(dir).config?.model, "opus-4");
 });
 

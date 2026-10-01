@@ -13,6 +13,7 @@ import {
   plannedPlanEntries,
   plannedPlans,
 } from "../src/backlog.js";
+import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";
 
@@ -410,8 +411,7 @@ test("a same-size edit is picked up via mtime, not just size", () => {
   const edited = PLANS_MD.replace("Timestamp of last result", "Renamed plan entry, same");
   assert.equal(edited.length, PLANS_MD.length);
   fs.writeFileSync(path.join(root, "PLANS.md"), edited);
-  const t = new Date(Date.now() + 5000);
-  fs.utimesSync(path.join(root, "PLANS.md"), t, t);
+  backdate(path.join(root, "PLANS.md"), -5000);
   assert.equal(plannedPlans(root)[1], "Renamed plan entry, same (planned 2026-08-21, refined 2026-08-25)");
 });
 
