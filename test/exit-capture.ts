@@ -109,7 +109,21 @@ export async function expectFailAsync(fn: () => Promise<unknown>): Promise<strin
   return out.stderr;
 }
 
-/** Intercept process.stdout.write for the duration of a test; restore() must run in finally. */
+/** The attemptAsync twin of expectOk: asserts the call returned (no fail() fired) and returns
+ * the captured streams alongside the value. The one home of the run-once capture dance —
+ * install the stubs, await the command, restore — so a success-path test needs no hand-rolled
+ * captureStdout try/finally block, and an unexpected fail() reports its stderr instead of
+ * masquerading as an empty-output assertion failure. */
+export async function expectOkAsync<T>(fn: () => Promise<T>): Promise<{ value: T; stdout: string; stderr: string }> {
+  const out = await attemptAsync(fn);
+  if (out.exited) assert.fail(`expected success, but process.exit(${out.code}) with:\n${out.stderr}`);
+  return out;
+}
+
+/** Intercept process.stdout.write for the duration of a test; restore() must run in finally.
+ * For tests that read the output MID-flight or hold a capture across several awaited steps
+ * (log-commands.test.ts drives a never-resolving follow this way) — a run-once
+ * call-then-assert belongs to expectOkAsync/attemptAsync above, which own the restore. */
 export function captureStdout(): { out: () => string; restore: () => void } {
   const stdout = process.stdout as unknown as { write: (s: string) => boolean };
   const real = stdout.write;
