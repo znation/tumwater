@@ -13,7 +13,7 @@ import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION } from "./fake-pi.js";
+import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
@@ -239,44 +239,38 @@ test("a bold-numbered rejection reaches the author's next-tick note numbered onc
 test("gate approves a good diff, records the HEAD, and discards the reviewer's stray edits", async () => {
   const { root, wt, head } = await gateFixture();
   const committed = fs.readFileSync(path.join(wt, "seed.txt"), "utf8");
-  const restore = fakePi(
+  await withPi(
     `echo stray >> seed.txt\n` + // the reviewer's working-tree edit while reading around
       `printf '%s\n' '${assistantLine("VERDICT: approve\n1. solid change", { tokens: 17, output: 17, cost: 0.02 })}'`,
-  );
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.equal(state.lastApprovedHead, head);
-    assert.equal(state.lastReview?.verdict, "approve");
-    assert.deepEqual(state.lastReview?.reasons, ["solid change"]);
-    assert.equal(state.unreviewFailures, 0);
-    assert.equal(state.phase, "review"); // persisted before the run; the tick clears it at end
-    // The reviewer's only output channel is the verdict: its stray edit is reset away.
-    assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), committed);
-    // Reviewer usage is surfaced for folding into the loop totals.
-    assert.equal(result.run?.outputTokens, 17);
-  } finally {
-    restore();
-  }
+    async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "approved");
+      assert.equal(state.lastApprovedHead, head);
+      assert.equal(state.lastReview?.verdict, "approve");
+      assert.deepEqual(state.lastReview?.reasons, ["solid change"]);
+      assert.equal(state.unreviewFailures, 0);
+      assert.equal(state.phase, "review"); // persisted before the run; the tick clears it at end
+      // The reviewer's only output channel is the verdict: its stray edit is reset away.
+      assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), committed);
+      // Reviewer usage is surfaced for folding into the loop totals.
+      assert.equal(result.run?.outputTokens, 17);
+  });
 });
 
 test("gate rejects a bad diff: branch reset to main, reasons recorded", async () => {
   const { root, wt } = await gateFixture();
-  const restore = fakePi(
+  await withPi(
     `printf '%s\n' '${assistantLine("VERDICT: reject\n1. breaks the build\n2. no regression test")}'`,
-  );
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected");
-    assert.equal(result.detail, "breaks the build"); // first reason feeds lastSummary
-    assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded
-    assert.equal(state.lastReview?.verdict, "reject");
-    assert.deepEqual(state.lastReview?.reasons, ["breaks the build", "no regression test"]);
-    assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
-    assert.equal(state.lastApprovedHead, undefined);
-  } finally {
-    restore();
-  }
+    async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.equal(result.detail, "breaks the build"); // first reason feeds lastSummary
+      assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded
+      assert.equal(state.lastReview?.verdict, "reject");
+      assert.deepEqual(state.lastReview?.reasons, ["breaks the build", "no regression test"]);
+      assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
+      assert.equal(state.lastApprovedHead, undefined);
+  });
 });
 
 test("gate logs a bold-numbered approval's first finding as the review_verdict reason, not its preamble", async () => {
@@ -286,16 +280,13 @@ test("gate logs a bold-numbered approval's first finding as the review_verdict r
   const reply =
     "I checked the diff against the code, its callers, and its tests. Findings:\n\n" +
     "**1. Scope matches the claim.** No unclaimed changes.\n\n**2. Tests pin it.** Both ways.\n\nVERDICT: approve";
-  const restore = fakePi(`printf '%s\n' '${assistantLine(reply)}'`);
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    const verdict = readEvents(root).find((e) => e.type === "review_verdict");
-    assert.equal(verdict?.reason, "Scope matches the claim. No unclaimed changes.");
-    assert.deepEqual(state.lastReview?.reasons, ["Scope matches the claim. No unclaimed changes.", "Tests pin it. Both ways."]);
-  } finally {
-    restore();
-  }
+  await withPi(`printf '%s\n' '${assistantLine(reply)}'`, async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "approved");
+      const verdict = readEvents(root).find((e) => e.type === "review_verdict");
+      assert.equal(verdict?.reason, "Scope matches the claim. No unclaimed changes.");
+      assert.deepEqual(state.lastReview?.reasons, ["Scope matches the claim. No unclaimed changes.", "Tests pin it. Both ways."]);
+  });
 });
 
 test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empty list recorded", async () => {
@@ -303,42 +294,36 @@ test("gate handles a bare VERDICT: reject with no reasons: fallback detail, empt
   // review): the rejection lands exactly like any other, and the missing first reason degrades
   // to the "no reasons given" fallback instead of an undefined lastSummary.
   const { root, wt, head } = await gateFixture();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("VERDICT: reject")}'`);
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected");
-    assert.equal(result.detail, "no reasons given"); // fallback: no first reason to feed lastSummary
-    assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded like any reject
-    assert.equal(state.lastReview?.verdict, "reject");
-    assert.deepEqual(state.lastReview?.reasons, []);
-    assert.equal(state.lastReview?.head, head);
-    assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
-    const rejected = eventsOfType(root, "review_rejected");
-    assert.equal(rejected.length, 1);
-    assert.deepEqual(rejected[0]?.reasons, []); // the event's fallback renders "no reasons given"
-  } finally {
-    restore();
-  }
+  await withPi(`printf '%s\n' '${assistantLine("VERDICT: reject")}'`, async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.equal(result.detail, "no reasons given"); // fallback: no first reason to feed lastSummary
+      assert.equal(await aheadOfMain(wt, "main"), 0); // the commit is discarded like any reject
+      assert.equal(state.lastReview?.verdict, "reject");
+      assert.deepEqual(state.lastReview?.reasons, []);
+      assert.equal(state.lastReview?.head, head);
+      assert.equal(state.unreviewFailures, 0); // a parseable verdict is a successful review
+      const rejected = eventsOfType(root, "review_rejected");
+      assert.equal(rejected.length, 1);
+      assert.deepEqual(rejected[0]?.reasons, []); // the event's fallback renders "no reasons given"
+  });
 });
 
 test("gate fails closed on a verdict-less reply: commit kept for re-review", async () => {
   const { root, wt } = await gateFixture();
   const marker = piRanMarker();
-  const restore = fakePi(
+  await withPi(
     `touch '${marker}'\nprintf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
-  );
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.ok(fs.existsSync(marker)); // the reviewer did run
-    assert.equal(result.decision, "failed");
-    assert.match(result.detail ?? "", /no parseable VERDICT/);
-    assert.equal(await aheadOfMain(wt, "main"), 1); // commit left for the next tick's re-review
-    assert.equal(state.unreviewFailures, 1);
-    assert.equal(state.lastReview?.verdict, "failed");
-    assert.equal(state.lastApprovedHead, undefined);
-  } finally {
-    restore();
-  }
+    async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.ok(fs.existsSync(marker)); // the reviewer did run
+      assert.equal(result.decision, "failed");
+      assert.match(result.detail ?? "", /no parseable VERDICT/);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit left for the next tick's re-review
+      assert.equal(state.unreviewFailures, 1);
+      assert.equal(state.lastReview?.verdict, "failed");
+      assert.equal(state.lastApprovedHead, undefined);
+  });
 });
 
 test("a verdict-less completed reply is recovered with one follow-up turn, not a strike", async () => {
@@ -349,7 +334,7 @@ test("a verdict-less completed reply is recovered with one follow-up turn, not a
   // requestSummary on the author side.
   const { root, wt, head } = await gateFixture();
   const flags = path.join(tmpdir(), "verdict-followup-flags");
-  const restore = fakePi(
+  await withPi(
     [
       TOUCH_SESSION, // the reviewer's session exists, so the follow-up has one to continue
       logFlagsTo(flags),
@@ -359,49 +344,43 @@ test("a verdict-less completed reply is recovered with one follow-up turn, not a
       `fi; done`,
       `printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
     ].join("\n"),
-  );
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "approved");
-    assert.equal(state.unreviewFailures, 0); // a recovered verdict is a successful review
-    assert.equal(state.lastApprovedHead, head);
-    assert.equal(await aheadOfMain(wt, "main"), 1);
-    // Both runs ride back for usage folding into the loop totals.
-    assert.ok(result.run);
-    assert.ok(result.followUpRun);
-    assert.equal(eventsOfType(root, "review_failed").length, 0);
-    assert.equal(eventsOfType(root, "review_verdict").length, 1);
-    // The recovery is observable in the event feed.
-    const warnings = readEvents(root).filter((e) => e.type === "warning");
-    assert.ok(warnings.some((e) => /follow-up turn/.test(String(e.message))));
-    // Exactly one --continue run happened, after the fresh review run.
-    const lines = fs.readFileSync(flags, "utf8").trim().split("\n");
-    assert.equal(lines.length, 2);
-    assert.match(lines[0]!, /^run: -n/);
-    assert.match(lines[1]!, /^run: --continue$/);
-  } finally {
-    restore();
-  }
+    async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "approved");
+      assert.equal(state.unreviewFailures, 0); // a recovered verdict is a successful review
+      assert.equal(state.lastApprovedHead, head);
+      assert.equal(await aheadOfMain(wt, "main"), 1);
+      // Both runs ride back for usage folding into the loop totals.
+      assert.ok(result.run);
+      assert.ok(result.followUpRun);
+      assert.equal(eventsOfType(root, "review_failed").length, 0);
+      assert.equal(eventsOfType(root, "review_verdict").length, 1);
+      // The recovery is observable in the event feed.
+      const warnings = readEvents(root).filter((e) => e.type === "warning");
+      assert.ok(warnings.some((e) => /follow-up turn/.test(String(e.message))));
+      // Exactly one --continue run happened, after the fresh review run.
+      const lines = fs.readFileSync(flags, "utf8").trim().split("\n");
+      assert.equal(lines.length, 2);
+      assert.match(lines[0]!, /^run: -n/);
+      assert.match(lines[1]!, /^run: --continue$/);
+  });
 });
 
 test("a follow-up turn that also yields no verdict still counts the strike against the HEAD", async () => {
   const { root, wt } = await gateFixture();
   // The session exists (TOUCH_SESSION), so the follow-up runs — and replies without a
   // VERDICT line again, like the first run. Only now does the strike ladder engage.
-  const restore = fakePi(`
+  await withPi(`
     ${TOUCH_SESSION}
     printf '%s\n' '${assistantLine("still no verdict here")}'
-  `);
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "failed");
-    assert.match(result.detail ?? "", /even after a follow-up turn/);
-    assert.equal(state.unreviewFailures, 1);
-    assert.equal(await aheadOfMain(wt, "main"), 1); // still kept under the limit
-    assert.ok(result.followUpRun); // the follow-up's usage rides back for folding
-  } finally {
-    restore();
-  }
+  `, async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "failed");
+      assert.match(result.detail ?? "", /even after a follow-up turn/);
+      assert.equal(state.unreviewFailures, 1);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // still kept under the limit
+      assert.ok(result.followUpRun); // the follow-up's usage rides back for folding
+  });
 });
 
 test("a follow-up turn that itself fails (backend dies) is strike-free, like the review run's own failure", async () => {
@@ -411,48 +390,42 @@ test("a follow-up turn that itself fails (backend dies) is strike-free, like the
   // backend death counted against the HEAD — three of them discarded a finished, tested
   // commit, exactly what the strike-free branch exists to prevent (BUGS.md 2026-09-20).
   const { root, wt } = await gateFixture();
-  const restore = fakePi(`
+  await withPi(`
     ${TOUCH_SESSION}
     for a in "$@"; do if [ "$a" = "--continue" ]; then exit 1; fi; done
     printf '%s\n' '${assistantLine("still no verdict here")}'
-  `);
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "failed");
-    assert.match(result.detail ?? "", /pi exited 1/); // the follow-up's own failure is named
-    assert.equal(state.unreviewFailures ?? 0, 0); // backend evidence, never a strike against the HEAD
-    assert.equal(await aheadOfMain(wt, "main"), 1); // the commit survives for the next re-review
-    assert.ok(result.followUpRun); // the failed follow-up's spend still folds into the totals
-  } finally {
-    restore();
-  }
+  `, async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "failed");
+      assert.match(result.detail ?? "", /pi exited 1/); // the follow-up's own failure is named
+      assert.equal(state.unreviewFailures ?? 0, 0); // backend evidence, never a strike against the HEAD
+      assert.equal(await aheadOfMain(wt, "main"), 1); // the commit survives for the next re-review
+      assert.ok(result.followUpRun); // the failed follow-up's spend still folds into the totals
+  });
 });
 
 test("gate discards the leftover after three failed reviews of one HEAD", async () => {
   const { root, wt } = await gateFixture();
-  const restore = fakePi(`printf '%s\n' '${assistantLine("still no verdict here")}'`);
-  try {
-    const state = freshLoopState(ROLE);
-    for (let tick = 1; tick < REVIEW_FAILURE_LIMIT; tick++) {
-      assert.equal((await reviewAheadOfMain(gateCtx(root, wt, tick), state)).decision, "failed");
-      assert.equal(await aheadOfMain(wt, "main"), 1); // still kept while under the limit
-    }
-    const last = await reviewAheadOfMain(gateCtx(root, wt, REVIEW_FAILURE_LIMIT), state);
-    assert.equal(last.decision, "failed");
-    assert.equal(await aheadOfMain(wt, "main"), 0); // discarded at the limit
-    assert.equal(state.unreviewFailures, 0); // the HEAD is gone; nothing left to count against
-    const warning = readEvents(root).find((e) => e.type === "warning");
-    assert.match(String(warning?.message), /discarding unreviewed leftover/);
+  await withPi(`printf '%s\n' '${assistantLine("still no verdict here")}'`, async () => {
+      const state = freshLoopState(ROLE);
+      for (let tick = 1; tick < REVIEW_FAILURE_LIMIT; tick++) {
+        assert.equal((await reviewAheadOfMain(gateCtx(root, wt, tick), state)).decision, "failed");
+        assert.equal(await aheadOfMain(wt, "main"), 1); // still kept while under the limit
+      }
+      const last = await reviewAheadOfMain(gateCtx(root, wt, REVIEW_FAILURE_LIMIT), state);
+      assert.equal(last.decision, "failed");
+      assert.equal(await aheadOfMain(wt, "main"), 0); // discarded at the limit
+      assert.equal(state.unreviewFailures, 0); // the HEAD is gone; nothing left to count against
+      const warning = readEvents(root).find((e) => e.type === "warning");
+      assert.match(String(warning?.message), /discarding unreviewed leftover/);
 
-    // A NEW commit (new HEAD) restarts the failure count from one, not four.
-    fs.appendFileSync(path.join(wt, "seed.txt"), "another change\n");
-    sh(wt, "git", "add", "-A");
-    sh(wt, "git", "commit", "-m", "next attempt");
-    assert.equal((await reviewAheadOfMain(gateCtx(root, wt, 4), state)).decision, "failed");
-    assert.equal(state.unreviewFailures, 1);
-  } finally {
-    restore();
-  }
+      // A NEW commit (new HEAD) restarts the failure count from one, not four.
+      fs.appendFileSync(path.join(wt, "seed.txt"), "another change\n");
+      sh(wt, "git", "add", "-A");
+      sh(wt, "git", "commit", "-m", "next attempt");
+      assert.equal((await reviewAheadOfMain(gateCtx(root, wt, 4), state)).decision, "failed");
+      assert.equal(state.unreviewFailures, 1);
+  });
 });
 
 test("gate does not discard the commit when the reviewer run itself fails", async () => {
@@ -461,21 +434,18 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
   // diff, so it must never count toward the discard limit — otherwise three infrastructure
   // failures delete a complete commit the reviewer never saw (BUGS.md 2026-09-20).
   const { root, wt } = await gateFixture();
-  const restore = fakePi(`echo 'oMLX HTTP 400: prefill_memory_exceeded' >&2\nexit 1`);
-  try {
-    const state = freshLoopState(ROLE);
-    for (let tick = 1; tick <= REVIEW_FAILURE_LIMIT + 2; tick++) {
-      const result = await reviewAheadOfMain(gateCtx(root, wt, tick), state);
-      assert.equal(result.decision, "failed");
-      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for re-review every time
-      assert.equal(state.unreviewFailures ?? 0, 0); // a failed run is not a strike against the commit
-    }
-    const events = readEvents(root);
-    assert.equal(events.filter((e) => e.type === "review_failed").length, REVIEW_FAILURE_LIMIT + 2);
-    assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
-  } finally {
-    restore();
-  }
+  await withPi(`echo 'oMLX HTTP 400: prefill_memory_exceeded' >&2\nexit 1`, async () => {
+      const state = freshLoopState(ROLE);
+      for (let tick = 1; tick <= REVIEW_FAILURE_LIMIT + 2; tick++) {
+        const result = await reviewAheadOfMain(gateCtx(root, wt, tick), state);
+        assert.equal(result.decision, "failed");
+        assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for re-review every time
+        assert.equal(state.unreviewFailures ?? 0, 0); // a failed run is not a strike against the commit
+      }
+      const events = readEvents(root);
+      assert.equal(events.filter((e) => e.type === "review_failed").length, REVIEW_FAILURE_LIMIT + 2);
+      assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
+  });
 });
 
 test("a reviewer that outruns review.timeoutSeconds fails in its own budget: commit kept, no strike", async () => {
@@ -483,28 +453,25 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
   // kills it long before tickTimeoutSeconds, and the kill is a failed RUN (like a dead backend),
   // so the pin stays and the per-HEAD discard counter does not move.
   const { root, wt, head } = await gateFixture();
-  const restore = fakePi(`exec sleep 60`); // exec so the kill signal reaches the sleeper directly
-  try {
-    const config = defaultConfig();
-    config.review.timeoutSeconds = 2;
-    assert.ok(config.tickTimeoutSeconds > 60); // only the review budget can end this run in time
-    const state = freshLoopState(ROLE);
-    const startedAt = Date.now();
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
-    const elapsedMs = Date.now() - startedAt;
-    assert.equal(result.decision, "failed");
-    assert.match(result.detail ?? "", /timed out after 2s/);
-    assert.ok(elapsedMs < 20_000, `the review ended in its 2 s budget, not the sleeper's 60 s (took ${elapsedMs} ms)`);
-    assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
-    assert.equal(state.unreviewFailures ?? 0, 0); // a timed-out run is not a strike against the commit
-    assert.equal(state.lastApprovedHead, undefined);
-    const failed = eventsOfType(root, "review_failed");
-    assert.equal(failed.length, 1);
-    assert.equal(failed[0]?.head, head);
-    assert.match(String(failed[0]?.message), /timed out after 2s/);
-  } finally {
-    restore();
-  }
+  await withPi(`exec sleep 60`, async () => { // exec so the kill signal reaches the sleeper directly
+      const config = defaultConfig();
+      config.review.timeoutSeconds = 2;
+      assert.ok(config.tickTimeoutSeconds > 60); // only the review budget can end this run in time
+      const state = freshLoopState(ROLE);
+      const startedAt = Date.now();
+      const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+      const elapsedMs = Date.now() - startedAt;
+      assert.equal(result.decision, "failed");
+      assert.match(result.detail ?? "", /timed out after 2s/);
+      assert.ok(elapsedMs < 20_000, `the review ended in its 2 s budget, not the sleeper's 60 s (took ${elapsedMs} ms)`);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+      assert.equal(state.unreviewFailures ?? 0, 0); // a timed-out run is not a strike against the commit
+      assert.equal(state.lastApprovedHead, undefined);
+      const failed = eventsOfType(root, "review_failed");
+      assert.equal(failed.length, 1);
+      assert.equal(failed[0]?.head, head);
+      assert.match(String(failed[0]?.message), /timed out after 2s/);
+  });
 });
 
 test("a progressing timeout says the next attempt reviews from scratch, not 'preserved for resume'", async () => {
@@ -516,25 +483,22 @@ test("a progressing timeout says the next attempt reviews from scratch, not 'pre
   const { root, wt } = await gateFixture();
   // One structured event (progress) then stall: the review deadline fires on a run still
   // making progress, so runPi emits its progressing-timeout text.
-  const restore = fakePi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`);
-  try {
-    const config = defaultConfig();
-    config.review.timeoutSeconds = 2;
-    const state = freshLoopState(ROLE);
-    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
-    assert.equal(result.decision, "failed");
-    assert.match(
-      result.detail ?? "",
-      /timed out after 2s while still making progress — the commit is kept; the next attempt reviews it from scratch/,
-    );
-    assert.doesNotMatch(result.detail ?? "", /preserved for resume/);
-    const failed = eventsOfType(root, "review_failed");
-    assert.equal(failed.length, 1);
-    assert.doesNotMatch(String(failed[0]?.message), /preserved for resume/);
-    assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
-  } finally {
-    restore();
-  }
+  await withPi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`, async () => {
+      const config = defaultConfig();
+      config.review.timeoutSeconds = 2;
+      const state = freshLoopState(ROLE);
+      const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+      assert.equal(result.decision, "failed");
+      assert.match(
+        result.detail ?? "",
+        /timed out after 2s while still making progress — the commit is kept; the next attempt reviews it from scratch/,
+      );
+      assert.doesNotMatch(result.detail ?? "", /preserved for resume/);
+      const failed = eventsOfType(root, "review_failed");
+      assert.equal(failed.length, 1);
+      assert.doesNotMatch(String(failed[0]?.message), /preserved for resume/);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+  });
 });
 
 test("a stalled tool call during review warns in the event feed while the watchdog counts down", async (t) => {
@@ -542,33 +506,30 @@ test("a stalled tool call during review warns in the event feed while the watchd
   // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than
   // stay silent until the quiet watchdog kills the run minutes later.
   const { root, wt } = await gateFixture();
-  const restore = fakePi(
+  await withPi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999" } })}'`,
       `exec sleep 60`, // exec so the kill signal reaches the sleeper directly
     ].join("\n"),
-  );
-  try {
-    const config = defaultConfig();
-    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
-    config.toolCallStallSeconds = 2; // ...but the warning lands first
-    const state = freshLoopState(ROLE);
-    // On logical time (watchdogClock, test/wait.ts): once the reviewer has named its call,
-    // move the watchdog past the stall threshold and then the quiet window.
-    const clock = watchdogClock(t);
-    const review = reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
-    await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
-    clock.advance(30_000);
-    const result = await review;
-    assert.equal(result.decision, "failed");
-    const warnings = warningMessages(root);
-    assert.ok(
-      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
-      `the review stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
-    );
-  } finally {
-    restore();
-  }
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+      config.toolCallStallSeconds = 2; // ...but the warning lands first
+      const state = freshLoopState(ROLE);
+      // On logical time (watchdogClock, test/wait.ts): once the reviewer has named its call,
+      // move the watchdog past the stall threshold and then the quiet window.
+      const clock = watchdogClock(t);
+      const review = reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+      await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
+      clock.advance(30_000);
+      const result = await review;
+      assert.equal(result.decision, "failed");
+      const warnings = warningMessages(root);
+      assert.ok(
+        warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+        `the review stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+      );
+  });
 });
 
 test("a stalled tool call during the verdict follow-up warns in the event feed too", async (t) => {
@@ -578,7 +539,7 @@ test("a stalled tool call during the verdict follow-up warns in the event feed t
   // silent until its quiet watchdog kills it. The first run replies verdict-less without
   // ever starting a tool call, so any stall warning below can only come from the follow-up.
   const { root, wt } = await gateFixture();
-  const restore = fakePi(
+  await withPi(
     [
       TOUCH_SESSION, // the reviewer's session exists, so the follow-up has one to continue
       `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
@@ -588,28 +549,25 @@ test("a stalled tool call during the verdict follow-up warns in the event feed t
       `fi; done`,
       `printf '%s\n' '${assistantLine("I think this is fine overall.")}'`,
     ].join("\n"),
-  );
-  try {
-    const config = defaultConfig();
-    config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
-    config.toolCallStallSeconds = 2; // ...but the warning lands first
-    // On logical time (watchdogClock, test/wait.ts): once the follow-up has named its call,
-    // move the watchdog past the stall threshold and then the quiet window.
-    const clock = watchdogClock(t);
-    const review = reviewGate(root, wt, { config });
-    await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
-    clock.advance(30_000);
-    const { result } = await review;
-    assert.equal(result.decision, "failed");
-    assert.ok(result.followUpRun); // the warned run's spend still folds into the totals
-    const warnings = warningMessages(root);
-    assert.ok(
-      warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
-      `the follow-up stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
-    );
-  } finally {
-    restore();
-  }
+    async () => {
+      const config = defaultConfig();
+      config.quietTimeoutSeconds = 5; // the watchdog still owns the kill...
+      config.toolCallStallSeconds = 2; // ...but the warning lands first
+      // On logical time (watchdogClock, test/wait.ts): once the follow-up has named its call,
+      // move the watchdog past the stall threshold and then the quiet window.
+      const clock = watchdogClock(t);
+      const review = reviewGate(root, wt, { config });
+      await waitForLogLines(piLogPath(root, ROLE), "tool_execution_start");
+      clock.advance(30_000);
+      const { result } = await review;
+      assert.equal(result.decision, "failed");
+      assert.ok(result.followUpRun); // the warned run's spend still folds into the totals
+      const warnings = warningMessages(root);
+      assert.ok(
+        warnings.some((m) => m.startsWith("tool call stalled: bash sleep 999")),
+        `the follow-up stall warning names the hung command; got: ${JSON.stringify(warnings)}`,
+      );
+  });
 });
 
 test("gate exempts a doc-only diff without running pi", async () => {
@@ -620,15 +578,12 @@ test("gate exempts a doc-only diff without running pi", async () => {
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "doc only");
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
-    const { state, result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "exempt");
-    assert.ok(!fs.existsSync(marker)); // no reviewer run at all
-    assert.equal(state.lastApprovedHead, undefined);
-  } finally {
-    restore();
-  }
+  await withPi(`touch '${marker}'`, async () => {
+      const { state, result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "exempt");
+      assert.ok(!fs.existsSync(marker)); // no reviewer run at all
+      assert.equal(state.lastApprovedHead, undefined);
+  });
 });
 
 test("gate rejects an md-only diff that files a new plan directly under ## Done, with no pi run", async () => {
@@ -645,46 +600,37 @@ test("gate rejects an md-only diff that files a new plan directly under ## Done,
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "misfiled plan");
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
-    const { result } = await reviewGate(root, wt);
-    assert.equal(result.decision, "rejected");
-    assert.match(result.detail!, /PLANS\.md files "Feature B \(planned 2026-09-26\)"/);
-    assert.match(result.detail!, /file it under "## Planned"/);
-    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
-  } finally {
-    restore();
-  }
+  await withPi(`touch '${marker}'`, async () => {
+      const { result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.match(result.detail!, /PLANS\.md files "Feature B \(planned 2026-09-26\)"/);
+      assert.match(result.detail!, /file it under "## Planned"/);
+      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
 });
 
 test("gate is a no-op when review.enabled is false", async () => {
   const { root, wt } = await gateFixture(); // code change — would be reviewed if enabled
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
-    const config = defaultConfig();
-    config.review.enabled = false;
-    const { result } = await reviewGate(root, wt, { config });
-    assert.equal(result.decision, "exempt");
-    assert.ok(!fs.existsSync(marker));
-  } finally {
-    restore();
-  }
+  await withPi(`touch '${marker}'`, async () => {
+      const config = defaultConfig();
+      config.review.enabled = false;
+      const { result } = await reviewGate(root, wt, { config });
+      assert.equal(result.decision, "exempt");
+      assert.ok(!fs.existsSync(marker));
+  });
 });
 
 test("gate skips the run when this exact HEAD was already approved", async () => {
   const { root, wt, head } = await gateFixture();
   const marker = piRanMarker();
-  const restore = fakePi(`touch '${marker}'`);
-  try {
-    const state = freshLoopState(ROLE);
-    state.lastApprovedHead = head; // e.g. a merge_blocked retry of the same commit
-    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
-    assert.equal(result.decision, "approved");
-    assert.ok(!fs.existsSync(marker)); // no second reviewer run for the same HEAD
-  } finally {
-    restore();
-  }
+  await withPi(`touch '${marker}'`, async () => {
+      const state = freshLoopState(ROLE);
+      state.lastApprovedHead = head; // e.g. a merge_blocked retry of the same commit
+      const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+      assert.equal(result.decision, "approved");
+      assert.ok(!fs.existsSync(marker)); // no second reviewer run for the same HEAD
+  });
 });
 
 test("a review's session is named by its role and tick", async () => {
@@ -692,32 +638,26 @@ test("a review's session is named by its role and tick", async () => {
   // The fake pi records its own argv (outside the worktree) so the test can assert on the
   // exact session name the harness chose for this run.
   const argsFile = path.join(tmpdir(), "pi-args");
-  const restore = fakePi(
+  await withPi(
     `printf '%s\\n' "$@" > '${argsFile}'\n` +
       `${reviewerStub()}`,
-  );
-  try {
-    await reviewGate(root, wt); // tick 1 gate run
-    const gateArgs = fs.readFileSync(argsFile, "utf8").split("\n");
-    assert.ok(gateArgs.includes("tumwater-review-improve-1"), `gate session name missing in ${gateArgs}`);
-  } finally {
-    restore();
-  }
+    async () => {
+      await reviewGate(root, wt); // tick 1 gate run
+      const gateArgs = fs.readFileSync(argsFile, "utf8").split("\n");
+      assert.ok(gateArgs.includes("tumwater-review-improve-1"), `gate session name missing in ${gateArgs}`);
+  });
 });
 
 test("gate fails closed on an aborted run without bookkeeping", async () => {
   const { root, wt } = await gateFixture();
-  const restore = fakePi(`sleep 5\n${reviewerStub()}`);
-  try {
-    const controller = new AbortController();
-    controller.abort(); // harness shutdown already in progress
-    const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
-    assert.equal(result.decision, "failed");
-    assert.ok(result.aborted);
-    assert.equal(await aheadOfMain(wt, "main"), 1); // commit stays; the resumed tick re-reviews it
-    assert.equal(state.lastReview, undefined); // no bookkeeping on abort
-    assert.equal(state.unreviewFailures, undefined);
-  } finally {
-    restore();
-  }
+  await withPi(`sleep 5\n${reviewerStub()}`, async () => {
+      const controller = new AbortController();
+      controller.abort(); // harness shutdown already in progress
+      const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
+      assert.equal(result.decision, "failed");
+      assert.ok(result.aborted);
+      assert.equal(await aheadOfMain(wt, "main"), 1); // commit stays; the resumed tick re-reviews it
+      assert.equal(state.lastReview, undefined); // no bookkeeping on abort
+      assert.equal(state.unreviewFailures, undefined);
+  });
 });
