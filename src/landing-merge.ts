@@ -137,13 +137,33 @@ async function tryMerge(
 
 /** The backlog-structure cross-check both verifyLanding paths run (exempt and code diffs
  * alike): when the tree ahead of main duplicates or drops a `## ` section heading, warn on the
- * role's feed with the one "landing blocked:" phrasing and report the landing as blocked.
- * Shared so the wording and the block action cannot drift between the two paths. */
-async function structureBlocked(ctx: MergeContext, wt: string, files: string[]): Promise<boolean> {
+ * role's feed with the one "landing blocked:" phrasing and return the reason (null when the
+ * headings are intact). Shared so the wording and the block action cannot drift between the
+ * paths. */
+async function structureBlocked(
+  ctx: { root: string; role: string; mainBranch: string },
+  wt: string,
+  files: string[],
+): Promise<string | null> {
   const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
-  if (!structure) return false;
+  if (!structure) return null;
   warnEvent(ctx.root, ctx.role, `landing blocked: ${structure}`);
-  return true;
+  return structure;
+}
+
+/** The exempt arm's full cross-check — backlog structure, then fix-claim — shared by
+ * verifyLanding and landing-batch.ts's stack skip: an md-only tree delta that skips the build
+ * check must not wave through an edit the gate would have rejected. Returns the first blocking
+ * reason (a structure reason already warned as "landing blocked: ..."), or null when the skip
+ * may proceed. */
+export async function exemptSkipBlockReason(
+  ctx: { root: string; role: string; mainBranch: string },
+  wt: string,
+  files: string[],
+): Promise<string | null> {
+  const structure = await structureBlocked(ctx, wt, files);
+  if (structure) return structure;
+  return (await falseFixReason(wt, ctx.mainBranch, files)) ?? null;
 }
 
 /** Verify the exact tree about to land on main — the post-rebase head (BUGS.md 2026-09-08: the
@@ -187,8 +207,7 @@ async function verifyLanding(
     // site that catches what the gate cannot see: a conflict resolution happens AFTER the
     // gate, inside this lock, so a resolution that kept both sides of a `## Done` conflict and
     // duplicated the heading lands here or not at all (PLANS.md 2026-09-25, 9eaae5ac).
-    if (await structureBlocked(ctx, wt, files)) return false;
-    return !(await falseFixReason(wt, ctx.mainBranch, files));
+    return (await exemptSkipBlockReason(ctx, wt, files)) === null;
   }
   // The heading check for code diffs too, before the build check: a conflict resolution that
   // broke backlog structure reads as an explained block on the dashboards, not as an

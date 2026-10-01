@@ -8,7 +8,7 @@
 import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landWorktreePath, landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { ffStackToMain } from "./landing-merge.js";
+import { exemptSkipBlockReason, ffStackToMain } from "./landing-merge.js";
 import { type BuildCheckOutcome, runScopedBuildCheck } from "./build-check.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { noteGreenBaseline } from "./main-baseline.js";
@@ -22,9 +22,6 @@ import {
   type LanderContext,
 } from "./landing-core.js";
 import { errorMessage } from "./text.js";
-import { warnEvent } from "./events.js";
-import { falseFixReason } from "./fix-claim.js";
-import { backlogStructureReason } from "./backlog-structure.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
@@ -232,17 +229,16 @@ async function landStack(ctx: BatchContext, wtPath: string, entries: readonly St
       const stackDiff = await gitTry(ctx.root, "diff", "--no-renames", "--name-only", base, tip);
       const stackFiles = stackDiff === null ? null : gitLines(stackDiff);
       if (stackFiles !== null && isExemptDiff(stackFiles, exemptPaths)) {
-        // The same cross-checks verifyLanding's exempt arm runs: the skip must not wave through
-        // an md-only edit the gate would have rejected. A failure here cannot name a red check
-        // (none ran), so it hands the stack to the one-at-a-time fallback, whose exempt arm
-        // blocks or rejects each change with the proper handling. No baseline seeds — nothing
-        // ran on this tip.
-        const structure = await backlogStructureReason(wtPath, ctx.mainBranch, stackFiles);
-        if (structure) {
-          warnEvent(ctx.root, entries[0]!.role, `landing blocked: ${structure}`);
-          return { kind: "conflict" };
-        }
-        if (await falseFixReason(wtPath, ctx.mainBranch, stackFiles)) return { kind: "conflict" };
+        // The same cross-checks verifyLanding's exempt arm runs (landing-merge.ts's
+        // exemptSkipBlockReason): the skip must not wave through an md-only edit the gate would
+        // have rejected. A failure here cannot name a red check (none ran), so it hands the
+        // stack to the one-at-a-time fallback, whose exempt arm blocks or rejects each change
+        // with the proper handling. No baseline seeds — nothing ran on this tip.
+        if (await exemptSkipBlockReason(
+          { root: ctx.root, role: entries[0]!.role, mainBranch: ctx.mainBranch },
+          wtPath,
+          stackFiles,
+        )) return { kind: "conflict" };
       } else {
         // The landing cell names the check while it runs, then the merge steps after it — the ff
         // or what the caller does next — on every stacked change's own record.
