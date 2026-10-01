@@ -199,9 +199,13 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   assert.equal(unpaired.startTs, null);
   assert.equal(unpaired.durationMs, null);
 
-  // A tick the scan does not hold: a not-found line, exit 0.
+  // A tick the scan does not hold: a not-found line, exit 0 — and under --json a parseable
+  // `null` document, never the prose line a jq pipe would choke on (the history --json
+  // precedent: every exit-0 output is JSON).
   const none = await expectOkAsync(() => cmdTick(repo, ["bugfix", "42"], false));
   assert.match(none.stdout, /no tick #42 for bugfix/);
+  const noneJson = await expectOkAsync(() => cmdTick(repo, ["bugfix", "42"], true));
+  assert.equal(JSON.parse(noneJson.stdout), null);
 });
 
 test("cmdTick fails with the usage on a missing, unknown, or extra positional and a bad n", async () => {

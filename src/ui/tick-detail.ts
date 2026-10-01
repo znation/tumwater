@@ -149,7 +149,9 @@ export function renderTickDetail(d: TickDetail): string {
 
 /** `tumwater tick <role> <n> [--json]`: print one completed tick's full event trail. Read-only:
  * stdout only, no state file created — a tick the scan cannot find prints a not-found line and
- * exits 0 (history's empty-output convention: an absent record is an answer, not a failure). */
+ * exits 0 (history's empty-output convention: an absent record is an answer, not a failure),
+ * and under --json it prints the JSON document `null` instead — the report --json precedent
+ * that every exit-0 output is parseable, never prose. */
 export async function cmdTick(root: string, positionals: string[], json: boolean): Promise<void> {
   // Positional arity is exactly <role> <n> — cli.ts has already peeled the flags off and gated
   // them (only --json is admitted), so anything left over that is not the pair is a mistake.
@@ -167,7 +169,12 @@ export async function cmdTick(root: string, positionals: string[], json: boolean
   const tick = parseCountFlag("<n>", nRaw);
   const detail = readTickDetail(root, role, tick);
   if (detail === null) {
-    say(`no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`);
+    // Not found stays exit 0 in both renderings, but --json still owes a parseable document in
+    // every exit-0 case (the report --json precedent, the invariant this command's own doc
+    // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
+    // prose line would end a jq pipe mid-fleet-incident.
+    if (json) sayJson(null);
+    else say(`no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`);
     return;
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
