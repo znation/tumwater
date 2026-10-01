@@ -166,11 +166,15 @@ export function applyTickOutcome(
   if (outcome.result !== "aborted") s.phase = undefined;
   s.lastTickEndedAt = Date.now();
   // `lastResult`/`lastSummary` are the last COMPLETED result, the pair the dashboards' "last
-  // result" cell renders. A `queued` tick is not one: its change is committed but in flight —
-  // the state column shows that (`landing <elapsed>`, the land-queue badge) — so the pair keeps
-  // the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23), and the
-  // tick's summary is stashed under the pinned sha for applyLandingOutcome to pair with the
-  // landing's result. Every other outcome is completed and clears the stash: a role with a
+  // result" cell renders, and they must describe ONE tick: a completed outcome without a
+  // summary CLEARS `lastSummary`, so a summary-less result never renders beside another
+  // tick's work description (BUGS.md 2026-09-30: a no_change tick read "No change — Implement
+  // the … plan" beside work that had landed, because the prior summary was retained).
+  // A `queued` tick is not a completed result: its change is committed but in flight —
+  // the state column shows that (`landing <elapsed>`, the land-queue badge) — so the pair
+  // keeps the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23),
+  // and the tick's summary is stashed under the pinned sha for applyLandingOutcome to pair with
+  // the landing's result. Every other outcome is completed and clears the stash: a role with a
   // queued or in-flight landing never ticks (the orchestrator's interlock), so a stash that
   // survives to a later tick names a change that is no longer waiting.
   if (outcome.result === "queued") {
@@ -179,7 +183,7 @@ export function applyTickOutcome(
   } else {
     s.queuedSummary = undefined;
     s.lastResult = outcome.result;
-    if (outcome.summary) s.lastSummary = outcome.summary;
+    s.lastSummary = outcome.summary; // a summary-less outcome wipes the prior tick's text
   }
   if (outcome.result === "changed" || outcome.result === "queued") {
     // "queued" schedules exactly like "changed" — the tick committed and enqueued — but the

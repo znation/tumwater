@@ -502,11 +502,16 @@ test("applyTickOutcome: other unproductive outcomes grow the idle backoff and cl
   );
   assert.equal(s.cutOffStreak, 0);
 
-  // A summary-less outcome keeps the previous lastSummary (stale beats wiped).
+  // A summary-less completed outcome CLEARS the previous lastSummary: the pair must describe
+  // ONE tick, so a no_change tick never renders beside another tick's work description
+  // (BUGS.md 2026-09-30: both dashboards read "No change — <prior tick's summary>" beside
+  // work that had already landed; the retention the old code kept is gone).
   const s2 = freshLoopState("feature");
+  s2.lastResult = "changed";
   s2.lastSummary = "previous";
   applyTickOutcome(s2, cfg, "feature", { result: "no_change" });
-  assert.equal(s2.lastSummary, "previous");
+  assert.equal(s2.lastResult, "no_change");
+  assert.equal(s2.lastSummary, undefined, "the stale pair is wiped, not retained");
 });
 
 test("applyTickOutcome: an observer's no_change schedules at its interval without climbing the idle ladder", () => {
