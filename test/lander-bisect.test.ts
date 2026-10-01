@@ -7,7 +7,7 @@ import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, withApprovePi } from "./fake-pi.js";
 import {
   request,
   checkRunNumber,
@@ -39,8 +39,7 @@ test("a stack of three whose second change breaks the check lands the first, rej
   // beta breaks the suite — but only on the stacked tree (its own gate passed: an
   // interaction the stack check exists to catch).
   checkAfterGates(root, 3, `[ -f "$INIT_CWD/beta.txt" ] && { echo "planted failure: beta breaks the suite"; exit 1; }`);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, roles, wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "rejected", undefined]);
@@ -72,25 +71,20 @@ test("a stack of three whose second change breaks the check lands the first, rej
       0,
       "the prefix landing seeded main green, so attribution ran no baseline check",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a stack whose every change passes still takes exactly one batch check", async () => {
   const roles = ["alpha", "beta", "gamma"];
   const { root, shas, wiringFor } = await batchFixture(roles);
   checkAfterGates(root, 3, "true");
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, roles, wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed", "changed"]);
     assert.deepEqual(batchChecks(root).map((e) => e.status), ["passed"], "one check over the whole stack");
     assert.equal(eventsOfType(root, "merged").length, 3);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // ── A stack whose delta ahead of its assembly base is doc-only pays no check ────────────
@@ -108,8 +102,7 @@ test("a stack whose every change is doc-only lands with no batch check", async (
   });
   declareCheck(root, "#!/bin/sh\necho \"a doc-only stack must never run me\"; exit 1\n");
   const mainBefore = mainSha(root);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, roles, wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
@@ -119,9 +112,7 @@ test("a stack whose every change is doc-only lands with no batch check", async (
       ["work by beta", "work by alpha"],
       "both doc changes landed, in queue order",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a doc-only stack that breaks backlog structure is blocked, not waved through", async () => {
@@ -152,8 +143,7 @@ test("a doc-only stack that breaks backlog structure is blocked, not waved throu
   // test loudly instead of quietly via a count.
   declareCheck(root, '#!/bin/sh\necho "a doc-only stack must never run me"; exit 1\n');
   const mainBefore = mainSha(root);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, roles, wiringFor);
 
     // The stack is abandoned to one-at-a-time: alpha (clean alone) lands, beta's tree now
@@ -179,9 +169,7 @@ test("a doc-only stack that breaks backlog structure is blocked, not waved throu
       ["work by alpha"],
       "only the structurally clean change reached main",
     );
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a red stack's doc-only remainder lands on the exemption, without another check", async () => {
@@ -194,8 +182,7 @@ test("a red stack's doc-only remainder lands on the exemption, without another c
   // Run 1: alpha's gate pre-check (beta's vet is exempt — no pre-check). Run 2: the whole
   // stack, planted red. Run 3: alpha alone, green — it lands. The remainder is beta alone.
   countingCheck(root, `if [ "$n" = "2" ]; then echo "planted failure"; exit 1; fi`);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
@@ -205,9 +192,7 @@ test("a red stack's doc-only remainder lands on the exemption, without another c
       "the red stack check and the code prefix's — the doc-only remainder pays no third",
     );
     assert.equal(eventsOfType(root, "merged").length, 2);
-  } finally {
-    restore();
-  }
+  });
 });
 
 // The head change fails alone on main's tip, so main's own baseline decides who owns the red:
@@ -222,8 +207,7 @@ for (const baseline of ["red", "unavailable"] as const) {
     const baselineRun =
       baseline === "red" ? `echo "main is broken too"; exit 1` : `echo "xcrun: error: planted toolchain"; exit 1`;
     checkAfterGates(root, 2, `if [ "$n" -le 4 ]; then echo "planted failure"; exit 1; else ${baselineRun}; fi`);
-    const restore = fakePi(APPROVE_PI);
-    try {
+    await withApprovePi(async () => {
       const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
       assert.deepEqual(batchChecks(root).map((e) => e.status), ["failed", "failed"]);
@@ -246,9 +230,7 @@ for (const baseline of ["red", "unavailable"] as const) {
         assert.match(reasons[0]!, /: planted failure$/);
         assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped \(toolchain\)\), so the red batch check is attributed to this change$/);
       }
-    } finally {
-      restore();
-    }
+    });
   });
 }
 
@@ -267,8 +249,7 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
   });
   advanceMain(root, "main.txt", "landed after the pins\n");
   declareCheck(root, "#!/bin/sh\necho ok\n");
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both");
@@ -290,9 +271,7 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
     for (const f of ["main.txt", "alpha.txt", "beta.txt"]) {
       assert.ok(fs.existsSync(path.join(root, f)), `main holds ${f}`);
     }
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a vet reviews each pin rebased onto main's current tip, so no reviewer's checkout is behind main", async () => {
@@ -335,8 +314,7 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
   // pin, the gate reviews the pinned tree, and mergeToMain's resolver lands it at the merge —
   // and the fallback, landing an approved head, must neither re-review the resolved change nor
   // the one behind it.
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
       edit: (root, role) =>
         role === "alpha"
@@ -358,14 +336,11 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
     assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed");
     assert.ok(fs.existsSync(path.join(root, "beta.txt")), "and beta on top of it");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a cherry-pick conflict abandons to one-at-a-time and the conflicting change resolves as a single landing", async () => {
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     // Both roles rewrite the same line: the cherry-pick of the second onto the first conflicts.
     const { root, shas, wiringFor, calls } = await batchFixture(["alpha", "beta"], {
       edit: (root, role) => fs.writeFileSync(path.join(root, "seed.txt"), `${role}\n`),
@@ -381,9 +356,7 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
     assert.equal(calls.length, 1, "one resolution run — only the conflicting change needs it");
     assert.equal(eventsOfType(root, "merged").length, 2);
     assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a lost pin degrades its vet to a terminal error instead of starving the queue", async () => {
@@ -392,8 +365,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
   // to a terminal "error" — the pipeline's write-back then drops its entry — rather than let the
   // throw escape: a permanently uncheckable entry would re-fail on every poll with its author
   // interlocked forever. The other changes' vets and merge are untouched by it.
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta", "gamma"]);
     sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
     const mainBefore = mainSha(root);
@@ -414,9 +386,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
     assert.equal(folded.get("alpha"), undefined, "no reviewer run for the uncheckable pin");
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "beta and gamma landed");
     assert.deepEqual(eventsOfType(root, "merged").map((e) => e.loop), ["beta", "gamma"]);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an unlandable first bisect step after a red stack check degrades to error and leaves the rest unattempted", async () => {
@@ -434,8 +404,7 @@ test("an unlandable first bisect step after a red stack check degrades to error 
     root,
     `#!/bin/sh\n${checkRunNumber(count)}if [ "$n" = "3" ]; then rm -rf ${worktrees}; touch ${worktrees}; echo "error TS2345: boom" >&2; exit 1; fi\necho ok\n`,
   );
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const mainBefore = mainSha(root);
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
@@ -446,7 +415,5 @@ test("an unlandable first bisect step after a red stack check degrades to error 
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an error keeps its ref for recovery");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and so does the unattempted one");
     assert.equal(mainSha(root), mainBefore, "nothing landed");
-  } finally {
-    restore();
-  }
+  });
 });

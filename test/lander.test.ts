@@ -13,7 +13,7 @@ import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
-import { fakePi, piRanMarker } from "./fake-pi.js";
+import { fakePi, piRanMarker, withApprovePi } from "./fake-pi.js";
 import {
   ROLE,
   REF,
@@ -23,7 +23,6 @@ import {
   request,
   vetAndLand,
   declareCheck,
-  APPROVE_PI,
   batchFixture,
   runBatch,
   replyLine,
@@ -458,8 +457,7 @@ test("an all-rejected batch returns a defined result for every request without t
 });
 
 test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
     const mainBefore = mainSha(root);
 
@@ -479,9 +477,7 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
     assert.equal(folded.get("beta")!.length, 1);
     assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
     assert.equal(states.beta.lastApprovedHead, shas.beta!);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a batch stacks every commit of a multi-commit pin, not its head alone", async () => {
@@ -496,8 +492,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   await setRef(root, landingRefName("alpha"), shas.alpha);
   sh(root, "git", "checkout", "main");
   const mainBefore = mainSha(root);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     // THREE commits on main: both of alpha's, then beta's — none orphaned.
@@ -509,9 +504,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
     assert.equal(await refSha(root, landingRefName("beta")), null);
     assert.equal(folded.get("alpha")!.length, 1);
     assert.equal(folded.get("beta")!.length, 1);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
@@ -609,8 +602,7 @@ test("an abort after the last gate approved stops the batch before its shared ch
 test("an abort after the gate stops a one-change merge before it lands", async () => {
   // The one-change (and fallback) landings go through landApprovedChange, which runs no gate
   // of its own — only its own abort check sees a stop that arrived after the vet.
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const { root, shas, wiringFor } = await batchFixture(["alpha"]);
     const mainBefore = mainSha(root);
     const controller = new AbortController();
@@ -630,9 +622,7 @@ test("an abort after the gate stops a one-change merge before it lands", async (
     assert.deepEqual(results.map((r) => r.result), ["aborted"]);
     assert.equal(mainSha(root), mainBefore, "nothing landed");
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
-  } finally {
-    restore();
-  }
+  });
 });
 
 // The per-change status hook (BUGS.md 2026-09-23): the drain mirrors these reports into the
@@ -657,8 +647,7 @@ test("a merge reports each change as it reaches it: the stack lands together, an
 });
 
 test("an abandoned stack reports one change landing at a time, the rest back to awaiting their turn", async () => {
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     // Both roles rewrite the same line: the stack's cherry-pick conflicts and the merge
     // abandons to one-at-a-time.
     const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
@@ -677,9 +666,7 @@ test("an abandoned stack reports one change landing at a time, the rest back to 
       "beta:landing",
       "beta:done",
     ]);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("the gate re-pins the landing ref to the head its verdict judged", async () => {

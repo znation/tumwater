@@ -8,7 +8,7 @@ import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, sh } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { withApprovePi } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import {
   makeCtx,
@@ -16,7 +16,6 @@ import {
   vetAndLand,
   checkRunNumber,
   declareCheck,
-  APPROVE_PI,
   batchFixture,
   runBatch,
   countingCheck,
@@ -45,35 +44,35 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
   const started = path.join(root, ".batch-started");
   const release = path.join(root, ".batch-release");
   countingCheck(root, `if [ "$n" = "3" ]; then ${parkUntil(started, release)}; fi`);
-  const restore = fakePi(APPROVE_PI);
   try {
-    const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
-    await waitForFile(started); // the batch's shared check is running on the old tip
-    const { ctx } = makeCtx(root, freshLoopState("gamma"));
-    assert.equal(await vetAndLand(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer landed");
-    fs.writeFileSync(release, "");
+    await withApprovePi(async () => {
+      const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
+      await waitForFile(started); // the batch's shared check is running on the old tip
+      const { ctx } = makeCtx(root, freshLoopState("gamma"));
+      assert.equal(await vetAndLand(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer landed");
+      fs.writeFileSync(release, "");
 
-    const results = await batch;
+      const results = await batch;
 
-    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "re-stacked, not merge_blocked");
-    assert.deepEqual(
-      sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
-      ["work by beta", "work by alpha", "work by gamma"],
-      "the stack landed on top of the racer, in queue order",
-    );
-    const merged = eventsOfType(root, "merged");
-    assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
-    assert.equal(merged[2]!.commit, mainSha(root), "the re-stacked tip is main's head");
-    assert.deepEqual(
-      batchChecks(root).map((e) => e.status),
-      ["passed", "passed"],
-      "the first check, then one re-check of the re-stacked tree",
-    );
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "landed: the head's ref is gone");
-    assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked change's");
+      assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "re-stacked, not merge_blocked");
+      assert.deepEqual(
+        sh(root, "git", "log", "--format=%s", `${mainBefore}..main`).split("\n"),
+        ["work by beta", "work by alpha", "work by gamma"],
+        "the stack landed on top of the racer, in queue order",
+      );
+      const merged = eventsOfType(root, "merged");
+      assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
+      assert.equal(merged[2]!.commit, mainSha(root), "the re-stacked tip is main's head");
+      assert.deepEqual(
+        batchChecks(root).map((e) => e.status),
+        ["passed", "passed"],
+        "the first check, then one re-check of the re-stacked tree",
+      );
+      assert.equal(await refSha(root, landingRefName("alpha")), null, "landed: the head's ref is gone");
+      assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked change's");
+    });
   } finally {
     fs.writeFileSync(release, ""); // never leave the parked check waiting out its bound
-    restore();
   }
 });
 
@@ -83,8 +82,7 @@ test("a fast-forward lost to a doc-only commit re-stacks without a second batch 
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
   const mainBefore = mainSha(root);
   countingCheck(root, `if [ "$n" = "3" ]; then ${commitOnMain(root, "NOTES.md", "a doc edit")}; fi`);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
@@ -94,9 +92,7 @@ test("a fast-forward lost to a doc-only commit re-stacks without a second batch 
     );
     assert.equal(batchChecks(root).length, 1, "the doc-only re-stack reused the first check's verdict");
     assert.equal(eventsOfType(root, "merged").length, 2);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a batch that loses the fast-forward race on every attempt keeps every ref as merge_blocked", async () => {
@@ -106,8 +102,7 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
   const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
   const mainBefore = mainSha(root);
   countingCheck(root, `if [ "$n" -ge 3 ]; then ${commitOnMain(root, "race.txt", "main moved")}; fi`);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["merge_blocked", "merge_blocked"]);
@@ -120,9 +115,7 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the head keeps its ref");
     assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and the stacked change keeps its");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing merged");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a re-stack that conflicts with what main gained falls back to one-at-a-time", async () => {
@@ -133,8 +126,7 @@ test("a re-stack that conflicts with what main gained falls back to one-at-a-tim
     resolve: (wt) => fs.writeFileSync(path.join(wt, "beta.txt"), "both\n"),
   });
   countingCheck(root, `if [ "$n" = "3" ]; then ${commitOnMain(root, "beta.txt", "main beta")}; fi`);
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "both landed one at a time");
@@ -143,9 +135,7 @@ test("a re-stack that conflicts with what main gained falls back to one-at-a-tim
     assert.equal(sh(root, "git", "show", "main:beta.txt"), "both", "the resolution landed on main");
     assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"));
     assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("an abort between re-stack attempts stops the batch: aborted, refs kept, nothing lands", async () => {
@@ -158,31 +148,30 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
     root,
     `if [ "$n" = "3" ]; then ${commitOnMain(root, "race.txt", "main moved")}; ${parkUntil(started, release)}; fi`,
   );
-  const restore = fakePi(APPROVE_PI);
   try {
-    const controller = new AbortController();
-    const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
-    await waitForFile(started);
-    const mainMid = mainSha(root);
-    controller.abort();
-    fs.writeFileSync(release, "");
+    await withApprovePi(async () => {
+      const controller = new AbortController();
+      const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
+      await waitForFile(started);
+      const mainMid = mainSha(root);
+      controller.abort();
+      fs.writeFileSync(release, "");
 
-    const results = await batch;
+      const results = await batch;
 
-    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
-    assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
-    assert.equal(mainSha(root), mainMid, "nothing landed after the racer");
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+      assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
+      assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
+      assert.equal(mainSha(root), mainMid, "nothing landed after the racer");
+      assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
+      assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    });
   } finally {
     fs.writeFileSync(release, "");
-    restore();
   }
 });
 
 test("a one-change merge lands on its own: one ff, one merged event", async () => {
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const { root, shas, wiringFor } = await batchFixture(["alpha"]);
 
     const results = await runBatch(root, shas, ["alpha"], wiringFor);
@@ -190,9 +179,7 @@ test("a one-change merge lands on its own: one ff, one merged event", async () =
     assert.deepEqual(results.map((r) => r.result), ["changed"]);
     assert.equal(mainSha(root), shas.alpha!, "landed through landApprovedChange: the pin itself on an unmoved main");
     assert.equal(eventsOfType(root, "merged").length, 1);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a red stack check that does not reproduce bisects: both changes land, neither is re-reviewed or rejected", async () => {
@@ -205,8 +192,7 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
     root,
     `#!/bin/sh\n${checkRunNumber(count)}[ "$n" = "3" ] && { echo "planted batch failure"; exit 1; }\necho ok\n`,
   );
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
 
     const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
 
@@ -227,7 +213,5 @@ test("a red stack check that does not reproduce bisects: both changes land, neit
     assert.equal(folded.get("beta")!.length, 1, "nor for beta");
     assert.equal(eventsOfType(root, "review_rejected").length, 0, "nobody rejected");
     assert.equal(eventsOfType(root, "merged").length, 2);
-  } finally {
-    restore();
-  }
+  });
 });

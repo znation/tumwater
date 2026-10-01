@@ -14,8 +14,7 @@ import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing-bat
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { mainSha } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
-import { APPROVE_PI } from "./pi-events.js";
+import { withApprovePi } from "./fake-pi.js";
 import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./lander-fixtures.js";
 
 /** The fixture's wiring with a conflict resolver that always throws — the merge stage's pi
@@ -35,8 +34,7 @@ test("a single vetted change whose conflict resolver throws degrades to 'error' 
   const { root, shas, states, wiringFor } = await batchFixture(["alpha"], {
     edit: (r) => fs.appendFileSync(path.join(r, "shared.txt"), "alpha's line\n"),
   });
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const ctx = makeBatchCtx(root);
     const v = await vetRequest(ctx, request(shas.alpha!, { role: "alpha" }), wiringFor("alpha"));
     assert.equal(v.kind, "stack");
@@ -49,9 +47,7 @@ test("a single vetted change whose conflict resolver throws degrades to 'error' 
     // drain (or leftover recovery) can re-land the change.
     assert.equal(mainSha(root), mainAtMerge);
     assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!);
-  } finally {
-    restore();
-  }
+  });
 });
 
 test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrades a throwing resolver to that change alone", async () => {
@@ -61,8 +57,7 @@ test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrad
   const { root, shas, states, wiringFor } = await batchFixture(["alpha", "beta"], {
     edit: (r, role) => fs.appendFileSync(path.join(r, "shared.txt"), `${role}'s line\n`),
   });
-  const restore = fakePi(APPROVE_PI);
-  try {
+  await withApprovePi(async () => {
     const results = (await runBatch(root, shas, ["alpha", "beta"], throwingWiring(wiringFor))).map((r) => r.result);
     assert.deepEqual(results, ["changed", "error"]);
     assert.match(states.beta!.lastError ?? "", /resolver exploded/);
@@ -72,7 +67,5 @@ test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrad
     assert.doesNotMatch(shared, /beta's line/);
     // Beta's pin is kept for the next drain's recovery.
     assert.notEqual(await refSha(root, landingRefName("beta")), null);
-  } finally {
-    restore();
-  }
+  });
 });
