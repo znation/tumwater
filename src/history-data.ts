@@ -8,7 +8,7 @@
  * GUI's /api/history already is) never forces a core→ui import. */
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { readEventsSince } from "./event-window.js";
+import { readEventsSinceJoined } from "./event-window.js";
 import { formatTimestamp } from "./datetime.js";
 import { squash } from "./text.js";
 import { usageText } from "./event-format.js";
@@ -38,9 +38,9 @@ export const HISTORY_SCAN_MAX_EVENTS = 20_000;
  * its `land_queued` pin before it (the pin is logged during the tick, the tick_end after it)
  * — so the join evidence needs its own read reaching further back. Six hours outlasts any
  * tick the harness runs (every stage inside a tick is timeout-bounded); a tick that somehow
- * queued later than that keeps the raw label, the conservative fallback. The wider read costs
- * one extra bounded backwards scan per `history --since` ask (a CLI command, not a poll
- * loop), and its day-keyed scan never reaches past its own window's first day. */
+ * queued later than that keeps the raw label, the conservative fallback. The wider read shares
+ * one bounded backwards scan with the rows' own window (readEventsSinceJoined), and its
+ * day-keyed scan never reaches past its own window's first day. */
 const TICK_ROW_JOIN_BACKSLACK_MS = 6 * 60 * 60 * 1000;
 
 /** Wider join evidence for a row set whose own window cut events the queued-row join needs
@@ -237,18 +237,21 @@ export function readTickRows(root: string, limit: number, role: string | null): 
 /** The window-shaped sibling of readTickRows: the completed ticks of the last `sinceMs`, not
  * the last N — the collector behind `history --since`. The window read itself (cutoff, the
  * rotation-spanning day-keyed read with its at-most-one-day over-read, the ts filter, and the
- * exact coverage predicate cmdLogs consults) is event-window.ts's readEventsSince — the same
- * read `logs --since` runs — so neither windowed surface can claim coverage the other would
- * hedge or key its read differently. The rows read the cutoff-filtered events, but their
- * queued-row join reads WIDER evidence (TICK_ROW_JOIN_BACKSLACK_MS): a queued tick whose tick
- * spans the cutoff logged its land_queued pin before the cutoff, and without the wider read
- * the row would either keep "Queued to land" after its change landed or misclaim an older
+ * exact coverage predicate cmdLogs consults) is event-window.ts's readEventsSinceJoined — one
+ * backwards scan serves both this view and the wider join read, with the narrow view's events
+ * and coverage derived from the wide scan, so neither windowed surface can claim coverage the
+ * other would hedge or key its read differently. The rows read the cutoff-filtered events, but
+ * their queued-row join reads WIDER evidence (TICK_ROW_JOIN_BACKSLACK_MS): a queued tick whose
+ * tick spans the cutoff logged its land_queued pin before the cutoff, and without the wider
+ * read the row would either keep "Queued to land" after its change landed or misclaim an older
  * tick's pin (BUGS.md 2026-09-30). The rows reuse the pure tickRows with limit =
  * events.length, so pairing, role filtering, and the dash-on-unpaired rule stay exactly the
  * count view's. Pure over root: reads the event log, writes nothing. */
 export function readTickRowsSince(root: string, sinceMs: number, role: string | null): { rows: TickRow[]; covered: boolean } {
-  const { events, covered } = readEventsSince(root, sinceMs);
-  const join = readEventsSince(root, sinceMs + TICK_ROW_JOIN_BACKSLACK_MS);
+  // One backwards scan serves both the rows' window and the wider join read (see
+  // readEventsSinceJoined): two readEventsSince calls re-scanned and re-parsed the same
+  // log bytes — a whole duplicate window scan per `history --since`.
+  const { events, join, covered } = readEventsSinceJoined(root, sinceMs, TICK_ROW_JOIN_BACKSLACK_MS);
   return {
     rows: tickRows(events, events.length, role, { events: join.events, floorTs: join.cutoff }),
     covered,

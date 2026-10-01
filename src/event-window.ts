@@ -161,8 +161,65 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
   };
 }
 
-/** The duration-shaped windowed read shared by the two `--since` surfaces — `logs --since`
- * (log-commands.ts) and `history --since` (history-data.ts's readTickRowsSince): the cutoff is
+/** The duration-shaped windowed read whose consumer needs a SECOND view of the same window
+ * with a wider cutoff (history's tick-row join: a queued tick spanning the rows' cutoff logged
+ * its land_queued pin before that cutoff, so its landing verdict must be joined from evidence
+ * up to `joinBackslackMs` older). One backwards scan serves both: the wide read's day key never
+ * sits after the narrow one's, so every `ts >= cutoff` event it holds is exactly the narrow
+ * read's event list — the narrow scan reads a prefix of the wide scan's bytes and stops no
+ * later (a line older than the narrow day key triggers its early stop before any line older
+ * than the wide day key can) — and the narrow coverage follows from the same scan:
+ * a retained line older than the narrow day key is either older than the wide day key too
+ * (coversFullWindow, which therefore covers the narrow window as well) or sits inside the wide
+ * event list, whose day keys span [wideFromKey, now); the same-day case a day key cannot decide
+ * is decided by the narrow window's oldest retained event predating the narrow cutoff, exactly
+ * as eventWindowCovers decides it for a single read. Calling readEventsSince twice instead
+ * re-scanned and re-parsed the same log bytes a second time — on this repo's own log, a
+ * duplicate ~4 MB scan and ~26k line parses per `history --since`. */
+export function readEventsSinceJoined(
+  root: string,
+  sinceMs: number,
+  joinBackslackMs: number,
+): { cutoff: number; events: HarnessEvent[]; join: { cutoff: number; events: HarnessEvent[] }; covered: boolean } {
+  const now = Date.now();
+  const cutoff = now - sinceMs;
+  const joinCutoff = now - (sinceMs + joinBackslackMs);
+  const window = readWindowEvents(root, dayKey(joinCutoff));
+  const joinEvents = window.events.filter((e) => typeof e.ts === "number" && e.ts >= joinCutoff);
+  // The rows' view: the wide day-key read filtered to the narrow cutoff instant — every
+  // such event's day key is >= the narrow day key (day keys are monotone in ts), so the
+  // wide read's day filter cannot have dropped one the narrow read would hold.
+  const events = joinEvents.filter((e) => typeof e.ts === "number" && e.ts >= cutoff);
+  // Coverage of the NARROW window, decided from the one wide scan. The narrow day's local
+  // midnight turns the day-key comparisons into ts comparisons — day(ts) < narrowFromKey is
+  // exactly ts < that midnight — so the checks below are numeric and the event list's
+  // oldest-first order makes them one bounded pass instead of a day-key formatting per event.
+  const cut = new Date(cutoff);
+  const narrowDayStartMs = new Date(cut.getFullYear(), cut.getMonth(), cut.getDate()).getTime();
+  // One pass up the oldest-first list: the oldest numerically-timestamped event (any line
+  // older than the narrow day proves the narrow scan would have early-stopped on it) and
+  // the first event inside the narrow day (the narrow window's oldest retained event, for
+  // the same-day clause eventWindowCovers decides a single read's coverage with).
+  let oldestTs: number | null = null;
+  let firstNarrowIdx = -1;
+  for (let i = 0; i < window.events.length; i++) {
+    const ts = window.events[i]?.ts;
+    if (typeof ts !== "number") continue;
+    if (oldestTs === null) oldestTs = ts;
+    if (ts >= narrowDayStartMs) {
+      firstNarrowIdx = i;
+      break;
+    }
+  }
+  const covered =
+    window.coversFullWindow ||
+    (oldestTs !== null && oldestTs < narrowDayStartMs) ||
+    firstNarrowIdx === -1 ||
+    (window.events[firstNarrowIdx]?.ts ?? Number.POSITIVE_INFINITY) <= cutoff;
+  return { cutoff, events, join: { cutoff: joinCutoff, events: joinEvents }, covered };
+}
+
+/** The duration-shaped windowed read behind `logs --since` (log-commands.ts): the cutoff is
  * now − sinceMs, the rotation-spanning read is keyed on the cutoff's local calendar day
  * (dayKey — the shared dayKey helper eventDayKey buckets events with, so the read's day keys
  * cannot disagree with the ts filter), the day-keyed read may include earlier hours of that
