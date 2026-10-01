@@ -266,6 +266,27 @@ test("checkBrief reports which file holds the managed sections, and warns when n
   assert.deepEqual(checkBrief(marked), { level: "ok", detail: "brief in TUMWATER.md" });
 });
 
+test("checkBrief reports a brief file that exists but cannot be read as a failure, not a crash", () => {
+  // A directory at the README.md path makes existsSync true and readFileSync fail with
+  // EISDIR, user-independently. briefFile throws (the message is readme.ts's, naming the
+  // file and the fix), and the check must turn that throw into a fail outcome — a crashed
+  // doctor would hide why every loop is about to run without its project brief.
+  const dirReadme = makeRepo();
+  fs.mkdirSync(path.join(dirReadme, "README.md"));
+  const readmeFail = checkBrief(dirReadme);
+  assert.equal(readmeFail.level, "fail");
+  assert.match(readmeFail.detail, /cannot read the project brief "README\.md"/);
+  assert.match(readmeFail.detail, /EISDIR/, "the underlying errno rides along");
+
+  // The candidates are scanned TUMWATER.md first, and the failure names whichever one is
+  // unreadable — a directory at the TUMWATER.md path (no README.md) reports that file.
+  const dirTumwater = makeRepo();
+  fs.mkdirSync(path.join(dirTumwater, "TUMWATER.md"));
+  const tumwaterFail = checkBrief(dirTumwater);
+  assert.equal(tumwaterFail.level, "fail");
+  assert.match(tumwaterFail.detail, /cannot read the project brief "TUMWATER\.md"/);
+});
+
 /** A models.json with one unpriced (free) model and one paid model, for the fallback check. */
 function writeModels(): string {
   const dir = tmpdir("doctor-models-");
