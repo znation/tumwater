@@ -21,13 +21,6 @@ _None yet._
 - **How to reproduce:** a redeploy inside its cooldown, more than 15 minutes after the last restart, whose `buildRed` resolves true: the next poll proceeds into the episode with no cooldown warning at all.
 - **Expected:** the carve-out acts on a red that survives a retry (the gate's flake rule), and engaging it logs a warning whether or not the cut deadline has already passed.
 
-### `tumwater gui`/`tui` self-reload stacks one idle wrapper process per redeploy: reexecSelf spawns the new build as a child and waits on it, so the chain grows for the life of the dashboard (found by human-directed investigation 2026-09-30)
-
-- **Symptom:** at 22:00 on 2026-09-30 the hand-started gui was three processes deep: 36805 `node dist/src/cli.js gui` (started 06:39) → 52275 (the reload after the 09:36 redeploy) → 65470 (the reload after the 21:38 one, the only process listening on 127.0.0.1:7180). The upper two sit idle at ~43–45 MB RSS each, waiting to relay an exit code. Each redeploy adds one more, so a dashboard left up through a week of 2–3 redeploys a day carries 15–20.
-- **Cause:** `reexecSelf` (src/ui/self-reload.ts) runs `spawn(process.execPath, process.argv.slice(1), { stdio: "inherit" })` and then `process.exit` with the child's code — Node has no exec(), so "replace this process" is really "wrap it" — and the reloaded child arms the same watch, so its next reload wraps again. The TUI reloads through the same function.
-- **How to reproduce:** start `tumwater gui` in a self-hosted checkout, let two redeploys land (or rebuild dist at two new commits), then `ps -o pid,ppid,command | grep 'cli.js gui'`: three processes in one parent chain.
-- **Expected:** process depth stays constant across reloads — e.g. the run supervisor's shape: the operator's process stays a thin supervisor and a reload is the child exiting with a restart code for it to respawn, so depth stays at two however many reloads happen.
-
 ### test/process.test.ts's escalation tests spawn their detached victim before any cleanup is armed, so a failed assertion or a killed worker leaks it at PPID 1 forever — 10 accumulated on 2026-09-30 and `tumwater doctor` failed `orphans` (found by human-directed investigation 2026-09-30)
 
 - **Symptom:** at 22:00 on 2026-09-30, 10 `node -e …setInterval(() => {}, 1 << 30)` processes with PPID 1 were alive, started 05:25–10:54 by test runs in the fleet's worktrees (dry ×2, improve ×2, coverage ×2, clean, _land-organize) and two outside it (/tmp/tw-review-mut, .claude/worktrees/metrics-48213ce7). Eight were the `victim.pid` writer of "sweepRunMarker on Linux walks /proc environ and signals only the marked pid"; two were the SIGTERM-trapping `ready` writer of the escalation tests, which only SIGKILL removes. `tumwater doctor` reported `fail orphans — 9 orphaned processes` (the tenth carried no TUMWATER_RUN mark). All ten were killed by hand at ~22:15.
@@ -42,11 +35,21 @@ _None yet._
   - test/cli-gui.test.ts "gui --all-interfaces prints the reachable LAN URLs and serves until killed" — 21:10 (coverage), at 10.1 s.
   - test/tick-finalize.test.ts, assertion `the wake was restored to now` — 14:46 (bugfix).
   - An assertion the warning quotes only as `AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:` — 15:13 (clean), 15:15 (dry), 18:51 (clean), 19:20 (dry), and the 03:03:49 baseline that marked main 29356ddd red until the next baseline passed at 03:04:34.
+  - test/check-permit.test.ts "at the default cap of 2, a third concurrent check starts only after one of the first two finishes" — assertion `durationMs 1901 includes the permit wait` — 2026-10-01 (bugfix run's full suite; passed in isolation immediately after, same pattern).
 - **Cost:** each one is a second full suite run on a landing's critical path; the unnamed one also turned main red.
 - **Observability gap:** the flake warning and the main-red message carry only the first line of the first failure, which for a `strictEqual` is generic, so nothing in events.jsonl names the test — the failing test's name should ride along.
 - **Expected:** each test's timing assumptions hold under the fleet's own load.
 
 ## Fixed
+
+### `tumwater gui`/`tui` self-reload stacks one idle wrapper process per redeploy: reexecSelf spawns the new build as a child and waits on it, so the chain grows for the life of the dashboard (found by human-directed investigation 2026-09-30, fixed 2026-10-01 by bugfix loop)
+
+- **Symptom:** at 22:00 on 2026-09-30 the hand-started gui was three processes deep: 36805 `node dist/src/cli.js gui` (started 06:39) → 52275 (the reload after the 09:36 redeploy) → 65470 (the reload after the 21:38 one, the only process listening on 127.0.0.1:7180). The upper two sit idle at ~43–45 MB RSS each, waiting to relay an exit code. Each redeploy adds one more, so a dashboard left up through a week of 2–3 redeploys a day carries 15–20.
+- **Cause:** `reexecSelf` (src/ui/self-reload.ts) runs `spawn(process.execPath, process.argv.slice(1), { stdio: "inherit" })` and then `process.exit` with the child's code — Node has no exec(), so "replace this process" is really "wrap it" — and the reloaded child arms the same watch, so its next reload wraps again. The TUI reloads through the same function.
+- **How to reproduce:** start `tumwater gui` in a self-hosted checkout, let two redeploys land (or rebuild dist at two new commits), then `ps -o pid,ppid,command | grep 'cli.js gui'`: three processes in one parent chain.
+- **Expected:** process depth stays constant across reloads — e.g. the run supervisor's shape: the operator's process stays a thin supervisor and a reload is the child exiting with a restart code for it to respawn, so depth stays at two however many reloads happen.
+- **Fix:** `reexecSelf` is now the run supervisor's shape: the first call spawns a child marked `TUMWATER_DASHBOARD_CHILD=1`, and a marked process answers its own reload trigger by exiting RESTART_EXIT_CODE (75) instead of spawning a grandchild; the supervisor respawns a sibling on that code and exits with anything else. The chain stays two deep however many redeploys land; gui and tui needed no other change (their triggers already close the server/terminal before re-exec).
+- **Validation gap:** real-run-needed — the unit suite asserted the nesting itself with a fake spawn, so only watching a real `ps` chain across live redeploys could confirm the leak; the new regression test pins the supervisor shape instead.
 
 ### The restart drain window's p75 sample is dominated by trivial no-change ticks, so the window undercuts the real work in flight and aborts it (found by bugfix loop 2026-10-01 while fixing the landing-abort bug — split from that entry's Contributing note; fixed 2026-10-01 by bugfix loop)
 

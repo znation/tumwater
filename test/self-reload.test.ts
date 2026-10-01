@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import type { BuildInfo } from "../src/build-info.js";
 import {
   createReloadWatch,
+  DASHBOARD_CHILD_ENV,
   reexecSelf,
   shouldReload,
   type ReloadChild,
   type ReloadSpawn,
 } from "../src/ui/self-reload.js";
+import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
 import { sleep } from "./wait.js";
 
@@ -27,22 +29,33 @@ test("shouldReload is true only when both stamps exist and name different commit
   assert.equal(shouldReload(null, null), false);
 });
 
-/** A spawner that records its call and captures the child's listeners, so a test can drive the
- * exit/error events without launching anything. */
+interface FakeListeners {
+  exit?: (code: number | null) => void;
+  error?: (err: Error) => void;
+}
+
+/** A spawner that records each call and hands back a fresh child per call, its listeners
+ * captured separately, so a test can drive the exit/error events of any generation without
+ * launching anything. */
 function fakeSpawn(): {
-  calls: Array<[string, string[], { stdio: string }]>;
+  calls: Array<[string, string[], { stdio: string; env: Record<string, string | undefined> }]>;
   spawnImpl: ReloadSpawn;
-  listeners: { exit?: (code: number | null) => void; error?: (err: Error) => void };
+  children: FakeListeners[];
 } {
-  const calls: Array<[string, string[], { stdio: string }]> = [];
-  const listeners: { exit?: (code: number | null) => void; error?: (err: Error) => void } = {};
-  const child = {
-    on(event: string, listener: (...args: unknown[]) => void) {
-      if (event === "exit") listeners.exit = listener as (code: number | null) => void;
-      else listeners.error = listener as (err: Error) => void;
-    },
-  } as ReloadChild;
-  return { calls, spawnImpl: (command, args, options) => (calls.push([command, args, options]), child), listeners };
+  const calls: Array<[string, string[], { stdio: string; env: Record<string, string | undefined> }]> = [];
+  const children: FakeListeners[] = [];
+  const spawnImpl: ReloadSpawn = (command, args, options) => {
+    calls.push([command, args, options]);
+    const listeners: FakeListeners = {};
+    children.push(listeners);
+    return {
+      on(event: string, listener: (...args: unknown[]) => void) {
+        if (event === "exit") listeners.exit = listener as (code: number | null) => void;
+        else listeners.error = listener as (err: Error) => void;
+      },
+    } as ReloadChild;
+  };
+  return { calls, spawnImpl, children };
 }
 
 /** Run fn with process.exit intercepted (the shared ExitError sentinel from
@@ -64,30 +77,60 @@ function captureExit(fn: () => void): number {
   return code;
 }
 
-test("reexecSelf spawns this exact command with inherited stdio", () => {
+test("reexecSelf spawns this exact command with inherited stdio and the child mark", () => {
   const { calls, spawnImpl } = fakeSpawn();
   captureExit(() => reexecSelf(spawnImpl));
-  assert.deepEqual(calls, [[process.execPath, process.argv.slice(1), { stdio: "inherit" }]]);
+  assert.deepEqual(calls, [[
+    process.execPath,
+    process.argv.slice(1),
+    { stdio: "inherit", env: { ...process.env, [DASHBOARD_CHILD_ENV]: "1" } },
+  ]]);
 });
 
 test("reexecSelf exits with the child's code; a null code or spawn error becomes 1", () => {
   const first = fakeSpawn();
   assert.equal(captureExit(() => {
     reexecSelf(first.spawnImpl);
-    first.listeners.exit?.(7);
+    first.children[0]?.exit?.(7);
   }), 7, "the child's exit code is propagated");
 
   const second = fakeSpawn();
   assert.equal(captureExit(() => {
     reexecSelf(second.spawnImpl);
-    second.listeners.exit?.(null);
+    second.children[0]?.exit?.(null);
   }), 1, "a signal death exits 1");
 
   const third = fakeSpawn();
   assert.equal(captureExit(() => {
     reexecSelf(third.spawnImpl);
-    third.listeners.error?.(new Error("boom"));
+    third.children[0]?.error?.(new Error("boom"));
   }), 1, "a failed spawn exits 1");
+});
+
+test("reexecSelf respawns a sibling on the child's restart code — depth stays at two across reloads", () => {
+  // BUGS.md 2026-09-30: the old shape spawned one child and exited with its code, so each
+  // reload wrapped another idle wrapper onto the process chain. The supervisor shape: the
+  // child asks for a fresh generation with RESTART_EXIT_CODE and this process respawns it —
+  // however many redeploys land, there is never a grandchild.
+  const fake = fakeSpawn();
+  captureExit(() => reexecSelf(fake.spawnImpl));
+  assert.equal(fake.calls.length, 1);
+  fake.children[0]?.exit?.(RESTART_EXIT_CODE); // first reload: respawn, do NOT exit
+  assert.equal(fake.calls.length, 2, "a restart code respawns a sibling instead of exiting");
+  fake.children[1]?.exit?.(RESTART_EXIT_CODE); // second reload: still no nesting, still no exit
+  assert.equal(fake.calls.length, 3, "every reload respawns; the supervisor never accumulates");
+  fake.children[2]?.exit?.(0); // an operator stop finally ends the whole dashboard
+});
+
+test("a supervised child (the mark set) exits the restart code instead of spawning", () => {
+  const fake = fakeSpawn();
+  process.env[DASHBOARD_CHILD_ENV] = "1";
+  try {
+    assert.equal(captureExit(() => reexecSelf(fake.spawnImpl)), RESTART_EXIT_CODE);
+    assert.equal(fake.calls.length, 0, "the child asks its supervisor; it never spawns a grandchild");
+  } finally {
+    delete process.env[DASHBOARD_CHILD_ENV];
+  }
 });
 
 test("createReloadWatch fires exactly once when a newer disk build appears", async () => {

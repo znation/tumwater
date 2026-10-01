@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { type BuildInfo, isSelfHosted, readBuildInfo } from "../build-info.js";
+import { RESTART_EXIT_CODE } from "../redeploy-policy.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
  *
@@ -8,8 +9,8 @@ import { type BuildInfo, isSelfHosted, readBuildInfo } from "../build-info.js";
  * started by hand and, without this, keeps serving its startup code until the operator
  * restarts it. When the fleet redeploys itself (redeploy.ts swaps `dist/`) the TUI keeps
  * rendering old modules and the GUI keeps serving old page JS. This module watches for a
- * newer compiled tree on disk and re-execs the same command once, so both surfaces come back
- * on the new code within a poll.
+ * newer compiled tree on disk and hands itself to a fresh copy of the same command (a supervised
+ * respawn, not a nested wrapper), so both surfaces come back on the new code within a poll.
  *
  * The in-memory startup stamp is the only correct reference for "am I stale": after a redeploy
  * swap the on-disk stamp already reads as fresh and the new orchestrator's BuildStatus flips
@@ -41,18 +42,41 @@ export interface ReloadChild {
 export type ReloadSpawn = (
   command: string,
   args: string[],
-  options: { stdio: "inherit" },
+  options: { stdio: "inherit"; env: NodeJS.ProcessEnv },
 ) => ReloadChild;
 
-/** Replace this process with a fresh copy of itself (`process.argv.slice(1)` re-runs the same
- * CLI entry point, e.g. `dist/src/cli.js tui`) and exit with the child's code. A child that
- * cannot start or exits non-zero surfaces as this process's exit code; the operator re-runs
- * manually. TUI/GUI are user-launched, not supervisor children, so RESTART_EXIT_CODE is never
- * involved. */
+/** Marks a dashboard process as the reload supervisor's child: on its own reload trigger it
+ * exits RESTART_EXIT_CODE instead of spawning a grandchild, so the supervisor can respawn a
+ * sibling and the chain stays two deep however many redeploys land (BUGS.md 2026-09-30). */
+export const DASHBOARD_CHILD_ENV = "TUMWATER_DASHBOARD_CHILD";
+
+/** Hand this process's dashboard duty to a fresh copy of itself (`process.argv.slice(1)` re-runs
+ * the same CLI entry point, e.g. `dist/src/cli.js tui`) and stay alive as its thin supervisor,
+ * respawning a sibling each time the child exits RESTART_EXIT_CODE — the run supervisor's shape.
+ * Node has no exec(), so spawning a child and waiting would leave this process as a wrapper on
+ * the chain, and the child (which arms the same watch) would wrap another on its own reload:
+ * one idle process per redeploy, for the life of the dashboard. A child that exits with anything
+ * else, cannot start, or dies by signal ends the dashboard with that code; the operator re-runs
+ * manually. */
 export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
-  const child = spawnImpl(process.execPath, process.argv.slice(1), { stdio: "inherit" });
-  child.on("exit", (code) => process.exit(code ?? 1));
-  child.on("error", () => process.exit(1));
+  // A supervised child must not nest: it asks its supervisor for a fresh generation instead.
+  if (process.env[DASHBOARD_CHILD_ENV] !== undefined) process.exit(RESTART_EXIT_CODE);
+  const options = {
+    stdio: "inherit" as const,
+    env: { ...process.env, [DASHBOARD_CHILD_ENV]: "1" },
+  };
+  const startChild = (): ReloadChild => spawnImpl(process.execPath, process.argv.slice(1), options);
+  const supervise = (): void => {
+    const child = startChild();
+    child.on("exit", (code) => {
+      // The child closed its own server/terminal before asking; a sibling picks up on the new
+      // build with the port (or tty) free.
+      if (code === RESTART_EXIT_CODE) supervise();
+      else process.exit(code ?? 1);
+    });
+    child.on("error", () => process.exit(1));
+  };
+  supervise();
 }
 
 /** Everything createReloadWatch needs; all seams injectable so tests need no real timers, git,
