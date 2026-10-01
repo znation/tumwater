@@ -97,7 +97,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   const needsYou = (alerts) => alerts.filter((a) => a.tone === "red" || a.tone === "amber" || a.tone === "indigo").length;
   // An activity item's kind — its icon and tone, and whether the Notable filter keeps it.
   const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"];
-  const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "supervisor_exit", "warning"];
+  const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];
   function eventKind(item) {
     if (item.type === "merged") return "landing";
     if (item.type === "question_posted") return "attention";

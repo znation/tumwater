@@ -41,7 +41,18 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
   // drifted (the same pinning convention as eventsRotationLabel's rotation phrase).
   assert.deepEqual(
     NOTIFY_EVENT_TYPES,
-    ["budget_warning", "budget_paused", "role_streak_paused", "land_failed", "restart_blocked"],
+    [
+      "budget_warning",
+      "budget_paused",
+      "role_streak_paused",
+      "role_cap_paused",
+      "land_failed",
+      "restart_blocked",
+    ],
+  );
+  assert.ok(
+    !(NOTIFY_EVENT_TYPES as readonly string[]).includes("role_cap_resumed"),
+    "a resume is good news; the paused page is the actionable one",
   );
   assert.equal(NOTIFY_MIN_GAP_MS, 60_000);
 });

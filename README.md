@@ -45,7 +45,9 @@ Then, from another terminal:
 with it the director prompt, to your whole network, so pair it with `--token <secret>`.
 
 Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
-(`maxDailyCostUsd`), a nightly `quietHours` window (e.g. `"23:00-07:00"` local time) during
+(`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
+cap starts no new ticks until the next local day or a live edit), a nightly `quietHours` window
+(e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), user-defined `customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak

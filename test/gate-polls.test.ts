@@ -152,3 +152,48 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   assert.equal(handoff[0]!.provider, "free");
   assert.equal(handoff[0]!.model, "qwen-free");
 });
+
+test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {
+  const root = tmpdir("gate-polls-cap-");
+  const config = defaultConfig();
+  config.maxDailyCostUsdPerRole = { docs: 0.5, coverage: 0 };
+  const docsState = freshLoopState("docs");
+  recordDailyCost(docsState, 0.5);
+  const runners = [
+    fakeRunner("docs", docsState, null, []),
+    fakeRunner("coverage", freshLoopState("coverage"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+  ];
+
+  const states = newFleetGateStates(config);
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", DIRECTOR_ROLE] },
+    infoFile: path.join(root, "orchestrator.json"),
+  };
+
+  const first = pollFleetGates(states, ctx);
+  assert.ok(first.capPaused.has("docs"), "the over-cap role is blocked on this very poll");
+  assert.ok(!first.capPaused.has("coverage"), "a 0 cap disables that role's gate");
+  assert.ok(!first.capPaused.has(DIRECTOR_ROLE), "the director is exempt");
+  assert.ok(!first.pausedRoles.has("docs"), "no pause marker is written — the sets stay separate");
+
+  // Edge-triggered: a second poll over the cap adds no event, and the set still names the role.
+  const second = pollFleetGates(states, ctx);
+  assert.ok(second.capPaused.has("docs"));
+
+  // A live edit removing the key lifts the verdict (and logs the resume).
+  const lifted = pollFleetGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
+  assert.equal(lifted.capPaused.size, 0);
+
+  // An absent key from the start: the empty set, no events at all.
+  const quiet = newFleetGateStates(config);
+  const bare = pollFleetGates(quiet, { ...ctx, liveConfig: { ...config, maxDailyCostUsdPerRole: undefined } });
+  assert.equal(bare.capPaused.size, 0);
+  assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_paused").length, 1);
+  assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_resumed").length, 1);
+});

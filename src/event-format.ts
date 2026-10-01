@@ -189,6 +189,13 @@ export function eventMessage(e: HarnessEvent): string {
       // harness handling the failure. Names the streak depth and the lift command, so the
       // operator knows why the loop stopped and what to do about it.
       return `role ${e.role ?? "?"} paused — ${e.streak ?? "?"} ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
+    case "role_cap_paused":
+      // Routine state change, like budget_paused — no warning prefix: the pause IS the harness
+      // holding the role's own spend line. Names the role, its spend vs its cap, and the two
+      // lift paths, so the operator knows why the loop stopped and what to do about it.
+      return `role ${e.role ?? "?"} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
+    case "role_cap_resumed":
+      return `role ${e.role ?? "?"} resumed — it is under its daily cap again and ticks again`;
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.

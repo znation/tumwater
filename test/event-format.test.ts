@@ -230,6 +230,174 @@ test("formatEvent renders the resume event", () => {
   assert.match(line, /feature\s+resuming the tick a shutdown interrupted \(same pi session and worktree\)/);
 });
 
+// The daily cost budget's transition events (plans/daily-cost-budget.md): routine state
+// changes like counters_reset — plain lines carrying the spend and cap that triggered them,
+// no warning prefix.
+test("formatEvent renders the budget warning with the spend phrase and the still-open gate", () => {
+  const warned = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_warning",
+    spentUsd: 40.005,
+    capUsd: 50,
+  } as never);
+  assert.match(warned, /harness\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; the gate is still open/);
+});
+
+test("formatEvent renders the budget transition events plainly with spend and cap", () => {
+  const paused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 50.123,
+    capUsd: 50,
+  } as never);
+  assert.match(paused, /harness\s+budget paused — \$50\.12 of \$50\.00 daily cost reached/);
+  assert.ok(!paused.includes("warning"), "a routine state change is not a warning");
+
+  const resumed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_resumed",
+    spentUsd: 12.345,
+    capUsd: 50,
+  } as never);
+  assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
+
+  // The per-role cap transitions (src/role-cap-gates.ts) name the role, its spend vs its
+  // cap, and the two lift paths; the resume states the loop ticks again.
+  const rolePaused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_cap_paused",
+    role: "docs",
+    spentUsd: 0.5,
+    capUsd: 0.5,
+  } as never);
+  assert.match(rolePaused, /harness\s+role docs paused — \$0\.50 of \$0\.50 of its daily cap spent/);
+  assert.match(rolePaused, /raised or removed in tumwater\.json or the local day rolls over/);
+  assert.ok(!rolePaused.includes("warning"), "a routine state change is not a warning");
+
+  const roleResumed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_cap_resumed",
+    role: "docs",
+  } as never);
+  assert.match(roleResumed, /harness\s+role docs resumed — it is under its daily cap again and ticks again/);
+
+  // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback ticks were
+  // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
+  const handback = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_handback",
+    roles: ["steward", "plan"],
+  } as never);
+  assert.match(handback, /harness\s+budget reopened: handed steward, plan back to the primary/);
+  const bareHandback = formatEvent({ ts: 0, loop: "harness", type: "budget_handback" } as never);
+  assert.match(bareHandback, /budget reopened: handed \? back to the primary/);
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
+  assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
+
+  // The cost n/a fallback (plans/fallback-model.md): a switch names the model that took over,
+  // and a pause names a configured fallback the gate refused — the operator's next action.
+  const fallback = formatEvent({
+    ts: Date.UTC(2026, 0, 2, 3, 4, 5),
+    loop: "harness",
+    type: "budget_fallback",
+    spentUsd: 10.5,
+    capUsd: 10,
+    provider: "omlx",
+    model: "local-free",
+  } as never);
+  assert.match(
+    fallback,
+    /harness\s+budget fallback — \$10\.50 of \$10\.00 daily cost reached; role loops continue on omlx\/local-free \(cost n\/a\)/,
+  );
+  const refused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 10.5,
+    capUsd: 10,
+    fallbackRejected: "omlx/typo",
+  } as never);
+  assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
+  // A free fallback the breaker demoted (BUGS.md 2026-09-20): the backend is what to fix, and
+  // the fleet retries it on its own — both belong on the line.
+  const demoted = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "budget_paused",
+    spentUsd: 10.5,
+    capUsd: 10,
+    fallbackDemoted: "omlx/qwen",
+    failures: 3,
+  } as never);
+  assert.match(
+    demoted,
+    /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/qwen is not serving — 3 consecutive ticks failed on it; one probe tick retries it after a cool-down\)/,
+  );
+  assert.ok(!demoted.includes("warning"), "a routine state change is not a warning");
+});
+
+// The live concurrency-cap change event (PLANS.md, Live maxConcurrent): a routine state
+// change like counters_reset — a plain line carrying from → to in that order, no warning prefix.
+test("formatEvent renders the maxConcurrent change event plainly with from and to", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "max_concurrent_changed",
+    from: 1,
+    to: 4,
+  } as never);
+  assert.match(line, /harness\s+maxConcurrent changed: 1 → 4/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "max_concurrent_changed" } as never);
+  assert.match(bare, /maxConcurrent changed:/);
+});
+
+// The live session-retention change event (PLANS.md, Live sessionRetentionDays): a routine
+// state change like max_concurrent_changed — a plain line carrying from → to, no warning prefix.
+test("formatEvent renders the retention change event plainly with from and to", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "retention_changed",
+    from: 30,
+    to: 1,
+  } as never);
+  assert.match(line, /harness\s+sessionRetentionDays changed: 30 → 1/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no payloads; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "retention_changed" } as never);
+  assert.match(bare, /sessionRetentionDays changed:/);
+});
+
+// The live config-change event (PLANS.md "Live config-change event"): a routine state change
+// like its maxConcurrent/retention siblings — a plain line naming the edited keys, no warning.
+test("formatEvent renders the config change event plainly with the edited keys", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "config_changed",
+    keys: ["provider", "thrashTurns"],
+  } as never);
+  assert.match(line, /harness\s+config changed: provider, thrashTurns/);
+  assert.ok(!line.includes("warning"), "a routine state change is not a warning");
+
+  // A torn or hand-edited event line could carry no keys; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "harness", type: "config_changed" } as never);
+  assert.match(bare, /config changed$/);
+  const empty = formatEvent({ ts: 0, loop: "harness", type: "config_changed", keys: [] } as never);
+  assert.match(empty, /config changed$/);
+});
 // Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost so
 // operators see where spend went — after result/summary/error, "·"-separated like the budget
 // badge. Zero or absent fields render byte-identical to a pre-feature line (no trailing sep).

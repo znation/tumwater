@@ -191,6 +191,13 @@ export interface TumwaterConfig {
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
   maxDailyCostUsd: number;
+  /** Per-role daily cost caps in USD, keyed by role id (the per-role sibling of
+   * `maxDailyCostUsd`): a loop whose local-day spend has reached its cap starts no new ticks
+   * until local midnight or a live edit raises/removes it. 0 disables that role's cap; an
+   * absent key means uncapped. The director is exempt — an explicit human prompt outranks the
+   * autonomous-spend cap. Keys must name known roles (built-in or customLoops) — a typo is a
+   * validation error, never a silently inert cap. */
+  maxDailyCostUsdPerRole?: Record<string, number>;
   /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
    * which role loops start no new ticks (in-flight ticks finish; a tick due inside the
    * window starts at window end). A window may wrap midnight (start > end); an empty string
@@ -261,6 +268,7 @@ export const TOP_LEVEL_KEYS = [
   "logMaxBytes",
   "sessionRetentionDays",
   "maxDailyCostUsd",
+  "maxDailyCostUsdPerRole",
   "quietHours",
   "notify",
   "fallbackModel",

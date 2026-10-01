@@ -298,7 +298,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // start gate and the landings' startHeld read the LATEST poll's verdict at permit
       // time from gateStates.fleetHold, so a waiter granted its permit after later polls
       // ran meets the hold as it stands then, not as this poll left it.
-      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, quietNow } =
+      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, capPaused, quietNow } =
         pollFleetGates(gateStates, {
         root,
         runners,
@@ -409,7 +409,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           once.active &&
           !once.isSettled(runner) &&
           !runner.state.running &&
-          (pausedRolesSet.has(runner.role) || operatorPauseBlocks(runner.role))
+          (pausedRolesSet.has(runner.role) || capPaused.has(runner.role) || operatorPauseBlocks(runner.role))
         ) {
           once.settle(runner.role, "paused");
         }
@@ -424,6 +424,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
         // included (the operator named that one loop deliberately).
         if (pausedRolesSet.has(runner.role)) continue;
+        // The role's own daily cost cap (src/role-cap-gates.ts): no start-gate change — a
+        // parked waiter finishes (in-flight ticks finish, NEW ticks are gated at scheduling,
+        // exactly like every per-role pause), and there is no fallback-probe exception: the
+        // stop is about spend, and probing it adds noise, not signal. The lift is a live
+        // config edit or local midnight — no marker exists for `resume --role` to touch.
+        if (capPaused.has(runner.role)) continue;
         if (operatorPauseBlocks(runner.role))
           continue; // no new role ticks while either gate holds
         if (held && runner.role !== DIRECTOR_ROLE) continue; // nor while a failure storm holds

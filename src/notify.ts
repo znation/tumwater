@@ -23,6 +23,7 @@ export const NOTIFY_EVENT_TYPES = [
   "budget_warning", // daily spend crossed 80% of the cap, gate still open — time to raise it or fix the fallback before the page below
   "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
+  "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
 ] as const;

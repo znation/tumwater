@@ -5,7 +5,59 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role daily cost cap: a loop over its own cap stops starting ticks — the feed names it, the notify hook pages, midnight or an edit lifts it (planned 2026-09-30 by plan loop) — part 1/2, the gate
+### The cap-paused loop is legible: the status table, TUI, GUI, and `status --json` read the same cap verdict (planned 2026-09-30 by plan loop) — part 2/2, the observers
+
+**Goal.** Part 1/2 blocks a cap-paused loop at scheduling and pages the feed, but no observer
+surfaces the verdict: the shared state-cell ladder (`loopPhase`, src/ui/status-model.ts) reads
+"paused" only from the operator pause marker and the fleet budget gate, so an idle loop under its
+own cap reads as its ordinary sleep/queue state and `status --json` carries nothing to say it is
+held. Give every observer the same verdict the scheduler enforces — the fleet budget gate's rule
+that "what an operator sees is what the scheduler is doing": the snapshot computes the cap verdict
+per loop, the cell ladder names it, and the payload carries it. Depends on part 1/2 landing
+(it provides `roleCapPaused`); the two are otherwise independent.
+
+**Approach.**
+1. `src/status-data.ts`: add `capPaused: string[]` to `StatusSnapshot` — the ids of enabled loops
+   whose local-day spend has reached their cap, computed in the existing loops pass with
+   `roleCapPaused(s, caps?.[s.role])` (src/role-cap-gates.ts) against the caps from the same
+   last-known-good config that produced the loop list (a transiently broken tumwater.json degrades
+   with the whole config, like `quietHours`). Always present, empty when none — the `pausedRoles`
+   shape — fresh per poll.
+2. `src/ui/status-model.ts`: a new `capPaused` parameter on `loopPhase`, checked after `userPaused`
+   (user intent still wins) and before `budgetPaused` (the role's own cap is the more specific spend
+   state — the ladder's existing "user intent is more specific than spend state" argument extended
+   one level), returning `"cap paused"` for an idle loop; `loopRowCells` passes
+   `snap.capPaused.includes(s.role)`. That is the single ladder the status table and both
+   dashboards share, so the terminal `status`, the TUI, and the GUI's per-loop phase pill (which
+   renders the server-precomputed phase) all pick up the label from this one change — no browser
+   blob edit beyond verifying the pill renders the new string.
+3. `src/ui/status-payload.ts`: carry `capPaused` in the payload field list beside `pausedRoles`, so
+   `status --json`, the GUI, and the TUI read one shape.
+No new CLI flag, config key, or doc surface — the key's docs land in part 1/2.
+
+**Tests.**
+- `test/status-data.test.ts`: a fixture loop with today's `dayStamp` and `dayCostUsd` at/over its
+  cap, config holding `maxDailyCostUsdPerRole`, puts the role in `capPaused`; absent key → `[]`;
+  a stale-stamp loop (yesterday's spend) is never cap-paused.
+- `test/status-model.test.ts`: a cap-paused idle loop's `loopPhase`/`loopRowCells` reads
+  `cap paused`; an operator- AND cap-paused loop still reads `paused` (user intent wins); a
+  fleet-budget-paused AND cap-paused idle loop reads `cap paused` (more specific spend state).
+- `test/status-payload.test.ts`: the field is present in the payload.
+
+**Acceptance criteria.**
+- `npm run test` passes with the cases above.
+- `status --json` exposes `capPaused`; a cap-paused idle loop reads `cap paused` in the terminal
+  status table, the TUI, and the GUI's loop pill; an operator-paused cap-paused loop still reads
+  `paused`; in-flight ticks, the fleet budget badge, and every other cell are unchanged.
+
+**Sizing.** One run: three source files plus three test files, well under 200 lines including
+tests; no design question left open (the ladder position and the payload field are decided above).
+Sibling: part 1/2 (the gate), which this plan depends on.
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+### Per-role daily cost cap: a loop over its own cap stops starting ticks — the feed names it, the notify hook pages, midnight or an edit lifts it (planned 2026-09-30 by plan loop, done 2026-10-01 by feature) — part 1/2, the gate
 
 **Goal.** The fleet has a fleet-wide daily cap (`maxDailyCostUsd`, src/budget-gates.ts) and the
 80% `budget_warning` — but per-role spend is only *visible* (the report's "Cost by role" line, the
@@ -106,58 +158,7 @@ above — plus four-to-five test files, well under 400 lines including tests; no
 open (stateless verdict, event names, exemptions, and validation idiom are all decided above).
 Sibling: part 2/2 (the observers) depends on this plan's `roleCapPaused` and lands after it.
 
-### The cap-paused loop is legible: the status table, TUI, GUI, and `status --json` read the same cap verdict (planned 2026-09-30 by plan loop) — part 2/2, the observers
 
-**Goal.** Part 1/2 blocks a cap-paused loop at scheduling and pages the feed, but no observer
-surfaces the verdict: the shared state-cell ladder (`loopPhase`, src/ui/status-model.ts) reads
-"paused" only from the operator pause marker and the fleet budget gate, so an idle loop under its
-own cap reads as its ordinary sleep/queue state and `status --json` carries nothing to say it is
-held. Give every observer the same verdict the scheduler enforces — the fleet budget gate's rule
-that "what an operator sees is what the scheduler is doing": the snapshot computes the cap verdict
-per loop, the cell ladder names it, and the payload carries it. Depends on part 1/2 landing
-(it provides `roleCapPaused`); the two are otherwise independent.
-
-**Approach.**
-1. `src/status-data.ts`: add `capPaused: string[]` to `StatusSnapshot` — the ids of enabled loops
-   whose local-day spend has reached their cap, computed in the existing loops pass with
-   `roleCapPaused(s, caps?.[s.role])` (src/role-cap-gates.ts) against the caps from the same
-   last-known-good config that produced the loop list (a transiently broken tumwater.json degrades
-   with the whole config, like `quietHours`). Always present, empty when none — the `pausedRoles`
-   shape — fresh per poll.
-2. `src/ui/status-model.ts`: a new `capPaused` parameter on `loopPhase`, checked after `userPaused`
-   (user intent still wins) and before `budgetPaused` (the role's own cap is the more specific spend
-   state — the ladder's existing "user intent is more specific than spend state" argument extended
-   one level), returning `"cap paused"` for an idle loop; `loopRowCells` passes
-   `snap.capPaused.includes(s.role)`. That is the single ladder the status table and both
-   dashboards share, so the terminal `status`, the TUI, and the GUI's per-loop phase pill (which
-   renders the server-precomputed phase) all pick up the label from this one change — no browser
-   blob edit beyond verifying the pill renders the new string.
-3. `src/ui/status-payload.ts`: carry `capPaused` in the payload field list beside `pausedRoles`, so
-   `status --json`, the GUI, and the TUI read one shape.
-No new CLI flag, config key, or doc surface — the key's docs land in part 1/2.
-
-**Tests.**
-- `test/status-data.test.ts`: a fixture loop with today's `dayStamp` and `dayCostUsd` at/over its
-  cap, config holding `maxDailyCostUsdPerRole`, puts the role in `capPaused`; absent key → `[]`;
-  a stale-stamp loop (yesterday's spend) is never cap-paused.
-- `test/status-model.test.ts`: a cap-paused idle loop's `loopPhase`/`loopRowCells` reads
-  `cap paused`; an operator- AND cap-paused loop still reads `paused` (user intent wins); a
-  fleet-budget-paused AND cap-paused idle loop reads `cap paused` (more specific spend state).
-- `test/status-payload.test.ts`: the field is present in the payload.
-
-**Acceptance criteria.**
-- `npm run test` passes with the cases above.
-- `status --json` exposes `capPaused`; a cap-paused idle loop reads `cap paused` in the terminal
-  status table, the TUI, and the GUI's loop pill; an operator-paused cap-paused loop still reads
-  `paused`; in-flight ticks, the fleet budget badge, and every other cell are unchanged.
-
-**Sizing.** One run: three source files plus three test files, well under 200 lines including
-tests; no design question left open (the ladder position and the payload field are decided above).
-Sibling: part 1/2 (the gate), which this plan depends on.
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### Budget warning at 80% of the daily cap: the notify hook pages before the gate bites, not after (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 

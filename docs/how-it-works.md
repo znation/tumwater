@@ -107,6 +107,11 @@ discards a role's in-flight landing.
   fleet logs one `budget_warning` event when spend crosses a fixed 80% of the cap while the
   gate is still open — re-armed when spend falls back below (a new day, a raised cap) — so a
   configured notify command can page the operator while there is still room to act.
+- `maxDailyCostUsdPerRole` (optional map of role id to USD; 0 disables that role's cap) bounds
+  one role's own daily spend the way `maxDailyCostUsd` bounds the fleet's: a loop that has
+  reached its cap starts no new ticks until the next local day or a live edit raises/removes
+  the cap. In-flight ticks finish and the director is exempt; a per-role cap never engages the
+  fallback, and the other roles, the fleet-wide cap, and its fallback demotion are untouched.
 - `fallbackModel` names a free model that role loops switch to at the cap instead of stopping.
   Only a model pi's `models.json` prices at zero is accepted; anything else leaves the fleet
   paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive

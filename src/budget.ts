@@ -22,7 +22,10 @@ export function todayStamp(now = Date.now()): string {
  * stale or missing — a loop that hasn't ticked since yesterday reads as $0 today with no save
  * required, and spend recorded before this field existed is unknown. Reads never mutate.
  * See plans/daily-cost-budget.md. */
-export function dailyCost(s: LoopState, now = Date.now()): number {
+export function dailyCost(
+  s: Pick<LoopState, "dayStamp" | "dayCostUsd">,
+  now = Date.now(),
+): number {
   return s.dayStamp === todayStamp(now) ? (s.dayCostUsd ?? 0) : 0;
 }
 

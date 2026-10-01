@@ -10,6 +10,11 @@ import { fallbackDemotion } from "./fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
+  newRoleCapGateState,
+  pollRoleCapGate,
+  type RoleCapGateState,
+} from "./role-cap-gates.js";
+import {
   newQuietHoursGateState,
   pollQuietHoursGate,
   type QuietHoursGateState,
@@ -46,6 +51,7 @@ export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
   streak: StreakGateState;
+  cap: RoleCapGateState;
   quiet: QuietHoursGateState;
   fleetHold: FleetHold;
   errorStorm: ErrorStorm;
@@ -60,6 +66,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     budget: newBudgetGateState(config),
     pause: newPauseGateState(),
     streak: newStreakGateState(),
+    cap: newRoleCapGateState(),
     quiet: newQuietHoursGateState(),
     fleetHold: FLEET_OPEN,
     errorStorm: ERROR_STORM_QUIET,
@@ -79,6 +86,7 @@ interface FleetGatePoll {
   roleConfig: TumwaterConfig;
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
+  capPaused: ReadonlySet<string>;
   quietNow: boolean;
 }
 
@@ -178,6 +186,14 @@ export function pollFleetGates(
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
 
+  // The per-role daily cost cap (src/role-cap-gates.ts): a loop whose local-day spend has
+  // reached its own maxDailyCostUsdPerRole entry starts no new ticks — the stateless verdict
+  // recomputed every poll, no pause marker written (the marker is anonymous; a cap pause must
+  // never masquerade as an operator's), so this returns its own set beside pausedRoles and the
+  // pause gates' edge bookkeeping never sees it. A live config edit applies on the next poll;
+  // local midnight lifts the verdict by itself.
+  const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
+
   // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
   // which role loops start no new ticks — the operator pause's semantics on a schedule.
   // The config value is read fresh per cycle, so a live edit applies on the next poll;
@@ -224,5 +240,5 @@ export function pollFleetGates(
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, runners, now);
 
-  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, quietNow };
+  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, capPaused, quietNow };
 }

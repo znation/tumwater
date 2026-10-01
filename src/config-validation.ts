@@ -397,6 +397,33 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     }
   }
 
+  // Per-role daily cost caps (src/role-cap-gates.ts): each key must name a known role —
+  // built-in or customLoops — because a typo'd id would silently no-op the cap, the exact
+  // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
+  // is fully collected by this point, so a custom loop can be capped). Each value is a
+  // spend threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap.
+  if ("maxDailyCostUsdPerRole" in r) {
+    const caps = r.maxDailyCostUsdPerRole;
+    if (!isJsonObject(caps)) {
+      problems.push(
+        `maxDailyCostUsdPerRole must be an object mapping role ids to USD caps (got ${show(caps)})`,
+      );
+    } else {
+      for (const [id, cap] of Object.entries(caps)) {
+        if (!allRoleIds().includes(id) && !customNames.has(id)) {
+          problems.push(
+            `maxDailyCostUsdPerRole.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
+          );
+          continue;
+        }
+        if (typeof cap !== "number" || !Number.isFinite(cap) || cap < 0)
+          problems.push(
+            `maxDailyCostUsdPerRole.${id} must be a number of 0 or more (0 disables; got ${show(cap)})`,
+          );
+      }
+    }
+  }
+
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
   // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards

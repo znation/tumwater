@@ -530,3 +530,47 @@ test("validateConfig collects every check-section problem into one message", () 
   // All four named in one throw, so a single edit fixes them all — one bullet per problem.
   assert.equal(err.split("\n").filter((l) => l.trim().startsWith("-")).length, 4);
 });
+
+test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and rejects bad ones", () => {
+  // Absent key: the pre-feature shape, still valid.
+  assert.doesNotThrow(() => validateConfig(defaultConfig()));
+  // Built-in ids, a customLoops name, and the disabled 0 are all valid.
+  assert.doesNotThrow(() =>
+    validateConfig({
+      ...defaultConfig(),
+      maxDailyCostUsdPerRole: { organize: 0.5, coverage: 0 },
+      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+    }),
+  );
+  assert.doesNotThrow(() =>
+    validateConfig({
+      ...defaultConfig(),
+      maxDailyCostUsdPerRole: { sniff: 1 },
+      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+    }),
+  );
+
+  // A non-object value names the expected shape.
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: 5 }),
+    /maxDailyCostUsdPerRole must be an object mapping role ids to USD caps \(got 5\)/,
+  );
+  // An unknown id is the roles.<id> idiom — a typo must fail fast, never silently no-op a cap.
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organiz: 1 } }),
+    /maxDailyCostUsdPerRole\.organiz is not a known role \(valid ids: /,
+  );
+  // The value shapes: negative, non-numeric, and non-finite each fail with the wording.
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: -1 } }),
+    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got -1\)/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: "1" } }),
+    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got "1"\)/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: Number.POSITIVE_INFINITY } }),
+    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got Infinity\)/,
+  );
+});
