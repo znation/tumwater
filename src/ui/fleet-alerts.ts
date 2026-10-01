@@ -2,7 +2,8 @@
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
  * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
- * as input but does not share helpers with beyond badges.ts's pauseCountdown; `tone` ranks an
+ * as input but does not share helpers with beyond badges.ts's pauseCountdown and text.ts's
+ * pauseReasonSuffix; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
@@ -10,7 +11,7 @@
 import type { StatusSnapshot } from "../status-data.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
-import { plural, usd, usdCap } from "../text.js";
+import { pauseReasonSuffix, plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,
@@ -51,13 +52,6 @@ function entryTitle(title: string): string {
 /** ISO instants in server text (a restart cooldown's deadline) in local time. */
 function localizeInstants(text: string): string {
   return text.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g, (iso) => formatTimestamp(Date.parse(iso)));
-}
-
-/** The ` — "<reason>"` suffix a pause title carries when the operator stated a why
- * (`pause --reason <text>`); no reason, no change to today's byte-exact title. One home so
- * the timed and untimed titles cannot drift on the quoting. */
-function reasonSuffix(reason: string | undefined): string {
-  return reason ? ` — "${reason}"` : "";
 }
 
 /** Everything about the fleet that needs the operator, most urgent first: a spent budget, a red
@@ -178,8 +172,8 @@ export function fleetAlerts(
       // The operator's pause reason (`pause --reason <text>`) states verbatim, so an
       // operator returning to a paused fleet knows why without digging through history.
       title: left
-        ? `The fleet is paused and resumes in ${left}${reasonSuffix(snap.pauseReason)}`
-        : `The fleet is paused${reasonSuffix(snap.pauseReason)}`,
+        ? `The fleet is paused and resumes in ${left}${pauseReasonSuffix(snap.pauseReason)}`
+        : `The fleet is paused${pauseReasonSuffix(snap.pauseReason)}`,
       detail: "Loops start no new ticks. In-flight ticks finish, and the director still runs your prompts.",
       actions: [{ label: "Resume now", act: "resume" }],
     });

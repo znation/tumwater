@@ -2,7 +2,7 @@ import type { TestCounts } from "../build-check.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { shortSha, usd, usdCap } from "../text.js";
+import { pauseReasonSuffix, shortSha, usd, usdCap } from "../text.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
  * table (status-render.ts's renderStatus header) and the JSON/GUI payload
@@ -135,7 +135,7 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
   // badge keeps today's byte-exact form, including the empty badge an indefinite pause
   // has always had — a reason standing is the one thing that makes the untimed pause
   // visible up here, because the operator wrote down why and the header should say it.
-  const why = reason ? ` — "${reason}"` : "";
+  const why = pauseReasonSuffix(reason);
   if (!left && !reason) return "";
   return left ? ` · paused — auto-resumes in ${left}${why}` : ` · paused${why}`;
 }

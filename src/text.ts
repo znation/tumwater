@@ -182,6 +182,16 @@ export function mainRedPhrase(sha: unknown): string {
   return `main ${shortSha(sha)} is red`;
 }
 
+/** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
+ * one home so the CLI's confirmation line (operator-commands.ts), the status header's pause
+ * badge (ui/badges.ts), and the paused alert's title (ui/fleet-alerts.ts) cannot drift on the
+ * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact
+ * form. (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot
+ * import TypeScript.) */
+export function pauseReasonSuffix(reason: string | undefined): string {
+  return reason ? ` — "${reason}"` : "";
+}
+
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (failure-report.ts), and the fleet

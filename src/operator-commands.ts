@@ -10,7 +10,7 @@ import {
   queuedPrompts,
   queuedRolePrompts,
 } from "./inbox.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, pauseReasonSuffix } from "./text.js";
 import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
 import { errCode } from "./errno.js";
 import { allRoleIds, DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
@@ -173,7 +173,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   }
   const { when, tail } = markerApplyNote(root);
   const { forPhrase, note } = timedPauseBits(timed, now);
-  const why = reason ? ` — "${reason}"` : "";
+  const why = pauseReasonSuffix(reason);
   say(
     `fleet paused${forPhrase}${why} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
   );
