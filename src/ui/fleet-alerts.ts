@@ -2,14 +2,14 @@
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
  * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
- * as input but does not share helpers with beyond badges.ts's humanSeconds; `tone` ranks an
+ * as input but does not share helpers with beyond badges.ts's pauseCountdown; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status-data.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { humanSeconds } from "./badges.js";
+import { pauseCountdown } from "./badges.js";
 import { plural, usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
@@ -164,7 +164,7 @@ export function fleetAlerts(
     });
   }
   if (snap.paused) {
-    const left = snap.pausedUntil !== undefined && snap.pausedUntil > now ? humanSeconds(Math.round((snap.pausedUntil - now) / 1000)) : null;
+    const left = pauseCountdown(snap.pausedUntil, now);
     out.push({
       key: "paused",
       tone: "amber",

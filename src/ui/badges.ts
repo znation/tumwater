@@ -122,13 +122,25 @@ export function landingBadge(landQueue: { depth: number }): string {
  * itself is timed-paused: a role-only timed pause leaves the header unchanged, and an absent
  * or already-expired deadline renders nothing — the read side treats an expired marker as
  * unpaused, so the badge never claims a countdown that is over. The duration goes through
- * the shared humanSeconds so one helper owns duration phrasing. renderStatus renders it in
+ * pauseCountdown, the one home of that guard and rounding. renderStatus renders it in
  * the TUI/status header after the budget badge; the GUI recomputes the ticking number
  * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
  * humanSeconds copy, pinned against this one by test. */
 export function pauseBadge(pausedUntil: number | undefined, now: number): string {
-  if (pausedUntil === undefined || pausedUntil <= now) return "";
-  return ` · paused — auto-resumes in ${humanSeconds(Math.round((pausedUntil - now) / 1000))}`;
+  const left = pauseCountdown(pausedUntil, now);
+  return left ? ` · paused — auto-resumes in ${left}` : "";
+}
+
+/** The countdown a timed fleet pause has left, as humanSeconds — `null` when there is none
+ * (no deadline, or an already-expired one: the read side treats an expired marker as
+ * unpaused). The one home of the guard + ms→seconds rounding behind the fleet's pause
+ * countdowns, shared by pauseBadge's header fragment and fleet-alerts.ts's paused alert
+ * title, so the two surfaces cannot disagree about how much time remains. The GUI's pause
+ * control recomputes the ticking number client-side from the payload's raw `pausedUntil`
+ * (gui-client-operator.ts) — a separate runtime that cannot import TypeScript. */
+export function pauseCountdown(pausedUntil: number | undefined, now: number): string | null {
+  if (pausedUntil === undefined || pausedUntil <= now) return null;
+  return humanSeconds(Math.round((pausedUntil - now) / 1000));
 }
 
 /** The header's quiet-hours fragment (plans: "Quiet hours … part 2/2, observability"): the

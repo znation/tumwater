@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge } from "../src/ui/badges.js";
+import { budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -68,6 +68,17 @@ test("pauseBadge counts down a standing fleet timed pause and stays empty otherw
   assert.equal(pauseBadge(now + 45_000, now), " · paused — auto-resumes in 45s", "sub-minute reads seconds");
   assert.equal(pauseBadge(now + 12 * 60_000, now), " · paused — auto-resumes in 12m", "sub-hour reads minutes");
   assert.equal(pauseBadge(now + 3 * 3_600_000, now), " · paused — auto-resumes in 3h", "hours read hours");
+});
+
+// pauseCountdown is the guard + rounding behind both pause countdowns (the badge and the
+// fleet-alerts title): none when the deadline is absent or already past — an expired marker
+// reads as unpaused — else humanSeconds of the remaining milliseconds.
+test("pauseCountdown returns the remaining duration, or null when no countdown stands", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(pauseCountdown(undefined, now), null, "no timed pause: no countdown");
+  assert.equal(pauseCountdown(now - 1, now), null, "an expired deadline is no countdown, matching the unpaused read");
+  assert.equal(pauseCountdown(now + 45_000, now), "45s", "sub-minute reads seconds");
+  assert.equal(pauseCountdown(now + 3 * 3_600_000, now), "3h", "hours read hours");
 });
 
 // The counts fragment both main-check surfaces render (BUGS.md 2026-09-30: the GUI sidebar
