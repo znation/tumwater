@@ -129,7 +129,7 @@ function scanEventTailWithEnd(file: string, limit: number): { events: HarnessEve
     return newlines >= limit + 1;
   });
 
-  let lines = text.split("\n").filter(Boolean);
+  const lines = text.split("\n").filter(Boolean);
   // A torn trailing line (no final \n — a write in flight, or between a crash and the next
   // event) would occupy one of the `limit` slots below and fail to parse: hold it back until
   // its newline lands, the same policy as readCompleteLines.

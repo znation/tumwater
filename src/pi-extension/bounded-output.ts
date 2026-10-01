@@ -68,8 +68,8 @@ export function boundText(
   // budget — drives the budget negative, and negative slice bounds would then keep nearly
   // the entire text: the exact flood bounding exists to prevent. Clamp to zero so the
   // worst case is the marker alone.
-  let headLen = Math.max(0, Math.floor(budget / 2));
-  let tailLen = Math.max(0, budget - headLen);
+  const headLen = Math.max(0, Math.floor(budget / 2));
+  const tailLen = Math.max(0, budget - headLen);
 
   let result = cps.slice(0, headLen).join("") +
     marker(cps.length - headLen - tailLen) +

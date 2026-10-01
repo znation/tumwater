@@ -138,7 +138,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
   let restart = false;
 
-  let runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
+  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
   // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
   // resolver — landing-drain.ts) all hold a permit; see its LandingPipelineContext for why a
   // landing is not exempt.
