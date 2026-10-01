@@ -94,6 +94,55 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(fleetAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The fleet is paused");
 });
 
+// The alert copy's count forms beyond the two-loop case above: a lone loop reads singular,
+// three or more list as "a, b, and c", and a failing set where no loop recorded an error
+// points at the transcripts instead of repeating an empty error list.
+test("a lone failing or stuck loop reads singular; three loops list as a, b, and c", () => {
+  const now = Date.now();
+  const [one] = fleetAlerts(base, [], [{ role: "bugfix", phase: "failing", inFlight: false, lastError: "pi exited null" }], now);
+  assert.equal(one?.title, "bugfix is failing tick after tick");
+  assert.equal(one?.detail, "bugfix: pi exited null");
+  const three: AlertLoop[] = [
+    { role: "bugfix", phase: "failing", inFlight: false },
+    { role: "qa", phase: "failing", inFlight: false },
+    { role: "docs", phase: "failing", inFlight: false },
+  ];
+  const [many] = fleetAlerts(base, [], three, now);
+  assert.equal(many?.title, "bugfix, qa, and docs are failing tick after tick");
+  assert.equal(many?.detail, "The same error keeps coming back. The transcript shows where it stops.");
+  assert.deepEqual(many?.actions.map((a) => a.arg), ["bugfix", "qa", "docs"]);
+  const [stuckOne] = fleetAlerts(
+    base,
+    [],
+    [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", inFlight: true }],
+    now,
+  );
+  assert.equal(stuckOne?.key, "stuck");
+  assert.equal(stuckOne?.title, "feature looks stuck");
+  assert.equal(stuckOne?.detail, "feature: tool call stalled: bash (12m)");
+});
+
+// The detail arms the two-loop case above cannot reach: a fallback named by provider alone
+// (model unset) or by nothing at all, and a stale build that is neither restart-blocked nor
+// already restarting — the operator has to restart the fleet by hand, so the alert says so.
+test("a fallback names its provider or nothing; a plain stale build asks for a manual restart", () => {
+  const spent = (fallback: Snap["budget"]["fallback"]): Snap => ({
+    ...base,
+    budget: { spentUsd: 10, capUsd: 10, free: false, fallback },
+  });
+  const byProvider = fleetAlerts(spent({ provider: "local" }), [], [], Date.now());
+  assert.equal(byProvider[0]?.key, "fallback");
+  assert.match(byProvider[0]?.detail ?? "", /^local carries them/);
+  const unnamed = fleetAlerts(spent({}), [], [], Date.now());
+  assert.match(unnamed[0]?.detail ?? "", /^The fallback carries them/);
+
+  const stale = fleetAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 2 } }, [], [], Date.now());
+  assert.deepEqual(stale.map((a) => [a.key, a.tone, a.title]), [
+    ["build", "blue", "main is 2 commits ahead of the running build"],
+  ]);
+  assert.equal(stale[0]?.detail, "Restart tumwater run to pick it up.");
+});
+
 // The dashboard colors phases and results in its own tones; the TUI in the terminal's. Both
 // must tell the same story: what the page shows blue/violet/orange/indigo (work in progress)
 // the terminal shows blue, and so on down the families.
