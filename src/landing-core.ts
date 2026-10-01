@@ -13,7 +13,7 @@ import { checkFailureReasons } from "./build-check-report.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { mainTipVerdict } from "./main-red.js";
 import { logEvent } from "./events.js";
-import { shortSha } from "./text.js";
+import { mainRedPhrase } from "./text.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
@@ -335,7 +335,7 @@ export async function attributeRedCheck(
   }
   const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
   if (main.status === "red") {
-    state.lastError = `${label} failed: main ${shortSha(main.sha)} is red — not this change's failure`;
+    state.lastError = `${label} failed: ${mainRedPhrase(main.sha)} — not this change's failure`;
     saveLoopState(ctx.root, state);
     return "main_red";
   }

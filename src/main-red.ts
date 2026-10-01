@@ -9,7 +9,7 @@ import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { TumwaterConfig } from "./config-schema.js";
-import { errorMessage, shortSha } from "./text.js";
+import { errorMessage, mainRedPhrase } from "./text.js";
 import { gitTry } from "./git.js";
 import { gateMainWorktreePath } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
@@ -36,7 +36,7 @@ let lastMainRedSha: string | null = null;
  * over what main looks like. `action` is the consequence each caller names. */
 function redMainMessage(red: { sha: string; script?: string; outputTail?: string[] }, action: string): string {
   const firstLine = failureHeadline(red.outputTail);
-  return `main ${shortSha(red.sha)} is red (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
+  return `${mainRedPhrase(red.sha)} (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
 }
 
 /** Log the fleet-wide red-main warning for `red`'s SHA at most once per process. Module-level

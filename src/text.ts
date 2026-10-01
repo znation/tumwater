@@ -172,6 +172,16 @@ export function shortSha(sha: unknown): string {
   return String(sha).slice(0, 8);
 }
 
+/** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
+ * once so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
+ * (review.ts), the landing check's attribution error (landing-core.ts), and the redeploy hold's
+ * block reason (redeploy-policy.ts) cannot drift over how main's red is worded. Each caller
+ * appends its own consequence — the gate's "— not this change's failure", the hold's
+ * " — holding the restart until main is green". */
+export function mainRedPhrase(sha: unknown): string {
+  return `main ${shortSha(sha)} is red`;
+}
+
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (failure-report.ts), and the fleet

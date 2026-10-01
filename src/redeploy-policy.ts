@@ -1,7 +1,7 @@
 import type { HarnessEventInput } from "./events.js";
 import type { BuildInfo, BuildStaleness, BuildStatus } from "./build-info.js";
 import type { CompileResult } from "./build-stage.js";
-import { errorMessage, shortSha } from "./text.js";
+import { errorMessage, mainRedPhrase, shortSha } from "./text.js";
 
 /** Self-redeploy for a self-hosting fleet (see build-info.ts for why): when main's build inputs
  * have moved past the running build, verify that main is green, compile it into a staging dir,
@@ -540,7 +540,7 @@ export class Redeployer {
       return this.endDrain();
     }
     if (this.green.result !== true) {
-      const reason = `main ${shortSha(mainHead)} is red`;
+      const reason = mainRedPhrase(mainHead);
       this.block(mainHead, reason, `${reason} — holding the restart until main is green`);
       return this.endDrain();
     }

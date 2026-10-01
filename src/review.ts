@@ -13,7 +13,7 @@ import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js"
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
-import { shortSha } from "./text.js";
+import { mainRedPhrase, shortSha } from "./text.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { runScopedBuildCheck } from "./build-check.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
@@ -296,7 +296,7 @@ export async function reviewAheadOfMain(
         // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
         // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
         // and the author's next tick re-lands the change once main is green again.
-        const detail = `main ${shortSha(main.sha)} is red — not this change's failure`;
+        const detail = `${mainRedPhrase(main.sha)} — not this change's failure`;
         recordReview(state, "failed", [detail], head);
         warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
         return { decision: "failed", detail, mainRed: true };
