@@ -42,14 +42,16 @@ export function configRequestPath(wt: string): string {
   return path.join(wt, ".tumwater-config-request.json");
 }
 
-/** The directory every harness worktree lives under — role, lander and mirror alike. */
+/** The directory every harness worktree lives under — role, lander and mirror alike. The
+ * single home of the tumwaterDir + worktrees pair: every worktree path helper below joins
+ * its leaf through this, so the layout moves in one place. */
 export function worktreesDir(root: string): string {
   return path.join(tumwaterDir(root), "worktrees");
 }
 
 /** A loop's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
-  return path.join(tumwaterDir(root), "worktrees", role);
+  return path.join(worktreesDir(root), role);
 }
 
 /** A loop's persistent branch name. */
@@ -227,7 +229,7 @@ export function mergeLockDir(root: string): string {
  * check and the compile both read exactly the tree main names, never the primary checkout. Named
  * with a leading underscore like the reviewer session dir so it can never collide with a role. */
 export function mirrorWorktreePath(root: string): string {
-  return path.join(tumwaterDir(root), "worktrees", "_main");
+  return path.join(worktreesDir(root), "_main");
 }
 
 /** Detached worktree pinned at main's head for the review gate's attribution check
@@ -236,7 +238,7 @@ export function mirrorWorktreePath(root: string): string {
  * the mirror at the head it verified, and a gate re-pointing that checkout at a newer main
  * mid-compile would stamp the wrong tree. */
 export function gateMainWorktreePath(root: string): string {
-  return path.join(tumwaterDir(root), "worktrees", "_gate-main");
+  return path.join(worktreesDir(root), "_gate-main");
 }
 
 /** Detached worktree pinned at the RUNNING build's own SHA for the redeployer's urgency
@@ -245,7 +247,7 @@ export function gateMainWorktreePath(root: string): string {
  * witness check at an old SHA can never repoint the mirror a green check or compile is using.
  * The leading underscore follows the _main convention, so it can never collide with a role. */
 export function witnessWorktreePath(root: string): string {
-  return path.join(tumwaterDir(root), "worktrees", "_build");
+  return path.join(worktreesDir(root), "_build");
 }
 
 /** A role's lander worktree (src/landing-core.ts): the detached checkout where its pinned commit is
@@ -253,7 +255,7 @@ export function witnessWorktreePath(root: string): string {
  * landings never wait on each other; the leading underscore follows the _main convention above,
  * so it can never collide with a role worktree (plans/merge-queue.md). */
 export function landWorktreePath(root: string, role: string): string {
-  return path.join(tumwaterDir(root), "worktrees", `_land-${role}`);
+  return path.join(worktreesDir(root), `_land-${role}`);
 }
 
 /** The ref pinning a role's committed-but-unlanded sha (plans/merge-queue.md invariant 4):
