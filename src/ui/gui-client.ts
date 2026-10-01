@@ -91,7 +91,7 @@ const FORMAT_JS = String.raw`  // format:start
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   const plural = (n, one, many) => n + " " + (n === 1 ? one : many || one + "s");
   // human-seconds-fmt:start
-  // Whole-second s/m/h label: <60 → Ns, <3600 → rounded Nm, else rounded Nh — status-model.ts's
+  // Whole-second s/m/h label: <60 → Ns, <3600 → rounded Nm, else rounded Nh — badges.ts's
   // humanSeconds, shared by every relative time on the page.
   const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h");
   // human-seconds-fmt:end
