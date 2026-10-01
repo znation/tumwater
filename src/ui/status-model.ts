@@ -4,7 +4,8 @@ import type { StatusSnapshot } from "../status-data.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-outcome.js";
 import { yieldMultiplier } from "../backoff.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
-import { fleetBudgetGate, humanSeconds } from "./badges.js";
+import { fleetBudgetGate } from "./badges.js";
+import { humanSeconds } from "../datetime.js";
 import { compactTokens } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
 

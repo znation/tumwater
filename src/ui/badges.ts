@@ -2,6 +2,7 @@ import type { TestCounts } from "../build-check.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
+import { humanSeconds } from "../datetime.js";
 import { pauseReasonSuffix } from "../phrases.js";
 import { shortSha, usd, usdCap } from "../text.js";
 
@@ -11,16 +12,8 @@ import { shortSha, usd, usdCap } from "../text.js";
  * per-loop display model (phase, rows, token metrics) — the badges are header-scale fleet
  * facts (build, main check, budget, land queue, timed pause) rather than per-loop state, and
  * their one-home rule ("the page cannot re-derive and drift from these strings") is easier to
- * see when the module is exactly the badges. humanSeconds lives here too: it is the duration
- * phrasing pauseBadge shares with every other relative time on the observer surfaces. */
-
-/** Compact whole-second duration: `45s`, `12m`, or `3h`. Shared by ago and the sleeping-
- * remaining label so their s/m/h bucketing (thresholds and rounding) cannot drift. */
-export function humanSeconds(s: number): string {
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.round(s / 60)}m`;
-  return `${Math.round(s / 3600)}h`;
-}
+ * see when the module is exactly the badges. The duration phrasing they share (humanSeconds)
+ * lives in datetime.ts — core modules need it too, so it sits below the ui layer. */
 
 /** The header's build fragment: which commit the running harness was compiled from and, when
  * main's build inputs have moved past it, how far — the fleet is then executing code main no

@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { listQueueFiles, queueFileName, removeQueueFile } from "../src/file-queue.js";
+import { listQueueFiles, queueFileStamp, queueFileName, removeQueueFile } from "../src/file-queue.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 test("listQueueFiles reads a missing directory as an empty queue", () => {
@@ -36,6 +36,20 @@ test("queueFileName orders across processes and breaks ties with seq and pid", (
   assert.ok(queueFileName(1700000000001, 1, ".json") > queueFileName(1700000000000, 999999, ".json"));
   // Within one stamp, the zero-padded counter keeps 10 after 9 rather than before it.
   assert.ok(queueFileName(1700000000000, 10, ".json") > queueFileName(1700000000000, 9, ".json"));
+});
+
+test("queueFileStamp round-trips queueFileName's stamp and rejects non-conforming names", () => {
+  // A real queue filename parses back to the stamp that named it.
+  const name = queueFileName(1700000000000, 7, ".md");
+  assert.equal(queueFileStamp(name), 1700000000000);
+  // Hand-placed names have no stamp under the convention — and the parse does not guess one
+  // from shorter digit runs (a hand-written `2026-notes.md` is not 2026 ms after the epoch).
+  assert.equal(queueFileStamp("notes.md"), null);
+  assert.equal(queueFileStamp("2026-notes.md"), null);
+  assert.equal(queueFileStamp("12345678901234-x.md"), null); // 14 digits: not the convention.
+  assert.equal(queueFileStamp(""), null);
+  // 13 digits is the convention itself: epoch ms of any instant since 2001-09-09.
+  assert.equal(queueFileStamp("1700000000000-x.md"), 1700000000000);
 });
 
 test("removeQueueFile reports true for a file it removed", () => {

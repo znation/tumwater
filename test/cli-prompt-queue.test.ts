@@ -5,6 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, queuedRolePrompts } from "../src/inbox.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox-submit.js";
+import { queueFileStamp } from "../src/file-queue.js";
 import { truncate } from "../src/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
@@ -48,8 +49,8 @@ test("prompt --list shows queued prompts numbered in execution order", async () 
   submitPrompt(repo, "second\nwith a newline");
   r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /^1\. first task$/m);
-  assert.match(r.stdout, /^2\. second\nwith a newline$/m);
+  assert.match(r.stdout, /^1\. first task \(queued \d+[smh] ago\)$/m);
+  assert.match(r.stdout, /^2\. second\nwith a newline \(queued \d+[smh] ago\)$/m);
 });
 
 // The empty side of --role scoping: a role with nothing queued gets its own one-liner, the
@@ -85,8 +86,8 @@ test("prompt --cancel removes the Nth queued prompt and reports its text", async
   // The removal renumbers the queue and is visible in --list and logs.
   r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /^1\. alpha$/m);
-  assert.match(r.stdout, /^2\. gamma$/m);
+  assert.match(r.stdout, /^1\. alpha \(queued \d+[smh] ago\)$/m);
+  assert.match(r.stdout, /^2\. gamma \(queued \d+[smh] ago\)$/m);
   assert.ok(!r.stdout.includes("fix the"), "the cancelled prompt is gone from the list:\n" + r.stdout);
 
   r = await cli(repo, "logs", "-n", "5");
@@ -133,7 +134,7 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
 
   let r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^1\. survives$/m);
+  assert.match(r.stdout, /^1\. survives \(queued \d+[smh] ago\)$/m);
 
   // The fallback relaxes the config READ, not the id validation: an unknown id is refused.
   r = await cli(repo, "prompt", "--list", "--role", "qa");
@@ -169,7 +170,7 @@ test("prompt --cancel without --role cancels the entry --list shows, whichever l
 
   // The bug's repro: --list shows the entry under qa, and the bare cancel removes it.
   let r = await cli(repo, "prompt", "--list");
-  assert.match(r.stdout, /qa:\n1\. qa task one/);
+  assert.match(r.stdout, /qa:\n1\. qa task one \(queued \d+[smh] ago\)/);
   r = await cli(repo, "prompt", "--cancel", "1");
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /cancelled \(qa\): qa task one/);
@@ -224,7 +225,7 @@ test("prompt --cancel reports a concurrently dequeued prompt as gone and exits c
   // a phantom position.
   const list = await cli(repo, "prompt", "--list");
   assert.equal(list.code, 0);
-  assert.match(list.stdout, /^1\. alpha$/m);
+  assert.match(list.stdout, /^1\. alpha \(queued \d+[smh] ago\)$/m);
   assert.ok(!list.stdout.includes("2."), `no phantom second prompt:\n${list.stdout}`);
 });
 
@@ -304,13 +305,13 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   let r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /director:\n1\. director task/);
-  assert.match(r.stdout, /qa:\n1\. qa task one\n2\. qa task two/);
+  assert.match(r.stdout, /qa:\n1\. qa task one \(queued \d+[smh] ago\)\n2\. qa task two \(queued \d+[smh] ago\)/);
   assert.match(r.stdout, /readme:\n1\. docs task/);
 
   // Scoped by --role: only that loop's queue, numbered from 1.
   r = await cli(repo, "prompt", "--list", "--role", "qa");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /qa:\n1\. qa task one\n2\. qa task two/);
+  assert.match(r.stdout, /qa:\n1\. qa task one \(queued \d+[smh] ago\)\n2\. qa task two \(queued \d+[smh] ago\)/);
   assert.ok(!r.stdout.includes("director task"));
 
   // Cancel is scoped too: qa's position 1 is qa's first prompt, and only qa's queue shrinks.
@@ -375,16 +376,22 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   submitRolePrompt(repo, "readme", "docs task");
 
   // The payload holds every queued prompt — director first, then catalog order, empty
-  // queues omitted — with per-loop positions and full verbatim text.
+  // queues omitted — with per-loop positions, full verbatim text, and the enqueue stamp
+  // parsed from each queue filename (the age `prompt --list` shows). The expected stamps
+  // come from the queue directories themselves, so the payload cannot drift from the names.
+  const fileStamps = (dir: string) =>
+    fs.readdirSync(dir).filter((f) => f.endsWith(".md")).sort().map(queueFileStamp);
+  const [dirStamp] = fileStamps(inboxDir(repo));
+  const qaStamps = fileStamps(roleInboxDir(repo, "qa"));
   let r = await cli(repo, "prompt", "--list", "--json");
   assert.equal(r.code, 0, r.stderr);
   const payload = JSON.parse(r.stdout);
   assert.deepEqual(payload, {
     prompts: [
-      { role: "director", position: 1, text: "director task" },
-      { role: "readme", position: 1, text: "docs task" },
-      { role: "qa", position: 1, text: "qa task one" },
-      { role: "qa", position: 2, text: "qa task two" },
+      { role: "director", position: 1, text: "director task", queuedAtMs: dirStamp },
+      { role: "readme", position: 1, text: "docs task", queuedAtMs: fileStamps(roleInboxDir(repo, "readme"))[0] },
+      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0] },
+      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1] },
     ],
   });
 
@@ -402,8 +409,8 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
     prompts: [
-      { role: "qa", position: 1, text: "qa task one" },
-      { role: "qa", position: 2, text: "qa task two" },
+      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0] },
+      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1] },
     ],
   });
 
@@ -431,4 +438,52 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.match(r.stderr, /--json takes no value/);
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one", "qa task two"]);
+});
+
+// --- the queue filename's enqueue stamp, surfaced: prose lines carry ` (queued <age> ago)`
+// and --json carries the absolute stamp (PLANS.md "prompt --list shows how long each prompt
+// has waited" 1/2). A hand-placed file — a name queueFileName would never write — degrades
+// to no age rather than a guessed one, and still cancels by position exactly as before.
+test("prompt --list shows each prompt's age; a hand-placed file shows none", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list age");
+
+  submitPrompt(repo, "patient task");
+  let r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  // Just-enqueued buckets to whole seconds ("0s"), whatever the clock's sub-second part.
+  assert.match(r.stdout, /^1\. patient task \(queued \d+[smh] ago\)$/m);
+
+  // --json carries the absolute stamp, matching the queue filename the entry lives in.
+  r = await cli(repo, "prompt", "--list", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  const payload = JSON.parse(r.stdout);
+  const files = fs.readdirSync(inboxDir(repo)).filter((f) => f.endsWith(".md"));
+  assert.equal(files.length, 1);
+  const stamped = queueFileStamp(files[0]!);
+  assert.equal(payload.prompts[0].queuedAtMs, stamped);
+
+  // A hand-placed name has no stamp under the convention: no suffix in prose, null in JSON,
+  // and the per-loop position numbering --cancel consumes is untouched.
+  fs.writeFileSync(path.join(inboxDir(repo), "hand-placed.md"), "by hand");
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. patient task \(queued \d+[smh] ago\)$/m);
+  assert.match(r.stdout, /^2\. by hand$/m, "the unstamped line must render without an age suffix");
+  r = await cli(repo, "prompt", "--list", "--json");
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), {
+    prompts: [
+      { role: "director", position: 1, text: "patient task", queuedAtMs: stamped },
+      { role: "director", position: 2, text: "by hand", queuedAtMs: null },
+    ],
+  });
+
+  r = await cli(repo, "prompt", "--cancel", "2");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /cancelled \(director\): by hand/);
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. patient task \(queued \d+[smh] ago\)$/m);
+  assert.ok(!r.stdout.includes("by hand"));
 });

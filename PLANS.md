@@ -5,50 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --list` shows how long each prompt has waited (planned 2026-10-01 by plan loop) — part 1/2, the shared stamp and the CLI
-
-**Goal.** A steering prompt queued to a paused, disabled, or long-backoff loop sits in its queue
-file indefinitely, and nothing in `tumwater prompt --list` reveals how long it has been waiting —
-the operator sees the text but not the age, so a request queued yesterday beside a loop that will
-never take it reads exactly like one queued a minute ago. The enqueue stamp is already in every
-queue filename (`queueFileName`, src/file-queue.ts, writes `<epoch ms>-<seq, 6 digits>-<pid>.md`)
-but no reader parses it back. Surface it. (The land queue solved the same problem with an explicit
-`enqueuedAt` field — landing-queue.ts, surfaced as `fmtAgo` in src/ui/gui-client-drawer.ts; the
-prompt queue never gained the equivalent, and it should not grow a body field the filename already
-encodes.) The dashboard half of this is part 2/2; this part lands the shared parsing and the CLI.
-
-**Approach.**
-1. **src/file-queue.ts:** export `queueFileStamp(name: string): number | null` — parse the leading
-   digits before the first `-` as epoch milliseconds; return `null` when the name does not fit the
-   convention (a hand-placed file). One home beside `queueFileName`, so the prompt inbox and
-   landing-queue.ts read the same naming rule from the same place.
-2. **src/inbox.ts:** extend the `QueuedPromptEntry` interface with `queuedAtMs: number | null` and
-   set it in `queuedRolePromptEntries` from `queueFileStamp(path.basename(e.file))`. No new queue
-   pass: the entries already carry the file path.
-3. **src/prompt-commands.ts:** `promptListPayload` copies `queuedAtMs` into each prompt it emits
-   (the same array serves prose and `--json`, so they cannot disagree). The prose render suffixes
-   each line with ` (queued <age> ago)` — age from `Date.now() - queuedAtMs`, human-phrased — and
-   omits the suffix when `queuedAtMs` is null. `--json` carries the absolute `queuedAtMs` so
-   scripts compute age themselves; the per-loop position numbering `--cancel` consumes is
-   untouched.
-4. **Layering first (the plan's one precondition):** `humanSeconds` — the compact `45s`/`12m`/`3h`
-   duration phrasing — lives in src/ui/badges.ts, and core modules may not import src/ui
-   (test/layering.test.ts's "no core module imports src/ui" allows only cli.ts). Move
-   `humanSeconds` down to src/datetime.ts (its natural home, beside the other time phrasing),
-   have src/ui/badges.ts import it from there (updating its one-home comment), and have
-   prompt-commands.ts import it from `../datetime.js`. The layering test's own header comment
-   anticipates exactly this "move the shared formatter down to src/" move.
-5. **Tests:** test/file-queue.test.ts — `queueFileStamp` round-trips `queueFileName`'s output and
-   returns null for a non-conforming name. test/cli-prompt-queue.test.ts — (a) a prose `--list`
-   line carries the ` (queued … ago)` suffix for a real queue file, (b) `--json` entries carry
-   `queuedAtMs` matching the filename stamp, (c) a hand-placed non-conforming filename renders
-   with no suffix and `queuedAtMs: null`, and cancels by position as today.
-
-**Acceptance criteria.** `tumwater prompt --list` states each queued prompt's age in prose and
-`queuedAtMs` in `--json`; positions, ordering, and `--cancel` behavior are unchanged; a
-non-conforming queue filename degrades to no age rather than an error; `npm run test` passes
-including the new file-queue and prompt-queue tests and the unchanged layering test.
-
 ### The dashboard's Queued tab shows each prompt's age (planned 2026-10-01 by plan loop) — part 2/2, the observers
 
 **Goal.** The same age `tumwater prompt --list` gains in part 1/2, on the dashboard: the backlog's
@@ -85,6 +41,54 @@ unchanged; `npm run test` passes including the new render tests.
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
 ## Done
+### `tumwater prompt --list` shows how long each prompt has waited (planned 2026-10-01 by plan loop, done 2026-10-01 by feature) — part 1/2, the shared stamp and the CLI
+
+**Goal.** A steering prompt queued to a paused, disabled, or long-backoff loop sits in its queue
+file indefinitely, and nothing in `tumwater prompt --list` reveals how long it has been waiting —
+the operator sees the text but not the age, so a request queued yesterday beside a loop that will
+never take it reads exactly like one queued a minute ago. The enqueue stamp is already in every
+queue filename (`queueFileName`, src/file-queue.ts, writes `<epoch ms>-<seq, 6 digits>-<pid>.md`)
+but no reader parses it back. Surface it. (The land queue solved the same problem with an explicit
+`enqueuedAt` field — landing-queue.ts, surfaced as `fmtAgo` in src/ui/gui-client-drawer.ts; the
+prompt queue never gained the equivalent, and it should not grow a body field the filename already
+encodes.) The dashboard half of this is part 2/2; this part lands the shared parsing and the CLI.
+
+**Approach.**
+1. **src/file-queue.ts:** export `queueFileStamp(name: string): number | null` — parse the leading
+   digits before the first `-` as epoch milliseconds; return `null` when the name does not fit the
+   convention (a hand-placed file). Tightened while landing, per review: the leading run must be
+   exactly 13 digits — epoch ms of any instant since 2001-09-09 — so a hand-written `2026-notes.md`
+   reads as unstamped rather than as 2026 ms after the epoch. One home beside `queueFileName`, so
+   the prompt inbox and landing-queue.ts read the same naming rule from the same place.
+2. **src/inbox.ts:** the one read pass behind the list-shaped readers (queuedRoleFileTexts) gained
+   the stamp and became the exported `queuedRolePromptRecords` (`{file, text, queuedAtMs}`), so the
+   CLI reads text and stamp from the same pass the snapshot's entries do. `QueuedPromptEntry` gains
+   `queuedAtMs: number | null` and `queuedRolePromptEntries` sets it from the record — the snapshot
+   side keeps its `{file, preview, queuedAtMs}` shape and gains no prompt text.
+3. **src/prompt-commands.ts:** `promptListPayload` copies `queuedAtMs` into each prompt it emits
+   (the same array serves prose and `--json`, so they cannot disagree). The prose render suffixes
+   each line with ` (queued <age> ago)` — age from `Date.now() - queuedAtMs`, human-phrased — and
+   omits the suffix when `queuedAtMs` is null. `--json` carries the absolute `queuedAtMs` so
+   scripts compute age themselves; the per-loop position numbering `--cancel` consumes is
+   untouched.
+4. **Layering first (the plan's one precondition):** `humanSeconds` — the compact `45s`/`12m`/`3h`
+   duration phrasing — lives in src/ui/badges.ts, and core modules may not import src/ui
+   (test/layering.test.ts's "no core module imports src/ui" allows only cli.ts). Move
+   `humanSeconds` down to src/datetime.ts (its natural home, beside the other time phrasing),
+   have src/ui/badges.ts import it from there (updating its one-home comment), and have
+   prompt-commands.ts import it from `../datetime.js`. The layering test's own header comment
+   anticipates exactly this "move the shared formatter down to src/" move.
+5. **Tests:** test/file-queue.test.ts — `queueFileStamp` round-trips `queueFileName`'s output and
+   returns null for a non-conforming name. test/cli-prompt-queue.test.ts — (a) a prose `--list`
+   line carries the ` (queued … ago)` suffix for a real queue file, (b) `--json` entries carry
+   `queuedAtMs` matching the filename stamp, (c) a hand-placed non-conforming filename renders
+   with no suffix and `queuedAtMs: null`, and cancels by position as today.
+
+**Acceptance criteria.** `tumwater prompt --list` states each queued prompt's age in prose and
+`queuedAtMs` in `--json`; positions, ordering, and `--cancel` behavior are unchanged; a
+non-conforming queue filename degrades to no age rather than an error; `npm run test` passes
+including the new file-queue and prompt-queue tests and the unchanged layering test.
+
 ### The sidebar's Build row refresh icon restarts the build, like the build alert's icon (planned 2026-10-01 by director, done 2026-10-01 by feature)
 
 **Goal.** The dashboard's build-stale alert carries a clickable refresh icon that restarts the

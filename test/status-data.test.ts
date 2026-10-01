@@ -12,6 +12,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { snapshot } from "../src/status-data.js";
+import { queueFileStamp } from "../src/file-queue.js";
 import { quietHoursStatus } from "../src/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
@@ -598,12 +599,16 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   assert.equal(snap.inbox, 0);
   // And it agrees with the queue files the CLI's --list reads.
   assert.deepEqual(queuedRolePrompts(repo, "dry"), ["two", "three"]);
-  // Each queued prompt also carries its queue-file address (the /api/prompt-cancel target),
-  // execution order; roles with an empty queue are absent, like the director.
-  assert.deepEqual(snap.roleInboxPrompts.clean, [{ file: path.basename(one), preview: "one" }]);
+  // Each queued prompt also carries its queue-file address (the /api/prompt-cancel target)
+  // and the enqueue stamp parsed from that filename (null for a hand-placed name — see
+  // file-queue.test.ts), execution order; roles with an empty queue are absent, like the
+  // director.
+  assert.deepEqual(snap.roleInboxPrompts.clean, [
+    { file: path.basename(one), preview: "one", queuedAtMs: queueFileStamp(path.basename(one)) },
+  ]);
   assert.deepEqual(snap.roleInboxPrompts.dry, [
-    { file: path.basename(two), preview: "two" },
-    { file: path.basename(three), preview: "three" },
+    { file: path.basename(two), preview: "two", queuedAtMs: queueFileStamp(path.basename(two)) },
+    { file: path.basename(three), preview: "three", queuedAtMs: queueFileStamp(path.basename(three)) },
   ]);
   assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });

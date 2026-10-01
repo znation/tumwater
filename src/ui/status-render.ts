@@ -4,9 +4,9 @@ import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
 import { compactTokens, usd } from "../text.js";
-import { formatTime, pad2 } from "../datetime.js";
+import { formatTime, humanSeconds, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
-import { buildBadge, budgetBadge, humanSeconds, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
+import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
 import {
   isActivePhase,
   loopRowCells,

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ensureParentDir, readTextOrNull, writeTextAtomic } from "./files.js";
-import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
+import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
 import { roleInboxDir } from "./paths.js";
@@ -79,22 +79,34 @@ const promptCache = new Map<string, StatKeyedValue<string>>();
 
 /** One queued prompt paired with the queue-file basename that addresses it: the file name is
  * what the dashboard's per-row cancel affordance sends (/api/prompt-cancel) — addressed by
- * file, not by list position, so a 1 s-stale poll can never cancel the wrong entry. */
+ * file, not by list position, so a 1 s-stale poll can never cancel the wrong entry. The stamp
+ * is the enqueue time parsed from that filename (queueFileStamp), null for a hand-placed
+ * name — the age the `prompt --list` CLI and the dashboard's Queued tab render. */
 interface QueuedPromptEntry {
   file: string;
   preview: string;
+  queuedAtMs: number | null;
 }
 
-/** The one read pass over a loop's queue that serves every preview-shaped consumer: each
- * queued file paired with its basename and full text. Same listing order and race policy as
+/** The one read pass over a loop's queue that serves every list-shaped consumer: each queued
+ * file paired with its basename, full text, and the enqueue stamp parsed from the filename
+ * (queueFileStamp; null for a hand-placed name). Same listing order and race policy as
  * queuedRolePrompts (a file that vanishes mid-listing is skipped, not thrown), and the same
- * stat-keyed cache, so an unchanged file still costs one stat per poll. */
-function queuedRoleFileTexts(root: string, role: string): Array<{ file: string; text: string }> {
-  const out: Array<{ file: string; text: string }> = [];
+ * stat-keyed cache, so an unchanged file still costs one stat per poll. Exported so the CLI's
+ * `prompt --list` (prompt-commands.ts) reads text and stamp from the same pass the snapshot's
+ * entries do — the two views of one queue cannot disagree. */
+export function queuedRolePromptRecords(
+  root: string,
+  role: string,
+): Array<{ file: string; text: string; queuedAtMs: number | null }> {
+  const out: Array<{ file: string; text: string; queuedAtMs: number | null }> = [];
   for (const f of queuedFiles(root, role)) {
     // Strings are immutable — no copy needed; a file that vanished mid-listing reads null.
     const text = cachedByStat(promptCache, f, f, () => readTextOrNull(f), (t) => t);
-    if (text !== null) out.push({ file: path.basename(f), text });
+    if (text !== null) {
+      const name = path.basename(f);
+      out.push({ file: name, text, queuedAtMs: queueFileStamp(name) });
+    }
   }
   return out;
 }
@@ -106,14 +118,19 @@ function queuedRoleFileTexts(root: string, role: string): Array<{ file: string; 
  * crash on it. Unchanged files are served from the stat-keyed cache above — fresh content
  * requires an actual write to the path, which enqueueRolePrompt never does for an existing file. */
 export function queuedRolePrompts(root: string, role: string): string[] {
-  return queuedRoleFileTexts(root, role).map((e) => e.text);
+  return queuedRolePromptRecords(root, role).map((e) => e.text);
 }
 
-/** Every queued prompt of one loop with the queue-file basename that addresses it, in
- * execution order — the snapshot's cancel-addressable payload (StatusSnapshot.inboxFiles and
- * roleInboxPrompts). Same pass, order, race policy, and stat cache as queuedRolePrompts. */
+/** Every queued prompt of one loop with the queue-file basename that addresses it and its
+ * enqueue stamp, in execution order — the snapshot's cancel-addressable payload
+ * (StatusSnapshot.inboxFiles and roleInboxPrompts). Same pass, order, race policy, and stat
+ * cache as queuedRolePrompts. */
 export function queuedRolePromptEntries(root: string, role: string): QueuedPromptEntry[] {
-  return queuedRoleFileTexts(root, role).map((e) => ({ file: e.file, preview: promptPreview(e.text) }));
+  return queuedRolePromptRecords(root, role).map((e) => ({
+    file: e.file,
+    preview: promptPreview(e.text),
+    queuedAtMs: e.queuedAtMs,
+  }));
 }
 
 /** How many prompts are queued for one loop, without reading their contents — the snapshot's

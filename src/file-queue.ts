@@ -25,6 +25,17 @@ export function queueFileName(stamp: number, seq: number, ext: string): string {
   return `${stamp}-${String(seq).padStart(6, "0")}-${process.pid}${ext}`;
 }
 
+/** The epoch-ms stamp queueFileName writes into every entry filename, parsed back out of a
+ * listing — the age an entry has waited, read from the name alone with no file content. The
+ * leading run must be exactly 13 digits (epoch ms of any instant since 2001-09-09): anything
+ * shorter is a hand-placed name the convention does not cover, so `2026-notes.md` reads as
+ * unstamped (null) rather than as 2026 ms after the epoch. Returns null for such names, never
+ * a guessed date. */
+export function queueFileStamp(name: string): number | null {
+  const m = /^(\d{13})-/.exec(name);
+  return m ? Number(m[1]) : null;
+}
+
 /** Remove one queue entry's file, reporting whether it was there: true when removed, false
  * when it had already vanished (ENOENT). Any other error is rethrown. Both queues treat a
  * vanished file as a normal race with a concurrent dequeue/cancel, never as a failure. */

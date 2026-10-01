@@ -14,9 +14,9 @@ import {
   cancelListedPrompt,
   cancelRolePrompt,
   promptPreview,
-  queuedPrompts,
-  queuedRolePrompts,
+  queuedRolePromptRecords,
 } from "./inbox.js";
+import { humanSeconds } from "./datetime.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";
 import { errorMessage } from "./text.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
@@ -26,23 +26,37 @@ import { submitRolePromptAndWake } from "./operator-intent.js";
  * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
  * remaining catalog ids in order, empty queues skipped — exactly the sections the prose
  * prints. `position` is the 1-based per-loop number the prose prints and `--cancel`
- * consumes; `text` is the full verbatim prompt, not a preview. */
+ * consumes; `text` is the full verbatim prompt, not a preview; `queuedAtMs` is the enqueue
+ * stamp parsed from the queue filename (null for a hand-placed name), which the prose turns
+ * into a `queued <age> ago` suffix and `--json` carries as-is. */
 function promptListPayload(
   root: string,
   role: string | null,
   validIds: string[],
-): { prompts: { role: string; position: number; text: string }[] } {
-  const prompts: { role: string; position: number; text: string }[] = [];
+): { prompts: { role: string; position: number; text: string; queuedAtMs: number | null }[] } {
+  const prompts: { role: string; position: number; text: string; queuedAtMs: number | null }[] = [];
+  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null }) =>
+    prompts.push({ role: r, position, text: e.text, queuedAtMs: e.queuedAtMs });
   if (role !== null) {
-    queuedRolePrompts(root, role).forEach((text, i) => prompts.push({ role, position: i + 1, text }));
+    queuedRolePromptRecords(root, role).forEach((e, i) => record(role, i + 1, e));
     return { prompts };
   }
-  queuedPrompts(root).forEach((text, i) => prompts.push({ role: DIRECTOR_ROLE, position: i + 1, text }));
+  queuedRolePromptRecords(root, DIRECTOR_ROLE).forEach((e, i) => record(DIRECTOR_ROLE, i + 1, e));
   for (const r of validIds) {
     if (r === DIRECTOR_ROLE) continue;
-    queuedRolePrompts(root, r).forEach((text, i) => prompts.push({ role: r, position: i + 1, text }));
+    queuedRolePromptRecords(root, r).forEach((e, i) => record(r, i + 1, e));
   }
   return { prompts };
+}
+
+/** The ` (queued <age> ago)` suffix a prose `--list` line carries when its queue filename
+ * stamps the enqueue time (queueFileStamp) — omitted when the stamp is unparseable, so a
+ * hand-placed file renders exactly as it did before the age existed. Age buckets through
+ * humanSeconds, the same phrasing every other relative time in the harness prints. */
+function queuedAgeSuffix(queuedAtMs: number | null, now: number): string {
+  if (queuedAtMs === null) return "";
+  const ageSeconds = Math.max(0, Math.round((now - queuedAtMs) / 1000));
+  return ` (queued ${humanSeconds(ageSeconds)} ago)`;
 }
 
 /** The user-facing reply for one resolved cancel: a concurrent dequeue is a normal race, not an
@@ -109,13 +123,14 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     const sections: string[] = [];
     let currentRole: string | null = null;
     let lines: string[] = [];
+    const now = Date.now();
     for (const p of payload.prompts) {
       if (p.role !== currentRole) {
         if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
         currentRole = p.role;
         lines = [];
       }
-      lines.push(`${p.position}. ${p.text}`);
+      lines.push(`${p.position}. ${p.text}${queuedAgeSuffix(p.queuedAtMs, now)}`);
     }
     if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
     say(sections.join("\n"));
