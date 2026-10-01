@@ -38,10 +38,10 @@ test("a built-in role's payload resolves identity, tier, defaults, and its find 
   assert.equal(p.paused, false);
   assert.equal(p.tier, 0); // a work role
   assert.equal(p.instructions, null); // no override configured
-  assert.match(p.find ?? "", /Open PLANS.md/); // the find text, verbatim
+  assert.match(p.find ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text, verbatim
   assert.equal(p.inboxCount, 0);
   assert.match(p.nextPrompt ?? "", /You are the "feature" loop \(feature implementer\)/);
-  assert.match(p.nextPrompt ?? "", /Open PLANS.md/); // the find text rides in the preview
+  assert.match(p.nextPrompt ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text rides in the preview
 });
 
 test("the config file's role overrides resolve: instructions, model pair, interval, disabled", () => {

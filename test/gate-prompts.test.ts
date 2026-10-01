@@ -185,7 +185,14 @@ test("the review prompt carries the fan-out rule in its reading budget and still
 
 test("buildReviewPrompt carries the reviewer checklist and a reading budget", () => {
   const prompt = oneLine(buildReviewPrompt("diff body"));
-  assert.match(prompt, /read only what the diff touches: the changed functions, their callers, and the tests that cover them/);
+  assert.match(prompt, /Read only what the diff touches: the changed functions, their callers, and the tests that cover them/);
+  // The local-model retune (2026-10-01): the fallback model's reviews spent their first turns
+  // re-fetching the inline diff, then timed out — so the procedure says the diff is already here
+  // and bounds the turns.
+  assert.match(prompt, /The diff above is current — read it there; do not fetch it again with `git diff`/);
+  assert.match(prompt, /Only when it opens with a "\[diff truncated: …\]" note/);
+  assert.match(prompt, /Most reviews need two to four turns of tool calls/);
+  assert.match(prompt, /stop reading and write the verdict/);
   assert.match(prompt, /Check, in this order: 1\. Does the diff do exactly what the summary and WHY claim/);
   assert.match(prompt, /2\. Are the VERIFIED claims consistent with the diff/);
   // Suite counts are the harness's own attestation (PLANS.md 2026-09-29): the checklist sends

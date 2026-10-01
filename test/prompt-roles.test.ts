@@ -33,7 +33,7 @@ test("the perf role hunts measured wins and refuses speculative micro-optimizati
   const role = roleById("perf");
   assert.ok(role, "perf role exists");
   assert.equal(role.title, "performance optimizer");
-  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /"perf" loop/);
   assert.match(prompt, /CLEAR performance win/);
   assert.match(prompt, /measure or reason from actual data/);
@@ -77,7 +77,9 @@ test("the director routes loop-management requests to the config request file", 
 });
 test("the director's request-file contract replaces the tumwater.json edit exception; role prompts keep the blanket ban", () => {
   const d = oneLine(buildDirectorPrompt("add a loop named x that does y", "a project"));
-  assert.match(d, /Note on one boundary above, director only/);
+  assert.match(d, /Note on one boundary in the rules below, director only/);
+  // The note precedes the shared rules so the reply contract still closes the prompt.
+  assert.ok(buildDirectorPrompt("x", "y").trimEnd().endsWith("write none when nothing was run>"));
   assert.match(d, /applies only its customLoops array/);
   assert.match(d, /discarded with a warning/);
   // No edit exception remains: the director is told the config stays off-limits to it too.
@@ -109,7 +111,7 @@ test("the qa prompt is a first-time-user exercise of the README in a scratch dir
   assert.match(find, /README's usage instructions literally/);
   assert.match(find, /scratch directory under the system temp/);
   assert.match(find, /never inside this worktree or \.tumwater\//);
-  assert.match(find, /build the product fresh per its README/);
+  assert.match(find, /build the product fresh per its README/i);
   assert.match(find, /endpoints via curl/);
   assert.match(find, /check outputs against what the docs promise/);
   assert.match(find, /Delete the scratch dir when the flow is done/);
@@ -123,7 +125,7 @@ test("the qa prompt restricts writes to BUGS.md", () => {
 });
 test("the qa prompt carries the safety rails for launched processes", () => {
   const find = qa!.find;
-  assert.match(find, /every process gets a hard time limit and an explicit kill/);
+  assert.match(find, /every process gets a hard time limit and an explicit kill/i);
   assert.match(find, /ephemeral high ports, never the product's documented default port/);
   assert.match(find, /no listening process may outlive your tick/);
 });
@@ -136,7 +138,7 @@ test("the qa prompt keeps servers on loopback and tracks background processes by
     find,
     /on loopback only — check a flag that widens the bind \(e\.g\. `--all-interfaces`\) from its startup banner and stop it at once/,
   );
-  assert.match(find, /track each background process by its own pid/);
+  assert.match(find, /track each background process by its own pid/i);
   assert.match(find, /in `cd dir && server & echo \$!`, `\$!` names the subshell, not the server/);
 });
 test("the qa prompt picks one flow per tick from the README usage menu, cheap first", () => {
@@ -296,18 +298,21 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   assert.match(find, /compare the source module list against the test files/);
   assert.match(find, /run `npm run test:coverage` \(piped through `tail`\)/);
   assert.match(find, /node's own table above it can flip between runs on the same tree/);
-  assert.match(find, /then read only that file and its existing tests/);
+  assert.match(find, /then read only that file and its existing tests/i);
+  // The fallback model's longest coverage tick (2026-10-01, 97 turns) wrote its own V8
+  // instrumentation scripts instead of reading the project's coverage table.
+  assert.match(find, /do not write your own coverage instrumentation/);
 });
 test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
   const find = oneLine(roleById("feature")!.find);
   assert.match(find, /`grep -n '\^##' PLANS\.md` gives every heading with its line number/);
-  assert.match(find, /read only the chosen entry's line range and the code it names/);
+  assert.match(find, /read only the chosen entry's line range and the code it names/i);
   assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
   assert.match(find, /A plan too large to finish in this run is not split by you/);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "feature embeds the marker");
   assert.match(find, /append the note .* under its heading, skip it, and implement the next available plan that fits/);
   assert.match(find, /land exactly one plan/);
-  assert.match(find, /Skip entries already carrying a \*\*Needs review …\*\* note/);
+  assert.match(find, /skip entries already carrying a \*\*Needs review …\*\* note/i);
   assert.ok(!/split before implementing/.test(find), "the inline-split instruction is gone");
   assert.match(find, /correct the entry in the same change instead of refusing/);
 });
@@ -315,18 +320,18 @@ test("the feature find text moves a done plan under the EXISTING ## Done heading
   const find = oneLine(roleById("feature")!.find);
   // The failure this pins (PLANS.md 2026-09-30, part 1/3): "move it to a Done section" read
   // as "create a section", and five commits left PLANS.md with two `## Done` headings.
-  assert.match(find, /cut the entry out of `## Planned` and paste it/);
-  assert.match(find, /first entry under the file's existing `## Done` heading/);
-  assert.match(find, /never add, remove, or rename a `## ` heading/);
-  assert.match(find, /leave a `_None yet\._` placeholder under it/);
+  assert.match(find, /cut the entry out of `## Planned`/);
+  assert.match(find, /paste it as the first entry under the file's existing `## Done` heading/);
+  assert.match(find, /never add, remove, or rename a `## ` heading/i);
+  assert.match(find, /leave a `_None yet\._` placeholder there/);
   assert.match(find, /`grep -n '\^## ' PLANS\.md` must list the same headings before and after/);
   assert.ok(!/Done section/.test(find), "the 'create a section' wording is gone");
 });
 test("the bugfix find text moves a fixed bug under the EXISTING ## Fixed heading", () => {
   const find = oneLine(roleById("bugfix")!.find);
-  assert.match(find, /cut the entry out of `## Open` and paste it/);
-  assert.match(find, /first entry under the file's existing `## Fixed` heading/);
-  assert.match(find, /never add, remove, or rename a `## ` heading/);
+  assert.match(find, /cut the entry out of `## Open`/);
+  assert.match(find, /paste it as the first entry under the file's existing `## Fixed` heading/);
+  assert.match(find, /never add, remove, or rename a `## ` heading/i);
   assert.match(find, /`grep -n '\^## ' BUGS\.md` must list the same headings before and after/);
   assert.ok(!/Fixed section/.test(find), "the 'create a section' wording is gone");
 });
@@ -361,8 +366,8 @@ test("the director investigates only enough to route", () => {
 });
 test("the steward maps the backlog files by heading and reads bodies only by range", () => {
   const find = oneLine(roleById("steward")!.find);
-  assert.match(find, /You may see PLANS\.md and BUGS\.md whole, but do it cheaply/);
-  assert.match(find, /map each file first with `grep -n '\^##' FILE`/);
+  assert.match(find, /you may see PLANS\.md and BUGS\.md whole, but do it cheaply/i);
+  assert.match(find, /map each file first with `grep -n '\^##' FILE`/i);
   assert.match(find, /read Done\/Fixed entries by line range only where your move needs their bodies/);
   // The compressed Fixed record's `gap:` tag comes from the body's Validation gap line, so that
   // one line IS read; the old blanket "no body read required" was self-contradictory.
@@ -375,3 +380,17 @@ test("the steward maps the backlog files by heading and reads bodies only by ran
 const qa = roleById("qa");
 const telemetry = roleById("telemetry");
 const readme = roleById("readme");
+// Sweep completeness (2026-10-01): the budgeted model's dry/organize/clean rejections were mostly
+// a refactor or rename left half-swept — call sites unconverted, a stale path in a doc comment or
+// PLANS.md — and its coverage rejections were "untested" claims about modules other test files
+// already imported. Each role names the grep that proves its change complete.
+test("organize, dry, and clean each end with a whole-tree sweep for what they changed", () => {
+  assert.match(oneLine(roleById("organize")!.find), /A move is complete only when a grep for the old path and every moved name — over the source, the tests, and the markdown docs .* finds no stale reference/);
+  assert.match(oneLine(roleById("dry")!.find), /grep for the original expression once more across the source and the tests: every remaining copy is either converted or named in your WHY/);
+  assert.match(oneLine(roleById("clean")!.find), /A rename or deletion is complete only when a grep for the old name over the source, the tests, and the markdown docs finds nothing stale/);
+});
+test("the coverage role checks every importing test before calling anything untested", () => {
+  const find = oneLine(roleById("coverage")!.find);
+  assert.match(find, /every test that imports it, not just the one named after it: `grep -rln '<module name>' test\/`/);
+  assert.match(find, /Call a module or branch untested only when that check shows no test reaches it/);
+});

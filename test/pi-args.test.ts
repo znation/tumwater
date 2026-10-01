@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { piArgs } from "../src/pi-args.js";
+import { bundledExtensionPaths, piArgs } from "../src/pi-args.js";
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { configForRole } from "../src/config-views.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -42,6 +42,14 @@ test("piArgs loads the bundled bounded-output extension before user piArgs", () 
   assert.ok(path.isAbsolute(extPath), "extension path is absolute");
   assert.ok(fs.existsSync(extPath), `extension exists in dist: ${extPath}`);
   assert.ok(eIndex < args.indexOf("--no-skills"), "user piArgs still come after the extension");
+});
+
+test("piArgs loads the context-budget extension right after bounded-output", () => {
+  const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
+  const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
+  assert.deepEqual(exts, bundledExtensionPaths());
+  assert.deepEqual(exts.map((e) => path.basename(e)), ["bounded-output.js", "context-budget.js"]);
+  for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
 });
 
 test("piArgs skips the extension for non-pi agents, keeps it for a configured pi path", () => {

@@ -1,0 +1,95 @@
+/**
+ * Bundled pi extension: tells the model how full its context window is, at a few fixed
+ * thresholds, by appending one short note to the tool result that crosses each one. Loaded on
+ * every pi run via `-e <this file>` from src/pi-args.ts, after bounded-output.
+ *
+ * Why: a run cannot see its own context usage, and pi never compacts mid-run, so a tick that
+ * keeps reading simply runs into the window and lands nothing. That is the failure mode of the
+ * budget fallback's local model (Qwen3.8-27B behind a ~127k window): its longest ticks peaked at
+ * 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the prompt's
+ * reading budget could only say "your window is finite". The note turns that into a number at the
+ * moment it matters. On a large-window model the thresholds are rarely reached, so the extension
+ * costs nothing there.
+ *
+ * The threshold logic is a pure, exported function (`contextNote`) so it is unit-testable without
+ * pi; the default export is a thin adapter over pi's `tool_result` event and `ctx.getContextUsage()`
+ * (pi docs, extensions.md "Context and session changes"). One note per threshold per process: a
+ * resumed session (--continue) starts a fresh process and re-warns at most once, at the highest
+ * threshold it has already passed.
+ */
+
+/** Context-usage percentages at which the model is told where it stands. */
+export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];
+
+/** Round a token count to whole thousands for the note ("64k"). */
+function kTokens(tokens: number): string {
+  return `${Math.round(tokens / 1000)}k`;
+}
+
+/** The note for a context usage reading, or null when no threshold above `lastWarned` has been
+ * crossed. Returns the threshold it fired for, so the caller can remember it. Pure. */
+export function contextNote(
+  percent: number | null | undefined,
+  tokens: number | null | undefined,
+  contextWindow: number,
+  lastWarned: number,
+): { threshold: number; text: string } | null {
+  if (percent === null || percent === undefined || !Number.isFinite(percent)) return null;
+  const crossed = CONTEXT_THRESHOLDS.filter((t) => percent >= t && t > lastWarned);
+  const threshold = crossed[crossed.length - 1];
+  if (threshold === undefined) return null;
+  const used =
+    tokens !== null && tokens !== undefined && contextWindow > 0
+      ? ` (${kTokens(tokens)} of ${kTokens(contextWindow)} tokens)`
+      : "";
+  const advice =
+    threshold >= 85
+      ? "Stop reading now: finish what is in progress, then end your reply in the form your instructions require."
+      : threshold >= 70
+        ? "Wrap up: make the smallest change that completes your task, verify it, and end your reply."
+        : "Finish the task you chose with what you have; start no new exploration.";
+  return { threshold, text: `[tumwater: your context window is ${Math.floor(percent)}% full${used}. ${advice}]` };
+}
+
+/** Minimal structural types for pi's extension API — pi itself loads this file, so the real
+ * types are not needed at compile time and stay out of the dependency tree. */
+interface ContextUsage {
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
+}
+
+interface ContextBudgetToolResultEvent {
+  content?: Array<{ type?: string; text?: string }>;
+}
+
+interface ContextBudgetContext {
+  getContextUsage?: () => ContextUsage | undefined;
+}
+
+interface PiExtensionApi {
+  on(
+    event: string,
+    handler: (event: ContextBudgetToolResultEvent, ctx?: ContextBudgetContext) => unknown,
+  ): void;
+}
+
+/** The pi extension entry point: append the context note to the tool result that crosses a
+ * threshold, keeping the result's own content (as bounded-output left it) in front. */
+export default function contextBudget(pi: PiExtensionApi): void {
+  let lastWarned = 0;
+  pi.on("tool_result", (event, ctx) => {
+    let usage: ContextUsage | undefined;
+    try {
+      usage = ctx?.getContextUsage?.();
+    } catch {
+      return undefined;
+    }
+    if (!usage) return undefined;
+    const note = contextNote(usage.percent, usage.tokens, usage.contextWindow, lastWarned);
+    if (!note) return undefined;
+    lastWarned = note.threshold;
+    const content = Array.isArray(event.content) ? event.content : [];
+    return { content: [...content, { type: "text", text: `\n\n${note.text}` }] };
+  });
+}

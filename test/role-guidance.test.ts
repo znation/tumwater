@@ -11,6 +11,7 @@ import {
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TAGS,
+  VALIDATION_GAP_TALLY,
 } from "../src/role-guidance.js";
 import { oneLine } from "./oracles.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
@@ -63,7 +64,7 @@ test("the bugfix prompt requires the validation-gap trace line for every fixed e
   assert.ok(role);
   const prompt = buildTickPrompt({ role, initialPrompt: "" });
   assert.ok(prompt.includes(VALIDATION_GAP_GUIDANCE), "embeds the shared constant verbatim");
-  assert.match(prompt, /recording the required validation-gap trace line/);
+  assert.match(prompt, /write the required validation-gap trace line/);
 });
 
 test("the documented gap tally counts the verbatim line and the compressed suffix as one vocabulary", () => {
@@ -72,7 +73,10 @@ test("the documented gap tally counts the verbatim line and the compressed suffi
   // newest entries are invisible to the only recorded query. Run it for real on both forms.
   const query =
     "grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c";
-  assert.ok(VALIDATION_GAP_GUIDANCE.includes(query), "guidance documents this exact query");
+  assert.ok(VALIDATION_GAP_TALLY.includes(query), "the tally constant documents this exact query");
+  // Only the steward aggregates the tags, so only its prompt carries the query.
+  assert.ok(roleById("steward")!.find.includes(VALIDATION_GAP_TALLY), "the steward embeds the tally");
+  assert.ok(!roleById("bugfix")!.find.includes(query), "bugfix writes one line and never needs the tally");
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "BUGS.md"),
@@ -142,4 +146,10 @@ test("the plan role and the director size plans to one implementation run via th
   const find = oneLine(roleById("plan")!.find);
   assert.match(find, /confirm with grep that the capability does not already exist/);
   assert.match(find, /name the actual files and functions it touches, having looked at them in ranges/);
+});
+
+test("the search guidance says a small, clearly useful change clears the bar", () => {
+  // Lab A/B (2026-10-01): with the decision deadline as a numbered step, the improve role declined
+  // small real improvements the old wording landed; the bar is value, not size.
+  assert.match(oneLine(searchGuidance("improve")), /The bar is real value, not size: a small change that is clearly correct and useful clears it/);
 });

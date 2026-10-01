@@ -103,12 +103,20 @@ never exercise, claims the diff does not back, work left half-done.`,
     : "";
   parts.push(
     `Review adversarially: hunt for correctness bugs, violations of the project's principles,
-unjustified complexity growth, and incomplete or half-done work. Read surrounding code in the
-repo to check claims against reality — a diff that does more than it claims is a finding — but
-read only what the diff touches: the changed functions, their callers, and the tests that cover
-them, in ranges (\`grep -n\`, \`sed -n\`), not the repository at large. Batch the independent reads
-(the diff's files, their callers, their tests) as sibling tool calls in one turn — turns, not
-tool calls, are the expensive unit — and keep anything that depends on a prior result sequential.
+unjustified complexity growth, and incomplete or half-done work. Work in this order:
+   1. The diff above is current — read it there; do not fetch it again with \`git diff\`,
+      \`git show\`, or \`git log -p\`. Only when it opens with a "[diff truncated: …]" note, fetch
+      the omitted files' diffs against main, one path at a time.
+   2. From the diff and the claims, pick the few things that need checking against reality: each
+      claim in the summary, WHY, and VERIFIED; the riskiest changed lines; the tests that should
+      cover them. A diff that does more than it claims is a finding.
+   3. Read only what the diff touches: the changed functions, their callers, and the tests that
+      cover them, in ranges (\`grep -n\`, \`sed -n\`), not the repository at large. Batch the
+      independent reads (the diff's files, their callers, their tests) as sibling tool calls in
+      one turn — turns, not tool calls, are the expensive unit — and keep anything that depends on
+      a prior result sequential.
+   4. Most reviews need two to four turns of tool calls. Once every check below has an answer,
+      stop reading and write the verdict.
 
 Check, in this order:
 1. Does the diff do exactly what the summary and WHY claim — no more, no less? An unclaimed

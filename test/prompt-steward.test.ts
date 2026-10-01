@@ -66,7 +66,7 @@ test("the steward prompt bounds PLANS.md's Done section to a ten-entry verbatim 
   assert.match(find, /PLANS\.md's ## Done section is curated to stay bounded/);
   assert.match(
     find,
-    /keep the ten most recent entries verbatim \(newest first, by position in file\)/,
+    /keep the ten most recent entries verbatim \(newest first, by position in file\)/i,
   );
 });
 
@@ -90,7 +90,7 @@ test("the steward prompt sources epitaph hashes from landing citations or git lo
   // landing commit exists, omit the field rather than guess.
   assert.match(
     find,
-    /never use a verification or base reference \("Verified … against main `<sha>`", "at HEAD `<sha>`"\)/,
+    /never use a verification or base reference \("Verified … against main `<sha>`", "at HEAD `<sha>`"\)/i,
   );
   assert.match(find, /omit the commit\(s\) field rather than guess/);
 });
@@ -125,7 +125,7 @@ test("the steward prompt bounds BUGS.md's Fixed section to a ten-entry verbatim 
   // one — both windows are ten entries.
   assert.match(
     find,
-    /keep the ten most recent entries verbatim \(newest first\) and compress older ones to one line each/,
+    /keep the ten most recent entries verbatim \(newest first\) and compress older ones to one line each/i,
   );
 });
 
@@ -177,7 +177,7 @@ test("the steward prompt sources Fixed-record commits from landing citations or 
   // Entries closed without code change have no landing commit — omit rather than guess.
   assert.match(
     find,
-    /when no landing commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/,
+    /when no landing commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/i,
   );
   // The gap tag survives even without a landing commit, and `none` still costs nothing.
   assert.match(
@@ -188,19 +188,21 @@ test("the steward prompt sources Fixed-record commits from landing citations or 
 
 test("the steward prompt never compresses Fixed entries carrying a Refused note", () => {
   const find = oneLine(steward!.find);
-  // The Done paragraph uses an em-dash after "note"; the semicolon form is the Fixed clause.
+  // The Refused guard, the lossy-archive rule, and one-move-per-tick are stated once, for both
+  // compressions (the local-model retune of 2026-10-01 merged the two restated copies).
   assert.match(
     find,
-    /Never compress an entry carrying a standing \*\*Refused …\*\* note; such entries stay full/,
+    /Rules for both compressions: - Never compress an entry carrying a standing \*\*Refused …\*\* note/,
   );
+  assert.match(find, /such entries stay full/);
 });
 
 test("the steward prompt carries the shared curation rules over to Fixed compression", () => {
   const find = oneLine(steward!.find);
-  assert.match(
-    find,
-    /The same rules carry over: compression is lossy on purpose with git history as the archive, and one curation move per tick still holds/,
-  );
+  const shared = find.slice(find.indexOf("Rules for both compressions:"));
+  assert.ok(find.indexOf("Rules for both compressions:") > find.indexOf("Compressing BUGS.md ## Fixed"), "stated after both policies");
+  assert.match(shared, /Compression is lossy on purpose: pre-compression text stays in git history/);
+  assert.match(shared, /One curation move per tick still holds/);
 });
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {

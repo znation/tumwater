@@ -323,7 +323,7 @@ test("role prints one loop's standing prompt, and a queued prompt survives inspe
   let r = await cli(repo, "role", "feature");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /# tumwater role: feature/);
-  assert.match(r.stdout, /Open PLANS.md/); // the find text, verbatim
+  assert.match(r.stdout, /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text, verbatim
   assert.match(r.stdout, /## Next tick prompt/);
 
   // A queued per-role prompt appears inside the previewed next prompt AND survives — two

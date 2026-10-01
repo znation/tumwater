@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  CLAIMS_RULE,
   PRINCIPLES_MAX_CHARS,
   ROOT_FROM_WORKTREE,
   buildDirectorPrompt,
@@ -56,7 +57,7 @@ test("every tick prompt keeps its commands inside the worktree and out of the pr
   });
   assert.match(prompt, /Stay inside your worktree: run commands from it/);
   // Scratch directories stay allowed (qa follows the README in one, bugfix reproduces there).
-  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
+  assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. - Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
   assert.match(oneLine(prompt), /its dist\/ is the code the running fleet executes — never build, test, or edit files in that checkout/);
   assert.match(prompt, /find \/\`/);
   assert.ok(prompt.includes("(`../../../node_modules`)"), "the install's path from the worktree");
@@ -266,7 +267,7 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 test("every run carries the context-budget rule", () => {
   const tick = buildTickPrompt({ role: ROLES[0]!, initialPrompt: "x" });
   assert.match(tick, /context window is finite/);
-  assert.match(tick, /check size before reading \(`wc -l`\) and read\s+files over ~300 lines in ranges/);
+  assert.match(tick, /check size before reading \(`wc -l`\) and read\s+files over ~300 lines in ranges/i);
   assert.match(buildDirectorPrompt("do x", "x"), /context window is finite/);
   assert.match(buildResumePrompt("clean"), /context window is finite/);
 });
@@ -284,7 +285,7 @@ test("every role prompt states the reading budget in numbers: size check, ranges
   const role = roleById("feature");
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /check size before reading \(`wc -l`\)/);
+  assert.match(prompt, /check size before reading \(`wc -l`\)/i);
   assert.match(prompt, /read files over ~300 lines in ranges/);
   assert.match(prompt, /re-read only a region you edited/);
   // The rule names the cost so the model can budget, and never uses the loop tests' cut-off marker.
@@ -302,7 +303,7 @@ test("every role prompt carries the fan-out rule: independent calls share a turn
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /Each turn re-sends everything read so far/);
-  assert.match(prompt, /issue them as separate tool calls in the same turn/);
+  assert.match(prompt, /lookups that do not depend on each other .* as separate tool calls in the same turn/);
   assert.match(prompt, /do not batch an edit with the test that checks it/);
   // Oversized tool results are bounded head+tail by the bundled pi extension; the rule tells
   // the model to follow the marker's pointer instead of retrying the same read.
@@ -352,7 +353,7 @@ test("every role prompt ends with the reply contract: plain text last, no announ
 test("the readme role syncs from the git delta since its own last commit", () => {
   const find = oneLine(roleById("readme")!.find);
   assert.match(find, /`git log --oneline <last readme commit>\.\.main` names everything that landed/);
-  assert.match(find, /read only what those commits touched/);
+  assert.match(find, /read only what those commits touched/i);
 });
 
 // No prompt used to say what day it is (BUGS.md "Loops are never told the date…"), so every
@@ -445,4 +446,23 @@ test("buildTickPrompt renders a per-role user request as a labeled block", () =>
   // With nothing queued the block is absent entirely — no empty scaffolding.
   const without = buildTickPrompt({ role, initialPrompt: "" });
   assert.ok(!without.includes("<user-request>"));
+});
+
+// Claim discipline (2026-10-01): the budgeted model's review record showed false or unchecked
+// claims — "untested", "byte-identical", "all references updated", suite counts — as the leading
+// rejection cause, and edits made after the last green run as the next. Every authoring prompt
+// carries the rules, right before the reply contract they govern.
+test("every authoring prompt carries the claim-discipline rules ahead of the reply contract", () => {
+  for (const role of ROLES) {
+    const prompt = buildTickPrompt({ role, initialPrompt: "" });
+    const flat = oneLine(prompt);
+    assert.ok(prompt.includes(CLAIMS_RULE), `${role.id} carries the rules`);
+    assert.match(flat, /keep every claim accurate \(a small, correct change is welcome; an inaccurate claim is what gets a change rejected\)/);
+    assert.match(flat, /Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical"/);
+    assert.match(flat, /Never state test or suite counts/);
+    assert.match(flat, /Run the project's check after your LAST edit/);
+    assert.ok(prompt.indexOf(CLAIMS_RULE) < prompt.indexOf("How to end your reply"), `${role.id}: rules precede the ending`);
+  }
+  assert.ok(buildDirectorPrompt("add x", "a project").includes(CLAIMS_RULE), "the director carries them too");
+  assert.ok(!CLAIMS_RULE.includes("VERDICT"), "no review-verdict form outside the review prompt");
 });

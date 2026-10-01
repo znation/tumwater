@@ -18,29 +18,33 @@ import { worktreePath } from "./paths.js";
  * for parsing pi's replies — lives in reply-contract.ts; assembling a reply into the tick's commit
  * message lives in commit-message.ts.
  *
- * The prose is tuned for the fleet's actual model: a ~27B local model (Qwen-class, thinking on)
- * behind a ~258k-token window at ~8 tok/s decode and ~100 tok/s prefill under load. Such a model
- * follows short grouped rules with concrete numbers and literal commands far better than long
- * dense paragraphs, over-reads when told merely to "work economically", and needs to be told how
- * a reply must end — so the rules are grouped, budgets are numeric, and the closing contract comes
- * last, where a model attends to it most. */
+ * The prose is tuned for the fleet's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
+ * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow
+ * short grouped rules with concrete numbers and literal commands far better than long dense
+ * paragraphs, over-read when told merely to "work economically", make unchecked claims the
+ * reviewer then rejects (the primary's leading rejection cause), and need to be told how a reply
+ * must end — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
+ * numbered steps, claims carry the check that proves them, the three possible endings are a
+ * mutually exclusive list, and that closing contract comes last, where a model attends to it most.
+ * Nothing here is model-conditional. */
 
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
  * each tick's prefill. */
 export const PRINCIPLES_MAX_CHARS = 4000;
 
 /** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
- * closing contract, shared verbatim by SUMMARY_RULE (tick/director prompts) and
- * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
- * so the two cannot drift (sibling of the NOTHING_TO_DO sentinel in reply-contract.ts). */
+ * closing contract, shared verbatim by the tick/director prompts' ending list, SUMMARY_RULE (the
+ * resume bridge), and prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers
+ * a missing block), so they cannot drift (sibling of the NOTHING_TO_DO sentinel in
+ * reply-contract.ts). */
 export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
 
-/** The rule every loop prompt states for ending a run that made changes — the exact
- * SUMMARY/WHY/RISK/VERIFIED block format commit-message.ts parses into the commit message.
- * Stated once so the tick/director rules and prompt-followup.ts's resume bridge cannot drift. */
+/** The resume bridge's rule for ending a run that made changes — the exact SUMMARY/WHY/RISK/
+ * VERIFIED block format commit-message.ts parses into the commit message. The tick/director rules
+ * embed the same SUMMARY_BLOCK as the third of their three endings (commonRules). */
 export const SUMMARY_RULE = `- If you did make changes, end your reply with a block in exactly this form (one line each):
 ${SUMMARY_BLOCK}`;
 
@@ -48,26 +52,52 @@ ${SUMMARY_BLOCK}`;
  * at the ceiling landing nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
  * ticks in the first week of September), almost all of it whole-file reads: the model, told only
  * to "work economically", read the codebase file by file (277 whole-file reads against 6 ranged
- * ones in the bugfix/improve/clean logs). The 258k window absorbs that pattern instead of cutting
- * it off, but every token read is prefill at ~100 tok/s and dilutes the model's attention, so the
- * rule now states the cost in numbers and the one habit that prevents it: check size, then read in
- * ranges. Stated once so the tick rules and prompt-followup.ts's resume bridge and cut-off note
- * cannot drift. Must not contain the phrase "ran out of context" — the loop tests use it to tell
- * a fresh tick from a cut-off resume. */
-export const CONTEXT_BUDGET_RULE = `- Your context window is finite and everything you read stays in it until the run ends: a
-  whole-file read of a 500-line module costs ~5k tokens, and a run that fills the window ends
-  without landing anything. Work economically: check size before reading (\`wc -l\`) and read
-  files over ~300 lines in ranges (\`sed -n 'A,Bp'\`, or the read tool's offset/limit) around the
-  lines \`grep -n\` found; cap command output with \`head\`/\`tail\`; never dump a file, a log, or a
-  test run wholesale; do not re-read what you already saw — re-read only a region you edited.
-  Prefer a task you can finish comfortably within the window over a sweeping one. Each turn
-  re-sends everything read so far, so when the next few reads or commands do not depend on each
-  other's output (a \`wc -l\` over several files, a \`grep -n\` plus the \`sed -n\` ranges it points
-  at once known, a typecheck and a targeted test), issue them as separate tool calls in the same
-  turn; keep edits and anything that depends on a prior result sequential — do not batch an edit
-  with the test that checks it. Oversized tool results come back as head+tail around a marker
-  that names the omitted amount and where the full output lives — follow the pointer (re-read
-  with \`offset\`/\`limit\`, or open the full-output file path) instead of retrying the same read.`;
+ * ones in the bugfix/improve/clean logs). Every token read is prefill and dilutes the model's
+ * attention, so the rule states the cost in numbers and the one habit that prevents it: check
+ * size, then read in ranges. One rule per bullet (2026-10-01), so a small model can follow each
+ * on its own. (Reasoning length is not addressed here: a "think briefly" bullet measured no drop in
+ * the fallback model's thinking — the oMLX thinking-budget cap is the lever.) The bundled
+ * context-budget extension
+ * (src/pi-extension/context-budget.ts) complements this rule with the live fill level. Stated
+ * once so the tick rules and prompt-followup.ts's resume bridge cannot drift. Must not contain
+ * the phrase "ran out of context" — the loop tests use it to tell a fresh tick from a cut-off
+ * resume. */
+export const CONTEXT_BUDGET_RULE = `- Your context window is finite: everything you read stays in it until the run ends, and a
+  run that fills the window lands nothing. A whole-file read of a 500-line module costs ~5k tokens.
+- Check size before reading (\`wc -l\`) and read files over ~300 lines in ranges: find the lines
+  with \`grep -n\`, then read them with the read tool's offset/limit (or \`sed -n 'A,Bp'\`).
+- Cap command output with \`head\`/\`tail\`. Never dump a file, a log, or a test run wholesale.
+- Do not re-read what you already saw — re-read only a region you edited.
+- Each turn re-sends everything read so far, so issue lookups that do not depend on each other
+  (a \`wc -l\` over several files, the ranges a \`grep -n\` found, a typecheck and a targeted
+  test) as separate tool calls in the same turn. Keep anything that depends on a prior result
+  sequential — do not batch an edit with the test that checks it.
+- Oversized tool results come back as head+tail around a marker that names the omitted amount
+  and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
+  the full-output file path) instead of retrying the same read.`;
+
+/** The claim-discipline rules every authoring run carries, stated just before the reply contract
+ * they govern. Written against the budgeted model's review record (GLM-5.3-Flash, 2026-09-25..
+ * 10-01: 191 of ~1,100 reviewed changes rejected): the leading cause was not wrong code but a
+ * false or unchecked claim — "the untested X module" when tests already imported it, a moved block
+ * called "byte-identical" that was not, "all references updated" with one left, a suite count
+ * off by one, a VERIFIED command that does not exist on the tree — and the next was an edit made
+ * after the last green run, which the gate's build check then failed. Each rule names the check
+ * that makes its claim true. The header says small changes are welcome on purpose: a first
+ * wording ("one false claim rejects the whole change") made the improve role decline real, small
+ * improvements in lab A/B runs, citing the reviewer. Must not mention the reviewer's VERDICT form
+ * (prompt tests count it in the review prompt only). */
+export const CLAIMS_RULE = `Claims — a reviewer checks what your change says about itself against the code before it
+merges, so keep every claim accurate (a small, correct change is welcome; an inaccurate claim
+is what gets a change rejected):
+- State only what you verified. SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
+  PLANS.md/BUGS.md line you write are claims the reviewer checks against the code.
+- Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical",
+  "unchanged" — with the check that proves it (a grep over the source, the tests, and the docs;
+  a diff), or drop the word.
+- Never state test or suite counts: the harness runs the check and attests the numbers itself.
+- Run the project's check after your LAST edit. An edit made after the last green run is
+  unverified — run the check again before you end.`;
 
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
@@ -103,40 +133,47 @@ function commonRules(check?: BuildCheck, briefFile: string = "README.md"): strin
     : `if it has a build or test command, run it after your change and fix what you broke.`;
   const modules =
     check?.kind === "npm"
-      ? ` Your worktree has no node_modules of its own; it borrows the install at the repo
-  root (\`${ROOT_FROM_WORKTREE}/node_modules\`). To inspect a dependency's types or source,
-  read that directory directly instead of widening the search outward.`
+      ? `
+- Your worktree has no node_modules of its own; it borrows the install at the repo root
+  (\`${ROOT_FROM_WORKTREE}/node_modules\`). To inspect a dependency's types or source, read that
+  directory directly instead of widening the search outward.`
       : "";
   return `
 Rules for this run:
 
 Orientation — read this much before choosing your task, and no more:
-- First read the project brief (${briefFile}) in full to understand the project, plus
-  QUESTIONS.md when present.
-  PLANS.md and BUGS.md grow without bound — never read them wholesale: their actionable sections
-  come first by template convention (## Planned before ## Done; ## Open before ## Fixed), so read
-  only the top of each file that exists — Planned plus recent Done entries, Open plus recent
-  Fixed ones (\`grep -n '^##' FILE\` maps the headings with line numbers; \`sed -n 'A,Bp'\` reads
-  one entry). Consult older history via git log or a targeted read only when a specific entry is
-  needed. The steward role is the exception: it curates those files and must see them whole.
+- First read the project brief (${briefFile}) in full, plus QUESTIONS.md when present.
+- PLANS.md and BUGS.md grow without bound — never read them wholesale. Their actionable
+  sections come first (## Planned before ## Done; ## Open before ## Fixed): map the headings
+  with \`grep -n '^##' FILE\`, then read only the entries you need by line range — Planned plus
+  recent Done entries, Open plus recent Fixed ones. Consult older history via git log or a
+  targeted read only when a specific entry is needed. The steward role is the exception: it
+  curates those files and must see them whole.
 - Your worktree starts clean at main, and the harness checks main's build before code roles
   start: do not run the build or test suite just to establish a baseline. Run it after your
-  change — or when your task itself needs its output (reproducing a failure, counting the suite).
+  change, or when the task itself needs its output (reproducing a failure, counting the suite).
 
 Scope:
 - Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
-  Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
+- Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
   need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
   run — take a smaller one.
+
+Reading budget:
+${CONTEXT_BUDGET_RULE}
+
+Where you work:
 - Stay inside your worktree: run commands from it — the directory you start in, where
   \`git log\` and \`git show\` work just the same — or from a scratch directory under the system
-  temp. Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which the
-  harness lands main into while you work, and when this project is the harness itself its
-  dist/ is the code the running fleet executes — never build, test, or edit files in that
-  checkout. Never run an unbounded scan either (\`find /\`, \`grep -r /\`, any recursive search
-  rooted outside the repo) — an unmatched full-disk scan runs for tens of minutes with no
-  output and blocks your whole tick until the harness kills it as hung.${modules}
-${CONTEXT_BUDGET_RULE}
+  temp.
+- Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which the harness
+  lands main into while you work, and when this project is the harness itself its dist/ is the
+  code the running fleet executes — never build, test, or edit files in that checkout.${modules}
+- Never run an unbounded scan (\`find /\`, \`grep -r /\`, any recursive search rooted outside the
+  repo): it runs for tens of minutes with no output until the harness kills your tick as hung.
+- Never run a command that can wait forever — interactive programs (TUIs, REPLs, editors,
+  anything reading stdin), servers, or watch modes. To test such a program, background it with
+  a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
 - Leave the project working: ${verify} Pipe its output through \`tail\` — only the failures matter.
 
 Boundaries:
@@ -145,41 +182,37 @@ Boundaries:
 - Never touch the .tumwater directory or tumwater.json.
 - Never edit the initial prompt block in ${briefFile} (between the tumwater:prompt markers).
 - PRINCIPLES.md holds this project's design principles; only the director and steward roles may
-  edit it. Treat it as read-only — if a principle seems wrong or outdated, record your objection
-  in PLANS.md rather than editing the file.
-- Never run a command that can wait or run indefinitely — interactive programs (TUIs, REPLs,
-  editors, anything reading stdin), servers, or watch modes. A hung command hangs your whole
-  loop. To test such a program, impose a hard time limit yourself (background it and kill it
-  after at most 30 minutes) and never allocate it a real TTY expecting input.
+  edit it. Treat it as read-only — to object to a principle, record the objection in PLANS.md.
 
 When to ask, when to refuse:
 - When a fork in the road is genuinely the user's call (product direction, an irreversible
   choice, taste), do not guess: append a question to QUESTIONS.md under ## Open with context,
-  the options, and your own recommendation — a senior asks with a proposal, not a shrug — then
-  either continue with the parts that don't depend on it or end the tick. Never block on an
-  unanswered question; check for answers at the start of each tick. Do not re-ask an open
-  question.
+  the options, and your own recommendation. Then continue with the parts that don't depend on
+  it, or end the run. Never block on an unanswered question, and do not re-ask an open question.
 - If partway in you conclude the task would harm the project — it violates PRINCIPLES.md, grows
-  complexity without justification, or keeps fighting back — do not force it and revert nothing
-  yourself: record your objection as a note appended directly under the refused entry's heading
-  in PLANS.md (for a planned feature) or BUGS.md, in exactly this shape:
-  **Refused <YYYY-MM-DD> by <role>: <one-line reason>** — that recording edit is the only change
-  a refusing run should leave. When choosing work, skip entries carrying a Refused note — do not
-  pick them and do not re-refuse them; the objection stands until a human or the director edits
-  the entry (a fully blocked backlog is a legitimate nothing-to-do state). End your reply with a
-  line in exactly this form:
-  ${REFUSED_SENTINEL}: <the same one-line reason> — and emit that line ONLY when refusing: it
-  is not a reply-contract field, and an ordinary reply that reports completed work must never
-  name the sentinel (not even as "${REFUSED_SENTINEL}: none"), or the harness treats the whole
-  tick as a refusal.
+  complexity without justification, or keeps fighting back — refuse it. Revert nothing; append
+  this note directly under the entry's heading in PLANS.md (a planned feature) or BUGS.md:
+  **Refused <YYYY-MM-DD> by <role>: <one-line reason>**
+  That note is the only change a refusing run leaves.
+- When choosing work, skip entries carrying a Refused note — do not pick them and do not
+  re-refuse them. The objection stands until a human or the director edits the entry, so a
+  fully blocked backlog is a legitimate nothing-to-do state.
+
+${CLAIMS_RULE}
 
 How to end your reply — the harness parses it, so the form matters:
 - Your last message is plain text: never a tool call, and never an announcement of what you would
   do next ("Let me check…") — either make the call or finish. If a tool result only repeats what
   you already have, do not call it again.
-- If you find nothing worth doing for your role right now, make no changes and reply with the
-  single line ${NOTHING_TO_DO} instead.
-${SUMMARY_RULE}`;
+- End with exactly ONE of these three endings:
+  1. Nothing worth doing for your role right now: make no changes, and reply with the single
+     line ${NOTHING_TO_DO}
+  2. You refused the task (the note above): end with the line
+     ${REFUSED_SENTINEL}: <the same one-line reason>
+     Use this line ONLY when refusing — never in any other reply, not even as
+     "${REFUSED_SENTINEL}: none", or the harness discards your work as a refusal.
+  3. You made changes: end your reply with this block, one line each:
+${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 }
 
 /** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty
@@ -335,15 +368,18 @@ work yourself:
   implementation itself.
 - ${DECOMPOSITION_GUIDANCE}`,
   );
-  parts.push(commonRules(check, briefFile).trim());
+  // Before the shared rules, not after them: the closing reply contract stays the last thing
+  // in the prompt, where a model attends to it most (the tick prompt's invariant too).
   parts.push(
-    `Note on one boundary above, director only: user-defined-loop requests are executed by
-writing .tumwater-config-request.json in your worktree (shape and worked example above) — never
-by editing tumwater.json, which stays off-limits to you as to every role. The harness validates
-the request and applies only its customLoops array; a request that also names any other setting
-(timeouts, budgets, role enablement, review settings) has that key discarded with a warning, so
-such a request is guidance to record per the routing rules, not an edit you can make.`,
+    `Note on one boundary in the rules below, director only: user-defined-loop requests are
+executed by writing .tumwater-config-request.json in your worktree (shape and worked example
+above) — never by editing tumwater.json, which stays off-limits to you as to every role. The
+harness validates the request and applies only its customLoops array; a request that also names
+any other setting (timeouts, budgets, role enablement, review settings) has that key discarded
+with a warning, so such a request is guidance to record per the routing rules, not an edit you
+can make.`,
   );
+  parts.push(commonRules(check, briefFile).trim());
   return parts.join("\n\n");
 }
 
