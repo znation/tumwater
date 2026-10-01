@@ -61,7 +61,7 @@ export function unquotePorcelainPath(p: string): string {
         if (e >= "0" && e <= "7") {
           const chunk = p.slice(i, i + 3);
           if (/^[0-7]{3}$/.test(chunk)) {
-            bytes += String.fromCharCode(parseInt(chunk, 8));
+            bytes += String.fromCharCode(Number.parseInt(chunk, 8));
             i += 2;
           } else {
             bytes += e;

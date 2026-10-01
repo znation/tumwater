@@ -322,7 +322,7 @@ export async function commitMessage(cwd: string, sha: string): Promise<string | 
 /** Commits ahead of main on the worktree's branch. */
 export async function aheadOfMain(wt: string, mainBranch: string): Promise<number> {
   const out = await git(wt, "rev-list", "--count", `${mainBranch}..HEAD`);
-  return parseInt(out, 10);
+  return Number.parseInt(out, 10);
 }
 
 /** The patch-id of the change `head` makes on top of `base`: `git diff` over `base...head` (from
