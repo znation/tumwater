@@ -337,6 +337,17 @@ function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""):
     : "";
 }
 
+/** Read one backlog file for a check, or the failure message explaining why it could not be
+ * read (text.ts's errorMessage). Callers shape the failure themselves — a returned warn for a
+ * single-file check, an "(unreadable)" list entry for the multi-file heading sweep. */
+function readDoc(p: string): { doc: string } | { error: string } {
+  try {
+    return { doc: fs.readFileSync(p, "utf8") };
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+}
+
 /** Fix claims — the standalone half of the landing gate's false-fix check (src/fix-claim.ts):
  * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
  * that reached main any other way (landed before the gate existed, or through a path it never
@@ -350,12 +361,9 @@ function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""):
 export function checkFixClaims(root: string): CheckOutcome {
   const bugsPath = path.join(root, "BUGS.md");
   if (!fs.existsSync(bugsPath)) return { level: "ok", detail: "no BUGS.md — nothing to verify" };
-  let doc: string;
-  try {
-    doc = fs.readFileSync(bugsPath, "utf8");
-  } catch (err) {
-    return { level: "warn", detail: `cannot read BUGS.md — ${errorMessage(err)}` };
-  }
+  const read = readDoc(bugsPath);
+  if ("error" in read) return { level: "warn", detail: `cannot read BUGS.md — ${read.error}` };
+  const { doc } = read;
   const headings = fixedHeadings(doc).slice(0, FIX_CLAIMS_CHECKED);
   // The haystack walks src/, test/ and scripts/: build it only once a record names something.
   let haystack: string | undefined;
@@ -393,12 +401,9 @@ export function checkFixClaims(root: string): CheckOutcome {
 export function checkStrandedPlans(root: string): CheckOutcome {
   const plansPath = path.join(root, "PLANS.md");
   if (!fs.existsSync(plansPath)) return { level: "ok", detail: "no PLANS.md — nothing to verify" };
-  let doc: string;
-  try {
-    doc = fs.readFileSync(plansPath, "utf8");
-  } catch (err) {
-    return { level: "warn", detail: `cannot read PLANS.md — ${errorMessage(err)}` };
-  }
+  const read = readDoc(plansPath);
+  if ("error" in read) return { level: "warn", detail: `cannot read PLANS.md — ${read.error}` };
+  const { doc } = read;
   const stranded = strandedPlanEntries(doc);
   if (stranded.length === 0)
     return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
@@ -427,13 +432,12 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
   for (const file of ["PLANS.md", "BUGS.md", "QUESTIONS.md"]) {
     const p = path.join(root, file);
     if (!fs.existsSync(p)) continue; // Absent file (early repo): contributes nothing.
-    let doc: string;
-    try {
-      doc = fs.readFileSync(p, "utf8");
-    } catch {
+    const read = readDoc(p);
+    if ("error" in read) {
       duplicates.push(`${file} (unreadable)`);
       continue;
     }
+    const { doc } = read;
     for (const title of duplicateHeadings(doc)) duplicates.push(`${file} "## ${title}"`);
   }
   if (duplicates.length === 0)
