@@ -697,6 +697,58 @@ test("time and spend folds role × outcome class, pairing old events with tick_s
   assert.match(md, /no_change on bugfix/);
 });
 
+test("a review-rejected change's authoring hours price into error-class, not landed", () => {
+  // The 2026-09-30 digest bug: a tick ends `queued` when it pins its change, and the landing
+  // slot rejects that change AFTER the tick_end — so the fold that reads only tick_ends read
+  // the authoring span into the landed column, contradicting its own contract ("the review
+  // gate" is error-class) and never appearing in the loss ranking. The fold now joins each
+  // queued tick_end through its land_queued pin to the same-sha landed/land_failed outcome —
+  // history-data's exact join — and prices a rejected landing's authoring span as the loss it
+  // was. The fixture uses the live shape: land_queued DURING the tick, review_rejected +
+  // land_failed after it, the land_failed carrying the LANDING's own duration, not the tick's.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    // Rejected at the review gate: authoring hours move to error-class + the loss ranking.
+    { ts: at(0, 9), loop: "coverage", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 10), loop: "coverage", type: "tick_end", tick: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
+    { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("a"), reasons: ["too big"] },
+    { ts: at(0, 12), loop: "coverage", type: "land_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+    // Landed normally: the queued→landed reading survives the join.
+    { ts: at(0, 9), loop: "feature", type: "land_queued", commit: head("b"), summary: "land a thing" },
+    { ts: at(0, 10), loop: "feature", type: "tick_end", tick: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 },
+    { ts: at(0, 12), loop: "feature", type: "landed", commit: head("b"), result: "changed", durationMs: 5_000 },
+    // Still in the pipeline (no pin, no outcome yet): the conservative fallback keeps it landed.
+    { ts: at(0, 10), loop: "bugfix", type: "tick_end", tick: 1, result: "queued", durationMs: 600_000, costUsd: 0.1 },
+    // A merge conflict also burns the authoring span into error-class — but is no
+    // review-rejection loss cause, having no rejection to name.
+    { ts: at(0, 9), loop: "organize", type: "land_queued", commit: head("c"), summary: "tidy" },
+    { ts: at(0, 10), loop: "organize", type: "tick_end", tick: 1, result: "queued", durationMs: 1_200_000, costUsd: 0.3 },
+    { ts: at(0, 12), loop: "organize", type: "land_failed", commit: head("c"), result: "merge_conflict", durationMs: 30_000 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const coverage = data.timeSpend.find((r) => r.role === "coverage");
+  assert.deepEqual(coverage?.classes.error, { ticks: 1, ms: 3_600_000, costUsd: 1.0 }, "the authoring span prices as error-class, not the landing's own 60s");
+  assert.equal(coverage?.classes.landed.ticks, 0);
+  const feature = data.timeSpend.find((r) => r.role === "feature");
+  assert.deepEqual(feature?.classes.landed, { ticks: 1, ms: 1_800_000, costUsd: 0.2 }, "a landed change stays landed");
+  const bugfix = data.timeSpend.find((r) => r.role === "bugfix");
+  assert.deepEqual(bugfix?.classes.landed, { ticks: 1, ms: 600_000, costUsd: 0.1 }, "an unresolved landing keeps the conservative fallback");
+  const organize = data.timeSpend.find((r) => r.role === "organize");
+  assert.deepEqual(organize?.classes.error, { ticks: 1, ms: 1_200_000, costUsd: 0.3 }, "a merge conflict's authoring span prices as error-class too");
+
+  const rejected = data.lossCauses.find((c) => c.kind === "review-rejected");
+  assert.deepEqual(
+    rejected && { roles: rejected.roles, example: rejected.example, ticks: rejected.ticks, ms: rejected.ms, costUsd: rejected.costUsd },
+    { roles: ["coverage"], example: "too big", ticks: 1, ms: 3_600_000, costUsd: 1.0 },
+    "the rejection ranks as its own cause, exemplified by the review_rejected reason",
+  );
+  assert.equal(data.lossCauses.some((c) => c.roles.includes("organize")), false, "a merge conflict is no review-rejection cause");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /review-rejected authoring on coverage — too big/);
+  assert.match(md, /\| coverage \| — \| — \| 1\.0 h · \$1\.00 \|/);
+});
+
 test("poolTimeoutKey pools the two tick-timeout shapes into one cause", () => {
   assert.equal(poolTimeoutKey("timed out after <dur>"), "timed out after <dur>");
   assert.equal(

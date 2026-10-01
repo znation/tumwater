@@ -21,6 +21,7 @@ import {
   type Cluster,
 } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
+import { resolveQueuedResult } from "./history-data.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -90,13 +91,14 @@ interface TimeSpendRow {
   classes: Record<"landed" | "no_change" | "error", SpendCell>;
 }
 
-/** One ranked loss cause (PLANS.md, time-and-spend plan): either an error cluster — the
- * digest's own clustering, applied to the ticks that burned time — or a role's total
- * "no_change" spend, the quiet loss no cluster names. `example` is the newest verbatim
- * occurrence for a cluster (the one at lastSeen, BUGS.md 2026-09-30), "" for a no_change
- * cause. */
+/** One ranked loss cause (PLANS.md, time-and-spend plan): an error cluster — the digest's
+ * own clustering, applied to the ticks that burned time — a role's total "no_change" spend,
+ * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
+ * gate rejected (BUGS.md 2026-09-30). `example` is the newest verbatim occurrence for a
+ * cluster (the one at lastSeen, BUGS.md 2026-09-30) or a review-rejected cause's newest
+ * rejection reason, "" for a no_change cause. */
 interface LossCause {
-  kind: "error-cluster" | "no_change";
+  kind: "error-cluster" | "no_change" | "review-rejected";
   roles: string[]; // unique, sorted
   example: string;
   ticks: number;
@@ -121,7 +123,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change";
+  kind: "error-cluster" | "no_change" | "review-rejected";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -173,7 +175,7 @@ export interface FailureReportData {
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
   timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
-  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters and no_change roles
+  lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change and review-rejected roles
   errors: ClusterSection;
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
@@ -241,7 +243,13 @@ function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
 
 /** Fold the window's tick_ends into the time-and-spend table and the loss ranking. Pairing
  * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
- * in the preceding day and ended in the current one still gets its span. */
+ * in the preceding day and ended in the current one still gets its span. The landing-outcome
+ * join runs over that same whole read too (BUGS.md 2026-09-30): a queued tick_end resolves
+ * through its own land_queued pin to the later landed/land_failed outcome for the same
+ * loop+sha — history-data.ts's exact join — so an authoring tick whose landing was rejected
+ * prices into the error-class cell its contract names instead of the landed cell its
+ * transient queued result suggested. A landing still in the pipeline, or an outcome event
+ * matching no pin, keeps the queued→landed reading: the conservative fallback. */
 function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
   lossCauses: LossCause[];
@@ -250,9 +258,41 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"landed" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
+  const perLoop = (map: Map<string, HarnessEvent[]>, e: HarnessEvent): void => {
+    const list = map.get(e.loop) ?? [];
+    list.push(e);
+    map.set(e.loop, list);
+  };
+  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
+  const outcomeByLoop = new Map<string, HarnessEvent[]>();
+  const rejectedByLoop = new Map<string, HarnessEvent[]>();
+  for (const e of allEvents) {
+    if (e.type === "land_queued") perLoop(landQueuedByLoop, e);
+    else if (e.type === "landed" || e.type === "land_failed") perLoop(outcomeByLoop, e);
+    else if (e.type === "review_rejected") perLoop(rejectedByLoop, e);
+  }
+  // Queued tick_ends resolve newest-first so each claims the newest pin at or before its end
+  // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
+  // history rows. tickEvents is oldest-first, hence the backward walk.
+  const claimTop = new Map<string, number>();
+  const resolved = new Map<HarnessEvent, { result: string; sha: string }>();
+  for (let i = tickEvents.length - 1; i >= 0; i--) {
+    const ev = tickEvents[i]!;
+    if (ev.result !== "queued") continue;
+    const joined = resolveQueuedResult(ev, landQueuedByLoop, outcomeByLoop, claimTop, new Map(), null);
+    if (joined !== null) resolved.set(ev, joined);
+  }
   for (const ev of tickEvents) {
-    const cls = OUTCOME_CLASS[ev.result as TickResult];
+    let cls = OUTCOME_CLASS[ev.result as TickResult];
     if (cls === undefined) continue; // An unknown result is tallied in the Outcome table; costing it would need a class first.
+    let resolvedOutcome: { result: string; sha: string } | null = null;
+    if (ev.result === "queued") {
+      resolvedOutcome = resolved.get(ev) ?? null;
+      if (resolvedOutcome) {
+        const resolvedCls = OUTCOME_CLASS[resolvedOutcome.result as TickResult];
+        if (resolvedCls !== undefined) cls = resolvedCls;
+      }
+    }
     const role = eventRole(ev);
     const row = byRole.get(role) ?? { landed: emptyCell(), no_change: emptyCell(), error: emptyCell() };
     byRole.set(role, row);
@@ -261,20 +301,33 @@ function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
     cell.ms += tickDurationMs(ev, starts);
     cell.costUsd += eventUsage(ev).costUsd;
 
-    // Loss causes: a clustered failure's cluster owns its time, a no_change's role does.
+    // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and
+    // a landing-gate rejection prices its authoring span under a per-role cause of its own —
+    // unrepresentable as an error cluster, since the land_failed event carries no message;
+    // the example is the matching review_rejected's first reason, the same change by sha.
     let key: string | null = null;
+    let kind: LossDraft["kind"] = "error-cluster";
     let example = "";
     if (cls === "no_change") {
       key = `no_change\u0000${role}`;
+      kind = "no_change";
     } else if (CLUSTERED_RESULTS.has(String(ev.result)) && typeof ev.error === "string" && ev.error !== "") {
       key = poolTimeoutKey(normalizeClusterKey(ev.error));
       example = truncateExample(ev.error);
+    } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
+      key = `review-rejected\u0000${role}`;
+      kind = "review-rejected";
+      const rej = (rejectedByLoop.get(role) ?? [])
+        .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
+        .at(-1);
+      const reasons = rej && Array.isArray(rej.reasons) ? (rej.reasons as string[]) : [];
+      example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
     }
     if (key === null) continue;
     let draft = losses.get(key);
     if (!draft) {
       draft = {
-        kind: cls === "no_change" ? "no_change" : "error-cluster",
+        kind,
         roles: new Set<string>(),
         lastSeen: ev.ts,
         example,

@@ -169,7 +169,9 @@ export function renderFailureMarkdown(data: FailureReportData): string {
         const cause =
           c.kind === "no_change"
             ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
-            : `${c.example} (${roleList(c.roles)})`;
+            : c.kind === "review-rejected"
+              ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+              : `${c.example} (${roleList(c.roles)})`;
         lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
       }
     }

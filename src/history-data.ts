@@ -96,15 +96,18 @@ export interface TickRow {
  * no start at all but is never queued).
  * No outcome event (the landing still in the pipeline, or its event outside the join set)
  * leaves the raw label too: the conservative fallback for a landing whose verdict is simply
- * not visible here. Returns the resolved result string, or null to keep the tick_end's own. */
-function resolveQueuedResult(
+ * not visible here. Returns the resolved result string plus the claimed pin's commit sha
+ * (callers match further evidence — a review_rejected's reasons — onto the same change), or
+ * null to keep the tick_end's own. The failure digest's time-and-spend fold shares this join
+ * so a review-rejected change's authoring hours stop reading as landed (BUGS.md 2026-09-30). */
+export function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
   outcomeByLoop: Map<string, HarnessEvent[]>,
   claimTop: Map<string, number>,
   joinStarts: Map<string, number>,
   floorTs: number | null,
-): string | null {
+): { result: string; sha: string } | null {
   if (floorTs !== null) {
     const startTs = joinStarts.get(`${end.loop}#${end.tick}`);
     if (startTs !== undefined && startTs < floorTs) return null;
@@ -122,7 +125,7 @@ function resolveQueuedResult(
   );
   if (!outcome) return null;
   const result = String(outcome.result ?? (outcome.type === "landed" ? "changed" : ""));
-  return result || null;
+  return result ? { result, sha } : null;
 }
 
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as
@@ -172,8 +175,8 @@ export function tickRows(
     const rawResult = String(e.result);
     const result =
       rawResult === "queued"
-        ? resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop, joinStarts, floorTs) ??
-        rawResult
+        ? (resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop, joinStarts, floorTs)
+            ?.result ?? rawResult)
         : rawResult;
     const usage = eventUsage(e);
     rows.push({
