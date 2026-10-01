@@ -474,6 +474,9 @@ export const GUI_STYLES = String.raw`
     .tab { flex: none; }
     .side-controls { flex-direction: row; flex-wrap: wrap; margin-top: 0; }
     .side-controls > * { flex: 1 1 180px; min-width: 0; }
+    /* The up-facing popovers (line 157) must flip below their anchors here: the sidebar is
+    static now and .side-controls sits near the top of the page, so opening above the anchor
+    would run off the top of the viewport. */
     .menu-anchor.up .popover { top: calc(100% + 8px); bottom: auto; }
     .main { padding-left: 16px; padding-right: 16px; }
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
