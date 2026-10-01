@@ -1,7 +1,7 @@
 /** Unit-tier coverage for the orchestrator's backlog-aware deferral (src/orchestrator.ts's
  * scheduling pass) — the contracts the gating `npm test` never pinned: the deferral block and
  * its once-mode settle ran only in the e2e tier, so `npm test` (the declared check) reported
- * the block uncovered even though the behavior was verified. Two rules live here:
+ * the block uncovered even though the behavior was verified. The rules live here:
  *
  * - Need over idleness: a due maintenance role whose last tick did nothing stays deferred
  *   while the backlog is open — in once mode the deferral is the role's round answer
@@ -10,6 +10,9 @@
  *   same predicate isEligible's min-gap exemption keys on) overrides the deferral; an explicit
  *   "try again now" is a demand, not idle maintenance, so the role ticks even with the backlog
  *   open. No other test, unit or e2e, pins this rule.
+ * - Episodes end and restart cleanly: across a live run's polls, a queued prompt that makes a
+ *   deferred role due via its inbox silently ends the deferral episode (no event — the tick
+ *   itself is the answer), and the next scheduled deferral is a NEW episode that logs again.
  */
 
 import test from "node:test";
@@ -18,9 +21,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { readBranchHead } from "../src/git.js";
-import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";
+import { queuedRolePromptCount, submitRolePrompt } from "../src/inbox.js";
+import {
+  awaitSettledTick,
+  makeFastRepo,
+  onceRound,
+  startIdleOrchestrator,
+  stopOrchestrator,
+} from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType } from "./log-fixtures.js";
+import { waitFor } from "./wait.js";
 
 /** The state a finished no_change tick on the current main head leaves on disk, due now. */
 function idleDueState(repo: string) {
@@ -79,5 +90,33 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     assert.deepEqual(eventsOfType(repo, "tick_deferred"), [], "no deferral episode: the demand preempted it");
   } finally {
     restore();
+  }
+});
+
+test("live: an inbox demand ends a deferral episode silently, and the next deferral logs a fresh episode", async () => {
+  const repo = await makeFastRepo("deferral episode reset test", ["clean"]);
+  openBacklog(repo);
+  saveLoopState(repo, idleDueState(repo));
+  const { restore, orch } = startIdleOrchestrator(repo);
+  try {
+    // Episode one: the backlog defers the due maintenance tick and the event logs once.
+    await waitFor(() => eventsOfType(repo, "tick_deferred").length >= 1, "the first deferral episode");
+
+    // A queued prompt makes the role due via its inbox — the demand runs the tick the
+    // backlog would have kept deferred, announced by a wake (reason inbox).
+    submitRolePrompt(repo, "clean", "an explicit demand");
+    await awaitSettledTick(repo, "clean", 2, "the demand's tick to finish");
+    const wake = eventsOfType(repo, "wake").find((e) => e.loop === "clean");
+    assert.ok(wake, "the demand is announced with a wake event");
+    assert.equal(wake?.reason, "inbox");
+    assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
+
+    // The demand silently ended episode one. With the backlog still open, the role's next
+    // scheduled tick defers again — and that fresh episode logs its own tick_deferred: the
+    // stale in-memory episode flag must not swallow it.
+    await waitFor(() => eventsOfType(repo, "tick_deferred").length >= 2, "the fresh deferral episode");
+    assert.equal(loadLoopState(repo, "clean").ticks, 2, "still deferred: the backlog holds");
+  } finally {
+    await stopOrchestrator(orch, restore);
   }
 });
