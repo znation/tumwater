@@ -26,7 +26,10 @@ export function newLiveConfigReload(deps: {
    * first poll of an unchanged file logs nothing). */
   config: TumwaterConfig;
   mainBranch: string;
-  signal: AbortSignal;
+  /** The signal every runner watches — the orchestrator's roleSignal (the caller's stop plus
+   * both internal stops), NOT the full harness signal: a role enabled mid-run must be cut off
+   * by the restart drain's role-tick abort exactly like a startup runner (BUGS.md 2026-09-30). */
+  runnerSignal: AbortSignal;
   /** The orchestrator's runner list, mutated in place: a role enabled mid-run gets a runner
    * appended here (its persisted state survives). */
   runners: LoopRunner[];
@@ -97,7 +100,7 @@ export function newLiveConfigReload(deps: {
         for (const role of nowEnabled) {
           if (deps.roleFilter !== undefined && role !== deps.roleFilter) continue;
           if (!deps.runners.some((r) => r.role === role))
-            deps.runners.push(new LoopRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.signal));
+            deps.runners.push(new LoopRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.runnerSignal));
         }
         for (const role of prevEnabled)
           if (!nowEnabled.includes(role))

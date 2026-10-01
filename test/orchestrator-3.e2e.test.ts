@@ -764,3 +764,77 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     restore();
   }
 });
+
+test("a restart's drain aborts only its permit-holding role ticks — the in-flight landing keeps its hand-off window, and a role enabled mid-run is cut off with the startup ones", async () => {
+  // BUGS.md 2026-09-30, the 13 ms landing: clean's tick holds a permit past the drain window
+  // while dry's landing is mid-review when the redeploy reaches the swap. The drain's abort used
+  // to fire the harness's one internal stop, killing the landing before the hand-off could wait
+  // the window it announces — the "waiting" warning followed 13 ms later by `land_failed …
+  // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
+  // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
+  const repo = await makeFastRepo("drain role-stop test", ["dry"]);
+  await seedLandQueue(repo, "dry"); // dry is interlocked: its landing runs, its tick never starts
+  const reviewing = path.join(tmpdir(), "rolestop-reviewing");
+  const authoring = path.join(tmpdir(), "rolestop-authoring");
+  const restore = fakePi(
+    `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done\n` +
+      `touch '${authoring}'; sleep 5`,
+  );
+  const { redeployer, swaps } = scriptedRedeployer(repo, {
+    drainMaxMs: 1000,
+    stale: () => fs.existsSync(reviewing),
+  });
+  const { run, stop, signal } = startRedeployRun(repo, redeployer, {
+    timeoutMs: 90_000,
+    handoffLandingWindowMs: 500,
+  });
+  try {
+    await waitFor(() => fs.existsSync(reviewing), "dry's vet reviewer to be in flight");
+    // Enable clean mid-run — the live-reload path, not startup — and let its tick take a permit
+    // BEFORE main moves: a held poll starts no tick, so the permit holder must predate the hold.
+    saveConfig(repo, fastConfig(["clean", "dry"]));
+    await waitFor(() => fs.existsSync(authoring), "the mid-run role's tick to hold a permit");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the tick and the vet");
+    const exit = await run;
+    assert.deepEqual(exit, { restart: true });
+    assert.equal(swaps.length, 1, "the new build was swapped in");
+    assert.ok(!signal.aborted, "the hand-off ended the run, not the test's safety stop");
+
+    const events = readEvents(repo);
+    const warnings = events.filter((e) => e.type === "warning" && e.loop === "harness");
+    assert.ok(
+      warnings.some((e) => String((e as unknown as { message: string }).message).includes("role clean enabled — starting ticks")),
+      "clean joined through the live-reload path, so its wiring is the one under test",
+    );
+    const indexOf = (predicate: (e: (typeof events)[number]) => boolean) => events.findIndex(predicate);
+    const restartAt = indexOf((e) => e.type === "restart");
+    const waitAt = indexOf(
+      (e) => e.type === "warning" && /restart hand-off waiting on the in-flight landing of dry/.test(String((e as unknown as { message: string }).message)),
+    );
+    const lapseAt = indexOf(
+      (e) => e.type === "warning" && /the landing of dry outlived its 0\.5s deadline — aborted/.test(String((e as unknown as { message: string }).message)),
+    );
+    const cleanAbortedAt = indexOf((e) => e.type === "tick_end" && e.loop === "clean" && e.result === "aborted");
+    const dryFailedAt = indexOf((e) => e.type === "land_failed" && e.loop === "dry");
+    const stopAt = indexOf((e) => e.type === "orchestrator_stop");
+    // The drain cut its permit holder off AT the swap, and the landing was aborted only past its
+    // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait
+    // warning land within milliseconds of each other, so their ORDER would race; the lapse is
+    // the anchor: a runner wired to the full signal instead of roleSignal survives the drain's
+    // abort and dies only when the lapse fires its abort — after the lapse warning, half a
+    // window (~500 ms) late — while a correctly wired one died long before it.
+    assert.ok(restartAt >= 0, "the restart fired");
+    assert.equal((events[restartAt] as unknown as { abortedTicks: number }).abortedTicks, 1, "the drain counted clean's cut-off tick");
+    assert.ok(cleanAbortedAt > -1, "clean's in-flight tick ended aborted");
+    assert.ok(cleanAbortedAt < lapseAt, "clean's tick was cut off by the drain at the swap, not at the hand-off's lapse");
+    assert.ok(waitAt > restartAt && lapseAt > waitAt && dryFailedAt > lapseAt && stopAt > dryFailedAt, "the landing got the announced window: wait, lapse, abort, stop — in that order");
+
+    // The landing's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
+    // next generation, nothing landed, no stale marker.
+    assert.ok(landingRefExists(repo, "dry"), "dry's pin survives for the next generation");
+    assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
+  } finally {
+    await stop();
+    restore();
+  }
+});

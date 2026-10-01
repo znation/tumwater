@@ -123,14 +123,21 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       'no roles enabled in tumwater.json — enable at least one role in its "roles" section (e.g. `"feature": { "enabled": true }`), or remove that section to restore every role\'s default',
     );
 
-  // Runners and sleeps watch a combined signal: the caller's (Ctrl+C/SIGTERM) plus an internal
-  // one the restart path fires when it runs out of patience — the drain, with permit-holding
-  // ROLE ticks still in flight (they then end as `aborted`, resumable on the new build, exactly
-  // like a shutdown), and the hand-off, with a landing still in flight (awaitLandingForHandoff). A
-  // director tick is never aborted this way: poll holds for it without a cap, so by the time
-  // `restart` lands only role ticks and the landing can remain.
+  // Two internal stop controllers ride beside the caller's (Ctrl+C/SIGTERM): internalStop, the
+  // graceful shutdown the once-mode exit and the hand-off's deadline abort fire — it cuts role
+  // ticks and landings alike — and internalRoleStop, which ONLY the restart drain fires when it
+  // gives up on its permit-holding ROLE ticks (they then end as `aborted`, resumable on the new
+  // build, exactly like a shutdown). The split is the point: the drain's abort must not cut off
+  // an in-flight landing, which then never reaches the hand-off window the wait announces
+  // (BUGS.md 2026-09-30: the landing died 13 ms after the warning). So the runners and the timed
+  // tick wrapper watch roleSignal — the full signal PLUS the role-only stop — while the landing
+  // tasks keep wiring the full signal alone. A director tick is never aborted by either
+  // controller: poll holds for it without a cap, so by the time `restart` lands only role ticks
+  // and the landing can remain.
   const internalStop = new AbortController();
+  const internalRoleStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
+  const roleSignal = AbortSignal.any([signal, internalRoleStop.signal]);
   // A once round is a one-shot by definition: it never self-redeploys, and the hand-off
   // machinery stays daemon-only. Forcing null here keeps the whole poll loop's redeploy
   // branches inert no matter what a caller passes.
@@ -138,7 +145,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
   let restart = false;
 
-  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, signal));
+  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
   // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
   // resolver — landing-drain.ts) all hold a permit; see its LandingPipelineContext for why a
   // landing is not exempt.
@@ -203,7 +210,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const gateStates: FleetGateStates = newFleetGateStates(config);
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config-live.ts.
-  const liveReload = newLiveConfigReload({ root, config, mainBranch, signal, runners, semaphore, roleFilter: opts.roleFilter });
+  const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
   // The pause gates (src/pause-gates.ts owns the concern): the operator pause's and the
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
@@ -344,8 +351,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           // Only permit holders have a pi run to cut off (the director is guaranteed finished by
           // then): a parked waiter meets the closed start gate whenever the shutdown hands it a
           // permit, so it needs no abort — and aborting for it alone would also cut off an
-          // in-flight landing that no permit-holding tick put at stake.
-          if (rolePermitHolders.size > 0) internalStop.abort();
+          // in-flight landing that no permit-holding tick put at stake. The role-only controller
+          // keeps that promise: the landing, wired to the full signal, runs on into the hand-off
+          // window the wait announces (BUGS.md 2026-09-30).
+          if (rolePermitHolders.size > 0) internalRoleStop.abort();
           break;
         }
         holdForRestart = action === "hold";
@@ -529,7 +538,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         let started = false;
         const task = (async () => {
           durationMs = await runTimedRoleTick(
-            signal,
+            roleSignal,
             usesSlot
               ? async () => {
                   await semaphore.acquire(roleTier(runner.role));

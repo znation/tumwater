@@ -37,7 +37,7 @@ function newReload(
     root,
     config,
     mainBranch: "main",
-    signal: new AbortController().signal,
+    runnerSignal: new AbortController().signal,
     runners,
     semaphore: sem,
     roleFilter,
