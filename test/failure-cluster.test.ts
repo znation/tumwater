@@ -207,3 +207,28 @@ test("clusterMessages returns the top-N by count with ties broken by key, and th
     ["failure big", "aaa unique"], // "big" ×3 first, then the tied singles by key
   );
 });
+
+test("normalizeClusterKey collapses volatile parts and keeps exit codes distinct", () => {
+  assert.equal(normalizeClusterKey("boom deadbeef0"), "boom <sha>");
+  assert.equal(normalizeClusterKey("ENOENT /Users/a/b/c.ts"), "ENOENT <path>");
+  assert.equal(normalizeClusterKey("stalled at 2026-09-18T01:02:03.000Z"), "stalled at <ts>");
+  assert.equal(normalizeClusterKey("timed out after 1800s"), "timed out after <dur>");
+  assert.equal(normalizeClusterKey("retry 5 of 10"), "retry <n> of <n>");
+  // The integer rule's negative lookbehind keeps the exit status semantic.
+  assert.equal(normalizeClusterKey("pi exited 1"), "pi exited 1");
+  assert.equal(normalizeClusterKey("pi exited null"), "pi exited null");
+  assert.notEqual(normalizeClusterKey("pi exited 1"), normalizeClusterKey("pi exited null"));
+  // Trimmed to the display cap.
+  assert.equal(normalizeClusterKey("x".repeat(200)).length, 120);
+});
+
+test("poolTimeoutKey pools the two tick-timeout shapes into one cause", () => {
+  assert.equal(poolTimeoutKey("timed out after <dur>"), "timed out after <dur>");
+  assert.equal(
+    poolTimeoutKey(
+      "timed out after <dur> while still making progress — session and worktree edits preserved for resume",
+    ),
+    "timed out after <dur>",
+  );
+  assert.equal(poolTimeoutKey("pi exited 1"), "pi exited 1", "every other cause stands as normalized");
+});
