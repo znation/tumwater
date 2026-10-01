@@ -219,15 +219,23 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // itemizes the outcome that blocks every merge instead of leaving it a bare count (BUGS.md
   // 2026-09-28). The total therefore equals the Outcome table's error column PLUS its main_red
   // cells; the render's section title says so, and landing failures still surface below.
+  // The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
+  // error-text test — so a malformed tick_end that skipped the text can never be counted above
+  // but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
+  // total equal to the tables it cross-checks against (BUGS.md 2026-09-30).
   const errorEvents = tickEvents.filter(
-    (ev) =>
-      (ev.result === "error" || ev.result === "main_red") &&
-      typeof ev.error === "string" &&
-      ev.error !== "",
+    (ev) => ev.result === "error" || ev.result === "main_red",
   );
   const errors = section(
     clusterMessages(
-      errorEvents.map((ev) => ({ message: ev.error as string, role: eventRole(ev), ts: ev.ts })),
+      errorEvents.map((ev) => ({
+        message:
+          typeof ev.error === "string" && ev.error !== ""
+            ? ev.error
+            : "(no error text recorded)",
+        role: eventRole(ev),
+        ts: ev.ts,
+      })),
       ERROR_TOP,
     ),
     errorEvents.length,

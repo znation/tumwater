@@ -76,21 +76,41 @@ test("a main_red tick's cause is clustered with the tick errors, not left a bare
     { ts: at(0), loop: "organize", type: "tick_end", result: "main_red",
       error: "main abc1234 is red (test: boom) — authoring skipped until main is green" },
     { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
-    // A main_red tick with no cause stays out: the filter counts only error text that exists.
+    // A cause-less main_red still itemizes, under a placeholder: the section's selection
+    // predicate is the Outcome table's own (raw result), so a tick_end counted above can never
+    // vanish from the one section built to itemize it (BUGS.md 2026-09-30).
     { ts: at(0), loop: "improve", type: "tick_end", result: "main_red" },
+    { ts: at(0), loop: "qa", type: "tick_end", result: "error", error: "" },
   ]);
   const data = collectFailureReport(root, 1);
-  assert.equal(data.errors.total, 2, "the error column plus the caused main_red cell");
-  assert.equal(data.errors.clusters.length, 2);
+  assert.equal(data.errors.total, 4, "the error column plus every main_red cell, caused or not");
+  assert.equal(data.errors.clusters.length, 3);
   const red = data.errors.clusters.find((c) => c.key.includes("red"));
   assert.ok(red, `the red-main cause is itemized: ${JSON.stringify(data.errors.clusters)}`);
   assert.equal(red?.count, 1);
   assert.deepEqual(red?.roles, ["organize"]);
+  const blank = data.errors.clusters.find((c) => c.example === "(no error text recorded)");
+  assert.ok(blank, `the message-less error and main_red itemize under the placeholder: ${JSON.stringify(data.errors.clusters)}`);
+  assert.equal(blank?.count, 2);
+  assert.deepEqual(blank?.roles, ["improve", "qa"]);
   // The render restates the section's widened contract, so the cross-check against the
   // Outcome tables above stays honest (BUGS.md 2026-09-28).
   const md = renderFailureMarkdown(data);
   assert.match(md, /Top error clusters \(red-main causes included\)/);
   assert.match(md, /is red \(test: boom\)/);
+  assert.match(md, /\(no error text recorded\)/);
+  // The section's own cross-check: its total equals the Outcome tables' error column plus
+  // main_red cells, so the render's remainder marker fires only on the real top-N cut.
+  const outcomeCount = data.outcomes.reduce(
+    (n, o) => n + (o.counts.error ?? 0) + (o.counts.main_red ?? 0),
+    0,
+  );
+  assert.equal(data.errors.total, outcomeCount, "the section counts what the Outcome table counts");
+  assert.equal(
+    data.errors.clusters.reduce((n, c) => n + c.count, 0),
+    data.errors.total,
+    "every counted event is itemized when the top-N cut has not fired",
+  );
 });
 
 test("error strings differing only in volatile parts cluster; exit codes stay distinct", () => {
