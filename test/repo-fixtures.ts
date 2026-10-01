@@ -9,6 +9,7 @@
  * the tests import from here; this module imports only the leaf fake-command utilities
  * (fake-commands.ts), never another fixture family.
  */
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -59,6 +60,17 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
  * pinned-ref spelling cannot drift between them and a typo'd ref fails in one place. */
 export function mainSha(dir: string): string {
   return sh(dir, "git", "rev-parse", "main");
+}
+
+/** Assert a repo or worktree dir has a clean `git status --porcelain` — the single home of the
+ * tests' "no stray edits / no uncommitted work" assertion (init, cli, lander, landing, and
+ * loop tests carried ~20 identical copies). An optional label is forwarded so the sites that
+ * named the assertion keep their failure message. Sites asserting a *non*-clean status (a
+ * conflict, an expected untracked file) assert something different and keep their own spelling. */
+export function assertClean(dir: string, message?: string): void {
+  const status = sh(dir, "git", "status", "--porcelain");
+  if (message === undefined) assert.equal(status, "");
+  else assert.equal(status, "", message);
 }
 
 /** A scratch bin dir whose only entry is a symlink to the real git: a restricted PATH that

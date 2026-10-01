@@ -9,7 +9,7 @@ import { freshLoopState } from "../src/loop-state.js";
 import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi.js";
 import type { LoopState } from "../src/loop-state.js";
-import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { assertClean, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */
@@ -96,7 +96,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
   assert.equal(merges.length, 0, "nothing to merge");
   assert.equal(mainSha(root), before, "main is untouched");
   assert.ok(!fs.existsSync(path.join(wt, "broken.ts")), "the half-work was discarded");
-  assert.equal(sh(wt, "git", "status", "--porcelain"), "", "the worktree is clean after the reset");
+  assertClean(wt, "the worktree is clean after the reset");
 });
 
 test("a bare sentinel falls back to a generic reason", async () => {

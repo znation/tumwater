@@ -13,7 +13,7 @@ import { readEvents } from "../src/event-read.js";
 import type { PiRunResult } from "../src/pi.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
-import { commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { assertClean, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A compliant pi run result; tests override only what they exercise. */
@@ -55,7 +55,7 @@ function makeCtx(
 
 /** No merge or rebase left in progress and the worktree back on its committed branch state. */
 function assertWorktreeSettled(wt: string): void {
-  assert.equal(sh(wt, "git", "status", "--porcelain"), "", "worktree clean, no rebase in progress");
+  assertClean(wt, "worktree clean, no rebase in progress");
 }
 
 test("a clean rebase lands as changed with a merged event and linear history", async () => {

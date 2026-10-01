@@ -11,7 +11,7 @@ import {
 } from "../src/worktree.js";
 import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
-import { loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
 
 // The worktree helpers (src/worktree.ts): role worktrees, the mirror's detached checkout,
 // reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
@@ -278,7 +278,7 @@ test("concurrent ensureDetachedWorktree calls serialize and both resolve to the 
   assert.equal(b, a, "both callers get the same checkout");
   assert.equal(sh(a, "git", "rev-parse", "HEAD"), head, "checked out at the requested ref");
   assert.equal(await currentBranch(a), null, "the checkout is detached");
-  assert.equal(sh(a, "git", "status", "--porcelain"), "", "the checkout is clean");
+  assertClean(a, "the checkout is clean");
 });
 
 test("abortSync survives a worktree pointer whose target is not a directory", async () => {

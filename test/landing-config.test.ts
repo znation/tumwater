@@ -5,7 +5,7 @@ import path from "node:path";
 import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing-git.js";
 import { loadConfig } from "../src/config.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
+import { assertClean, commitIn, makeRepo, sh } from "./repo-fixtures.js";
 
 /** landing-git.ts's config write-back across a landing that untracks tumwater.json, split out
  * of landing-merge.test.ts (whose mergeToMain clusters stay there): these tests exercise
@@ -54,7 +54,7 @@ test("a landing that untracks the config preserves the live file byte-identical"
     "byte-identical to the pre-landing file",
   );
   assert.deepEqual(loadConfig(root), parsedBefore, "the parsed config survives the landing");
-  assert.equal(sh(root, "git", "status", "--porcelain"), "", "restored file is ignored, tree clean");
+  assertClean(root, "restored file is ignored, tree clean");
 });
 
 test("a landing whose tree keeps the config leaves the live file untouched", async () => {
@@ -83,7 +83,7 @@ test("a landing on a repo with no config needs no preserve and still fast-forwar
   assert.equal(await configBytesToPreserve(root, sha), null, "no live config: nothing to preserve");
   assert.ok(await ffMainTo(root, sha, "main"));
   assert.ok(!fs.existsSync(path.join(root, "tumwater.json")));
-  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+  assertClean(root);
 });
 
 test("the config write-back is restore-only-when-absent: a newer write wins", async () => {

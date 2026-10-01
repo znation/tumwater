@@ -12,7 +12,7 @@ import { readEvents } from "../src/event-read.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
 import type { LoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, piRanMarker, withApprovePi } from "./fake-pi.js";
 import {
   ROLE,
@@ -116,7 +116,7 @@ test("a rejected landing lands nothing: role worktree clean at main, ref deleted
 
     assert.equal(mainSha(root), mainBefore, "nothing landed on main");
     assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree is clean at main");
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no stray edits in the role worktree");
+    assertClean(wt, "no stray edits in the role worktree");
     assert.equal(await refSha(root, REF), null, "a rejection is terminal: the pin goes too");
     assert.deepEqual(state.lastReview?.reasons, ["breaks the zero-dep rule"]);
   } finally {

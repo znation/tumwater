@@ -19,7 +19,7 @@ import { headLanding, queueDepth } from "../src/landing-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForFile } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
@@ -154,7 +154,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     assert.equal(mainSha(repo), before, "nothing lands on main");
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
+    assertClean(wt, "no uncommitted edits remain");
 
     // A deliberate stop is not an interruption: no resume flag, and the loop backs off like
     // an unproductive tick instead of retrying immediately.

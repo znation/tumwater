@@ -16,7 +16,7 @@ import { landingRefName, worktreePath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { conflictingMainEdit, fakePi, seedBranchEdit } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./pi-events.js";
 test("a rebase conflict is resolved by a second pi run and lands with linear history", async () => {
@@ -186,7 +186,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
     assert.ok(pinned.length === 40, "the blocked commit is pinned for recovery");
-    assert.equal(sh(worktreePath(repo, "improve"), "git", "status", "--porcelain"), "", "role worktree clean at main");
+    assertClean(worktreePath(repo, "improve"), "role worktree clean at main");
     assert.match(sh(repo, "git", "show", "main:seed.txt"), /^seed$/);
     // The failure is recorded on the state; the retry rides the next tick's leftover recovery
     // at the role's NORMAL cadence — the tick itself was productive (it committed), so no

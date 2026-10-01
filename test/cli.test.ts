@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config.js";
-import { makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { cli } from "./cli-harness.js";
 import { seedCounters } from "./loop-fixtures.js";
@@ -238,7 +238,7 @@ test("init --dry-run prints the file lists and exits 0 without writing; --adopt 
   assert.match(dry.stdout, /would leave alone: README\.md/);
   assert.match(dry.stdout, /nothing written; re-run without --dry-run to apply/);
   assert.deepEqual(fs.readdirSync(repo).sort(), listing, "nothing written");
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
 
   // The real run takes the path the dry run described, and the flag never reaches the brief.
   const r = await cli(repo, "init", "--adopt", "Adopt me.");

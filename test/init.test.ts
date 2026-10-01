@@ -13,7 +13,7 @@ import {
 import { defaultConfig, loadConfig } from "../src/config.js";
 import { VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
-import { makeRepo, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
+import { assertClean, makeRepo, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 test("initProject creates and commits the harness files", async () => {
   const repo = makeRepo();
@@ -23,7 +23,7 @@ test("initProject creates and commits the harness files", async () => {
     [".gitignore", "BUGS.md", "PLANS.md", "PRINCIPLES.md", "QUESTIONS.md", "README.md", "tumwater.json"],
   );
   assert.ok(result.committed);
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
   assert.equal(readInitialPrompt(repo), "Build a todo CLI.");
   assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^\.tumwater\/$/m);
   assert.ok(loadConfig(repo).roles.director?.enabled);
@@ -158,7 +158,7 @@ test("initProject adopts a repo whose README has no tumwater markers instead of 
   assert.equal(briefFile(repo), "TUMWATER.md");
   assert.equal(readInitialPrompt(repo), "Adopted brief.");
   assert.ok(result.committed);
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
   // A re-run finds the marked brief and has nothing to do.
   const again = await initProject(repo, "Adopted brief.", undefined, { adopt: true });
   assert.deepEqual(again.created, []);
@@ -217,7 +217,7 @@ test("initProject --adopt against an already-marked TUMWATER.md brief is a plain
   assert.ok(reseed.created.includes("tumwater.json"));
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
   assert.equal(readInitialPrompt(repo), "Explicitly adopted.");
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
 });
 
 test("initProject refuses to adopt over a TUMWATER.md without markers", async () => {
@@ -231,7 +231,7 @@ test("initProject refuses to adopt over a TUMWATER.md without markers", async ()
   for (const f of ["BUGS.md", "QUESTIONS.md", "tumwater.json"]) {
     assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
   }
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
 });
 
 test("initProject --dry-run writes nothing: no files, no gitignore edit, no commit", async () => {
@@ -253,7 +253,7 @@ test("initProject --dry-run writes nothing: no files, no gitignore edit, no comm
   // ...and none of it on disk: same directory listing, same tree, same HEAD.
   assert.deepEqual(fs.readdirSync(repo).sort(), listing);
   assert.equal(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), "node_modules\n");
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
 
   // Outside a git repo, a dry run reports the repo it would seed without running `git init`.
@@ -317,7 +317,7 @@ test("initProject refuses a prompt that differs from the one a README-owned brie
   for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
   }
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
 });
 
 // Brief resolution (plans/portability.md §7a/7) applies to BOTH init guards: a marked
@@ -378,7 +378,7 @@ test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it
     assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
   }
   assert.equal(fs.readFileSync(path.join(repo, "TUMWATER.md"), "utf8"), brief);
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
   assert.equal(readInitialPrompt(repo), "the original prompt");
 });
 
@@ -531,7 +531,7 @@ test("initProject seeds the config from a tracked tumwater.example.json and keep
   // Untracked and gitignored, so the freshly initialized repo is clean — while the created
   // line (and result.created) still reports the config.
   assert.equal(sh(repo, "git", "ls-files", "tumwater.json"), "");
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
   assert.match(fs.readFileSync(path.join(repo, ".gitignore"), "utf8"), /^tumwater\.json$/m);
   // Everything but the config still lands in the init commit.
   assert.ok(result.committed);
@@ -558,5 +558,5 @@ test("a repo that only gains a config reports it and stays uncommitted", async (
   assert.deepEqual(again.created, ["tumwater.json"]);
   assert.ok(!again.committed);
   assert.ok(fs.existsSync(path.join(repo, "tumwater.json")));
-  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assertClean(repo);
 });

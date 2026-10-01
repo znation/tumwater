@@ -14,7 +14,7 @@ import { defaultConfig } from "../src/config.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 test("a rejected change rides along on the role's next tick prompt with its reasons", async () => {
@@ -42,7 +42,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = worktreePath(repo, "improve");
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "a rejected tick leaves the role worktree clean at main");
+    assertClean(wt, "a rejected tick leaves the role worktree clean at main");
     let refGone = false;
     try {
       sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));

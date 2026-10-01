@@ -25,7 +25,7 @@ import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
-import { initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
+import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
  * from: detach, commit work main does not contain, return to main, and pin the commit with the
@@ -262,7 +262,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
       "recovery is recorded as a merge of the leftover work, naming its subject",
     );
     // The role worktree is clean at main whatever recovery did.
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "");
+    assertClean(wt);
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
   } finally {
     restore();
@@ -351,7 +351,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = worktreePath(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
-    assert.equal(sh(wt, "git", "status", "--porcelain"), "", "no uncommitted edits remain");
+    assertClean(wt, "no uncommitted edits remain");
     const landWt = path.join(repo, ".tumwater/worktrees/_land-improve");
     assert.ok(!fs.existsSync(path.join(landWt, "stray.txt")), "the reviewer's stray file is cleaned on re-landing");
     const failed = eventsOfType(repo, "review_failed");
