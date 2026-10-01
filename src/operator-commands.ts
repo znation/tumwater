@@ -1,8 +1,7 @@
-import { knownRoleIds, loadConfig, loadConfigSafe } from "./config.js";
-import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say, sayJson } from "./cli-args.js";
+import { knownRoleIds, loadConfig } from "./config.js";
+import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
 import { errorMessage } from "./text.js";
 import { pauseReasonSuffix } from "./phrases.js";
-import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
 import { errCode } from "./errno.js";
 import { allRoleIds } from "./roles.js";
 import {
@@ -27,15 +26,16 @@ import {
   timedPauseBits,
 } from "./operator-intent.js";
 
-/** The CLI layer of the operator-intent protocol: the `reset-counters`, `wake`, `abort`,
- * `pause`, `resume`, `stop`, and `config` commands, split out of cli.ts so the
+/** The CLI layer of the operator commands that drive the fleet: the `reset-counters`,
+ * `wake`, `abort`, `pause`, `resume`, and `stop` commands, split out of cli.ts so the
  * command bodies live beside their shared `--role` resolution. The marker-writing cores and
  * shared confirmations they print live in src/operator-intent.ts (shared with the dashboard
  * and TUI); the fleet-side consumer half is src/operator-requests.ts; the `prompt` command,
  * which drives the durable per-loop queues rather than the marker protocol, lives beside
- * them in src/prompt-commands.ts. Every command here is
- * deliberately usable without a live harness except `abort` and `stop`, which have nothing
- * to reach when no fleet is up. */
+ * them in src/prompt-commands.ts, and the `config` command, which reads and writes
+ * tumwater.json directly rather than touching fleet state, in src/config-commands.ts. Every
+ * command here is deliberately usable without a live harness except `abort` and `stop`,
+ * which have nothing to reach when no fleet is up. */
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
@@ -216,55 +216,6 @@ export async function cmdStop(root: string): Promise<void> {
     say("the orchestrator exited before the stop signal landed — nothing is running");
 }
 
-/** The config command's malformed-shapes usage line: cli.ts's arity gate fails a non-get/set
- * or wrongly-shaped subcommand with it, and cmdConfig repeats it as the defensive tail for an
- * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
- * sites (mirrors tick-detail.ts's TICK_USAGE). */
-export const CONFIG_USAGE =
-  "usage: tumwater config [get <key> | set <key> <value>] (bare config prints the whole resolved config)";
-
-/** `tumwater config [get <key> | set <key> <value>]`: with no arguments, print the effective
- * merged config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
- * debugging scheduling or custom-loop wiring sees what the fleet would actually load instead
- * of overlaying defaults onto tumwater.json by hand. A query, not a writer: no redaction (the
- * config holds no secrets — provider keys belong to pi's own env) and no transformation,
- * including the per-role entries custom loops merge into. `get <key>` prints that one key's
- * resolved value (defaults merged in, exactly what the no-arg dump prints) as JSON, failing
- * with the valid top-level keys on an unknown one. An optional key nothing sets (model,
- * provider, fallbackModel, …) prints `null` — JSON's no-value — because JSON.stringify of an
- * absent key is the undefined *value*, which say would render as the bare word `undefined`:
- * not parseable JSON for a script and indistinguishable from a crash for a human. `set <key> <value>` writes one top-level
- * key through setConfigKey and prints one confirmation line naming the key and its new value;
- * a running fleet picks the change up on its next ~2 s config poll (newLiveConfigReload).
- * A malformed or invalid tumwater.json fails with validateConfig's actionable message and
- * prints no JSON — the same surfacing doctor's config check produces. */
-export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
-  const [sub, key, ...rest] = args;
-  if (sub === "get") {
-    const k = key ?? "";
-    // setConfigKey's shared unknown-key error, so a typo'd key reads the same whichever
-    // verb misspelled it.
-    const unknown = unknownConfigKeyError(k);
-    if (unknown) fail(unknown);
-    const { config, error } = loadConfigSafe(root);
-    if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-    const value = (config as unknown as Record<string, unknown>)[k];
-    say(JSON.stringify(value === undefined ? null : value)); // Absent optional key → JSON null.
-    return;
-  }
-  if (sub === "set") {
-    const result = setConfigKey(root, key ?? "", rest[0] ?? "");
-    if (!result.ok) fail(result.error);
-    say(`set ${key} to ${JSON.stringify((result as { value: unknown }).value)}`);
-    return;
-  }
-  // Bare config, or anything else: the whole-config dump is the default, and cli.ts's arity
-  // check has already rejected a malformed get/set — this usage line is the defensive tail.
-  if (sub !== undefined) fail(CONFIG_USAGE);
-  const { config, error } = loadConfigSafe(root);
-  if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-  sayJson(config);
-}
 
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
  * per-role marker set); without one, lift a fleet pause by removing its marker. Idempotent
