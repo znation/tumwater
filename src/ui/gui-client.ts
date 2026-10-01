@@ -5,12 +5,13 @@
  * the composer that steers the director or one loop; and the fleet view — today's progress,
  * the loops grouped by what they are doing, the backlog, and the notable activity. The
  * view-model, the drawer, the History/Usage/Failures views, the operator controls, the
- * Markdown renderer, and the routing/poll boot live in their own modules and are spliced in
- * below; everything shares one scope. The page
+ * composer, the Markdown renderer, and the routing/poll boot live in their own modules and
+ * are spliced in below; everything shares one scope. The page
  * cannot import the harness modules, so it keeps its own copies of the few display rules it
  * needs (formatters, loop order), each pinned against its TypeScript twin by test. Written as
  * String.raw templates so the served script is exactly the text below — no double escaping. */
 import { GUI_CLIENT_BOOT_JS } from "./gui-client-boot.js";
+import { GUI_CLIENT_COMPOSER_JS } from "./gui-client-composer.js";
 import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
 import { GUI_CLIENT_FLEET_JS } from "./gui-client-fleet.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
@@ -243,5 +244,5 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let activeView = "fleet";
 `;
 
-export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_FLEET_JS,
+export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_FLEET_JS, GUI_CLIENT_COMPOSER_JS,
   GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_BOOT_JS].join("\n");
