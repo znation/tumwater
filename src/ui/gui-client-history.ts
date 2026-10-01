@@ -99,7 +99,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  let histRole = recall("hist-ro
     histDetails.set(key, { state: "loading" });
     try {
       const d = await getJson("/api/tick?role=" + encodeURIComponent(role) + "&tick=" + encodeURIComponent(String(tick)));
-      if (!d || typeof d.text !== "string") throw new Error("malformed tick detail");
+      // Name the endpoint, the tick it answered for, and the likely cause: a 200 without
+      // text is a server too old (or too new) for this dashboard's client, not a lost tick —
+      // a 404 already answers that shape with the CLI's own not-found wording.
+      if (!d || typeof d.text !== "string")
+        throw new Error(
+          "/api/tick answered " + role + " tick " + tick + " without a text field — the running server's build may not match this dashboard",
+        );
       histDetails.set(key, { state: "ok", text: d.text });
     } catch (e) {
       histDetails.set(key, { state: "error", message: e && e.message ? e.message : "Tick detail unavailable" });

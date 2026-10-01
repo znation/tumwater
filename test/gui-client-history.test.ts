@@ -151,3 +151,22 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   toggleHistDetail("clean", "9");
   assert.equal(histDetails.get("clean#9")?.state, "error", "the error caches like an answer");
 });
+
+test("a malformed tick-detail payload errors naming the endpoint, the tick, and the likely cause", async () => {
+  const scope = clientScope<{
+    histDetails: Map<string, { state: string; message?: string }>;
+    toggleHistDetail(role: string, tick: string): void;
+    historyTableHtml(rows: object[] | null, filter: string, known: Set<string>): string;
+  }>(HISTORY_REGIONS, ["histDetails", "toggleHistDetail", "historyTableHtml"], {
+    icon: iconStub,
+    getJson: () => Promise.resolve({}), // a 200 body without the promised text field
+    renderHistory: () => {},
+  });
+  const { histDetails, toggleHistDetail, historyTableHtml } = scope;
+  toggleHistDetail("clean", "9");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(histDetails.get("clean#9")?.state, "error");
+  const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
+  assert.match(html, /\/api\/tick answered clean tick 9 without a text field/);
+  assert.match(html, /server&#39;s build may not match/, "the card's esc() escapes the message's apostrophe");
+});
