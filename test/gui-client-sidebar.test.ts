@@ -17,6 +17,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       $: () => ({ textContent: "" }),
       plural: (n: number, word: string) => `${n} ${word}`,
       icon: iconStub,
+      shortSha: (s: string) => String(s).slice(0, 8),
       localizeInstants: (s: string) => s,
       fmtAgo: () => "just now",
       landingTitle: () => "",
@@ -59,4 +60,47 @@ test("the sidebar's main row shows no counts when the payload carries none", () 
     mainCheckBadge: " · main aaaaaaaa: skipped",
   });
   assert.match(panels.statuschips!, /Main skipped(?! ·)/, "no counts fragment when the payload ships none");
+});
+
+test("a stale build renders the sidebar Build row's refresh icon as the restart button, like the alert's", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: true, aheadCommits: 3 },
+  });
+  // The exact markup alertParts() emits for the build alert's restartable icon: the global
+  // [data-act='restart'] handler in gui-client-boot.ts dispatches it with no new wiring.
+  assert.match(panels.statuschips!,
+    /<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'><i:refresh><\/button>/,
+    "the stale build's icon is the same restart button the alert carries");
+});
+
+test("a fresh build keeps the sidebar Build row's refresh icon inert", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: false, aheadCommits: 0 },
+  });
+  assert.match(panels.statuschips!, /<i:refresh>/, "the glyph is still there");
+  assert.doesNotMatch(panels.statuschips!, /data-act/, "no data-act when the build is current");
+});
+
+test("the Build row's text and behind-count are unchanged in both cases", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: true, aheadCommits: 3 },
+  });
+  assert.match(panels.statuschips!, /Build <span class='mono'>aaaaaaaa<\/span> · 3 behind/,
+    "the stale row keeps its text and behind-count");
+  renderSidebar({
+    running: true,
+    pid: 123,
+    build: { sha: "a".repeat(40), stale: false, aheadCommits: 0 },
+  });
+  assert.match(panels.statuschips!, /Build <span class='mono'>aaaaaaaa<\/span>(?! · \d+ behind)/,
+    "the fresh row keeps its text and shows no behind-count");
 });

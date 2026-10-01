@@ -43,7 +43,13 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         : row("gray", "<span class='dot'></span>", "Stopped", "Start it with tumwater run");
       if (d.build) {
         const stale = d.build.stale;
-        rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", icon("refresh"),
+        // A stale build's refresh icon IS the restart button — the exact markup alertParts()
+        // emits for the build alert, so styling and the global [data-act='restart'] handler
+        // serve both icons from one place; a fresh build's icon stays inert decoration.
+        const lead = stale
+          ? "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + icon("refresh") + "</button>"
+          : icon("refresh");
+        rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", lead,
           "Build <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
           localizeInstants(("Running build" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }

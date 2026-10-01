@@ -5,41 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The sidebar's Build row refresh icon restarts the build, like the build alert's icon (planned 2026-10-01 by director)
-
-**Goal.** The dashboard's build-stale alert carries a clickable refresh icon that restarts the
-fleet onto main's head (`alertParts`' `restartable` branch in src/ui/gui-client-fleet.ts,
-wired to `data-act='restart'` → `runAct` in src/ui/gui-client-boot.ts → `handleRestart` in
-src/ui/gui-endpoints.ts). The sidebar's Build row in the left nav (the `d.build` branch of
-`renderSidebar`, src/ui/gui-client-fleet.ts) shows the same refresh glyph but as inert
-decoration. Make the sidebar icon the same restart affordance, under the same condition the
-alert uses: clickable when the build is stale (`d.build.stale`), inert decoration when fresh.
-Match the alert's rule exactly — including when `restartBlocked` is set — so one mental model
-covers both icons: the click posts the same request, and a blocked restart surfaces the same
-409 refusal message via `postAction`'s existing error toast.
-
-**Approach.**
-1. **src/ui/gui-client-fleet.ts, `renderSidebar()`'s build row:** when `d.build && d.build.stale`,
-   render the row's lead as `<button type='button' class='alert-icon' data-act='restart'
-   title='Restart onto the new build now'>` + `icon("refresh")` + `</button>` instead of bare
-   `icon("refresh")` — the exact markup `alertParts()` already emits, so styling and behavior
-   come from the same place and cannot drift. Keep the plain glyph when the build is fresh.
-   No new click wiring: the global delegated handler in gui-client-boot.ts already dispatches
-   any `[data-act='restart']`, and `handleRestart` needs no server change.
-2. **src/ui/gui-styles.ts:** reuse the `.alert-icon` button styling (it already strips native
-   button chrome per its comment). Only add a narrow rule if the button visibly misbehaves
-   inside `.side-status .row` (e.g. inherits a button background) — prefer zero new CSS when
-   the alert's rule already renders correctly there.
-3. **test/gui-client-sidebar.test.ts:** extend the existing harness (`clientScope` +
-   `paintPanel` capture) with tests named for the behavior: (a) a stale build renders the
-   Build row's lead as the `data-act='restart'` button, (b) a fresh build keeps the inert
-   glyph (no `data-act`), (c) the row's text and behind-count are unchanged in both cases.
-
-**Acceptance criteria.** With the fleet running an old build, clicking the sidebar's refresh
-icon triggers the same restart as the alert's icon (toast confirms, poll applies it); with a
-current build the icon is inert as today; `npm run test` passes including the new sidebar
-tests.
-
 ### `tumwater prompt --list` shows how long each prompt has waited (planned 2026-10-01 by plan loop) — part 1/2, the shared stamp and the CLI
 
 **Goal.** A steering prompt queued to a paused, disabled, or long-backoff loop sits in its queue
@@ -120,6 +85,48 @@ unchanged; `npm run test` passes including the new render tests.
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
 ## Done
+### The sidebar's Build row refresh icon restarts the build, like the build alert's icon (planned 2026-10-01 by director, done 2026-10-01 by feature)
+
+**Goal.** The dashboard's build-stale alert carries a clickable refresh icon that restarts the
+fleet onto main's head (`alertParts`' `restartable` branch in src/ui/gui-client-fleet.ts,
+wired to `data-act='restart'` → `runAct` in src/ui/gui-client-boot.ts → `handleRestart` in
+src/ui/gui-endpoints.ts). The sidebar's Build row in the left nav (the `d.build` branch of
+`renderSidebar`, src/ui/gui-client-fleet.ts) shows the same refresh glyph but as inert
+decoration. Make the sidebar icon the same restart affordance, under the same condition the
+alert uses: clickable when the build is stale (`d.build.stale`), inert decoration when fresh.
+Match the alert's rule exactly — including when `restartBlocked` is set — so one mental model
+covers both icons: the click posts the same request, and a blocked restart surfaces the same
+409 refusal message via `postAction`'s existing error toast.
+
+**Approach.**
+1. **src/ui/gui-client-fleet.ts, `renderSidebar()`'s build row:** when `d.build && d.build.stale`,
+   render the row's lead as `<button type='button' class='alert-icon' data-act='restart'
+   title='Restart onto the new build now'>` + `icon("refresh")` + `</button>` instead of bare
+   `icon("refresh")` — the exact markup `alertParts()` already emits, so styling and behavior
+   come from the same place and cannot drift. Keep the plain glyph when the build is fresh.
+   No new click wiring: the global delegated handler in gui-client-boot.ts already dispatches
+   any `[data-act='restart']`, and `handleRestart` needs no server change.
+2. **src/ui/gui-styles.ts:** reuse the `.alert-icon` button styling (it already strips native
+   button chrome per its comment). Only add a narrow rule if the button visibly misbehaves
+   inside `.side-status .row` (e.g. inherits a button background) — prefer zero new CSS when
+   the alert's rule already renders correctly there.
+3. **test/gui-client-sidebar.test.ts:** extend the existing harness (`clientScope` +
+   `paintPanel` capture) with tests named for the behavior: (a) a stale build renders the
+   Build row's lead as the `data-act='restart'` button, (b) a fresh build keeps the inert
+   glyph (no `data-act`), (c) the row's text and behind-count are unchanged in both cases.
+
+**Acceptance criteria.** With the fleet running an old build, clicking the sidebar's refresh
+icon triggers the same restart as the alert's icon (toast confirms, poll applies it); with a
+current build the icon is inert as today; `npm run test` passes including the new sidebar
+tests.
+
+Landed 2026-10-01 by feature: renderSidebar's stale-build lead reuses alertParts' exact button
+markup (no new CSS — the alert's `.alert-icon` rules already style it in the row), the global
+`[data-act='restart']` handler picks it up unchanged, and three new tests cover it (stale →
+button, fresh → inert glyph, row text and behind-count unchanged in both cases); the sidebar
+test harness gained the shortSha stand-in its build row needs. Suite: 2786 tests, 2785 pass,
+1 skipped, 0 fail.
+
 ### The cap-paused loop is legible: the status table, TUI, GUI, and `status --json` read the same cap verdict (planned 2026-09-30 by plan loop, done 2026-10-01 by feature) — part 2/2, the observers
 
 **Goal.** Part 1/2 blocks a cap-paused loop at scheduling and pages the feed, but no observer
