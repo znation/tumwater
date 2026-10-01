@@ -287,13 +287,19 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
     eventLine(t0 - 30_000, { tick: 2 }), // inside the window
     eventLine(t0, { tick: 3 }),
   ]);
+  const readFrom = Date.now();
   const { cutoff, events, covered } = readEventsSince(root, 60_000);
+  const readTo = Date.now();
   assert.deepEqual(
     events.map((e) => e.tick),
     [2, 3],
   );
-  // The cutoff is the read's own now − sinceMs; within seconds of the fixture's t0.
-  assert.ok(Math.abs(cutoff - (t0 - 60_000)) < 5_000, `cutoff ${cutoff} vs ${t0 - 60_000}`);
+  // The cutoff is the read's own now − sinceMs: bracketed by clock reads around the read, not
+  // a fixed tolerance around the fixture's t0 that a stalled host could exceed.
+  assert.ok(
+    cutoff >= readFrom - 60_000 && cutoff <= readTo - 60_000,
+    `cutoff ${cutoff} vs the read's ${readFrom - 60_000}..${readTo - 60_000}`,
+  );
   // Covered: the day-keyed read hands back the 2-min-ago event too, and its being at-or-before
   // the cutoff proves nothing older could have rotated away — even though the ts filter then
   // drops it from the returned events. Coverage is judged on the window's oldest retained

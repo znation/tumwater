@@ -422,10 +422,12 @@ test("any completed tick clears a stale queued-summary stash", () => {
 test("applyTickOutcome: an aborted tick resumes promptly — role via resumePending, director via re-queue", () => {
   const s = freshLoopState("feature");
   s.phase = "review"; // interruption hit mid-review: the next launch must recover + re-review
+  const before = Date.now();
   applyTickOutcome(s, testConfig(), "feature", { result: "aborted" });
+  const after = Date.now();
   assert.equal(s.resumePending, true);
   assert.equal(s.phase, "review", "kept so recovery re-reviews instead of resuming the author session");
-  assert.ok(Math.abs(s.nextRunAt - Date.now()) < 5_000, "due immediately on restart");
+  assert.ok(s.nextRunAt >= before && s.nextRunAt <= after, "due immediately on restart");
 
   const d = freshLoopState("director");
   applyTickOutcome(d, testConfig(), "director", { result: "aborted" });

@@ -420,7 +420,10 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
       !fs.existsSync(path.join(worktreePath(repo, "clean"), "partial.txt")),
       "half-done work was discarded",
     );
-    assert.ok(s.nextRunAt > Date.now() + 29_000, "backed off, not immediate");
+    // Measured from the tick's own end stamp, not a clock read after waitFor noticed the end:
+    // that read trails the schedule by the poll and the host's load, which ate the 1 s of
+    // slack a `> now + 29 s` check left on the 30 s backoff (BUGS.md 2026-10-01).
+    assert.ok(s.nextRunAt - (s.lastTickEndedAt ?? 0) >= 29_000, "backed off, not immediate");
 
     // A request for a loop that is NOT running is a silent no-op: the marker is removed and
     // no event logged — clean itself (now idle in its backoff) …

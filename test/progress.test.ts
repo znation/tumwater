@@ -144,12 +144,17 @@ test("parseProgress skips empty text blocks when capturing the work item", () =>
 test("readLiveProgress reads the loop's raw log and reports quiet time", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
+  const written = Date.now();
   writeLogLines(file, [SESSION, assistantLine("working", { tokens: 500 }), toolStart("read", { path: "x.ts" })]);
   const p = readLiveProgress(root, "clean");
+  const read = Date.now();
   assert.ok(p);
   assert.equal(p.turns, 1);
   assert.equal(p.lastTool, "read x.ts");
-  assert.ok(p.quietMs < 5000);
+  // Quiet since the write: no longer than the write-to-read span, plus 50 ms for the file
+  // clock's granularity (Linux stamps mtimes from a coarse kernel clock) — not a fixed 5 s a
+  // stalled host could exceed.
+  assert.ok(p.quietMs <= read - written + 50, `quietMs ${p.quietMs} vs ${read - written} ms since the write`);
   assert.equal(readLiveProgress(root, "never-ran"), null);
 });
 

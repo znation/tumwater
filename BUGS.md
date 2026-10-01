@@ -35,6 +35,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### Five tests compared a stamp against a clock read with a fixed tolerance ("about now" checks), so a host stall longer than the slack could fail them — one with only 1 s of real slack after an async wait (found by human-directed investigation 2026-10-01 while fixing the same pattern in cli-history's `history --since --json`, fixed 2026-10-01)
+
+- **Symptom:** none observed yet in the fleet's events. Found by sweeping test/ for `Math.abs(x - Date.now()) < N` and `x > Date.now() ± N` shapes after the cli-history one failed a stress run (see the 2026-09-30 load-flakes entry).
+- **Cause:** each check allowed a fixed slack between a value the code stamped and a clock read taken later. Any stall between the two longer than the slack failed the test.
+  - test/orchestrator-3.e2e.test.ts "an abort request kills an in-flight tick…": `nextRunAt > Date.now() + 29_000` against a 30 s backoff, read only after `waitFor` noticed the tick's end (100 ms polls) and reloaded state. That is 1 s of slack across an async wait, the likeliest to fail.
+  - test/pi-parser.test.ts: `lastActivityAt > Date.now() - 1000` across a synchronous `parser.feed`.
+  - test/tick-outcome.test.ts "an aborted tick resumes promptly": `|nextRunAt - Date.now()| < 5_000`.
+  - test/event-window.test.ts "readEventsSince filters the day-keyed over-read…": `|cutoff - (t0 - 60_000)| < 5_000`.
+  - test/progress.test.ts "readLiveProgress reads the loop's raw log…": `quietMs < 5000`.
+- **Fixed:** test-only. orchestrator-3 measures the backoff from the tick's own end stamp (`nextRunAt - lastTickEndedAt >= 29_000`). The other four bracket the value between clock reads taken around the call (`before <= x <= after`, or for quietMs `<= read - written + 50`, where the 50 ms covers the coarse mtime clock some filesystems stamp).
+- **Verified:** orchestrator-3's check failed with user_aborted mutated to resume immediately. 16 parallel runs of each changed test passed at load average 68–71, and `npm test` passed.
+- **Not changed:** brackets already in `before <= x <= Date.now()` form, upper bounds read after the value was set, `nextRunAt > Date.now()` checks against a backoff of 10 s or more, report-data's ±60 s, loop.test.ts's ±10 s (two stamps from one scheduling call), and cli-operators' `until > now + 29 min` on a 30-minute pause (60 s of slack after a 7–8 s CLI run).
+- **Validation gap:** slow-check — like the wall-clock-ceiling entries below, these pass on an idle host and fail only under load. A before/after bracket cannot fail from host speed; a fixed tolerance always can.
+
 ### Three more suite tests failed under fleet load on 2026-09-30 and passed on the gate's retry, and a fourth flake cannot be named from the events (found by human-directed investigation 2026-09-30, fixed 2026-10-01 except the unnamed flake, which stays in ## Open)
 
 - **Symptom:** the gate logged `gate check failed then passed on retry — flaky:` for each of these, none during a host sleep (the host was awake 09:37–11:13 and from 13:54 on):
