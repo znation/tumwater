@@ -155,24 +155,49 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 test("at the default cap of 2, a third concurrent check starts only after one of the first two finishes", async () => {
   const { root, wt } = buildCheckFixture();
   const log = path.join(tmpdir(), "checks.log");
-  // Each run marks its start and end; the sleep keeps the first two in flight long enough that
-  // an uncapped third would start beside them.
-  const config = { check: { command: `echo start >> ${log}; sleep 1; echo end >> ${log}` } };
-  const startedAt = Date.now();
+  // Each run stamps its own start and end (wall-clock ms, via node) under a per-run tag, and
+  // logs its event under that tag as its loop, so the check that waited can be told apart from
+  // the two that did not; the sleep keeps the first two in flight long enough that an
+  // uncapped third would start beside them.
+  const stamp = (tag: string, what: string) =>
+    `${JSON.stringify(process.execPath)} -e 'console.log("${tag} ${what} " + Date.now())' >> ${log}`;
+  const tags = ["a", "b", "c"];
   const results = await Promise.all(
-    [1, 2, 3].map(() => runScopedBuildCheck(root, ROLE, "gate", wt, config, 30_000)),
+    tags.map((tag) =>
+      runScopedBuildCheck(
+        root,
+        `${ROLE}-${tag}`,
+        "gate",
+        wt,
+        { check: { command: `${stamp(tag, "start")}; sleep 1; ${stamp(tag, "end")}` } },
+        30_000,
+      ),
+    ),
   );
-  const elapsedMs = Date.now() - startedAt;
+  const finishedAt = Date.now();
   for (const r of results) assert.equal(r!.outcome.status, "passed");
-  const lines = fs.readFileSync(log, "utf8").trim().split("\n");
-  assert.deepEqual(lines.slice(0, lines.indexOf("end")), ["start", "start"], "two run at once; the third waits");
-  assert.equal(lines.filter((l) => l === "start").length, 3, "the third still runs once a permit frees");
-  // Two waves of one-second runs, with generous slack under the two-second floor.
-  assert.ok(elapsedMs >= 1_900, `three capped checks took ${elapsedMs}ms — the third did not wait`);
-  // The event prices the run, not the wait: no check reports the queued second wave's time.
-  for (const e of readEvents(root).filter((ev) => ev.type === "build_check")) {
-    assert.ok(Number(e.durationMs) < 1_900, `durationMs ${e.durationMs} includes the permit wait`);
+  const at = new Map<string, number>();
+  for (const line of fs.readFileSync(log, "utf8").trim().split("\n")) {
+    const [tag, what, ms] = line.split(" ");
+    at.set(`${tag} ${what}`, Number(ms));
   }
+  assert.equal(at.size, 6, "every check ran once, start to end");
+  // The waiter is the last to start; it must have started only after a first-wave check ended.
+  const [waiter, ...firstWave] = [...tags].sort((x, y) => at.get(`${y} start`)! - at.get(`${x} start`)!);
+  const firstFreed = Math.min(...firstWave.map((t) => at.get(`${t} end`)!));
+  for (const t of firstWave) assert.ok(at.get(`${t} start`)! < firstFreed, `${t} ran in the first wave`);
+  assert.ok(at.get(`${waiter} start`)! >= firstFreed, "the third check waited for a permit");
+  // The event prices the run, not the wait: the waiter's run began no earlier than the first
+  // freed permit, so its duration fits between then and the end. A wait-inclusive duration
+  // would exceed that by the whole first-wave run (≥ the 1 s sleep), however loaded the host.
+  const events = readEvents(root).filter((ev) => ev.type === "build_check");
+  const waiterEvent = events.find((ev) => ev.loop === `${ROLE}-${waiter}`);
+  assert.ok(waiterEvent, "the waiter logged a build_check event");
+  const bound = finishedAt - firstFreed;
+  assert.ok(
+    Number(waiterEvent.durationMs) <= bound,
+    `waiter durationMs ${waiterEvent.durationMs} > ${bound}ms since the first permit freed — it includes the permit wait`,
+  );
 });
 
 test("a check that fails or times out still releases its permit", { timeout: 30_000 }, async () => {
