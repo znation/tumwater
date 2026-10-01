@@ -56,6 +56,11 @@ const PROBLEM_RESULTS = new Set(["refused", "rejected", "review_error", "merge_c
 const ROUTINE_EVENTS = new Set(["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]);
 const PROBLEM_EVENTS = new Set(["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_paused", "supervisor_exit", "warning"]);
 
+/** Which EventKind one event is, checked in precedence order: the two hard-coded news types
+ * first (merged, question_posted), then the result-carrying types by their result — a tick_end
+ * is routine unless its result is a known failure, and a build_check is routine only when it
+ * passed or was skipped — then the named event sets, with anything unrecognized reading as
+ * info (an event this file predates is news until it is classified). */
 export function eventKind(type: string, result?: string): EventKind {
   if (type === "merged") return "landing";
   if (type === "question_posted") return "attention";
@@ -65,5 +70,3 @@ export function eventKind(type: string, result?: string): EventKind {
   if (ROUTINE_EVENTS.has(type)) return "routine";
   return "info";
 }
-
-export type { EventKind };
