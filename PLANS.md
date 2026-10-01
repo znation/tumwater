@@ -5,7 +5,40 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater tick <role> <n>` — one completed tick's full event trail from the terminal (planned 2026-09-30 by plan loop)
+### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop — sibling of the `tumwater tick` CLI plan above)
+
+**Goal.** The dashboard's History view (src/ui/gui-client-history.ts) shows the same one-line
+rows the CLI does; the only path to a failed tick's causes is the loop drawer's live transcript.
+Give each row an expandable detail card served by the same collector the CLI plan introduces, so
+a click shows the tick's events (review verdict, build check, landing outcome) without leaving
+the page.
+
+**Approach.**
+- New GET-data handler `GET /api/tick?role=<id>&tick=<n>` in src/ui/gui-endpoints.ts, shaped like
+  the sibling GET handlers (`parseRequestTarget` for the repo root, JSON body). It calls
+  `readTickDetail` from `src/ui/tick-detail.ts` once that lands; if this plan is picked up
+  first, it filters the event feed directly with the same loop+ts-window rule and the collector
+  plan then adopts the shared module without changing the endpoint's payload.
+- In gui-client-history's row rendering, add a per-row details toggle button (the drawer's
+  existing control style) that expands an inline card beneath the row: the summary header and
+  the formatted events, fetched on first expand and cached until the view refetches. The row's
+  existing click-to-open-the-drawer behavior is unchanged; expansion is the button's alone.
+
+**Files touched.** `src/ui/gui-endpoints.ts`, `src/ui/gui-client-history.ts`, plus tests
+pinning the endpoint's payload and its error cases in the GUI endpoint test's style.
+
+**Acceptance criteria.**
+- `GET /api/tick?role=bugfix&tick=3` serves the collector's payload; unknown role, non-positive
+  tick, or a tick absent from the scan window answers with a not-found status, not a crash.
+- A history row's toggle expands the detail card with that tick's events; collapsing and
+  re-expanding reuses the fetched card; the drawer still opens on the row itself.
+- `npm run test` passes with the new tests in the suite.
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### `tumwater tick <role> <n>` — one completed tick's full event trail from the terminal (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
 **Goal.** History renders each tick as one line (src/history-data.ts `TickRow`), and `tumwater
 logs` filters only by role/grep/since — so when a tick reads "problem · 12m · $0.08" the operator
@@ -45,39 +78,6 @@ alongside the existing cli arg-strictness tests.
 - `tumwater tick` with a missing/unknown role, a non-positive or non-numeric `n`, an unknown
   flag, or stray extra args fails with usage naming the expected shape.
 - `npm run test` passes with the new tests in the suite.
-
-### Tick drill-down in the GUI History view: one row expands to that tick's event trail (planned 2026-09-30 by plan loop — sibling of the `tumwater tick` CLI plan above)
-
-**Goal.** The dashboard's History view (src/ui/gui-client-history.ts) shows the same one-line
-rows the CLI does; the only path to a failed tick's causes is the loop drawer's live transcript.
-Give each row an expandable detail card served by the same collector the CLI plan introduces, so
-a click shows the tick's events (review verdict, build check, landing outcome) without leaving
-the page.
-
-**Approach.**
-- New GET-data handler `GET /api/tick?role=<id>&tick=<n>` in src/ui/gui-endpoints.ts, shaped like
-  the sibling GET handlers (`parseRequestTarget` for the repo root, JSON body). It calls
-  `readTickDetail` from `src/ui/tick-detail.ts` once that lands; if this plan is picked up
-  first, it filters the event feed directly with the same loop+ts-window rule and the collector
-  plan then adopts the shared module without changing the endpoint's payload.
-- In gui-client-history's row rendering, add a per-row details toggle button (the drawer's
-  existing control style) that expands an inline card beneath the row: the summary header and
-  the formatted events, fetched on first expand and cached until the view refetches. The row's
-  existing click-to-open-the-drawer behavior is unchanged; expansion is the button's alone.
-
-**Files touched.** `src/ui/gui-endpoints.ts`, `src/ui/gui-client-history.ts`, plus tests
-pinning the endpoint's payload and its error cases in the GUI endpoint test's style.
-
-**Acceptance criteria.**
-- `GET /api/tick?role=bugfix&tick=3` serves the collector's payload; unknown role, non-positive
-  tick, or a tick absent from the scan window answers with a not-found status, not a crash.
-- A history row's toggle expands the detail card with that tick's events; collapsing and
-  re-expanding reuses the fetched card; the drawer still opens on the row itself.
-- `npm run test` passes with the new tests in the suite.
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### `tumwater role <id>` — inspect one loop's standing prompt and resolved settings (planned 2026-09-30 by plan loop, done 2026-09-30 by feature)
 
@@ -719,7 +719,6 @@ continuation, the fallback is one line: map the "budget-resumed" cause to a fres
 - `npm run test:coverage`: a coverage report through the suite's own runner, so coverage ticks stop hand-building raw `node --test` runs (planned 2026-09-30, done 2026-09-30; commit 09a2ceb5)
 - `tumwater history --grep <text>` — the tick-table filter its sibling `logs --grep` already has (planned 2026-09-30, done 2026-09-30; commit 2ba41a49)
 - `tumwater diff` fleet-wide — one line per loop holding pending work, no `--role` needed (planned 2026-09-29, done 2026-09-30; commit 402d02fb)
-
 
 - `tumwater diff --role <id>` — show the change a loop holds: its branch's unlanded commits and its worktree's uncommitted edits (planned 2026-09-29, done 2026-09-29; commit ee4e8353)
 - `tumwater history --since <duration>` — window-shaped tick history, completing the `--since` pattern (planned 2026-09-29, done 2026-09-29; commit e840f010)

@@ -28,6 +28,7 @@ import { renderBacklogMarkdown } from "./ui/backlog-report.js";
 import { renderRoleMarkdown } from "./ui/role-report.js";
 import { rolePayload } from "./role-view.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./ui/history.js";
+import { cmdTick } from "./ui/tick-detail.js";
 import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./status-data.js";
 import { renderStatus } from "./ui/status-render.js";
@@ -75,6 +76,19 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
     rest.push(arg);
   }
   return { id, rest };
+}
+
+/** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
+ * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
+ * with no valued flags (tick: `--json` alone) the split is a prefix test — a negative tick
+ * number (`tick bugfix -3`) arrives flag-shaped and fails the unknown-arg gate, which is the
+ * right answer for a non-positive n anyway. Lives in cli.ts beside peelRolePositional because
+ * it exists only for this one command's positional vocabulary. */
+function peelPositionals(args: string[]): { positionals: string[]; rest: string[] } {
+  const positionals: string[] = [];
+  const rest: string[] = [];
+  for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
+  return { positionals, rest };
 }
 
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
@@ -262,6 +276,21 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       await cmdHistory(root, args);
       break;
+    case "tick": {
+      // Positional-first command (the role command's pattern): the <role> <n> tokens peel off,
+      // the flags that remain go through rejectUnknownArgs (only --json is admitted), and
+      // cmdTick owns the arity and value validation — a missing role, an unknown id, a
+      // non-positive or non-numeric n, or a stray extra positional fails there with the usage.
+      const { positionals, rest } = peelPositionals(args);
+      rejectUnknownArgs("tick", rest, [{ names: ["--json"] }]);
+      // Arity before the ready-repo gate (the config subcommands' precedent): a malformed
+      // invocation fails with its usage no matter the directory. cmdTick keeps the guard too —
+      // in-process callers reach it without this dispatcher.
+      if (positionals.length !== 2) fail("usage: tumwater tick <role> <n> [--json]");
+      await requireReadyRepo(root);
+      await cmdTick(root, positionals, rest.includes("--json"));
+      break;
+    }
     case "diff": {
       // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
       // (no git, not a repository, no tumwater.json, no commits) has no fleet to ask about,

@@ -14,6 +14,7 @@ const ALL_COMMANDS = [
   "config",
   "logs",
   "history",
+  "tick",
   "diff",
   "backlog",
   "prompt",
