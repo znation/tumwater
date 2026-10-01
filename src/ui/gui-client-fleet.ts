@@ -57,9 +57,13 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         // badges.ts rule as the header badge): pass/tests with the skip and fail counts
         // named in a parenthetical, so a skip never reads like a failure here.
         const counts = d.mainCounts ? " · " + esc(d.mainCounts) : "";
-        const verdict = c.status === "passed" ? "green" : c.status === "failed" ? "red" : c.status;
-        rows += row(c.status === "passed" ? "green" : c.status === "failed" ? "red" : "amber", icon(c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info"),
-          "Main " + verdict + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
+        // The row's tone and its text word agree for a check that ran (green/red); a skipped
+        // check colors amber but reads "Main skipped", so the two fallbacks stay distinct.
+        const tone = c.status === "passed" ? "green" : c.status === "failed" ? "red" : "amber";
+        const word = c.status === "passed" ? "green" : c.status === "failed" ? "red" : c.status;
+        const glyph = c.status === "passed" ? "check" : c.status === "failed" ? "fail" : "info";
+        rows += row(tone, icon(glyph),
+          "Main " + word + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
       // Clickable: the land-queue drawer (gui-client-drawer.ts). Same row markup as the
       // helper, plus the data-action the #statuschips listener dispatches on.
