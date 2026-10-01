@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { readJson } from "./json-read.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,
@@ -298,8 +299,8 @@ test("the spawned runner runs exactly the filtered file and exits with its resul
   assert.match(r.stdout ?? "", /^ℹ\s+pass \d+$/m);
   // The run folded the file's fresh duration into the ledger beside the compiled tests,
   // so later runs of the same build order this file by its real cost.
-  const durations = JSON.parse(
-    fs.readFileSync(path.join(path.dirname(runnerPath), "../test/.durations.json"), "utf8"),
+  const durations = readJson<Record<string, number>>(
+    path.join(path.dirname(runnerPath), "../test/.durations.json"),
   );
   assert.ok(
     typeof durations["json-object.test.js"] === "number" && durations["json-object.test.js"] >= 0,

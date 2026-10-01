@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,7 +14,7 @@ import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 test("packageVersion reads the running harness's own package.json", () => {
   const file = fileURLToPath(new URL("../../package.json", import.meta.url));
-  const expected = JSON.parse(fs.readFileSync(file, "utf8")) as { version: string };
+  const expected = readJson(file) as { version: string };
   const result = packageVersion(file);
   assert.equal(result.problem, undefined);
   assert.equal(result.version, expected.version);
@@ -47,7 +48,7 @@ test("packageVersion fails a missing, blank, or non-string version field", () =>
 
 test("packageEnginesNode reads the real package.json's engines spec", () => {
   const file = fileURLToPath(new URL("../../package.json", import.meta.url));
-  const expected = (JSON.parse(fs.readFileSync(file, "utf8")) as { engines: { node: string } }).engines.node;
+  const expected = (readJson(file) as { engines: { node: string } }).engines.node;
   assert.equal(packageEnginesNode(file), expected);
 });
 

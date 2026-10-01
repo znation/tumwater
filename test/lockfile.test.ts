@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { readJson } from "./json-read.js";
 
 // tumwater is a public package: every dependency in package-lock.json must resolve from the
 // public npm registry. A contributor's ~/.npmrc pointing at a private mirror would otherwise
@@ -8,9 +9,9 @@ import fs from "node:fs";
 // repo's .npmrc pins the registry, and this pins the lockfile.
 
 test("package-lock.json resolves every package from the public npm registry", () => {
-  const lock = JSON.parse(
-    fs.readFileSync(new URL("../../package-lock.json", import.meta.url), "utf8"),
-  ) as { packages: Record<string, { resolved?: string }> };
+  const lock = readJson(new URL("../../package-lock.json", import.meta.url)) as {
+    packages: Record<string, { resolved?: string }>;
+  };
   const offRegistry = Object.entries(lock.packages)
     .filter(([, pkg]) => pkg.resolved !== undefined && !pkg.resolved.startsWith("https://registry.npmjs.org/"))
     .map(([name, pkg]) => `${name}: ${pkg.resolved}`);

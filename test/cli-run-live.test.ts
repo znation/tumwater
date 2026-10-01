@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -214,7 +215,7 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
       fs.existsSync(orchestratorStatePath(repo)),
       `SIGINT to the supervisor must not tear down the fleet; output so far:\n${s.out()}`,
     );
-    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+    const info = readJson(orchestratorStatePath(repo)) as { pid: number };
     let alive = true;
     try {
       process.kill(info.pid, 0);
@@ -244,7 +245,7 @@ test("a SIGINT reaching the orchestrator generation stops the fleet cleanly", as
 
   onlyCleanRole(repo);
   await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
-    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+    const info = readJson(orchestratorStatePath(repo)) as { pid: number };
 
     // SIGINT straight to the orchestrator generation: the graceful stop path (announce, abort).
     process.kill(info.pid, "SIGINT");
@@ -265,7 +266,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
 
   onlyCleanRole(repo);
   await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
-    const info = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")) as { pid: number };
+    const info = readJson(orchestratorStatePath(repo)) as { pid: number };
 
     // The first Ctrl+C starts the graceful stop; the second must not queue behind it —
     // the operator pressed it to force the issue, so the generation exits 130 at once.

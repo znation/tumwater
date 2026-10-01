@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -118,7 +119,7 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   const root = tmpdir();
   assert.equal(resumeRole(root, "docs"), false, "resume without a pause is a no-op");
   assert.equal(pauseRole(root, "docs"), true, "first pause changes state");
-  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "state", "paused-roles.json"), "utf8")) as {
+  const marker = readJson(path.join(root, ".tumwater", "state", "paused-roles.json")) as {
     roles: string[];
     at: number;
   };
@@ -255,7 +256,7 @@ test("pauseFleet with a deadline writes { at, until } and pausedUntil reads it b
   const root = tmpdir();
   const until = Date.now() + 30 * 60_000;
   assert.equal(pauseFleet(root, until), true, "a timed pause changes state like a plain one");
-  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "paused.json"), "utf8")) as {
+  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as {
     at: number;
     until: number;
   };
@@ -274,7 +275,7 @@ test("an expired fleet deadline reads as unpaused everywhere and a re-pause star
   assert.equal(isFleetPaused(root), false, "a past deadline is not a pause");
   assert.equal(pausedUntil(root), undefined, "an expired deadline is absent, never exposed");
   assert.equal(pauseFleet(root), true, "a pause after expiry reports a fresh pause, not 'already paused'");
-  const marker = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "paused.json"), "utf8")) as {
+  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as {
     at: number;
     until?: number;
   };
@@ -295,7 +296,7 @@ test("pauseRole with a deadline writes { roles, at, until } and expiry releases 
   const root = tmpdir();
   const until = Date.now() + 2 * 3_600_000;
   assert.equal(pauseRole(root, "clean", until), true);
-  const marker = JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as {
+  const marker = readJson(pausedRolesPath(root)) as {
     roles: string[];
     until: number;
   };
@@ -316,7 +317,7 @@ test("pauseRole with a deadline writes { roles, at, until } and expiry releases 
   assert.equal(pauseRole(root, "dry"), false);
   const sooner = Date.now() + 60_000;
   assert.equal(pauseRole(root, "dry", sooner), true);
-  assert.equal((JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as { until: number }).until, sooner);
+  assert.equal((readJson(pausedRolesPath(root)) as { until: number }).until, sooner);
   assert.equal(resumeRole(root, "dry"), true);
   assert.equal(fs.existsSync(pausedRolesPath(root)), false);
 });

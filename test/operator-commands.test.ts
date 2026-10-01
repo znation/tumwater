@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -58,10 +59,6 @@ function markLive(root: string): void {
   writeOrchestratorMarker(root, []);
 }
 
-function readJson(file: string): Record<string, unknown> {
-  return JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-}
-
 // --- reset-counters ---
 
 test("cmdResetCounters with --role zeroes that loop's counters and preserves its schedule", async () => {
@@ -89,7 +86,7 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
   assert.equal(after.nextRunAt, 12_345);
   assert.equal(after.backoffSeconds, 60);
   assert.equal(after.lastMainHead, "abc");
-  const marker = readJson(resetRequestPath(root));
+  const marker = readJson<Record<string, unknown>>(resetRequestPath(root));
   assert.deepEqual(marker["roles"], ["coverage"]);
   assert.equal(typeof marker["at"], "number");
 });
@@ -99,7 +96,7 @@ test("cmdResetCounters without --role targets every role in the config", async (
   const roles = Object.keys(defaultConfig().roles);
   saveLoopState(root, { ...freshLoopState("coverage"), ticks: 5 });
   const { stdout } = await expectOk(() => cmdResetCounters(root, []));
-  assert.deepEqual(readJson(resetRequestPath(root))["roles"], roles);
+  assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], roles);
   assert.equal(loadLoopState(root, "coverage").ticks, 0);
   assert.ok(stdout.startsWith("counters reset for "));
 });
@@ -121,7 +118,7 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
   assert.equal(after.backoffSeconds, 0);
   assert.ok(after.nextRunAt >= before && after.nextRunAt <= Date.now(), `nextRunAt ${after.nextRunAt} not pulled to now`);
   assert.equal(after.ticks, 7); // observation-window counters are not this command's job
-  assert.deepEqual(readJson(wakeRequestPath(root))["roles"], ["clean"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["clean"]);
 });
 
 // A malformed tumwater.json must not block an operator marker aimed at a built-in role:
@@ -180,7 +177,7 @@ test("cmdAbort with a live harness writes the per-role marker", async () => {
   markLive(root);
   const { stdout } = await expectOk(() => cmdAbort(root, ["--role", "coverage"]));
   assert.match(stdout, /abort requested for coverage/);
-  const marker = readJson(abortRequestPath(root, "coverage"));
+  const marker = readJson<Record<string, unknown>>(abortRequestPath(root, "coverage"));
   assert.equal(typeof marker["at"], "number");
 });
 
@@ -214,7 +211,7 @@ test("cmdPause writes the marker, reports no-harness timing, and is idempotent",
 test("cmdPause writes the unchanged { at } marker through the shared state writer", async () => {
   const root = tmpdir();
   await expectOk(() => cmdPause(root));
-  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { at: number };
+  const marker = readJson(pausedPath(root)) as { at: number };
   assert.deepEqual(Object.keys(marker), ["at"], "the marker format the CLI has always written");
   assert.equal(typeof marker.at, "number");
 });
@@ -261,7 +258,7 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the fleet marke
   assert.match(second.stdout, /role clean is already paused/);
   // Both roles land in the one marker set.
   await expectOk(() => cmdPause(root, ["--role", "dry"]));
-  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["clean", "dry"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dry"]);
   // A custom-loop id resolves through the config-backed check like abort's does.
   const config = defaultConfig();
   config.customLoops.push({ name: "myloop", task: "keep the examples current" });
@@ -278,7 +275,7 @@ test("cmdResume --role lifts one role and reports the was-not-paused wording whe
   await expectOk(() => cmdPause(root, ["--role", "dry"]));
   const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(stdout, /role clean resumed/);
-  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["dry"], "only the named role resumes");
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dry"], "only the named role resumes");
   await expectOk(() => cmdResume(root, ["--role", "dry"]));
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
 });
@@ -292,7 +289,7 @@ test("cmdResume --role while the fleet pause holds names the stronger gate inste
   assert.match(stdout, /role clean resumed/);
   assert.match(stdout, /fleet pause is still active/);
   // The marker really was lifted; only the wording acknowledges the fleet gate.
-  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["dry"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dry"]);
 });
 
 test("cmdResume (fleet) while roles are individually paused names the still-paused roles", async () => {
@@ -304,7 +301,7 @@ test("cmdResume (fleet) while roles are individually paused names the still-paus
   assert.match(stdout, /fleet resumed/);
   assert.match(stdout, /clean, dry are still individually paused/);
   // The per-role marker outlives the fleet resume.
-  assert.deepEqual(JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")).roles, ["clean", "dry"]);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dry"]);
   // A fleet resume with no per-role marker does not carry the note.
   await expectOk(() => cmdResume(root, ["--role", "clean"]));
   await expectOk(() => cmdResume(root, ["--role", "dry"]));
@@ -334,7 +331,7 @@ test("cmdPause --for writes a timed fleet marker and names the auto-resume", asy
   const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"]));
   assert.match(stdout, /fleet paused for 30m — role loops stop starting new ticks/);
   assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
-  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { at: number; until: number };
+  const marker = readJson(pausedPath(root)) as { at: number; until: number };
   assert.ok(marker.until > before + 29 * 60_000 && marker.until <= before + 31 * 60_000);
 });
 
@@ -344,7 +341,7 @@ test("cmdPause --for over a standing pause overwrites the deadline and reports i
   const { stdout } = await expectOk(() => cmdPause(root, ["--for", "2h"]));
   assert.match(stdout, /fleet paused for 2h —/, "a fresh --for is a fresh confirmation, not 'already paused'");
   assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
-  const marker = JSON.parse(fs.readFileSync(pausedPath(root), "utf8")) as { until: number };
+  const marker = readJson(pausedPath(root)) as { until: number };
   assert.ok(marker.until > Date.now() + 60 * 60_000, "the deadline was extended to ~2h");
   // A plain pause over a timed pause stays today's idempotent no-op.
   const again = await expectOk(() => cmdPause(root));
@@ -365,7 +362,7 @@ test("cmdPause --role --for writes the role marker with the deadline and overwri
   const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "2h"]));
   assert.match(stdout, /role clean paused for 2h — it stops starting new ticks/);
   assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
-  const readUntil = () => (JSON.parse(fs.readFileSync(pausedRolesPath(root), "utf8")) as { roles: string[]; until: number }).until;
+  const readUntil = () => (readJson(pausedRolesPath(root)) as { roles: string[]; until: number }).until;
   const first = readUntil();
   assert.ok(first > Date.now() + 60 * 60_000);
   // A plain pause of the standing role stays the no-op; a fresh --for overwrites the deadline.

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -21,7 +22,7 @@ function runGuard(cwd: string): { status: number | null; stdout: string; stderr:
 }
 
 test("both suite scripts run the live-checkout guard before anything lints, compiles, or stamps", () => {
-  const pkg = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as {
+  const pkg = readJson(fileURLToPath(new URL("../../package.json", import.meta.url))) as {
     scripts?: Record<string, string>;
   };
   for (const name of ["test", "test:e2e"])

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -94,7 +95,7 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
 
     // Read back from disk, not the in-memory object: without an immediate persist the
     // file still holds the seeded reject and the stale note would survive the crash.
-    const onDisk = JSON.parse(fs.readFileSync(statePath(root, ROLE), "utf8")) as LoopState;
+    const onDisk = readJson(statePath(root, ROLE)) as LoopState;
     assert.equal(onDisk.lastReview?.verdict, "approve", "the approve is durable on disk, not just in memory");
     assert.equal(onDisk.lastApprovedHead, sha, "the approved head is durable");
   } finally {

@@ -6,6 +6,7 @@
 // the remaining CLI surface (prompt, status, tui, doctor, report, run, gui).
 
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -94,7 +95,7 @@ test("abort drops a per-role marker for a live harness and reports it", async ()
 
   // The marker IS the request: one file per role, content just { at } — the fleet matches
   // on the name and removes it to acknowledge.
-  const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as {
+  const marker = readJson(abortRequestPath(repo, "feature")) as {
     at: number;
   };
   assert.ok(marker.at > 0);
@@ -204,7 +205,7 @@ test("pause --for is capped at 90d and accepts the boundary value", async () => 
   r = await cli(repo, "pause", "--for", "90d");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /fleet paused for 90d/);
-  const m = JSON.parse(fs.readFileSync(marker, "utf8")) as { at: number; until: number };
+  const m = readJson(marker) as { at: number; until: number };
   assert.ok(m.until > Date.now() + 89 * 24 * 60 * 60 * 1000, "the deadline is 90 days out");
 });
 
@@ -239,7 +240,7 @@ test("pause --for writes a timed marker and resume lifts it early", async () => 
   assert.equal(r.code, 0);
   assert.match(r.stdout, /fleet paused for 30m —/);
   assert.match(r.stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
-  const m = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { at: number; until: number };
+  const m = readJson(pausedPath(repo)) as { at: number; until: number };
   assert.ok(m.until > Date.now() + 29 * 60_000, "the marker carries the ms-epoch deadline");
 
   // Resume still lifts a timed pause early, unchanged.

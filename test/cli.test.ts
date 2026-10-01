@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { readJson } from "./json-read.js";
 import { initProject } from "../src/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readInitialPrompt } from "../src/readme.js";
@@ -38,9 +39,7 @@ test("help and no command print usage", async () => {
 });
 
 test("version prints the package version", async () => {
-  const pkg = JSON.parse(
-    fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
-  ) as { version: string };
+  const pkg = readJson(new URL("../../package.json", import.meta.url)) as { version: string };
   const r = await cli(tmpdir(), "version");
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), pkg.version);

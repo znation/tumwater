@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -196,24 +197,24 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
   let res = await postJson(base, "/api/budget", { maxDailyCostUsd: 25 });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
-  let onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  let onDisk = readJson(configFile) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 25);
 
   // Fractional dollars keep their cents (the badge renders them).
   res = await postJson(base, "/api/budget", { maxDailyCostUsd: 12.34 });
   assert.equal(res.status, 200);
-  onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  onDisk = readJson(configFile) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 12.34);
 
   // Zero disables the cap — a valid value, not an error.
   res = await postJson(base, "/api/budget", { maxDailyCostUsd: 0 });
   assert.equal(res.status, 200);
-  onDisk = JSON.parse(fs.readFileSync(configFile, "utf8")) as { maxDailyCostUsd: number };
+  onDisk = readJson(configFile) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 0);
 
   // The save preserved every other key: diff the file minus that one key against a fresh
   // load of the same config (initProject's defaults plus nothing else changed).
-  const raw = JSON.parse(fs.readFileSync(configFile, "utf8")) as Record<string, unknown>;
+  const raw = readJson(configFile) as Record<string, unknown>;
   delete raw.maxDailyCostUsd;
   const { maxDailyCostUsd: _ignored, ...rest } = loadConfig(repo) as unknown as Record<string, unknown> & {
     maxDailyCostUsd: number;
@@ -316,7 +317,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
   assert.equal(res.status, 200);
   const answer = (await res.json()) as { ok: boolean; paused: boolean; until: number };
   assert.equal(answer.paused, true);
-  const marker = JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number };
+  const marker = readJson(pausedPath(repo)) as { until: number };
   assert.equal(marker.until, answer.until, "the answer names the deadline the marker holds");
   assert.ok(marker.until >= before + 1_800_000 && marker.until <= Date.now() + 1_800_000, "30 minutes from now");
   assert.equal((statusPayload(repo) as { pausedUntil?: number }).pausedUntil, marker.until, "the payload's countdown reads it");
@@ -334,7 +335,7 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
     assert.equal(res.status, 400, JSON.stringify(body));
     assert.match(((await res.json()) as { error: string }).error, /forSeconds/);
   }
-  assert.equal((JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
+  assert.equal((readJson(pausedPath(repo)) as { until: number }).until, marker.until, "rejected bodies leave the deadline");
 
   // A pause without forSeconds is a standing one, as before.
   res = await fetch(base + "/api/pause", { method: "POST", body: JSON.stringify({ paused: true }) });
@@ -363,7 +364,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
     ok: true,
     message: "wake requested for feature — takes effect on the next `tumwater run` (no harness is running)",
   });
-  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  const marker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
   assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
 
@@ -372,7 +373,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   fs.rmSync(wakeRequestPath(repo));
   res = await fetch(base + "/api/wake", { method: "POST", body: "{}" });
   assert.equal(res.status, 200);
-  const fleetMarker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  const fleetMarker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual([...fleetMarker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 
   // Unknown / non-string roles get the transcript endpoint's 400 wording, and change nothing.
@@ -414,7 +415,7 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
     ok: true,
     message: "abort requested for feature — a running fleet applies it within ~2s",
   });
-  const marker = JSON.parse(fs.readFileSync(abortRequestPath(repo, "feature"), "utf8")) as { at: number };
+  const marker = readJson(abortRequestPath(repo, "feature")) as { at: number };
   assert.ok(marker.at > 0);
 
   // The director variant's message names the discarded prompt, like the CLI's does.
@@ -449,14 +450,14 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: true, paused: true });
   assert.deepEqual(
-    JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+    readJson<{ roles: string[] }>(pausedRolesPath(repo)).roles,
     ["feature"],
   );
   res = await post({ role: "feature", paused: true });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, changed: false, paused: true }, "re-pausing is idempotent");
   assert.deepEqual(
-    JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")).roles,
+    readJson<{ roles: string[] }>(pausedRolesPath(repo)).roles,
     ["feature"],
     "the idempotent repeat leaves one marker entry",
   );
@@ -512,7 +513,7 @@ test("POST /api/prompt-role queues for the named loop and rejects bad bodies lik
   // The queue holds the trimmed text — the same files `tumwater prompt --list --role` reads.
   assert.deepEqual(queuedRolePrompts(repo, "feature"), ["tighten the docs"]);
   // The wake marker names just that loop.
-  assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["feature"]);
+  assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["feature"]);
 
   // An unknown role reads the same error text /api/transcript answers with (the shared
   // rejectBadRole wording), and the text rules match /api/prompt's.

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { readJson } from "./json-read.js";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -606,7 +607,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     for (const ch of "25") tui.key(ch, ch);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget set to \$25/);
-    let cfg = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8")) as { maxDailyCostUsd: number };
+    let cfg = readJson(path.join(repo, "tumwater.json")) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 25);
     assert.equal(tui.lines().at(-1), "director › draft prompt"); // previous prompt text restored
 
@@ -633,7 +634,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     tui.key(undefined, "backspace");
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget disabled/);
-    cfg = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8")) as { maxDailyCostUsd: number };
+    cfg = readJson(path.join(repo, "tumwater.json")) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 0);
 
     // A disabled cap pre-fills an empty line (empty means "no cap" on save)…
@@ -812,7 +813,7 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget set to \$30/);
     assert.equal(tui.lines().at(-1), "director › ");
-    const cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")) as { maxDailyCostUsd: number };
+    const cfg = readJson(cfgPath) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 30);
   });
 });
@@ -833,7 +834,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     // The prompt landed in the viewed loop's own queue — verifiable with
     // `tumwater prompt --list --role clean`'s core — and the wake marker names it.
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
-    assert.deepEqual(JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")).roles, ["clean"]);
+    assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["clean"]);
     assert.match(tui.lastFrame(), /queued for the clean loop/);
     assert.equal(tui.lines().at(-1), "director › ");
 

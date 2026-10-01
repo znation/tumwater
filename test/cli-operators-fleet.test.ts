@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -86,7 +87,7 @@ test("reset-counters zeroes counters in every role's state file and writes the f
   }
 
   // The marker a running fleet consumes lists every role in the config.
-  const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as {
+  const marker = readJson(resetRequestPath(repo)) as {
     at: number;
     roles: string[];
   };
@@ -107,7 +108,7 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   assert.equal(f.ticks, 0);
   assert.equal(f.commits, 0);
   assert.equal(loadLoopState(repo, "clean").ticks, 7, "other roles untouched");
-  const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as { roles: string[] };
+  const marker = readJson(resetRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
 
   // Unknown role: clear failure, no state changes, no marker.
@@ -172,7 +173,7 @@ test("wake clears backoff in every role's state file and writes the fleet marker
   }
 
   // The marker a running fleet consumes lists every role in the config.
-  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as {
+  const marker = readJson(wakeRequestPath(repo)) as {
     at: number;
     roles: string[];
   };
@@ -191,7 +192,7 @@ test("wake --role targets one loop; unknown or missing role fails without side e
   assert.match(r.stdout, /wake requested for feature/);
   assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0);
   assert.equal(loadLoopState(repo, "clean").backoffSeconds, 15, "other roles untouched");
-  const marker = JSON.parse(fs.readFileSync(wakeRequestPath(repo), "utf8")) as { roles: string[] };
+  const marker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
 
   // Unknown role: clear failure, no state changes, no marker.

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -51,7 +52,7 @@ test("pauseFleet and resumeFleet write the pause marker and report whether state
 
   assert.equal(pauseFleet(dir), true, "the first pause changes state");
   assert.equal(isFleetPaused(dir), true);
-  const marker = JSON.parse(fs.readFileSync(pausedPath(dir), "utf8")) as { at: number };
+  const marker = readJson(pausedPath(dir)) as { at: number };
   assert.deepEqual(Object.keys(marker), ["at"], "the marker keeps the CLI's { at } shape");
   assert.equal(typeof marker.at, "number");
 
@@ -114,7 +115,7 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
   const file = statePath(dir, "race");
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    parsed = readJson(file);
   } catch (err) {
     assert.fail(`state file is torn after concurrent writes (${String(err)})`);
   }

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { readJson } from "./json-read.js";
 import path from "node:path";
 
 /** Deterministic per-file coverage of dist/src, computed from the raw V8 coverage dumps a
@@ -100,7 +101,7 @@ function readRangeSets(dumpDir: string, distRoot: string): Map<string, { sigs: S
   for (const f of names) {
     let j: { result?: { url?: unknown; functions?: { isBlockCoverage?: boolean; ranges?: { startOffset: number; endOffset: number; count: number }[] }[] }[] };
     try {
-      j = JSON.parse(fs.readFileSync(path.join(dumpDir, f), "utf8"));
+      j = readJson(path.join(dumpDir, f));
     } catch {
       continue; // A torn dump (a killed process) is one process's view short, not a failure.
     }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readJson } from "./json-read.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -225,7 +226,7 @@ test("spawnRunChild runs the same script with `run`, SUPERVISED_ENV set, and rep
         const exit = await within(spawnRunChild(new AbortController().signal), 15_000);
         assert.deepEqual(exit, { code, signal: null });
       });
-      const seen = JSON.parse(fs.readFileSync(path.join(dir, `evidence-${code}.json`), "utf8"));
+      const seen = readJson<Record<string, unknown>>(path.join(dir, `evidence-${code}.json`));
       assert.equal(seen.argv2, "run", "the child is the same script with `run` as its command");
       assert.equal(seen[SUPERVISED_ENV], "1", "the child runs the orchestrator, not another supervisor");
     }

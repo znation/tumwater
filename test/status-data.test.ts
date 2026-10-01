@@ -5,6 +5,7 @@
 // contract's in status-payload.test.ts, and the `status` CLI's in cli.test.ts.
 
 import { spawnSync } from "node:child_process";
+import { readJson } from "./json-read.js";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -531,7 +532,7 @@ test("the marker is cross-checked per change and each row reads its own change's
 
   // Only finished records left with a queued entry: nothing is in flight any more.
   for (const f of fs.readdirSync(landQueueDir(repo))) {
-    if (!JSON.parse(fs.readFileSync(path.join(landQueueDir(repo), f), "utf8")).role.startsWith("clean")) {
+    if (!readJson<{ role: string }>(path.join(landQueueDir(repo), f)).role.startsWith("clean")) {
       fs.rmSync(path.join(landQueueDir(repo), f));
     }
   }

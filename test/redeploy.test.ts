@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -515,7 +516,7 @@ test("the completion timestamp survives process restart via its state file", asy
   f2.compiled(true);
   await settle();
   assert.equal(await h2.r.poll(HEAD_C, IDLE, true, secondSwap), "restart");
-  const stored = JSON.parse(fs.readFileSync(autoRestartStampPath(root), "utf8")) as { at: number };
+  const stored = readJson(autoRestartStampPath(root)) as { at: number };
   assert.equal(stored.at, secondSwap, "the file holds the LATEST completion for the next process");
 });
 

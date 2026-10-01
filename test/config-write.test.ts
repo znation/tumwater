@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -26,7 +27,7 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
   // Valid whole / fractional / zero caps persist and preserve every other key (0 disables).
   for (const value of [25, 12.34, 0]) {
     assert.deepEqual(setDailyBudgetUsd(dir, value), { ok: true }, `cap ${value}`);
-    const raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+    const raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
     assert.equal(raw.maxDailyCostUsd, value);
     delete raw.maxDailyCostUsd;
     const { maxDailyCostUsd: _cap, ...rest } = loadConfig(dir) as unknown as Record<string, unknown> & {
@@ -102,7 +103,7 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   // A JSON-parseable value keeps its parsed type: numbers stay numbers, quoted text strings.
   let r = setConfigKey(dir, "minTickIntervalSeconds", "45");
   assert.deepEqual(r, { ok: true, value: 45, oldValue: defaultConfig().minTickIntervalSeconds });
-  let raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  let raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
   assert.strictEqual(raw.minTickIntervalSeconds, 45);
   assert.strictEqual(raw.maxConcurrent, 3, "other keys preserved");
 
@@ -112,7 +113,7 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   // A non-JSON value lands as the literal string — `set model gpt-5` needs no quotes.
   r = setConfigKey(dir, "model", "gpt-5");
   assert.ok(r.ok && r.value === "gpt-5" && r.oldValue === "gpt-5");
-  raw = JSON.parse(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
   assert.strictEqual(raw.model, "gpt-5");
 });
 
@@ -148,13 +149,13 @@ test("setConfigKey writes and clears quietHours; a malformed window fails untouc
   // A valid window persists as the literal string (no JSON quotes needed).
   let r = setConfigKey(dir, "quietHours", "23:00-07:00");
   assert.ok(r.ok && r.value === "23:00-07:00");
-  let raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  let raw = readJson(file) as Record<string, unknown>;
   assert.strictEqual(raw.quietHours, "23:00-07:00");
 
   // An empty string is the documented off.
   r = setConfigKey(dir, "quietHours", "");
   assert.ok(r.ok && r.value === "");
-  raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  raw = readJson(file) as Record<string, unknown>;
   assert.strictEqual(raw.quietHours, "");
 
   // A malformed window fails with checkQuietHours's own actionable message, and the file is

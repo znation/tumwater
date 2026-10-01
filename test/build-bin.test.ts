@@ -10,12 +10,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
+import { readJson } from "./json-read.js";
 
 // From dist/test/ this is dist/src/cli.js — the compiled file package.json's bin names.
 const bin = fileURLToPath(new URL("../src/cli.js", import.meta.url));
-const pkg = JSON.parse(
-  fs.readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8"),
-);
+const pkg = readJson(fileURLToPath(new URL("../../package.json", import.meta.url))) as {
+  bin: Record<string, string>;
+};
 
 test("the compiled package bin keeps its executable bit across builds", () => {
   assert.deepEqual(pkg.bin, { tumwater: "dist/src/cli.js" });

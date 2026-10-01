@@ -1,4 +1,5 @@
 import test from "node:test";
+import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,12 +37,12 @@ test("writeJsonFile creates parent dirs and writes pretty-printed JSON (overwrit
   const dir = tmpdir();
   const file = path.join(dir, "nested", "marker.json"); // Parent does not exist yet.
   writeJsonFile(file, { at: 123, roles: ["feature"] });
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { at: 123, roles: ["feature"] });
+  assert.deepEqual(readJson(file), { at: 123, roles: ["feature"] });
   const raw = fs.readFileSync(file, "utf8");
   assert.ok(raw.includes('\n  "at": 123'), "two-space pretty print — the shared marker/info format");
 
   writeJsonFile(file, { at: 456 }); // Overwrites an existing file in place.
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { at: 456 });
+  assert.deepEqual(readJson(file), { at: 456 });
 });
 
 test("writeJsonAtomic replaces the target atomically, honoring the caller's newline convention", () => {
