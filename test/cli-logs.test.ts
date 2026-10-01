@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { submitPrompt } from "../src/inbox.js";
+import { submitPrompt } from "../src/inbox-submit.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";

@@ -25,7 +25,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { readBranchHead } from "../src/git.js";
-import { queuedRolePromptCount, submitRolePrompt } from "../src/inbox.js";
+import { queuedRolePromptCount } from "../src/inbox.js";
+import { submitRolePrompt } from "../src/inbox-submit.js";
 import {
   awaitSettledTick,
   makeFastRepo,

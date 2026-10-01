@@ -11,7 +11,8 @@
  */
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
-import { cancelQueuedFile, promptPreview, queueFileNameProblem, submitPrompt } from "../inbox.js";
+import { cancelQueuedFile, promptPreview, queueFileNameProblem } from "../inbox.js";
+import { submitPrompt } from "../inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
 import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";

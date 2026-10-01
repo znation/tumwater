@@ -8,7 +8,7 @@
  */
 import { knownRoleIdsCached } from "../config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
-import { promptLengthProblem } from "../inbox.js";
+import { promptLengthProblem } from "../inbox-submit.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { parseNonNegativeInt, parsePositiveInt } from "../text.js";
 import { sendJson } from "./http-body.js";

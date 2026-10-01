@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
-import { submitRolePrompt } from "../src/inbox.js";
+import { submitRolePrompt } from "../src/inbox-submit.js";
 import { readEvents } from "../src/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { clearBackoff } from "../src/backoff.js";

@@ -6,20 +6,17 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
 import { roleInboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
 import { truncate } from "./text.js";
 import { errCode } from "./errno.js";
-import {
-  imageReferenceLines,
-  promptImagesProblem,
-  savePromptImages,
-  type PromptImageInput,
-} from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
  * root; every other loop has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
- * queues a request only that loop's next tick sees (PLANS.md "Per-role prompts 1/2"). */
+ * queues a request only that loop's next tick sees (PLANS.md "Per-role prompts 1/2").
+ *
+ * This module is the store: enqueueing, listing, peeking, dequeuing, cancelling, and their
+ * race policy. The submission pipeline that validates and logs a user-submitted prompt lives
+ * in inbox-submit.ts; the image side of a submission in inbox-attachments.ts. */
 
 /** Cap on a queued prompt's one-line preview, so an over-long prompt cannot bloat an event
  * log line, the dashboard payload, or the CLI output. */
@@ -37,8 +34,9 @@ let seq = 0;
 
 /** Append a prompt to a loop's queue as one timestamped file (creating the queue dir if needed)
  * and return its path. The filename orders prompts across processes by wall-clock time; the
- * per-process counter and pid break ties within one process. No event is logged — submitPrompt
- * and submitRolePrompt are the user-facing wrappers that add the prompt_enqueued line, and
+ * per-process counter and pid break ties within one process. No event is logged — inbox-submit.ts's
+ * submitPrompt and submitRolePrompt are the user-facing wrappers that add the prompt_enqueued
+ * line, and
  * loop.ts's re-queue of an unfulfilled prompt calls this directly. The write is atomic
  * (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll, `tumwater prompt
  * --list`, and the dequeuing loop — run in other processes, and a read that raced a plain
@@ -291,70 +289,6 @@ export function peekPrompt(root: string): string | null {
   return peekRolePrompt(root, DIRECTOR_ROLE);
 }
 
-/** Cap on a submitted prompt's length: the same ceiling for every loop's queue, director and
- * role alike, because every prompt rides into its target tick's prefill — a megabyte pasted
- * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
- * ride into the next tick's context wholesale. submitPrompt and submitRolePrompt reject
- * over-long text before it is queued, so no surface can enqueue it. */
-export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
-
-/** The one length rule for a submitted prompt, scoped to the loop it targets: the error
- * message when the trimmed text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. The
- * message names the target loop's tick — `--role qa` must not be told its text rides into
- * the director's prefill. submitPrompt/submitRolePrompt throw it before anything is queued
- * or logged; the GUI asks it first so an over-long prompt answers 400 (a user-input error)
- * while an unexpected submit failure (a broken inbox's EACCES) stays the 500 its
- * gui-server test pins. */
-export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE): string | null {
-  const prompt = text.trim();
-  if (prompt.length <= DIRECTOR_PROMPT_MAX_CHARS) return null;
-  return `the prompt is ${prompt.length} chars — shorten it to at most ${DIRECTOR_PROMPT_MAX_CHARS}: it rides into the ${role} tick's prefill`;
-}
-
-/** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
- * in the event log under that loop. Returns the trimmed prompt that was queued. The logged
- * preview goes through promptPreview — not a raw slice — so an over-long prompt is marked with
- * an ellipsis like every other label and never carries a lone surrogate at the cut point.
- * Throws (before anything is queued or logged) when the trimmed prompt exceeds
- * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
- * operator. An optional images array (the GUI composer's drop/paste attachments) rides
- * through savePromptImages beside the queue file, with one [image attached: …] reference line
- * per image appended to the queued text; image problems throw before anything is queued. */
-export function submitRolePrompt(root: string, role: string, text: string, images?: PromptImageInput[]): string {
-  const problem = promptLengthProblem(text, role);
-  if (problem) throw new Error(problem);
-  if (images && images.length > 0) {
-    const imageProblem = promptImagesProblem(images);
-    if (imageProblem) throw new Error(imageProblem);
-    return submitPromptWithImages(root, role, text, images);
-  }
-  const prompt = text.trim();
-  enqueueRolePrompt(root, role, prompt);
-  logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
-  return prompt;
-}
-
-/** submitRolePrompt's image-carrying path: save each image beside the queue file and queue the
- * text with one reference line per image. The images are saved and the reference lines
- * composed inside enqueueRolePrompt's decorate hook — a single atomic write, so the queue
- * file is born complete: no poller can read a prompt whose image lines point at
- * not-yet-written files, and the dequeuer's sibling cleanup cannot race the writes. The
- * images were validated before the enqueue (submitRolePrompt above), so savePromptImages's
- * own re-check failing here is unreachable — and if it ever fired, the decorate throw
- * happens before writeTextAtomic, leaving no queue file behind at all. */
-function submitPromptWithImages(root: string, role: string, text: string, images: PromptImageInput[]): string {
-  const prompt = text.trim();
-  let final = prompt;
-  enqueueRolePrompt(root, role, prompt, (file) => {
-    const saved = savePromptImages(root, role, file, images);
-    if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
-    final = prompt + imageReferenceLines(saved.paths);
-    return final;
-  });
-  logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
-  return final;
-}
-
 // --- Director special cases: the director's queue IS the historical inbox root, so these thin
 // wrappers keep every existing caller (the status dashboards, the GUI server, loop.ts's
 // re-queue, the pre-1/2 CLI) working unchanged, with no queue format migration.
@@ -379,7 +313,3 @@ export function cancelPrompt(root: string, position: number): CancelOutcome {
   return cancelRolePrompt(root, DIRECTOR_ROLE, position);
 }
 
-/** A user submits a new director prompt; see submitRolePrompt. */
-export function submitPrompt(root: string, text: string, images?: PromptImageInput[]): string {
-  return submitRolePrompt(root, DIRECTOR_ROLE, text, images);
-}
