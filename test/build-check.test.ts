@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { parseTestCounts, runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
-import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
+import { scriptedSampler, woke } from "./sleep-clock.js";
 import { checkFailureReasons } from "../src/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
 import { errCode } from "../src/errno.js";
@@ -755,17 +755,6 @@ test("an unset or blank check.gateCommand leaves the gate running check.command"
     assert.equal(result!.outcome.script, "echo full", `gateCommand ${JSON.stringify(gateCommand)} is off`);
   }
 });
-
-// A scripted sleep clock: each runBuildCheck attempt samples it twice (open, close). The
-// samples hand the measurement its evidence, so a test can put a host sleep inside one
-// attempt and none inside the next — no test can suspend the real host.
-function scriptedSampler(samples: SleepSample[]): SleepSampler {
-  return () => {
-    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
-    return Promise.resolve(samples.shift()!);
-  };
-}
-const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
 
 // BUGS.md 2026-09-30: a sleep shorter than the check's remaining deadline but longer than a
 // test's own wait expires that wait at the wake; the suite exits 1 inside the deadline, the

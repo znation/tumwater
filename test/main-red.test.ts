@@ -10,7 +10,7 @@ import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
-import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
+import { scriptedSampler, woke } from "./sleep-clock.js";
 
 // Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
@@ -309,16 +309,6 @@ test("mainTipVerdict reports unavailable, without throwing, when main's ref dang
   assert.equal(verdict.status, "unavailable");
   assert.ok(verdict.status === "unavailable" && /invalid reference/.test(verdict.why), verdict.status === "unavailable" ? verdict.why : "");
 });
-
-// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
-// twice (open, close), so a test can put a host sleep inside one attempt.
-function scriptedSampler(samples: SleepSample[]): SleepSampler {
-  return () => {
-    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
-    return Promise.resolve(samples.shift()!);
-  };
-}
-const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
 
 // BUGS.md 2026-09-30: a FAILED baseline run the host slept through is no verdict about main —
 // the gate warns under the role, naming the sleep, and proceeds with authoring; nothing is

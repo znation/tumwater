@@ -24,7 +24,7 @@ import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { logPromptsTo, readPromptRuns, reviewerStub, withPi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
-import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
+import { scriptedSampler, woke } from "./sleep-clock.js";
 
 
 // The gate's integration with the deterministic build pre-check (src/build-check.ts): a
@@ -639,17 +639,6 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     assert.deepEqual(rerunWarnings(timed.root), [], "running the suite is the reviewer's job here");
   });
 });
-
-// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
-// twice (open, close), so a test can put a host sleep inside one attempt — no test can
-// suspend the real host.
-function scriptedSampler(samples: SleepSample[]): SleepSampler {
-  return () => {
-    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
-    return Promise.resolve(samples.shift()!);
-  };
-}
-const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
 
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict
 // about the tree. The gate attributes nothing — no main consultation, no strike, no

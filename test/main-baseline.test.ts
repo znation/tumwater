@@ -11,7 +11,7 @@ import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { pathReplace, projManifest } from "./fake-commands.js";
-import { type SleepSample, type SleepSampler } from "../src/host-sleep.js";
+import { scriptedSampler, woke } from "./sleep-clock.js";
 
 // Unit coverage for the fleet-shared main-baseline verdict (src/main-baseline.ts): the
 // one-run-per-SHA cache, the re-verification policy that keeps one worktree's environmental
@@ -349,17 +349,6 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   );
   assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });
-
-// A scripted sleep clock like build-check.test.ts's: each runBuildCheck attempt samples it
-// twice (open, close), so a test can put a host sleep inside one attempt — no test can
-// suspend the real host.
-function scriptedSampler(samples: SleepSample[]): SleepSampler {
-  return () => {
-    assert.ok(samples.length > 0, "more sleep-clock samples were taken than scripted");
-    return Promise.resolve(samples.shift()!);
-  };
-}
-const woke = (lastWakeMs: number, lastSleepMs?: number): SleepSample => ({ lastWakeMs, lastSleepMs });
 
 // BUGS.md 2026-09-30: a FAILED baseline run the host slept through made no verdict about the
 // tree — the sleep expired a test's own wait and the suite exited 1 inside the deadline — so
