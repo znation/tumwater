@@ -10,14 +10,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build-info.js";
 import type { Redeployer } from "../src/redeploy-policy.js";
-import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 
@@ -88,10 +86,7 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
     { action: "hold" },
     {},
   ]);
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,
@@ -120,10 +115,7 @@ test("a restart verdict ends the run with restart: true, before any tick starts"
   const restore = fakePiIdle();
   const controller = new AbortController();
   const { redeployer } = scriptedRedeployer([{ action: "restart" }]);
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,
@@ -152,10 +144,7 @@ test("the redeployer's build status is published at startup and republished when
   const initial: BuildStatus = { sha: BUILD_SHA, builtAt: BUILT_AT };
   const stale: BuildStatus = { sha: BUILD_SHA, builtAt: BUILT_AT, stale: true, aheadCommits: 2, checkedHead: "head-1" };
   const { redeployer } = scriptedRedeployer([{ build: initial }, { build: stale }]);
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,

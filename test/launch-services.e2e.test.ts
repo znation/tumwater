@@ -5,11 +5,9 @@
  * `npm run test:e2e`, not in the gating `npm test`. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-services.js";
 import type { ProcessProbe } from "../src/process-table.js";
-import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { waitFor } from "./wait.js";
@@ -34,10 +32,7 @@ test("a daemon fleet samples launchservicesd on its first poll and warns once th
   const restore = fakePiIdle();
   const probe = countingProbe(150_000);
   const controller = new AbortController();
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     launchServicesWatch: new LaunchServicesWatch(repo, probe),
@@ -62,11 +57,7 @@ test("a once round runs without the watch even when one is passed", async () => 
   const restore = fakePiIdle();
   const probe = countingProbe(150_000);
   try {
-    await runOrchestrator({
-      root: repo,
-      config: loadConfig(repo),
-      mainBranch: "main",
-      signal: new AbortController().signal,
+    await runRepoOrchestrator(repo, {
       pollMs: FAST_POLL_MS,
       once: true,
       launchServicesWatch: new LaunchServicesWatch(repo, probe),

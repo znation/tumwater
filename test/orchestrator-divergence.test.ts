@@ -8,11 +8,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { eventsLogPath } from "../src/paths.js";
-import { FAST_POLL_MS, makeFastRepo } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 
@@ -39,10 +37,7 @@ test("branch divergence: warns once per episode and re-arms when main returns", 
   const repo = await makeFastRepo("divergence watch test", ["clean"]);
   const restore = fakePiIdle();
   const controller = new AbortController();
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
   });

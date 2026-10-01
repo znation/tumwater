@@ -64,6 +64,27 @@ export async function makeFastRepo(label: string, roles: string[], model?: strin
   return repo;
 }
 
+/** Start a run over `repo` with the fields every in-process test start repeats — the repo's
+ * on-disk config (loadConfig), main, a fresh abort signal — leaving the rest (pollMs, once,
+ * redeploy, modelsPath, …) to `overrides`. Returns runOrchestrator's exit promise unchanged.
+ * The one home of the root/config/mainBranch/signal literal the live-run tests each carried
+ * as a copy: a new RunOptions seam now reaches every test start through one edit. Tests that
+ * abort mid-run keep their own AbortController and pass its signal; startLiveOrchestrator,
+ * onceRound, and startRedeployRun build on this instead of repeating the literal. */
+export function runRepoOrchestrator(
+  repo: string,
+  overrides: Partial<Parameters<typeof runOrchestrator>[0]> = {},
+): ReturnType<typeof runOrchestrator> {
+  const { signal = new AbortController().signal, ...rest } = overrides;
+  return runOrchestrator({
+    root: repo,
+    config: loadConfig(repo),
+    mainBranch: "main",
+    signal,
+    ...rest,
+  });
+}
+
 /** Start a live orchestrator on `repo` with the config currently on disk, for tests that
  * drive it while running. Returns its exit promise plus `stop`, which aborts the run and
  * awaits its exit — swallowing shutdown noise so the test's own failure (if any) stays
@@ -74,10 +95,7 @@ export function startLiveOrchestrator(
   modelsPath?: string,
 ): { done: Promise<unknown>; stop: () => Promise<void> } {
   const controller = new AbortController();
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs,
     // pi's model definitions, for the budget gate's fallback check (plans/fallback-model.md):
@@ -107,11 +125,7 @@ export function onceRound(
   repo: string,
   roleFilter?: string,
 ): Promise<{ restart: boolean; settled?: ReadonlyMap<string, string>; ticksRun?: ReadonlyMap<string, number> }> {
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
-    signal: new AbortController().signal,
+  const done = runRepoOrchestrator(repo, {
     pollMs: FAST_POLL_MS,
     once: true,
     roleFilter,
@@ -262,10 +276,7 @@ export function startRedeployRun(
 ) {
   const controller = new AbortController();
   const timeout = opts.timeoutMs === undefined ? null : setTimeout(() => controller.abort(), opts.timeoutMs);
-  const run = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const run = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,

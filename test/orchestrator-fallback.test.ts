@@ -20,11 +20,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { runOrchestrator } from "../src/orchestrator.js";
-import { loadConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
-import { FAST_POLL_MS, fastConfig, makeFastRepo } from "./orchestrator-fixtures.js";
+import { FAST_POLL_MS, fastConfig, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
@@ -58,10 +56,7 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
   const restore = fakePi(script);
 
   const controller = new AbortController();
-  const run = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const run = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     modelsPath,

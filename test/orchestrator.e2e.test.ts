@@ -12,7 +12,6 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { backdate } from "./backdate.js";
-import { runOrchestrator } from "../src/orchestrator.js";
 import { runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
@@ -34,6 +33,7 @@ import {
   awaitSettledTick,
   fastConfig,
   makeFastRepo,
+  runRepoOrchestrator,
   startIdleOrchestrator,
   startLiveOrchestrator,
   stopOrchestrator,
@@ -161,10 +161,8 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
   const restore = fakePiIdle();
   const controller = new AbortController();
   try {
-    const done = runOrchestrator({
-      root: repo,
+    const done = runRepoOrchestrator(repo, {
       config,
-      mainBranch: "main",
       signal: controller.signal,
       pollMs: 5000, // Long poll so the shutdown-ceiling assertion below is unambiguous under load.
     });
@@ -225,7 +223,7 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
   const controller = new AbortController();
   try {
     await assert.rejects(
-      runOrchestrator({ root: repo, config, mainBranch: "main", signal: controller.signal }),
+      runRepoOrchestrator(repo, { config, signal: controller.signal }),
       // The message names the problem AND the fix, so an operator who disabled every role is
       // told exactly which edit unblocks startup.
       /no roles enabled in tumwater\.json — enable at least one role/,

@@ -10,8 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig, saveConfig } from "../src/config.js";
-import { runOrchestrator } from "../src/orchestrator.js";
+import { saveConfig } from "../src/config.js";
 import { snapshot } from "../src/status-data.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
@@ -20,7 +19,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.
 import { readOrchestratorInfo } from "../src/fleet-state.js";
 import { todayStamp } from "../src/budget.js";
 import { eventsOfType } from "./log-fixtures.js";
-import { awaitSettledTick, fastConfig, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
+import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -315,10 +314,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
   const controller = new AbortController();
   // Two failures trip it and a 1.5 s cool-down fits the probe in the test; production's policy
   // (3 failures, 5 → 30 min) is pinned in budget.test.ts.
-  const done = runOrchestrator({
-    root: repo,
-    config: loadConfig(repo),
-    mainBranch: "main",
+  const done = runRepoOrchestrator(repo, {
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     modelsPath: models,
