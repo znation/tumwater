@@ -40,6 +40,83 @@ icon triggers the same restart as the alert's icon (toast confirms, poll applies
 current build the icon is inert as today; `npm run test` passes including the new sidebar
 tests.
 
+### `tumwater prompt --list` shows how long each prompt has waited (planned 2026-10-01 by plan loop) — part 1/2, the shared stamp and the CLI
+
+**Goal.** A steering prompt queued to a paused, disabled, or long-backoff loop sits in its queue
+file indefinitely, and nothing in `tumwater prompt --list` reveals how long it has been waiting —
+the operator sees the text but not the age, so a request queued yesterday beside a loop that will
+never take it reads exactly like one queued a minute ago. The enqueue stamp is already in every
+queue filename (`queueFileName`, src/file-queue.ts, writes `<epoch ms>-<seq, 6 digits>-<pid>.md`)
+but no reader parses it back. Surface it. (The land queue solved the same problem with an explicit
+`enqueuedAt` field — landing-queue.ts, surfaced as `fmtAgo` in src/ui/gui-client-drawer.ts; the
+prompt queue never gained the equivalent, and it should not grow a body field the filename already
+encodes.) The dashboard half of this is part 2/2; this part lands the shared parsing and the CLI.
+
+**Approach.**
+1. **src/file-queue.ts:** export `queueFileStamp(name: string): number | null` — parse the leading
+   digits before the first `-` as epoch milliseconds; return `null` when the name does not fit the
+   convention (a hand-placed file). One home beside `queueFileName`, so the prompt inbox and
+   landing-queue.ts read the same naming rule from the same place.
+2. **src/inbox.ts:** extend the `QueuedPromptEntry` interface with `queuedAtMs: number | null` and
+   set it in `queuedRolePromptEntries` from `queueFileStamp(path.basename(e.file))`. No new queue
+   pass: the entries already carry the file path.
+3. **src/prompt-commands.ts:** `promptListPayload` copies `queuedAtMs` into each prompt it emits
+   (the same array serves prose and `--json`, so they cannot disagree). The prose render suffixes
+   each line with ` (queued <age> ago)` — age from `Date.now() - queuedAtMs`, human-phrased — and
+   omits the suffix when `queuedAtMs` is null. `--json` carries the absolute `queuedAtMs` so
+   scripts compute age themselves; the per-loop position numbering `--cancel` consumes is
+   untouched.
+4. **Layering first (the plan's one precondition):** `humanSeconds` — the compact `45s`/`12m`/`3h`
+   duration phrasing — lives in src/ui/badges.ts, and core modules may not import src/ui
+   (test/layering.test.ts's "no core module imports src/ui" allows only cli.ts). Move
+   `humanSeconds` down to src/datetime.ts (its natural home, beside the other time phrasing),
+   have src/ui/badges.ts import it from there (updating its one-home comment), and have
+   prompt-commands.ts import it from `../datetime.js`. The layering test's own header comment
+   anticipates exactly this "move the shared formatter down to src/" move.
+5. **Tests:** test/file-queue.test.ts — `queueFileStamp` round-trips `queueFileName`'s output and
+   returns null for a non-conforming name. test/cli-prompt-queue.test.ts — (a) a prose `--list`
+   line carries the ` (queued … ago)` suffix for a real queue file, (b) `--json` entries carry
+   `queuedAtMs` matching the filename stamp, (c) a hand-placed non-conforming filename renders
+   with no suffix and `queuedAtMs: null`, and cancels by position as today.
+
+**Acceptance criteria.** `tumwater prompt --list` states each queued prompt's age in prose and
+`queuedAtMs` in `--json`; positions, ordering, and `--cancel` behavior are unchanged; a
+non-conforming queue filename degrades to no age rather than an error; `npm run test` passes
+including the new file-queue and prompt-queue tests and the unchanged layering test.
+
+### The dashboard's Queued tab shows each prompt's age (planned 2026-10-01 by plan loop) — part 2/2, the observers
+
+**Goal.** The same age `tumwater prompt --list` gains in part 1/2, on the dashboard: the backlog's
+Queued tab (src/ui/gui-client-fleet.ts's `renderBacklog`, the `key === "queued"` branch, fed by
+`queuedPrompts` in src/ui/gui-client-model.ts) currently shows only the preview and the "for the
+<loop> loop" meta line. A prompt parked for a paused loop is the exact case the tab exists to
+make visible; show how long each has waited, from the timestamp part 1/2 attaches to every queue
+entry. Do not start this plan before part 1/2 has landed — it consumes that part's
+`queuedAtMs`.
+
+**Approach.**
+1. **src/status-data.ts:** the snapshot's director queue fields (`inboxPrompts` + `inboxFiles`,
+   from `queuedRolePromptEntries`) and the per-role `roleInboxPrompts` entries flow through the
+   same `QueuedPromptEntry` objects part 1/2 extended, so add a parallel `inboxQueuedAt` array for
+   the director (same order as `inboxPrompts`, the established pairing pattern) and pass
+   `queuedAtMs` through each `roleInboxPrompts[r]` entry. Both feed status-payload.ts unchanged —
+   they are plain fields on the snapshot the GUI payload already spreads.
+2. **src/ui/gui-client-model.ts, `queuedPrompts(d)`:** carry `queuedAtMs` onto each emitted item —
+   for the director from `d.inboxQueuedAt[i]`, for roles from the entry itself — defaulting to
+   `null` when the field is absent (an older payload must not break the render).
+3. **src/ui/gui-client-fleet.ts, the `queued` branch of `renderBacklog`:** append the age to the
+   `li-meta` span — `· queued <humanSeconds-age> ago`, omitted when `queuedAtMs` is null — using
+   the page's existing relative-time helper (the one gui-client-drawer.ts's `fmtAgo` call and
+   gui-client.ts's shared formatters already provide; reuse, never re-derive).
+4. **Tests:** test/gui-client-fleet.test.ts's existing backlog coverage (or its sibling suite
+   that exercises `renderBacklog`) gains: (a) a queued item with a `queuedAtMs` renders the
+   age in its meta line, (b) a null `queuedAtMs` renders exactly today's meta text, (c) the
+   Cancel button's `data-file`/`data-role` are unchanged in both cases.
+
+**Acceptance criteria.** The dashboard's Queued tab shows how long each prompt has waited;
+items without a parseable stamp render as today; cancel behavior and the other backlog tabs are
+unchanged; `npm run test` passes including the new render tests.
+
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
 ## Done
