@@ -2,6 +2,7 @@ import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { fenceTracker, headingMetadata } from "./backlog.js";
 import { gitTry } from "./git.js";
+import { collapseWhitespace } from "./text.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -61,12 +62,12 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
 }
 
 /** A `### ` heading's comparison key: the heading text before its first ` (`, whitespace-
- * normalized — the same cross-move comparison normalizeFixedHeading (src/fix-claim.ts) makes
- * for BUGS.md headings, so an entry that moved between sections with its dates intact keys
- * equal on both sides of a diff. */
+ * normalized (text.ts's collapseWhitespace — the one home for this, shared with
+ * normalizeFixedHeading's BUGS.md counterpart below), so an entry that moved between
+ * sections with its dates intact keys equal on both sides of a diff. */
 function planHeadingKey(title: string): string {
   const cut = title.indexOf(" (");
-  return (cut === -1 ? title : title.slice(0, cut)).replace(/\s+/g, " ").trim();
+  return collapseWhitespace(cut === -1 ? title : title.slice(0, cut));
 }
 
 /** The comparison keys of every `### ` heading in `md`, in ANY `## ` section, fence-aware

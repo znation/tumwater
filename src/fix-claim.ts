@@ -28,15 +28,16 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseEntryDetails } from "./backlog.js";
 import { gitTry } from "./git.js";
+import { collapseWhitespace } from "./text.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
- * when it moves an entry, so a heading compares equal across the Open→Fixed move. */
+ * when it moves an entry, so a heading compares equal across the Open→Fixed move. The
+ * whitespace-normalize tail is text.ts's collapseWhitespace — the one home for that step,
+ * shared with planHeadingKey's PLANS.md counterpart in backlog-structure.ts. */
 export function normalizeFixedHeading(heading: string): string {
-  return heading
-    .replace(/\([^)]*\)/g, "")
-    .replace(/,\s*fixed.*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return collapseWhitespace(
+    heading.replace(/\([^)]*\)/g, "").replace(/,\s*fixed.*$/i, ""),
+  );
 }
 
 /** Headings (as written, `### ` stripped) under the `## Fixed` section of a BUGS.md
