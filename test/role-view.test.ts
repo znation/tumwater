@@ -169,6 +169,48 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
   assert.match(md, /## Next tick prompt\n\n_\(nothing to run this tick\)_/);
 });
 
+test("the State line distinguishes disabled from paused, alone and together", () => {
+  const dir = root();
+  writeConfig(dir, { roles: { qa: { enabled: false } } });
+  assert.match(renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS)), /- State: disabled, not paused/);
+  pauseRoles(dir, ["qa"]);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS)), /- State: disabled, paused/);
+});
+
+test("a custom loop renders as user-defined, on the maintenance tier", () => {
+  const dir = root();
+  writeConfig(dir, { customLoops: [{ name: "greeter", task: "Say hello to the project." }] });
+  const md = renderRoleMarkdown(rolePayload(dir, "greeter", NO_MODELS));
+  assert.match(md, /- Loop: "greeter" \(user-defined loop\) — user-defined loop/);
+  assert.match(md, /- Scheduling tier: 1 \(maintenance\/observer\)/);
+});
+
+test("the Model line shows a thinking level and drops a missing pair half", () => {
+  const dir = root();
+  writeConfig(dir, { thinking: "high", roles: { qa: { model: "m-only" } } });
+  const md = renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS));
+  assert.match(md, /- Model: m-only \(thinking: high\)/);
+});
+
+test("a one-sided fallback pair renders with its missing half dropped", () => {
+  const dir = root();
+  writeConfig(dir, { fallbackModel: { provider: "fp-only" } });
+  const md = renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS));
+  assert.match(md, /- Budget fallback: fp-only \(priced\)/);
+});
+
+test("a fallback pair priced free in pi's definitions renders as free", () => {
+  const dir = root();
+  writeConfig(dir, { fallbackModel: { provider: "lm-studio", model: "qwen3.8-27b" } });
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({ providers: { "lm-studio": { models: [{ id: "qwen3.8-27b" }] } } }),
+  ); // no cost field: free
+  const md = renderRoleMarkdown(rolePayload(dir, "qa", file));
+  assert.match(md, /- Budget fallback: lm-studio\/qwen3\.8-27b \(free\)/);
+});
+
 test("a fenced block grows past any backtick run in the verbatim text", () => {
   const dir = root();
   writeConfig(dir, { roles: { feature: { instructions: "use ```md fences\nin docs" } } });
