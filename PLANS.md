@@ -7,6 +7,110 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
+### The TUI moves to ink, part 1/3: adopt ink and render the frame with it (planned 2026-10-01 by director, from the user's answered question in QUESTIONS.md)
+
+**Goal.** The user answered the open TUI-framework question: adopt a production TUI framework.
+This part introduces ink and moves the *rendering* of `tumwater tui` onto it, which also kills
+the recorded flicker bug (BUGS.md, "The TUI flickers on every table update") — ink diff-renders,
+so a one-cell change rewrites only what changed instead of `CLEAR + full repaint` (src/ui/tui.ts's
+`CLEAR = "\x1b[2J\x1b[H"` at :73 and its single call site at :299). Key handling stays exactly as
+it is today; part 2/3 moves it. The view model does not change: src/ui/tui-frame.ts's pure
+builders (`tabStrip`, `alertLines`, `hintLine`, `toneLine`, the `TuiView` type) keep producing
+`StatusLine[]`/`StatusSpan[]`, and src/ui/status-render.ts (shared with `tumwater status` in the
+CLI) is untouched.
+
+**Approach.**
+1. **Dependencies:** add `ink` and `react` to package.json (install inside the implementing
+   worktree; commit package.json and package-lock.json). Landing step: after the merge, run
+   `npm install` at the repo root *before* the post-landing build check, so main's build resolves
+   the new deps. This is the project's first runtime dependency and is sanctioned by the amended
+   PRINCIPLES.md first principle (2026-10-01).
+2. **New src/ui/tui-app.tsx:** an ink component tree that renders the existing view model —
+   one `<Box>` per `StatusLine`, one `<Text>` per `StatusSpan` with its tone mapped through a new
+   exported `toneColor(tone: StatusSpan["tone"]): string` (ink color names replacing the ANSI
+   painting `paintLine` does for the CLI path; `paintLine` itself stays for status-render.ts).
+   `tabStrip`, `alertLines`, `hintLine` outputs render as-is; their width-clipping logic stays in
+   tui-frame.ts so the frame stays deterministic and testable.
+3. **src/ui/tui.ts:** keep `runTui`, `TuiSeams`, `TuiStdin`, `TuiStdout`, the polling loop, and
+   the entire readline keypress handler byte-for-byte in behavior. Replace only the paint step:
+   delete `CLEAR` and the `lastFrame` string diff, call ink's `render(<TuiApp …/>, { stdout,
+   exitOnCtrlC: false })` once at startup, and push each new view into the app via a rerender
+   bridge (a state ref the component reads). Pass no stdin to ink this part — with no `useInput`
+   hook mounted, ink does not claim raw mode, so today's `readline.emitKeypressEvents` +
+   `setRawMode(true)` setup (:330–:332) keeps working unchanged.
+4. **Tests:** test/tui.test.ts's frame assertions move from comparing hand-painted strings to
+   reading the fake stdout ink writes into (ink accepts injected `stdout`); add a regression test
+   pinning that a one-cell change between frames emits **no** `\x1b[2J` (the test the BUGS.md
+   entry asked for). test/tui-frame.test.ts stays green — pure model unchanged; test/tui-input*.ts
+   untouched.
+
+**Acceptance criteria.**
+- Rendering two frames differing in one elapsed-time cell through the test fakes emits no
+  `\x1b[2J` anywhere in the captured output, and the second frame's changed cell text is present.
+- Every `tui*.test.ts` file passes; `npm run test` is green.
+- `runTui`'s key handling, seams, and polling code paths are unmodified (diff shows only the
+  paint step replaced plus the new import/render calls).
+- The dependency addition is committed with a lockfile, and the plan note above about
+  `npm install` at the repo root is followed at landing time.
+
+### The TUI moves to ink, part 2/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director; requires part 1/3 landed)
+
+**Goal.** Complete the framework adoption on the input side: the ~280-line readline keypress
+handler inside src/ui/tui.ts's `runTui` (the `stdin.on("keypress", …)` block at :342 and the
+manual `emitKeypressEvents`/`setRawMode`/`resume` setup at :330–:332) is replaced by ink's
+`useInput` inside the component tree, leaving tui.ts with only data polling and state assembly.
+
+**Approach.**
+1. **src/ui/tui-app.tsx:** add a `useTuiKeys` hook that wraps ink's `useInput` and dispatches to
+   the *same pure logic* the handler calls today: `applyKey`, `parseBudgetInput`,
+   `parseRolePromptInput`, and the `PromptHistory` functions (`newPromptHistory`,
+   `pushPromptHistory`, `recallPromptHistory`, `settlePromptRecall`, `resetPromptRecall`) from
+   src/ui/tui-input.ts — those are framework-independent and keep their signatures. The tab
+   switching, force-restart, abort, and view-mode branches port verbatim into the hook, calling
+   back into `runTui`'s actions through callback props (a `TuiActions` type passed to `TuiApp`)
+   so the data loop in tui.ts stays the single owner of effects.
+2. **src/ui/tui.ts:** delete the readline keypress block and the raw-mode setup; pass `stdin`
+   into ink's `render` options and set `exitOnCtrlC: false` so the existing quit key keeps
+   exiting through the same cleanup path.
+3. **src/ui/tui-input.ts:** retire only what ink's parsed key object supersedes (the raw
+   `KeyLike` keystroke decoding for input ink now parses); the pure edit/history/parsing functions
+   above stay and keep their tests.
+4. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts drive
+   keys through the injected stdin ink reads (same fake, now consumed by ink's input parser);
+   test/tui-input.test.ts keeps its pure-logic cases minus any asserting raw decoding.
+
+**Acceptance criteria.**
+- `grep readline src/ui/tui.ts` finds nothing; no manual `setRawMode` outside ink's own setup.
+- All key behaviors the existing tests pin — tab switching, prompt editing (incl. the astral
+  surrogate-pair cursor rules in `applyKey`), budget and role-prompt input, history recall,
+  quit — pass unchanged.
+- `npm run test` is green.
+
+### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2/3 landed)
+
+**Goal.** After parts 1–2 the ink port is the only TUI path; this part removes what it made dead
+and fixes every claim that the project has zero runtime dependencies.
+
+**Approach.**
+1. **Dead code:** delete exports in src/ui/tui-frame.ts and src/ui/tui.ts that only the
+   hand-rolled paint path used (candidates: any remaining full-frame ANSI assembly; `toneLine`'s
+   string-painting variant if `status-render.ts` no longer consumes it — check its CLI callers
+   in src/cli.ts first and keep what `tumwater status` still renders through). Verify with the
+   existing zero-dependency/dead-export test the repo already runs (docs/
+   commit-history-analysis.md describes it).
+2. **Docs:** docs/code-metrics.md:80 ("no runtime dependencies, only Node built-ins; four dev
+   dependencies") is updated to name ink and react as the sanctioned runtime exceptions per
+   PRINCIPLES.md; README.md and docs/how-it-works.md passages describing the hand-rolled
+   renderer/repaint are updated to describe the ink renderer; src/ui/tui.ts's header comment and
+   the `TuiSeams` doc comment no longer describe `CLEAR`-style painting.
+3. **Tests:** any test asserting deleted exports goes with them; `npm run test` green.
+
+**Acceptance criteria.**
+- No dead exports flagged by the repo's existing dead-export check; `grep -r '\x1b\[2J' src`
+  finds nothing outside deliberate full-clear sites (resize, if any remain).
+- All doc claims about dependencies and the TUI renderer match the shipped code.
+- `npm run test` is green.
+
 ### The budget badge says when the cap will be hit: a burn-rate projection in the shared badge (planned 2026-10-01 by plan loop)
 
 **Goal.** The header badge — `budgetBadge` in src/ui/badges.ts, shipped display-ready by

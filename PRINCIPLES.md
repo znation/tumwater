@@ -5,8 +5,9 @@ this team always do." Every loop's prompt carries these; uphold them in everythi
 Only the director and steward roles may edit this file. Phrase new principles positively: state
 what to do, not what to avoid.
 
-- Zero runtime dependencies: node built-ins only (the dev-time TypeScript toolchain is the sole
-  exception).
+- Zero incidental runtime dependencies: node built-ins by default; the dev-time TypeScript
+  toolchain and the TUI rendering framework (ink) are the only exceptions, each adopted by an
+  explicit user decision (2026-10-01 for ink).
 - Tests run offline against a fake pi shim on PATH; never call a real model from a test.
 - All git operations belong to the harness, never to pi: loop prompts forbid state-changing git
   commands and the harness owns commit/rebase/merge.

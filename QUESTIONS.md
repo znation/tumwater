@@ -6,6 +6,10 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
+_None._
+
+## Answered
+
 ### Should the TUI move to a production TUI framework (e.g. ink), or stay hand-rolled and fix the flicker in place? (asked by director 2026-10-01)
 
 The user reported the whole TUI flickers on every table update and said: "If we're not using a real production-grade TUI rendering framework I think we should find a good one and use it. Otherwise perhaps this is just a bug." We are hand-rolled — src/ui/tui.ts (~620 lines) plus tui-frame.ts, tui-input.ts, and eight tui-*.test.ts files, zero runtime dependencies — so the condition for adoption is met on its face. But adopting a framework (ink = React + a dependency tree; blessed = similarly large) directly overrides PRINCIPLES.md's first principle, "Zero runtime dependencies: node built-ins only", and rewrites a working, fully tested TUI.
@@ -17,6 +21,9 @@ The flicker itself is not a framework gap: it is one concrete bug — every chan
 
 Recommendation: A first — fix the bug, see whether the flicker was the whole complaint; escalate to B only if the TUI's needs outgrow the hand-rolled renderer.
 
-## Answered
-
-_None yet._
+**Answered 2026-10-01 by the user: Option B — adopt a production TUI framework (ink).** The
+hand-rolled renderer is retired in favor of ink. PRINCIPLES.md's dependency principle now names
+ink as an explicit exception, and the migration is planned in PLANS.md as three
+cross-referencing sub-plans ("The TUI moves to ink", parts 1/3–3/3). The flicker bug in BUGS.md
+is fixed by that migration (part 1's diff-based rendering) rather than the in-place repaint,
+which is shelved.
