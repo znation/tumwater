@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,
   nodeSupportsTestCoverageExclude,
@@ -340,6 +341,97 @@ test("the spawned runner under --coverage ends with node's coverage table and le
   // Coverage skips the ledger: instrumentation slows every file, and recording the skewed
   // times would skew later runs' ordering.
   assert.equal(fs.readFileSync(durationsPath, "utf8"), before);
+});
+
+test("coverageRowsFromDumps merges the raw V8 dumps with any-process semantics and names never-loaded files", () => {
+  // A synthetic dist tree and two synthetic dumps. Dump A ran everything but the `ran = used()`
+  // statement's block and the `if` block; dump B ran exactly those two blocks. Node's own
+  // merge flips depending on which of these reports it combines (BUGS.md 2026-09-30); the
+  // any-process merge must count both blocks covered, from either dump alone. The first line
+  // keeps `used`'s range off offset 0, where it would be indistinguishable from the module root.
+  const lines = ["let ran = 0;", "function used() { return 1; }", "function unused() { return 2; }", "ran = used();", "if (ran) { used(); }"];
+  const src = lines.join("\n") + "\n";
+  const lineStart = (i: number): number => lines.slice(0, i).reduce((n, l) => n + l.length + 1, 0);
+  const usedStart = lineStart(1), usedEnd = usedStart + lines[1]!.length;
+  const unusedStart = lineStart(2), unusedEnd = unusedStart + lines[2]!.length;
+  const stmtStart = lineStart(3), stmtEnd = stmtStart + lines[3]!.length;
+  const ifStart = src.indexOf("{ used(); }"), ifEnd = ifStart + "{ used(); }".length;
+  const dist = tmpdir("cov-table-");
+  fs.mkdirSync(path.join(dist, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dist, "src", "tiny.js"), src);
+  fs.writeFileSync(path.join(dist, "src", "ghost.js"), "never loaded();\nalso never();\n");
+  const url = "file://" + fs.realpathSync(path.join(dist, "src", "tiny.js"));
+  const dump = (blockCounts: [number, number]): string =>
+    JSON.stringify({
+      result: [
+        {
+          url,
+          functions: [
+            { functionName: "", isBlockCoverage: true, ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }] },
+            { functionName: "used", isBlockCoverage: true, ranges: [{ startOffset: usedStart, endOffset: usedEnd, count: 2 }] },
+            { functionName: "unused", isBlockCoverage: true, ranges: [{ startOffset: unusedStart, endOffset: unusedEnd, count: 0 }] },
+            { functionName: "stmt", isBlockCoverage: true, ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }, { startOffset: stmtStart, endOffset: stmtEnd, count: blockCounts[0]! }] },
+            { functionName: "if", isBlockCoverage: true, ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }, { startOffset: ifStart, endOffset: ifEnd, count: blockCounts[1]! }] },
+          ],
+        },
+      ],
+    });
+  const dumpDir = tmpdir("cov-dumps-");
+  fs.writeFileSync(path.join(dumpDir, "coverage-a.json"), dump([0, 0]));
+  fs.writeFileSync(path.join(dumpDir, "coverage-b.json"), dump([1, 1]));
+
+  const rows = coverageRowsFromDumps(dumpDir, dist);
+  assert.deepEqual(rows.map((r) => r.file), ["src/ghost.js", "src/tiny.js"]);
+  const ghost = rows[0]!, tiny = rows[1]!;
+  // Lines: the first two, the if line (module range), and — only because dump B ran it — the
+  // `ran = used()` line; `unused`'s body never ran in any process. Branches: the five block
+  // ranges, all covered but `unused`'s. Functions: `used` and `unused`, the module roots
+  // (offset 0) excluded.
+  assert.deepEqual(tiny.lines, { covered: 4, total: 5 });
+  assert.deepEqual(tiny.branches, { covered: 4, total: 5 });
+  assert.deepEqual(tiny.functions, { covered: 1, total: 2 });
+  // A module no process loaded stays in the table at zero — an untested module must not vanish.
+  assert.deepEqual(ghost.lines, { covered: 0, total: 2 });
+  assert.deepEqual(ghost.branches, { covered: 0, total: 0 });
+
+  const text = formatCoverageTable(rows);
+  assert.match(text, /^deterministic coverage \(any-process merge/m);
+  // Most uncovered lines first, so "the file with the most uncovered lines" is the first row.
+  assert.ok(text.indexOf("src/ghost.js") < text.indexOf("src/tiny.js"));
+  assert.match(text, /all files +lines 4\/7 57\.14%/);
+});
+
+test("under --coverage the runner prints the deterministic table, and a caller's NODE_V8_COVERAGE passes through untouched", () => {
+  // A caller's NODE_V8_COVERAGE reaches node untouched — the dumps land in the caller's dir and
+  // the runner prints no table of its own: docs/code-metrics/run.sh sets the variable around
+  // `npm run test:coverage` and maps those same dumps with coverage.cjs after the run, so the
+  // runner must neither redirect nor consume them. Node re-propagates the variable into child
+  // envs that lack it, so an explicitly set value is the one way a caller's choice sticks —
+  // and this assertion holds under an outer `test:coverage` run too, where every nested runner
+  // pass-through is exactly what keeps the whole tree's dumps in the outer run's dir.
+  const dir = tmpdir("cov-callers-");
+  const r2 = spawnSync(process.execPath, [runnerPath, "--coverage", "json-object"], {
+    encoding: "utf8",
+    env: { ...runnerEnv(), NODE_V8_COVERAGE: dir },
+  });
+  assert.equal(r2.status, 0, `stderr: ${r2.stderr}`);
+  assert.doesNotMatch(r2.stdout ?? "", /deterministic coverage/);
+  assert.ok(
+    fs.readdirSync(dir).some((f) => f.endsWith(".json")),
+    "expected raw V8 dumps in the caller's NODE_V8_COVERAGE dir",
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  // Owned dumps: the deterministic table follows node's own. Only exercisable when no ancestor
+  // brought the variable — node re-propagates NODE_V8_COVERAGE into child envs that lack it, so
+  // under an outer `test:coverage` run every nested runner passes through (asserted above), and
+  // the owned path is the outer run's own.
+  if (process.env.NODE_V8_COVERAGE === undefined) {
+    const r = runRunner(["--coverage", "json-object"]);
+    assert.equal(r.status, 0, `stderr: ${r.stderr}`);
+    assert.match(r.stdout ?? "", /^deterministic coverage \(any-process merge/m);
+    assert.match(r.stdout ?? "", /^ +\d+ +all files +lines \d+\/\d+/m);
+  }
 });
 
 test("the spawned runner exits 1 and lists candidates when a filter matches nothing", () => {

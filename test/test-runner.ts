@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { printCoverageTable } from "./coverage-table.js";
 import { readJsonFile, writeJsonAtomic } from "../src/json-files.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 
@@ -28,7 +29,12 @@ import { SUPERVISED_ENV } from "../src/supervisor.js";
  * behind an import guard, because this module is imported by that very test file and a
  * top-level run would recurse into node --test. A --coverage mode (npm run test:coverage) runs
  * the same selection with node's coverage table and skips the durations ledger: instrumentation
- * slows every file, and recording those skewed times would skew later runs' ordering. The whole run sits under a hard ceiling
+ * slows every file, and recording those skewed times would skew later runs' ordering. Node's table
+ * flips between runs on the same tree (BUGS.md 2026-09-30), so unless the caller brought its own
+ * NODE_V8_COVERAGE — docs/code-metrics/run.sh sets one around `npm run test:coverage` and maps
+ * the dumps itself with coverage.cjs — the runner captures the raw V8 dumps in its scratch dir
+ * and, after the run, prints a deterministic per-file table merged from them
+ * (test/coverage-table.ts). The whole run sits under a hard ceiling
  * (SUITE_TIMEOUT_MS) enforced by spawnSync's own timeout, so a hung or never-exiting suite
  * fails the gate instead of holding it forever. */
 
@@ -357,6 +363,10 @@ function main(): void {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-suite-"));
   const fresh = path.join(scratch, "durations.json");
   const tap = path.join(scratch, "tap.out");
+  // The deterministic coverage table needs the suite's raw V8 dumps; capture them in the scratch
+  // dir — but only when the caller brought no NODE_V8_COVERAGE of its own, whose dumps belong to
+  // the caller's pipeline (docs/code-metrics/run.sh maps them with coverage.cjs after the run).
+  const covDir = coverage && !process.env.NODE_V8_COVERAGE ? path.join(scratch, "v8cov") : undefined;
   const reporter = fileURLToPath(new URL("./test-durations-reporter.js", import.meta.url));
   let status: number;
   try {
@@ -364,7 +374,9 @@ function main(): void {
       { ...sel, files: orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {}) },
       { reporter, fresh, tap, coverage },
     );
-    const r = spawnSync(process.execPath, args, { stdio: "inherit", env: suiteEnv(scratch), timeout: SUITE_TIMEOUT_MS });
+    const env = suiteEnv(scratch);
+    if (covDir) env.NODE_V8_COVERAGE = covDir;
+    const r = spawnSync(process.execPath, args, { stdio: "inherit", env, timeout: SUITE_TIMEOUT_MS });
     const killed = timedOutFailure(r);
     status = killed !== null ? 1 : (r.status ?? 1);
     if (killed !== null) process.stderr.write(`tumwater: ${killed}\n`);
@@ -381,6 +393,8 @@ function main(): void {
         status = 1;
       }
     }
+    // After node's own (flaky) table: the deterministic reading, from the dumps the run wrote.
+    if (covDir) printCoverageTable(covDir, path.dirname(distDir));
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
   }

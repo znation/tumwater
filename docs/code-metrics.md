@@ -214,7 +214,14 @@ Across the whole tumwater repository there are 2.42 test lines per production li
 
 **Coverage of tumwater** comes from the unit tier (`npm run test:coverage`, 2,427 tests) on
 `48213ce7`'s code. It was run ten times in a row with `run.sh --coverage=10` on 2026-09-30.
-Two more runs kept their raw dumps for the check below.
+Two more runs kept their raw dumps for the check below. Since 2026-09-30 the test runner also
+prints a deterministic per-dist-file table after node's, merged from the run's raw V8 dumps with
+any-process semantics (the merge `coverage.cjs` uses, which was identical across all 11 runs);
+when the caller brings no `NODE_V8_COVERAGE` of its own, the runner captures the dumps in its
+scratch dir and removes them with it, so a plain `npm run test:coverage` costs the dump writes
+and nothing else is kept. That reading is stable where node's flips (`orchestrator.js` lines
+470/511 in back-to-back runs); a ±1-line wobble remains from timing-dependent test paths, which
+no merge can remove.
 
 - **Two of the ten runs failed because the Mac slept mid-run.** The lid closed at 06:45, and the
   power log (`pmset -g log`) shows sleeps of 579 s, 904 s and 918 s after that. Every failing test

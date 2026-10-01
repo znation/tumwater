@@ -139,8 +139,9 @@ imports/references so the project still builds and tests still pass.`,
     find: `Find ONE meaningful gap in unit test coverage: an untested module, branch, or edge case
 that could plausibly break. Locate it from evidence rather than by reading every module: compare
 the source module list against the test files (a module with no test is the first candidate), or
-run the test runner's coverage report when it has one (Node: \`node --experimental-test-coverage
---test …\`, piped through \`tail\`) and pick the file with the most uncovered lines; then read only
+run \`npm run test:coverage\` (piped through \`tail\`) and pick the file with the most uncovered lines
+from the deterministic-coverage table at the end of its output — node's own table above it can
+flip between runs on the same tree, so quote the deterministic numbers; then read only
 that file and its existing tests. Write focused unit tests for it using the project's existing
 test framework (or the language's standard one if none exists yet). Run the tests and make them
 pass. Prefer testing real behavior over trivial assertions.`,

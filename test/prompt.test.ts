@@ -671,7 +671,8 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /Locate it from evidence rather than by reading every module/);
   assert.match(find, /compare the source module list against the test files/);
-  assert.match(find, /run the test runner's coverage report when it has one/);
+  assert.match(find, /run `npm run test:coverage` \(piped through `tail`\)/);
+  assert.match(find, /node's own table above it can flip between runs on the same tree/);
   assert.match(find, /then read only that file and its existing tests/);
 });
 
