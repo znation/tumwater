@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { ensureParentDir, writeTextAtomic } from "./files.js";
-import { isJsonObject } from "./json-object.js";
+import { parseJsonObject } from "./json-object.js";
 
 /** The harness's plain JSON marker/info/state files: tolerant reads of files written by other
  * processes, and pretty-printed overwrites — plain or atomic (tmp+rename) — whose format
@@ -20,9 +20,9 @@ import { isJsonObject } from "./json-object.js";
  * array), so the object check is part of the no-data policy, not an extra one. */
 export function readJsonFile<T extends object>(file: string): T | null {
   try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!isJsonObject(parsed)) return null; // Not a state object — no data.
-    return parsed as T;
+    // The parse-or-no-data half (torn text, a scalar, `null`, an array) is json-object.ts's
+    // parseJsonObject; only the unreadable-file half keeps its own try/catch here.
+    return parseJsonObject(fs.readFileSync(file, "utf8")) as T;
   } catch {
     return null; // Missing or torn — no data.
   }

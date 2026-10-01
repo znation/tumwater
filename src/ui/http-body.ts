@@ -7,7 +7,7 @@
  * static page, and the token gate stay in gui.ts.
  */
 import type http from "node:http";
-import { isJsonObject } from "../json-object.js";
+import { parseJsonObject } from "../json-object.js";
 import { errorMessage } from "../text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
@@ -123,16 +123,13 @@ export async function readJsonObject(
     sendJson(res, 413, { error: errorMessage(err) }); // body too large: ... over the ... cap
     return null;
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
-    return null;
-  }
-  // Valid JSON that is not an object ("just a string", [1], null) gets the same fix as
-  // malformed JSON — pointing at a field of a body that has none would mislead.
-  if (!isJsonObject(parsed)) {
+  // Malformed JSON and valid JSON that is not an object ("just a string", [1], null) get
+  // the same fix as each other — pointing at a field of a body that has none would mislead
+  // — so json-object.ts's one parse-or-no-data policy (parseJsonObject) is exactly the
+  // shape this check needs; only the oversized-body read above keeps its own try/catch,
+  // because it sends a different status.
+  const parsed = parseJsonObject(body);
+  if (!parsed) {
     sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
     return null;
   }
