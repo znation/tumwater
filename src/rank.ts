@@ -16,6 +16,8 @@ export function rankByCount<T>(
   return [...items].sort((a, b) => count(b) - count(a) || key(a).localeCompare(key(b)));
 }
 
+/** rankByCount for `[key, count]` entry pairs (count first): ui/report.ts's rankedRoleMap
+ * and failure-spread.ts's strongest-kind pick. */
 export function rankCountEntries<K extends string>(
   entries: Iterable<[K, number]>,
 ): [K, number][] {
