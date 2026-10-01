@@ -78,6 +78,11 @@ export function normalizeClusterKey(message: string): string {
 export const TICK_TIMEOUT_KEY = "timed out after <dur>";
 const TICK_TIMEOUT_PROGRESSING_KEY =
   "timed out after <dur> while still making progress — session and worktree edits preserved for resume";
+// The review run's rewording of the same cause (BUGS.md 2026-09-30): the reviewer never
+// resumes, so its timeout names what actually happens — the commit is kept, the next
+// attempt re-reviews from scratch. Same cause, same knob (review.timeoutSeconds), one row.
+const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
+  "timed out after <dur> while still making progress — the commit is kept; the next attempt reviews it from scratch";
 
 /** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
  * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
@@ -85,7 +90,9 @@ const TICK_TIMEOUT_PROGRESSING_KEY =
  * reducer applies, src/error-storm.ts), and every other cause stands as normalizeClusterKey
  * rendered it. */
 export function poolTimeoutKey(key: string): string {
-  return key === TICK_TIMEOUT_PROGRESSING_KEY ? TICK_TIMEOUT_KEY : key;
+  return key === TICK_TIMEOUT_PROGRESSING_KEY || key === TICK_TIMEOUT_PROGRESSING_REVIEW_KEY
+    ? TICK_TIMEOUT_KEY
+    : key;
 }
 
 /** A live cluster while collecting; `roles` is a set until the final sort. */

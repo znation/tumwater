@@ -507,6 +507,36 @@ test("a reviewer that outruns review.timeoutSeconds fails in its own budget: com
   }
 });
 
+test("a progressing timeout says the next attempt reviews from scratch, not 'preserved for resume'", async () => {
+  // runPi's progressing-timeout text is written for authoring ticks, which do resume their
+  // session and worktree (BUGS.md 2026-09-29). The reviewer deliberately runs a fresh session
+  // every time (no --continue), so the failure the gate records must say what actually happens
+  // to a timed-out review: the commit is kept and the next attempt re-reviews it from scratch
+  // (BUGS.md 2026-09-30) — not that the session was preserved for a resume that never comes.
+  const { root, wt } = await gateFixture();
+  // One structured event (progress) then stall: the review deadline fires on a run still
+  // making progress, so runPi emits its progressing-timeout text.
+  const restore = fakePi(`printf '%s\n' '${assistantLine("reading the diff…")}'\nexec sleep 60`);
+  try {
+    const config = defaultConfig();
+    config.review.timeoutSeconds = 2;
+    const state = freshLoopState(ROLE);
+    const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);
+    assert.equal(result.decision, "failed");
+    assert.match(
+      result.detail ?? "",
+      /timed out after 2s while still making progress — the commit is kept; the next attempt reviews it from scratch/,
+    );
+    assert.doesNotMatch(result.detail ?? "", /preserved for resume/);
+    const failed = eventsOfType(root, "review_failed");
+    assert.equal(failed.length, 1);
+    assert.doesNotMatch(String(failed[0]?.message), /preserved for resume/);
+    assert.equal(await aheadOfMain(wt, "main"), 1); // commit kept for the next tick's re-review
+  } finally {
+    restore();
+  }
+});
+
 test("a stalled tool call during review warns in the event feed while the watchdog counts down", async (t) => {
   // The reviewer hangs on an interactive tool call; the gate must surface the stall in the
   // feed — the same guarantee as the author-side warning (test/loop-2.test.ts) — rather than

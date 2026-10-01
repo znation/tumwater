@@ -421,10 +421,22 @@ export async function reviewAheadOfMain(
   }
   if (!verdict) {
     const followUpError = followUp && !followUp.ok ? followUp.errorMessage : undefined;
-    const message =
+    // runPi's progressing-timeout text promises what authoring ticks do — resume the session
+    // and worktree. The reviewer deliberately runs a fresh session every time (no --continue)
+    // and its commit simply stays on the branch (BUGS.md 2026-09-20), so the recorded failure
+    // must say what actually happens: the next attempt reviews the same diff from scratch
+    // (BUGS.md 2026-09-30). A string rewrite of runPi's exact suffix, so any other cause —
+    // and the plain no-progress timeout, which promises nothing — passes through untouched.
+    const reviewTimeoutRewrite = (message: string): string =>
+      message.replace(
+        " — session and worktree edits preserved for resume",
+        " — the commit is kept; the next attempt reviews it from scratch",
+      );
+    const message = reviewTimeoutRewrite(
       followUpError ??
-      pi.errorMessage ??
-      `no parseable VERDICT line in the reviewer's reply${followUp ? ", even after a follow-up turn on its session" : ""}`;
+        pi.errorMessage ??
+        `no parseable VERDICT line in the reviewer's reply${followUp ? ", even after a follow-up turn on its session" : ""}`,
+    );
     logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
     // for the next tick's re-review and do not advance the per-HEAD discard counter. That

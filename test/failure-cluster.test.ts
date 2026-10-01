@@ -98,6 +98,13 @@ test("poolTimeoutKey pools the progressing-timeout variant into the plain key", 
   assert.equal(plain, TICK_TIMEOUT_KEY);
   assert.equal(poolTimeoutKey(progressing), TICK_TIMEOUT_KEY);
   assert.equal(poolTimeoutKey(plain), TICK_TIMEOUT_KEY);
+  // The review run's reworded progressing timeout (BUGS.md 2026-09-30) pools into the same
+  // row: one cause, one knob.
+  const reviewProgressing = normalizeClusterKey(
+    "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch",
+  );
+  assert.notEqual(reviewProgressing, plain);
+  assert.equal(poolTimeoutKey(reviewProgressing), TICK_TIMEOUT_KEY);
   assert.equal(poolTimeoutKey("some other cause"), "some other cause");
 });
 
