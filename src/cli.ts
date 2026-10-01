@@ -18,7 +18,8 @@ import {
   SINCE_FLAG,
 } from "./cli-args.js";
 import { parsePromptArgs } from "./cli-command-args.js";
-import { cmdAbort, cmdConfig, cmdPause, cmdPrompt, cmdResetCounters, cmdResume, cmdStop, cmdWake, CONFIG_USAGE } from "./operator-commands.js";
+import { cmdAbort, cmdConfig, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake, CONFIG_USAGE } from "./operator-commands.js";
+import { cmdPrompt } from "./prompt-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";

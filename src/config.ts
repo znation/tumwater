@@ -349,7 +349,8 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
  * read through loadConfigCached (which never throws), so a transiently broken tumwater.json
  * falls back to the built-in catalog instead of taking the view down or refusing every id.
  * The one home of that fallback rule — parseRoleScope, gui-endpoints' validRoleIds, and
- * cmdPrompt's --list mode all resolve their id set through it, so they cannot drift. (Read-
+ * prompt-commands.ts's cmdPrompt --list mode all resolve their id set through it, so they
+ * cannot drift. (Read-
  * only deliberately: state-changing commands resolve ids through loadConfig and fail loudly,
  * because the operator is owed the config error before a write.) */
 export function knownRoleIdsCached(root: string): string[] {
