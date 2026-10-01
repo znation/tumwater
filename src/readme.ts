@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { briefCandidates } from "./paths.js";
+import { truncateWithNote } from "./text.js";
 
 /** The managed sections of the project brief (TUMWATER.md, with README.md as the
  * compatibility path — plans/portability.md §7a/7): marker constants, the templates a fresh
@@ -105,10 +106,9 @@ function extractPrompt(text: string): string | null {
   const end = text.indexOf(PROMPT_END, start + PROMPT_START.length);
   if (end < 0) return null;
   const prompt = text.slice(start + PROMPT_START.length, end).trim();
-  if (prompt.length <= INITIAL_PROMPT_MAX_CHARS) return prompt;
   // A hand-edited brief can carry an over-long prompt past init's length check. Truncate it
   // for every tick instead of injecting the whole thing (the same defensive cap readPrinciples
-  // applies), with a visible note so the loss is not silent. init rejects the normal path
-  // before it is committed, so this is the backstop.
-  return `${prompt.slice(0, INITIAL_PROMPT_MAX_CHARS)}\n…[initial prompt truncated at ${INITIAL_PROMPT_MAX_CHARS} chars]`;
+  // applies, through text.ts's truncateWithNote), with a visible note so the loss is not
+  // silent. init rejects the normal path before it is committed, so this is the backstop.
+  return truncateWithNote(prompt, INITIAL_PROMPT_MAX_CHARS, "initial prompt");
 }

@@ -110,6 +110,19 @@ export function squash(s: string, max: number): string {
   return truncate(collapseWhitespace(s), max);
 }
 
+/** Text capped for injection into a prompt: past `max` characters it is cut and given a visible
+ * `…[<label> truncated at <max> chars]` note naming what was capped and how much survived, so
+ * the loss is never silent. The single home of that marker format — the PRINCIPLES.md cap
+ * (prompt.ts's readPrinciples) and the initial-prompt backstop (readme.ts's extractPrompt) both
+ * render through it, so the two defensive caps cannot drift apart in wording. A plain slice at
+ * `max` (not truncate's ellipsis-and-trim cut): the marker carries the ellipsis, and the cut
+ * boundary must stay a stable, predictable prefix of the original text. */
+export function truncateWithNote(text: string, max: number, label: string): string {
+  return text.length > max
+    ? `${text.slice(0, max)}\n…[${label} truncated at ${max} chars]`
+    : text;
+}
+
 /** The one definition of a valid plain-decimal integer across every input surface (CLI flags
  * and the GUI's query params): a run of digits `Number()` represents exactly, or null. Number()
  * would silently coerce hex ("0x10" → 16), scientific ("1e3" → 1000), and signed or

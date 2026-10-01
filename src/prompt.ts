@@ -1,5 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
+import { truncateWithNote } from "./text.js";
 import { describeCheck } from "./build-check-report.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { type Role } from "./roles.js";
@@ -185,11 +186,7 @@ ${SUMMARY_RULE}`;
  * string when the file is missing or unreadable — prompt building must never throw on it. */
 export function readPrinciples(root: string): string {
   const file = path.join(root, "PRINCIPLES.md");
-  let text = readTextOrNull(file)?.trim() ?? "";
-  if (text.length > PRINCIPLES_MAX_CHARS) {
-    text = `${text.slice(0, PRINCIPLES_MAX_CHARS)}\n…[PRINCIPLES.md truncated at ${PRINCIPLES_MAX_CHARS} chars]`;
-  }
-  return text;
+  return truncateWithNote(readTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
 }
 
 /** The <principles> block injected into every tick and director prompt: the project's codified
