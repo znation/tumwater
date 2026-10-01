@@ -140,12 +140,19 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       "</div><div class='note'>" + (r ? "<span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" + (why ? " — " + esc(why) : "") : "<span class='muted'>No completed ticks yet.</span>") + "</div></section>";
     const kv = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
     const next = fmtNextRun(l, d.running);
+    // fmtNextRun's shapes: "-", "now" (possibly with a " ×N" yield suffix), and a bare or
+    // "backoff "-prefixed countdown. A backoff countdown keeps the label but as a suffix;
+    // a suffixed "now" passes through as-is — it is due now, not a future time.
+    const nextNote = next === "-" ? "—"
+      : next === "now" || next.startsWith("now ") ? next
+      : next.startsWith("backoff ") ? "in " + next.slice(8) + " (backoff)"
+      : "in " + next;
     const tickWord = l.inFlight ? "this tick" : "last tick";
     const stats = "<dl class='kv'>" + kv("Commits", String(l.commits)) + kv("Ticks", String(l.ticks)) +
       kv("Tokens, " + tickWord, fmtTokens(l.generated)) + kv("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
       kv("Spent today", fmtUsd(l.todayUsd)) + kv("Spent in total", fmtUsd(l.costUsd)) +
       kv("Last tick ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
-      kv("Next run", next === "-" ? "—" : next === "now" ? "now" : "in " + next.replace("backoff ", "") + (next.startsWith("backoff ") ? " (backoff)" : "")) + "</dl>";
+      kv("Next run", nextNote) + "</dl>";
     const ticks = drawerTicks === null
       ? "<p class='muted'>Loading…</p>"
       : drawerTicks.length
