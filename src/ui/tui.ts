@@ -166,6 +166,11 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     flash = message;
     flashUntil = Date.now() + FLASH_MS;
   };
+  // Flash a caught failure: the one home for the `error: <message>` prefix the TUI's catch
+  // arms show, so their wording and formatting stay identical instead of drifting.
+  const flashError = (err: unknown): void => {
+    flashMessage(`error: ${errorMessage(err)}`);
+  };
   // The activity pane cycles: 0 = recent events, then one transcript per loop, then project
   // status (planned features + open bugs + open questions), then the usage report — Ctrl+T.
   let view = 0;
@@ -434,7 +439,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
             flashMessage(requestWake(root, [role]));
           }
         } catch (err) {
-          flashMessage(`error: ${errorMessage(err)}`);
+          flashError(err);
         }
         render();
         return;
@@ -573,7 +578,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
               exitRolePromptMode();
               flashMessage(`queued for the ${role} loop`);
             } catch (err) {
-              flashMessage(`error: ${errorMessage(err)}`);
+              flashError(err);
             }
           }
         } else {
@@ -594,7 +599,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
               // it can be resubmitted, and flash the reason — the same contract the GUI's
               // prompt form honors. Clearing the line first would silently lose the prompt,
               // and an unguarded throw would escape the keypress handler and kill the TUI.
-              flashMessage(`error: ${errorMessage(err)}`);
+              flashError(err);
             }
           }
         }
