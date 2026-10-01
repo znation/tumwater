@@ -772,6 +772,23 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
 });
 
 
+test("no rendered line carries trailing padding, blank trailing cells included", () => {
+  // The totals row ends in three blank cells; before the span-wise trim popped blank-cell
+  // spans it broke on the first empty span ("".trimEnd() === "") and the row rendered with
+  // its padding — 26 trailing spaces on the fixture's totals row — intact.
+  const snap = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET);
+  // A width sweep too: clipped lines re-pad and must trim just the same.
+  for (const maxWidth of [undefined, 200, 120, 100, 80, 60]) {
+    for (const line of renderStatus(tmpdir(), snap, maxWidth).split("\n")) {
+      assert.equal(line, line.trimEnd(), `maxWidth ${maxWidth ?? "default"}: trailing padding survived`);
+    }
+  }
+  // Trimming is line-final only: the aligned cells inside the table are untouched.
+  const t = tableCells(renderStatus(tmpdir(), snap));
+  assert.equal(t.cellAt(t.lines[t.lines.length - 1] ?? "", 7), "$0.00");
+});
+
+
 test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");

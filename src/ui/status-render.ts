@@ -319,11 +319,14 @@ export function renderStatusSpans(
       const pad = w - displayWidth(plainText(clipped));
       if (pad > 0) out.push({ text: " ".repeat(pad) });
     });
-    // trimEnd, span-wise
+    // trimEnd, span-wise. An empty-text span (a blank cell renders as one) is trailing
+    // material like padding is: it must be popped, not treated as already-trimmed content —
+    // "".trimEnd() === "" would otherwise stop the loop at the first blank cell and leave
+    // every pad span before it on the line (the totals row rendered with trailing spaces).
     while (out.length) {
       const last = out[out.length - 1]!;
       const trimmed = last.text.trimEnd();
-      if (trimmed === last.text) break;
+      if (last.text !== "" && trimmed === last.text) break;
       if (trimmed) {
         out[out.length - 1] = { ...last, text: trimmed };
         break;
