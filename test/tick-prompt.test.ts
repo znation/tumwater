@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { assembleTickPrompt } from "../src/tick-prompt.js";
 import { defaultConfig } from "../src/config.js";
-import { DIRECTOR_ROLE, roleById } from "../src/roles.js";
+import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
@@ -148,6 +148,23 @@ test("a custom role's task is its find-something-to-do text, titled by its name"
   assert.ok(result);
   assert.match(result.prompt, /You are the "changelog" loop/);
   assert.match(result.prompt, /Your task this run:\nKeep CHANGELOG\.md current\./);
+});
+
+test("a runner whose role answers to nothing throws the shared unknown-role message, custom ids included", () => {
+  // The race the defensive path exists for: a live tumwater.json edit removes a custom loop
+  // while its runner is still alive (runners are built at start and survive reloads), so the
+  // next tick's assembly finds neither a catalog entry nor a customLoops task. It must throw
+  // the shared unknownRoleMessage — the same wording the CLI's parseRoleFlag and the operator
+  // commands use — with the valid ids as the live config sees them, so if it ever fires it
+  // reads as the harness bug it is instead of a bare dead end.
+  const config = defaultConfig();
+  config.customLoops = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
+  assert.throws(
+    () => assembleTickPrompt({ root: root(), config, role: "ghost", state: state() }),
+    (err: unknown) =>
+      err instanceof Error &&
+      err.message === `unknown role: ghost (valid ids: ${[...allRoleIds(), "changelog"].join(", ")})`,
+  );
 });
 
 test("the qa role's prompt carries the flow-coverage ledger rendered from disk", () => {
