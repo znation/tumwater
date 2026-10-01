@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyLandingOutcome, applyTickOutcome } from "../src/tick-outcome.js";
+import { applyLandingOutcome, applyTickOutcome, QUIET_KILL_RESUME_LIMIT } from "../src/tick-outcome.js";
 import {
   clearBackoff,
   nextBackoffSeconds,
@@ -11,7 +11,7 @@ import {
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { defaultConfig } from "../src/config.js";
-import { OBSERVER_ROLES } from "../src/roles.js";
+import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 
 /** The per-loop scheduling policy's tests (src/tick-outcome.ts for the outcome application,
@@ -455,6 +455,24 @@ test("applyTickOutcome: quiet kills resume the starved session until the streak 
   assert.equal(s.resumeCause, undefined);
   assert.equal(s.backoffSeconds, 30); // idle initial
   assert.equal(s.quietKillStreak, 4, "the streak keeps counting for the warning note");
+});
+
+test("applyTickOutcome: a quiet-killed director never resumes and never backs off, at any streak", () => {
+  const cfg = testConfig();
+  // The director skips both role arms of the quiet-kill branch: its prompt was re-queued
+  // fresh (there is no session to resume), and — unlike a role past the limit — the abandoned
+  // session must not put the director on the idle ladder either: the fleet's steering loop
+  // re-runs promptly at every streak, while the streak itself keeps counting for the warning.
+  for (const streak of [0, QUIET_KILL_RESUME_LIMIT]) {
+    const s = freshLoopState(DIRECTOR_ROLE);
+    s.quietKillStreak = streak;
+    applyTickOutcome(s, cfg, DIRECTOR_ROLE, { result: "quiet_killed" });
+    assert.equal(s.resumePending, undefined, `streak ${streak}: no resume is armed`);
+    assert.equal(s.resumeCause, undefined, `streak ${streak}: no resume cause is named`);
+    assert.equal(s.backoffSeconds, 0, `streak ${streak}: the director takes no idle backoff`);
+    assert.ok(s.nextRunAt <= Date.now() + 1_000, `streak ${streak}: re-runs promptly`);
+    assert.equal(s.quietKillStreak, streak + 1, "the streak keeps counting for the warning note");
+  }
 });
 
 test("applyTickOutcome: any non-quiet-kill outcome resets the quiet-kill streak", () => {
