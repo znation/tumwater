@@ -200,7 +200,55 @@ test("failureHeadline skips node:test's summary block, not the failure it frames
   );
   assert.equal(
     failureHeadline(tail),
-    "✖ the interlock held: no tick ever started (0.348625ms)",
-    "the failure's own message, not `ℹ fail 1` or the `test at` marker",
+    "✖ the interlock held: no tick ever started — 'the interlock held: no tick ever started'",
+    "the failed test and its own message, not `ℹ fail 1` or the `test at` marker",
   );
+});
+
+test("failureHeadline names the failed test even when the stack and assertion dump crowd its name out of the window", () => {
+  // Real spec-reporter shape for a failed strictEqual (node 26): the failing-tests detail's
+  // message is generic and its stack plus property dump fill the ten-line window, so the
+  // headline used to be `AssertionError [ERR_ASSERTION]: Expected values to be strictly
+  // equal:` — four flakes and a red main on 2026-09-30 named no test at all (BUGS.md).
+  const output = [
+    "✔ passes (0.47ms)",
+    "✖ the wake was restored (0.62ms)",
+    "ℹ tests 2",
+    "ℹ fail 1",
+    "ℹ duration_ms 540.25",
+    "",
+    "✖ failing tests:",
+    "",
+    "test at dist/test/f.test.js:3:1",
+    "✖ the wake was restored (0.62ms)",
+    "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+    "  ",
+    "  1 !== 0",
+    "  ",
+    "      at TestContext.<anonymous> (file:///w/dist/test/f.test.js:3:64)",
+    "      at async Test.run (node:internal/test_runner/test:1409:7)",
+    "      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {",
+    "    generatedMessage: true,",
+    "    code: 'ERR_ASSERTION',",
+    "    actual: 1,",
+    "    expected: 0,",
+    "    operator: 'strictEqual',",
+    "    diff: 'simple'",
+    "  }",
+  ].join("\n");
+  const tail = clipBuildTail(output);
+  assert.equal(tail[0], "✖ the wake was restored (0.62ms)", "the name line is rescued above the window");
+  assert.equal(tail.length, 12, "the window plus the rescued name and message");
+  assert.equal(
+    failureHeadline(tail),
+    "✖ the wake was restored — AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+    "the test's name (duration dropped, so one flake clusters as one) leads the message",
+  );
+});
+
+test("clipBuildTail rescues no name for output without a failed test", () => {
+  const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (x:1:1)`);
+  const tail = clipBuildTail(["✖ failing tests:", "Error: boom", ...frames].join("\n"));
+  assert.equal(tail[0], "Error: boom", "the section header is not a test name");
+  assert.equal(failureHeadline(tail), "Error: boom");
 });

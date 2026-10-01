@@ -27,7 +27,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **How to reproduce:** make the first readiness assertion fail (e.g. a 0 ms deadline) and run `npm run test process`: the victim outlives the run with PPID 1.
 - **Expected:** cleanup is armed the moment the victim exists (`t.after` killing `child.pid`, or a `try` that begins right after `spawn`), so no assertion failure can strand it.
 
-### Three more suite tests failed under fleet load on 2026-09-30 and passed on the gate's retry, and a fourth flake cannot be named from the events (found by human-directed investigation 2026-09-30)
+### An unnamed `strictEqual` flake failed four gate checks and turned main 29356ddd red on 2026-09-30, and nothing recorded names the test (split 2026-10-01 from the 2026-09-30 load-flakes entry, now under ## Fixed)
+
+- **Symptom:** the warnings quote only `AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:` — gate flakes at 15:13 (clean), 15:15 (dry), 18:51 (clean), 19:20 (dry), and the 03:03:49 baseline that marked main 29356ddd red until 03:04:34. Each failed build_check counted `fail 1`; neither the events nor the pi logs hold the failing test's name.
+- **Status:** cannot be fixed until it is named. Since 2026-10-01 a red check's headline leads with the failed test's name (clipBuildTail/failureHeadline, src/build-check-report.ts), so the next occurrence's `flaky:` warning or red-main message names it. 18 full-suite runs under load (load average 66–139, stopped early) did not reproduce it.
+- **Expected:** once a warning names it, make that test's timing assumptions hold under the fleet's load, then close this.
+
+## Fixed
+
+### Three more suite tests failed under fleet load on 2026-09-30 and passed on the gate's retry, and a fourth flake cannot be named from the events (found by human-directed investigation 2026-09-30, fixed 2026-10-01 except the unnamed flake, which stays in ## Open)
 
 - **Symptom:** the gate logged `gate check failed then passed on retry — flaky:` for each of these, none during a host sleep (the host was awake 09:37–11:13 and from 13:54 on):
   - test/cli-run-live.test.ts "a second Ctrl+C forces the orchestrator generation out at once" — three times: 10:14 (improve) and 20:53 (organize) on `expected the forced exit code`, 18:52 (coverage) at 1.98 s.
@@ -37,10 +45,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Cost:** each one is a second full suite run on a landing's critical path; the unnamed one also turned main red.
 - **Observability gap:** the flake warning and the main-red message carry only the first line of the first failure, which for a `strictEqual` is generic, so nothing in events.jsonl names the test — the failing test's name should ride along.
 - **Expected:** each test's timing assumptions hold under the fleet's own load.
+- **Fixed** (2026-10-01, test-only except the headline):
+  - cli-run-live double Ctrl+C: the second SIGINT followed the first after a fixed 100 ms. Signals do not queue, so two SIGINTs sent before a loaded generation was scheduled coalesced into one graceful stop and the run exited 0, not 130 (`expected the forced exit code`). The test now waits for the first handler's `stopping — waiting for in-flight ticks` line before sending the second. Its fake pi sleeps 300 s, not 5 s, so it cannot exit by itself and end the stop early on a slow host (the 4c737a1f fix for an instant pi).
+  - cli-gui `--all-interfaces`: spawnCli's `waitFor` (test/cli-harness.ts) defaulted to a 10 s deadline, which a cold CLI start under load ran past (10.1 s). The default is now 60 s, matching wait.ts's `waitFor`. It is a deadline, so a passing wait costs nothing extra.
+  - tick-finalize `the wake was restored to now`: restoreMidTickWake stamps `nextRunAt = max(now, lastTickEndedAt + 1)`, and the test asserted `nextRunAt <= lastTickEndedAt + 1`, so any stall over 1 ms between the end-save and the restore failed it. The bound is now a `Date.now()` read after the run (plus the strict "newer than the tick's end" lower bound), and the fixture's `wokenAt` sits a minute ahead rather than 1 ms, so it reads as mid-tick however long the host stalls.
+  - Observability gap: clipBuildTail now also rescues the failed test's `✖ <name> (…ms)` line when the stack and assertion dump push it out of the ten-line window, and failureHeadline leads with that name (duration dropped, so one flake's warnings cluster as one): `✖ <test name> — AssertionError [ERR_ASSERTION]: …`. The `flaky:` warning, the red-main message and a rejection's reasons all read the headline from there.
+  - cli-history `history --since --json` (found by the stress run below): it asserted the row's `ts` within 5 s of a `Date.now()` read after a CLI run that took 7–8 s under load. It now asserts the exact seeded stamp, passing the seed's clock to seedWindowedHistory.
+- **Verified:** 16 parallel runs of each of the three fixed tests passed at load average 53–58. `npm test` passed.
+- **Not fixed:** the unnamed `strictEqual` flake — see its own entry under ## Open.
+- **Validation gap:** slow-check — each failure appeared only when the fleet loaded the host, and the gate's retry turned it into a one-line warning; the unnamed one could not be traced at all because the warning dropped the test name.
 
-## Fixed
-
-### Three gating-suite tests bounded a real wall-clock measurement by a fixed ceiling, so host load alone could fail them: check-permit's cap-of-2 test (`durationMs 1901 includes the permit wait`, 2026-10-01, filed under the load-flakes entry in ## Open), and two with less margin than the fleet's load eats — build-check-process's SIGTERM-settles-before-grace test and orchestrator.e2e's shutdown-wakes-the-poll test (found by human-directed investigation 2026-10-01, fixed 2026-10-01)
+### Three gating-suite tests bounded a real wall-clock measurement by a fixed ceiling, so host load alone could fail them: check-permit's cap-of-2 test (`durationMs 1901 includes the permit wait`, 2026-10-01, filed under the 2026-09-30 load-flakes entry), and two with less margin than the fleet's load eats — build-check-process's SIGTERM-settles-before-grace test and orchestrator.e2e's shutdown-wakes-the-poll test (found by human-directed investigation 2026-10-01, fixed 2026-10-01)
 
 - **Symptom:** test/check-permit.test.ts "at the default cap of 2, a third concurrent check starts only after one of the first two finishes" failed in a bugfix run's full suite and passed in isolation. At load average 60–95 a single `sleep 1` check took 2664 ms.
 - **Cause:** each test asserted a real elapsed time under a fixed number, so the number measured host speed as well as the behaviour:
@@ -48,8 +63,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
   - build-check-process "a timed-out check whose tree dies on SIGTERM settles right after the deadline, not after the grace" required real `elapsed < 1_000 + 2_500`: spawn, a 1 s deadline, SIGTERM and reap in 3.5 s.
   - orchestrator.e2e "runOrchestrator ticks enabled roles and cleans up on shutdown" required shutdown in under 3.5 s against a 5 s poll — already loosened once from 2 s after a 2066 ms failure (BUGS.md 2026-09-18), leaving 1.5 s of margin. Its info-file wait was also a fixed 5 s loop.
 - **How to reproduce:** `npx tsc --incremental`, then run the test 16× in parallel (`node --test --test-name-pattern="default cap of 2" dist/test/check-permit.test.js`) at load average 60–95.
-- **Fixed:** 4ecb223c (check-permit) and 83ebc9cb (the other two), test-only.
-  - check-permit: each run stamps its start and end (wall-clock ms via node) under a per-run tag that is also its event's loop. The test identifies the check that waited (the last to start), asserts it started after the first first-wave end, and bounds only its `durationMs <= finishedAt - firstFreed`. A wait-inclusive duration exceeds that by a whole first-wave run (≥ the 1 s sleep), whatever the load.
+- **Fixed:** 4ecb223c and its 2026-10-01 follow-up (check-permit), 83ebc9cb (the other two), test-only.
+  - check-permit: the test identifies the check that waited from the harness's own `spawnedAt`/`settledAt` on each build_check event (the last to spawn), asserts it spawned after the first first-wave settle, and bounds only its `durationMs <= finishedAt - firstFreed`. A wait-inclusive duration exceeds that by a whole first-wave run (≥ the 1 s sleep), whatever the load. The first version (4ecb223c) read start/end stamps the check's shell wrote via node; node's startup under load delayed a first-wave "start" past the other's end, misnaming the waiter, and it failed `npm test` once at load ~80 — replaced 2026-10-01 by the event-stamp version (32/32 under load).
   - build-check-process: the test runs on the check's logical clock (`checkClock`). It fires the deadline, waits in real time for the group's death with the clock frozen (so the 5 s grace cannot lapse on a slow host), then steps the clock until the run settles, failing past 2.5 s of logical time.
   - orchestrator.e2e: the poll is 2 min and shutdown races a 60 s bound, so a woken shutdown (~1 s) never nears it and a non-waking one fails there with a message rather than at the test timeout. The info-file wait became `waitFor`.
 - **Verified:** each test caught its regression with the source mutated (timer started before the permit; group poll and close-settle removed; `sleepInterruptible` replaced by a plain timer). 16 parallel runs of each of the three passed at load average 81–87, and `npm test` passed.

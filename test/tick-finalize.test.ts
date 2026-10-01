@@ -211,13 +211,19 @@ test("finalizeTick restores a mid-tick wake instead of making it wait out the in
   // A wake consumed while the tick ran stamped wokenAt past the tick's start; the outcome
   // schedule overwrote it, so finalize must re-apply the demand: next run now, no backoff.
   const woken = freshLoopState("organize");
-  woken.wokenAt = Date.now() + 1; // stamped after lastTickStartedAt, which run() sets to now-50
+  // A minute ahead, so it reads as stamped after lastTickStartedAt (run() sets that to now-50)
+  // however long the host stalls between the two reads.
+  woken.wokenAt = Date.now() + 60_000;
   await run(root, "organize", woken, { result: "no_change" });
+  const after = Date.now();
   assert.equal(woken.backoffSeconds, 0);
-  // The restore floors nextRunAt just past the end-save's stamp (a same-millisecond tie
-  // would swallow the demand), so it can read one ms past the end stamp — but never an
-  // interval out: that is the silent-wait the restore exists to prevent.
-  assert.ok(woken.nextRunAt <= (woken.lastTickEndedAt ?? 0) + 1, "the wake was restored to now");
+  // The restore stamps nextRunAt at its own now, floored just past the end-save's stamp (a
+  // same-millisecond tie would swallow the demand) — never an interval out: that is the
+  // silent-wait the restore exists to prevent. Bounded by a read taken after the run, not by
+  // the end stamp: a stall of over a millisecond between the end-save and the restore is
+  // ordinary under load (BUGS.md 2026-09-30).
+  assert.ok(woken.nextRunAt > (woken.lastTickEndedAt ?? 0), "the wake reads newer than the tick's end");
+  assert.ok(woken.nextRunAt <= after + 1, "the wake was restored to now");
   // The restored wake persists with the state.
   assert.equal(loadLoopState(root, "organize").nextRunAt, woken.nextRunAt);
 });

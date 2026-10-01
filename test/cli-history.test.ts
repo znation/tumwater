@@ -367,15 +367,17 @@ test("history --since returns exactly the ticks of the window, newest first, wit
 test("history --since --json emits the window's rows raw and an empty document for an empty window", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history since json");
-  seedWindowedHistory(repo);
+  const seededAt = Date.now();
+  seedWindowedHistory(repo, seededAt);
 
   const r = await cli(repo, "history", "--since", "1h", "--json");
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as { rows: Array<Record<string, unknown>> };
   assert.deepEqual(payload.rows.map((row) => [row.loop, row.tick]), [["feature", 3], ["clean", 2]]);
-  // Raw epoch ms, not the rendered time: within a second of the seeded 10m-ago tick_end.
-  const expected = JSON.parse(r.stdout).rows[0].ts as number;
-  assert.ok(Math.abs(expected - (Date.now() - 10 * 60_000)) < 5000, `ts ${expected} sits at the 10m-ago instant`);
+  // Raw epoch ms, not the rendered time: exactly the seeded 10m-ago tick_end's stamp — compared
+  // to the seed's own clock, not a read after the CLI ran, which a loaded host pushed past the
+  // old 5 s tolerance (7-8 s CLI runs, BUGS.md 2026-10-01).
+  assert.equal(payload.rows[0]!["ts"], seededAt - 10 * 60_000, "the 10m-ago instant, as raw epoch ms");
   assert.equal(payload.rows[0]!["tokens"], 1200);
   assert.equal(payload.rows[0]!["costUsd"], 0.01);
   // The note never touches JSON output — a parsing consumer reads rows only.

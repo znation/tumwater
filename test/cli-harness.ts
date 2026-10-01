@@ -44,7 +44,10 @@ export function runCli(cwd: string, ...args: string[]): Promise<{ code: number; 
 
 interface SpawnedCli {
   out: () => string;
-  /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout. */
+  /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout.
+   * `ms` is a deadline, not a sleep (wait.ts's waitFor): 60 s by default, because a cold CLI
+   * start under fleet load ran past the old 10 s default (cli-gui's banner wait at 10.1 s,
+   * BUGS.md 2026-09-30). */
   waitFor(pred: (out: string) => boolean, what: string, ms?: number): Promise<void>;
   kill(): void;
 }
@@ -70,7 +73,7 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
   return {
     child,
     out: () => buffer,
-    waitFor(pred, what, ms = 10_000) {
+    waitFor(pred, what, ms = 60_000) {
       return new Promise((resolve, reject) => {
         const started = Date.now();
         const timer = setInterval(() => {

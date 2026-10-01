@@ -33,17 +33,27 @@ export function clipReason(r: string): string {
  * instead (BUGS.md 2026-09-19). It matches `<Something>Error: …` / `<Something>Error [CODE]: …`. */
 const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
 
+/** A failed test's name line in node:test's spec output (`✖ <test name> (12.3ms)`) — every `✖`
+ * line but the `✖ failing tests:` section header. The run's LAST one is the failure whose detail
+ * ends the output, so it names the test the tail's message and stack belong to. */
+const FAILED_TEST_LINE = /^✖ (?!failing tests:)/;
+
 /** Keep the TAIL of a build's combined output: last ≤10 meaningful lines, each via clipReason —
  * so a chatty build cannot bloat persisted state or the injected next-tick note. Blank lines
  * and npm's own script banner (`> pkg@1.0 script`, `> <command>`) are dropped: they name the
  * script that ran, not what broke in it. When the ten-line window cuts off the error-message
- * line that sits above the stack, the nearest such line is kept as well (eleven lines at most),
- * so failureHeadline can name the failure instead of a stack frame or an error property. */
+ * line that sits above the stack, the nearest such line is kept as well, so failureHeadline can
+ * name the failure instead of a stack frame or an error property; likewise the failed test's
+ * name line (FAILED_TEST_LINE) above it, so the headline says WHICH test — an assertion's
+ * message alone (`Expected values to be strictly equal:`) names none, and a flake reported only
+ * that way could not be traced (BUGS.md 2026-09-30). Twelve lines at most. */
 export function clipBuildTail(output: string): string[] {
   const lines = output.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !/^>\s/.test(l));
   const tail = lines.slice(-10);
-  const message = [...lines.slice(0, -10)].reverse().find((l) => ERROR_MESSAGE_LINE.test(l));
-  return (message ? [message, ...tail] : tail).map(clipReason);
+  const cut = [...lines.slice(0, -10)].reverse();
+  const message = cut.find((l) => ERROR_MESSAGE_LINE.test(l));
+  const testName = tail.some((l) => FAILED_TEST_LINE.test(l)) ? undefined : cut.find((l) => FAILED_TEST_LINE.test(l));
+  return [...(testName ? [testName] : []), ...(message ? [message] : []), ...tail].map(clipReason);
 }
 
 /** The line of a clipped failure tail (clipBuildTail) worth putting in a one-line warning.
@@ -69,11 +79,16 @@ export function clipBuildTail(output: string): string[] {
 const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
 
 /** The one-line headline for a red check's clipped tail (clipBuildTail's output): the first
- * line that is not framing (FRAMING_LINE), else the tail's first line when every line is
- * framing, so a caller always has something to print. Undefined for an absent or empty tail. */
+ * line that is neither framing (FRAMING_LINE) nor a failed test's name, prefixed with the
+ * test's name (its duration dropped, so one flake's warnings cluster as one) when the tail
+ * carries one — else the name alone, else the tail's first line when every line is framing, so
+ * a caller always has something to print. Undefined for an absent or empty tail. */
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
-  return tail.find((line) => !FRAMING_LINE.test(line)) ?? tail[0];
+  const name = tail.findLast((line) => FAILED_TEST_LINE.test(line))?.replace(/ \([\d.]+m?s\)$/, "");
+  const what = tail.find((line) => !FRAMING_LINE.test(line) && !FAILED_TEST_LINE.test(line));
+  if (name !== undefined) return what !== undefined ? `${name} — ${what}` : name;
+  return what ?? tail[0];
 }
 
 /** The human/prompt-facing name of a check (plans/portability.md §6/7): the tick prompt and

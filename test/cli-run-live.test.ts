@@ -269,12 +269,12 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
 
   onlyCleanRole(repo);
   // The graceful stop must still be pending when the second Ctrl+C lands: with an instant pi
-  // nothing is in flight, the first stop finishes inside the 100 ms gap, and the second kill
-  // hits a gone pid (ESRCH, CI 2026-10-01). This pi ignores the abort's SIGTERM, so the stop
-  // waits on it until terminateChild's SIGKILL grace — far longer than the gap. The forced
+  // nothing is in flight, the first stop finishes before the second, and the second kill hits
+  // a gone pid (ESRCH, CI 2026-10-01). This pi ignores the abort's SIGTERM and outlives any
+  // test (sleep 300), so the stop waits on it until terminateChild's SIGKILL grace. The forced
   // exit skips that grace, so the test reaps pi's group (it leads its own) itself.
   const started = path.join(tmpdir("double-sigint-"), "pi-pid");
-  await withRunningFleet(repo, fakePi(`trap '' TERM; echo $$ > '${started}'; sleep 5`), async (s) => {
+  await withRunningFleet(repo, fakePi(`trap '' TERM; echo $$ > '${started}'; sleep 300`), async (s) => {
     const info = readJson(orchestratorStatePath(repo)) as { pid: number };
     await waitForFile(started);
     s.child.once("exit", () => {
@@ -289,8 +289,12 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
 
     // The first Ctrl+C starts the graceful stop; the second must not queue behind it —
     // the operator pressed it to force the issue, so the generation exits 130 at once.
+    // The second waits for the first handler's announcement, not a fixed gap: signals do not
+    // queue, so two SIGINTs sent before a loaded generation is scheduled coalesce into one and
+    // the run takes the graceful path (the `expected the forced exit code` flakes, BUGS.md
+    // 2026-09-30).
     process.kill(info.pid, "SIGINT");
-    await new Promise((r) => setTimeout(r, 100)); // let the first handler mark stopping
+    await s.waitFor((out) => out.includes("stopping — waiting for in-flight ticks"), "the first Ctrl+C's stop");
     process.kill(info.pid, "SIGINT");
     const code = await exitCode(s.child);
     assert.equal(code, 130, `expected the forced exit code; output so far:\n${s.out()}`);
