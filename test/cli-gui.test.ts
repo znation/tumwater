@@ -174,17 +174,19 @@ test("gui --token serves behind the gate and prints the token-bearing URL", asyn
   }
 });
 
-test("gui passes a permission error through with the raw message", async () => {
+test("gui names the fix for a permission-denied port", async () => {
   // Privileged ports need root; as an unprivileged user this deterministically yields
-  // EACCES, which the CLI must not swallow into the port-in-use hint. Skipped under root,
-  // where port 80 would bind and serve forever.
+  // EACCES, which the CLI must turn into its own hint — distinct from the port-in-use one,
+  // since the fixes differ (stop that process vs pick an unprivileged port). Skipped under
+  // root, where port 80 would bind and serve forever.
   if (runningAsRoot()) return;
   const repo = makeRepo();
   await initProject(repo, "cli gui eacces");
 
   const r = await cli(repo, "gui", "--port", "80");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /EACCES/);
+  assert.match(r.stderr, /permission denied/);
+  assert.match(r.stderr, /unprivileged port/);
 });
 
 test("gui --all-interfaces prints the reachable LAN URLs and serves until killed", async () => {
@@ -462,11 +464,21 @@ test("cmdGui turns a taken port into the friendly port-in-use error and rethrows
     },
   );
 
-  // Any other listen failure passes through untouched — the CLI shows the raw error (the
-  // spawn test above pins EACCES reaching the operator verbatim).
+  // EACCES — the privileged-port case — becomes its own hint, not the port-in-use one:
+  // the fixes differ (pick an unprivileged port, not stop that process).
   const eacces = Object.assign(new Error("listen EACCES: permission denied"), { code: "EACCES" });
   await assert.rejects(
     cmdGui(repo, [], { startGui: () => Promise.reject(eacces), serve: QUIET_SERVE }),
-    (err: unknown) => err === eacces,
+    {
+      message:
+        "port 7180 could not be opened (permission denied) — ports below 1024 need root; pick an unprivileged port with `tumwater gui --port <n>`",
+    },
+  );
+
+  // Any rarer listen failure passes through untouched — the CLI shows the raw error.
+  const eio = Object.assign(new Error("listen EIO: i/o error"), { code: "EIO" });
+  await assert.rejects(
+    cmdGui(repo, [], { startGui: () => Promise.reject(eio), serve: QUIET_SERVE }),
+    (err: unknown) => err === eio,
   );
 });

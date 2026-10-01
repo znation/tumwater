@@ -69,9 +69,9 @@ export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--t
 /** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
  * callers omit it and get the real server, interfaces, stdout, and wait; tests inject fakes
- * so the CLI's gui-specific policy (the banner wording, the LAN announcement, the busy-port
- * message) is assertable in-process, without a listener or a killed child whose coverage the
- * suite can never see. */
+ * so the CLI's gui-specific policy (the banner wording, the LAN announcement, the
+ * listen-failure messages) is assertable in-process, without a listener or a killed child whose
+ * coverage the suite can never see. */
 export interface GuiSeams {
   startGui?: typeof startGui;
   lanAddresses?: typeof lanAddresses;
@@ -81,11 +81,11 @@ export interface GuiSeams {
 
 /** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
  * server, print the banner, and serve until Ctrl+C. Lives beside startGui so the CLI's
- * gui-specific policy (token validation, the busy-port message, the LAN announcement) cannot
- * drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the other
- * cases; everything gui-specific after that gate is this function's job. A taken port throws
- * (cli.ts's main catch renders it as the same `tumwater: …` line and exit 1 fail() would) so
- * the busy-port wording stays assertable in-process. */
+ * gui-specific policy (token validation, the listen-failure messages, the LAN announcement)
+ * cannot drift from the server it drives. Flag-vocabulary rejection stays in cli.ts with the
+ * other cases; everything gui-specific after that gate is this function's job. A failed listen
+ * throws (cli.ts's main catch renders it as the same `tumwater: …` line and exit 1 fail()
+ * would) so the listen-failure wordings stay assertable in-process. */
 export async function cmdGui(root: string, args: string[], seams: GuiSeams = {}): Promise<void> {
   const start = seams.startGui ?? startGui;
   const lan = seams.lanAddresses ?? lanAddresses;
@@ -110,11 +110,19 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
   try {
     await start(root, port, allInterfaces, token);
   } catch (err) {
-    // A taken port is the common listen failure; Node's raw EADDRINUSE does not
-    // suggest the fix. Other errors (EACCES on privileged ports, …) pass through.
+    // The two common listen failures each get a hint naming their fix; Node's raw
+    // EADDRINUSE/EACCES suggest nothing. Rarer errors keep their raw message. The
+    // EACCES hint assumes the privileged-port cause — a sandbox refusing even an
+    // unprivileged port lands here too and takes the below-1024 wording, which is
+    // then only a guess — but an occasionally-missed hint still beats a bare
+    // "permission denied" that never suggests anything.
     if (errCode(err) === "EADDRINUSE")
       throw new Error(
         `port ${port} is already in use — stop that process or pick another port with \`tumwater gui --port <n>\``,
+      );
+    if (errCode(err) === "EACCES")
+      throw new Error(
+        `port ${port} could not be opened (permission denied) — ports below 1024 need root; pick an unprivileged port with \`tumwater gui --port <n>\``,
       );
     throw err;
   }
