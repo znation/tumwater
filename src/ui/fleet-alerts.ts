@@ -11,7 +11,7 @@
 import type { StatusSnapshot } from "../status-data.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
-import { pauseReasonSuffix, plural } from "../phrases.js";
+import { agree, pauseReasonSuffix, plural } from "../phrases.js";
 import { usd, usdCap } from "../text.js";
 import { formatTimestamp } from "../datetime.js";
 
@@ -104,7 +104,7 @@ export function fleetAlerts(
     out.push({
       key: "failing",
       tone: "red",
-      title: `${listRoles(failing)} ${failing.length === 1 ? "is" : "are"} failing tick after tick`,
+      title: `${listRoles(failing)} ${agree(failing.length, "is", "are")} failing tick after tick`,
       detail: failing.some((l) => l.lastError)
         ? failing.map((l) => `${l.role}: ${l.lastError || "see its transcript"}`).join(" · ")
         : "The same error keeps coming back. The transcript shows where it stops.",
@@ -116,7 +116,7 @@ export function fleetAlerts(
     out.push({
       key: "stuck",
       tone: "amber",
-      title: `${listRoles(stuck)} ${stuck.length === 1 ? "looks" : "look"} stuck`,
+      title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
       detail: stuck.map((l) => `${l.role}: ${(STALL.exec(l.phase)?.[0] ?? "").trim()}`).join(" · "),
       actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });

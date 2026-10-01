@@ -24,6 +24,17 @@ export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** A count's verb form, without the count — `agree(1, "is", "are")` → `is` — the companion to
+ * plural for the verb-only slots plural's count-plus-noun shape cannot fill: a subject that
+ * already carries its own phrasing (listRoles's role list, a joined role list, a count printed
+ * earlier in the sentence) still needs its verb to agree. The fleet alerts' banner titles
+ * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator-commands.ts), and
+ * the dropped-attachment note (inbox-attachments.ts) all rendered the same `=== 1 ? … : …`
+ * selection inline before, so the singular/plural decision now has one home beside plural's. */
+export function agree(n: number, one: string, many: string): string {
+  return n === 1 ? one : many;
+}
+
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
  * once so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
  * (review.ts), the landing check's attribution error (landing-core.ts), and the redeploy hold's

@@ -1,7 +1,7 @@
 import { knownRoleIds, loadConfig } from "./config.js";
 import { fail, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag, say } from "./cli-args.js";
 import { errorMessage } from "./text.js";
-import { pauseReasonSuffix } from "./phrases.js";
+import { agree, pauseReasonSuffix } from "./phrases.js";
 import { errCode } from "./errno.js";
 import { allRoleIds } from "./roles.js";
 import {
@@ -242,7 +242,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   // "role loops tick again" for loops the scheduler keeps gated.
   const still = pausedRoles(root);
   const roleNote = still.length > 0
-    ? ` (${still.join(", ")} ${still.length === 1 ? "is" : "are"} still individually paused — \`tumwater resume --role <id>\` lifts each)`
+    ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
     : "";
   say(`fleet resumed — role loops tick again${when}${roleNote}${tail}`);
 }

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { roleInboxDir } from "./paths.js";
+import { agree } from "./phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
  * beside the prompt's queue file (same stem, an image extension — the `.md` filter in
@@ -121,7 +122,7 @@ export function stripVanishedImageReferences(text: string): { text: string; drop
   if (dropped === 0) return { text, dropped: 0 };
   const body = kept.join("\n").replace(/\n+$/, "");
   const note =
-    `[image attachments dropped: ${dropped} image file${dropped === 1 ? "" : "s"} ${dropped === 1 ? "was" : "were"} consumed` +
-    ` when an earlier tick dequeued this prompt and ${dropped === 1 ? "is" : "are"} no longer on disk]`;
+    `[image attachments dropped: ${dropped} image file${dropped === 1 ? "" : "s"} ${agree(dropped, "was", "were")} consumed` +
+    ` when an earlier tick dequeued this prompt and ${agree(dropped, "is", "are")} no longer on disk]`;
   return { text: `${body}\n\n${note}`, dropped };
 }
