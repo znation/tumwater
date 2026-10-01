@@ -5,7 +5,61 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30 by plan loop)
+
+**Goal.** Every read command offers `--json` for scripts — `status`, `report`, `doctor`, `logs`,
+`history`, `tick`, `diff`, `backlog`, `role` — but `prompt --list`, the inspection command that
+shows what will be steered, prints prose only. A script that wants to react to queued prompts
+(a watcher that cancels stale entries, an external dashboard) must parse numbered Markdown
+lines. Give `prompt --list --json` a machine-readable payload of the same data the rendered
+list prints, so the two can never disagree.
+
+**Approach.**
+
+- `src/cli-command-args.ts` — `parsePromptArgs`: add `{ names: ["--json"] }` to
+  `PROMPT_FLAG_SPECS` (so `rejectEqualsForm` covers `--json=true`), allow the token in the
+  unknown-flag loop, and fail `--json may only be given once` on a duplicate, matching the
+  `--list`/`--cancel` rule. `--json` is valid only with `--list`: in enqueue and cancel mode
+  fail with `--json only applies to --list` (it must never silently ride along as prompt
+  text). In list mode, collect the `--json` indexes and pass them into the existing
+  `failStrayArg` call's claimed set so `--list --json` does not read as a stray positional;
+  the list-mode return gains `json: boolean`.
+- `src/operator-commands.ts` — `cmdPrompt`'s list branch: build one payload and render both
+  shapes from it, so prose and JSON share a source. New local `promptListPayload(root, role,
+  validIds)`: the same traversal the render does today — director first via `queuedPrompts`,
+  then the remaining `validIds` via `queuedRolePrompts`, empty queues skipped — returned flat
+  as `{ prompts: [{ role: string, position: number, text: string }] }`, where `position` is
+  the 1-based per-loop number the rendered list prints and `--cancel` consumes, and `text` is
+  the full verbatim prompt (not `promptPreview`). Render the prose from the same array
+  (group by `role`, print `${i + 1}. ${text}` per group, `nothing queued` when it is empty),
+  and `sayJson` the payload under `--json` (an empty queue prints `{"prompts":[]}`, the
+  `history --json` empty-rows precedent). Keep the branch's existing broken-config fallback
+  (`knownRoleIdsCached`) untouched.
+- `src/help.ts` — the `prompt --list` usage stanza names `--json` (`prompt --list [--json]`,
+  one clause: "--json prints the {prompts} array as machine-readable data"); `helpTopic`
+  derives from HELP, so no other sync work.
+- Tests — `test/cli-prompt-queue.test.ts`: json output matches the rendered list's roles,
+  per-loop positions, and full text for a mixed director+role queue; `--role <id> --json`
+  scopes; empty queue prints `{"prompts":[]}`; enqueue/cancel with `--json` fail with the
+  `--json only applies to --list` wording; `--json` twice fails. `test/cli-command-args.test.ts`:
+  parser cases for the new flag (accept with --list, reject alone, reject with --cancel,
+  duplicate, equals form).
+
+**Acceptance criteria.**
+
+- `tumwater prompt --list --json` exits 0 and prints exactly one JSON document whose `prompts`
+  array holds every queued prompt — director first, then catalog order, empty queues omitted —
+  with `position` values identical to the numbers the same command's prose render prints.
+- `tumwater prompt --list --json --role <id>` scopes to that loop's queue; an unknown role
+  still fails with `unknownRoleMessage`'s wording (unchanged).
+- `tumwater prompt hello --json`, `tumwater prompt --cancel 1 --json`, and a duplicate
+  `--json` all exit 1 with the error named above; `--json=true` is rejected as the equals form.
+- `tumwater help prompt --list` shows the stanza naming `--json`.
+- `npm run test` passes with the new cases in both test files.
+
+**Size.** Three source files plus their tests, well under a hundred lines of change. One run,
+no open design questions (the flat `{role, position, text}` shape is decided here; `--cancel`
+gains no `--json` — it is a state change, like pause/wake, which print prose).
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
