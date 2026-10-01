@@ -101,7 +101,7 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * it — so pausing before startup starts an already-paused fleet. Unlike abort, no live
  * harness is required; when none runs, say where the pause takes effect instead of failing.
  * Idempotent: a second pause reports the existing marker as-is. */
-export async function cmdPause(root: string, args: string[] = []): Promise<void> {
+export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
   // `--for <duration>` (the timed pause): the ms-epoch deadline pauseFleet/pauseRole write
   // into the marker and every consumer honors — the gate in cli.ts has already restricted
   // the flag to this command, so its value is parsed (and fails fast) here, beside the
@@ -118,7 +118,10 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
       PAUSE_FOR_MAX_MS,
       "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)",
     );
-  const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: Date.now() + forMs };
+  // `now` is the one instant the deadline and the confirmation both read, injected by tests
+  // so the wording they pin cannot drift with the wall clock — the same single-clock
+  // discipline timedPauseBits's own `now` parameter follows.
+  const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: now + forMs };
   const untilMs = timed?.untilMs;
   // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
   // (the plan 2/2 dashboard endpoint will call it too), so CLI and dashboard cannot drift on
@@ -129,7 +132,7 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
     // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
     // return means the role was already in the set, which rolePauseMessage words — unless a
     // `--for` stands, which overwrites the deadline and reports the fresh confirmation.
-    say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed));
+    say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
     return;
   }
   // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
@@ -141,7 +144,7 @@ export async function cmdPause(root: string, args: string[] = []): Promise<void>
     return;
   }
   const { when, tail } = markerApplyNote(root);
-  const { forPhrase, note } = timedPauseBits(timed);
+  const { forPhrase, note } = timedPauseBits(timed, now);
   say(
     `fleet paused${forPhrase} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
   );

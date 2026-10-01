@@ -325,24 +325,34 @@ test("per-role pause and resume reject unknown role ids like abort does", async 
 
 // --- timed pause (`pause --for <duration>`) ---
 
+// The pause confirmations' resume-time phrasing depends on whether the deadline crosses
+// midnight, so these tests inject cmdPause's clock instead of reading the wall: a real clock
+// would flip the phrasing whenever the suite runs near midnight. The fixture sits far in the
+// future because the already-paused idempotence reads the marker's deadline against the real
+// clock — a past deadline reads as expired and a plain re-pause would report a fresh pause.
+const NOON = new Date(2100, 0, 15, 12, 0, 0).getTime();
+
 test("cmdPause --for writes a timed fleet marker and names the auto-resume", async () => {
   const root = tmpdir();
-  const before = Date.now();
-  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"]));
+  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"], NOON));
   assert.match(stdout, /fleet paused for 30m — role loops stop starting new ticks/);
-  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  assert.match(stdout, /resumes automatically at 12:30:00/);
   const marker = readJson(pausedPath(root)) as { at: number; until: number };
-  assert.ok(marker.until > before + 29 * 60_000 && marker.until <= before + 31 * 60_000);
+  assert.equal(marker.until, NOON + 30 * 60_000);
 });
 
 test("cmdPause --for over a standing pause overwrites the deadline and reports it", async () => {
   const root = tmpdir();
-  await expectOk(() => cmdPause(root, ["--for", "30m"]));
-  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "2h"]));
+  // A late-evening clock: the first pause's deadline stays on today's calendar, the 2h one
+  // crosses midnight — the confirmation must date-stamp it (this test runs the real cmdPause
+  // with cmdPause's own clock, so it exercises the cross-midnight wording end to end).
+  const evening = new Date(2100, 0, 15, 23, 20, 0).getTime();
+  await expectOk(() => cmdPause(root, ["--for", "30m"], evening));
+  const { stdout } = await expectOk(() => cmdPause(root, ["--for", "2h"], evening));
   assert.match(stdout, /fleet paused for 2h —/, "a fresh --for is a fresh confirmation, not 'already paused'");
-  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  assert.match(stdout, /resumes automatically on 2100-01-16 at 01:20:00/);
   const marker = readJson(pausedPath(root)) as { until: number };
-  assert.ok(marker.until > Date.now() + 60 * 60_000, "the deadline was extended to ~2h");
+  assert.equal(marker.until, evening + 2 * 60 * 60_000);
   // A plain pause over a timed pause stays today's idempotent no-op.
   const again = await expectOk(() => cmdPause(root));
   assert.equal(again.stdout.trim(), "already paused");
@@ -359,19 +369,19 @@ test("cmdPause after an expired deadline reports a fresh pause", async () => {
 
 test("cmdPause --role --for writes the role marker with the deadline and overwrites on a re-pause", async () => {
   const root = tmpdir();
-  const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "2h"]));
+  const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "2h"], NOON));
   assert.match(stdout, /role clean paused for 2h — it stops starting new ticks/);
-  assert.match(stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  assert.match(stdout, /resumes automatically at 14:00:00/);
   const readUntil = () => (readJson(pausedRolesPath(root)) as { roles: string[]; until: number }).until;
   const first = readUntil();
-  assert.ok(first > Date.now() + 60 * 60_000);
+  assert.equal(first, NOON + 2 * 60 * 60_000);
   // A plain pause of the standing role stays the no-op; a fresh --for overwrites the deadline.
   const idle = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.equal(idle.stdout.trim(), "role clean is already paused");
-  const second = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "1h"]));
+  const second = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "1h"], NOON));
   assert.match(second.stdout, /role clean paused for 1h —/);
-  const now = readUntil();
-  assert.ok(now < first && now <= Date.now() + 60 * 60_000 + 5_000, "the deadline was shortened to ~1h");
+  assert.match(second.stdout, /resumes automatically at 13:00:00/);
+  assert.equal(readUntil(), NOON + 60 * 60_000);
 });
 
 // --- stop ---

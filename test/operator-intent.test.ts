@@ -152,10 +152,19 @@ test("requestAbort drops a per-role marker for a live fleet and notes the direct
 
 test("timedPauseBits renders the duration and resume-time phrases, empty for an indefinite pause", () => {
   assert.deepEqual(timedPauseBits(undefined), { forPhrase: "", note: "" });
+  // Both dates are fixed, and `now` is passed explicitly, so the fixture cannot drift out of
+  // today and flip the phrasing under a later run date.
+  const now = new Date(2026, 8, 30, 12, 0, 0).getTime();
   const until = new Date(2026, 8, 30, 14, 5, 0).getTime();
-  const b = timedPauseBits({ ms: 30 * 60_000, untilMs: until });
+  const b = timedPauseBits({ ms: 30 * 60_000, untilMs: until }, now);
   assert.equal(b.forPhrase, " for 30m");
   assert.equal(b.note, " — resumes automatically at 14:05:00");
+  // A deadline past midnight is ambiguous as a bare clock (a 90d pause printed "resumes
+  // automatically at 17:25:45" naming no day), so the calendar date rides along.
+  const nextDay = new Date(2026, 11, 29, 9, 14, 0).getTime();
+  const crossDay = timedPauseBits({ ms: 90 * 24 * 60 * 60_000, untilMs: nextDay }, now);
+  assert.equal(crossDay.forPhrase, " for 90d");
+  assert.equal(crossDay.note, " — resumes automatically on 2026-12-29 at 09:14:00");
 });
 
 test("rolePauseMessage reports the idempotent no-op and the full pause confirmation", () => {
@@ -166,11 +175,13 @@ test("rolePauseMessage reports the idempotent no-op and the full pause confirmat
     rolePauseMessage(dead, "fix", true),
     /^role fix paused — it stops starting new ticks at its next eligibility check \(in-flight ticks finish; the rest of the fleet is unaffected\).*next `tumwater run`/,
   );
-  // A timed pause echoes the duration and the wall-clock resume time.
-  const until = Date.now() + 30 * 60_000;
-  const timed = rolePauseMessage(dead, "fix", true, { ms: 30 * 60_000, untilMs: until });
+  // A timed pause echoes the duration and the wall-clock resume time; `now` is passed
+  // explicitly so the same-day phrasing the fixture pins cannot flip under a later run date.
+  const now = new Date(2026, 8, 30, 12, 0, 0).getTime();
+  const until = new Date(2026, 8, 30, 14, 5, 0).getTime();
+  const timed = rolePauseMessage(dead, "fix", true, { ms: 30 * 60_000, untilMs: until }, now);
   assert.match(timed, /paused for 30m — it stops starting new ticks/);
-  assert.match(timed, /— resumes automatically at \d\d:\d\d:\d\d/);
+  assert.match(timed, /— resumes automatically at 14:05:00/);
 });
 
 test("roleResumeMessage reports the no-op and the fleet-pause interplay note", () => {

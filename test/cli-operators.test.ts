@@ -239,7 +239,10 @@ test("pause --for writes a timed marker and resume lifts it early", async () => 
   const r = await cli(repo, "pause", "--for", "30m");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /fleet paused for 30m —/);
-  assert.match(r.stdout, /resumes automatically at \d{2}:\d{2}:\d{2}/);
+  // The CLI reads the real clock, so which phrasing the note takes (bare clock, or
+  // date-stamped once the deadline crosses midnight) depends on when the suite runs — the
+  // test pins the contract (the confirmation names the auto-resume), not the clock's position.
+  assert.match(r.stdout, /resumes automatically (at \d{2}:\d{2}:\d{2}|on \d{4}-\d{2}-\d{2} at \d{2}:\d{2}:\d{2})/);
   const m = readJson(pausedPath(repo)) as { at: number; until: number };
   assert.ok(m.until > Date.now() + 29 * 60_000, "the marker carries the ms-epoch deadline");
 

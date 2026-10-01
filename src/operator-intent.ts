@@ -1,6 +1,6 @@
 import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "./fleet-state.js";
 import { durationLabel } from "./cli-args.js";
-import { formatTime } from "./datetime.js";
+import { formatDate, formatTime } from "./datetime.js";
 import { submitRolePrompt } from "./inbox.js";
 import type { PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "./roles.js";
@@ -141,13 +141,25 @@ interface TimedPause {
 /** The timed-pause clauses both pause confirmations share, in the plan's "… paused for
  * 30m — resumes automatically at 14:05" shape. The duration phrase comes from the parsed
  * value, not from until minus the message's own now — a few ms of clock skew between the two
- * reads must not turn "30m" into "1799999ms". Both empty for an indefinite pause, so
- * today's wording stands. */
-export function timedPauseBits(timed: TimedPause | undefined): { forPhrase: string; note: string } {
+ * reads must not turn "30m" into "1799999ms". A deadline on today's calendar reads as the
+ * bare clock (the common same-day pause); once `--for` crosses midnight the clock alone is
+ * ambiguous — `--for 90d` printing "resumes automatically at 17:25:45" names no day — so the
+ * local calendar date rides along ("on 2026-12-29 at 17:25:45"), rendered through the shared
+ * formatDate/formatTime pair. Both clauses empty for an indefinite pause, so today's wording
+ * stands. `now` is injected for callers with a captured instant (tests); the default reads
+ * the clock once. */
+export function timedPauseBits(
+  timed: TimedPause | undefined,
+  now: number = Date.now(),
+): { forPhrase: string; note: string } {
   if (!timed) return { forPhrase: "", note: "" };
+  const until = new Date(timed.untilMs);
+  const when = formatDate(until) === formatDate(new Date(now))
+    ? `at ${formatTime(until)}`
+    : `on ${formatDate(until)} at ${formatTime(until)}`;
   return {
     forPhrase: ` for ${durationLabel(timed.ms)}`,
-    note: ` — resumes automatically at ${formatTime(new Date(timed.untilMs))}`,
+    note: ` — resumes automatically ${when}`,
   };
 }
 
@@ -157,10 +169,16 @@ export function timedPauseBits(timed: TimedPause | undefined): { forPhrase: stri
  * idempotent no-op in the CLI's own words instead of a fresh confirmation. `timed` is the
  * deadline this command's `--for` set, echoed back with its wall-clock resume time; the TUI
  * (which cannot pass a deadline) omits it and keeps the plain wording. */
-export function rolePauseMessage(root: string, role: string, changed: boolean, timed?: TimedPause): string {
+export function rolePauseMessage(
+  root: string,
+  role: string,
+  changed: boolean,
+  timed?: TimedPause,
+  now: number = Date.now(),
+): string {
   if (!changed) return `role ${role} is already paused`;
   const { when, tail } = markerApplyNote(root);
-  const { forPhrase, note } = timedPauseBits(timed);
+  const { forPhrase, note } = timedPauseBits(timed, now);
   return `role ${role} paused${forPhrase} — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${note}${tail}`;
 }
 
