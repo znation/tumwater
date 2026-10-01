@@ -6,7 +6,7 @@
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
 
-import { parseJsonObject } from "./json-object.js";
+import { isJsonObject, parseJsonObject } from "./json-object.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
@@ -53,15 +53,13 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
  * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
  * message_update deltas cannot reset the quiet watchdog. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {
-  if (!partialResult || typeof partialResult !== "object") return false;
-  const content = (partialResult as { content?: unknown }).content;
+  if (!isJsonObject(partialResult)) return false;
+  const content = partialResult.content;
   if (!Array.isArray(content)) return false;
   return content.some(
     (block) =>
-      block &&
-      typeof block === "object" &&
-      typeof (block as { text?: unknown }).text === "string" &&
-      (block as { text: string }).text.trim() !== "",
+      isJsonObject(block) &&
+      typeof block.text === "string" && block.text.trim() !== "",
   );
 }
 
@@ -87,10 +85,9 @@ export interface OpenToolCall {
  * because anything that inspects the command's shape must see the raw text: the label
  * truncates at 32 chars, so an operator past that point would be invisible there. */
 export function toolCallCommand(args: unknown): string {
-  if (!args || typeof args !== "object") return "";
-  const a = args as Record<string, unknown>;
-  if (typeof a.command === "string") return a.command;
-  if (typeof a.cmd === "string") return a.cmd;
+  if (!isJsonObject(args)) return "";
+  if (typeof args.command === "string") return args.command;
+  if (typeof args.cmd === "string") return args.cmd;
   return "";
 }
 
