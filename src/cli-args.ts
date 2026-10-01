@@ -319,6 +319,14 @@ export const N_FLAG: FlagSpec = {
   },
 };
 
+/** The `--json` flag spec, shared by every command with a machine-readable form (status,
+ * doctor, logs, history, tick, diff, backlog, role, report, prompt --list): one definition of
+ * the flag's spelling, beside ROLE_FLAG and SINCE_FLAG, so the gate's accepted vocabulary
+ * cannot drift apart. It takes no value and carries no per-command wording — unlike its
+ * siblings it needs neither a factory nor a missing-value error — so the constant is the
+ * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
+export const JSON_FLAG: FlagSpec = { names: ["--json"] };
+
 /** The `--grep <text>` flag spec shared by the two filtering views (logs, history): one
  * definition of the flag's spelling and value shape, beside ROLE_FLAG and SINCE_FLAG, so the
  * gate's accepted vocabulary cannot drift apart. The missing-value wording differs per command

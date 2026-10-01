@@ -8,6 +8,7 @@ import {
   DURATION_FLAG,
   REASON_FLAG,
   grepFlagSpec,
+  JSON_FLAG,
   N_FLAG,
   parseCountFlag,
   parsePortFlag,
@@ -193,7 +194,7 @@ async function main(): Promise<void> {
       await cmdGui(root, args);
       break;
     case "status":
-      rejectUnknownArgs("status", args, [{ names: ["--json"] }]);
+      rejectUnknownArgs("status", args, [JSON_FLAG]);
       await requireReadyRepo(root);
       if (args.includes("--json")) {
         // Machine-readable fleet state — the document GET /api/status serves minus the
@@ -237,7 +238,7 @@ async function main(): Promise<void> {
         },
         { names: ["--failures"] },
         SINCE_FLAG,
-        { names: ["--json"] },
+        JSON_FLAG,
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
       // trailing window vs a series over whole days), not a modifier of either.
@@ -247,7 +248,7 @@ async function main(): Promise<void> {
     case "doctor": {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
-      rejectUnknownArgs("doctor", args, [{ names: ["--json"] }]);
+      rejectUnknownArgs("doctor", args, [JSON_FLAG]);
       const report = await runDoctor(root);
       // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
       // the render — the `report --json` precedent. The exit-code contract below holds in both
@@ -262,7 +263,7 @@ async function main(): Promise<void> {
         N_FLAG,
         SINCE_FLAG,
         grepFlagSpec(GREP_VALUE_ERROR),
-        { names: ["--json"] },
+        JSON_FLAG,
         ROLE_FLAG,
         { names: ["--prompt"] },
       ]);
@@ -274,7 +275,7 @@ async function main(): Promise<void> {
         N_FLAG,
         SINCE_FLAG,
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
-        { names: ["--json"] },
+        JSON_FLAG,
         ROLE_FLAG,
       ]);
       await requireReadyRepo(root);
@@ -286,7 +287,7 @@ async function main(): Promise<void> {
       // cmdTick owns the arity and value validation — a missing role, an unknown id, a
       // non-positive or non-numeric n, or a stray extra positional fails there with the usage.
       const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("tick", rest, [{ names: ["--json"] }]);
+      rejectUnknownArgs("tick", rest, [JSON_FLAG]);
       // Arity before the ready-repo gate (the config subcommands' precedent): a malformed
       // invocation fails with its usage no matter the directory. cmdTick keeps the guard too —
       // in-process callers reach it without this dispatcher.
@@ -303,7 +304,7 @@ async function main(): Promise<void> {
       // command. Past the gate an absent worktree still degrades to a `no worktree for
       // <role>` line (exit 0), so the command answers in any initialized directory —
       // report's rationale.
-      rejectUnknownArgs("diff", args, [ROLE_FLAG, { names: ["--json"] }]);
+      rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG]);
       await requireReadyRepo(root);
       // Absent --role is the fleet-wide form: one line per loop holding pending work
       // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
@@ -320,7 +321,7 @@ async function main(): Promise<void> {
     case "backlog": {
       // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
       // command prints three empty sections in any directory (report's rationale, not config's).
-      rejectUnknownArgs("backlog", args, [{ names: ["--json"] }]);
+      rejectUnknownArgs("backlog", args, [JSON_FLAG]);
       // Machine-readable backlog — the three entry arrays the Markdown view renders and the
       // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern):
       // a pretty-printed JSON document in every exit-0 case, never prose. The payload is a
@@ -334,7 +335,7 @@ async function main(): Promise<void> {
       // fresh defaults, a missing queue directory an empty inbox), so the command inspects
       // a repo the fleet never started in — and a torn one — instead of refusing.
       const { id: positional, rest } = peelRolePositional(args);
-      rejectUnknownArgs("role", rest, [ROLE_FLAG, { names: ["--json"] }]);
+      rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG]);
       // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
       // spelling every other role-targeting command shares). Both at once is a mistake, not
       // a silent pick of one.

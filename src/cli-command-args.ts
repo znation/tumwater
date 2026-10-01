@@ -9,7 +9,15 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { type FlagSpec, ROLE_FLAG, ROLE_VALUE_ERROR, fail, parseBranchFlag, rejectEqualsForm } from "./cli-args.js";
+import {
+  type FlagSpec,
+  JSON_FLAG,
+  ROLE_FLAG,
+  ROLE_VALUE_ERROR,
+  fail,
+  parseBranchFlag,
+  rejectEqualsForm,
+} from "./cli-args.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
@@ -117,7 +125,7 @@ type PromptArgs =
 const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   ROLE_FLAG,
   { names: ["--list"] },
-  { names: ["--json"] },
+  JSON_FLAG,
   { names: ["--cancel"], value: true, valueName: "<n>" },
 ];
 
