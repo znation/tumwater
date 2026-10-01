@@ -2,13 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDetachedWorktree } from "../src/worktree.js";
-import { mirrorWorktreePath } from "../src/paths.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { aheadOfMain, commitAll, currentBranch, headOf } from "../src/git.js";
+import {
+  abortSync,
+  ensureDetachedWorktree,
+  ensureWorktree,
+  resetWorktreeToMain,
+} from "../src/worktree.js";
+import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing-git.js";
+import { branchName, mirrorWorktreePath } from "../src/paths.js";
+import { loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
 
-// The mirror-worktree helper (src/worktree.ts): pin a detached worktree at a ref and re-point an
-// existing one, discarding dirt. Moved here from test/redeploy.test.ts, where it was filed with
-// the redeployer instead of beside the module it tests.
+// The worktree helpers (src/worktree.ts): role worktrees, the mirror's detached checkout,
+// reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
+// from test/redeploy.test.ts, where it was filed with the redeployer instead of beside the
+// module it tests; the ensureWorktree/resetWorktreeToMain/abortSync cluster moved here from
+// test/git.test.ts, which had filed worktree.ts's tests under git.ts's name. The rebase calls
+// some tests make come from landing-git.ts — they are fixtures that leave conflicting state,
+// not the subjects under test.
 
 test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing one", async () => {
   const root = makeRepo();
@@ -24,4 +35,264 @@ test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing 
   assert.equal(sh(dir, "git", "rev-parse", "HEAD"), second);
   assert.equal(fs.existsSync(path.join(dir, "stray.txt")), false);
   assert.equal(fs.readFileSync(path.join(dir, "seed.txt"), "utf8"), "moved\n");
+});
+
+test("ensureWorktree creates a persistent branch and reuses it", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  assert.ok(fs.existsSync(path.join(wt, "seed.txt")));
+  assert.equal(await currentBranch(wt), branchName("clean"));
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.equal(again, wt);
+});
+
+test("ensureWorktree recovers from a deleted worktree directory", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  fs.rmSync(wt, { recursive: true, force: true });
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+});
+
+/** Delete the worktree's admin-side registration under <repo>/.git/worktrees/ (the one whose
+ * gitdir file points at `wt`), simulating outside git maintenance pruning it. */
+function pruneAdminRegistration(repo: string, wt: string): void {
+  const adminDir = path.join(repo, ".git", "worktrees");
+  for (const name of fs.readdirSync(adminDir)) {
+    const p = path.join(adminDir, name);
+    const gitdirFile = path.join(p, "gitdir");
+    if (fs.existsSync(gitdirFile) && fs.readFileSync(gitdirFile, "utf8").includes(wt)) {
+      fs.rmSync(p, { recursive: true, force: true });
+    }
+  }
+}
+
+test("ensureWorktree recovers when its admin registration is pruned out from under it", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  // Leave unmerged work on the branch so recovery must preserve it.
+  fs.writeFileSync(path.join(wt, "branch-only.txt"), "b\n");
+  const commit = await commitAll(wt, "branch work");
+
+  pruneAdminRegistration(repo, wt);
+
+  // Previously this wedged every tick with a raw git fatal; now it re-adds the directory.
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.equal(again, wt);
+  assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+  // The branch's unmerged commit survived the re-add.
+  assert.equal(await headOf(wt, "HEAD"), commit);
+});
+
+test("ensureWorktree recovers when the worktree's .git pointer file is lost", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "clean", "main");
+  fs.rmSync(path.join(wt, ".git")); // admin-side registration survives this one
+
+  const again = await ensureWorktree(repo, "clean", "main");
+  assert.equal(again, wt);
+  assert.ok(fs.existsSync(path.join(again, "seed.txt")));
+});
+
+// Concurrent setups in one repository: `git worktree add` creates its registration directory
+// a moment before it writes the `locked` file that shields it from prune, so another setup's
+// `worktree prune` landing in between deleted it and the add died — the landing pipeline's
+// concurrent vets hit exactly that ("could not open '.git/worktrees/_land-alpha/locked' for
+// writing") and dropped a queued change as an error. The harness serializes its own setups
+// per repository; a burst like this one must register every worktree.
+test("concurrent worktree setups in one repository all succeed (prune/add race)", async () => {
+  const repo = makeRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  for (let round = 0; round < 2; round++) {
+    await Promise.all([
+      ...[0, 1, 2, 3, 4, 5].map((i) =>
+        ensureDetachedWorktree(repo, path.join(repo, ".tumwater", "worktrees", `_land-${round}-${i}`), head),
+      ),
+      ...[0, 1, 2].map((i) => ensureWorktree(repo, `role-${round}-${i}`, "main")),
+    ]);
+  }
+  assert.equal(sh(repo, "git", "worktree", "list").split("\n").length, 1 + 2 * 9, "every setup registered its worktree");
+});
+
+test("resetWorktreeToMain discards commits and untracked files", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  fs.writeFileSync(path.join(wt, "junk.txt"), "junk\n");
+  await commitAll(wt, "junk");
+  fs.writeFileSync(path.join(wt, "untracked.txt"), "u\n");
+  await resetWorktreeToMain(wt, "main");
+  assert.equal(await aheadOfMain(wt, "main"), 0);
+  assert.ok(!fs.existsSync(path.join(wt, "junk.txt")));
+  assert.ok(!fs.existsSync(path.join(wt, "untracked.txt")));
+});
+
+test("resetWorktreeToMain clears an interrupted rebase", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  seedConflict(repo, wt);
+  // Start a conflicting rebase and leave it in progress (a killed tick mid-resolution).
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  await resetWorktreeToMain(wt, "main");
+  assert.equal(await aheadOfMain(wt, "main"), 0);
+  // The next sync works: no "you are already rebasing" wedge.
+  fs.writeFileSync(path.join(wt, "seed.txt"), "fresh version\n");
+  await commitAll(wt, "fresh work");
+  assert.ok(await rebaseOntoMain(wt, "main"));
+});
+
+test("abortSync spawns no git when nothing is in progress", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(wt); // Clean worktree: the file check must short-circuit both spawns.
+  } finally {
+    restore();
+  }
+  assert.ok(!fs.existsSync(logFile), "abortSync spawned git on a clean worktree");
+});
+
+test("abortSync still aborts an interrupted rebase when state exists", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "dry", "main");
+  // Leave a conflicting rebase in progress (a killed tick mid-resolution), no shim yet.
+  seedConflict(repo, wt);
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(wt);
+  } finally {
+    restore();
+  }
+  // The old spawn-based behavior is preserved when state exists: both aborts run.
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+  // And the rebase was actually aborted: the worktree is back to its pre-rebase content.
+  assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "branch version\n");
+});
+
+// A linked worktree's .git is a one-line pointer file. If it is corrupted (truncated write,
+// stale path after outside maintenance), the file check cannot tell whether a merge or rebase
+// is in progress — abortSync must then fall back to spawning both aborts instead of skipping
+// them, or an interrupted tick would wedge on "you are already rebasing" forever.
+test("abortSync falls back to spawns when the worktree .git pointer is uncertain", async () => {
+  const repo = makeRepo();
+  for (const [label, pointer] of [
+    ["malformed line", "not a gitdir pointer\n"],
+    ["empty target", "gitdir:\n"],
+    ["missing target dir", `gitdir: ${path.join(tmpdir(), "gone")}\n`],
+  ] as const) {
+    const wt = await ensureWorktree(repo, label.replace(/\s+/g, "-"), "main");
+    fs.writeFileSync(path.join(wt, ".git"), pointer);
+    const logFile = path.join(tmpdir(), "git-calls.log");
+    const restore = loggingGit(logFile);
+    try {
+      await abortSync(wt); // Must not throw: the spawned aborts fail on the broken repo.
+    } finally {
+      restore();
+    }
+    const calls = fs.readFileSync(logFile, "utf8");
+    assert.match(calls, /merge --abort/, `${label}: merge --abort was skipped`);
+    assert.match(calls, /rebase --abort/, `${label}: rebase --abort was skipped`);
+  }
+});
+
+test("abortSync detects in-progress state from a primary checkout's .git dir", async () => {
+  const repo = makeRepo();
+  // Leave a conflicting merge in progress on the primary checkout (a killed tick mid-merge).
+  sh(repo, "git", "checkout", "-b", "side");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "side\n");
+  sh(repo, "git", "commit", "-am", "side edit");
+  sh(repo, "git", "checkout", "main");
+  fs.writeFileSync(path.join(repo, "seed.txt"), "main2\n");
+  sh(repo, "git", "commit", "-am", "main edit");
+  try {
+    sh(repo, "git", "merge", "side"); // Conflicts on seed.txt; the nonzero exit is expected.
+  } catch {
+    // The conflict is the point: MERGE_HEAD now exists under .git/.
+  }
+  assert.ok(fs.existsSync(path.join(repo, ".git", "MERGE_HEAD")));
+
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(repo); // .git is a directory: the file check must see MERGE_HEAD.
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+  // And the merge was actually aborted: MERGE_HEAD is gone.
+  assert.ok(!fs.existsSync(path.join(repo, ".git", "MERGE_HEAD")), "merge was not aborted");
+});
+
+test("abortSync falls back to spawns when .git is missing entirely", async () => {
+  const dir = tmpdir(); // Not a repo at all: the file check cannot inspect anything.
+  const logFile = path.join(tmpdir(), "git-calls.log");
+  const restore = loggingGit(logFile);
+  try {
+    await abortSync(dir); // Must not throw: both spawned aborts fail harmlessly.
+  } finally {
+    restore();
+  }
+  const calls = fs.readFileSync(logFile, "utf8");
+  assert.match(calls, /merge --abort/);
+  assert.match(calls, /rebase --abort/);
+});
+
+test("concurrent ensureWorktree calls serialize: the queued call adopts the worktree the first made", async () => {
+  // Both callers probe a worktree that does not exist yet, so both enter serializeSetup;
+  // the second queues behind the first and must find the worktree usable by its turn —
+  // the queued-ahead branch the landing pipeline's concurrent vets once fell through
+  // (two clear-and-add steps interleaving, the loser's vet a terminal error). Without
+  // the serialization the two `worktree add` calls race and one of them fails.
+  const repo = makeRepo();
+  const first = ensureWorktree(repo, "clean", "main");
+  const second = ensureWorktree(repo, "clean", "main");
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(b, a, "both callers get the same worktree path");
+  assert.equal(await currentBranch(a), branchName("clean"), "the worktree is on its role branch");
+  assert.ok(fs.existsSync(path.join(a, "seed.txt")), "the worktree holds main's tree");
+  // Exactly one registration exists for the role: a lost race would leave a duplicate
+  // (or a registration whose directory was pruned) behind.
+  const list = sh(repo, "git", "worktree", "list", "--porcelain");
+  const forRole = list.split("\n").filter((l) => l.startsWith("worktree ")).filter((l) => l.endsWith("/worktrees/clean"));
+  assert.equal(forRole.length, 1, `exactly one registration for the role:\n${list}`);
+});
+
+test("concurrent ensureDetachedWorktree calls serialize and both resolve to the detached checkout", async () => {
+  // The mirror's two first callers race the same way the role worktrees' do; the queued
+  // one reports "not created by me" (false) and still falls through to the shared
+  // checkout/reset tail, so both end on the exact ref with a clean tree.
+  const repo = makeRepo();
+  const head = mainSha(repo);
+  const dir = mirrorWorktreePath(repo);
+  const first = ensureDetachedWorktree(repo, dir, head);
+  const second = ensureDetachedWorktree(repo, dir, head);
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(b, a, "both callers get the same checkout");
+  assert.equal(sh(a, "git", "rev-parse", "HEAD"), head, "checked out at the requested ref");
+  assert.equal(await currentBranch(a), null, "the checkout is detached");
+  assert.equal(sh(a, "git", "status", "--porcelain"), "", "the checkout is clean");
+});
+
+test("abortSync survives a worktree pointer whose target is not a directory", async () => {
+  // A .git pointer file naming an existing-but-not-a-directory target leaves the
+  // file-based merge/rebase state check uncertain: abortSync must fall back to running
+  // the real aborts (which fail harmlessly here) instead of throwing — a corrupted
+  // worktree must not break the tick that tries to clean it.
+  const dir = tmpdir("stray-gitdir-");
+  fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${path.join(dir, "stray-file")}\n`);
+  fs.writeFileSync(path.join(dir, "stray-file"), "a file, not a gitdir\n");
+  await abortSync(dir); // must resolve, not throw
+  assert.equal(
+    fs.readFileSync(path.join(dir, "stray-file"), "utf8"),
+    "a file, not a gitdir\n",
+    "the fallback aborts touched nothing",
+  );
 });
