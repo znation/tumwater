@@ -138,7 +138,10 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   }
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
-  if (args.filter((a) => a === "--json").length > 1) fail("--json may only be given once");
+  // --json's positions, collected in one pass: the once-check here rides the array's length,
+  // and the list branch's stray-argument claim and json flag need the indices.
+  const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
+  if (jsonFlags.length > 1) fail("--json may only be given once");
   if (args.filter((a) => a === "--list").length > 1) fail("--list may only be given once");
   if (args.filter((a) => a === "--cancel").length > 1) fail("--cancel may only be given once");
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
@@ -154,7 +157,6 @@ export function parsePromptArgs(args: string[]): PromptArgs {
 
   // --json is list-only: in enqueue or cancel mode it must never silently ride along as
   // prompt text (or beside a state change), so it is refused before either branch runs.
-  const jsonFlags = args.map((a, i) => (a === "--json" ? i : -1)).filter((i) => i >= 0);
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
 
   if (listFlag >= 0) {
