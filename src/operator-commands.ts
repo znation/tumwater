@@ -298,6 +298,20 @@ function promptListPayload(
   return { prompts };
 }
 
+/** The user-facing reply for one resolved cancel: a concurrent dequeue is a normal race, not an
+ * error, so it is reported and exited clean; a real cancel previews the text it removed. When
+ * `labelRole` the cancelled line names the loop — the no-`--role` cancel resolves across every
+ * loop, so its output must say where the prompt went — while a `--role`-scoped cancel already
+ * names it in the user's own command. Shared by both cancel paths so their wording cannot
+ * drift. */
+function sayCancelOutcome(position: number, role: string, outcome: CancelOutcome, labelRole: boolean): void {
+  if (outcome.status === "gone") {
+    say(`prompt ${position} is no longer queued — ${role} already took it`);
+    return;
+  }
+  say(labelRole ? `cancelled (${role}): ${promptPreview(outcome.text)}` : `cancelled: ${promptPreview(outcome.text)}`);
+}
+
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
  * director (default) or one role's queue, list what is queued with per-loop position
  * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
@@ -375,12 +389,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       if (listed.status === "missing") {
         fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
       }
-      if (listed.outcome.status === "gone") {
-        // A concurrent dequeue is a normal race, not an error: report it and exit clean.
-        say(`prompt ${parsed.position} is no longer queued — ${listed.role} already took it`);
-      } else {
-        say(`cancelled (${listed.role}): ${promptPreview(listed.outcome.text)}`);
-      }
+      sayCancelOutcome(parsed.position, listed.role, listed.outcome, true);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
@@ -390,12 +399,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     } catch (err) {
       fail(errorMessage(err));
     }
-    if (outcome.status === "gone") {
-      // A concurrent dequeue is a normal race, not an error: report it and exit clean.
-      say(`prompt ${parsed.position} is no longer queued — ${target} already took it`);
-    } else {
-      say(`cancelled: ${promptPreview(outcome.text)}`);
-    }
+    sayCancelOutcome(parsed.position, target, outcome, false);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
