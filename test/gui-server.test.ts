@@ -119,7 +119,7 @@ test("gui answers 400 for an over-long prompt and queues nothing", async () => {
   await initProject(repo, "gui long prompt test");
   const { server, base } = await startLocalGui(repo);
   try {
-    // An over-long prompt is a user-input error: the shared length rule (inbox.ts's
+    // An over-long prompt is a user-input error: the shared length rule (inbox-submit.ts's
     // promptLengthProblem) answers 400 naming the length and the ceiling — not the outer
     // catch's 500, which is reserved for unexpected submit failures (see the EACCES test).
     const res = await postJson(base, "/api/prompt", { text: "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1) });

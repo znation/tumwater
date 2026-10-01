@@ -96,7 +96,7 @@ export function windowDays(q: URLSearchParams): number {
 /** Pull the prompt text out of a prompt endpoint's body — the shared validator for
  * /api/prompt and /api/prompt-role, which must reject a non-string, blank, or over-long text
  * with the same 400 wording: both dashboards' prompt bars sit behind the same length rule
- * (inbox.ts's promptLengthProblem) and a retried request must get identical answers from
+ * (inbox-submit.ts's promptLengthProblem) and a retried request must get identical answers from
  * either surface. Returns the validated text, or null once the 400 is sent. */
 export function requirePromptText(
   res: http.ServerResponse,
