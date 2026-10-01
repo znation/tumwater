@@ -25,6 +25,15 @@ function typescriptDir(): string {
   return path.dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
 }
 
+/** Give `dir` a node_modules/typescript symlink to this repo's real typescript, so a staged
+ * compile's tsc resolves the toolchain the way every tumwater worktree does — with no install
+ * of its own, borrowing an ancestor's (the BUGS.md 2026-09-08 case above). The one home of
+ * the mkdir+symlink pair for the tests here that stage a compilable project. */
+function borrowTypeScript(dir: string): void {
+  fs.mkdirSync(path.join(dir, "node_modules"), { recursive: true });
+  fs.symlinkSync(typescriptDir(), path.join(dir, "node_modules/typescript"));
+}
+
 /** A tiny self-contained TS project committed to `root`'s main; returns its head. */
 function tinyTsProject(root: string, body = "export const answer: number = 42;\n"): string {
   fs.writeFileSync(
@@ -178,8 +187,7 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
   // A tiny self-contained TS project whose node_modules borrows this repo's typescript.
   const root = makeRepo();
   const head = tinyTsProject(root);
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   // A stale staging dir left by an earlier attempt at the same head (an interrupted run, a
   // crashed compile) is replaced before the compile, never merged with: nothing it held may
@@ -212,8 +220,7 @@ test("compileStaged compiles the mirror worktree with the project's tsc and stam
 test("a successful compile prunes superseded stagings past the grace, keeping young and non-SHA entries", async () => {
   const root = makeRepo();
   const head = tinyTsProject(root);
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   // Two superseded stagings from heads the fleet landed past: one older than the grace
   // (dead weight a blocked restart let pile up), one younger (a live episode's drain hold
@@ -297,8 +304,7 @@ test("compileStaged borrows an ancestor's typescript: a project with no install 
   // it — and the case that must not fail closed: demanding a local install here is what left
   // the fleet unable to compile its own new build (BUGS.md).
   const outer = tmpdir();
-  fs.mkdirSync(path.join(outer, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(outer, "node_modules/typescript"));
+  borrowTypeScript(outer);
   const root = makeRepo(path.join(outer, "nested", "project"));
   const head = tinyTsProject(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
@@ -320,8 +326,7 @@ test("compileStaged reports a spawn failure as a rejection, not a verdict about 
   // instead of reading as `tsc exited ENOENT` — a compiler verdict about the commit that never
   // got one (BUGS.md 2026-09-28).
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const result = await compileStaged(root, path.join(root, "mirror-went-away"), "f".repeat(40));
   assert.equal(result.ok, false);
   assert.equal(result.rejected, true);
@@ -336,8 +341,7 @@ test("compileStaged still rebuilds through tsc's shebang when the node binary va
   // rebuild succeed and break the pin. The stale path is injected through the execPath seam.
   const root = makeRepo();
   const head = tinyTsProject(root);
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   const result = await compileStaged(root, mirror, head, undefined, "/nonexistent/node/removed-by-an-upgrade");
   assert.deepEqual(result, { ok: true, detail: "" }, "the shebang fallback compiled the tree");
@@ -348,8 +352,7 @@ test("compileStaged names every missing spawn input when the compile cannot star
   // rejection must name which of the interpreter, the cwd, and the toolchain did not exist —
   // the diagnosis the live `tsc exited ENOENT` cluster never had (BUGS.md 2026-09-29).
   const root = makeRepo();
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const result = await compileStaged(root, path.join(root, "mirror-went-away"), "f".repeat(40), undefined, "/nonexistent/node");
   assert.equal(result.ok, false);
   assert.equal(result.rejected, true);
@@ -418,8 +421,7 @@ test("compileStaged reports a timeout instead of hanging when tsc runs past its 
   // production cap be exercised at all; a 1 ms cap guarantees the (slow-to-start) tsc is killed.
   const root = makeRepo();
   const head = tinyTsProject(root);
-  fs.mkdirSync(path.join(root, "node_modules"));
-  fs.symlinkSync(typescriptDir(), path.join(root, "node_modules/typescript"));
+  borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
   const result = await compileStaged(root, mirror, head, 1);
   assert.deepEqual(result, { ok: false, detail: "tsc timed out after 0.001s" });
