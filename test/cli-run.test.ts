@@ -127,6 +127,38 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
   assert.equal(line, "once: 1 tick — 1 changed, 1 skipped (idle)");
 });
 
+test("a ran role with no recorded last result buckets as no_change", () => {
+  const root = makeRepo();
+  // A tick that advanced the counter without writing lastResult — the field is optional on
+  // LoopState — still counts, bucketed under the same `no_change` key a recorded no-change
+  // tick uses, rather than dropping out of the counts line.
+  saveLoopState(root, state("clean", { ticks: 1 }));
+
+  assert.equal(
+    onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
+    "once: 1 tick — 1 no_change",
+  );
+});
+
+test("a role the round's ticks-run map lacks counts zero and settles, not its history", () => {
+  const root = makeRepo();
+  // The mid-round map is the source of truth for who ran: a role listed in `roles` but
+  // absent from it ran zero ticks this round — its persisted history (ticks 4) must not
+  // leak into the summary, and it reports the settle reason like any skipped role.
+  saveLoopState(root, state("clean", { ticks: 4 }));
+  saveLoopState(root, state("improve", { ticks: 1, lastResult: "changed" }));
+
+  const line = onceSummary(
+    root,
+    ["clean"],
+    new Map([["clean", 0]]),
+    new Map([["clean", "idle"]]),
+    new Map([["improve", 1]]),
+  );
+
+  assert.equal(line, "once: 1 tick — 1 changed, 1 skipped (idle)");
+});
+
 test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
   const root = makeRepo();
   // The shape a productive tick leaves behind: backoffSeconds 0 with a future nextRunAt —
