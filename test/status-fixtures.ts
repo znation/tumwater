@@ -1,6 +1,6 @@
 /** Shared fixtures for the status UI tests (status-render.test.ts, status-model.test.ts):
  * the snapshot/table geometry builders, pi-log writers, and time stamps both suites assemble
- * their StatusSnapshots and logs from. Split out of status-render.test.ts when the status-model
+ * their StatusSnapshots and logs from, plus the header-line extractor the badge suites read. Split out of status-render.test.ts when the status-model
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
 import type { StatusSnapshot } from "../src/status-data.js";
@@ -17,6 +17,14 @@ export const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
  * live-progress reader keys on (BUGS.md 2026-09-22). */
 export const GATE_SESSION = (root: string, role: string) =>
   JSON.stringify({ type: "session", version: 3, id: "x", cwd: landWorktreePath(root, role) });
+
+/** A rendered status table's header line (its first line) — what the badge suites assert
+ * against, since every badge rides that line. renderStatus always emits the header, so the
+ * empty-string fallback is unreachable in practice; a suite reading an empty render gets an
+ * empty header and a failing match instead of a crash. */
+export function headerOf(rendered: string): string {
+  return rendered.split("\n")[0] ?? "";
+}
 
 /** Write a raw pi log for `role` under `root`; returns the file path. */
 export function writePiLog(root: string, role: string, lines: string[]): string {

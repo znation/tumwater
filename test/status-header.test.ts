@@ -10,18 +10,18 @@ import { renderStatus } from "../src/ui/status-render.js";
 import { buildBadge } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status-data.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { DEFAULT_BUDGET, snapshotWith } from "./status-fixtures.js";
+import { DEFAULT_BUDGET, headerOf, snapshotWith } from "./status-fixtures.js";
 
 // The questions badge (plans/questions-outbox.md) rides the header line like the inbox one:
 // visible only while something needs an answer, so a quiet project's header stays uncluttered.
 
 test("the status header carries a questions badge only while questions await", () => {
-  const zero = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  const zero = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(zero, /questions/);
 
   const snap = snapshotWith([{ role: "clean" }]);
   snap.questions = 2;
-  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  const header = headerOf(renderStatus(tmpdir(), snap));
   // The standing budget badge follows the questions one in the header.
   assert.match(header, /· questions: 2 · budget: \$0\.00\/\$50 today$/);
 });
@@ -31,12 +31,12 @@ test("the status header carries a questions badge only while questions await", (
 // `status --json` carries the same count, but only the header renders it for a human.
 
 test("the status header carries an inbox badge only while prompts are queued", () => {
-  const zero = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  const zero = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(zero, /inbox/);
 
   const snap = snapshotWith([{ role: "clean" }]);
   snap.inbox = 3;
-  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  const header = headerOf(renderStatus(tmpdir(), snap));
   // The standing budget badge follows the inbox one in the header, like the questions badge's.
   assert.match(header, /· inbox: 3 · budget: \$0\.00\/\$50 today$/);
 });
@@ -46,17 +46,17 @@ test("the status header carries an inbox badge only while prompts are queued", (
 // an expired marker all keep the header byte-identical, because the badge must never claim
 // a countdown that is over (the read side already treats an expired marker as unpaused).
 test("the status header shows the timed-pause countdown only while the fleet deadline stands", () => {
-  const quiet = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  const quiet = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(quiet, /auto-resumes/);
 
   const snap = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
   snap.pausedUntil = Date.now() + 3 * 3_600_000;
-  const header = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  const header = headerOf(renderStatus(tmpdir(), snap));
   // The budget badge precedes it, like the questions and inbox badges' ordering.
   assert.match(header, /· budget: \$0\.00\/\$50 today · paused — auto-resumes in 3h$/);
 
   snap.pausedUntil = Date.now() - 1_000; // expired: the read side already treats it as unpaused
-  assert.doesNotMatch(renderStatus(tmpdir(), snap).split("\n")[0] ?? "", /auto-resumes/);
+  assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snap)), /auto-resumes/);
 });
 
 // The operator pause's why (`pause --reason <text>`) rides the header after the countdown —
@@ -65,20 +65,20 @@ test("the status header shows the timed-pause countdown only while the fleet dea
 test("the status header states the operator pause's reason, timed or not", () => {
   const anonymous = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
   anonymous.pausedUntil = Date.now() + 3 * 3_600_000;
-  const bare = renderStatus(tmpdir(), anonymous).split("\n")[0] ?? "";
+  const bare = headerOf(renderStatus(tmpdir(), anonymous));
   assert.match(bare, /· paused — auto-resumes in 3h$/);
 
   const timed = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
   timed.pausedUntil = Date.now() + 3 * 3_600_000;
   timed.pauseReason = "deploying to prod";
-  assert.match(renderStatus(tmpdir(), timed).split("\n")[0] ?? "", /· paused — auto-resumes in 3h — "deploying to prod"$/);
+  assert.match(headerOf(renderStatus(tmpdir(), timed)), /· paused — auto-resumes in 3h — "deploying to prod"$/);
 
   const untimed = snapshotWith([{ role: "clean" }], DEFAULT_BUDGET, true);
   untimed.pauseReason = "deploying to prod";
-  assert.match(renderStatus(tmpdir(), untimed).split("\n")[0] ?? "", /· paused — "deploying to prod"$/);
+  assert.match(headerOf(renderStatus(tmpdir(), untimed)), /· paused — "deploying to prod"$/);
 
   const quiet = snapshotWith([{ role: "clean" }]);
-  assert.doesNotMatch(renderStatus(tmpdir(), quiet).split("\n")[0] ?? "", /paused/);
+  assert.doesNotMatch(headerOf(renderStatus(tmpdir(), quiet)), /paused/);
 });
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the window rides the
@@ -86,17 +86,17 @@ test("the status header states the operator pause's reason, timed or not", () =>
 // window string outside it, the active `quiet until <end>` reading inside — and a fleet
 // without the schedule keeps its header byte-identical (the badge is empty).
 test("the status header carries a quiet-hours badge only while a window is configured", () => {
-  const unset = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  const unset = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(unset, /quiet/);
 
   const snap = snapshotWith([{ role: "clean" }]);
   snap.quietHours = "23:00-07:00";
   snap.inQuietHours = false;
-  const outside = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  const outside = headerOf(renderStatus(tmpdir(), snap));
   assert.match(outside, /· quiet 23:00-07:00$/);
 
   snap.inQuietHours = true;
-  const inside = renderStatus(tmpdir(), snap).split("\n")[0] ?? "";
+  const inside = headerOf(renderStatus(tmpdir(), snap));
   assert.match(inside, /· quiet until 07:00$/);
   assert.doesNotMatch(inside, /23:00-07:00/, "inside the window the active reading replaces the raw string");
 });
@@ -106,42 +106,37 @@ test("the status header carries a quiet-hours badge only while a window is confi
 // status-render.test.ts's fallback tests.
 
 test("the status header carries a budget badge in every cap state", () => {
-  const enabled = renderStatus(
-    tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false, fallback: null }),
-  ).split("\n")[0] ?? "";
+  const enabled = headerOf(
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false, fallback: null })),
+  );
   assert.match(enabled, /· budget: \$12\.34\/\$50 today$/);
 
   // Fractional caps keep their cents; whole-dollar spent values stay two-decimal like the cost column.
-  const fractional = renderStatus(
-    tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false, fallback: null }),
-  ).split("\n")[0] ?? "";
+  const fractional = headerOf(
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false, fallback: null })),
+  );
   assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
 
   // Disabled (cap 0): the badge stays — it is the affordance for SETTING a cap — and reads
   // spend plus `no cap` instead of a $X/$Y figure.
-  const disabled = renderStatus(
-    tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false, fallback: null }),
-  ).split("\n")[0] ?? "";
+  const disabled = headerOf(
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false, fallback: null })),
+  );
   assert.match(disabled, /· budget: \$3\.25 today · no cap$/);
 });
 
 // A fleet whose models are all free (local LLMs) can never accumulate spend against the cap,
 // so the badge reads n/a instead of a dollar figure that would never move.
 test("the status header budget badge reads n/a for an all-free fleet", () => {
-  const free = renderStatus(
-    tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true, fallback: null }),
-  ).split("\n")[0] ?? "";
+  const free = headerOf(
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true, fallback: null })),
+  );
   assert.match(free, /· budget: n\/a$/);
 
   // The dollar form is untouched for a fleet that can spend (byte-identical to before).
-  const paid = renderStatus(
-    tmpdir(),
-    snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false, fallback: null }),
-  ).split("\n")[0] ?? "";
+  const paid = headerOf(
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false, fallback: null })),
+  );
   assert.match(paid, /· budget: \$0\.00\/\$50 today$/);
 });
 
@@ -149,9 +144,9 @@ test("the header names the running build and flags a stale one", () => {
   // Build provenance (src/build-info.ts): the dashboards are where an operator learns the fleet
   // is running code main no longer describes — the badge must carry the commit and the gap.
   const fresh = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
-  assert.match(renderStatus("/tmp/x", fresh).split("\n")[0]!, /running \(pid 4242, build aaaaaaaa\)/);
+  assert.match(headerOf(renderStatus("/tmp/x", fresh)), /running \(pid 4242, build aaaaaaaa\)/);
   const stale = { ...fresh, build: { ...fresh.build, stale: true, aheadCommits: 7 } };
-  assert.match(renderStatus("/tmp/x", stale).split("\n")[0]!, /build aaaaaaaa — STALE: main \+7 commit\(s\) since\)/);
+  assert.match(headerOf(renderStatus("/tmp/x", stale)), /build aaaaaaaa — STALE: main \+7 commit\(s\) since\)/);
   // A stale build also says what auto-restart made of it: pending resolves itself, BLOCKED
   // never will until main moves, and only the second one needs an operator (BUGS.md).
   const pending = { ...stale.build, restartPending: true };
@@ -160,7 +155,7 @@ test("the header names the running build and flags a stale one", () => {
   assert.match(buildBadge(blocked), /since; restart BLOCKED: main cccccccc is red$/);
   assert.equal(buildBadge(stale.build), ", build aaaaaaaa — STALE: main +7 commit(s) since", "silent when neither");
   const unstamped = { ...fresh, build: null };
-  assert.match(renderStatus("/tmp/x", unstamped).split("\n")[0]!, /running \(pid 4242\)/, "no stamp: the pre-stamp header");
+  assert.match(headerOf(renderStatus("/tmp/x", unstamped)), /running \(pid 4242\)/, "no stamp: the pre-stamp header");
   assert.equal(buildBadge(null), "");
 });
 
@@ -183,7 +178,7 @@ test("renderStatus shows the land-queue badge in the header and the label in the
     landQueue: { depth: 2 } as StatusSnapshot["landQueue"],
   };
   const text = renderStatus(root, queued);
-  assert.match(text.split("\n")[0]!, /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
+  assert.match(headerOf(text), /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
   assert.match(text, /clean +queued/, "a merely queued role shows its normal state");
 
   // …and the role whose in-flight record is attached reads `landing <elapsed> · <stage>` in
@@ -204,19 +199,19 @@ test("renderStatus shows the land-queue badge in the header and the label in the
 
 test("the status header carries a mainCheck badge only after a merge-scope check", () => {
   // No check yet: no badge — the header of a quiet fleet stays byte-identical to before.
-  const none = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])).split("\n")[0] ?? "";
+  const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.doesNotMatch(none, /· main /);
   // Green with counts (PLANS.md "Retire the README freshness stamp" wording: the old README
   // stamp's `suite N/N (N skipped)` shape, rendered live instead of committed).
-  const green = renderStatus(tmpdir(), {
+  const green = headerOf(renderStatus(tmpdir(), {
     ...snapshotWith([{ role: "clean" }]),
     mainCheck: { sha: "a".repeat(40), status: "passed", counts: { tests: 10, pass: 9, fail: 0, skipped: 1 }, at: 0 },
-  }).split("\n")[0] ?? "";
+  }));
   assert.match(green, /· main a{8}: green · 9\/10 \(1 skipped\)/);
   // Red with no counts (the check never printed a summary block): verdict only.
-  const red = renderStatus(tmpdir(), {
+  const red = headerOf(renderStatus(tmpdir(), {
     ...snapshotWith([{ role: "clean" }]),
     mainCheck: { sha: "a".repeat(40), status: "failed", at: 0 },
-  }).split("\n")[0] ?? "";
+  }));
   assert.match(red, /· main a{8}: red$/);
 });

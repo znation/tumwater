@@ -20,6 +20,7 @@ import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import {
   DEFAULT_BUDGET,
+  headerOf,
   PENDING_SHA,
   SESSION,
   snapshotWith,
@@ -499,7 +500,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   assert.match(reached, /director\s+waiting for prompts/);
 
   // The header badge shows the reached budget on the same render.
-  assert.match(reached.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today$/);
+  assert.match(headerOf(reached), /· budget: \$50\.00\/\$50 today$/);
 });
 
 // Per-role pause (`tumwater pause --role <id>`): the snapshot's pausedRoles set gates the same
@@ -542,7 +543,7 @@ test("renderStatus never reads budget paused while the cap is disabled, even pas
   assert.match(out, /feature\s+queued/);
   assert.match(out, /director\s+waiting for prompts/);
   // The badge stays standing and says no cap.
-  assert.match(out.split("\n")[0] ?? "", /· budget: \$999\.00 today · no cap$/);
+  assert.match(headerOf(out), /· budget: \$999\.00 today · no cap$/);
 });
 
 test("renderStatus shows paused in idle role loops' state cells ahead of budget paused and main red", () => {
@@ -586,7 +587,7 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
   });
   assert.doesNotMatch(degraded, /budget paused/, "a fallback fleet is not a stopped fleet");
   assert.match(degraded, /feature\s+queued/);
-  assert.match(degraded.split("\n")[0] ?? "", /· budget: \$50\.00\/\$50 today · fallback: local-free \(cost n\/a\)$/);
+  assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · fallback: local-free \(cost n\/a\)$/);
 
   // The same spend with no usable fallback pauses the role loops, exactly as before.
   const stopped = renderStatus(root, {
