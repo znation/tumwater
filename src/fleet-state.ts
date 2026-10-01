@@ -53,11 +53,25 @@ export const PAUSE_REASON_MAX = 200;
  * unreadable, or carries an `until` in the past. The expiry rule is the read side of the
  * timed pause: every consumer (scheduler, dashboards, a follow-up `pause`) treats an expired
  * marker as absent, so the deadline releases the pause with no new scheduler code — the
- * orchestrator's poll-diff sees an ordinary unpaused transition. Never throws. */
+ * orchestrator's poll-diff sees an ordinary unpaused transition. Never throws. The reason is
+ * folded and capped here too — the same shape pauseFleet writes — so the marker's reason
+ * reads as the operator's one-line why whoever wrote it: a pause standing across the
+ * write-side fold (or a hand edit) must not hand the status header's badge a raw newline
+ * (BUGS.md 2026-09-30). A non-string reason reads as no reason — json-files.ts's
+ * wrong-shape-reads-as-absent policy — and the type guard is what keeps this function's
+ * never-throws contract intact: normalizePauseReason would throw on a number or object,
+ * and this read sits on the scheduler's per-cycle isFleetPaused poll and every dashboard
+ * snapshot. */
 function standingMarker(path: string): PauseMarker | null {
   const m = readJsonFile<PauseMarker>(path);
   if (!m || typeof m.at !== "number") return null;
   if (m.until !== undefined && m.until <= Date.now()) return null;
+  const folded =
+    typeof m.reason === "string"
+      ? normalizePauseReason(m.reason)?.slice(0, PAUSE_REASON_MAX)
+      : undefined;
+  if (folded) m.reason = folded;
+  else delete m.reason;
   return m;
 }
 

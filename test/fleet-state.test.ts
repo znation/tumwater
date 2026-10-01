@@ -327,6 +327,37 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
   assert.equal(pausedReason(root), undefined, "a fresh reasonless pause clears the stale reason");
 });
 
+// The one-line shape is the read side's contract too: a marker left on disk by a build
+// predating the write-side fold (or a hand edit) can still carry the raw newline, and every
+// consumer — the status header's badge, the alerts title — reads it through standingMarker,
+// so the fold and cap apply there rather than trusting whoever wrote the file. The marker
+// is a hand-editable file, so the never-throws contract must hold for a wrong-shaped
+// reason too: standingMarker sits on the scheduler's per-cycle isFleetPaused poll and
+// status-data's once-per-poll snapshot, and a non-string reason (json-files.ts reads what
+// is on disk as T unchecked) must read as no reason, not throw (BUGS.md 2026-09-30).
+test("a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote it", () => {
+  const root = tmpdir();
+  const markerPath = path.join(root, ".tumwater", "paused.json");
+  fs.mkdirSync(path.dirname(markerPath), { recursive: true });
+  // Exactly what a pre-fold build's JSON.stringify stored: escaped newline and tab in the file.
+  fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "deploying\nthe new build\tv2" }));
+  assert.equal(pausedReason(root), "deploying the new build v2", "the raw note reads as one line");
+  // An over-cap note in an old marker is capped on read by the same PAUSE_REASON_MAX.
+  fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "y".repeat(PAUSE_REASON_MAX + 50) }));
+  assert.equal(pausedReason(root)?.length, PAUSE_REASON_MAX, "the cap holds on read too");
+  // A whitespace-only note in an old marker reads as no reason at all.
+  fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "  \n\t " }));
+  assert.equal(pausedReason(root), undefined, "a whitespace-only note reads as no reason");
+  // A hand-edited non-string reason must read as no reason — never a TypeError out of
+  // isFleetPaused, pausedReason, or the pauseFleet no-op check that reuses this read.
+  fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: 42 }));
+  assert.equal(isFleetPaused(root), true, "a wrong-shaped reason leaves the pause standing");
+  assert.equal(pausedReason(root), undefined, "a numeric reason reads as no reason, not a throw");
+  const later = Date.now() + 60_000;
+  assert.equal(pauseFleet(root, later, "next why"), true, "pauseFleet over a wrong-shaped reason still writes");
+  assert.equal(pausedReason(root), "next why", "the fresh write's reason replaces the malformed one");
+});
+
 test("a fresh --for over a standing fleet pause overwrites the deadline; a plain pause no-ops", () => {
   const root = tmpdir();
   pauseFleet(root, Date.now() + 30 * 60_000);
