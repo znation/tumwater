@@ -11,7 +11,9 @@ import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
-import { fakePi } from "./fake-pi.js";
+import { fakePi, fakePiIdle } from "./fake-pi.js";
+import { loadLoopState } from "../src/loop-state.js";
+import { fastConfig } from "./orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the
@@ -355,4 +357,31 @@ test("the startup gate is asked before the --role guards: a not-ready repo repor
   assert.equal(r.code, 1);
   assert.match(r.stderr, /not initialized/, "the gate's verdict, not the flag's");
   assert.equal(readEvents(repo).length, 0, "no events — nothing booted to trace");
+});
+
+test("run --once --role ticks only the scoped role through the real CLI and exits 0", async () => {
+  // The scoped round's happy path. Until now only the e2e tier pinned a successful --once
+  // round (orchestrator-once.e2e.test.ts), so the gating suite never ran one: the wiring this
+  // exercises — the startup gate, the role filter into runOrchestrator, the once banner, the
+  // summary, and the exit — could regress with `npm test` staying green.
+  const repo = makeRepo();
+  await initProject(repo, "cli run once scoped");
+  writeConfig(repo, fastConfig(["clean", "dry"]));
+
+  // fakePiIdle ends every tick as nothing-to-do, so the round exits on its own without
+  // landing anything — the round's own exit is the observable, not a merge.
+  const restore = fakePiIdle();
+  try {
+    const r = await cli(repo, "run", "--once", "--role", "clean");
+    assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /tumwater once on branch main/, `the once banner: ${r.stdout}`);
+    assert.match(r.stdout, /loops: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
+    assert.match(r.stdout, /once: 1 tick — 1 no_change/,
+      `the summary counts only the scoped role's tick: ${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
+    assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");
+    assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
+  } finally {
+    restore();
+  }
 });
