@@ -401,6 +401,40 @@ test("coverageRowsFromDumps merges the raw V8 dumps with any-process semantics a
   assert.match(text, /all files +lines 4\/7 57\.14%/);
 });
 
+test("coverageRowsFromDumps keeps blank lines from scrambling which lines a process's merge credits", () => {
+  // The line queries are filtered down to non-blank lines, and makeLookup returns its results
+  // indexed by each query's recorded line index — not by position in that filtered list. A
+  // positional reading made every code line after a blank line inherit another line's verdict
+  // and dropped the lines numbered past the query count (BUGS.md 2026-09-30): this file, which
+  // one process ran end to end (the module root range spans it all with count 1), read 3/4.
+  const lines = ["// header comment", "let a = 1;", "", "let b = 2;", "", "let c = 3;"];
+  const src = lines.join("\n") + "\n";
+  const dist = tmpdir("cov-blank-");
+  fs.mkdirSync(path.join(dist, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dist, "src", "blanks.js"), src);
+  const url = "file://" + fs.realpathSync(path.join(dist, "src", "blanks.js"));
+  const dumpDir = tmpdir("cov-blank-dumps-");
+  fs.writeFileSync(
+    path.join(dumpDir, "coverage.json"),
+    JSON.stringify({
+      result: [
+        {
+          url,
+          functions: [
+            { functionName: "", isBlockCoverage: true, ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }] },
+          ],
+        },
+      ],
+    }),
+  );
+
+  const rows = coverageRowsFromDumps(dumpDir, dist);
+  // Every non-blank line is covered — the blank separators must not cost a line or move one's
+  // verdict onto a neighbor. (Comment lines count as lines under this table's trim-extent
+  // semantics, matching coverage.cjs; only blank lines drop out of the query list.)
+  assert.deepEqual(rows, [{ file: "src/blanks.js", lines: { covered: 4, total: 4 }, branches: { covered: 1, total: 1 }, functions: { covered: 0, total: 0 } }]);
+});
+
 test("under --coverage the runner prints the deterministic table, and a caller's NODE_V8_COVERAGE passes through untouched", () => {
   // A caller's NODE_V8_COVERAGE reaches node untouched — the dumps land in the caller's dir and
   // the runner prints no table of its own: docs/code-metrics/run.sh sets the variable around

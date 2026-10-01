@@ -44,8 +44,11 @@ type Query = [number, number, number];
 const byStart = (x: Query, y: Query): number => x[0] - y[0] || y[1] - x[1];
 
 /** For one process's ranges (a laminar family), the count of the innermost range fully
- * containing each query [a, b], returned in the queries' own order. Queries must be sorted by
- * a ascending, b descending. (Ported from docs/code-metrics/coverage.cjs.) */
+ * containing each query [a, b], returned indexed by each query's recorded index (its third
+ * element) — NOT by position in `queries`. Callers that filter or reorder queries must key
+ * their result arrays on that recorded index (the line caller below indexes `lineCovered` by
+ * line index this way). Queries must be sorted by a ascending, b descending. (Ported from
+ * docs/code-metrics/coverage.cjs, whose callers read the result array the same way.) */
 function makeLookup(ranges: Range[]): (queries: readonly Query[]) => number[] {
   const rs = [...ranges].sort((x, y) => x[0] - y[0] || y[1] - x[1]);
   return (queries) => {
@@ -173,9 +176,11 @@ export function coverageRowsFromDumps(dumpDir: string, distRoot: string): Covera
       const fnCov = new Uint8Array(fq.length);
       for (const set of rec.sets) {
         const look = makeLookup(set);
-        look(lq).forEach((c, k) => {
-          const q = lq[k];
-          if (q !== undefined && c > 0) lineCovered[q[2]] = 1;
+        // makeLookup indexes its result by each query's recorded line index, so the forEach
+        // index is the line index itself — NOT a position into the filtered, sorted lq. The
+        // positional reading scrambled every line after a blank line (BUGS.md 2026-09-30).
+        look(lq).forEach((c, i) => {
+          if (c > 0) lineCovered[i] = 1;
         });
         look(bq).forEach((c, k) => {
           if (c > 0) brCov[k] = 1;

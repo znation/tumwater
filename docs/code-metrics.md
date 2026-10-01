@@ -219,9 +219,11 @@ prints a deterministic per-dist-file table after node's, merged from the run's r
 any-process semantics (the merge `coverage.cjs` uses, which was identical across all 11 runs);
 when the caller brings no `NODE_V8_COVERAGE` of its own, the runner captures the dumps in its
 scratch dir and removes them with it, so a plain `npm run test:coverage` costs the dump writes
-and nothing else is kept. That reading is stable where node's flips (`orchestrator.js` lines
-470/511 in back-to-back runs); a ±1-line wobble remains from timing-dependent test paths, which
-no merge can remove.
+and nothing else is kept. That reading is stable where node's flips (back-to-back runs agree on every file's counts); a
+±1-line wobble remains from timing-dependent test paths, which no merge can remove. (The table's
+first hours mis-merged the line queries around blank lines, crediting some covered lines to their
+neighbors and dropping others — fixed 2026-09-30, so per-file line figures quoted from runs before
+that fix are artificially low.)
 
 - **Two of the ten runs failed because the Mac slept mid-run.** The lid closed at 06:45, and the
   power log (`pmset -g log`) shows sleeps of 579 s, 904 s and 918 s after that. Every failing test

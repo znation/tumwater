@@ -9,6 +9,9 @@ _None yet._
 
 ## Fixed
 
+### The deterministic coverage table's line merge scrambles which lines it credits: makeLookup returns its results indexed by each query's recorded line index, but the line-query caller read them positionally after blank lines were filtered out of the query list, so every code line after a blank line inherited another line's verdict, lines numbered past the query count were dropped outright, and a file one process ran end to end reported uncovered lines (repro: a 6-line dist file with two blank separators, fully run by one process, read `lines 3/4` instead of `4/4`; the same-day fixture had no blank lines, so the existing test could not see it) (found by bugfix loop 2026-09-30 latent-bug hunt over the same day's deterministic-coverage commit eaffa744, fixed 2026-09-30 by bugfix loop)
+**Validation gap:** unclear-invariant — the port's own doc comment promised a positional result contract its implementation never honored, so the intended any-process merge semantics had to be reconstructed from the reference docs/code-metrics/coverage.cjs before the scramble could be confirmed.
+
 ### `npm run test:coverage` prints one of two readings for the same tree: 99.65% lines and 96.3% branches, or 99.90% and 96.7%, almost all of it `orchestrator.js` (87% vs 99% lines, 32% vs 62% branches). The higher reading counts code no process ran, so the coverage loop's "file with the most uncovered lines" and every before/after percentage it quotes depend on which reading a run happened to get (found by human-directed investigation 2026-09-30, fixed 2026-09-30 by bugfix loop)
 
 - **Symptom:** 12 passing runs of `npm run test:coverage` on unchanged 48213ce7 code (node v26.10.0) printed two different `all files` rows. 5 runs printed `99.65 | 96.28–96.29 | 97.82` and 7 printed `99.90 | 96.69–96.72 | 97.82`.
