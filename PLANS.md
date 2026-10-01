@@ -5,7 +5,72 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater pause --reason <text>` — the operator pause records why, and every observer states it (planned 2026-09-30 by plan loop)
+
+**Goal.** An operator who pauses the fleet (`tumwater pause`, GUI pause control) is leaving a
+note the whole team will read hours later — but today the pause is anonymous: the dashboards
+say only "The fleet is paused" (fleet-alerts.ts's paused alert) and the header badge says only
+"paused — auto-resumes in …" (badges.ts's `pauseBadge`). Let the pause carry a one-line reason
+that every observer — CLI status header, TUI header, GUI alert banner, `status --json` —
+states verbatim, so an operator returning to a paused fleet knows why without digging through
+`history`.
+
+**Approach.** The pause marker (src/fleet-state.ts's `PauseMarker` body, written by
+`pauseFleet` and read by `standingMarker`) gains an optional `reason?: string` — the same
+last-write-wins rule as `until`: each new pause write carries its own reason, and a pause
+written without one clears a stale reason. Scope is the FLEET marker only; per-role pauses
+(`pauseRole`'s `{roles, at, until}` body) stay anonymous — a per-role reason would need a
+per-role map for no observed need.
+
+- src/fleet-state.ts — `PauseMarker` gains `reason?: string`; export `PAUSE_REASON_MAX = 200`
+  (chars, the cap every writer shares); `pauseFleet(root, untilMs?, reason?)` persists the
+  trimmed, capped reason (`reason?.slice(0, PAUSE_REASON_MAX)` — the single cap, so the GUI
+  path cannot smuggle a longer one even if a later plan wires it); new accessor
+  `pausedReason(root): string | undefined` beside `pausedUntil`, read from the same
+  `standingFleetPause` so no extra marker read is added.
+- src/cli.ts — `runMarkerCommand`'s unknown-args gate admits a `--reason` flag for `pause`
+  only (alongside the existing `DURATION_FLAG` carve-out), so a stray `--reason` on wake/abort
+  fails fast instead of being silently ignored.
+- src/operator-commands.ts — `cmdPause` reads `--reason <text>` with the imported `flagValue`
+  (a missing value fails as `pause --reason needs a reason`, the `GREP_VALUE_ERROR` idiom);
+  pass it to `pauseFleet`; the confirmation line appends the reason verbatim —
+  `fleet paused — "deploying to prod" …` — while `already paused` keeps its idempotent
+  wording (a reasonless `pause` on a standing marker stays a no-op, matching the existing
+  `until` overwrite rule: only a fresh pause or a `--for` overwrite applies the new reason).
+- src/status-data.ts — `StatusSnapshot` gains `pauseReason?: string`; the single
+  `fleetPause = standingFleetPause(root)` read in the poll already holds it —
+  `pauseReason: fleetPause?.reason` beside `pausedUntil`, no extra marker read.
+- src/ui/status-payload.ts — ship `pauseReason: snap.pauseReason` beside `pausedUntil`, the
+  same omit-undefined idiom, so `status --json` and the GUI payload carry it.
+- src/ui/fleet-alerts.ts — the paused alert's title appends the reason:
+  `The fleet is paused and resumes in ${left} — "${reason}"` (and the untimed form likewise);
+  covers CLI, TUI, and GUI at once, since status-payload.ts computes the alerts for both
+  dashboards from this one function.
+- src/ui/badges.ts — `pauseBadge(pausedUntil, now, reason?)` appends ` — "${reason}"` after
+  the countdown, so the `tumwater status` header (status-render.ts) and the TUI header state
+  the reason; no reason, no change to today's byte-exact badge.
+- src/help.ts — the `pause` stanza line gains `--reason <text>`.
+
+**Out of scope (deliberate).** The GUI's pause toggle keeps sending `{paused, forSeconds}` —
+`/api/pause` (src/ui/gui-endpoints.ts) is untouched; GUI *displays* the reason automatically
+through the payload and alerts, and a follow-on plan can add a reason input to the composer if
+operators want one. Per-role pause reasons likewise stay out.
+
+**Acceptance criteria.**
+- `tumwater pause --reason "deploying to prod"` writes a marker carrying the reason; the
+  confirmation line quotes it; `tumwater status` shows `· paused — "deploying to prod"`;
+  `status --json` carries `pauseReason`; the GUI/TUI paused banner states it; `tumwater
+  resume` clears both.
+- A pause without `--reason` behaves exactly as today (idempotent no-op on a standing marker,
+  byte-identical badge/alert when no reason stands).
+- `pause --reason` with no value fails with the named message; a 200+-char reason is stored
+  capped; `wake --reason x` fails as an unknown argument.
+- A `--for` overwrite refreshes both deadline and reason (last write wins), pinned by test.
+- Tests extend the existing homes: test/fleet-state.test.ts (marker shape, `pausedReason`,
+  cap, last-write-wins), test/operator-commands.test.ts (flag parse, wording, unknown-arg
+  rejection), test/status-data.test.ts (`pauseReason` in the snapshot), test/badges.test.ts
+  and test/status-header.test.ts (badge with and without reason), test/fleet-alerts.test.ts
+  (alert title with and without reason).
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
