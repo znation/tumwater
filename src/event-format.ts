@@ -144,6 +144,12 @@ export function eventMessage(e: HarnessEvent): string {
       // build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
       return `build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
+    case "dep_install": {
+      // The root checkout's install catching up with a landed lockfile change — routine on
+      // success; a failure also rides its own warning, which says what happens meanwhile.
+      const pkgs = Array.isArray(e.packages) ? (e.packages as string[]).join(", ") : "";
+      return `root install (${pkgs}) ${e.status}${e.error ? ` — ${e.error}` : ""}${elapsed(e.durationMs)}`;
+    }
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
       // operator still has room to raise it or fix the fallback before the fleet stops.

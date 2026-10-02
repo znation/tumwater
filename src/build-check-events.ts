@@ -94,6 +94,21 @@ export function sleptPhrase(label: string, sleptMs: number, proceeding: string):
   return `${label} ran while the host slept ${secs}s mid-run; ${proceeding}`;
 }
 
+/** The `the dependency install (<pkgs>) failed[: <detail>]; skipping <label>; <proceeding>`
+ * sentence for an "install" skip — the tree's lockfile pinned dependencies the walk-up did not
+ * provide and installing them failed (dep-install.ts). One home, beside killedPhrase and
+ * sleptPhrase, for the skip warning and the merge-scope unverified reason. A caller with no
+ * install record (the red-main baseline's MainBaselineCheck) gets the name-less form. */
+export function installFailedPhrase(
+  label: string,
+  install: { packages: string[]; detail?: string } | undefined,
+  proceeding: string,
+): string {
+  const pkgs = install && install.packages.length > 0 ? ` (${install.packages.join(", ")})` : "";
+  const detail = install?.detail ? `: ${install.detail}` : "";
+  return `the dependency install${pkgs} failed${detail}; skipping ${label}; ${proceeding}`;
+}
+
 /** Did this outcome make no verdict about the tree? runScopedBuildCheck records that verdict-
  * less shape explicitly (`unverified: true`) at the merge scopes; a gate-scope failure carries
  * only the run's own sleep evidence (BuildCheckRun.sleptMs), so both spellings count. The
@@ -112,8 +127,8 @@ export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: Bui
  * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
  * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
  * with, and when the caller passes the run and its deadline fired late, the time it really
- * fired at (timedOutPhrase). A "missing-install" skip names the unresolvable modules the
- * caller's outcome recorded, so the warning says which dependencies no install provides. */
+ * fired at (timedOutPhrase). An "install" skip names the drifted packages and how the install
+ * failed when the caller has the outcome's install record (installFailedPhrase). */
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,
@@ -121,12 +136,11 @@ export function buildCheckSkipWarning(
   timeoutMs: number,
   killed?: { signal: string; durationMs: number },
   run?: BuildCheckRun,
-  missingModules?: string[],
+  install?: { packages: string[]; detail?: string },
 ): string {
   if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
+  if (skipReason === "install") return installFailedPhrase(label, install, proceeding);
   if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
-  if (skipReason === "missing-install")
-    return `the unresolvable modules (${(missingModules ?? []).join(", ")}) are dependencies the tree declares but no install provides; skipping ${label}; ${proceeding}`;
   if (skipReason === "killed") return killedPhrase(label, killed, proceeding);
   return `${label} ${timedOutPhrase(timeoutMs, run)}; ${proceeding}`;
 }
@@ -161,7 +175,7 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
 export function buildCheckEvent(
   loop: string,
   scope: BuildCheckScope | "baseline",
-  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts">,
+  outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
   durationMs: number,
 ): HarnessEventInput {
   return {
@@ -175,5 +189,14 @@ export function buildCheckEvent(
     // The harness's own attestation of the runner's summary (parseTestCounts), carried on
     // passed and failed outcomes when the check printed a summary block.
     ...(outcome.counts ? { counts: outcome.counts } : {}),
+    // The lockfile install the check ran first (dep-install.ts): which direct dependencies had
+    // drifted, and what the install cost — priced apart from the check's own durationMs.
+    ...(outcome.install
+      ? {
+          installed: outcome.install.packages,
+          installMs: outcome.install.durationMs,
+          ...(outcome.install.detail ? { installError: outcome.install.detail } : {}),
+        }
+      : {}),
   };
 }

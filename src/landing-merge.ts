@@ -21,6 +21,7 @@ import { warnEvent } from "./events.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { mergeLockDir } from "./paths.js";
+import { syncRootInstall } from "./dep-install.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
 import type { RunsPi } from "./loop-pi.js";
@@ -131,6 +132,9 @@ async function tryMerge(
     const commit = await headOf(ctx.root, ctx.mainBranch);
     logEvent(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
     logNewQuestions(ctx.root, before, ctx.role);
+    // Still under the lock: a landing that moved main's lockfile re-syncs the root install
+    // every worktree resolves through before the next landing's check runs (BUGS.md 2026-10-01).
+    await syncRootInstall(ctx.root, ctx.role);
     return "changed";
   });
 }
@@ -285,6 +289,7 @@ export async function ffStackToMain(
       logEvent(root, { loop: entry.role, type: "merged", commit: entry.sha, summary: entry.summary });
     }
     logNewQuestions(root, before, landed[0]!.role);
+    await syncRootInstall(root, tip.role); // As tryMerge: re-sync the root install under the lock.
     return "changed";
   });
 }

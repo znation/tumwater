@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import {
@@ -8,6 +6,7 @@ import {
   buildCheckEvent,
   buildCheckSkipWarning,
   DEADLINE_LATE_TOLERANCE_MS,
+  installFailedPhrase,
   killedPhrase,
   timedOutPhrase,
   type BuildCheckScope,
@@ -20,6 +19,7 @@ import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
 import { SLEEP_SPAN_TOLERANCE_MS, sleptPhrase } from "./build-check-events.js";
 import type { CheckConfigSlice } from "./config-schema.js";
+import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
  * the project's declared check (an npm script — `test` preferred per npm convention, then
@@ -55,15 +55,13 @@ import type { CheckConfigSlice } from "./config-schema.js";
 
 /** Why a declared check reached no verdict: the script never finished (timeout), the script
  * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
- * 2026-09-23), npm is not on PATH, the toolchain below the project is broken, or the run's
- * only unresolvable modules are dependencies the worktree's own package.json declares but no
- * install provides (missing-install — BUGS.md 2026-10-01: a dependency-adding change is
- * deterministically rejected before the reviewer ever sees it, because the gate check runs in
- * a worktree that walks UP to a root install predating the new package). Shared with
+ * 2026-09-23), npm is not on PATH, the toolchain below the project is broken, or the tree's
+ * lockfile pins dependencies the walk-up does not provide and installing them failed (install —
+ * BUGS.md 2026-10-01; usually an unreachable registry). Shared with
  * main-baseline.ts's MainBaselineCheck, whose skip is the same environmental case family — the
  * string literals live in one place so a new reason can be added without two unions drifting
  * apart. */
-export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "missing-install";
+export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "install";
 
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
@@ -98,9 +96,10 @@ export interface BuildCheckOutcome {
    * output on passed and failed outcomes — absent when the check printed no such block. The
    * harness attests these so no model has to restate them (PLANS.md 2026-09-29). */
   counts?: TestCounts;
-  /** On a "missing-install" skip: the unresolved modules the output named, all declared by the
-   * worktree's package.json — the warning and the reviewer's frame report them by name. */
-  missingModules?: string[];
+  /** Set when the check first installed the tree's lockfile because its direct dependencies
+   * were not what the walk-up resolved (dep-install.ts, BUGS.md 2026-10-01): the drifted names
+   * and the install's own wall-clock. On an "install" skip, `detail` says how it failed. */
+  install?: { packages: string[]; durationMs: number; detail?: string };
 }
 
 /** When one check's process group actually ran, as runScriptGroup observed it: carried on
@@ -208,6 +207,7 @@ export async function runBuildCheck(
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
   killGraceMs = KILL_GRACE_MS,
   sampleSleep: SleepSampler = sampleSleepClock,
+  install: InstallRunner = npmInstall,
 ): Promise<BuildCheckOutcome> {
   const script = checkScriptName(check);
   const effectiveMs = checkTimeoutMs(check, timeoutMs);
@@ -217,6 +217,40 @@ export async function runBuildCheck(
   if ((await probeToolchain()) === "broken") {
     return { status: "skipped", script, skipReason: "toolchain" };
   }
+  // A tree whose lockfile pins direct dependencies the walk-up does not resolve (a change that
+  // adds or bumps one — node_modules is gitignored, so the worktree resolves through a root
+  // install that predates it) is installed first, into the tree itself: without it the check
+  // fails TS2307 on a correct change and rejects it before any reviewer sees it (BUGS.md
+  // 2026-10-01). An npm check only — a configured command owns its own environment. A failed
+  // install made no verdict about the tree; runScopedBuildCheck treats it as unverified at the
+  // merge scopes, so an uninstallable tree never lands.
+  let installed: BuildCheckOutcome["install"];
+  if (check.kind === "npm") {
+    const r = await syncInstall(wt, install);
+    if (r && !r.ok)
+      return {
+        status: "skipped",
+        script,
+        skipReason: "install",
+        install: { packages: r.packages, durationMs: r.durationMs, detail: r.detail },
+      };
+    if (r) installed = { packages: r.packages, durationMs: r.durationMs };
+  }
+  const outcome = await runDeclaredCheck(wt, check, script, effectiveMs, killGraceMs, sampleSleep);
+  return installed ? { ...outcome, install: installed } : outcome;
+}
+
+/** runBuildCheck's run-and-classify step, once the probe and any owed install are done: spawn
+ * the declared check as a process group under its deadline, bracketed by sleep samples, and
+ * classify what it did. */
+async function runDeclaredCheck(
+  wt: string,
+  check: BuildCheck,
+  script: string,
+  effectiveMs: number,
+  killGraceMs: number,
+  sampleSleep: SleepSampler,
+): Promise<BuildCheckOutcome> {
   // Sleep evidence brackets the spawn: the opening sample is taken while the host is provably
   // awake (this code is running), so any sleep the closing sample can attribute began inside
   // the run's window. A platform with no readable clock leaves run.sleptMs unset — no evidence
@@ -266,17 +300,6 @@ export async function runBuildCheck(
     if (toolchainErrorInOutput(output)) {
       return { status: "skipped", script, skipReason: "toolchain", run };
     }
-    // A failed run whose ONLY unresolvable modules are dependencies the worktree's own
-    // package.json declares is not a verdict about the tree: node_modules is gitignored, the
-    // check's toolchain resolves by walking UP from wt, and no loop ever installs — so a
-    // legitimate dependency-adding change is rejected before the reviewer sees it (BUGS.md
-    // 2026-10-01). Environmental: skip and proceed to the review, which judges the change on
-    // its merits; a module the diff does NOT declare still fails here (a typo'd import is a
-    // defect, not weather). The declared-dependencies read is best-effort: an unreadable or
-    // dep-less package.json means no classification is owed.
-    const missing = missingInstallModules(output, wt);
-    if (missing)
-      return { status: "skipped", script, skipReason: "missing-install", run, missingModules: missing };
     return {
       status: "failed",
       script,
@@ -287,58 +310,6 @@ export async function runBuildCheck(
   }
   // Spawn failed before anything ran — the runner is missing from PATH.
   return { status: "skipped", script, skipReason: "no-npm" };
-}
-
-/** Package names the output names as unresolvable — tsc's TS2307 (`Cannot find module 'react'`)
- * and node's own resolver share the phrase. Bare names only: relative and absolute specifiers
- * and node: builtins say nothing about an install. A subpath import collapses to its package
- * (`react/jsx-runtime` → `react`) and a scoped package keeps its scope. */
-export function unresolvedModulesInOutput(output: string): string[] {
-  const names = new Set<string>();
-  for (const m of output.matchAll(/Cannot find module ['"]([^'"]+)['"]/g)) {
-    const spec = m[1];
-    if (!spec) continue;
-    if (spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("node:")) continue;
-    const segs = spec.split("/");
-    const first = segs[0];
-    if (!first) continue;
-    const second = segs[1];
-    names.add(first.startsWith("@") && second ? `${first}/${second}` : first);
-  }
-  return [...names];
-}
-
-/** The dependency names the worktree's package.json declares (dependencies, devDependencies,
- * peerDependencies, optionalDependencies), or null when none are readable — a missing,
- * unparseable, or dep-less manifest means no missing-install classification is owed. */
-function declaredDependencies(wt: string): Set<string> | null {
-  try {
-    const pkg = JSON.parse(fs.readFileSync(path.join(wt, "package.json"), "utf8"));
-    const deps = new Set<string>();
-    for (const key of [
-      "dependencies",
-      "devDependencies",
-      "peerDependencies",
-      "optionalDependencies",
-    ])
-      for (const name of Object.keys(pkg[key] ?? {})) deps.add(name);
-    return deps.size > 0 ? deps : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The worktree's declared dependencies that the run output could not resolve — non-empty only
- * when the output names unresolvable modules and EVERY one of them is a dependency the
- * worktree's own package.json declares, the exact missing-install shape (BUGS.md 2026-10-01).
- * One undeclared module anywhere in the failure means a genuine defect: no classification. */
-function missingInstallModules(output: string, wt: string): string[] | null {
-  const unresolved = unresolvedModulesInOutput(output);
-  if (unresolved.length === 0) return null;
-  const declared = declaredDependencies(wt);
-  if (!declared) return null;
-  if (!unresolved.every((name) => declared.has(name))) return null;
-  return unresolved;
 }
 
 // ── Process-wide check cap ────────────────────────────────────────────────────────────────
@@ -372,6 +343,7 @@ export async function runScopedBuildCheck(
   config?: CheckConfigSlice,
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
   sampleSleep: SleepSampler = sampleSleepClock,
+  install: InstallRunner = npmInstall,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
   const check = detectBuildCheck(
@@ -391,7 +363,7 @@ export async function runScopedBuildCheck(
     MERGE_SCOPES.has(scope) ? CHECK_TIER.merge : CHECK_TIER.other,
     async () => {
       const startedAt = Date.now();
-      const first = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep);
+      const first = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - startedAt;
       // A check the harness did not stop itself says nothing about the tree — its death is
       // another run's doing. At a merge scope, a timeout whose deadline demonstrably fired
@@ -423,7 +395,7 @@ export async function runScopedBuildCheck(
         return first;
       logEvent(root, buildCheckEvent(role, scope, first, durationMs));
       const retryStart = Date.now();
-      const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep);
+      const retry = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - retryStart;
       return retry;
     },
@@ -442,13 +414,17 @@ export async function runScopedBuildCheck(
   // deterministic failure (BUGS.md 2026-09-30). A retry that passed stands: the tree went
   // green under the project's own check, even if the host napped through parts of it.
   const sleepFailed = raw.status === "failed" && (raw.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS;
+  // A failed dependency install is the same at a merge scope: nothing ran against the tree as
+  // its lockfile pins it, so it must not land (BUGS.md 2026-10-01).
   const unverifiedSkip =
     MERGE_SCOPES.has(scope) &&
     (((raw.status === "skipped" &&
-      (raw.skipReason === "timeout" || raw.skipReason === "killed")) ||
+      (raw.skipReason === "timeout" || raw.skipReason === "killed" || raw.skipReason === "install")) ||
       sleepFailed));
   const unverifiedReason =
-    raw.skipReason === "killed"
+    raw.skipReason === "install"
+      ? installFailedPhrase(SCOPE_WORDS[scope].label, raw.install, "the tree is unverified")
+      : raw.skipReason === "killed"
       ? killedPhrase(
           SCOPE_WORDS[scope].label,
           raw.killedBy ? { signal: raw.killedBy, durationMs } : undefined,
@@ -464,6 +440,7 @@ export async function runScopedBuildCheck(
         outputTail: [unverifiedReason],
         run: raw.run,
         unverified: true,
+        ...(raw.install ? { install: raw.install } : {}),
       }
     : raw;
   logEvent(root, buildCheckEvent(role, scope, outcome, durationMs));
@@ -483,7 +460,7 @@ export async function runScopedBuildCheck(
           ? { signal: outcome.killedBy, durationMs }
           : undefined,
         outcome.run,
-        outcome.missingModules,
+        outcome.install,
       ),
     );
   } else if (unverifiedSkip) {
