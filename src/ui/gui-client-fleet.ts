@@ -101,11 +101,13 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // needs-you-cue:start
   // The sound half of the alerts band: when this poll's alerts carry a needs-you key the last
   // poll lacked, play that alert's cue (playAlertCue, gui-client-sound.ts, no-ops while muted
-  // or before the first gesture). Each fresh alert books its own cue 2 s apart, so one poll
-  // delivering several new alerts still sounds one cue per alert while the rate limit holds
-  // across polls. The keys seen now are kept for the next poll's diff; lastNeedsYouKeys starts
-  // null, so a page opened onto an already-alerting fleet cues once. now passes through to
-  // playAlertCue so tests can step time across the rate limit.
+  // or before the first gesture). renderAlerts passes no clock, so every fresh alert in one
+  // poll lands on the same Date.now() and playAlertCue's 2 s rate limit collapses the poll
+  // to a single cue — deliberate, an alert storm is one chirp (gui-client-sound.ts). The
+  // i * 2000 spacing exists for the test path, which passes a stepped clock so each fresh
+  // alert clears the window and sounds its own cue. The keys seen now are kept for the next
+  // poll's diff; lastNeedsYouKeys starts null, so a page opened onto an already-alerting
+  // fleet cues once.
   let lastNeedsYouKeys = null;
   function cueNewNeedsYou(alerts, now) {
     const fresh = newNeedsYouKeys(lastNeedsYouKeys, alerts);
