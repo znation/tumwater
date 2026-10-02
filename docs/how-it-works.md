@@ -195,7 +195,9 @@ while the fleet runs, and each one logs a `config_changed` event.
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Fleet: alerts for whatever needs you (a failing or stuck loop, a red
   main, a spent budget, an old build, open questions, a pause), the prompt box, today's progress,
-  the loops grouped by what they are doing, the backlog, and the notable activity. Clicking a loop
+  the loops grouped by what they are doing, the backlog, and the notable activity. A new
+  needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
+  across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
   opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
   and Failures views match `tumwater history`, `tumwater report`, and `tumwater report --failures`.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
