@@ -104,7 +104,7 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   let r = setConfigKey(dir, "minTickIntervalSeconds", "45");
   assert.deepEqual(r, { ok: true, value: 45, oldValue: defaultConfig().minTickIntervalSeconds });
   let raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
-  assert.strictEqual(raw.minTickIntervalSeconds, 45);
+  assert.strictEqual(raw.minTickIntervalSeconds, 45, "config set minTickIntervalSeconds=45 persists the parsed number 45");
   assert.strictEqual(raw.maxConcurrent, 3, "other keys preserved");
 
   r = setConfigKey(dir, "model", '"gpt-5"');
@@ -114,7 +114,7 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   r = setConfigKey(dir, "model", "gpt-5");
   assert.ok(r.ok && r.value === "gpt-5" && r.oldValue === "gpt-5");
   raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
-  assert.strictEqual(raw.model, "gpt-5");
+  assert.strictEqual(raw.model, "gpt-5", "config set model gpt-5 (unquoted) persists the literal string gpt-5");
 });
 
 test("setConfigKey rejects an unknown key and a type-invalid value, leaving the file untouched", () => {
@@ -150,13 +150,13 @@ test("setConfigKey writes and clears quietHours; a malformed window fails untouc
   let r = setConfigKey(dir, "quietHours", "23:00-07:00");
   assert.ok(r.ok && r.value === "23:00-07:00");
   let raw = readJson(file) as Record<string, unknown>;
-  assert.strictEqual(raw.quietHours, "23:00-07:00");
+  assert.strictEqual(raw.quietHours, "23:00-07:00", "a valid quietHours persists as the literal string");
 
   // An empty string is the documented off.
   r = setConfigKey(dir, "quietHours", "");
   assert.ok(r.ok && r.value === "");
   raw = readJson(file) as Record<string, unknown>;
-  assert.strictEqual(raw.quietHours, "");
+  assert.strictEqual(raw.quietHours, "", "an empty quietHours persists as the documented off value");
 
   // A malformed window fails with checkQuietHours's own actionable message, and the file is
   // byte-identical — the per-key validator screens it before writeConfigMutation runs.
