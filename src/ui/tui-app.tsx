@@ -1,9 +1,9 @@
 /** The ink component tree that draws `tumwater tui`'s frame. Pure drawing: it takes the
- * frame tui.ts's render step assembles — the same clipped StatusLines the tui-frame.ts
+ * frame tui.tsx's render step assembles — the same clipped StatusLines the tui-frame.ts
  * builders produce — and lays one line out per row, one styled Text per span. Ink
  * diff-renders the tree, so a changed cell rewrites only that cell's lines instead of
  * clearing the screen (the flicker BUGS.md recorded is gone); key handling lives in
- * tui.ts's readline handler, which stays the sole owner of the terminal's stdin. */
+ * tui.tsx's readline handler, which stays the sole owner of the terminal's stdin. */
 import { Box, Text } from "ink";
 import type { StatusLine, StatusSpan } from "./status-render.js";
 
@@ -27,7 +27,7 @@ export function toneColor(tone: StatusSpan["tone"]): string {
   return tone ? TONE_COLORS[tone] : "";
 }
 
-/** One composed frame: the ordered lines tui.ts's render step assembles, already clipped
+/** One composed frame: the ordered lines tui.tsx's render step assembles, already clipped
  * to the terminal width. An empty line draws as a blank row. */
 export interface TuiAppView {
   lines: readonly StatusLine[];

@@ -1,9 +1,9 @@
 import { cutSplitsSurrogatePair } from "../text.js";
 import { displayWidth } from "../text-width.js";
 
-/** Pure prompt-line editing for the TUI (src/ui/tui.ts): the line editor, its display window,
+/** Pure prompt-line editing for the TUI (src/ui/tui.tsx): the line editor, its display window,
  * the daily-budget input parser, and the terminal guard message runTui throws at startup.
- * Split out of tui.ts — which keeps the terminal lifecycle, rendering, and input dispatch —
+ * Split out of tui.tsx — which keeps the terminal lifecycle, rendering, and input dispatch —
  * so this TTY-free logic is testable in isolation and the run loop reads as orchestration
  * rather than string surgery. The project-status pane (its body lines, entry selection, and
  * scrolling) lives in tui-backlog.ts. */
@@ -57,7 +57,7 @@ function killWordBefore(text: string, c: number): { text: string; cursor: number
  * the two directions of half-line discard (a long prompt often wants one, the other, or
  * both: type the tail, Ctrl+U it away, retype). Every other control/meta combination is
  * ignored — Ctrl+W cannot join the kill set because the TUI's transcript views already
- * bind it to per-loop wake (tui.ts). Returns the new state; an out-of-range cursor is
+ * bind it to per-loop wake (tui.tsx). Returns the new state; an out-of-range cursor is
  * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when the unit they would cut is one
  * half of a surrogate pair (an astral character such as emoji), both units go together so no
  * lone surrogate — which terminals render as garbage — is ever left behind (the same
@@ -148,7 +148,7 @@ export function parseBudgetInput(
  * queues nothing, exactly like the director prompt line's Enter rule, and the error names Esc
  * so an operator who opened the editor by accident learns the way out. Pure, like
  * parseBudgetInput; the submit path itself (the shared submitRolePromptAndWake, wired to
- * the editor by tui.ts) lives with the other disk-writing handlers. */
+ * the editor by tui.tsx) lives with the other disk-writing handlers. */
 export function parseRolePromptInput(
   text: string,
 ): { ok: true; value: string } | { ok: false; error: string } {
@@ -159,7 +159,7 @@ export function parseRolePromptInput(
 
 /** The prompt line's session history: every successfully submitted prompt (director and
  * per-role alike — one list, like a shell's), recallable with Up/Down the way readline does
- * it. Pure state, so the recall rules are unit-testable without a TTY; tui.ts owns pushing
+ * it. Pure state, so the recall rules are unit-testable without a TTY; tui.tsx owns pushing
  * on submit and wiring the arrow keys, this file owns the rules.
  *
  * Readline's two habits are kept: consecutive duplicates are not recorded twice (ignoredups
