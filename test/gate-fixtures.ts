@@ -3,6 +3,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { reviewAheadOfMain } from "../src/review.js";
+import { runPi } from "../src/pi.js";
 import { headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
@@ -15,9 +16,19 @@ import { makeRepo, sh } from "./repo-fixtures.js";
 /** The role the gate fixtures run as — a code-change role, so its diffs are NOT exempt. */
 export const ROLE = "improve";
 
-/** The reviewAheadOfMain context over a repo: tick 1 unless overridden. */
+/** The reviewAheadOfMain context over a repo: tick 1 unless overridden. The gate's pi runs
+ * go through the bare runPi here (no transient retry): the tests drive the reviewer with a
+ * fake-pi shim and never need the retry, which the LoopPi-level tests pin. */
 export function gateCtx(root: string, wt: string, tick = 1) {
-  return { root, role: ROLE, wt, mainBranch: "main", config: defaultConfig(), tick };
+  return {
+    root,
+    role: ROLE,
+    wt,
+    mainBranch: "main",
+    config: defaultConfig(),
+    tick,
+    runGatePi: (opts: Parameters<typeof runPi>[0]) => runPi(opts),
+  };
 }
 
 /** Repo with a worktree one commit ahead of main — a code change, so NOT exempt. */

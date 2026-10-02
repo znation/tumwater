@@ -162,7 +162,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       try {
         addLandingChange(root, entry, liveRoles(p));
         verdict = await vetRequest(
-          { root, mainBranch, config: author.config, signal: () => vet.controller.signal },
+          { root, mainBranch, config: author.config, signal: () => vet.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
           {
             role,
             sha: entry.sha,
@@ -171,7 +171,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
             body: entry.body,
             highFriction: entry.highFriction,
           },
-          { state: author.state, foldUsage, runPi: (w, prompt, s) => author.runLandingPi(w, prompt, s) },
+          { state: author.state, foldUsage, runPi: (w, prompt, s) => author.runLandingPi(w, prompt, s), runGatePi: (opts) => author.runGatePi(opts) },
         );
       } catch (err) {
         verdict = { kind: "result", result: "error" };

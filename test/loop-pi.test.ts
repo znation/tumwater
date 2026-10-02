@@ -206,6 +206,41 @@ test("a Retry-After hint larger than the cap is waited out only to the cap", asy
   }
 });
 
+test("runGatePi gives the reviewer the same 429 retry, folding only the failed attempt", async () => {
+  // BUGS.md 2026-10-01: review.ts called bare runPi, so a 429 in the landing gate failed the
+  // review on first contact — the gate's runs now take this wiring. The fold split: a RETRIED
+  // first attempt is folded here (its spend is otherwise lost, and the fold stamps the
+  // fleet-wide rate-limit hold before the wait), while the FINAL run is folded by the gate's
+  // caller (landing-core's foldUsage of gate.run) — folding it twice would count the reviewer
+  // twice.
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
+  });
+  try {
+    const { loopPi, warns, usage, sleeps } = makeHost(root);
+    const result = await loopPi.runGatePi({
+      cwd: root,
+      prompt: "review the change",
+      config: defaultConfig(),
+      sessionDir: sessionDir(root, "feature"),
+      sessionName: "tumwater-review-feature-1",
+      rawLogFile: path.join(root, "log.jsonl"),
+      label: "review",
+    });
+    assert.equal(result.ok, true, "the retry succeeds");
+    assert.equal(usage.length, 1, "the failed attempt is folded; the final run is the caller's");
+    assert.match(warns[0]!, /rate-limited the request \(429, retry after 3s\)/);
+    assert.deepEqual(sleeps, [3000], "the hint is waited out before the retry");
+    const [firstArgs, retryArgs] = runArgs(args);
+    assert.match(firstArgs!, /-n tumwater-review-feature-1/, "the gate's own session name is kept");
+    assert.match(retryArgs!, /--continue/, "the retry resumes the review's session");
+  } finally {
+    restore();
+  }
+});
+
 test("a backend-kind failure the retry does not cover warns once and earns no retry", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

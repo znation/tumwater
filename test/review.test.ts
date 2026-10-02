@@ -257,6 +257,30 @@ test("gate approves a good diff, records the HEAD, and discards the reviewer's s
   });
 });
 
+test("the reviewer's pi run goes through the loop's runGatePi wiring, not bare runPi", async () => {
+  // BUGS.md 2026-10-01: the gate called runPi directly, so a 429 in the landing gate failed
+  // the review with no transient retry and no rate-limit hold stamp — the one surface the
+  // shared retry's "EVERY pi run" doc promised and review.ts alone skipped. The pin: the
+  // gate's reviewer run must arrive through the context's runGatePi seam.
+  const { root, wt } = await gateFixture();
+  const calls: Array<{ prompt: string; label?: string }> = [];
+  await withPi(
+    `printf '%s\n' '${assistantLine("VERDICT: approve")}'`,
+    async () => {
+      const { result } = await reviewGate(root, wt, {
+        runGatePi: async (opts) => {
+          calls.push({ prompt: opts.prompt, label: opts.label });
+          return gateCtx(root, wt).runGatePi(opts);
+        },
+      });
+      assert.equal(result.decision, "approved");
+      assert.equal(calls.length, 1, "the review run itself went through the wiring");
+      assert.match(calls[0]!.prompt, /VERDICT:/, "the wiring saw the review prompt");
+      assert.equal(calls[0]!.label, "review");
+    },
+  );
+});
+
 test("gate rejects a bad diff: branch reset to main, reasons recorded", async () => {
   const { root, wt } = await gateFixture();
   await withPi(

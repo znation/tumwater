@@ -96,8 +96,22 @@ export class LoopPi {
     });
   }
 
+  /** The landing gate's reviewer runs (review.ts's review run and verdict follow-up): the
+   * same shared transient-retry wiring — a 429 in the gate waits its hint out and retries
+   * once, exactly like an authoring run (BUGS.md 2026-10-01) — with one folding difference:
+   * the FINAL run's usage is folded by the gate's caller (landing-core's foldUsage of
+   * gate.run / gate.followUpRun), so only a RETRIED first attempt is folded here. That fold
+   * is not optional: it stamps the fleet-wide rate-limit hold's input before the wait, and
+   * it is the only record the failed attempt's spend would ever get.
+   * Takes full PiRunOptions because the gate's two runs differ in everything but the loop
+   * they charge (config, session dir and name, label, tool-call callbacks, signal).
+   */
+  async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
+    return this.runWithTransientRetry(opts, { foldFinal: false });
+  }
+
   /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
-   * (runRolePi and runLandingPi): two transient failures of the world (not of the session)
+   * (runRolePi, runLandingPi, and runGatePi): two transient failures of the world (not of the session)
    * earn exactly one retry that continues the same session — the model server timing out an
    * idle predict stream, the provider severing that stream outright (undici's bare
    * "terminated", the stream-severed backend kind), the provider accepting a request and
@@ -112,7 +126,14 @@ export class LoopPi {
    * full quiet timeout. Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
    */
-  private async runWithTransientRetry(opts: PiRunOptions): Promise<PiRunResult> {
+  private async runWithTransientRetry(
+    opts: PiRunOptions,
+    /** runGatePi only: skip folding the FINAL returned run (the caller folds it), while a
+     * retried first attempt still folds — its spend and its rate-limit hold stamp must not
+     * vanish just because the gate routes its own folding. Default folds everything, the
+     * authoring and landing behavior. */
+    { foldFinal = true }: { foldFinal?: boolean } = {},
+  ): Promise<PiRunResult> {
     const pi = await runPi(opts);
     if (
       !pi.aborted &&
@@ -163,7 +184,7 @@ export class LoopPi {
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
-      this.host.foldUsage(retry);
+      if (foldFinal) this.host.foldUsage(retry);
       return retry;
     }
     // The backend-kind floor (BUGS.md 2026-09-29): a failed run of a backend kind the retry
@@ -183,7 +204,7 @@ export class LoopPi {
         `provider backend failure (${backendKindPhrase(pi.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
       );
     }
-    this.host.foldUsage(pi);
+    if (foldFinal) this.host.foldUsage(pi);
     return pi;
   }
 
@@ -239,10 +260,17 @@ export class LoopPi {
  * adds one run's spend to the owning loop's counters exactly once (the reviewer and
  * conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
- * LanderContext and BatchRoleWiring carry both halves (PiRunWiring), MergeContext only the
- * runner (its runPi folds usage internally), and VettedLanding only the fold. */
+ * LanderContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
+ * the resolver's runner (its runPi folds usage internally), and VettedLanding only the fold. */
 export interface RunsPi {
   runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
+}
+
+/** The landing gate's reviewer runs through the loop's shared transient-retry wiring
+ * (src/loop-pi.ts's runGatePi). Separate from RunsPi because the conflict resolver never
+ * needs it and the gate never needs the three-arg resolver shape. */
+export interface GateRunsPi {
+  runGatePi(opts: PiRunOptions): Promise<PiRunResult>;
 }
 
 /** One run's spend folded into the owning loop's usage counters exactly once — the
@@ -255,4 +283,4 @@ export interface FoldsUsage {
 /** A landing context that runs pi through the loop's shared wiring and folds each run's
  * usage: both halves (RunsPi + FoldsUsage). LanderContext and BatchRoleWiring extend this;
  * contexts needing only one half extend that half instead (MergeContext, VettedLanding). */
-export interface PiRunWiring extends RunsPi, FoldsUsage {}
+export interface PiRunWiring extends RunsPi, GateRunsPi, FoldsUsage {}

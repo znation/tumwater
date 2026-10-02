@@ -98,6 +98,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       {
         state: v.author.state,
         foldUsage: v.foldUsage,
+        runGatePi: (opts) => v.author.runGatePi(opts),
         runPi: async (w, prompt, s) => {
           await semaphore.acquire(MERGE_TIER);
           try {
@@ -120,6 +121,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           config: roleConfig,
           signal: () => merge.controller.signal,
           onChangeStatus: (role, status) => setLandingChangeStatus(root, role, status),
+          runGatePi: (opts) => picks[0]!.author.runGatePi(opts),
         },
         picks.map((v) => ({
           role: v.entry.role,

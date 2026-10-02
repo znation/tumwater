@@ -4,6 +4,7 @@ import { ensureDetachedWorktree } from "./worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { reviewAheadOfMain, type GateResult } from "./review.js";
+import type { GateRunsPi } from "./loop-pi.js";
 import { recordReview } from "./tick-outcome.js";
 import { saveLoopState } from "./loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
@@ -62,7 +63,8 @@ export interface LandRequest {
 /** What a landing needs from its owning loop: identity, config, the live state object (the
  * gate updates it in place exactly as when it ran inside runTick), the loop's shared pi wiring
  * for landing-merge.ts's conflict resolver — which folds usage internally — an explicit foldUsage for
- * the reviewer run (reviewAheadOfMain starts its own raw pi call and returns it as `gate.run`),
+ * the reviewer run's FINAL result (runGatePi folds a retried first attempt at retry time and
+ * leaves the final run to this fold — folding it in both places would count the reviewer twice),
  * and the landing's abort signal, captured per call. */
 export interface LanderContext extends PiRunWiring {
   root: string;
@@ -84,7 +86,7 @@ type GateOutcome =
 /** The identity every gate invocation needs from its caller — landing-batch.ts's BatchContext
  * (and LanderContext) satisfies it, so the gate never hand-assembles a nine-field argument
  * object. */
-interface ReviewGateContext {
+interface ReviewGateContext extends GateRunsPi {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
@@ -144,7 +146,7 @@ export async function reviewPinnedChange(
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
   const gate = await reviewAheadOfMain(
-    { root, role, wt, mainBranch, config, tick: req.tick, signal: ctx.signal() },
+    { root, role, wt, mainBranch, config, tick: req.tick, signal: ctx.signal(), runGatePi: ctx.runGatePi },
     state,
     req.summary,
     req.body,
@@ -162,6 +164,10 @@ export async function reviewPinnedChange(
   // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveLoopState(root, state);
+  // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
+  // attempt at retry time (stamping the fleet-wide rate-limit hold promptly, BUGS.md
+  // 2026-10-01), and the final run is folded HERE — not also inside the wiring, which would
+  // count the reviewer twice.
   if (gate.run) foldUsage(gate.run);
   // The verdict-recovery follow-up (review.ts) charges to the same role totals as the run
   // that produced it — one more line here, because a GateResult carries two runs now.

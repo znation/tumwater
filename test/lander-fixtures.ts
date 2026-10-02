@@ -15,6 +15,7 @@ import type { LoopState } from "../src/loop-state.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
+import { runPi } from "../src/pi.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
 
@@ -59,6 +60,7 @@ export function makeCtx(
       resolve?.(wt);
       return piResult();
     },
+    runGatePi: async (opts) => runPi(opts),
     foldUsage: (run) => folded.push(run),
     signal: () => controller.signal,
   };
@@ -92,7 +94,12 @@ export function request(sha: string, overrides: Partial<LandRequest> = {}): Land
 /** Land one pinned change the way the pipeline does — its vet, then (approved) a one-change
  * merge — over one LanderContext's wiring, returning the outcome the pipeline writes back. */
 export async function vetAndLand(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
-  const w: BatchRoleWiring = { state: ctx.state, foldUsage: ctx.foldUsage, runPi: ctx.runPi };
+  const w: BatchRoleWiring = {
+    state: ctx.state,
+    foldUsage: ctx.foldUsage,
+    runPi: ctx.runPi,
+    runGatePi: (opts) => ctx.runGatePi(opts),
+  };
   const v = await vetRequest(ctx, req, w);
   if (v.kind === "result") return v.result;
   const [result] = await landVetted(ctx, [{ ...req, sha: v.sha, ...(v.verifiedHead ? { verifiedHead: v.verifiedHead } : {}) }], () => w);
@@ -160,6 +167,7 @@ export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?:
     mainBranch: "main",
     config: config ?? defaultConfig(),
     signal: () => (controller ?? new AbortController()).signal,
+    runGatePi: async (opts) => runPi(opts),
   };
 }
 
@@ -180,6 +188,7 @@ function makeWiring(
       resolve?.(wt);
       return piResult();
     },
+    runGatePi: async (opts) => runPi(opts),
   });
   return { wiringFor, folded, calls };
 }

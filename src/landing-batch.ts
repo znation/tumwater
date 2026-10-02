@@ -25,14 +25,14 @@ import { errorMessage } from "./text.js";
 import { setLandingStage, type LandingChangeStatus } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
-import type { PiRunWiring } from "./loop-pi.js";
+import type { GateRunsPi, PiRunWiring } from "./loop-pi.js";
 import type { LoopState } from "./loop-state.js";
 
 /** The identity a vet or a merge needs from the harness: root, main branch, live config, and
  * the task's abort signal. Deliberately thinner than LanderContext — no single `state` and no
  * `runPi`, because a merge spans N ROLES (invariant 3 caps a role at one in-flight change, so
  * a stack is N changes from N distinct roles) and each one carries its own wiring. */
-export interface BatchContext {
+export interface BatchContext extends GateRunsPi {
   root: string;
   mainBranch: string;
   config: TumwaterConfig;
@@ -336,6 +336,7 @@ export async function landVetted(
     config: ctx.config,
     state: w.state,
     runPi: w.runPi,
+    runGatePi: (opts) => w.runGatePi(opts),
     foldUsage: w.foldUsage,
     signal: ctx.signal,
   });

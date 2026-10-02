@@ -1,5 +1,4 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { reviewRunConfig } from "./config-views.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -7,7 +6,8 @@ import { git, headOf, patchId } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
-import { hasResumableSession, runPi } from "./pi.js";
+import { hasResumableSession, type PiRunResult } from "./pi.js";
+import type { GateRunsPi } from "./loop-pi.js";
 import { readPrinciples } from "./prompt.js";
 import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
@@ -49,6 +49,11 @@ interface ReviewContext {
   /** The sleep clock the pre-check measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep?: SleepSampler;
+  /** The reviewer's pi runs (the review run and the verdict follow-up), through the owning
+   * loop's shared transient-retry wiring (LoopPi.runGatePi — BUGS.md 2026-10-01: a 429 in the
+   * gate gets the same retry as an authoring run). Every caller supplies it; the tests'
+   * gateCtx wires the bare runPi so the offline fake-pi shim still drives the reviewer. */
+  runGatePi: GateRunsPi["runGatePi"];
 }
 
 /** What the gate decided and what the caller should do next. "approved"/"exempt": safe to
@@ -103,7 +108,7 @@ async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | null> {
   const sessionDir = reviewSessionDir(ctx.root, ctx.role);
   if (!hasResumableSession(sessionDir)) return null;
   const cfg = reviewRunConfig(ctx.config);
-  return runPi({
+  return ctx.runGatePi({
     cwd: ctx.wt,
     prompt: buildVerdictRequestPrompt(),
     config: {
@@ -361,7 +366,7 @@ export async function reviewAheadOfMain(
   // The author's claimed WHY/RISK/VERIFIED ride along when present — checking those claims
   // against the actual diff is exactly the adversarial angle (recovery landings reconstruct
   // them from the pinned commit's message).
-  const pi = await runPi({
+  const pi = await ctx.runGatePi({
     cwd: wt,
     prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a

@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
-import type { BackendFailureKind, PiRunResult } from "./pi.js";
+import type { BackendFailureKind, PiRunOptions, PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { isDirty, setRef } from "./git.js";
@@ -335,6 +335,16 @@ export class LoopRunner {
    * The plumbing itself lives in src/loop-pi.ts; this is the landing slot's public face. */
   async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
     return this.pi.runLandingPi(wt, prompt, sessionName);
+  }
+
+  /** Run pi for the landing gate's reviewer (the review run and its verdict follow-up) through
+   * the loop's shared transient-retry wiring — the same retry an authoring run gets, so a 429
+   * in the gate is waited out and retried once instead of failing the review on first contact
+   * (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time (the fleet-wide
+   * rate-limit hold's input); the FINAL run's usage is folded by the gate's caller, exactly as
+   * before — the plumbing lives in src/loop-pi.ts; this is the landing wiring's public face. */
+  async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
+    return this.pi.runGatePi(opts);
   }
 
   /** Public face of foldUsage for the orchestrator's landing wiring: folds a landing pi run
