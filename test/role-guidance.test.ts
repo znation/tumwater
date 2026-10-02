@@ -18,7 +18,7 @@ import { sh, tmpdir } from "./repo-fixtures.js";
 
 // Contract for src/role-guidance.ts's shared prompt constants (plans/repair-traces.md and
 // friends): the decomposition, validation-gap, needs-review, plan-sizing, and search guidance
-// each live in one exported constant that prompt.ts and roles.ts embed verbatim, so a reworded
+// each live in one exported constant that prompt.ts and role-catalog.ts embed verbatim, so a reworded
 // copy or a dropped clause fails here instead of drifting silently into every role's find text.
 
 test("guidance is a single shared constant, not drifting copies", () => {

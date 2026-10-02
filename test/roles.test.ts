@@ -10,7 +10,8 @@ import {
   roleById,
 } from "../src/roles.js";
 
-// roles.ts is the single source of truth for which loops exist. Its structural invariants are
+// role-catalog.ts is the single source of truth for which loops exist (roles.ts re-exports it).
+// Its structural invariants are
 // load-bearing but easy to break silently: a duplicated or empty id makes two loops share one
 // worktree/branch/state file; a reordered catalog changes startup-burst scheduling priority;
 // and BASELINE_BLOCKED_ROLES drifting from the catalog (a typo'd id, or a new code-producing
