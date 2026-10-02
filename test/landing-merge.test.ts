@@ -135,6 +135,78 @@ test("a rebase conflict is resolved by one pi run and lands with linear history"
   assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "history stays linear");
 });
 
+test("a conflict resolution that adds lines the reviewed change never added is re-reviewed before landing", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+  commitIn(root, "main edit");
+  const { ctx, calls } = makeCtx(root, async (w) => {
+    // The resolution goes beyond combining the two sides: "sneaky extra" is a line neither the
+    // reviewed branch diff nor main contains — the shape of the 2026-10-01 restoration bug.
+    fs.writeFileSync(path.join(w, "seed.txt"), "combined\nsneaky extra\n");
+    return piResult();
+  });
+  const rechecked: string[] = [];
+  ctx.recheckResolved = async (w) => {
+    rechecked.push(w);
+    return { verdict: "approved" };
+  };
+
+  const result = await mergeToMain(ctx, wt, "branch edit");
+
+  assert.equal(result, "changed");
+  assert.equal(rechecked.length, 1, "the out-of-scope resolution went back through the gate");
+  assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "combined\nsneaky extra\n");
+  assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
+});
+
+test("a conflict resolution that stays inside the reviewed change's lines lands with no re-review", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+  commitIn(root, "main edit");
+  const { ctx, calls } = makeCtx(root, async (w) => {
+    // Keep both sides verbatim: the resolved diff ahead of main adds only "branch", which the
+    // reviewed change added too — nothing the reviewer never judged.
+    fs.writeFileSync(path.join(w, "seed.txt"), "main\nbranch\n");
+    return piResult();
+  });
+  let rechecked = 0;
+  ctx.recheckResolved = async () => {
+    rechecked++;
+    return { verdict: "rejected" };
+  };
+
+  const result = await mergeToMain(ctx, wt, "branch edit");
+
+  assert.equal(result, "changed", "a faithful resolution lands");
+  assert.equal(rechecked, 0, "no re-review was charged for it");
+  assert.equal(calls.length, 1);
+  assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "main\nbranch\n");
+});
+
+test("a re-review that rejects a diverging conflict resolution is terminal — nothing lands", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+  commitIn(root, "main edit");
+  const { ctx } = makeCtx(root, async (w) => {
+    fs.writeFileSync(path.join(w, "seed.txt"), "combined\nsneaky extra\n");
+    return piResult();
+  });
+  ctx.recheckResolved = async () => ({ verdict: "rejected" });
+  const mainBefore = mainSha(root);
+
+  const result = await mergeToMain(ctx, wt, "branch edit");
+
+  assert.equal(result, "rejected");
+  assert.equal(mainSha(root), mainBefore, "nothing landed");
+  assertWorktreeSettled(wt);
+});
+
 test("a conflict pi leaves unresolved aborts and reports merge_conflict", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");

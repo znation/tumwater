@@ -268,6 +268,52 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
       onLandingBlocked: (reason) => {
         blocked = reason;
       },
+      recheckResolved: async (resolvedWt) => {
+        if (ctx.signal().aborted) return { verdict: "retry" };
+        // A resolved diff that left the reviewed change's lines goes back through the same gate
+        // the pin went through (BUGS.md 2026-10-01: a resolution that restored code main had
+        // deliberately reverted landed on the build check alone). Same gate, same worktree
+        // convention as reviewPinnedChange: the reject path records the verdict, resets the
+        // worktree to main and logs review_rejected itself; the ref and the lastError are ours.
+        const gate = await reviewAheadOfMain(
+          {
+            root: ctx.root,
+            role: req.role,
+            wt: resolvedWt,
+            mainBranch: ctx.mainBranch,
+            config: ctx.config,
+            tick: req.tick,
+            signal: ctx.signal(),
+            runGatePi: ctx.runGatePi,
+          },
+          ctx.state,
+          req.summary,
+          req.body,
+          req.highFriction,
+        );
+        if (gate.run) ctx.foldUsage(gate.run);
+        if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
+        setLandingStage(ctx.root, req.role, "merging");
+        saveLoopState(ctx.root, ctx.state);
+        if (gate.aborted) return { verdict: "retry" };
+        if (gate.decision === "approved" || gate.decision === "exempt") {
+          return { verdict: "approved", verifiedHead: gate.verifiedHead };
+        }
+        if (gate.decision === "rejected") {
+          await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin
+          ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
+          return { verdict: "rejected" };
+        }
+        // A failed gate (dead reviewer, aborted run) is no verdict about the tree: under the
+        // strike cap the pin stays for recovery's re-land (the gate's own discard fires here as
+        // "discarded", and then the commit is gone anyway).
+        ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
+        if (gate.discarded) {
+          await deleteRef(ctx.root, landingRefName(req.role));
+          return { verdict: "rejected" };
+        }
+        return { verdict: "retry" };
+      },
     },
     wt,
     req.summary,
@@ -283,7 +329,8 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   }
   // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
   // (Cross-check blocks no longer come through here: landingBlocked counts them, see below.)
-  ctx.state.lastError = `merge failed: ${result}`;
+  // A rejected recheck already wrote its own lastError and deleted its ref — leave it.
+  if (result !== "rejected") ctx.state.lastError = `merge failed: ${result}`;
   return result;
 }
 

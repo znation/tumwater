@@ -42,6 +42,13 @@ test("buildConflictPrompt defines ours/theirs and asks for a combined resolution
   assert.match(p, /combining the intent of BOTH sides/i);
 });
 
+test("buildConflictPrompt drops the branch's edit where main deliberately removed or replaced it", () => {
+  const p = buildConflictPrompt("feature", ["a.txt"]);
+  assert.match(p, /deliberately removed or replaced/);
+  assert.match(p, /the branch's edit is dropped/);
+  assert.match(p, /Never merge\s+the branch's version back in/);
+});
+
 test("buildConflictPrompt treats backlog section headings as structure, not text", () => {
   const p = buildConflictPrompt("feature", ["PLANS.md", "src/git.ts"]);
   // The failure this pins (PLANS.md 2026-09-30, part 1/3): a conflict resolution kept both

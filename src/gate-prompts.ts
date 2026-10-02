@@ -30,6 +30,10 @@ Rules for this run:
   reset, checkout) — the harness concludes the rebase for you. Reading git state is fine.
 - Read only the conflicted files and what they directly reference (\`grep -n '<<<<<<<' FILE\`
   finds each marker; read around it in ranges) — not the codebase at large.
+- When main has deliberately removed or replaced what the branch edits (a revert, a rewrite of
+  the same code), the branch's edit is dropped: resolve toward main's version — the branch's
+  change is re-derived on top of current main by its author if it still matters. Never merge
+  the branch's version back in over main's deliberate removal.
 - Never touch the .tumwater directory or tumwater.json.
 - When a conflicted file is a markdown backlog file (PLANS.md, BUGS.md, QUESTIONS.md), its
   \`## \` section headings are structure, not text: the result keeps exactly one of each

@@ -254,9 +254,11 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
 
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"], "the fallback lands both");
     const reviews = eventsOfType(root, "review_start");
-    assert.equal(reviews.length, 2, "one model review per change (N), not a second one in the fallback (2N)");
+    // BUGS.md 2026-10-02: alpha's resolution writes "both", a line neither the reviewed diff nor
+    // main contains — out of the reviewed change's lines — so it pays one re-review (N+1, not 2N).
+    assert.equal(reviews.length, 3, "one model review per change plus the resolution's re-review");
     assert.equal(folded.get("alpha")!.length, 1);
-    assert.equal(folded.get("beta")!.length, 1);
+    assert.equal(folded.get("beta")!.length, 2, "the re-review's reviewer run folds into beta's tick (its stack pick conflicted)");
     assert.deepEqual(
       readEvents(root)
         .filter((e) => e.type === "build_check")
@@ -264,9 +266,9 @@ test("an un-assemblable stack's fallback lands pins from an older main with one 
       [
         ["gate", "passed"],
         ["gate", "passed"],
-        ["landing", "passed"],
+        ["gate", "passed"],
       ],
-      "no stack check (the assembly conflicted); alpha's approved head lands as judged; beta's resolved rebase onto alpha is re-checked in-lock",
+      "no stack check (the assembly conflicted); each change's rebase-rewritten tree is judged by a gate-scope check — beta's by its re-review pre-check, which the in-lock re-check then skips (rebasedHead === verifiedHead) and seeds the baseline with",
     );
     for (const f of ["main.txt", "alpha.txt", "beta.txt"]) {
       assert.ok(fs.existsSync(path.join(root, f)), `main holds ${f}`);
@@ -329,10 +331,16 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
     assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
     // Keyed by role: in the pipeline the two vets run at once, so their review_start order is a race.
     const starts = eventsOfType(root, "review_start");
-    assert.equal(starts.length, 2, "one review per change: the fallback re-reviewed neither");
-    const heads = new Map(starts.map((e) => [e.loop, e.head]));
-    assert.equal(heads.get("alpha"), shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
-    assert.notEqual(heads.get("beta"), shas.beta!, "beta's clean rebase was reviewed synced");
+    // BUGS.md 2026-10-02: alpha's resolution writes "both" — a line neither side had — so it is
+    // re-reviewed before landing: two review_starts for alpha (bare pin, then resolved head),
+    // one for beta. The fallback still re-reviews neither beta nor anything else.
+    assert.equal(starts.length, 3, "one review per change plus the diverging resolution's re-review");
+    const alphaStarts = starts.filter((e) => e.loop === "alpha");
+    assert.equal(alphaStarts[0]!.head, shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
+    assert.notEqual(alphaStarts[1]!.head, shas.alpha!, "the resolution left the reviewed diff: a re-review judged the resolved head");
+    const betaStarts = starts.filter((e) => e.loop === "beta");
+    assert.equal(betaStarts.length, 1);
+    assert.notEqual(betaStarts[0]!.head, shas.beta!, "beta's clean rebase was reviewed synced");
     assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed");
     assert.ok(fs.existsSync(path.join(root, "beta.txt")), "and beta on top of it");

@@ -1,6 +1,6 @@
 import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
-import { headOf } from "./git.js";
+import { headOf, gitTry } from "./git.js";
 import { aheadOfMainFiles } from "./git-diff.js";
 import {
   conflictedFiles,
@@ -67,6 +67,22 @@ export interface MergeContext extends RunsPi {
    * here in landing-merge.ts, so a blocked resolution reads on the dashboards (BUGS.md
    * 2026-10-02: the block used to be silent). */
   onLandingBlocked?(reason: string): void;
+  /** The gate, re-run over a conflict resolution's tree: a resolution whose diff ahead of main
+   * is not a subset of the diff the reviewer approved has authored bytes the reviewer never
+   * judged (BUGS.md 2026-10-01: a resolver restored code main had deliberately reverted, and
+   * the build check alone waved it onto main). mergeToMain calls this once, only on the conflict
+   * path, only when the resolved diff diverges, with the worktree sitting on the resolved head;
+   * an "approved" verdict (with the head the re-review's pre-check ran green on, when it ran
+   * one) proceeds to the landing — whose in-lock re-check then skips the redundant build check
+   * the re-review just ran; "rejected" is terminal for the pin (the closure owns the ref and
+   * the reject bookkeeping); "retry" keeps the ref for recovery's re-land (an aborted or
+   * under-cap-failed reviewer is not a verdict about the tree). Optional: without it a
+   * resolution lands on the in-lock build check alone (the pre-fix behavior, and what tests
+   * exercise). */
+  recheckResolved?(wt: string): Promise<{
+    verdict: "approved" | "rejected" | "retry";
+    verifiedHead?: string;
+  }>;
 }
 
 /** Land the worktree branch on main under the shared merge lock: rebase it onto main (keeping
@@ -95,7 +111,66 @@ export async function mergeToMain(
   const first = await tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
   if (first !== "merge_conflict") return first;
   if (!(await resolveConflict(ctx, wt))) return "merge_conflict";
+  // A resolution whose diff ahead of main introduces lines the reviewed change never added, or
+  // removes lines the reviewed change never removed, has left the reviewer's scope: those bytes
+  // were never judged, and the in-lock build check cannot judge intent (BUGS.md 2026-10-01: a
+  // resolver restored 158 lines main had deliberately reverted). Re-run the gate over the
+  // resolved tree before anything lands; a resolution that stays inside the reviewed change's
+  // lines — including one that drops branch edits main superseded — re-lands with no extra run.
+  if (ctx.recheckResolved && (await resolvedDiffDiverges(ctx, wt, preMergeHead))) {
+    const recheck = await ctx.recheckResolved(wt);
+    if (recheck.verdict === "rejected") return "rejected";
+    if (recheck.verdict === "retry") return "merge_conflict";
+    return tryMerge(ctx, wt, summary, preMergeHead, recheck.verifiedHead ?? verifiedHead);
+  }
   return tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
+}
+
+/** True when the resolved tree's diff ahead of main is NOT contained in the reviewed diff: the
+ * resolved diff adds a line the reviewed diff never added, or removes a line it never removed
+ * (multisets, so duplicated lines are counted, and compared across the whole diff — a
+ * resolution that moves the change's own lines between the change's files stays in scope).
+ * A subset always skips: a faithful replay of the reviewed change, and a resolution that drops
+ * branch edits main has superseded, both stay inside what the reviewer judged. */
+async function resolvedDiffDiverges(
+  ctx: { mainBranch: string },
+  wt: string,
+  preMergeHead: string,
+): Promise<boolean> {
+  // Three-dot against the branch tip as the gate judged it: the merge-base with current main
+  // is the base the reviewer's diff was cut against (syncPinToMain rebased before the gate when
+  // it could, and a conflicted pre-gate rebase leaves the pin on its original base).
+  const approved = (await gitTry(wt, "diff", `${ctx.mainBranch}...${preMergeHead}`)) ?? "";
+  const resolved = (await gitTry(wt, "diff", `${ctx.mainBranch}...HEAD`)) ?? "";
+  const a = diffLineMultiset(approved);
+  const r = diffLineMultiset(resolved);
+  return !(subsetOf(r.add, a.add) && subsetOf(r.del, a.del));
+}
+
+/** The added and removed content lines of a unified diff, as multisets (one entry per
+ * occurrence). Header lines (+++/---) and everything that is not a content marker is skipped;
+ * binary files contribute nothing, like for like on both sides of the comparison. */
+function diffLineMultiset(diff: string): { add: string[]; del: string[] } {
+  const add: string[] = [];
+  const del: string[] = [];
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("+")) add.push(line.slice(1));
+    else if (line.startsWith("-")) del.push(line.slice(1));
+  }
+  return { add, del };
+}
+
+/** Whether every element of `small` (counting duplicates) appears in `big`. */
+function subsetOf(small: string[], big: string[]): boolean {
+  const counts = new Map<string, number>();
+  for (const line of big) counts.set(line, (counts.get(line) ?? 0) + 1);
+  for (const line of small) {
+    const left = counts.get(line) ?? 0;
+    if (left === 0) return false;
+    counts.set(line, left - 1);
+  }
+  return true;
 }
 
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before` —
@@ -213,7 +288,13 @@ async function verifyLanding(
   // rebase's tree has never been through the full check: fall through and run it here, once —
   // the landing scope is what verifies a single change (and each change of an abandoned
   // stack), and a gateCommand green must never seed the baseline (PLANS.md Land-queue speed 3e).
-  if (rebasedHead === preMergeHead && gateCommandOf(ctx.config) === undefined) {
+  // The verifiedHead arm covers a conflict resolution the re-review gate just judged: the
+  // in-lock rebase is then a no-op, so the tree is byte-identical to what that pre-check ran
+  // green on, and the same trust (and the same gateCommand caveat) applies.
+  if (
+    (rebasedHead === preMergeHead || (verifiedHead !== undefined && rebasedHead === verifiedHead)) &&
+    gateCommandOf(ctx.config) === undefined
+  ) {
     if (rebasedHead === verifiedHead) noteGreenBaseline(rebasedHead);
     return true;
   }
