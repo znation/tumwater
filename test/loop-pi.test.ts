@@ -422,6 +422,41 @@ test("requestSummary resumes the tick's session and folds its usage", async () =
   }
 });
 
+test("requestSummary's 429 takes the shared transient retry: warns, waits the hint out, resumes, folds both", async () => {
+  // BUGS.md 2026-10-01: the SUMMARY follow-up called bare runPi while the shared retry's own
+  // doc claimed it wires EVERY pi run the loop makes — so a 429 on the follow-up turn failed
+  // it on first contact with no retry, no per-run warning, and no fleet-wide rate-limit hold
+  // stamp, exactly the gate bypass the reviewer side fixed the same day. The follow-up now
+  // takes the same runWithTransientRetry wiring (its capped budget applies to both attempts).
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
+  });
+  try {
+    fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
+    fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
+    const { loopPi, warns, usage, sleeps } = makeHost(root);
+    const result = await loopPi.requestSummary(root);
+    assert.ok(result, "a resumable session produces a run");
+    assert.equal(result!.ok, true, "the retry succeeds on the warm session");
+    assert.match(result!.finalText, /SUMMARY: tidied src/, "the retry delivers the SUMMARY block");
+    assert.equal(usage.length, 2, "both attempts fold — the failed 429 before the wait");
+    assert.match(warns[0]!, /rate-limited the request \(429, retry after 3s\)/);
+    assert.deepEqual(sleeps, [3000], "the hint is waited out before the retry");
+    // The SUMMARY request prompt is multi-line, so the argv log (one `$*` line per run,
+    // split at the prompt's newlines) cannot be read per line — count the resume flags over
+    // the whole recording instead: both attempts continue the authoring session, and the
+    // follow-up never re-names it.
+    const recorded = fs.readFileSync(args, "utf8");
+    assert.ok(!/-n /.test(recorded), "the follow-up never re-names the session");
+    assert.equal((recorded.match(/--continue/g) ?? []).length, 2, "both attempts continue the authoring session");
+    assert.match(recorded, /required closing block/, "both attempts ask for the SUMMARY block");
+  } finally {
+    restore();
+  }
+});
+
 test("requestSummary returns the run even when it failed and still folds its usage", async () => {
   // The follow-up asks the tick's own session for the missing SUMMARY block; the run can
   // fail like any other (provider error, nonzero exit). The doc'd contract says the caller

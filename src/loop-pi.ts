@@ -237,8 +237,17 @@ export class LoopPi {
     if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
     const cfg = configForRole(this.host.config(), this.host.role);
     // The shared per-loop wiring (loopPiOpts) with the follow-up's hard caps overriding the
-    // authoring run's budget: one short reply on a warm session.
-    const run = await runPi({
+    // authoring run's budget: one short reply on a warm session. The run takes the loop's
+    // SHARED transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits
+    // its Retry-After hint out and retries once on the same session, exactly like the
+    // authoring run, the landing slot's run, and the gate's reviewer runs it mirrors —
+    // before this it called bare runPi, so a rate-limited follow-up failed the tick's
+    // SUMMARY on first contact with no warning and no fleet-wide rate-limit hold stamp.
+    // The caps bound BOTH attempts (the retry inherits this capped config), so a flaky
+    // provider cannot stretch the follow-up past its budget by more than one capped turn.
+    // The wiring folds every attempt (the failed 429 before the wait), and the returned
+    // final run is folded here by the wiring itself — no second fold at the call site.
+    return this.runWithTransientRetry({
       ...this.loopPiOpts(wt, buildSummaryRequestPrompt(), `tumwater-${this.host.role}-${this.host.tickNumber()}-summary`, true),
       config: {
         ...cfg,
@@ -249,8 +258,6 @@ export class LoopPi {
             : LoopPi.SUMMARY_REQUEST_QUIET_S,
       },
     });
-    this.host.foldUsage(run);
-    return run;
   }
 }
 
