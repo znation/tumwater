@@ -52,10 +52,12 @@ function killWordBefore(text: string, c: number): { text: string; cursor: number
  * delivers for IME-composed input, which advance the cursor by their full length; backspace
  * deletes before it, delete after it, left/right move it, and home/end jump to the text's
  * start/end (the readline navigation an operator expects while editing a long prompt).
- * Two readline kill keys work too: Alt+Backspace kills the word before the cursor and
- * Ctrl+U kills from the line start to it (the two edits a long prompt asks for most).
- * Every other control/meta combination is ignored — Ctrl+W cannot join the kill set
- * because the TUI's transcript views already bind it to per-loop wake (tui.ts). Returns the new state; an out-of-range cursor is
+ * Three readline kill keys work too: Alt+Backspace kills the word before the cursor,
+ * Ctrl+U kills from the line start to it, and Ctrl+K kills from it to the line end —
+ * the two directions of half-line discard (a long prompt often wants one, the other, or
+ * both: type the tail, Ctrl+U it away, retype). Every other control/meta combination is
+ * ignored — Ctrl+W cannot join the kill set because the TUI's transcript views already
+ * bind it to per-loop wake (tui.ts). Returns the new state; an out-of-range cursor is
  * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when the unit they would cut is one
  * half of a surrogate pair (an astral character such as emoji), both units go together so no
  * lone surrogate — which terminals render as garbage — is ever left behind (the same
@@ -96,6 +98,11 @@ export function applyKey(
       // Ctrl+U (readline's unix-line-discard) kills from the line start to the cursor; a
       // plain "u" breaks here and reaches the printable insert branch below, unchanged.
       if (key.ctrl) return { text: text.slice(c), cursor: 0 };
+      break;
+    case "k":
+      // Ctrl+K (readline's kill-line) kills from the cursor to the line end; a plain "k"
+      // breaks here and reaches the printable insert branch below, unchanged.
+      if (key.ctrl) return { text: text.slice(0, c), cursor: c };
       break;
     case "delete":
       if (c >= text.length) return { text, cursor: c };

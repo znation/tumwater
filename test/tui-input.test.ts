@@ -160,6 +160,16 @@ test("applyKey kills from the line start to the cursor with Ctrl+U", () => {
   assert.deepEqual(applyKey("heo", 2, "u", key("u")), { text: "heuo", cursor: 3 });
 });
 
+test("applyKey kills from the cursor to the line end with Ctrl+K", () => {
+  assert.deepEqual(applyKey("hello world", 5, "\x0b", key("k", { ctrl: true })), { text: "hello", cursor: 5 });
+  // No-op when the cursor sits at the end.
+  assert.deepEqual(applyKey("hi", 2, "\x0b", key("k", { ctrl: true })), { text: "hi", cursor: 2 });
+  // Everything dies when the cursor sits at the start.
+  assert.deepEqual(applyKey("all gone", 0, "\x0b", key("k", { ctrl: true })), { text: "", cursor: 0 });
+  // A plain "k" still types: the kill is bound to the ctrl spelling only.
+  assert.deepEqual(applyKey("heo", 2, "k", key("k")), { text: "heko", cursor: 3 });
+});
+
 test("applyKey ignores control and meta characters but clamps a stale cursor", () => {
   assert.deepEqual(applyKey("ab", 1, "\x03", key("c", { ctrl: true })), { text: "ab", cursor: 1 });
   assert.deepEqual(applyKey("ab", 1, "é", key("e", { meta: true })), { text: "ab", cursor: 1 });
