@@ -6,6 +6,7 @@
  * lookup helpers the CLI, GUI, and tick prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
+import { suggestClosest } from "./text.js";
 
 export { ROLES };
 export type { Role };
@@ -105,11 +106,17 @@ export function roleById(id: string): Role | undefined {
   return ROLES.find((r) => r.id === id);
 }
 
-/** The harness's one unknown-role error text: `unknown role: <id> (valid ids: <ids>)`.
- * parseRoleFlag, the operator commands, and tick-prompt's defensive runner path share it so
- * the wording cannot drift between the CLI, the GUI, and a tick's internal error. */
+/** The harness's one unknown-role error text: `unknown role: <id> (valid ids: <ids>)`, with
+ * a did-you-mean suggestion when the typed id sits within edit distance 2 of a valid one —
+ * the same treatment unknownConfigKeyError gives config keys, so a mistyped `--role feautre`
+ * names its fix instead of only the valid list. parseRoleFlag, the operator commands, and
+ * tick-prompt's defensive runner path share it so the wording cannot drift between the CLI,
+ * the GUI, and a tick's internal error. */
 export function unknownRoleMessage(role: string, validIds: readonly string[]): string {
-  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})`;
+  const suggestion = suggestClosest(role, validIds);
+  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${
+    suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+  }`;
 }
 
 /** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the

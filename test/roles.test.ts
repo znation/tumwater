@@ -8,6 +8,7 @@ import {
   ROLES,
   allRoleIds,
   roleById,
+  unknownRoleMessage,
 } from "../src/roles.js";
 
 // role-catalog.ts is the single source of truth for which loops exist (roles.ts re-exports it).
@@ -91,4 +92,16 @@ test("roleById resolves every catalog id; the director and unknown ids yield und
   // would let a tick prompt be built as if it were an ordinary loop.
   assert.equal(roleById(DIRECTOR_ROLE), undefined);
   assert.equal(roleById("no-such-role"), undefined);
+});
+
+test("unknownRoleMessage appends a did-you-mean suggestion for a close typo, none for a distant one", () => {
+  const ids = ["feature", "bugfix", "director"];
+  // "feautre" sits one transposition-ish edit from "feature": suggestClosest finds it.
+  assert.match(
+    unknownRoleMessage("feautre", ids),
+    /^unknown role: feautre \(valid ids: feature, bugfix, director\) — did you mean `feature`\?$/,
+  );
+  // "bogus" is beyond edit distance 2 of every id — the wording stays as before, so the
+  // existing pins (cli-operators-fleet, role-view, gui) still match.
+  assert.equal(unknownRoleMessage("bogus", ids), "unknown role: bogus (valid ids: feature, bugfix, director)");
 });
