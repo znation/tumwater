@@ -36,6 +36,29 @@ test("help and no command print usage", async () => {
   }
 });
 
+test("--help and -h answer like `help` — the flag spellings are commands themselves", async () => {
+  // The <command> --help interception deliberately skips a command that IS --help/-h: those
+  // fall through to the help dispatcher, where a following token is read as a topic name.
+  // Bare, they print the full listing; with a token, the token's topic — so `tumwater --help
+  // status` and `tumwater help status` print the same stanza, and a mistyped token gets the
+  // dispatcher's no-topic error instead of silently printing the full list.
+  const dir = tmpdir();
+  for (const flag of ["--help", "-h"]) {
+    const bare = await cli(dir, flag);
+    assert.equal(bare.code, 0);
+    assert.match(bare.stdout, /Usage:/);
+    assert.match(bare.stdout, /tumwater init/);
+
+    const topic = await cli(dir, flag, "status");
+    assert.equal(topic.code, 0);
+    assert.match(topic.stdout, /tumwater status/);
+
+    const mistyped = await cli(dir, flag, "statis");
+    assert.equal(mistyped.code, 1);
+    assert.match(mistyped.stderr, /no help topic: statis — did you mean `status`\?/);
+  }
+});
+
 test("version prints the package version", async () => {
   const pkg = readJson(new URL("../../package.json", import.meta.url)) as { version: string };
   const r = await cli(tmpdir(), "version");

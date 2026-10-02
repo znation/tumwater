@@ -3,3 +3,4 @@ tumwater.json
 node_modules/
 dist/
 .eslintcache
+coverage/
