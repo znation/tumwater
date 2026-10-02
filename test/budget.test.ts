@@ -7,6 +7,7 @@ import {
   budgetReached,
   dailyCost,
   fleetDailyCost,
+  projectCapHit,
   recordDailyCost,
   todayStamp,
 } from "../src/budget.js";
@@ -296,4 +297,37 @@ test("budgetReached is false for a disabled (null) or under-cap view, true at/ab
   assert.equal(budgetReached({ spentUsd: 10, capUsd: 50 }), false); // below the cap
   assert.equal(budgetReached({ spentUsd: 50, capUsd: 50 }), true); // exactly at the cap (>=)
   assert.equal(budgetReached({ spentUsd: 50.01, capUsd: 50 }), true); // above it
+});
+
+test("projectCapHit extrapolates today's linear burn to the cap's instant, or stays silent", () => {
+  // The fixed clock every case pins to (like dayAt's explicit-now rule): Oct 1, 2026, 09:00
+  // local — 9 hours after local midnight, so the arithmetic below is hand-checked against it.
+  const now = new Date(2026, 9, 1, 9, 0, 0).getTime();
+  const midnight = new Date(2026, 9, 1, 0, 0, 0).getTime();
+
+  // $20 spent by 09:00 burns $20/9h ≈ $2.22/h; the remaining $30 takes 13.5h → 22:30 tonight.
+  assert.equal(projectCapHit({ spentUsd: 20, capUsd: 50 }, now), new Date(2026, 9, 1, 22, 30, 0).getTime());
+
+  // No cap (0 disables the gate), no burn to extrapolate, cap already reached: silent — the
+  // gate's own open/fallback/paused states supersede a forecast once the cap is reached.
+  assert.equal(projectCapHit({ spentUsd: 20, capUsd: 0 }, now), null);
+  assert.equal(projectCapHit({ spentUsd: 0, capUsd: 50 }, now), null);
+  assert.equal(projectCapHit({ spentUsd: 50, capUsd: 50 }, now), null);
+  assert.equal(projectCapHit({ spentUsd: 60, capUsd: 50 }, now), null);
+
+  // A burn too slow to reach the cap by the next local midnight: silent — a tomorrow figure
+  // would be a lie, because the daily window resets at midnight. $1 by 09:00 extrapolates to
+  // the cap 50 days out.
+  assert.equal(projectCapHit({ spentUsd: 1, capUsd: 50 }, now), null);
+
+  // A spend crossing midnight attributes to the new day: the burn rate restarts from THAT
+  // day's midnight, not from when the spend was recorded. $10 by 00:01 burns $10/min, so the
+  // remaining $40 takes 4 minutes — the cap projects at 00:05, still the same morning.
+  const justAfter = new Date(2026, 9, 1, 0, 1, 0).getTime();
+  assert.equal(projectCapHit({ spentUsd: 10, capUsd: 50 }, justAfter), new Date(2026, 9, 1, 0, 5, 0).getTime());
+
+  // Sanity on the shape: the hit instant is always strictly after `now` (the cap is ahead of
+  // the spend) and inside today.
+  const hit = projectCapHit({ spentUsd: 30, capUsd: 50 }, now);
+  assert.ok(hit !== null && hit > now && hit < midnight + 24 * 3600_000);
 });

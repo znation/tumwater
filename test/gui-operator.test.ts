@@ -38,17 +38,25 @@ async function postRaw<T>(base: string, path: string, body: string): Promise<T> 
 test("status payload carries the daily budget while enabled and null when disabled", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget test"); // defaultConfig: maxDailyCostUsd 50 (enabled)
-  let payload = statusPayload(repo) as { budget: { spentUsd: number; capUsd: number; free: boolean } | null; budgetBadge: string };
+  // The spend and every read below are pinned to local noon through the payload's clock seam:
+  // elapsed-since-midnight enters the burn-rate projection's rate, so a real-clock read could
+  // legitimately attach a `~cap at HH:MM` fragment here in the early morning hours — the same
+  // wall-clock race the status-data suite avoids. At noon this $12.34-vs-$50 burn always
+  // projects past midnight, so the badge stays fragment-free, deterministically.
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+  const atNoon = () => statusPayload(repo, now.getTime()) as typeof payload;
+  let payload = atNoon() as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
-  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, free: false, fallback: null }, "enabled by default with no spend yet");
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
   // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
   const s = freshLoopState("clean");
-  s.dayStamp = todayStamp();
+  s.dayStamp = todayStamp(now.getTime());
   s.dayCostUsd = 12.34;
   saveLoopState(repo, s);
-  payload = statusPayload(repo) as typeof payload;
+  payload = atNoon() as typeof payload;
   assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
   assert.equal(payload.budgetBadge, " · budget: $12.34/$50 today", "today's spend shows in the badge text");
 
@@ -58,8 +66,8 @@ test("status payload carries the daily budget while enabled and null when disabl
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
-  payload = statusPayload(repo) as typeof payload;
-  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, free: false, fallback: null }, "cap 0 disables the gate but keeps the data");
+  payload = atNoon() as typeof payload;
+  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, fallback: null }, "cap 0 disables the gate but keeps the data");
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
 
@@ -133,7 +141,7 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
     budgetBadge: string;
     loops: Array<{ role: string; phase: string }>;
   };
-  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, free: false, fallback: null });
+  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, fallback: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
   // No loop reads budget paused — the gate is off by definition while the cap is 0.
   for (const l of payload.loops) {

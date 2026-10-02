@@ -254,7 +254,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend below the cap: ordinary labels.
   const under = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, free: false, fallback: null }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, capHitAt: null, free: false, fallback: null }), running: true },
   );
   assert.match(under, /feature\s+queued/);
   assert.doesNotMatch(under, /budget paused/);
@@ -262,7 +262,7 @@ test("renderStatus shows budget paused in idle role loops' state cells while the
   // Spend at the cap: idle role loops read `budget paused`; the director keeps its own phase.
   const reached = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, free: false, fallback: null }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }), running: true },
   );
   assert.match(reached, /feature\s+budget paused/);
   assert.match(reached, /director\s+waiting for prompts/);
@@ -305,7 +305,7 @@ test("renderStatus never reads budget paused while the cap is disabled, even pas
   // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
   const out = renderStatus(
     root,
-    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, free: false, fallback: null }), running: true },
+    { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, capHitAt: null, free: false, fallback: null }), running: true },
   );
   assert.doesNotMatch(out, /budget paused/, "no loop reads budget paused with the cap disabled");
   assert.match(out, /feature\s+queued/);
@@ -332,7 +332,7 @@ test("renderStatus shows paused in idle role loops' state cells ahead of budget 
     {
       ...snapshotWith(
         [{ role: "feature", lastResult: "main_red" }, { role: "director" }],
-        { spentUsd: 50, capUsd: 50, free: false, fallback: null },
+        { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null },
         true,
       ),
       running: true,
@@ -350,7 +350,7 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
   // At the cap WITH a usable free fallback: the loops keep ticking on it, so no row reads
   // `budget paused` — the header badge is where the operator learns the cap is spent.
   const degraded = renderStatus(root, {
-    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, free: false, fallback: { provider: "omlx", model: "local-free" } }),
+    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
     running: true,
   });
   assert.doesNotMatch(degraded, /budget paused/, "a fallback fleet is not a stopped fleet");
@@ -359,7 +359,7 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
 
   // The same spend with no usable fallback pauses the role loops, exactly as before.
   const stopped = renderStatus(root, {
-    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, free: false, fallback: null }),
+    ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
     running: true,
   });
   assert.match(stopped, /feature\s+budget paused/);

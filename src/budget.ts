@@ -10,7 +10,7 @@
 
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState } from "./loop-state.js";
-import { dayKey } from "./datetime.js";
+import { dayAt, dayKey } from "./datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */
@@ -95,6 +95,31 @@ export function budgetSpend(
   now = Date.now(),
 ): { spentUsd: number; capUsd: number } {
   return { spentUsd: fleetDailyCost(states, now), capUsd: config.maxDailyCostUsd };
+}
+
+/** When today's burn will reach the cap, as a local-day epoch-ms instant — the budget badge's
+ * `~cap at HH:MM` forecast — or null when no forecast may be stated: no cap (`capUsd <= 0`, the
+ * gate is disabled), no burn to extrapolate (`spentUsd <= 0`), the cap already reached
+ * (`spentUsd >= capUsd` — the gate's own open/fallback/paused states supersede a forecast;
+ * budgetReached already names that moment), or a burn too slow to reach the cap by the next
+ * local midnight (the daily window resets there, so a tomorrow figure would be a lie — silence
+ * is the honest output). The rate is today's linear burn since local midnight (dayAt(0, ·)):
+ * `rate = spentUsd / elapsedMs`, so `hitAt = midnight + capUsd / rate`. The `~` in the badge
+ * marks it a forecast — the rate is linear over the whole day, so quiet hours make the morning
+ * figure pessimistic about the remaining day, a stated simplification refreshed on every poll,
+ * not a design question. Takes `now` explicitly (like dayAt) so a caller — and a test — can
+ * pin the whole projection to one instant. */
+export function projectCapHit(
+  budget: { spentUsd: number; capUsd: number },
+  now = Date.now(),
+): number | null {
+  if (budget.capUsd <= 0 || budget.spentUsd <= 0 || budget.spentUsd >= budget.capUsd) return null;
+  const day = new Date(now);
+  const midnight = dayAt(0, day).getTime();
+  const elapsedMs = now - midnight;
+  if (elapsedMs <= 0) return null; // at midnight itself there is no burn to extrapolate yet
+  const hitAt = midnight + (budget.capUsd * elapsedMs) / budget.spentUsd;
+  return hitAt < dayAt(-1, day).getTime() ? hitAt : null;
 }
 
 /** What the daily cost budget is doing to role loops right now (plans/fallback-model.md):

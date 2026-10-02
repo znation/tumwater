@@ -10,7 +10,7 @@ import { clientScope } from "./gui-client-scope.js";
 type Snap = Parameters<typeof fleetAlerts>[0];
 const base: Snap = {
   running: true,
-  budget: { spentUsd: 1, capUsd: 10, free: false, fallback: null },
+  budget: { spentUsd: 1, capUsd: 10, capHitAt: null, free: false, fallback: null },
   build: null,
   paused: false,
   inQuietHours: false,
@@ -24,7 +24,10 @@ test("a healthy fleet raises nothing; a stopped one says how to start it", () =>
 });
 
 test("a spent budget pauses the loops, or hands them to the free fallback", () => {
-  const spent: Snap = { ...base, budget: { spentUsd: 10.5, capUsd: 10, free: false, fallback: null } };
+  const spent: Snap = {
+    ...base,
+    budget: { spentUsd: 10.5, capUsd: 10, capHitAt: null, free: false, fallback: null },
+  };
   const [budget] = fleetAlerts(spent, [], [], Date.now());
   assert.equal(budget?.key, "budget");
   assert.equal(budget?.tone, "red");
@@ -134,7 +137,7 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
 test("a fallback names its provider or nothing; a plain stale build asks for a manual restart", () => {
   const spent = (fallback: Snap["budget"]["fallback"]): Snap => ({
     ...base,
-    budget: { spentUsd: 10, capUsd: 10, free: false, fallback },
+    budget: { spentUsd: 10, capUsd: 10, capHitAt: null, free: false, fallback },
   });
   const byProvider = fleetAlerts(spent({ provider: "local" }), [], [], Date.now());
   assert.equal(byProvider[0]?.key, "fallback");

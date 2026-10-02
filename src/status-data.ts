@@ -15,7 +15,7 @@ import {
   standingFleetPause,
 } from "./fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "./landing-slot.js";
-import { fleetDailyCost } from "./budget.js";
+import { fleetDailyCost, projectCapHit } from "./budget.js";
 import { roleCapPaused } from "./role-cap-gates.js";
 import { queuedLandings } from "./landing-queue.js";
 
@@ -70,6 +70,14 @@ export interface StatusSnapshot {
   budget: {
     spentUsd: number;
     capUsd: number;
+    /** When today's linear burn will reach the cap (epoch ms, the badge's `~cap at HH:MM`
+     * forecast), or null when no forecast may be stated — no cap, no spend yet, the cap
+     * already reached (the gate's own states supersede a forecast), or a burn that misses
+     * midnight (budget.ts's projectCapHit, the one home of the rule). Computed once per poll
+     * from the same materialized spend `spentUsd` renders, so every observer shows one
+     * computed fact rather than three derivations. `status --json` and `/api/status` carry it
+     * to scripts through the snapshot's own serialization. */
+    capHitAt: number | null;
     free: boolean;
     fallback: { provider?: string; model?: string } | null;
   };
@@ -177,7 +185,11 @@ export interface StatusSnapshot {
 
 /** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. */
-export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnapshot {
+/** `now` pins the poll's clock for the budget figures (the persisted day-stamp check and the
+ * burn-rate projection) — one instant for the whole block, and the seam that keeps a test's
+ * expected projection from racing the snapshot's own `Date.now()`; production callers take the
+ * default and read the live clock, as always. */
+export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
   const roles = enabledRoleIds(cfg);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
@@ -235,6 +247,9 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
   // exit removes the info file, so a stale file beside a dead pid must not speak for a fleet
   // whose persisted files are final.
   const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
+  // The one materialized spend the budget block renders and the burn-rate projection both
+  // read — the scheduler's published figure while running, the persisted states' sum otherwise.
+  const spentUsd = publishedSpend ?? fleetDailyCost(loops, now);
   // Quiet hours 2/2 — one parse and one clock read per poll serve both the window string the
   // header badge renders and the in-window boolean the active reading turns on; the value is
   // read fresh from the same cached config load the budget block uses, so a live edit shows
@@ -256,8 +271,11 @@ export function snapshot(root: string, modelsPath = piModelsPath()): StatusSnaps
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
     budget: {
-      spentUsd: publishedSpend ?? fleetDailyCost(loops),
+      spentUsd,
       capUsd: cfg.maxDailyCostUsd,
+      // One projection per poll, from the same spend the field above renders: null exactly
+      // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
+      capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
       free: fleetModelsFree(cfg, modelsPath),
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse

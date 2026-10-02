@@ -107,20 +107,20 @@ test("the status header carries a quiet-hours badge only while a window is confi
 
 test("the status header carries a budget badge in every cap state", () => {
   const enabled = headerOf(
-    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, free: false, fallback: null })),
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null })),
   );
   assert.match(enabled, /· budget: \$12\.34\/\$50 today$/);
 
   // Fractional caps keep their cents; whole-dollar spent values stay two-decimal like the cost column.
   const fractional = headerOf(
-    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, free: false, fallback: null })),
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 12.34, capHitAt: null, free: false, fallback: null })),
   );
   assert.match(fractional, /· budget: \$0\.00\/\$12\.34 today$/);
 
   // Disabled (cap 0): the badge stays — it is the affordance for SETTING a cap — and reads
   // spend plus `no cap` instead of a $X/$Y figure.
   const disabled = headerOf(
-    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, free: false, fallback: null })),
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 3.25, capUsd: 0, capHitAt: null, free: false, fallback: null })),
   );
   assert.match(disabled, /· budget: \$3\.25 today · no cap$/);
 });
@@ -129,13 +129,13 @@ test("the status header carries a budget badge in every cap state", () => {
 // so the badge reads n/a instead of a dollar figure that would never move.
 test("the status header budget badge reads n/a for an all-free fleet", () => {
   const free = headerOf(
-    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: true, fallback: null })),
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null })),
   );
   assert.match(free, /· budget: n\/a$/);
 
   // The dollar form is untouched for a fleet that can spend (byte-identical to before).
   const paid = headerOf(
-    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, free: false, fallback: null })),
+    renderStatus(tmpdir(), snapshotWith([{ role: "clean" }], { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null })),
   );
   assert.match(paid, /· budget: \$0\.00\/\$50 today$/);
 });

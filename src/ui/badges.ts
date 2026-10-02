@@ -2,7 +2,7 @@ import type { TestCounts } from "../build-check.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { humanSeconds } from "../datetime.js";
+import { humanSeconds, pad2 } from "../datetime.js";
 import { pauseReasonSuffix } from "../phrases.js";
 import { shortSha, usd, usdCap } from "../text.js";
 
@@ -82,7 +82,18 @@ export function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
  * priced models, and `· budget: $X today · no cap` when disabled. One
  * home for the rule — renderStatus renders it in the TUI/status header and status-payload.ts
  * ships its output preformatted as `budgetBadge`, so the GUI page cannot drift from this
- * string. */
+ * string.
+ * While a burn-rate forecast stands (the snapshot's `capHitAt`, budget.ts's projectCapHit —
+ * null exactly when no forecast may be stated), the enabled reading appends
+ * `· ~cap at HH:MM`: when the cap falls today at today's burn, wall-clock local, hours and
+ * minutes only (formatTime's seconds are noise for a forecast). The `~` marks it a forecast —
+ * the rate is linear over the whole day, so quiet hours make the morning figure pessimistic
+ * about the remaining day. The null test is the whole condition: projectCapHit returns null
+ * exactly when the gate is no longer open, so no gate check is needed here, and every
+ * no-forecast state stays byte-identical to the pre-projection badge. The `no cap` branch
+ * needs no forecast slot: a disabled cap never carries a capHitAt (projectCapHit returns null
+ * for capUsd <= 0), and the fallback fragment only stands once the cap IS reached — the one
+ * state where the forecast is itself null — so the fragments can never compete for the line. */
 export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   if (budget.free) return " · budget: n/a";
   // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
@@ -94,8 +105,12 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
     fleetBudgetGate(budget) === "fallback"
       ? ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
       : "";
+  const forecast =
+    budget.capHitAt !== null
+      ? ` · ~cap at ${pad2(new Date(budget.capHitAt).getHours())}:${pad2(new Date(budget.capHitAt).getMinutes())}`
+      : "";
   if (budget.capUsd > 0)
-    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${fallback}`;
+    return ` · budget: ${usd(budget.spentUsd)}/${usdCap(budget.capUsd)} today${forecast}${fallback}`;
   return ` · budget: ${usd(budget.spentUsd)} today · no cap`;
 }
 

@@ -28,8 +28,11 @@ function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; r
  * not in gui.ts — because it is shared data collection for observers, not part of serving HTTP:
  * snapshot() supplies the core state, and the per-loop phase/metrics fields come from the same
  * status-model helpers the TUI table uses. */
-export function statusPayload(root: string): object {
-  const snap = snapshot(root);
+/** `now` pins the poll's clock for the budget block (see snapshot's seam of the same name) —
+ * one instant for spend stamp-check and burn-rate projection alike, so a test's expected badge
+ * cannot race the payload's own Date.now(). */
+export function statusPayload(root: string, now = Date.now()): object {
+  const snap = snapshot(root, undefined, now);
   // One event read feeds both feed shapes below, so `events[i]` and `eventItems[i]` always
   // describe the same event.
   const recent = readEvents(root, RECENT_EVENTS);

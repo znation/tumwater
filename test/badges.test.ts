@@ -13,11 +13,11 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
   // disabled free fleet still cannot accumulate spend), $X/$Y while enabled with priced
   // models, `· no cap` when disabled. Whole-dollar caps stay bare ($50); fractional ones
   // keep their cents ($12.34).
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, free: true, fallback: null }), " · budget: n/a", "all-free fleet reads n/a");
-  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, free: false, fallback: null }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, free: false, fallback: null }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
-  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, free: false, fallback: null }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
-  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "all-free fleet reads n/a");
+  assert.equal(budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }), " · budget: $12.34/$50 today", "whole-dollar cap stays bare");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 12.34, capHitAt: null, free: false, fallback: null }), " · budget: $0.00/$12.34 today", "fractional cap keeps its cents");
+  assert.equal(budgetBadge({ spentUsd: 7.5, capUsd: 0, capHitAt: null, free: false, fallback: null }), " · budget: $7.50 today · no cap", "disabled: spend shown, gate off");
+  assert.equal(budgetBadge({ spentUsd: 0, capUsd: 0, capHitAt: null, free: true, fallback: null }), " · budget: n/a", "free outranks disabled too");
 });
 
 // The cost n/a fallback model (plans/fallback-model.md): while it carries the fleet the badge
@@ -25,24 +25,56 @@ test("budgetBadge renders the standing daily-cost rule in every cap state", () =
 test("budgetBadge names the fallback model only while it is carrying the fleet", () => {
   const fallback = { provider: "omlx", model: "local-free" };
   assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback }),
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback }),
     " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
     "at the cap with a usable fallback: the badge says what the fleet is running on now",
   );
   assert.equal(
-    budgetBadge({ spentUsd: 10, capUsd: 50, free: false, fallback }),
+    budgetBadge({ spentUsd: 10, capUsd: 50, capHitAt: null, free: false, fallback }),
     " · budget: $10.00/$50 today",
     "under the cap the fallback is not engaged, so the badge is byte-identical to before",
   );
   assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: null }),
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }),
     " · budget: $50.00/$50 today",
     "at the cap with no usable fallback: the fleet is paused, nothing to name",
   );
   // A fallback naming only a provider still identifies itself.
   assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, free: false, fallback: { provider: "omlx" } }),
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx" } }),
     " · budget: $50.00/$50 today · fallback: omlx (cost n/a)",
+  );
+});
+
+test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays byte-identical without one", () => {
+  // A forecast stands: wall-clock local, hours and minutes only (formatTime's seconds are
+  // noise for a forecast), zero-padded on both sides — 14:05, not 14:5.
+  const hit = new Date(2026, 9, 1, 14, 5, 0).getTime();
+  assert.equal(
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: hit, free: false, fallback: null }),
+    " · budget: $12.34/$50 today · ~cap at 14:05",
+  );
+
+  // The forecast and the fallback fragment can never co-occur: the fallback stands only once
+  // the cap is reached — the one state where projectCapHit is itself null — so no assertion
+  // pairs them here; the fragment order is still forecast-before-fallback by construction.
+
+  // No forecast (`capHitAt: null` — no cap, no spend, cap reached, or a burn that misses
+  // midnight): every reading is byte-identical to the pre-projection badge.
+  assert.equal(
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }),
+    " · budget: $12.34/$50 today",
+    "no forecast, no fragment",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 7.5, capUsd: 0, capHitAt: null, free: false, fallback: null }),
+    " · budget: $7.50 today · no cap",
+    "a disabled cap never carries a forecast",
+  );
+  assert.equal(
+    budgetBadge({ spentUsd: 0, capUsd: 50, capHitAt: null, free: true, fallback: null }),
+    " · budget: n/a",
+    "an all-free fleet never carries a forecast",
   );
 });
 

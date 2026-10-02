@@ -24,7 +24,7 @@ import { allRoleIds } from "../src/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { withCountedReads } from "./fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
-import { recordDailyCost } from "../src/budget.js";
+import { projectCapHit, recordDailyCost } from "../src/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";
@@ -162,31 +162,64 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   const repo = makeRepo();
   await initProject(repo, "budget snapshot test"); // seeds tumwater.json with maxDailyCostUsd: 50
 
+  // The whole budget block is pinned to one instant — local noon today — through snapshot's
+  // clock seam: the spend's day stamp, the burn-rate projection, and the expected values all
+  // derive from the same `now`, so the assertions cannot race the snapshot's Date.now()
+  // (elapsed-since-midnight enters the projection's rate, and noon is late enough in the day
+  // that this $2-vs-$50 burn always projects past midnight — capHitAt null, deterministically).
+  const now = new Date();
+  now.setHours(12, 0, 0, 0);
+
   // Two loops spent in today's window; a third carries yesterday's spend (stale stamp) that
   // must not count toward today — the badge is a daily figure.
   const clean = freshLoopState("clean");
-  recordDailyCost(clean, 1.25);
+  recordDailyCost(clean, 1.25, now.getTime());
   saveLoopState(repo, clean);
   const organize = freshLoopState("organize");
-  recordDailyCost(organize, 0.75);
+  recordDailyCost(organize, 0.75, now.getTime());
   saveLoopState(repo, organize);
   const dry = freshLoopState("dry");
   dry.dayStamp = "2000-01-01"; // not today's stamp → $0 today
   dry.dayCostUsd = 9;
   saveLoopState(repo, dry);
 
-  let snap = snapshot(repo);
+  let snap = snapshot(repo, undefined, now.getTime());
   // No provider/model is configured (pi's own default), so the fleet cannot be verified as
   // free — the dollar badge stays.
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, free: false, fallback: null });
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, capHitAt: null, free: false, fallback: null });
 
   // Disabling the cap (0) keeps the budget object — spend is still reported and the badge
   // is the affordance for setting a cap again; only its display changes (`· no cap`).
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
-  snap = snapshot(repo);
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, free: false, fallback: null });
+  snap = snapshot(repo, undefined, now.getTime());
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, capHitAt: null, free: false, fallback: null });
+});
+
+test("snapshot carries the cap-hit projection for the same spend the badge renders", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cap hit snapshot test"); // seeds tumwater.json with maxDailyCostUsd: 50
+
+  // Spend recorded and snapshot read through the SAME pinned instant: $30 spent by local noon
+  // is a burn the projection extrapolates to the cap at 20:00 the same day — the expected
+  // value comes from projectCapHit at that one instant, so the two computations cannot race
+  // each other's clocks (the review objection against comparing T1 and T2 Date.now() reads).
+  const now = new Date(2026, 9, 1, 12, 0, 0).getTime(); // Oct 1, noon local
+  const clean = freshLoopState("clean");
+  recordDailyCost(clean, 30, now);
+  saveLoopState(repo, clean);
+
+  const snap = snapshot(repo, undefined, now);
+  const expected = projectCapHit({ spentUsd: 30, capUsd: 50 }, now);
+  assert.equal(expected, new Date(2026, 9, 1, 20, 0, 0).getTime(), "hand-checked: $30 by noon hits $50 at 20:00");
+  assert.equal(snap.budget.capHitAt, expected);
+  assert.equal(snap.budget.spentUsd, 30);
+
+  // No spend, no forecast — the field stays null and the JSON payload carries the null.
+  const idle = freshLoopState("clean");
+  saveLoopState(repo, idle);
+  assert.equal(snapshot(repo, undefined, now).budget.capHitAt, null);
 });
 
 

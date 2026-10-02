@@ -36,7 +36,13 @@ export function writePiLog(root: string, role: string, lines: string[]): string 
 // The default is the default config's enabled cap with no spend — the badge renders in
 // every render now (standing information + edit affordance), and 0 < 50 keeps budgetReached
 // false so phase assertions are unaffected by the default.
-export const DEFAULT_BUDGET: StatusSnapshot["budget"] = { spentUsd: 0, capUsd: 50, free: false, fallback: null };
+export const DEFAULT_BUDGET: StatusSnapshot["budget"] = {
+  spentUsd: 0,
+  capUsd: 50,
+  capHitAt: null,
+  free: false,
+  fallback: null,
+};
 
 export function snapshotWith(
   loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,

@@ -170,6 +170,78 @@ src/ui/badges.test.ts.
 
 ## Done
 
+### The budget badge says when the cap will be hit: a burn-rate projection in the shared badge (planned 2026-10-01 by plan loop, done 2026-10-01 by feature)
+
+**Goal.** The header badge — `budgetBadge` in src/ui/badges.ts, shipped display-ready by
+src/ui/status-payload.ts to the GUI sidebar and rendered directly by src/ui/status-render.ts's
+TUI/status header — shows today's spend against the cap (`· budget: $3.20/$5.00 today`), but an
+operator watching spend climb has to do the arithmetic themselves: will the fleet hit the cap
+before the day ends, and roughly when? Append a projection computed from today's burn so the
+badge reads `· budget: $3.20/$5.00 today · ~cap at 17:40` while the forecast says the cap falls
+today, and stays byte-identical to today's output whenever it does not (no cap, no spend yet,
+cap already reached, or a burn too slow to reach it by midnight).
+
+**Approach.**
+1. **src/budget.ts:** a new pure `projectCapHit(budget: { spentUsd: number; capUsd: number },
+   now = Date.now()): number | null`. Linear burn since local midnight (`dayAt(0, new Date(now))`
+   from src/datetime.ts): `rate = spentUsd / elapsedMs`, `hitAt = midnight + capUsd / rate`.
+   Return null when `capUsd <= 0` (gate disabled), `spentUsd <= 0` (no burn to extrapolate),
+   `spentUsd >= capUsd` (the gate's own `open`/`fallback`/`paused` states supersede a forecast —
+   `budgetReached` already names that moment), or `hitAt >= next local midnight` (at this burn
+   the cap is not reached today; the daily window resets at midnight, so a tomorrow figure would
+   be a lie — silence is the honest output). The `~` in the badge marks it a forecast: the rate
+   is linear over the whole day, so quiet hours make the morning figure pessimistic about the
+   remaining day — a stated simplification, refreshed on every poll, not a design question.
+2. **src/status-data.ts:** the snapshot's `budget` field (the object typed inline next to the
+   `loops` field, doc-commented "today's fleet spend vs the cap") gains `capHitAt: number | null`,
+   computed once per poll with `projectCapHit` from the same materialized spend the badge already
+   renders — the scheduler's published figure while running, the persisted states' sum otherwise —
+   so what every observer shows is one computed fact, not three derivations. `status --json` and
+   `/api/status` carry it to scripts for free via the existing snapshot serialization.
+   (Review response: `snapshot()` and `statusPayload()` take an optional trailing `now` —
+   production callers take the `Date.now()` default — so a test pins the whole budget block to
+   one instant instead of racing the collector's own clock; the first review pass flagged the
+   wall-clock flake in exactly that shape.)
+3. **src/ui/badges.ts, `budgetBadge`:** when `budget.capHitAt` is non-null, append
+   ` · ~cap at HH:MM` — wall-clock local time from `pad2` (src/datetime.ts), hours and minutes
+   only (`pad2(d.getHours()) + ":" + pad2(d.getMinutes())`); `formatTime`'s seconds are noise for
+   a forecast. No gate check needed here: `projectCapHit` returns null exactly when the gate is
+   no longer open, so the badge's own null test is the whole condition. One home for the rule,
+   like `buildBadge` and `landingBadge` — the TUI header, `tumwater status`, and the GUI sidebar
+   inherit the fragment without individual edits, and the other budget mentions
+   (status-render's table cell, the GUI budget editor popover, the sidebar's budget card) stay
+   unchanged.
+4. **Tests:** in test/budget.test.ts, `projectCapHit` cases — zero spend → null; no cap → null;
+   spend at or over cap → null; exact hit time for a fixed `now` and spend (arithmetic checked
+   against a hand-computed instant); a burn too slow to reach the cap by midnight → null; a
+   spend crossing midnight attributed to the new day (rate restarts). In test/badges.test.ts —
+   `budgetBadge` with `capHitAt` set renders the `· ~cap at HH:MM` fragment with zero-padded
+   minutes; with `capHitAt` null the badge is byte-identical to its current output (the existing
+   `· budget: n/a`, `· no cap`, and fallback-model cases all still hold). In
+   test/status-data.test.ts and test/gui-operator.test.ts, the snapshot/payload carry
+   `capHitAt` through with the budget block pinned to one instant via the clock seam. The
+   pre-existing `StatusSnapshot["budget"]` literals (test/status-fixtures.ts,
+   test/fleet-alerts.test.ts, the header/render suites) gain `capHitAt: null`.
+
+**Files touched:** src/budget.ts, src/status-data.ts, src/ui/status-payload.ts, src/ui/badges.ts,
+test/budget.test.ts, test/badges.test.ts, test/status-data.test.ts, test/gui-operator.test.ts,
+test/status-fixtures.ts, test/fleet-alerts.test.ts, test/status-header.test.ts,
+test/status-render.test.ts, test/status-render-cells.test.ts.
+
+**Acceptance criteria.**
+- `projectCapHit` returns the documented values for every case above; no other budget.ts export
+  changes behavior.
+- With a cap configured, spend in flight, and a burn that reaches the cap before midnight,
+  `tumwater status`, the TUI header, and the GUI sidebar all show `· ~cap at HH:MM` with the same
+  time; `status --json`'s `budget.capHitAt` is that instant as epoch ms.
+- Without a cap, with no spend, with the cap already reached, or with a burn that misses
+  midnight, every budget-rendering surface is byte-identical to its pre-change output.
+- `npm run test` green.
+
+**Done 2026-10-01 by feature:** implemented as planned (anchors corrected above: the suites
+live in test/, not src/, and the literal updates plus the clock seam touch more files than the
+plan first listed). Suite green: 2816 passed, 0 failed, 1 skipped.
+
 ### The dashboard speaks when the fleet needs you: a synthesized audio cue on a new needs-you alert, with a mute toggle (planned 2026-10-01 by plan loop, done 2026-10-01 by feature)
 
 **Goal.** The dashboard's alerts band (src/ui/gui-client-fleet.ts's `renderFleet`, the `// alerts ----`
