@@ -90,3 +90,35 @@ test("nodeFloorProblem words the startup refusal with floor, found version, and 
   assert.equal(nodeFloorProblem("26.10.0", ">=20.3"), undefined);
   assert.equal(nodeFloorProblem("not-a-version", ">=20.3"), undefined);
 });
+
+// The dispatcher's own fail (cli.ts's version case) runs in a process that imported cli.js,
+// so it can only be exercised through the compiled entry point: a copy of dist beside a
+// package.json the version read cannot supply must exit 1 with version.ts's wording instead
+// of a raw stack trace — the exact scenario the guard replaced.
+
+test("the compiled CLI fails `version` with the reason on a broken install", async () => {
+  const { execFile } = await import("node:child_process");
+  // dist/test's parent's parent is the checkout root, whose dist/ holds the compiled tree.
+  const distDir = fileURLToPath(new URL("../../dist", import.meta.url));
+  // The file must stay valid JSON — node's ESM resolver reads it to resolve modules beside
+  // it — so the broken shapes here are a missing and a non-string version field.
+  for (const body of ["{\"name\":\"broken-install\"}", "{\"name\":\"broken-install\",\"version\":42}"]) {
+    const dir = tmpdir("tw-ver-cli-");
+    await fs.promises.cp(distDir, path.join(dir, "dist"), { recursive: true });
+    await fs.promises.writeFile(path.join(dir, "package.json"), body);
+    const r = await new Promise<{ code: number; stderr: string }>((resolve) => {
+      execFile(
+        process.execPath,
+        [path.join(dir, "dist", "src", "cli.js"), "version"],
+        { cwd: dir, timeout: 20_000 },
+        (err, _stdout, stderr) => resolve({ code: err ? Number(err.code ?? 1) : 0, stderr }),
+      );
+    });
+    assert.equal(r.code, 1, `${body}: ${r.stderr}`);
+    assert.match(
+      r.stderr,
+      /package.json carries no version field \(the running harness's install looks broken\)/,
+      body,
+    );
+  }
+});

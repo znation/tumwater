@@ -5,7 +5,7 @@ import { initProject } from "../src/init.js";
 import { cmdTick, renderTickDetail } from "../src/ui/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { writeEvents } from "./log-fixtures.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
 
@@ -237,4 +237,18 @@ test("tumwater tick dispatches through the real binary, flags gated", async () =
   const bad = await cli(repo, "tick", "bugfix", "3", "--rol");
   assert.equal(bad.code, 1);
   assert.match(bad.stderr, /--rol/);
+});
+
+test("tick's dispatcher fails a wrong positional count with its usage, before the ready-repo gate", async () => {
+  // The dispatcher repeats cmdTick's arity guard (cli.ts's tick case), so a malformed
+  // invocation fails with the usage no matter the directory — including one that is not
+  // even a git repository, where a dropped guard would surface as an environment error.
+  // run outside any repo on purpose: the arity check must precede the ready-repo gate.
+  const empty = tmpdir();
+  for (const args of [["tick"], ["tick", "bugfix"], ["tick", "bugfix", "3", "extra"]]) {
+    const r = await cli(empty, ...args);
+    assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater tick <role> <n> \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
+  }
 });
