@@ -1,6 +1,5 @@
 /** The dashboard's fleet view, browser-side — the main screen between polls: the sidebar's
- * project name and fleet status (loops running, build state, the land queue's depth and
- * in-flight landing), the alerts band for whatever needs a human (a failing loop, a red main,
+ * project name and fleet status (loops running, build state, main's check, quiet hours), the alerts band for whatever needs a human (a failing loop, a red main,
  * a spent budget, an old build, open questions, a pause), today's progress tiles with their
  * per-day bar chart, the backlog with its questions/plans/bugs tabs, and the notable activity
  * feed (the loops table with its per-row actions lives in gui-client-loops.ts; the composer
@@ -31,11 +30,6 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>";
   }
   // restart-button:end
-  function landingTitle(q) {
-    const f = q.inFlight;
-    const now = f ? " Landing now: " + f.role + " — " + (f.summary || "") + (f.stage ? " (" + String(f.stage).replace("-", " ") + ")" : "") : "";
-    return plural(q.depth, "change") + " in the land queue." + now;
-  }
   // sidebar:start
   function renderSidebar(d) {
     const project = $("project");
@@ -75,9 +69,6 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         rows += row(tone, icon(glyph),
           "Main " + word + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
-      // Clickable: the land-queue drawer (gui-client-drawer.ts). Same row markup as the
-      // helper, plus the data-action the #statuschips listener dispatches on.
-      if (d.landQueue && d.landQueue.depth > 0) rows += "<div class='row t-orange rowclickable' data-action='landqueue' title='" + esc(landingTitle(d.landQueue)) + "'>" + icon("merge") + "Land queue " + d.landQueue.depth + "</div>";
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
       // inside/outside wording the TUI/status header's quietBadge carries, derived from the
@@ -271,11 +262,6 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     }
     const entry = clickClosest(ev, ".backloglink");
     if (entry) toggleEntry(entry.dataset.file, Number(entry.dataset.index));
-  });
-  // The sidebar's "Land queue N" chip opens the land-queue drawer; every other row is
-  // inert (only rows carrying the data-action dispatch).
-  $("statuschips").addEventListener("click", (ev) => {
-    if (clickClosest(ev, "[data-action='landqueue']")) toggleLandQueue();
   });
 
   // ---- activity ----

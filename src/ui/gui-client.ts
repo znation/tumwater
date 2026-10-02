@@ -1,6 +1,6 @@
 /** The browser-side dashboard app inlined as the GUI page's only <script>. It polls /api/status
  * every second and renders, in the order an operator needs them: the masthead's fleet status
- * (running, build, land queue) and fleet controls (budget, pause); alerts for whatever needs a
+ * (running, build, main check) and fleet controls (budget, pause); alerts for whatever needs a
  * human (a failing loop, a red main, a spent budget, an old build, open questions, a pause);
  * the composer that steers the director or one loop; and the fleet view — today's progress,
  * the loops grouped by what they are doing, the backlog, and the notable activity. The

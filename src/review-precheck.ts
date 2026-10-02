@@ -16,7 +16,7 @@ import { sampleSleepClock } from "./host-sleep.js";
 import { recordReview } from "./tick-apply.js";
 import { mainRedPhrase } from "./phrases.js";
 import { shortSha } from "./text.js";
-import { setLandingStage } from "./landing-slot.js";
+import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import { mainTipVerdict } from "./main-red.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
@@ -63,6 +63,8 @@ export async function gateBuildPrecheck(
       config,
       ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS,
       ctx.sampleSleep ?? sampleSleepClock,
+      undefined,
+      checkWaitStage(root, [role]),
     );
   const preCheck = await runGateCheck();
   if (preCheck) {

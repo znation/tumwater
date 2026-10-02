@@ -5,7 +5,7 @@ import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui-client-drawer.js";
 import { clientRegion, ESC_LINE, iconStub } from "./gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui-client-drawer.ts): the open/close
-// state machine over loops, backlog entries, and the land queue with its #loop/<role> hash
+// state machine over loops and backlog entries with its #loop/<role> hash
 // routing, the loop drawer's paint (unknown role, a working loop's actions and metrics), the
 // backlog entry's load with its stale-response guard, and the transcript line classifier.
 // The pattern test/gui-client.test.ts uses: the real format and view-model regions of the
@@ -27,9 +27,7 @@ type DrawerScope = {
   openEntryKey(): string | null;
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
-  toggleLandQueue(): void;
   renderLoopDrawer(d: object): void;
-  renderLandQueueDrawer(d: object): void;
   landingSummary(d: object, role: string): string;
   transcriptHtml(lines: string[]): string;
   loadLoopTicks(force: boolean): Promise<void>;
@@ -277,41 +275,18 @@ test("an open question entry offers the composer's answer action, an empty body 
   assert.match(t.paintedFor("entrybody"), /No details for this entry\./);
 });
 
-test("the land queue drawer renders the depth, the in-flight change, and its entries; closing it silences refreshDrawer", async () => {
-  const now = Date.now();
-  const t = openDrawer(["toggleLandQueue", "refreshDrawer", "renderLandQueueDrawer", "openEntryKey", "openLoopRole"], {
-    status: {
-      loops: [],
-      landQueue: {
-        depth: 2,
-        inFlight: { role: "clean", summary: "Add a knob", stage: "build-check" },
-        entries: [{ role: "clean", summary: "Add a knob", sha: "abcd1234efgh", enqueuedAt: now }],
-      },
-    },
+test("closing the drawer silences refreshDrawer", async () => {
+  const t = openDrawer(["toggleEntry", "refreshDrawer"], {
+    status: { loops: [] },
+    responses: { "/api/backlog?file=questions&index=2": { title: "Which backend?", body: "" } },
   });
-  t.scope.toggleLandQueue();
-  assert.equal(t.scope.openLoopRole(), null);
-  assert.equal(t.scope.openEntryKey(), null);
-  const head = t.paintedFor("drawerhead");
-  assert.match(head, /Land queue/);
-  assert.match(head, /2 changes/);
-  assert.match(head, /Landing now: <span class='mono'>clean<\/span> — Add a knob \(build check\)/);
-  const body = t.paintedFor("drawerbody");
-  assert.match(body, /#1 · <span class='mono'>clean<\/span>/);
-  assert.match(body, /abcd1234/); // shortSha's 8 characters
-  assert.match(body, /just now/);
-
-  t.scope.toggleLandQueue(); // the same chip closes it
+  t.scope.toggleEntry("questions", 2);
+  await flush();
+  t.scope.toggleEntry("questions", 2); // the same row closes it
   assert.equal(t.el("drawer").hidden, true);
   const paintsBefore = t.painted.length;
   await t.scope.refreshDrawer();
   assert.equal(t.painted.length, paintsBefore, "a closed drawer still refreshed");
-
-  // An empty queue says the changes just landed.
-  t.scope.toggleLandQueue();
-  const emptyStatus = { loops: [], landQueue: { depth: 0 } };
-  t.scope.renderLandQueueDrawer(emptyStatus);
-  assert.match(t.paintedFor("drawerbody"), /The queue is empty/);
 });
 
 test("landingSummary picks the held change for a role, in both in-flight shapes, and stays empty otherwise", () => {

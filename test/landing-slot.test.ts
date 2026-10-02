@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   addLandingChange,
+  checkWaitStage,
   landingChanges,
   landingUsage,
   readLandingMarker,
@@ -240,6 +241,20 @@ test("setLandingStage advances only its own role's record, and only its stage", 
   assert.deepEqual(readLandingMarker(root), single);
 });
 
+// A check parked for its process-wide permit names the wait, not a running check — so a row
+// whose check has not started never reads as one that has.
+test("checkWaitStage shows check-wait while parked, then build-check once the permit arrives", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  addLandingChange(root, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set(["alpha"]));
+  const stages = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.stage}`);
+  const hooks = checkWaitStage(root, ["alpha", "beta", "delta"]); // delta has no record: a no-op
+  hooks.waiting();
+  assert.deepEqual(stages(), ["alpha=check-wait", "beta=check-wait"]);
+  hooks.granted();
+  assert.deepEqual(stages(), ["alpha=build-check", "beta=build-check"]);
+});
+
 // The marker (BUGS.md 2026-09-23) carries one record per change the pipeline holds: each vet
 // adds its own, the gates and the merge advance only their change's record, each outcome
 // removes it, and the top level follows the first change in flight for observers that read
@@ -251,16 +266,16 @@ test("the marker's records come and go per change, and its top level follows the
   ) as Record<string, LandingEntry>;
   const records = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
 
-  // Two vets at once: each opens its own record, with its own start, at the git steps.
+  // Two vets at once: each opens its own record, with its own start, at its rebase onto main.
   const before = Date.now();
   addLandingChange(root, entries.alpha!, new Set(["alpha"]));
   addLandingChange(root, entries.beta!, new Set(["alpha", "beta"]));
   setLandingStage(root, "beta", "reviewing");
   setLandingStage(root, "delta", "reviewing"); // no record: a no-op
-  assert.deepEqual(records(), ["alpha=landing/merging", "beta=landing/reviewing"]);
+  assert.deepEqual(records(), ["alpha=landing/rebasing", "beta=landing/reviewing"]);
   assert.ok(readLandingMarker(root)!.changes![0]!.startedAt! >= before, "the change's own start");
   assert.equal(readLandingMarker(root)!.role, "alpha", "the top level names the first change in flight");
-  assert.equal(readLandingMarker(root)!.stage, "merging", "at that change's own stage");
+  assert.equal(readLandingMarker(root)!.stage, "rebasing", "at that change's own stage");
 
   // alpha's vet approves it: it waits for the merge, and beta, still under review, becomes the
   // top level — with its own start and its own stage.
@@ -274,11 +289,11 @@ test("the marker's records come and go per change, and its top level follows the
 
   // A record the pipeline no longer holds (a crashed generation's) never rides along.
   addLandingChange(root, entries.gamma!, new Set(["beta", "gamma"]));
-  assert.deepEqual(records(), ["beta=landing/reviewing", "gamma=landing/merging"]);
+  assert.deepEqual(records(), ["beta=landing/reviewing", "gamma=landing/rebasing"]);
   addLandingChange(root, entries.alpha!, new Set(["alpha", "beta", "gamma"]));
 
-  // The merge reaches alpha: re-entering `landing` keeps its first start and restarts at the
-  // git steps.
+  // The merge reaches alpha: re-entering `landing` keeps its first start and restages it
+  // `merging` — the merge slot's own stage.
   const alphaStart = readLandingMarker(root)!.changes!.find((c) => c.role === "alpha")!.startedAt;
   setLandingChangeStatus(root, "alpha", "vetted");
   setLandingChangeStatus(root, "alpha", "landing");
@@ -302,7 +317,7 @@ test("landingChanges reads a one-change marker as one landing record", () => {
   assert.deepEqual(landingChanges(single), [{ ...single, status: "landing" }]);
 });
 
-test("a queued landing's record walks build-check → reviewing → merging while each phase runs", async () => {
+test("a queued landing's record names each phase while it runs: the gate's check, the review, the merge's in-lock check", async () => {
   const root = makeRepo();
   // A pinned change ahead of main, exactly what a tick leaves behind for the pipeline.
   sh(root, "git", "checkout", "--detach");
@@ -318,7 +333,7 @@ test("a queued landing's record walks build-check → reviewing → merging whil
   // Every observation point appends the marker's stage as the observers would read it: the
   // project's declared check (the vet's gate pre-check, then the merge's in-lock re-check), and
   // the reviewer run. The reviewer also moves main, so the in-lock re-check has a rebased
-  // tree to verify — the merge step's own long phase.
+  // tree to verify — the merge step's own long phase, which names itself a build check too.
   const rec = path.join(tmpdir(), "stages");
   const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}' | head -n 1`;
   const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
@@ -337,7 +352,7 @@ test("a queued landing's record walks build-check → reviewing → merging whil
     assert.equal(result, "changed", `the landing lands: ${author.state.lastError ?? ""}`);
     assert.deepEqual(
       fs.readFileSync(rec, "utf8").trim().split("\n"),
-      ["check:build-check", "review:reviewing", "check:merging"],
+      ["check:build-check", "review:reviewing", "check:build-check"],
       "each phase ran under its own stage",
     );
     assert.equal(readLandingMarker(root), null, "the marker is removed after the outcome");

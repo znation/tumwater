@@ -1,7 +1,7 @@
 /** The dashboard page shell served at `/` by `tumwater gui`: the markup of the zero-dependency
  * single-file app, with its stylesheet (gui-styles.ts) and browser logic (gui-client.ts)
  * inlined. The shell is a sidebar beside a main column. The sidebar is the fleet's frame on
- * every view: which project this is and whether its fleet is up (build, land queue), the
+ * every view: which project this is and whether its fleet is up (build, main check), the
  * views — Fleet's carrying a badge while something needs a human — and the fleet-wide
  * controls: today's spend against the cap, and pause. The main column shows one view: Fleet
  * (alerts for whatever needs a human, the composer that steers the director or one loop,

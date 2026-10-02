@@ -8,16 +8,14 @@
  * question, or asking the director about a plan or bug. Esc, the close button, or clicking the
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
-export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } | { kind: "landqueue" } while open
+export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } while open
   let drawerTicks = null; // the open loop's recent history rows (null until fetched)
   let drawerTicksAt = 0;
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
   const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null);
 
   function showDrawer(bodyHtml) {
-    // "drawerbody" too: the land-queue drawer paints it through paintPanel, so the cache
-    // must not outlive the body showDrawer writes here directly.
-    for (const id of ["drawerhead", "draweractions", "drawermeta", "transcript", "entrybody", "drawerbody"]) delete lastPaint[id];
+    for (const id of ["drawerhead", "draweractions", "drawermeta", "transcript", "entrybody"]) delete lastPaint[id];
     $("drawerhead").innerHTML = "";
     $("drawerbody").innerHTML = bodyHtml;
     $("drawer").hidden = false;
@@ -66,36 +64,6 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (openEntryKey() === file + ":" + index) closeDrawer();
     else openEntry(file, index);
   }
-  // The land queue's drawer: transient state like the entry drawer, so no hash — opened by
-  // clicking the sidebar's "Land queue N" chip.
-  function openLandQueue() {
-    drawer = { kind: "landqueue" };
-    showDrawer("<div class='empty'>Loading…</div>");
-    if (lastStatus) {
-      renderLandQueueDrawer(lastStatus);
-      renderFleet(lastStatus);
-    }
-  }
-  function toggleLandQueue() {
-    if (drawer && drawer.kind === "landqueue") closeDrawer();
-    else openLandQueue();
-  }
-  function renderLandQueueDrawer(d) {
-    const q = (d.landQueue || { depth: 0 });
-    const f = q.inFlight;
-    paintPanel("drawerhead", "<div class='kicker'>Land queue</div><h2 id='drawertitle'>" + esc(plural(q.depth, "change")) +
-      "</h2><div class='chips'>" +
-      (f ? "<span class='muted'>Landing now: <span class='mono'>" + esc(f.role) + "</span> — " + esc(f.summary || "") +
-        (f.stage ? " (" + esc(String(f.stage).replace("-", " ")) + ")" : "") + "</span>" : "") + "</div>");
-    const entries = q.entries || [];
-    paintPanel("drawerbody", entries.length
-      ? entries.map((e, i) =>
-        "<section><div class='sec-head'><h3>#" + (i + 1) + " · <span class='mono'>" + esc(e.role) + "</span></h3>" +
-        "<span class='muted' style='margin-left:auto;font-size:13px'>" + esc(fmtAgo(e.enqueuedAt)) + "</span></div>" +
-        "<div class='note'>" + esc(e.summary) + " <span class='mono'>" + esc(shortSha(e.sha)) + "</span></div></section>").join("")
-      : "<p class='muted'>The queue is empty — the queued changes just landed.</p>");
-  }
-
   // The change the landing slot holds for a role — what a landing (or approved) row is about.
   function landingSummary(d, role) {
     const f = d.landQueue && d.landQueue.inFlight;
@@ -239,8 +207,6 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (drawer.kind === "loop") {
       if (lastStatus) renderLoopDrawer(lastStatus);
       await refreshTranscript(false);
-    } else if (drawer.kind === "landqueue") {
-      if (lastStatus) renderLandQueueDrawer(lastStatus);
     } else {
       await refreshEntry();
     }

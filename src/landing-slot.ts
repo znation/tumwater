@@ -10,6 +10,7 @@ import { readJsonFile, writeJsonAtomic } from "./json-files.js";
 import { removeQuiet } from "./files.js";
 import { landingStatePath } from "./paths.js";
 import type { LoopRunner } from "./loop.js";
+import type { PermitWaitHooks } from "./check-permit.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the
@@ -25,7 +26,12 @@ import type { LoopRunner } from "./loop.js";
  * attribution check of main's tip behind a repeat failure, or a stack's shared check); `reviewing` — the adversarial reviewer's pi run,
  * whose live turns/context/tool the dashboards read from the role's raw log. Everything else a
  * landing does (verdict parsing, state saves) is sub-second bookkeeping between these. */
-export type LandingStage = "merging" | "build-check" | "reviewing";
+/** What the pipeline is doing with one change right now. A vet opens at `rebasing` (its
+ * checkout and rebase onto main) and moves through `build-check` and `reviewing`; `check-wait`
+ * covers any wait for a process-wide check permit (check-permit.ts) before a check starts, so a
+ * queued check never reads as a running one. `merging` is the merge slot only — the stack's
+ * assembly, the in-lock re-check's git steps, and the fast-forward onto main. */
+export type LandingStage = "rebasing" | "check-wait" | "build-check" | "reviewing" | "merging";
 
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status
  * the marker carries, so each role's row says what the pipeline is doing with ITS change rather
@@ -44,9 +50,9 @@ export type LandingChangeStatus = "landing" | "vetted" | "done";
 
 /** One change's record in the in-flight marker. `startedAt` is stamped when its vet starts and
  * kept through its merge, so its `landing <elapsed>` measures this change's own landing. `stage`
- * is this change's own LandingStage (setLandingStage), reset to `merging` each time it enters
- * `landing` — every step starts with git (the vet's checkout and rebase, the stack's assembly,
- * a fallback's merge). Keyed by role — invariant 3 caps a role at one in-flight change. */
+ * is this change's own LandingStage (setLandingStage): `rebasing` when its vet starts, reset to
+ * `merging` each time the merge slot moves it back to `landing` (the stack's assembly, a
+ * fallback's merge). Keyed by role — invariant 3 caps a role at one in-flight change. */
 export interface LandingChange {
   role: string;
   sha: string;
@@ -151,8 +157,8 @@ export function setLandingChangeStatus(root: string, role: string, status: Landi
 }
 
 /** Add one change's record as its vet starts: each change is its own task, so records come and
- * go one at a time. The new record starts `landing` at `merging` with its own `startedAt` (a
- * vet opens with its checkout and rebase). Every other record is kept only while its role is in
+ * go one at a time. The new record starts `landing` at `rebasing` with its own `startedAt` (a
+ * vet opens with its checkout and rebase onto main). Every other record is kept only while its role is in
  * `live` — the roles the pipeline holds right now — so a record a crashed generation left behind
  * never rides along. Never throws (rewriteMarker). */
 export function addLandingChange(root: string, entry: LandingEntry, live: ReadonlySet<string>): void {
@@ -165,14 +171,14 @@ export function addLandingChange(root: string, entry: LandingEntry, live: Readon
     summary: entry.summary,
     status: "landing",
     startedAt,
-    stage: "merging",
+    stage: "rebasing",
   };
   rewriteMarker(root, {
     role: entry.role,
     sha: entry.sha,
     summary: entry.summary,
     startedAt,
-    stage: "merging",
+    stage: "rebasing",
     changes: [...kept, change],
   });
 }
@@ -208,6 +214,17 @@ export function setLandingStage(root: string, role: string, stage: LandingStage)
     change.stage = stage;
     return true;
   });
+}
+
+/** The landing cell's hooks around a build check's wait for its permit (runScopedBuildCheck's
+ * `permitWait`): `check-wait` on each of `roles`' records while parked, `build-check` once the
+ * permit arrives. Called only when the permit was not free, so an unqueued check never
+ * flickers. A no-op for roles with no record, like setLandingStage. */
+export function checkWaitStage(root: string, roles: readonly string[]): PermitWaitHooks {
+  return {
+    waiting: () => roles.forEach((role) => setLandingStage(root, role, "check-wait")),
+    granted: () => roles.forEach((role) => setLandingStage(root, role, "build-check")),
+  };
 }
 
 /** The marker's per-change records, whichever shape it has: `changes` as written, or — for a

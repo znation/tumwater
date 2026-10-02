@@ -11,7 +11,7 @@ import {
   timedOutPhrase,
   type BuildCheckScope,
 } from "./build-check-events.js";
-import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
+import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "./check-permit.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
@@ -337,7 +337,8 @@ async function runDeclaredCheck(
  * as its own build_check event, carrying when the check itself ran (buildCheckRunFields).
  * A configured `check.gateCommand` replaces the command at scope "gate" only (same cwd and
  * timeout); the landing and batch scopes — and the red-main baseline, which detects on its
- * own — keep running check.command. Never throws. */
+ * own — keep running check.command. `permitWait` hears about a wait for the check permit (the
+ * landing cell's "waiting for a check slot"). Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
@@ -347,6 +348,7 @@ export async function runScopedBuildCheck(
   timeoutMs = BUILD_CHECK_TIMEOUT_MS,
   sampleSleep: SleepSampler = sampleSleepClock,
   install: InstallRunner = npmInstall,
+  permitWait?: PermitWaitHooks,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
   const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
   const check = detectBuildCheck(
@@ -402,6 +404,7 @@ export async function runScopedBuildCheck(
       durationMs = Date.now() - retryStart;
       return retry;
     },
+    permitWait,
   );
   // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness,
   // a genuinely hung or oversized suite), made no verdict about the tree — and this is the

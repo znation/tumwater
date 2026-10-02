@@ -79,7 +79,7 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   }
 });
 
-test("the served /api/status carries the land queue's entries for the drawer", async () => {
+test("the served /api/status carries the land queue's entries", async () => {
   // The land-queue drawer is client-side script; this e2e covers its server half: enqueue a
   // landing in the repo, start the gui, and read the same payload the 1 s poll delivers —
   // the entries the drawer renders must reach the client in queue order.

@@ -162,8 +162,8 @@ export interface StatusSnapshot {
    * is not yet `done`. */
   landQueue: {
     depth: number;
-    /** Each queued change in execution order (oldest first): what the GUI's land-queue
-     * drawer lists — position, role, summary, short sha, age. Filled from the same
+    /** Each queued change in execution order (oldest first) for `status --json` readers —
+     * position, role, summary, sha, age. Filled from the same
      * `queuedLandings` pass the depth already costs (shallow per-entry copies without the
      * optional `body`/`highFriction`), only when `depth > 0`, absent when empty — the same
      * filling discipline `roleInboxPrompts` follows: there is nothing to render, so the

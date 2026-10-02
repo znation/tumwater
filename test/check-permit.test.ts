@@ -30,6 +30,26 @@ test("withCheckPermit bounds concurrency to the configured cap", async () => {
   assert.equal(peak, 2);
 });
 
+test("withCheckPermit calls its wait hooks only when the permit is not free", async () => {
+  const cfg = { maxConcurrentChecks: 1 };
+  const calls: string[] = [];
+  const hooks = { waiting: () => calls.push("waiting"), granted: () => calls.push("granted") };
+  // A free permit: no wait, no hooks.
+  await withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran-free"), hooks);
+  assert.deepEqual(calls, ["ran-free"]);
+  calls.length = 0;
+  // A held permit: the second caller announces its wait, then the grant, then runs.
+  let releaseFirst!: () => void;
+  const first = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseFirst = r)));
+  await flush();
+  const second = withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran"), hooks);
+  await flush();
+  assert.deepEqual(calls, ["waiting"], "parked behind the held permit");
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(calls, ["waiting", "granted", "ran"]);
+});
+
 test("a valid config raises the cap for the next checks", async () => {
   // The default cap is 2; three concurrent checks can only all run if the config's
   // maxConcurrentChecks was applied to the shared semaphore at acquire time.

@@ -41,18 +41,32 @@ function checkCap(config: CheckConfigSlice | undefined): number {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 ? n : defaultConfig().maxConcurrentChecks;
 }
 
+/** Called around a wait for a check permit — only when the permit is not free on arrival:
+ * `waiting` before parking, `granted` once the permit arrives. The landing path uses it to show
+ * "waiting for a check slot" instead of a check that has not started (landing-slot.ts's
+ * checkWaitStage). */
+export interface PermitWaitHooks {
+  waiting(): void;
+  granted(): void;
+}
+
 /** Run `run` under one process-wide check permit (see checkPermits), resizing the cap from the
  * live config first and releasing in a finally — a check that fails, times out, or throws still
  * gives its permit back. Reentrant (holdingPermit): called again from inside `run`, it runs the
- * inner work under the permit already held. */
+ * inner work under the permit already held. `hooks` hear about a wait, if there is one. */
 export async function withCheckPermit<T>(
   config: CheckConfigSlice | undefined,
   tier: number,
   run: () => Promise<T>,
+  hooks?: PermitWaitHooks,
 ): Promise<T> {
   if (holdingPermit.getStore()) return run();
   checkPermits.setCapacity(checkCap(config));
-  await checkPermits.acquire(tier);
+  if (!checkPermits.tryAcquire()) {
+    hooks?.waiting();
+    await checkPermits.acquire(tier);
+    hooks?.granted();
+  }
   try {
     return await holdingPermit.run(true, run);
   } finally {

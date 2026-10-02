@@ -495,6 +495,8 @@ test("the build-check and merging landing stages render their label and never re
   const s = freshLoopState("clean");
   const startedAt = Date.now() - 90_000;
   for (const [stage, label] of [
+    ["rebasing", "rebasing"],
+    ["check-wait", "waiting for a check slot"],
     ["build-check", "build check"],
     ["merging", "merging"],
   ] as const) {

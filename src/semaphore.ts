@@ -22,6 +22,14 @@ export class Semaphore {
     return this.waiters.length;
   }
 
+  /** Take a free permit without parking: true when one was granted (the same fast path
+   * acquire takes), false when acquire would have to wait. */
+  tryAcquire(): boolean {
+    if (this.inUse >= this.capacity) return false;
+    this.inUse += 1;
+    return true;
+  }
+
   /** Acquire a permit, parking in the wait queue when none is free. `tier` orders WAITING
    * requests only: on arrival a waiter inserts ahead of every parked waiter with a strictly
    * greater tier (the orchestrator passes roleTier so work roles beat maintenance across

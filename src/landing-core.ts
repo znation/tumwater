@@ -153,7 +153,8 @@ export async function reviewPinnedChange(
     req.highFriction,
   );
   // The gate is over, whatever it decided: move the landing cell off the gate's stages (a no-op
-  // outside a queued landing). What follows is the wait for the merge, and a finished
+  // outside a queued landing). What follows is the wait for the merge — the vet marks the change
+  // `vetted` next, and the merge slot re-stages it `merging` when it takes it — and a finished
   // reviewer's last turns left in the cell would accrue a false `no pi output` flag for as long
   // as the change waits.
   setLandingStage(root, role, "merging");

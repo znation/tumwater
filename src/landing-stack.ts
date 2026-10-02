@@ -14,7 +14,7 @@ import { type BuildCheckOutcome, runScopedBuildCheck } from "./build-check.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { noteGreenBaseline } from "./main-baseline.js";
 import { isExemptDiff } from "./exemptions.js";
-import { setLandingStage } from "./landing-slot.js";
+import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import type { TumwaterConfig } from "./config-schema.js";
 
 /** What landStack needs from its caller (landing-batch.ts's BatchContext): the repo, main,
@@ -172,8 +172,19 @@ export async function landStack(ctx: StackContext, wtPath: string, entries: read
       } else {
         // The landing cell names the check while it runs, then the merge steps after it — the ff
         // or what the caller does next — on every stacked change's own record.
-        for (const e of entries) setLandingStage(ctx.root, e.role, "build-check");
-        const check = await runScopedBuildCheck(ctx.root, entries[0]!.role, "batch", wtPath, ctx.config);
+        const roles = entries.map((e) => e.role);
+        for (const role of roles) setLandingStage(ctx.root, role, "build-check");
+        const check = await runScopedBuildCheck(
+          ctx.root,
+          roles[0]!,
+          "batch",
+          wtPath,
+          ctx.config,
+          undefined,
+          undefined,
+          undefined,
+          checkWaitStage(ctx.root, roles),
+        );
         for (const e of entries) setLandingStage(ctx.root, e.role, "merging");
         if (check !== null && check.outcome.status === "failed") return { kind: "red", ...check };
         checkedTip = tip;

@@ -129,9 +129,11 @@ export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: str
 
 /** How each landing stage names itself in the landing cell. */
 const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
-  merging: "merging",
+  rebasing: "rebasing",
+  "check-wait": "waiting for a check slot",
   "build-check": "build check",
   reviewing: "reviewing",
+  merging: "merging",
 };
 
 /** The loop's state label — the one precedence ladder shared by the status table and both

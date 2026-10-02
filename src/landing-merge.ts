@@ -21,6 +21,7 @@ import { warnEvent } from "./events.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { mergeLockDir } from "./paths.js";
+import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import { syncRootInstall } from "./dep-install.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickResult } from "./tick-outcome.js";
@@ -218,8 +219,21 @@ async function verifyLanding(
   // unexplained red check run on a tree that could never land.
   if (await structureBlocked(ctx, wt, files)) return false;
   // The run itself (build_check event, environmental-skip warning) lives in
-  // runScopedBuildCheck, shared with the review gate's pre-check.
-  const check = await runScopedBuildCheck(ctx.root, ctx.role, "landing", wt, ctx.config);
+  // runScopedBuildCheck, shared with the review gate's pre-check. The landing cell names the
+  // check (or its wait for a permit) while it runs, then the merge again for the ff.
+  setLandingStage(ctx.root, ctx.role, "build-check");
+  const check = await runScopedBuildCheck(
+    ctx.root,
+    ctx.role,
+    "landing",
+    wt,
+    ctx.config,
+    undefined,
+    undefined,
+    undefined,
+    checkWaitStage(ctx.root, [ctx.role]),
+  );
+  setLandingStage(ctx.root, ctx.role, "merging");
   if (!check) return true; // No declared check: nothing to run, exactly like the gate skipping its pre-check.
   if (check.outcome.status === "failed") {
     ctx.onLandingCheckRed?.(check.check, check.outcome);
