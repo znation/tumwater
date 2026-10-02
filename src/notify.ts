@@ -48,17 +48,22 @@ interface Notifier {
  * detached with stdio ignored, so it outlives whatever the orchestrator does next, and a
  * nonzero exit is the command's problem, not the fleet's. `"warning"` is deliberately not on
  * the allowlist, so a failed spawn's warning can never recurse into another spawn. */
-export function newNotifier(root: string, minGapMs: number = NOTIFY_MIN_GAP_MS): Notifier {
+export function newNotifier(
+  root: string,
+  minGapMs: number = NOTIFY_MIN_GAP_MS,
+  /** The throttle's clock — a test seam; production reads the wall clock. */
+  now: () => number = Date.now,
+): Notifier {
   let command: string | undefined;
   const lastSpawnAt = new Map<NotifyEventType, number>();
   const unsubscribe = subscribeEvents((event: HarnessEvent) => {
     if (typeof command !== "string" || command === "") return;
     if (!NOTIFY_EVENT_TYPES.includes(event.type as NotifyEventType)) return;
     const type = event.type as NotifyEventType;
-    const now = Date.now();
+    const at = now();
     const last = lastSpawnAt.get(type);
-    if (last !== undefined && now - last < minGapMs) return;
-    lastSpawnAt.set(type, now);
+    if (last !== undefined && at - last < minGapMs) return;
+    lastSpawnAt.set(type, at);
     try {
       const child = spawn(command, [], {
         shell: true,

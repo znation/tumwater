@@ -16,7 +16,7 @@ import { ExitError } from "./exit-capture.js";
 import fs from "node:fs";
 import path from "node:path";
 import { commitIn, mainSha, makeRepo } from "./repo-fixtures.js";
-import { sleep } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 // The dashboards' auto-reload (src/ui/self-reload.ts): decide staleness from the process's own
 // startup stamp versus the on-disk stamp, then re-exec the same command once. All seams are
@@ -457,11 +457,15 @@ test("createReloadWatch with the production gate fires onto a real commit and re
     await sleep(30);
     assert.equal(fired, 0, "the identical real commit stays quiet");
     disk = { sha: "bogus", builtAt: 1, root: repo };
-    await sleep(30);
+    // The quiet windows can only under-test on a slow host (the bogus stamp's git call still in
+    // flight when the window ends), never fail falsely — firing onto it is the bug either way.
+    await sleep(100);
     assert.equal(fired, 0, "the real gate refuses a stamp naming no commit here");
     disk = { sha: secondSha, builtAt: 1, root: repo };
-    await sleep(30);
-    assert.equal(fired, 1, "the real gate accepts a real newer commit");
+    // Awaited, not slept: the accept takes a real `git cat-file`, and a fixed 30 ms window
+    // expired before it returned on a loaded host (9 of 24 parallel runs, 2026-10-01).
+    await waitFor(() => fired === 1, "the real gate accepting a real newer commit", 10_000);
+    assert.equal(fired, 1, "the real gate accepts a real newer commit exactly once");
   } finally {
     watch.stop();
   }

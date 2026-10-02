@@ -102,18 +102,25 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
 test("the throttle suppresses same-type events within the gap, per type", async () => {
   const root = tmpdir();
   const out = path.join(root, "notify-out.txt");
-  // A 50 ms injected gap (newNotifier's test seam) keeps this test fast while exercising the
-  // exact same Map-keyed path the 60 s default takes.
-  const notifier = newNotifier(root, 50);
+  // An injected clock (newNotifier's test seam) on the real 60 s gap: "inside the gap" is a
+  // statement about the clock, not about how fast the host runs. A wall-clock 50 ms gap read
+  // the synchronous shell spawn between two back-to-back events as the gap elapsing whenever
+  // the host was loaded, and the second event paged (4 of 24 parallel runs, 2026-10-01).
+  let clock = 1_000_000;
+  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => clock);
   notifier.update({ notify: recorderCommand(out) });
   try {
     logEvent(root, { loop: "feature", type: "budget_paused" });
+    clock += NOTIFY_MIN_GAP_MS - 1;
     logEvent(root, { loop: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length === 1, "the first spawn");
-    await sleep(100); // past the 50 ms gap the second event sat inside
-    assert.equal(recordedLines(out).length, 1, "the second same-type event inside the gap must be suppressed");
+    clock += 1; // exactly one gap after the first spawn
     logEvent(root, { loop: "feature", type: "budget_paused" });
-    await waitFor(() => recordedLines(out).length === 2, "the post-gap spawn");
+    await waitFor(() => recordedLines(out).length >= 2, "the post-gap spawn");
+    // A second spawn that escaped the throttle would have been started before the post-gap
+    // one, so it has had at least as long to land: two lines means it was suppressed.
+    await sleep(100);
+    assert.equal(recordedLines(out).length, 2, "the same-type event inside the gap must be suppressed");
     // Per-type keying: a land_failed right after the budget_paused page spawns on its own —
     // one type's throttle never suppresses another's.
     logEvent(root, { loop: "feature", type: "land_failed" });
