@@ -6,8 +6,8 @@ import type { TickResult } from "./tick-outcome.js";
  * restoreMidTickWake), the backoff ladders (nextBackoffSeconds, scheduleBackoff, the error
  * ladder), the yield-scaled clock (the recentOutcomes ring and yieldMultiplier), and the
  * min-interval scheduler. Split out of tick-outcome.ts — which keeps the tick's outcome
- * vocabulary (TickResult, TickOutcome) and the state machine that applies a finished outcome
- * to the loop's state — because "what an outcome is / what applying it records" and "what the
+ * vocabulary (TickResult, TickOutcome), with the state machine that applies a finished outcome
+ * in tick-apply.ts — because "what an outcome is / what applying it records" and "what the
  * loop's clock does next" are different concerns that happen to touch the same LoopState
  * object. No I/O here: every function mutates the caller's state in place (the caller's
  * object is authoritative across an in-flight tick and saves it itself), so the policy is
@@ -35,7 +35,7 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
  * overwrites the wake: lastTickEndedAt is re-stamped past wokenAt (so the min-gap exemption
  * reads stale) and nextRunAt is scheduled a fresh gap or backoff out — the operator's "try
  * again now" silently waits out the whole interval. Called by the tick's end-save after
- * applyTickOutcome (src/tick-outcome.ts), it re-applies the demand exactly like a wake
+ * applyTickOutcome (src/tick-apply.ts), it re-applies the demand exactly like a wake
  * arriving one poll after the tick ended: backoff cleared, nextRunAt now, wokenAt re-armed
  * past the new gap window's opening. Returns whether a mid-tick wake was found. Two cases
  * deliberately do not restore: a wake older than the tick's start was already honored by the
@@ -64,7 +64,7 @@ const YIELD_LAND = "L";
 const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", "quiet_killed"]);
 
 /** Record one finished tick's result on the state's yield ring, oldest entries falling off
- * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome (src/tick-outcome.ts)
+ * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome (src/tick-apply.ts)
  * beside the streak counters. */
 export function pushYieldOutcome(s: LoopState, result: TickResult): void {
   if (UNCOUNTED_RESULTS.has(result)) return;

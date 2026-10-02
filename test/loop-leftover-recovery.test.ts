@@ -17,7 +17,7 @@ import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { readEvents } from "../src/event-read.js";
 import { setRef } from "../src/git.js";
 import { loadLoopState } from "../src/loop-state.js";
-import { ERROR_STREAK_WARN } from "../src/tick-outcome.js";
+import { ERROR_STREAK_WARN } from "../src/tick-apply.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { headLanding, queueDepth } from "../src/landing-queue.js";

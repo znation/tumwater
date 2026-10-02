@@ -1,7 +1,7 @@
 import { DIRECTOR_ROLE, yieldScaledRole } from "../roles.js";
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "../status-data.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-outcome.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-apply.js";
 import { yieldMultiplier } from "../backoff.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
@@ -229,7 +229,7 @@ export function loopPhase(
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
   // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
   // Except a green wake that queues a change: `queued` is in flight, not a completed result,
-  // so it leaves the main_red pair in place until its landing resolves (tick-outcome.ts's
+  // so it leaves the main_red pair in place until its landing resolves (tick-apply.ts's
   // applyTickOutcome) — its stashed summary is the tell that the loop's latest tick got past
   // the red-main gate, so main was green then and "main red" would be stale.
   // Except too when main's newest merge-scope check PASSED after this loop's red tick ended:
@@ -237,7 +237,7 @@ export function loopPhase(
   // loop's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
   // red tick, a failed or skipped one, or an unknown tick end all keep the label.
   if (s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s)) return "main red";
-  // An error streak at or past the warning threshold (tick-outcome.ts's ERROR_STREAK_WARN): the
+  // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
   // alone is the tell, not `lastResult`: a tick whose leftover recovery failed keeps the

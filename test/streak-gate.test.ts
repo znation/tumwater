@@ -11,7 +11,7 @@ import {
   applyLandingOutcome,
   applyTickOutcome,
   ERROR_STREAK_BREAKER,
-} from "../src/tick-outcome.js";
+} from "../src/tick-apply.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { defaultConfig } from "../src/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/fleet-state.js";

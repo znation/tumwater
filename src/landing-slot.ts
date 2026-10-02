@@ -2,7 +2,7 @@ import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
-import { applyLandingOutcome, ERROR_STREAK_WARN } from "./tick-outcome.js";
+import { applyLandingOutcome, ERROR_STREAK_WARN } from "./tick-apply.js";
 import { saveLoopState } from "./loop-state.js";
 import { logEvent, warnEvent } from "./events.js";
 import { dropLanding } from "./landing-queue.js";

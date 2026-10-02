@@ -11,7 +11,7 @@ import type { GateRunsPi } from "./loop-pi.js";
 import { readPrinciples } from "./prompt.js";
 import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
-import { recordReview } from "./tick-outcome.js";
+import { recordReview } from "./tick-apply.js";
 import { saveLoopState } from "./loop-state.js";
 import { shortSha } from "./text.js";
 import { type SleepSampler } from "./host-sleep.js";

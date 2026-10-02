@@ -1,5 +1,5 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
- * consecutively is warned at ERROR_STREAK_WARN (src/tick-outcome.ts) and named by the
+ * consecutively is warned at ERROR_STREAK_WARN (src/tick-apply.ts) and named by the
  * fleet-wide storm alarms (src/error-storm.ts, src/failure-spread.ts), but both only talk —
  * the role keeps ticking on the error ladder's 600 s max backoff forever, burning a model
  * slot and spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed
@@ -32,7 +32,7 @@
  * badge explains why it is not ticking, and the role_streak_paused event tells the operator
  * why. */
 
-import { ERROR_STREAK_BREAKER } from "./tick-outcome.js";
+import { ERROR_STREAK_BREAKER } from "./tick-apply.js";
 import type { LoopState } from "./loop-state.js";
 import { pauseRole } from "./fleet-state.js";
 import { logEvent } from "./events.js";

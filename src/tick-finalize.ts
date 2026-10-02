@@ -3,7 +3,7 @@ import type { LoopState } from "./loop-state.js";
 import { saveLoopState } from "./loop-state.js";
 import { branchHead } from "./git.js";
 import { logEvent, warnEvent } from "./events.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-outcome.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "./backoff.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { TickUsage } from "./tick-usage.js";
@@ -64,7 +64,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
   // the previous value rather than waking on "main moved" to nowhere.
   s.lastMainHead = (await branchHead(root, mainBranch)) ?? s.lastMainHead;
-  // Record the outcome on state and schedule the next run (see src/tick-outcome.ts for the
+  // Record the outcome on state and schedule the next run (see src/tick-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
   applyTickOutcome(s, config, role, outcome);
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome
