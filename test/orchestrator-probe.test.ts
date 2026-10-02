@@ -11,7 +11,10 @@
  *
  * The scenario, driven in-process against the fake pi: one $10 tick on the primary spends to
  * the cap, the gate engages the free pair, and three consecutive failures on it trip the
- * breaker (a shrunken policy — cooldownMs 600 — keeps the probe windows inside a test). Each
+ * breaker (a shrunken policy — cooldownMs 1500 — keeps the probe windows inside a test while
+ * leaving the wake-window assertions room: the setup between the trip and the wake's own
+ * polling window can overshoot on a loaded machine, and a cool-down that elapses mid-setup
+ * admits a legitimate probe the assertions would misread as a pierced pause). Each
  * role's own error backoff (seconds, growing) would otherwise dominate the probe timing, so
  * the test drops `tumwater wake` markers (.tumwater/wake.json) to make the roles due at will:
  * a wake inside the cool-down must NOT pierce the demotion pause, and once the cool-down
@@ -73,7 +76,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     modelsPath,
-    fallbackBreakerPolicy: { failureLimit: 3, cooldownMs: 600, maxCooldownMs: 2400 },
+    fallbackBreakerPolicy: { failureLimit: 3, cooldownMs: 1500, maxCooldownMs: 6000 },
   });
   const timeout = setTimeout(() => controller.abort(), 45_000);
   timeout.unref();
