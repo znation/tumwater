@@ -278,13 +278,12 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
     return result;
   }
   if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);
+  if (result === "merge_blocked" && blocked !== undefined) {
+    return landingBlocked(ctx, req.role, wt, blocked);
+  }
   // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
-  // A cross-check block (fix-claim, backlog structure — a resolution's tree can trip either)
-  // names its reason, so the retries of one blocked landing read as explained (BUGS.md
-  // 2026-10-02: five bare "merge failed: merge_blocked" lines with no reason anywhere).
-  ctx.state.lastError = blocked
-    ? `merge failed: ${result} — ${blocked}`
-    : `merge failed: ${result}`;
+  // (Cross-check blocks no longer come through here: landingBlocked counts them, see below.)
+  ctx.state.lastError = `merge failed: ${result}`;
   return result;
 }
 
@@ -320,6 +319,40 @@ async function landingCheckRed(
   }
   ctx.state.landingCheckFailures = undefined;
   return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state);
+}
+
+/** A landing blocked by a deterministic cross-check (onLandingBlocked's fix-claim or
+ * backlog-structure reason — a property of the tree ahead of main, not a flaky run). The
+ * block is counted like a red landing check, keyed by the same patch-id: under
+ * LANDING_CHECK_FAILURE_LIMIT the pin is kept for one recovery re-land — main may have moved
+ * under the rebase, and a differently-rebased tree can pass the cross-check — but at the
+ * limit the block is attributed to the change: rejected deterministically with the block
+ * reason, the pin deleted, no model run. Without this a resolution that trips the same
+ * cross-check on every re-resolve pays a fresh conflict-resolver run each tick, forever
+ * (BUGS.md 2026-10-02: five resolver sessions for one fix-claim-blocked pin). */
+async function landingBlocked(
+  ctx: LanderContext,
+  role: string,
+  wt: string,
+  blocked: string,
+): Promise<TickResult> {
+  const head = await headOf(wt, "HEAD");
+  const patch = await patchId(wt, ctx.mainBranch, head);
+  const prior = ctx.state.landingCheckFailures;
+  const count = (patch !== null && prior?.patchId === patch ? prior.count : 0) + 1;
+  if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
+    ctx.state.landingCheckFailures = patch === null ? undefined : { patchId: patch, count };
+    ctx.state.lastError = `merge failed: merge_blocked — ${blocked}`;
+    return "merge_blocked";
+  }
+  ctx.state.landingCheckFailures = undefined;
+  const reasons = [`landing blocked: ${blocked}`];
+  recordReview(ctx.state, "reject", reasons, head);
+  ctx.state.unreviewFailures = 0;
+  saveLoopState(ctx.root, ctx.state);
+  await deleteRef(ctx.root, landingRefName(role));
+  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
+  return "rejected";
 }
 
 /** Attribute a check that went red over ONE change's tree after its vet approved it — a batch

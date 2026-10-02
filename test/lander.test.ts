@@ -373,6 +373,57 @@ for (const main of ["green", "red"] as const) {
   });
 }
 
+// A fix-claim-blocked landing used to be kept like a lost fast-forward race and re-landed on
+// every recovery, each retry paying a fresh conflict-resolver run against the same block —
+// five resolver sessions for one pin on 2026-10-01. The block is a deterministic property of
+// the tree ahead of main, so it is counted like a red landing check: the first block keeps
+// the pin for one differently-rebased retry, and the second rejects the change with the
+// block's reason (no model run, no main-tip verdict needed).
+test("a fix-claim-blocked landing retries once, then rejects with the block reason", async () => {
+  assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+  const { root } = await pinnedFixture();
+  // Seed BUGS.md on main with the bug Open; the pin's md-only commit moves it to Fixed
+  // naming a symbol that exists nowhere on the tree — falseFixReason's block.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### A bug (found 2026-10-02)\n\n**Symptom:** x.\n",
+  );
+  sh(root, "git", "add", "BUGS.md");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### Another bug (found 2026-10-02)\n\n**Symptom:** y.\n\n" +
+      "## Fixed\n\n### A bug (found 2026-10-02, fixed 2026-10-02)\n\n" +
+      "**Fix:** `phantomSymbolName` in src/nowhere.ts now holds.\n",
+  );
+  // BUGS.md only: a `git add -A` here would sweep the role worktree's
+  // .tumwater/worktrees/improve entry into the pin and the diff would not be md-only.
+  sh(root, "git", "add", "BUGS.md");
+  sh(root, "git", "commit", "-m", "fix claim");
+  const sha = sh(root, "git", "rev-parse", "HEAD").trim();
+  sh(root, "git", "checkout", "main");
+  await setRef(root, REF, sha);
+  // Main moves after the pin, so the in-lock rebase rewrites the head and verifyLanding's
+  // exempt arm runs its cross-checks (a no-op rebase would skip them).
+  advanceMain(root, `main-unrelated-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  const state = freshLoopState(ROLE);
+  const { ctx, calls } = makeCtx(root, state);
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first block keeps the pin for one retry");
+  assert.equal(await refSha(root, REF), sha);
+  assert.equal(state.landingCheckFailures?.count, 1);
+  assert.match(state.lastError ?? "", /merge failed: merge_blocked — .*phantomSymbolName/);
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
+  assert.equal(await refSha(root, REF), null, "the pin is gone");
+  assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
+  assert.equal(state.lastReview?.verdict, "reject");
+  assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
+  assert.equal(eventsOfType(root, "review_rejected").length, 1);
+  assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
+});
+
 test("an unverified red in-lock check — the run timed out — keeps the pin without a strike", async () => {
   // The landing half of BUGS.md 2026-09-30: at the merge scopes a timed-out check made no
   // verdict about the tree, so it is not a strike against the patch (the red-attribution
