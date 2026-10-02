@@ -103,6 +103,33 @@ export interface TickRow {
  * (callers match further evidence — a review_rejected's reasons — onto the same change), or
  * null to keep the tick_end's own. The failure digest's time-and-spend fold shares this join
  * so a review-rejected change's authoring hours stop reading as landed (BUGS.md 2026-09-30). */
+/** The landing bookkeeping resolveQueuedResult joins over: per loop, the `land_queued` pins
+ * and the `landed`/`land_failed` outcomes, each list oldest-first (the scan order). Exported
+ * as one helper with exactly two call sites — readTickRows' history-row join and the failure
+ * digest's time-and-spend fold (time-spend.ts) — so the two collectors cannot disagree about
+ * which events feed the join or in what order they sit: a third landing-bookkeeping event
+ * type, or a changed order rule, is edited once here. Callers bucket only the events they
+ * need; the digest folds its `review_rejected` reasons with its own pass.
+ * Roles or cutoffs are the caller's concern: pass a role-scoped or wider-read event list and
+ * the maps carry exactly that list's evidence. */
+export function bucketLandingEvents(events: HarnessEvent[]): {
+  landQueuedByLoop: Map<string, HarnessEvent[]>;
+  outcomeByLoop: Map<string, HarnessEvent[]>;
+} {
+  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
+  const outcomeByLoop = new Map<string, HarnessEvent[]>();
+  const push = (map: Map<string, HarnessEvent[]>, e: HarnessEvent): void => {
+    const list = map.get(e.loop) ?? [];
+    list.push(e);
+    map.set(e.loop, list);
+  };
+  for (const e of events) {
+    if (e.type === "land_queued") push(landQueuedByLoop, e);
+    else if (e.type === "landed" || e.type === "land_failed") push(outcomeByLoop, e);
+  }
+  return { landQueuedByLoop, outcomeByLoop };
+}
+
 export function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
@@ -157,19 +184,7 @@ export function tickRows(
     : scoped;
   const joinStarts = join ? tickStartMap(joinScoped) : starts;
   const floorTs = join ? join.floorTs : null;
-  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
-  const outcomeByLoop = new Map<string, HarnessEvent[]>();
-  for (const e of joinScoped) {
-    if (e.type === "land_queued") {
-      const list = landQueuedByLoop.get(e.loop) ?? [];
-      list.push(e);
-      landQueuedByLoop.set(e.loop, list);
-    } else if (e.type === "landed" || e.type === "land_failed") {
-      const list = outcomeByLoop.get(e.loop) ?? [];
-      list.push(e);
-      outcomeByLoop.set(e.loop, list);
-    }
-  }
+  const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(joinScoped);
   const claimTop = new Map<string, number>();
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {

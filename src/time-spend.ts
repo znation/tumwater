@@ -9,7 +9,7 @@ import type { HarnessEvent } from "./events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js";
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
-import { resolveQueuedResult } from "./history-data.js";
+import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
@@ -127,13 +127,12 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     list.push(e);
     map.set(e.loop, list);
   };
-  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
-  const outcomeByLoop = new Map<string, HarnessEvent[]>();
+  // The landing evidence rides history-data.ts's bucketLandingEvents — the same buckets
+  // history's rows read — so the digest's join cannot drift from the rows' join.
+  const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(allEvents);
   const rejectedByLoop = new Map<string, HarnessEvent[]>();
   for (const e of allEvents) {
-    if (e.type === "land_queued") perLoop(landQueuedByLoop, e);
-    else if (e.type === "landed" || e.type === "land_failed") perLoop(outcomeByLoop, e);
-    else if (e.type === "review_rejected") perLoop(rejectedByLoop, e);
+    if (e.type === "review_rejected") perLoop(rejectedByLoop, e);
   }
   // Queued tick_ends resolve newest-first so each claims the newest pin at or before its end
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
