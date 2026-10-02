@@ -14,10 +14,10 @@ import {
   JSON_FLAG,
   ROLE_FLAG,
   ROLE_VALUE_ERROR,
-  fail,
   parseBranchFlag,
   rejectEqualsForm,
 } from "./cli-args.js";
+import { fail } from "./cli-output.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"

@@ -4,7 +4,8 @@
  * config-commands.ts, ui/log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
-import { fail, parseBranchFlag, parseRoleFlag, say } from "./cli-args.js";
+import { fail, say } from "./cli-output.js";
+import { parseBranchFlag, parseRoleFlag } from "./cli-args.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";

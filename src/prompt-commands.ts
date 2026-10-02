@@ -6,7 +6,7 @@
  * queues (src/inbox.ts) directly, each with its own broken-config policy — so the command
  * lives beside the queue module it drives. The fleet-side half (the dequeues a loop performs)
  * is inbox.ts and pending-prompt.ts. */
-import { fail, say, sayJson } from "./cli-args.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,

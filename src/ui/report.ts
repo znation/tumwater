@@ -9,7 +9,8 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, say, sayJson, sayJsonOrRender } from "../cli-args.js";
+import { fail, say, sayJson, sayJsonOrRender } from "../cli-output.js";
+import { durationLabel, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag } from "../cli-args.js";
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.

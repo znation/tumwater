@@ -1,4 +1,5 @@
-import { durationLabel, fail, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope, say } from "../cli-args.js";
+import { fail, say } from "../cli-output.js";
+import { durationLabel, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope } from "../cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,

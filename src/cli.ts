@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 import {
-  fail,
-  say,
-  sayJson,
-  sayJsonOrRender,
   flagValue,
   DURATION_FLAG,
   REASON_FLAG,
@@ -18,6 +14,7 @@ import {
   RUN_FLAG_SPECS,
   SINCE_FLAG,
 } from "./cli-args.js";
+import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";

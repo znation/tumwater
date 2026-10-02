@@ -4,7 +4,8 @@
  * convention beside history-data.ts / ui/history.ts), so the CLI and the GUI History drill-down
  * serve the same payload; this module renders it for the terminal. Read-only over the event
  * log, stdout only. */
-import { fail, parseCountFlag, say, sayJson } from "../cli-args.js";
+import { fail, say, sayJson } from "../cli-output.js";
+import { parseCountFlag } from "../cli-args.js";
 import { knownRoleIdsCached } from "../config.js";
 import { readTickDetail, type TickDetail } from "../tick-detail-data.js";
 import { formatEvent } from "../event-format.js";

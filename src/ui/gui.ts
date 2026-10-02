@@ -28,7 +28,8 @@ import {
   handleWake,
 } from "./gui-endpoints.js";
 import { sendJson } from "./http-body.js";
-import { fail, flagValue, parsePortFlag, say } from "../cli-args.js";
+import { fail, say } from "../cli-output.js";
+import { flagValue, parsePortFlag } from "../cli-args.js";
 
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare

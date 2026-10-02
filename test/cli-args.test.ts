@@ -9,12 +9,11 @@ import {
   parsePortFlag,
   parseRoleFlag,
   rejectUnknownArgs,
-  sayJsonOrRender,
   ROLE_VALUE_ERROR,
   RUN_FLAG_SPECS,
 } from "../src/cli-args.js";
 import { allRoleIds } from "../src/roles.js";
-import { attempt, expectFail, expectOk } from "./exit-capture.js";
+import { expectFail, expectOk } from "./exit-capture.js";
 
 // src/cli-args.ts's shared parsers, driven in-process (like test/cli-command-args.test.ts
 // drives the command parsers) to cover branches the e2e path never exercises — duplicate
@@ -296,31 +295,5 @@ test("rejectUnknownArgs names the equals form of a known flag instead of 'unknow
   const unknown = expectFail(() => rejectUnknownArgs("logs", ["--rol=feature"], LOGS_SPECS));
   assert.match(unknown.stderr, /unknown argument: --rol=feature/);
   assert.match(unknown.stderr, /valid flags for tumwater logs/);
-});
-
-// --- sayJsonOrRender ---
-
-test("sayJsonOrRender prints the payload as --json and hands it to the render otherwise", () => {
-  const payload = { a: 1 };
-  const json = attempt(() => sayJsonOrRender(["--json"], payload, (p) => `a=${p.a}`));
-  assert.equal(json.exited, false);
-  assert.equal(json.stdout, '{\n  "a": 1\n}\n');
-  const human = attempt(() => sayJsonOrRender([], payload, (p) => `a=${p.a}`));
-  assert.equal(human.exited, false);
-  assert.equal(human.stdout, "a=1\n");
-});
-
-test("sayJsonOrRender runs a payload thunk exactly once, inside the branch that consumes it", () => {
-  let calls = 0;
-  let renders = 0;
-  const thunk = () => (++calls, { a: 1 });
-  const json = attempt(() => sayJsonOrRender(["--json"], thunk, () => (renders++, "human")));
-  assert.equal(json.stdout, '{\n  "a": 1\n}\n');
-  assert.equal(calls, 1);
-  assert.equal(renders, 0); // The JSON branch never touches the renderer.
-  calls = 0;
-  const human = attempt(() => sayJsonOrRender([], thunk, (p) => `a=${p.a}`));
-  assert.equal(human.stdout, "a=1\n");
-  assert.equal(calls, 1); // Collected once for the render — never a discarded extra collection.
 });
 

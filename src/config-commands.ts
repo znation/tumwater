@@ -1,5 +1,5 @@
 import { loadConfigSafe } from "./config.js";
-import { fail, say, sayJson } from "./cli-args.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator-commands.ts, which holds
