@@ -45,6 +45,27 @@ async function readPostBody(
   return body;
 }
 
+/** The role-targeting POST handlers' shared prologue: readPostBody (400/413 sent on a null
+ * return) plus rejectBadRole's shared role validation (400 sent on a null return), so the
+ * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
+ * once instead of two guard lines per handler. Its null return means the response is already
+ * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
+ * four call sites — handlePromptRole, handleWake (allowMissing, the {} → all-roles default),
+ * handleAbort, and handlePauseRole; handlePromptCancel deliberately does not ride it, since
+ * its role is optional and validates only when present. */
+async function readRoleBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  example: string,
+  root: string,
+  allowMissing = false,
+): Promise<Record<string, unknown> | null> {
+  const body = await readPostBody(req, res, example);
+  if (body === null) return null; // 4xx already sent — oversized, malformed, or not an object
+  if (rejectBadRole(root, res, body.role, allowMissing)) return null; // 400 already sent
+  return body;
+}
+
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
@@ -193,9 +214,8 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
  * text a non-empty string within the shared length rule → 400 otherwise — plus the same
  * optional images array and its validate-before-anything-is-written discipline. */
 export async function handlePromptRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "text": "..."}');
+  const body = await readRoleBody(req, res, '{"role": "feature", "text": "..."}', root);
   if (!body) return;
-  if (rejectBadRole(root, res, body.role)) return;
   const role = body.role as string;
   const text = requirePromptText(res, body, role);
   if (text === null) return;
@@ -301,9 +321,8 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
  * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
  * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). */
 export async function handleWake(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature"}');
+  const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
   if (!body) return;
-  if (rejectBadRole(root, res, body.role, true)) return;
   sendJson(res, 200, {
     ok: true,
     message: requestWake(root, body.role === undefined ? validRoleIds(root) : [body.role as string]),
@@ -333,9 +352,8 @@ export async function handleRestart(req: http.IncomingMessage, res: http.ServerR
  * nothing can consume it, a conflict rather than a client 400. The director variant's
  * message (the discarded-prompt note) rides through verbatim. */
 export async function handleAbort(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature"}');
+  const body = await readRoleBody(req, res, '{"role": "feature"}', root);
   if (!body) return;
-  if (rejectBadRole(root, res, body.role)) return;
   const result = requestAbort(root, body.role as string);
   if (!result.ok) {
     sendJson(res, 409, { error: result.error });
@@ -353,9 +371,8 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
  * (readJsonObject → 400 malformed/non-object, 413 oversized; the role validates through the
  * shared rejectBadRole wording). */
 export async function handlePauseRole(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "paused": true}');
+  const body = await readRoleBody(req, res, '{"role": "feature", "paused": true}', root);
   if (!body) return;
-  if (rejectBadRole(root, res, body.role)) return;
   const value = requirePausedFlag(res, body);
   if (value === null) return;
   const changed = value
