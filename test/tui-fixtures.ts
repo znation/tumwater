@@ -16,10 +16,13 @@ import { makeRepo } from "./repo-fixtures.js";
 /** A fake-TTY harness around runTui: no real terminal is involved. The isTTY flags are
  * faked, raw mode / resume / pause are stubbed and recorded, readline's keypress emitter
  * is no-op'd (so the test runner's stdin stream is never touched), every stdout write is
- * captured as a frame, and setInterval/clearInterval are stubbed so a failed test cannot
- * leave a live render timer behind. The keypress handler runTui registers on stdin is
- * intercepted and replayed with synthetic keys. */
+ * captured (the ink renderer writes each changed frame as a begin-sync escape, the frame's
+ * bytes, and an end-sync escape — `frames` keeps only the chunks that carry rendered text,
+ * `chunks` keeps every byte), and setInterval/clearInterval are stubbed so a failed test
+ * cannot leave a live render timer behind. The keypress handler runTui registers on stdin
+ * is intercepted and replayed with synthetic keys. */
 export function startTui(root: string, size?: { rows?: number; columns?: number }) {
+  const chunks: string[] = [];
   const frames: string[] = [];
   const rawModes: boolean[] = [];
   let clearCalls = 0;
@@ -39,7 +42,11 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   if (size?.columns !== undefined) (process.stdout as { columns?: number }).columns = size.columns;
   if (size?.rows !== undefined) (process.stdout as { rows?: number }).rows = size.rows;
   process.stdout.write = ((chunk: string | Uint8Array) => {
-    frames.push(String(chunk));
+    const s = String(chunk);
+    chunks.push(s);
+    // A rendered frame always carries text; ink's cursor-hide/show and sync-bracket
+    // escapes are byte-only writes and stay out of `frames` (counted separately).
+    if (s.replace(ESCAPES, "").trim() !== "") frames.push(s);
     return true;
   }) as unknown as typeof process.stdout.write;
   (process.stdin as { isTTY?: boolean }).isTTY = true;
@@ -68,10 +75,15 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
     keypressHandler!(str, { name, ...extra });
   }
   const rawFrame = () => frames[frames.length - 1] ?? "";
-  // Frames as the eye reads them: color and attribute codes stripped (the screen-clear code
-  // stays); rawFrame keeps them for the styling tests.
-  const lastFrame = () => rawFrame().replace(/\x1b\[[0-9;]*m/g, "");
-  const lines = () => lastFrame().split("\n");
+  // Frames as the eye reads them: every escape sequence stripped (styling, cursor motion,
+  // ink's erase-and-rewrite plumbing) — the rendered text survives verbatim, and ink's
+  // full-frame rewrites mean the last frame's text is the whole screen.
+  const lastFrame = () => rawFrame().replace(ESCAPES, "");
+  const lines = () => {
+    const l = lastFrame().split("\n");
+    if (l.length > 1 && l[l.length - 1] === "") l.pop(); // ink ends a frame with a newline
+    return l;
+  };
 
   function cleanup() {
     process.stdout.write = origWrite;
@@ -95,8 +107,12 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
     cleanup();
   }
 
-  return { key: press, lastFrame, rawFrame, lines, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
+  return { key: press, lastFrame, rawFrame, lines, chunks, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
 }
+
+/** Every escape sequence the ink renderer writes: CSI styling and cursor motion, plus the
+ * synchronized-update brackets (\x1b[?2026h/l) and cursor hide/show. */
+const ESCAPES = /\x1b\[[0-9;?]*[A-Za-z]/g;
 
 /** Runs body against a started fake TUI and quits it in a finally even when body throws —
  * the single home of the startTui/quit pairing the topic tests repeat, so a failing

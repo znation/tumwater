@@ -43,7 +43,7 @@ function tsFiles(dir: string): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) out.push(...tsFiles(full));
-    else if (entry.isFile() && entry.name.endsWith(".ts")) out.push(full);
+    else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))) out.push(full);
   }
   return out;
 }

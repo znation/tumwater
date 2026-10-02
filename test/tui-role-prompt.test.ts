@@ -27,7 +27,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["clean"]);
     assert.match(tui.lastFrame(), /queued for the clean loop/);
-    assert.equal(tui.lines().at(-1), "director › ");
+    assert.equal(tui.lines().at(-1), "director ›");
 
     // A whitespace-only Enter queues nothing and stays in edit mode with the way out.
     tui.key(undefined, "r", { ctrl: true });
@@ -35,7 +35,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /prompt text is empty/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
-    assert.equal(tui.lines().at(-1), "clean ›  "); // the space stayed: the editor is still open
+    assert.equal(tui.lines().at(-1), "clean ›"); // the space stays in the line state; ink trims the invisible trailing column
   });
 });
 
@@ -75,14 +75,14 @@ test("role-prompt mode keeps its own draft, refuses Ctrl+B, and Esc/Ctrl+R resto
     for (const ch of "director draft") tui.key(ch, ch);
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "r", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "clean › ", "entering the mode blanks the line and names the loop");
+    assert.equal(tui.lines().at(-1), "clean ›", "entering the mode blanks the line and names the loop");
 
     // Mutually exclusive: Ctrl+B while role-prompt mode holds the line flashes the way out
     // instead of entering budget mode (which would clobber a saved draft pair).
     tui.key(undefined, "b", { ctrl: true });
     assert.match(tui.lastFrame(), /finish or cancel the prompt for clean first \(Esc cancels\)/);
     assert.doesNotMatch(tui.lastFrame(), /edit daily cost budget/);
-    assert.equal(tui.lines().at(-1), "clean › ", "the refusal leaves the role editor open");
+    assert.equal(tui.lines().at(-1), "clean ›", "the refusal leaves the role editor open");
 
     for (const ch of "role text") tui.key(ch, ch);
     tui.key(undefined, "escape"); // Esc restores the saved director draft

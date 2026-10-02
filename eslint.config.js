@@ -7,7 +7,7 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   { ignores: ["dist/**", "node_modules/**", ".tumwater/**", ".claude/**"] },
   {
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts"],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },

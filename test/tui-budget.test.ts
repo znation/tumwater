@@ -59,7 +59,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
 
     // A disabled cap pre-fills an empty line (empty means "no cap" on save)…
     tui.key(undefined, "b", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "daily cap $ ");
+    assert.equal(tui.lines().at(-1), "daily cap $");
     // …and Ctrl+T exits budget mode too — cycling the view and restoring the draft.
     tui.key(undefined, "t", { ctrl: true });
     assert.match(tui.lastFrame(), /\[Transcript: clean/);
@@ -154,7 +154,7 @@ test("a budget save on a broken config flashes the error and stays in edit mode"
     fs.writeFileSync(cfgPath, original);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /budget set to \$30/);
-    assert.equal(tui.lines().at(-1), "director › ");
+    assert.equal(tui.lines().at(-1), "director ›");
     const cfg = readJson(cfgPath) as { maxDailyCostUsd: number };
     assert.equal(cfg.maxDailyCostUsd, 30);
   });

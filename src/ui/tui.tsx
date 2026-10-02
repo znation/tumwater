@@ -1,4 +1,6 @@
 import readline from "node:readline";
+import { render as inkRender } from "ink";
+import { TuiApp, type TuiAppView } from "./tui-app.js";
 import {
   type BacklogEntry,
   openBugEntries,
@@ -57,10 +59,8 @@ import {
   alertLines,
   eventTone,
   hintLine,
-  paintLine,
   prefixWidth,
   promptPrefix,
-  resolveStyles,
   tabStrip,
   toneLine,
   transcriptTone,
@@ -69,8 +69,6 @@ import {
 
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
-
-const CLEAR = "\x1b[2J\x1b[H";
 
 /** The half of a terminal the TUI actually touches: raw mode, keypresses, and the size the
  * renderer clips to. Production reads process.stdin/stdout; tests inject fakes so the loop
@@ -89,6 +87,10 @@ export interface TuiStdout {
   rows?: number;
   columns?: number;
   write(s: string): unknown;
+  /** The stream surface the ink renderer needs: it subscribes to `resize` on the stdout
+   * it renders into (and unsubscribes on teardown). Process.stdout carries both. */
+  on?(event: string, listener: () => void): unknown;
+  off?(event: string, listener: () => void): unknown;
 }
 /** Injectable seams for runTui: a terminal stand-in plus the self-reload watch's seams
  * (self-reload.ts's injectables) and the re-exec itself — the same treatment startGui got.
@@ -109,7 +111,9 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   if (!stdin.isTTY || !stdout.isTTY) {
     throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));
   }
-  const styles = resolveStyles(process.env.NO_COLOR);
+  // The no-color.org convention, as resolveStyles states it: a set, non-empty variable
+  // drops every color — the ink tree takes the terminal's default for every span.
+  const noColor = (process.env.NO_COLOR ?? "") !== "";
 
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
   // or a manual build). The watch's trigger takes the same teardown path Ctrl+C does, then
@@ -197,13 +201,12 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   let entryBudget = 0;
   let roleIds: string[] = [];
   // The last frame written to the terminal: the per-second re-render only rewrites the
-  // screen when the composed frame actually differs. An idle fleet's frame changes only
-  // once a minute (the "· 3m ago" age cells' granularity), so without this the TUI
-  // repaints an identical screen ~59 times a minute for nothing — the same redundant
-  // per-second repaint the GUI's detail panel skip removed (the dashboard's innerHTML
-  // guard). In-flight ticks keep repainting every second: their working cells carry
-  // second-granularity elapsed times, so the frame genuinely differs.
-  let lastFrame: string | null = null;
+  // Ink's log-update skips the write when a re-render composes an identical frame, so
+  // an idle fleet's per-second repaint (its "· 3m ago" age cells change only once a
+  // minute) costs no terminal I/O at all — the same redundant-repaint guard the GUI's
+  // detail panel skip removed (the dashboard's innerHTML guard). Changed frames rewrite
+  // only the changed lines: ink diff-renders, so the full-screen `\x1b[2J` clear — the
+  // flicker BUGS.md recorded — is gone entirely.
 
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // shared by render and the keypress handlers so stale-selection clamping cannot drift.
@@ -284,22 +287,24 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
       body = readEvents(root, eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))).slice(-eventBudget);
     }
 
+    // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
+    // hand-painted string frame joined, as clipped StatusLines — one column row per line,
+    // one styled Text per span, colors through tui-app.tsx's toneColor.
     const mode = { budget: budgetMode, rolePromptFor };
-    const parts = [...statusLines.map((l) => paintLine(styles, l)), ""];
-    for (const [i, preview] of queued.entries()) parts.push(paintLine(styles, toneLine(`${i + 1}. ${preview}`, width)));
-    parts.push(paintLine(styles, tabStrip(pane, width)));
-    parts.push(body.length ? body.map((l) => paintLine(styles, l)).join("\n") : paintLine(styles, toneLine(emptyNote, width, "dim")));
-    parts.push("");
-    if (flash && Date.now() < flashUntil) parts.push(paintLine(styles, toneLine(flash, width, "bold")));
-    parts.push(paintLine(styles, hintLine(pane, mode, width)));
+    const lines: StatusLine[] = [...statusLines, []]; // a blank row below the header
+    for (const [i, preview] of queued.entries()) lines.push(toneLine(`${i + 1}. ${preview}`, width));
+    lines.push(tabStrip(pane, width));
+    if (body.length) lines.push(...body);
+    else lines.push(toneLine(emptyNote, width, "dim"));
+    lines.push([]); // a blank row above the flash/hint block
+    if (flash && Date.now() < flashUntil) lines.push(toneLine(flash, width, "bold"));
+    lines.push(hintLine(pane, mode, width));
     // The prompt line names its target, like the dashboard's composer; long prompts window
     // around the cursor so its position stays visible.
     const prefix = promptPrefix(mode);
-    parts.push(paintLine(styles, prefix) + renderInputView(input, cursor, width - prefixWidth(prefix) + 2));
-    const frame = CLEAR + parts.join("\n");
-    if (frame === lastFrame) return; // Unchanged screen: rewriting it only costs terminal I/O.
-    lastFrame = frame;
-    stdout.write(frame);
+    lines.push([...prefix, { text: renderInputView(input, cursor, width - prefixWidth(prefix) + 2) }]);
+    const frame: TuiAppView = { lines };
+    inkApp.rerender(<TuiApp view={frame} noColor={noColor} />);
   };
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
@@ -327,6 +332,23 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   // readline's emitter setup only accepts a ReadStream; the fake terminal carries the same
   // surface (an EventEmitter the test drives keypresses through), so the seam is widened here.
+  // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to.
+  // Key handling is untouched: with no useInput hook mounted, ink claims no stdin, so the
+  // readline keypress setup below keeps sole ownership of the terminal's input.
+  // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
+  // off so console.* keeps writing past the TUI exactly as before it; and the render is
+  // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
+  // on each keypress — so ink's fps limiter would only defer frames this loop already
+  // schedules deliberately. `interactive: true` pins the TUI's frame diffing on in every
+  // environment (CI detection would otherwise flip ink into non-interactive mode).
+  const inkApp = inkRender(<TuiApp view={{ lines: [] }} noColor={noColor} />, {
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    exitOnCtrlC: false,
+    patchConsole: false,
+    interactive: true,
+    maxFps: 0,
+  });
+
   readline.emitKeypressEvents(stdin as unknown as NodeJS.ReadStream);
   stdin.setRawMode(true);
   stdin.resume?.();
@@ -615,6 +637,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   clearInterval(timer);
   stdin.setRawMode(false);
   stdin.pause?.();
+  inkApp.unmount(); // restore the cursor and drop the frame; the newline below closes it
   stdout.write("\n");
   reloadWatch.stop();
   if (reloadRequested) (seams.watch?.reexec ?? reexecSelf)();

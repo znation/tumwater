@@ -20,7 +20,7 @@ test("runTui renders the fleet table and an empty activity pane on start", async
     const frame = tui.lastFrame();
     assert.match(frame, /\[Activity\]/); // default view: recent events
     assert.match(frame, /\(no events yet\)/);
-    assert.equal(tui.lines().at(-1), "director › "); // empty prompt line at the bottom, addressed to the director
+    assert.equal(tui.lines().at(-1), "director ›"); // empty prompt line at the bottom, addressed to the director
     // The one enabled loop is listed as stopped (the orchestrator is not running).
     assert.match(frame, /clean/);
     assert.match(frame, /stopped/);
@@ -61,13 +61,13 @@ test("runTui skips the terminal write when a re-render composes an identical fra
   });
 });
 
-// NO_COLOR: a set, non-empty variable suppresses the bold and dim attributes (the
+// NO_COLOR: a set, non-empty variable suppresses every color and attribute (the
 // no-color.org convention — dim body text is unreadable on some terminals and invisible to
-// color-blind operators and screen readers) while the frame's layout and the screen-clear
-// escape (cursor motion, not styling) stay exactly as styled runs render them. An empty
-// NO_COLOR is not a set variable: styling stays on. Resolved per run, so the same process
-// exercises both settings back to back.
-test("runTui honors NO_COLOR: no bold or dim escapes, layout and clear unchanged", async () => {
+// color-blind operators and screen readers) while the frame's layout stays exactly as
+// styled runs render it. A NO_COLOR run's rendered frame is pure text — no escape at all.
+// An empty NO_COLOR is not a set variable: styling stays on. Resolved per run, so the same
+// process exercises both settings back to back.
+test("runTui honors NO_COLOR: no escapes at all in the frame, layout unchanged", async () => {
   const repo = await makeTuiRepo();
   const origNoColor = process.env.NO_COLOR;
   try {
@@ -75,21 +75,27 @@ test("runTui honors NO_COLOR: no bold or dim escapes, layout and clear unchanged
     const plain = startTui(repo);
     try {
       const frame = plain.rawFrame();
-      assert.doesNotMatch(frame, /\x1b\[1m/); // no bold
-      assert.doesNotMatch(frame, /\x1b\[2m/); // no dim
-      assert.match(frame, /\x1b\[2J\x1b\[H/); // screen clear still ships
+      assert.doesNotMatch(frame, /\x1b\[/); // pure text: no styling, no cursor motion
+      assert.doesNotMatch(frame, /\x1b\[2J/); // and never a screen clear
       assert.match(frame, /\[Activity\]/); // layout intact
       assert.match(frame, /\(no events yet\)/);
     } finally {
       await plain.quit();
     }
     process.env.NO_COLOR = ""; // empty: not a set variable — styling stays on
+    // The styled run pins chalk's color level: the ink renderer paints through chalk,
+    // whose level comes from stdout being a real TTY — which the fake terminal is not.
+    // Level 1 is the basic 16-color palette the hand-rolled ANSI painting used.
+    const { default: chalk } = await import("chalk");
+    const savedLevel = chalk.level;
+    chalk.level = 1;
     const styled = startTui(repo);
     try {
-      assert.match(styled.rawFrame(), /\x1b\[2m/); // dim body/empty-note wraps return
-      assert.match(styled.rawFrame(), /\x1b\[1m/); // bold header returns
+      assert.match(styled.rawFrame(), /\x1b\[90m/); // dim tones paint as gray
+      assert.match(styled.rawFrame(), /\x1b\[97m/); // bold tones paint as bright white
     } finally {
       await styled.quit();
+      chalk.level = savedLevel;
     }
   } finally {
     if (origNoColor === undefined) delete process.env.NO_COLOR;
@@ -145,7 +151,7 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
     assert.match(frame, /queued for the director loop/);
     assert.match(frame, /user prompt queued: fix the bug/);
     // The input line is cleared after submit.
-    assert.equal(tui.lines().at(-1), "director › ");
+    assert.equal(tui.lines().at(-1), "director ›");
 
     // An empty Enter queues nothing more.
     tui.key(undefined, "return");
@@ -164,7 +170,7 @@ test("Up/Down recall the submitted prompts; the draft survives the round trip", 
     tui.key(undefined, "up");
     assert.equal(tui.lines().at(-1), "director › fix the bug");
     tui.key(undefined, "down");
-    assert.equal(tui.lines().at(-1), "director › ");
+    assert.equal(tui.lines().at(-1), "director ›");
 
     // A half-typed draft is saved by the first Up and restored past the newest entry.
     for (const ch of "wake ") tui.key(ch, ch);
@@ -172,7 +178,7 @@ test("Up/Down recall the submitted prompts; the draft survives the round trip", 
     assert.equal(tui.lines().at(-1), "director › fix the bug");
     tui.key(undefined, "down"); // the newest entry again
     tui.key(undefined, "down"); // past it: the saved draft returns
-    assert.equal(tui.lines().at(-1), "director › wake ");
+    assert.equal(tui.lines().at(-1), "director › wake");
     // The restored draft submits like any other line (trimmed, like the CLI path).
     tui.key(undefined, "return");
     const inbox = path.join(repo, ".tumwater", "inbox");
@@ -194,7 +200,7 @@ test("a mode switch settles the recall state: the draft survives, role text neve
     // entry, so Esc later restores what the operator was writing.
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
     tui.key(undefined, "r", { ctrl: true });
-    assert.equal(tui.lines().at(-1), "clean › ");
+    assert.equal(tui.lines().at(-1), "clean ›");
     for (const ch of "role text") tui.key(ch, ch);
     tui.key(undefined, "up"); // recall inside role mode: the shared history serves the role line too
     assert.equal(tui.lines().at(-1), "clean › p1");
@@ -580,8 +586,23 @@ test("Ctrl+C exits cleanly: raw mode off, stdin paused, render timer cleared", a
   assert.equal(tui.rawModes.length, 1); // setRawMode(true) on entry
   await tui.quit();
   assert.deepEqual(tui.rawModes, [true, false]);
-  assert.equal(tui.frames.at(-1), "\n"); // final newline after the last frame
+  assert.equal(tui.chunks.at(-1), "\n"); // final newline after the last frame
   assert.ok(tui.clearCalls >= 1, "the render interval is cleared on exit");
+});
+
+// The flicker BUGS.md recorded: every changed frame used to erase the whole screen
+// (`\x1b[2J`) and repaint it. Ink's renderer diff-renders instead — a changed frame
+// rewrites only its changed lines, so no frame of a run ever carries a screen clear.
+// An inert keypress (f1) re-renders an identical frame and must not write at all; a
+// one-cell change (typing into the prompt line) writes the frame without a clear.
+test("runTui's renderer never emits a screen clear between frames (flicker regression)", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "f1"); // identical frame: no write at all
+    tui.key("h", "h"); // one-cell change: the prompt line
+    assert.doesNotMatch(tui.chunks.join(""), /\x1b\[2J/); // never a whole-screen erase
+    assert.match(tui.lastFrame(), /director › h/); // the changed cell is on screen
+  });
 });
 
 // PgDn/PgUp in the usage-report view page the cached

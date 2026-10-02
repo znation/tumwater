@@ -7,52 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The TUI moves to ink, part 1/3: adopt ink and render the frame with it (planned 2026-10-01 by director, from the user's answered question in QUESTIONS.md)
-
-**Goal.** The user answered the open TUI-framework question: adopt a production TUI framework.
-This part introduces ink and moves the *rendering* of `tumwater tui` onto it, which also kills
-the recorded flicker bug (BUGS.md, "The TUI flickers on every table update") — ink diff-renders,
-so a one-cell change rewrites only what changed instead of `CLEAR + full repaint` (src/ui/tui.ts's
-`CLEAR = "\x1b[2J\x1b[H"` at :73 and its single call site at :299). Key handling stays exactly as
-it is today; part 2/3 moves it. The view model does not change: src/ui/tui-frame.ts's pure
-builders (`tabStrip`, `alertLines`, `hintLine`, `toneLine`, the `TuiView` type) keep producing
-`StatusLine[]`/`StatusSpan[]`, and src/ui/status-render.ts (shared with `tumwater status` in the
-CLI) is untouched.
-
-**Approach.**
-1. **Dependencies:** add `ink` and `react` to package.json (install inside the implementing
-   worktree; commit package.json and package-lock.json). Landing step: after the merge, run
-   `npm install` at the repo root *before* the post-landing build check, so main's build resolves
-   the new deps. This is the project's first runtime dependency and is sanctioned by the amended
-   PRINCIPLES.md first principle (2026-10-01).
-2. **New src/ui/tui-app.tsx:** an ink component tree that renders the existing view model —
-   one `<Box>` per `StatusLine`, one `<Text>` per `StatusSpan` with its tone mapped through a new
-   exported `toneColor(tone: StatusSpan["tone"]): string` (ink color names replacing the ANSI
-   painting `paintLine` does for the CLI path; `paintLine` itself stays for status-render.ts).
-   `tabStrip`, `alertLines`, `hintLine` outputs render as-is; their width-clipping logic stays in
-   tui-frame.ts so the frame stays deterministic and testable.
-3. **src/ui/tui.ts:** keep `runTui`, `TuiSeams`, `TuiStdin`, `TuiStdout`, the polling loop, and
-   the entire readline keypress handler byte-for-byte in behavior. Replace only the paint step:
-   delete `CLEAR` and the `lastFrame` string diff, call ink's `render(<TuiApp …/>, { stdout,
-   exitOnCtrlC: false })` once at startup, and push each new view into the app via a rerender
-   bridge (a state ref the component reads). Pass no stdin to ink this part — with no `useInput`
-   hook mounted, ink does not claim raw mode, so today's `readline.emitKeypressEvents` +
-   `setRawMode(true)` setup (:330–:332) keeps working unchanged.
-4. **Tests:** test/tui.test.ts's frame assertions move from comparing hand-painted strings to
-   reading the fake stdout ink writes into (ink accepts injected `stdout`); add a regression test
-   pinning that a one-cell change between frames emits **no** `\x1b[2J` (the test the BUGS.md
-   entry asked for). test/tui-frame.test.ts stays green — pure model unchanged; test/tui-input*.ts
-   untouched.
-
-**Acceptance criteria.**
-- Rendering two frames differing in one elapsed-time cell through the test fakes emits no
-  `\x1b[2J` anywhere in the captured output, and the second frame's changed cell text is present.
-- Every `tui*.test.ts` file passes; `npm run test` is green.
-- `runTui`'s key handling, seams, and polling code paths are unmodified (diff shows only the
-  paint step replaced plus the new import/render calls).
-- The dependency addition is committed with a lockfile, and the plan note above about
-  `npm install` at the repo root is followed at landing time.
-
 ### The TUI moves to ink, part 2/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director; requires part 1/3 landed)
 
 **Goal.** Complete the framework adoption on the input side: the ~280-line readline keypress
@@ -169,6 +123,54 @@ src/ui/badges.test.ts.
 - `npm run test` green.
 
 ## Done
+
+### The TUI moves to ink, part 1/3: adopt ink and render the frame with it (planned 2026-10-01 by director, from the user's answered question in QUESTIONS.md, done 2026-10-01 by feature)
+
+**Goal.** The user answered the open TUI-framework question: adopt a production TUI framework.
+This part introduces ink and moves the *rendering* of `tumwater tui` onto it, which also kills
+the recorded flicker bug (BUGS.md, "The TUI flickers on every table update") — ink diff-renders,
+so a one-cell change rewrites only what changed instead of `CLEAR + full repaint` (src/ui/tui.ts's
+`CLEAR = "\x1b[2J\x1b[H"` at :73 and its single call site at :299). Key handling stays exactly as
+it is today; part 2/3 moves it. The view model does not change: src/ui/tui-frame.ts's pure
+builders (`tabStrip`, `alertLines`, `hintLine`, `toneLine`, the `TuiView` type) keep producing
+`StatusLine[]`/`StatusSpan[]`, and src/ui/status-render.ts (shared with `tumwater status` in the
+CLI) is untouched.
+
+**Approach.**
+1. **Dependencies:** add `ink` and `react` to package.json (install inside the implementing
+   worktree; commit package.json and package-lock.json). Landing step: after the merge, run
+   `npm install` at the repo root *before* the post-landing build check, so main's build resolves
+   the new deps. This is the project's first runtime dependency and is sanctioned by the amended
+   PRINCIPLES.md first principle (2026-10-01).
+2. **New src/ui/tui-app.tsx:** an ink component tree that renders the existing view model —
+   one `<Box>` per `StatusLine`, one `<Text>` per `StatusSpan` with its tone mapped through a new
+   exported `toneColor(tone: StatusSpan["tone"]): string` (ink color names replacing the ANSI
+   painting `paintLine` does for the CLI path; `paintLine` itself stays for status-render.ts).
+   `tabStrip`, `alertLines`, `hintLine` outputs render as-is; their width-clipping logic stays in
+   tui-frame.ts so the frame stays deterministic and testable.
+3. **src/ui/tui.ts:** keep `runTui`, `TuiSeams`, `TuiStdin`, `TuiStdout`, the polling loop, and
+   the entire readline keypress handler byte-for-byte in behavior. Replace only the paint step:
+   delete `CLEAR` and the `lastFrame` string diff, call ink's `render(<TuiApp …/>, { stdout,
+   exitOnCtrlC: false })` once at startup, and push each new view into the app via a rerender
+   bridge (a state ref the component reads). Pass no stdin to ink this part — with no `useInput`
+   hook mounted, ink does not claim raw mode, so today's `readline.emitKeypressEvents` +
+   `setRawMode(true)` setup (:330–:332) keeps working unchanged.
+4. **Tests:** test/tui.test.ts's frame assertions move from comparing hand-painted strings to
+   reading the fake stdout ink writes into (ink accepts injected `stdout`); add a regression test
+   pinning that a one-cell change between frames emits **no** `\x1b[2J` (the test the BUGS.md
+   entry asked for). test/tui-frame.test.ts stays green — pure model unchanged; test/tui-input*.ts
+   untouched.
+
+**Acceptance criteria.**
+- Rendering two frames differing in one elapsed-time cell through the test fakes emits no
+  `\x1b[2J` anywhere in the captured output, and the second frame's changed cell text is present.
+- Every `tui*.test.ts` file passes; `npm run test` is green.
+- `runTui`'s key handling, seams, and polling code paths are unmodified (diff shows only the
+  paint step replaced plus the new import/render calls).
+- The dependency addition is committed with a lockfile, and the plan note above about
+  `npm install` at the repo root is followed at landing time.
+
+**Landed 2026-10-01 by feature:** as planned, with three deviations worth recording. (1) src/ui/tui.ts became src/ui/tui.tsx — the rerender bridge is ink's `rerender` with the next view as props (the component is pure), which required the JSX parse; the paint step and only the paint step moved. (2) src/cli.ts now imports the TUI lazily (`await import` inside the tui command): an install without node_modules must reach every other command's own broken-install reporting instead of dying on the static ink import — test/version.test.ts's broken-install scenario pins this. (3) scripts/stamp-build.mjs's prune and test/exports.test.ts's source scan learned .tsx alongside .ts. Tests read ink's writes through the same fake stdout (test/tui-fixtures.ts strips all escape sequences and counts text-bearing chunks as frames); the frame layout is unchanged except that ink trims invisible trailing columns per line, and the styled NO_COLOR run pins chalk's basic 16-color palette (`\x1b[90m`/`\x1b[97m`) since the fake terminal is not a real TTY.
 
 ### The budget badge says when the cap will be hit: a burn-rate projection in the shared badge (planned 2026-10-01 by plan loop, done 2026-10-01 by feature)
 

@@ -44,7 +44,8 @@ function pruneDir(outDir, srcDir) {
     } else if (KEEP.has(e.name)) {
       // Non-module artifact: keep.
     } else {
-      // A .js output's source is its .ts or its .tsx. Checking .ts alone pruned every .tsx's
+      // A .js output may come from a .ts or a .tsx source (the ink renderer is tsx) —
+      // either counts as "has a source". Checking .ts alone pruned every .tsx's
       // output right after tsc emitted it — and `tsc --incremental` never re-emits a file its
       // build info already records, so the output stayed gone: dist/src/cli.js could not
       // import ./ui/tui.js, every CLI test failed, and one leaked stand-in hung the suite

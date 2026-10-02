@@ -33,7 +33,6 @@ import { cmdTick, TICK_USAGE } from "./ui/tick-detail.js";
 import { cmdReport } from "./ui/report.js";
 import { snapshot } from "./status-data.js";
 import { renderStatus } from "./ui/status-render.js";
-import { runTui } from "./ui/tui.js";
 import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { backlogPayload } from "./backlog.js";
@@ -169,6 +168,10 @@ async function main(): Promise<void> {
     case "tui":
       rejectUnknownArgs("tui", args, []);
       await requireReadyRepo(root);
+      // Imported lazily: the TUI module pulls in ink (the one runtime dependency the
+      // tree carries), and an install whose node_modules is absent must still reach
+      // every other command's own broken-install reporting instead of dying on import.
+      const { runTui } = await import("./ui/tui.js");
       await runTui(root);
       break;
     case "gui":
