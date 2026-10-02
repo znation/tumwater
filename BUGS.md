@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### A clean commit meant to MOVE the TUI's ink-render comment instead duplicated it verbatim, leaving two adjacent copies above the `inkRender` call — the first copy garbled mid-sentence ("the useTuiKeys hook inside the tree parses keys via exitOnCtrlC is false because …"), so the block that explains why the renderer is configured the way it is (exitOnCtrlC, patchConsole, maxFps 0, interactive) reads twice and one copy reads as broken English (repro: read src/ui/tui.tsx above `inkApp = inkRender(...)` at a0cff2bf — the same nine lines appear twice, the first copy cut mid-sentence; no code path involved, so the suite stays green both before and after) (found by bugfix loop 2026-10-02 latent-bug hunt over the same day's comment-move commit a0cff2bf, fixed 2026-10-02 by bugfix loop)
+
+**Validation gap:** no-observability — a garbled, duplicated comment leaves no runtime trace, so no test or check can fail on it; only reading the region confirms it.
+
 ### The TUI's project-status entry selection wraps from a stale index after the backlog shrinks, landing on an arbitrary entry: `moveEntrySelection` computed `(selected ± 1) % count` without clamping `selected` to the new count first, and the selection index persists across renders while loops edit BUGS.md/PLANS.md under the pane — the render clamps the stale index only for display, so the pane shows the last entry while the next Down press moves from the stale offset (repro: `moveEntrySelection(3, 10, "down")` returned 2 — the selection did not move at all — and `(3, 10, "up")` returned 0 instead of 1; the extraction's tests held only in-range selections, so nothing saw the wrap on an out-of-range index) (found by bugfix loop 2026-10-02 latent-bug hunt over the recently extracted src/ui/tui-backlog.ts, fixed 2026-10-02 by bugfix loop)
 
 **Validation gap:** unclear-invariant — the wrap contract assumed an in-range cursor, and nothing recorded that the caller may hold a selection index older than the list it indexes, so the pure function's tests had to be extended past its extraction-tested range first.

@@ -211,14 +211,6 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
   // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
-  // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
-  // off so console.* keeps writing past the TUI exactly as before it; and the render is
-  // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
-  // on each keypress — so ink's fps limiter would only defer frames this loop already
-  // schedules deliberately. `interactive: true` pins the TUI's frame diffing on in every
-  // environment (CI detection would otherwise flip ink into non-interactive mode).
-  // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
-  // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
   // ink's `useInput` and dispatches them through the extracted handler (tui-keys.ts).
   // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
   // off so console.* keeps writing past the TUI exactly as before it; and the render is
