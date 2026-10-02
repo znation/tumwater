@@ -8,8 +8,8 @@ import type { CheckOutcome } from "./doctor-checks.js";
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
  * environment doctor-checks.ts inspects — fix claims, stranded plans, and duplicated `## `
- * headings. They share this module's helpers (readDoc, andMore) and the heading-trim constant,
- * and all three warn instead of failing: damaged documentation is operator signal, not a broken
+ * headings. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
+ * andMore) and the heading-trim constant, and all three warn instead of failing: damaged documentation is operator signal, not a broken
  * environment. doctor.ts composes them beside the environment checks; the shared CheckOutcome
  * shape is type-imported from doctor-checks.ts. */
 
@@ -47,6 +47,16 @@ function readDoc(p: string): { doc: string } | { error: string } {
   }
 }
 
+/** The single-file check's read prologue, shared by checkFixClaims and checkStrandedPlans:
+ * an absent file is that check's own "nothing to verify" ok outcome, an unreadable one a warn
+ * naming the file. Returns the document, or the outcome the caller should return as-is. */
+function readDocChecked(p: string, file: string, missingDetail: string): { doc: string } | { outcome: CheckOutcome } {
+  if (!fs.existsSync(p)) return { outcome: { level: "ok", detail: missingDetail } };
+  const read = readDoc(p);
+  if ("error" in read) return { outcome: { level: "warn", detail: `cannot read ${file} — ${read.error}` } };
+  return read;
+}
+
 /** Fix claims — the standalone half of the landing gate's false-fix check (src/fix-claim.ts):
  * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
  * that reached main any other way (landed before the gate existed, or through a path it never
@@ -58,10 +68,8 @@ function readDoc(p: string): { doc: string } | { error: string } {
  * pure-documentation fixes are legitimate. A warn, never a fail (the checkFallbackModel
  * precedent): a suspicious record is operator signal, not a broken environment. */
 export function checkFixClaims(root: string): CheckOutcome {
-  const bugsPath = path.join(root, "BUGS.md");
-  if (!fs.existsSync(bugsPath)) return { level: "ok", detail: "no BUGS.md — nothing to verify" };
-  const read = readDoc(bugsPath);
-  if ("error" in read) return { level: "warn", detail: `cannot read BUGS.md — ${read.error}` };
+  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
   const { doc } = read;
   const headings = fixedHeadings(doc).slice(0, FIX_CLAIMS_CHECKED);
   // The haystack walks src/, test/ and scripts/: build it only once a record names something.
@@ -98,16 +106,14 @@ export function checkFixClaims(root: string): CheckOutcome {
  * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
  * heading is operator signal, not a broken environment. */
 export function checkStrandedPlans(root: string): CheckOutcome {
-  const plansPath = path.join(root, "PLANS.md");
-  if (!fs.existsSync(plansPath)) return { level: "ok", detail: "no PLANS.md — nothing to verify" };
-  const read = readDoc(plansPath);
-  if ("error" in read) return { level: "warn", detail: `cannot read PLANS.md — ${read.error}` };
+  const read = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
   const { doc } = read;
   const stranded = strandedPlanEntries(doc);
-  if (stranded.length === 0)
-    return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
+  const clean = "no plan headings filed under the wrong PLANS.md section";
+  if (stranded.length === 0) return { level: "ok", detail: clean };
   const [first, ...rest] = stranded;
-  if (!first) return { level: "ok", detail: "no plan headings filed under the wrong PLANS.md section" };
+  if (!first) return { level: "ok", detail: clean };
   const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
   return {
     level: "warn",
