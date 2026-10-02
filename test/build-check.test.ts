@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runBuildCheck, runScopedBuildCheck } from "../src/build-check.js";
+import { runBuildCheck, runScopedBuildCheck, unresolvedModulesInOutput } from "../src/build-check.js";
 import { parseTestCounts } from "../src/build-check-counts.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
 import { checkFailureReasons } from "../src/build-check-report.js";
@@ -46,6 +46,98 @@ test("runBuildCheck still classifies a genuinely failing build as failed with th
   const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
   assert.equal(outcome.status, "failed");
   assert.ok((outcome.outputTail ?? []).some((l) => l.includes("TS9999")));
+});
+
+// A dependency-adding change is not a defective tree (BUGS.md 2026-10-01): the check installs
+// the tree's lockfile when it drifts from the walk-up, and when a failure still names ONLY
+// dependencies the tree's own package.json declares (tsc's TS2307 — an install the drift check
+// did not owe), the classification is environmental: skip and let the review judge the change,
+// not reject it deterministically before a human-equivalent eye sees it.
+test("runBuildCheck skips, not fails, when the only unresolved modules are the tree's own declared dependencies", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { build: "buildcheck-tool --ok" },
+      dependencies: { react: "^19.0.0" },
+      devDependencies: { "@types/react": "^19.0.0" },
+    }),
+  );
+  writeScript(
+    path.join(root, "node_modules", ".bin", "buildcheck-tool"),
+    "echo 'src/ui/tui-app.tsx(5,45): error TS2307: Cannot find module \"react\" or its corresponding type declarations.' >&2; exit 1",
+  );
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
+  assert.equal(outcome.status, "skipped");
+  assert.equal(outcome.skipReason, "missing-install");
+  assert.deepEqual(outcome.missingModules, ["react"]);
+});
+
+test("runBuildCheck still fails when an unresolved module is not declared by the tree's package.json", async () => {
+  const { root, wt } = buildCheckFixture();
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    JSON.stringify({
+      name: "proj",
+      version: "1.0.0",
+      scripts: { build: "buildcheck-tool --ok" },
+      dependencies: { react: "^19.0.0" },
+    }),
+  );
+  writeScript(
+    path.join(root, "node_modules", ".bin", "buildcheck-tool"),
+    "echo 'error TS2307: Cannot find module \"reactdom\"' >&2; exit 1",
+  );
+  const outcome = await runBuildCheck(wt, { kind: "npm", rootDir: root, script: "build" }, 30_000);
+  assert.equal(outcome.status, "failed");
+});
+
+test("unresolvedModulesInOutput extracts bare package names from resolver errors", () => {
+  assert.deepEqual(
+    unresolvedModulesInOutput(
+      [
+        "src/a.tsx(5,45): error TS2307: Cannot find module 'react' or its corresponding type declarations.",
+        "error TS2307: Cannot find module 'ink/build/components' ",
+        "Cannot find module '@scope/pkg/sub'",
+        // node's ESM resolver names a bare specifier "package", not "module" (ERR_MODULE_NOT_FOUND):
+        // "Cannot find package 'react' imported from /wt/dist/src/ui/tui-app.js"
+        "Cannot find package 'react' imported from /wt/dist/src/ui/tui-app.js",
+        // node's ESM subpath form keeps the package name plus its subpath
+        "Cannot find package 'ink/build/components' imported from /wt/dist/src/ui/tui.js",
+        "Cannot find module './local-helper'",
+        "Cannot find module 'node:fs'",
+      ].join("\n"),
+    ),
+    ["react", "ink", "@scope/pkg"],
+  );
+});
+
+test("unresolvedModulesInOutput reads node's ESM resolver error (Cannot find package …) too", () => {
+  // node's ESM loader names a bare specifier a "package", not a "module" (ERR_MODULE_NOT_FOUND,
+  // verified by importing a missing package under node 26) — a missing install that surfaces at
+  // runtime instead of tsc must classify as missing-install all the same (BUGS.md 2026-10-01).
+  assert.deepEqual(
+    unresolvedModulesInOutput(
+      [
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'react' imported from /wt/dist/src/ui/tui-app.js",
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'ink/build/components' imported from /wt/dist/src/ui/tui.js",
+        "Error [ERR_MODULE_NOT_FOUND]: Cannot find package './missing-helper' imported from /wt/dist/src/x.js",
+      ].join("\n"),
+    ),
+    ["react", "ink"],
+  );
+});
+
+test("buildCheckSkipWarning names the missing modules on a missing-install skip", () => {
+  assert.equal(
+    buildCheckSkipWarning("missing-install", "gate check", "proceeding to review", 30_000, undefined, undefined, [
+      "react",
+      "ink",
+    ]),
+    "the unresolvable modules (react, ink) are dependencies the tree declares but no install provides; skipping gate check; proceeding to review",
+  );
 });
 
 // The harness attests the runner's own summary counts (PLANS.md 2026-09-29): parseTestCounts
