@@ -1,12 +1,13 @@
 /** Shared instruction fragments role prompts and prompt assembly embed verbatim. Pure
  * data: this module imports nothing, so prompt assembly can depend on it without a cycle.
- * Split from roles.ts, whose catalog find texts embed these fragments while prompt.ts
- * embeds them too — the wording is one concern, the catalog another. */
+ * Split from roles.ts, whose catalog (now role-catalog.ts) find texts embed these fragments
+ * while prompt.ts embeds them too — the wording is one concern, the catalog another. */
 
 /** Shared guidance for any loop about to record a plan or bug: split independent parts
  * into their own entries. Defined once so the director and role prompts cannot drift.
  * Lives here (not in prompt.ts) because two role `find` texts embed it — keeping this
- * module import-free, with the dependency running one way: prompt assembly → roles. */
+ * module import-free, with the dependency running one way: prompt assembly → roles,
+ * and the catalog → here. */
 export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, check whether it decomposes
 into independent subparts (separate features, or separate bugs). If it does, record each part as
 its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick them up
