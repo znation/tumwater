@@ -122,6 +122,7 @@ export async function mainRedGate(
         BUILD_CHECK_TIMEOUT_MS,
         undefined,
         baseline.run,
+        baseline.missingModules,
       ),
     );
     return null;

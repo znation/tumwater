@@ -27,6 +27,10 @@ _None yet._
 
 ## Fixed
 
+### The main baseline's missing-install skip warning lost the unresolvable modules' names: `checkMainBaseline` returned only `skipReason` from an environmental skip, so `mainRedGate`'s warning rendered "the unresolvable modules () are dependencies the tree declares but no install provides" — the same-day missing-install classification carried the names in `outcome.missingModules`, and the event log kept them, but the one operator-visible warning the baseline path emits dropped them (and the gate/landing/batch warning passed `outcome.install`, undefined on that skip, into the same empty-parens render) (found by bugfix loop 2026-10-01 latent-bug hunt over that day's missing-install commits 55f98785 and 1808b5e0, fixed 2026-10-01 by bugfix loop)
+
+**Validation gap:** none — the new regression test (a declared dependency whose check fails with `Cannot find module 'left-pad'`, asserting the harness warning names it) reproduced the empty-parens warning before the fix and passes after.
+
 ### `unresolvedModulesInOutput` read only tsc's `Cannot find module 'x'` shape, so a missing install that surfaced at runtime instead of typecheck was still a deterministic rejection: node's ESM loader names a bare specifier a "package" (`Cannot find package 'react' imported from …`, ERR_MODULE_NOT_FOUND), and the 2026-10-01 missing-install classification missed every such failure — the same dependency-adding-change trap the same-day fix was meant to kill (found by bugfix loop 2026-10-01 latent-bug hunt over that fix's commit 55f98785, fixed 2026-10-01 by bugfix loop)
 
 **Validation gap:** no-fake — no test fed node's ESM resolver error into the extractor; the fixture used only tsc-shaped lines, though node's actual message was verifiable offline by importing a missing package.

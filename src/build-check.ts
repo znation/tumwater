@@ -540,7 +540,7 @@ export async function runScopedBuildCheck(
           ? { signal: outcome.killedBy, durationMs }
           : undefined,
         outcome.run,
-        outcome.install,
+        outcome.missingModules ?? outcome.install,
       ),
     );
   } else if (unverifiedSkip) {
