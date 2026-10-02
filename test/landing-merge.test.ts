@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ffMainTo } from "../src/landing-git.js";
-import { ffStackToMain, mergeToMain, type MergeContext } from "../src/landing-merge.js";
+import { diffLineMultiset, ffStackToMain, mergeToMain, type MergeContext } from "../src/landing-merge.js";
 import { defaultConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
@@ -842,4 +842,26 @@ test("ffStackToMain emits question_posted for questions the stack adds, not pre-
     "exactly one event for the added heading — the pre-existing entry is not re-posted",
   );
   assert.equal(posted[0]!.loop, "alpha", "attributed to the batch's first change, like the single-change path");
+});
+
+test("diffLineMultiset counts hunk content lines that carry header-like prefixes", () => {
+  const diff = [
+    "diff --git a/x.md b/x.md",
+    "--- a/x.md",
+    "+++ b/x.md",
+    "@@ -1,3 +1,3 @@",
+    "--keep",
+    "---",
+    "+--gone",
+    "+new",
+    "diff --git a/y.md b/y.md",
+    "--- a/y.md",
+    "+++ b/y.md",
+    "@@ -1,1 +1,1 @@",
+    "-old",
+    "+old2",
+  ].join("\n");
+  const { add, del } = diffLineMultiset(diff);
+  assert.deepEqual(del, ["-keep", "--", "old"], "the deleted markdown rule --- is content, not a header");
+  assert.deepEqual(add, ["--gone", "new", "old2"]);
 });

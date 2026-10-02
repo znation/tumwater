@@ -149,17 +149,27 @@ async function resolvedDiffDiverges(
 
 /** The added and removed content lines of a unified diff, as multisets (one entry per
  * occurrence). Header lines (+++/---) and everything that is not a content marker is skipped;
- * binary files contribute nothing, like for like on both sides of the comparison. */
+ * binary files contribute nothing, like for like on both sides of the comparison. Header
+ * recognition is hunk-aware: +++/--- prefixes only count as headers between the `diff --git`
+ * and `@@` lines, because a content line can carry the same prefix (a deleted markdown
+ * horizontal rule is exactly `---`), and dropping it silently shrinks the multiset (BUGS.md
+ * 2026-10-02 latent-bug hunt). */
 function diffLineMultiset(diff: string): { add: string[]; del: string[] } {
   const add: string[] = [];
   const del: string[] = [];
+  let inHunk = false;
   for (const line of diff.split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---")) continue;
+    if (line.startsWith("diff --git")) inHunk = false;
+    else if (line.startsWith("@@")) inHunk = true;
+    if (!inHunk) continue;
     if (line.startsWith("+")) add.push(line.slice(1));
     else if (line.startsWith("-")) del.push(line.slice(1));
   }
   return { add, del };
 }
+
+/** Exported for the regression test of the hunk-aware header skip (BUGS.md 2026-10-02). */
+export { diffLineMultiset };
 
 /** Whether every element of `small` (counting duplicates) appears in `big`. */
 function subsetOf(small: string[], big: string[]): boolean {
