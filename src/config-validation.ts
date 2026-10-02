@@ -83,6 +83,24 @@ const POSITIVE_INTEGER: NumberRule = {
 };
 const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
+/** Shared known-role guard for the per-role config sections (`roles.<id>` entries and
+ * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customLoops cannot
+ * work — a `roles` typo spawns a phantom loop that errors every tick forever; a caps typo
+ * silently no-ops the cap — so both reject it here with the valid ids, the same message shape
+ * `tumwater logs --role` uses for a bad flag value. Returns true when the id is known. */
+function checkKnownRoleId(
+  section: string,
+  id: string,
+  customNames: ReadonlySet<string>,
+  problems: string[],
+): boolean {
+  if (allRoleIds().includes(id) || customNames.has(id)) return true;
+  problems.push(
+    `${section}.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
+  );
+  return false;
+}
+
 /** Validate tumwater.json values, so a typo fails fast with an actionable message instead
  * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
  * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
@@ -368,14 +386,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     } else {
       for (const [id, rc] of Object.entries(roles)) {
         // An id outside the catalog and customLoops cannot work: tickPrompt has no prompt for
-        // it and the loop would error every tick forever. Reject it here with the valid ids —
-        // the same message shape `tumwater logs --role` uses for a bad flag value.
-        if (!allRoleIds().includes(id) && !customNames.has(id)) {
-          problems.push(
-            `roles.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
-          );
-          continue;
-        }
+        // it and the loop would error every tick forever (checkKnownRoleId).
+        if (!checkKnownRoleId("roles", id, customNames, problems)) continue;
         if (!isJsonObject(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
           continue;
@@ -410,12 +422,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       );
     } else {
       for (const [id, cap] of Object.entries(caps)) {
-        if (!allRoleIds().includes(id) && !customNames.has(id)) {
-          problems.push(
-            `maxDailyCostUsdPerRole.${id} is not a known role (valid ids: ${[...allRoleIds(), ...customNames].join(", ")})`,
-          );
-          continue;
-        }
+        if (!checkKnownRoleId("maxDailyCostUsdPerRole", id, customNames, problems)) continue;
         if (typeof cap !== "number" || !Number.isFinite(cap) || cap < 0)
           problems.push(
             `maxDailyCostUsdPerRole.${id} must be a number of 0 or more (0 disables; got ${show(cap)})`,
