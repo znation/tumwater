@@ -14,6 +14,7 @@ import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
+import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
 import { SLEEP_SPAN_TOLERANCE_MS, sleptPhrase } from "./build-check-events.js";
 import type { CheckConfigSlice } from "./config-schema.js";
@@ -26,7 +27,8 @@ import type { CheckConfigSlice } from "./config-schema.js";
  * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install — now build-check-detect.ts, its own pure
  * filesystem concern),
  * and execution/classification logic: deterministic process verification, distinct from the
- * model-based review. runScopedBuildCheck below is the shared detect → run → build_check
+ * model-based review. Reading the runner's summary counts — parseTestCounts/TestCounts — is
+ * pure parsing with its own importers and lives in build-check-counts.ts.runScopedBuildCheck below is the shared detect → run → build_check
  * event → skip-warning sequence of the gate's pre-check (review.ts) and the landing path's
  * in-lock re-check (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
@@ -90,49 +92,6 @@ export interface BuildCheckOutcome {
    * output on passed and failed outcomes — absent when the check printed no such block. The
    * harness attests these so no model has to restate them (PLANS.md 2026-09-29). */
   counts?: TestCounts;
-}
-
-/** What a node:test-style runner's summary block reports, as parseTestCounts read it. The
- * build_check event carries it verbatim (build-check-events.ts spreads the outcome's counts
- * through), so the event's readers — the status snapshot's mainCheck (src/status-data.ts) — import
- * this shape instead of re-declaring it. */
-export interface TestCounts {
-  tests: number;
-  pass: number;
-  fail: number;
-  skipped: number;
-}
-
-/** One `ℹ <key> <number>` line of the runner's summary block whose key we carry. */
-const TEST_COUNT_LINE = /^ℹ\s+(tests|pass|fail|skipped)\s+(\d+)\s*$/;
-/** Any other `ℹ <key> <number>` line of the summary block (suites, cancelled, todo,
- * duration_ms) — it belongs to the block in progress but carries nothing we attest. */
-const TEST_SUMMARY_LINE = /^ℹ\s+(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms)\s+\d/;
-
-/** Read the runner's summary counts out of combined check output. Blocks are runs of
- * consecutive `ℹ` summary lines; the last complete block wins (nested or repeated runs each
- * print one). Returns undefined when no block carries all four counts. */
-export function parseTestCounts(output: string): TestCounts | undefined {
-  let block: Partial<TestCounts> | undefined;
-  let best: TestCounts | undefined;
-  const close = () => {
-    const { tests, pass, fail, skipped } = block ?? {};
-    if (typeof tests === "number" && typeof pass === "number" && typeof fail === "number" && typeof skipped === "number") {
-      best = { tests, pass, fail, skipped };
-    }
-    block = undefined;
-  };
-  for (const line of output.split("\n")) {
-    const m = TEST_COUNT_LINE.exec(line);
-    if (m) {
-      block ??= {};
-      block[m[1] as keyof TestCounts] = Number(m[2]);
-    } else if (!TEST_SUMMARY_LINE.test(line)) {
-      close();
-    }
-  }
-  close();
-  return best;
 }
 
 /** When one check's process group actually ran, as runScriptGroup observed it: carried on

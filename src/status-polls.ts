@@ -1,4 +1,4 @@
-import type { TestCounts } from "./build-check.js";
+import type { TestCounts } from "./build-check-counts.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LandingInFlight } from "./landing-slot.js";
 import type { LoopState } from "./loop-state.js";
@@ -20,7 +20,7 @@ import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 
 /** The mainCheck field's shape (StatusSnapshot's contract): a runner summary block as the
  * build_check event carries it (build-check-events.ts spreads the outcome's counts through).
- * TestCounts is parseTestCounts's exported type, single-homed in build-check.ts beside its
+ * TestCounts is parseTestCounts's exported type, single-homed in build-check-counts.ts beside its
  * parser. Structurally checked on read (asCounts below): the event log is loose-typed. */
 export interface MainCheckStatus {
   sha?: string;
