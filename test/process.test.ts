@@ -19,6 +19,7 @@ import {
 } from "../src/process-table.js";
 import { makeRunMarker } from "../src/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
+import { armVictimKill } from "./victim-fixture.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
@@ -447,13 +448,7 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   child.unref();
   // Armed before the readiness wait below, so a failed readiness assertion cannot strand
   // the victim (the 2026-09-30 orphan leak).
-  t.after(() => {
-    try {
-      if (child.pid) process.kill(child.pid, "SIGKILL");
-    } catch {
-      // Already gone.
-    }
-  });
+  armVictimKill(t, child);
   const upDeadline = Date.now() + 10_000;
   while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
   assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the terminate");

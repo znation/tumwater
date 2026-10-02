@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
@@ -21,27 +21,7 @@ import { errnoError } from "./fs-faults.js";
 // parsers over environment-entry lists and ps -E output, and the sweep that reaps this
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
 // stay pinned in process.test.ts; here the marker plumbing itself is under test.
-
-/** A detached, marked `node -e` victim that writes its pid (or a readiness line) into `file`
- * and idles until killed. The SIGKILL is armed with the runner the moment the victim exists —
- * synchronously, before any await or assertion the caller runs — so a failed readiness
- * assertion (the 2026-09-30 orphan leak) can never strand it at PPID 1. */
-function spawnMarkedVictim(t: TestContext, marker: string, file: string, script: string): ChildProcess {
-  const child = spawn(process.execPath, ["-e", script, file], {
-    detached: true,
-    stdio: "ignore",
-    env: { ...process.env, TUMWATER_RUN: marker },
-  });
-  child.unref();
-  t.after(() => {
-    try {
-      if (child.pid) process.kill(child.pid, "SIGKILL");
-    } catch {
-      // Already gone — the expected outcome.
-    }
-  });
-  return child;
-}
+import { armVictimKill, spawnMarkedVictim } from "./victim-fixture.js";
 
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
@@ -273,24 +253,7 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   const dir = tmpdir();
   const recordPid = "require('node:fs').writeFileSync(process.argv[1], String(process.pid));";
   const marker = makeRunMarker();
-  const spawnMarked = (file: string, script: string) => {
-    const child = spawn(process.execPath, ["-e", script, path.join(dir, file)], {
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env, TUMWATER_RUN: marker },
-    });
-    child.unref();
-    // Armed before the readiness polls below, so a failed readiness assertion cannot strand
-    // either victim (the 2026-09-30 orphan leak).
-    t.after(() => {
-      try {
-        if (child.pid) process.kill(child.pid, "SIGKILL");
-      } catch {
-        // Already gone.
-      }
-    });
-    return child;
-  };
+  const spawnMarked = (file: string, script: string) => spawnMarkedVictim(t, marker, path.join(dir, file), script);
   const compliant = spawnMarked(
     "compliant.pid",
     `${recordPid}setInterval(() => {}, 1 << 30)`, // no SIGTERM handler: the leg kills it
@@ -355,13 +318,7 @@ test("the orphan helper arms its kill the moment the victim exists, and the hook
     "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)",
   );
   // Safety net of the safety net: if an assertion below fails, the real runner still reaps.
-  t.after(() => {
-    try {
-      if (child.pid) process.kill(child.pid, "SIGKILL");
-    } catch {
-      // Already gone.
-    }
-  });
+  armVictimKill(t, child);
   assert.equal(hooks.length, 1, "the kill is armed synchronously, before any await can run");
   const reap = hooks.at(0);
   assert.ok(reap, "the armed hook exists");
