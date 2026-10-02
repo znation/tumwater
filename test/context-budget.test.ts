@@ -74,6 +74,21 @@ test("the extension appends the note after the tool result's own content, once p
   assert.ok(handler(event, ctx), "the next threshold fires");
 });
 
+test("a tool result with no content array still gets the note alone", () => {
+  // pi can deliver a tool_result patch whose content is absent or not an array (bounded-output
+  // and pi's own handlers control the shape, but the extension must not assume it): the note
+  // then makes up the whole patched content instead of crashing on the spread.
+  let handler: ((event: { content?: unknown }, ctx?: unknown) => unknown) | undefined;
+  contextBudget({ on: (_event, cb) => { handler = cb as typeof handler; } });
+  const ctx = { getContextUsage: () => ({ tokens: 55_000, contextWindow: 100_000, percent: 55 }) };
+  const missing = handler!({}, ctx) as { content: Array<{ type: string; text: string }> };
+  assert.equal(missing.content.length, 1, "the note is the only content");
+  assert.match(missing.content[0]!.text, /55% full/);
+  // A non-array content rides the same degradation — and the fired threshold is remembered,
+  // so the next result below the next threshold stays untouched.
+  assert.equal(handler!({ content: "raw text" }, ctx), undefined);
+});
+
 test("the extension tolerates a context without usage or a throwing getter", () => {
   let handler: ((event: object, ctx?: unknown) => unknown) | undefined;
   contextBudget({ on: (_event, cb) => { handler = cb as typeof handler; } });
