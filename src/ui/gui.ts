@@ -7,7 +7,7 @@ import http from "node:http";
 import os from "node:os";
 import { GUI_PAGE } from "./gui-page.js";
 import { statusPayload } from "./status-payload.js";
-import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "./self-reload.js";
+import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "../self-reload.js";
 import { errorMessage } from "../text.js";
 import { errCode } from "../errno.js";
 import {

@@ -33,7 +33,7 @@ import {
   createReloadWatch,
   reexecSelf,
   type ReloadWatchSeams,
-} from "./self-reload.js";
+} from "../self-reload.js";
 import {
   applyKey,
   newPromptHistory,
