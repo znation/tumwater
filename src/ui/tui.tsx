@@ -110,14 +110,6 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // data and line budgets in and reads the resulting state out each frame.
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
 
-  // The last frame written to the terminal: the per-second re-render only rewrites the
-  // Ink's log-update skips the write when a re-render composes an identical frame, so
-  // an idle fleet's per-second repaint (its "· 3m ago" age cells change only once a
-  // minute) costs no terminal I/O at all — the same redundant-repaint guard the GUI's
-  // detail panel skip removed (the dashboard's innerHTML guard). Changed frames rewrite
-  // only the changed lines: ink diff-renders, so the full-screen `\x1b[2J` clear — the
-  // flicker BUGS.md recorded — is gone entirely.
-
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // shared by render and the keypress handlers so stale-selection clamping cannot drift.
   const flatEntries = (): Array<{ label: string } & BacklogEntry> => [
@@ -221,6 +213,12 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // readline's emitter setup only accepts a ReadStream; the fake terminal carries the same
   // surface (an EventEmitter the test drives keypresses through), so the seam is widened here.
   // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to.
+  // The last frame written to the terminal: ink's log-update skips the write when a
+  // re-render composes an identical frame, so an idle fleet's per-second repaint (its
+  // "· 3m ago" age cells change only once a minute) costs no terminal I/O at all — the
+  // same redundant-repaint guard the GUI's detail-panel skip removed (the dashboard's
+  // innerHTML guard). Changed frames rewrite only the changed lines: ink diff-renders, so
+  // the full-screen `\x1b[2J` clear — the flicker BUGS.md recorded — is gone entirely.
   // Key handling is untouched: with no useInput hook mounted, ink claims no stdin, so the
   // readline keypress setup below keeps sole ownership of the terminal's input.
   // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
