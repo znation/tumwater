@@ -13,6 +13,9 @@ import {
 import { readBuildInfo } from "../src/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
+import fs from "node:fs";
+import path from "node:path";
+import { commitIn, mainSha, makeRepo } from "./repo-fixtures.js";
 import { sleep } from "./wait.js";
 
 // The dashboards' auto-reload (src/ui/self-reload.ts): decide staleness from the process's own
@@ -121,7 +124,8 @@ test("reexecSelf respawns a sibling on the child's restart code — depth stays 
   assert.equal(fake.calls.length, 2, "a restart code respawns a sibling instead of exiting");
   fake.children[1]?.exit?.(RESTART_EXIT_CODE); // second reload: still no nesting, still no exit
   assert.equal(fake.calls.length, 3, "every reload respawns; the supervisor never accumulates");
-  fake.children[2]?.exit?.(0); // an operator stop finally ends the whole dashboard
+  assert.equal(captureExit(() => fake.children[2]?.exit?.(0)), 0,
+    "an operator stop finally ends the whole dashboard (intercepted, not a real exit)");
 });
 
 test("a supervised child (the mark set) exits the restart code instead of spawning", () => {
@@ -331,15 +335,19 @@ test("createReloadWatch uses its own dist stamp when readDisk is not injected", 
 });
 
 test("createReloadWatch stays quiet while the on-disk stamp is missing", async () => {
-  // Between a redeploy's swaps the stamp can briefly vanish; that is not a newer build.
+  // Between a redeploy's swaps the stamp can briefly vanish; that is not a newer build. The
+  // boot-time gate still runs once (the startup stamp exists); the polls must not ask it again
+  // — and must not fire — while the disk stamp is gone.
   let disk: BuildInfo | null = stamp("a");
   let fired = 0;
+  let gateCalls = 0;
   const watch = createReloadWatch({
     root: "/r",
     startupInfo: stamp("a"),
     readDisk: () => disk,
     isSelfHostedImpl: async () => {
-      throw new Error("the gate must not be asked without a disk stamp");
+      gateCalls++;
+      return true;
     },
     intervalMs: 5,
     onTrigger: () => {
@@ -348,9 +356,11 @@ test("createReloadWatch stays quiet while the on-disk stamp is missing", async (
   });
   try {
     await watch.start();
+    assert.equal(gateCalls, 1, "the boot gate runs once for the startup stamp");
     disk = null;
     await sleep(30);
     assert.equal(fired, 0, "a vanished stamp fires nothing");
+    assert.equal(gateCalls, 1, "a vanished stamp is not asked about");
     disk = stamp("b");
     await sleep(30);
     assert.equal(fired, 1, "the watch is alive again once a stamp reappears");
@@ -418,6 +428,54 @@ test("createReloadWatch ignores an in-flight check that settles after stop", asy
     assert.equal(fired, 0, "a check that settles after stop never fires the reload");
   } finally {
     watch.stop();
+  }
+});
+
+test("createReloadWatch with the production gate fires onto a real commit and refuses a bogus one", async () => {
+  // The default seam is what production runs: the real isSelfHosted (one git cat-file per new
+  // stamp). A tiny fixture repo stands in for the checkout, so the gate is exercised against
+  // git itself, offline: a stamp naming a real commit of the root reloads; a stamp naming no
+  // commit is rejected, and a later real commit still fires.
+  const repo = makeRepo();
+  const seedSha = mainSha(repo);
+  fs.writeFileSync(path.join(repo, "two.txt"), "two\n");
+  commitIn(repo, "second");
+  const secondSha = mainSha(repo);
+  let disk: BuildInfo | null = { sha: seedSha, builtAt: 1, root: repo };
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: repo,
+    startupInfo: { sha: seedSha, builtAt: 1, root: repo },
+    readDisk: () => disk,
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start();
+    await sleep(30);
+    assert.equal(fired, 0, "the identical real commit stays quiet");
+    disk = { sha: "bogus", builtAt: 1, root: repo };
+    await sleep(30);
+    assert.equal(fired, 0, "the real gate refuses a stamp naming no commit here");
+    disk = { sha: secondSha, builtAt: 1, root: repo };
+    await sleep(30);
+    assert.equal(fired, 1, "the real gate accepts a real newer commit");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("reexecSelf falls back to node's real spawner when none is injected", () => {
+  // The default parameter is what production passes. Under the child mark the call exits the
+  // restart code before spawning, so the default spawner is resolved but never launches a
+  // process — the default is proven wired without starting anything.
+  process.env[DASHBOARD_CHILD_ENV] = "1";
+  try {
+    assert.equal(captureExit(() => reexecSelf()), RESTART_EXIT_CODE);
+  } finally {
+    delete process.env[DASHBOARD_CHILD_ENV];
   }
 });
 
