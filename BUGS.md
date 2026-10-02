@@ -14,6 +14,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected:** once a warning names it, make that test's timing assumptions hold under the fleet's load, then close this.
 
 ## Fixed
+
+### The TUI's project-status entry selection wraps from a stale index after the backlog shrinks, landing on an arbitrary entry: `moveEntrySelection` computed `(selected ± 1) % count` without clamping `selected` to the new count first, and the selection index persists across renders while loops edit BUGS.md/PLANS.md under the pane — the render clamps the stale index only for display, so the pane shows the last entry while the next Down press moves from the stale offset (repro: `moveEntrySelection(3, 10, "down")` returned 2 — the selection did not move at all — and `(3, 10, "up")` returned 0 instead of 1; the extraction's tests held only in-range selections, so nothing saw the wrap on an out-of-range index) (found by bugfix loop 2026-10-02 latent-bug hunt over the recently extracted src/ui/tui-backlog.ts, fixed 2026-10-02 by bugfix loop)
+
+**Validation gap:** unclear-invariant — the wrap contract assumed an in-range cursor, and nothing recorded that the caller may hold a selection index older than the list it indexes, so the pure function's tests had to be extended past its extraction-tested range first.
+
 ### The TUI's budget editor accepts a 25-digit dollar cap as valid: parseBudgetInput's isFinite backstop only rejects values that overflow to Infinity, but a long digit run stays finite ("9"×25 → 1e24), and the setter's own screen (checkDailyBudgetUsd) admits any finite non-negative number — so a one-zero typo in Ctrl+B's cap editor silently writes an effectively uncapped budget, exactly the overflow text.ts's parseDecimalInt guards against for every count/position input (repro: parseBudgetInput("9".repeat(25)) returned { ok: true, value: 1e24 }; the existing test's "9".repeat(410) overflowed to Infinity and passed, so the boundary between the two was untested) (found by bugfix loop 2026-10-02 latent-bug hunt over the recently extracted src/ui/tui-keys.ts/tui-input.ts, fixed 2026-10-02 by bugfix loop)
 
 - **Symptom:** the TUI's budget confirmation printed `budget set to $1e+24`'s absurd value as a legitimate cap and setDailyBudgetUsd wrote it to tumwater.json, disabling the daily spend cap from a single mistyped zero.

@@ -66,6 +66,16 @@ test("moveEntrySelection wraps at both ends across the flat entry list", () => {
   assert.equal(moveEntrySelection(3, 2, "up"), 1);
 });
 
+test("moveEntrySelection clamps a stale selection before wrapping", () => {
+  // The backlog the flat index came from can shrink between renders (a loop fixes a bug
+  // while the pane holds a selection): a stale index past the new count must clamp to the
+  // last entry first, so the next step moves from where the pane actually shows the
+  // selection — not from an arbitrary offset that mod-count happens to name.
+  assert.equal(moveEntrySelection(3, 10, "down"), 0); // clamp 10 → 2, then wrap down to 0
+  assert.equal(moveEntrySelection(3, 10, "up"), 1); // clamp 10 → 2, then step up to 1
+  assert.equal(moveEntrySelection(3, 4, "down"), 0); // same clamp, the stayed-put repro
+});
+
 test("moveEntrySelection with no entries stays in list mode", () => {
   assert.equal(moveEntrySelection(0, null, "down"), null);
   assert.equal(moveEntrySelection(0, null, "up"), null);

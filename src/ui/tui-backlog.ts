@@ -53,7 +53,12 @@ export function moveEntrySelection(
 ): number | null {
   if (count <= 0) return null;
   if (selected === null) return dir === "down" ? 0 : count - 1;
-  return dir === "down" ? (selected + 1) % count : (selected - 1 + count) % count;
+  // A stale index past the new count (the backlog shrank between renders) clamps to the
+  // last entry first, so the wrap moves from where the pane actually shows the selection —
+  // (selected + 1) % count on an unclamped stale index lands on an arbitrary entry (BUGS.md
+  // 2026-10-02 latent-bug hunt over tui-backlog's extraction).
+  const sel = Math.min(selected, count - 1);
+  return dir === "down" ? (sel + 1) % count : (sel - 1 + count) % count;
 }
 
 /** The visible window of one backlog entry's body for the TUI pane: `budget` lines starting at
