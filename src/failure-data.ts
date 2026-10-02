@@ -90,6 +90,7 @@ export interface FailureReportData {
   deltas: DeltaRow[];
   timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
   lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change and review-rejected roles
+  lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
   errors: ClusterSection;
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
@@ -207,7 +208,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
 
   // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
-  const { timeSpend, lossCauses } = timeAndSpend(tickEvents, events);
+  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, events);
 
   // Deltas: current vs preceding window, per role.
   const curStats = roleStats(current);
@@ -338,6 +339,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     deltas,
     timeSpend,
     lossCauses,
+    lossCausesHidden,
     errors,
     warnings,
     reviewFailures,

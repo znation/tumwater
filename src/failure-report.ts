@@ -176,6 +176,12 @@ export function renderFailureMarkdown(data: FailureReportData): string {
               : `${c.example} (${roleList(c.roles)})`;
         lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
       }
+      // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
+      // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
+      if (data.lossCausesHidden > 0) {
+        const noun = data.lossCausesHidden === 1 ? "cause" : "causes";
+        lines.push(`_+${data.lossCausesHidden} more loss ${noun} by time not listed_`);
+      }
     }
   }
 

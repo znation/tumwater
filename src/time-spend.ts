@@ -117,6 +117,9 @@ function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
 export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
   lossCauses: LossCause[];
+  /** How many distinct causes the LOSS_TOP slice dropped — the render's remainder marker
+   * reads it, so a capped ranking never passes as a complete itemization (BUGS.md 2026-10-01). */
+  lossCausesHidden: number;
 } {
   const starts = tickStartMap(allEvents);
   const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
@@ -217,7 +220,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     (row) => sumMs(row.classes),
     (row) => row.role,
   );
-  const lossCauses: LossCause[] = [...losses.values()]
+  const rankedLosses: LossCause[] = [...losses.values()]
     .map((d) => ({
       kind: d.kind,
       roles: sortedRoles(d.roles),
@@ -226,7 +229,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       ms: d.ms,
       costUsd: d.costUsd,
     }))
-    .sort((a, b) => b.ms - a.ms || b.ticks - a.ticks || a.example.localeCompare(b.example))
-    .slice(0, LOSS_TOP);
-  return { timeSpend, lossCauses };
+    .sort((a, b) => b.ms - a.ms || b.ticks - a.ticks || a.example.localeCompare(b.example));
+  const lossCauses = rankedLosses.slice(0, LOSS_TOP);
+  return { timeSpend, lossCauses, lossCausesHidden: Math.max(0, rankedLosses.length - LOSS_TOP) };
 }

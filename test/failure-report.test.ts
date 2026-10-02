@@ -616,3 +616,25 @@ test("report --failures --json prints the digest's collected data", async () => 
   assert.ok(Array.isArray(parsed.timeSpend) && parsed.timeSpend.length === 1, "the time-and-spend table rides the JSON");
   assert.ok(Array.isArray(parsed.lossCauses) && parsed.lossCauses.length === 1, "the loss ranking rides the JSON");
 });
+
+test("the loss-cause ranking's top-5 cut discloses its remainder, like every other capped section", () => {
+  // Seven distinct error clusters in the window: only the five most expensive by time may
+  // render, so the section must say how many it dropped — a silent cut reads as a complete
+  // itemization, the exact bug class the digest's other capped sections already fix.
+  const root = tmpdir();
+  writeEvents(root, [
+    ...["a", "b", "c", "d", "e", "f", "g"].map((m, i) => ({
+      ts: at(0),
+      loop: `role${i}`,
+      type: "tick_end",
+      result: "error",
+      error: `failure ${m}`,
+      durationMs: 1000,
+    })),
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.lossCauses.length, 5, "the ranking shows at most LOSS_TOP causes");
+  assert.equal(data.lossCausesHidden, 2, "the dropped remainder is counted, not lost");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /_\+2 more loss causes by time not listed_/, "the render marks the cut");
+});
