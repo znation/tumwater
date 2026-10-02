@@ -3,16 +3,14 @@ import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions, PiRunResult } from "./pi.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { isDirty, setRef } from "./git.js";
+import { setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
-import { extractSummary } from "./commit-message.js";
 import { assembleTickPrompt } from "./tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole } from "./config-views.js";
-import { applyConfigRequest } from "./config-write.js";
 import { planTickStart } from "./tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";
@@ -23,10 +21,8 @@ import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./landing-merge.js";
-import { diagnoseNoChange } from "./no-change.js";
-import { handleRefusal, refusalContradiction } from "./refusal.js";
+import { resolveTickVerdict } from "./tick-verdict.js";
 import { extractFlow, type FlowResult } from "./reply-contract.js";
-import { recordFlow } from "./qa-coverage.js";
 import { landingRefName } from "./paths.js";
 import { errorMessage, shortSha } from "./text.js";
 
@@ -514,11 +510,12 @@ export class LoopRunner {
   }
 
   /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
-   * each half reads on its own screen — the setup above ends at the pi return, and everything
-   * that classifies what the run left behind (abort, config request, quiet kill, timeout,
-   * refusal, failure, no-change, or the staging handoff) lives here. `userPrompt` is the raw
-   * director prompt this tick is executing (null for role loops) so unfulfilled outcomes can
-   * re-queue it; `flow` is the qa observer's FLOW line (null for every other role). */
+   * each half reads on its own screen — the setup above ends at the pi return. The verdict
+   * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change)
+   * lives in resolveTickVerdict (src/tick-verdict.ts), and the fulfillable path — staging —
+   * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
+   * loops) so unfulfilled outcomes can re-queue it; `flow` is the qa observer's FLOW line
+   * (null for every other role). */
   private async handlePiResult(
     pi: PiRunResult,
     userPrompt: string | null,
@@ -526,121 +523,25 @@ export class LoopRunner {
     flow: FlowResult | null,
     piStartedAt: number,
   ): Promise<TickOutcome> {
-    const s = this.state;
-    // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
-    // The next tick's reset discards them.
-    if (pi.aborted) return this.finishAbortedTick(userPrompt, wt);
-    this.pending.clear();
-    // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
-    // config request in its worktree. Consume it here — after the abort return (a deliberate
-    // abort still discards an unfulfilled request) and before every staging path (quiet-kill,
-    // timeout, refusal, isDirty, commitAll) — so the request file never enters a diff or a
-    // review prompt, and a quiet-killed/timeout re-run starts clean instead of losing the
-    // request to the reset. Applied names are announced by the orchestrator's ~2 s live reload
-    // (one config_changed event naming the keys); this tick logs only the rejection paths.
-    if (this.role === DIRECTOR_ROLE) {
-      const request = applyConfigRequest(this.root, wt);
-      if (request) {
-        if (request.error) this.warn(`config request rejected: ${request.error}`);
-        if (request.ignored.length)
-          this.warn(
-            `config request ignored key(s): ${request.ignored.join(", ")} — only customLoops is accepted`,
-          );
-      }
-    }
-    if (pi.quietKilled) {
-      // A hung tool call, not a slow run: the session and the worktree's edits are intact.
-      // Preserve both — applyTickOutcome resumes them promptly like an interruption instead of
-      // leaving hours of work for the next tick's reset to discard. Director ticks never resume;
-      // their prompt goes back to the inbox to run fresh, as on any other unfulfilled kill.
-      s.lastError = pi.errorMessage ?? "killed as hung";
-      this.pending.requeueForResume(this.state, userPrompt);
-      return { result: "quiet_killed" };
-    }
-    if (pi.timedOut && pi.timedOutProgressing) {
-      // The deadline fired on a run still making progress: a slow run, not a failed one, and
-      // the slow run is exactly the case where discarding costs the most (BUGS.md 2026-09-29:
-      // 97 timeouts in 8 hours, ~55 agent-hours discarded). Handle it the way a quiet kill is
-      // handled — keep the session and the worktree's edits, resume promptly, bounded by the
-      // same quiet-kill streak — while a run with no recent progress keeps the discard path
-      // below. Director ticks never resume; requeueForResume re-queues their prompt
-      // fresh (src/pending-prompt.ts), and applyTickOutcome schedules the immediate retry
-      // without a resume.
-      s.lastError = pi.errorMessage ?? "timed out while still making progress";
-      this.pending.requeueForResume(this.state, userPrompt);
-      return { result: "quiet_killed", resumeCause: "timeout" };
-    }
-    if (pi.timedOut) {
-      s.lastError = pi.errorMessage ?? "timed out";
-      // The request never ran to completion and no work landed: put it back so the next
-      // tick retries it. (A killed run's half-done edits are discarded by the reset.)
-      this.pending.requeueUnfulfilled(userPrompt);
-      return { result: "error" };
-    }
-
-    // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
-    // and any note it left are the run's verdict — classify what it left behind (src/refusal.ts).
-    if (pi.refused) {
-      // A refusal contradicted by its own reply — a SUMMARY beside non-markdown work — is
-      // surfaced, not obeyed: the work is finished output a discard would destroy, so the
-      // normal flow keeps it and the review gate judges it (BUGS.md 2026-09-23).
-      const contradicted = await refusalContradiction(wt, pi.finalText);
-      if (contradicted.length > 0) {
-        this.warn(
-          `refusal contradicted by its own reply: SUMMARY beside non-markdown work ` +
-            `(${contradicted.slice(0, 3).join(", ")}) — keeping the work; the normal flow judges it`,
-        );
-      } else {
-        return handleRefusal(
-          {
-            role: this.role,
-            mainBranch: this.mainBranch,
-            turns: this.usage.turns,
-            merge: (w, sum) => this.merge(w, sum),
-          },
-          this.state,
-          wt,
-          pi,
-        );
-      }
-    }
-
-    const changed = await isDirty(wt);
-    if (!pi.ok && !changed) {
-      s.lastError = pi.errorMessage ?? "pi failed";
-      // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
-      // IS fulfillment (a question-type prompt answered without file changes) — never
-      // re-queue that, or such prompts would loop forever.
-      this.pending.requeueUnfulfilled(userPrompt);
-      return { result: "error" };
-    }
-    if (!changed) {
-      // No sentinel anywhere in the reply is either non-compliance or truncation —
-      // diagnoseNoChange (src/no-change.ts) tells which, so the warning event below is
-      // diagnosable on its own.
-      const diagnosis = diagnoseNoChange(pi);
-      if (!pi.nothingToDo) {
-        this.warn(
-          `pi finished without changes and without declaring nothing-to-do` +
-            (diagnosis.notes.length ? ` (${diagnosis.notes.join(", ")})` : ""),
-        );
-      }
-      // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
-      // to the inbox to rerun fresh; a role loop resumes the just-compacted session
-      // next tick (see the cutOff handling in tick()).
-      if (diagnosis.cutOff) this.pending.requeueForResume(this.state, userPrompt);
-      // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
-      // line it left mid-stream is not a finished verdict, so recording it would advance the
-      // rotation past a check that did not complete. Only a run that was not cut off records.
-      if (flow && !diagnosis.cutOff)
-        recordFlow(
-          this.root,
-          flow.flow,
-          flow.result,
-          flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
-        );
-      return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
-    }
+    // Everything that decides the run left nothing landable — abort, config request,
+    // quiet kill, timeout, refusal, failure without changes, no change — lives in
+    // resolveTickVerdict (src/tick-verdict.ts); null means the run IS fulfillable.
+    const verdict = await resolveTickVerdict({
+      root: this.root,
+      role: this.role,
+      mainBranch: this.mainBranch,
+      state: this.state,
+      pending: this.pending,
+      turns: this.usage.turns,
+      userPrompt,
+      wt,
+      pi,
+      flow,
+      warn: (message) => this.warn(message),
+      merge: (w, sum) => this.merge(w, sum),
+      finishAbortedTick: () => this.finishAbortedTick(userPrompt, wt),
+    });
+    if (verdict) return verdict;
 
     // The commit is pinned and the worktree is free (src/tick-stage.ts): stage it for the
     // land queue and END the tick — the orchestrator drains the queue on its single landing
@@ -656,7 +557,7 @@ export class LoopRunner {
     return stageTickLanding({
       root: this.root,
       role: this.role,
-      state: s,
+      state: this.state,
       config: this.config,
       tickTurns: this.usage.turns,
       userPrompt,
