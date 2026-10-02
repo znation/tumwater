@@ -1,5 +1,5 @@
 import { fail, say } from "../cli-output.js";
-import { durationLabel, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope } from "../cli-args.js";
+import { durationLabel, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -82,14 +82,12 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
   // N", and --role swaps in a pi transcript rather than this event log — and each failure names
   // both flags. (--prompt requires --role, so it is excluded with it.)
-  const sinceRaw = flagValue(rest, "--since");
-  if (sinceRaw !== null) {
+  const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
+  if (ms !== null) {
     if (follow)
       fail('logs --since cannot be combined with -f/--follow (follow means "from now on"; --since shows a bounded past window)');
     if (rest.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
     rejectRoleViewRival(rest, "--since", true);
-    const ms = parseDurationFlag("--since", sinceRaw);
-    failOverDurationCap("logs --since", ms, LOGS_SINCE_MAX_MS);
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
     const { events, covered } = readEventsSince(root, ms);

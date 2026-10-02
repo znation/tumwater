@@ -128,6 +128,22 @@ export function failOverDurationCap(flag: string, ms: number, maxMs: number, hin
   fail(`${flag} is capped at ${durationLabel(maxMs)} (got ${durationLabel(ms)})${hint ? ` — ${hint}` : ""}`);
 }
 
+/** Read an optional `--since <duration>` window from a command's args and cap it: the one
+ * home of the flagValue → parseDurationFlag → failOverDurationCap idiom the three windowed
+ * read-only views (logs, history, report) share. Returns the parsed milliseconds, or null
+ * when the flag is absent. A malformed value fails with parseDurationFlag's message and an
+ * over-cap window with failOverDurationCap's, named `<label>` (e.g. "logs --since").
+ * Rival-flag rules stay in each command body, checked on the returned non-null value — so a
+ * malformed or over-cap `--since` fails on its own wording before a rival-flag check fires,
+ * the same precedence a command with only --since shows. */
+export function parseSinceFlag(args: string[], label: string, maxMs: number): number | null {
+  const raw = flagValue(args, "--since");
+  if (raw === null) return null;
+  const ms = parseDurationFlag("--since", raw);
+  failOverDurationCap(label, ms, maxMs);
+  return ms;
+}
+
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
  * Shared by every command that scopes to one loop so their validation and error messages
  * cannot drift. `validIds` is the set of ids this command accepts — callers pass

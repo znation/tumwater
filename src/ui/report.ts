@@ -10,7 +10,7 @@ import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
 import { fail, say, sayJson, sayJsonOrRender } from "../cli-output.js";
-import { durationLabel, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag } from "../cli-args.js";
+import { durationLabel, flagValue, parseCountFlag, parseSinceFlag } from "../cli-args.js";
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.
@@ -165,16 +165,12 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
 
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
-  const sinceRaw = flagValue(args, "--since");
-  if (sinceRaw !== null) {
+  const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
+  if (ms !== null) {
     if (args.includes("--days"))
       fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
     if (args.includes("--failures"))
       fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
-    const ms = parseDurationFlag("--since", sinceRaw);
-    // The shared over-cap check (the same idiom logs --since and pause --for use), so the
-    // cap message cannot drift from the other capped duration flags.
-    failOverDurationCap("report --since", ms, REPORT_SINCE_MAX_MS);
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
     const since = collectReportSince(root, ms);

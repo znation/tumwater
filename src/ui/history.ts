@@ -1,5 +1,5 @@
 import { fail, say, sayJson } from "../cli-output.js";
-import { durationLabel, failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseGrepFlag, parseRoleScope } from "../cli-args.js";
+import { durationLabel, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
 import { displayWidth, padToWidth } from "../text-width.js";
 import { shortSpanPhrase } from "../phrases.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
@@ -106,17 +106,14 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--since <duration>` is the window-shaped view over the same tick record the -n view
   // dumps: a rival shape to -n, so they fail together naming both (the same rule and wording
   // shape logs uses). It reuses the logs --since cap (same log, same cap — no third cap
-  // value) through the shared parser and over-cap helpers, so the error wordings cannot
-  // drift. `--role` composes with --since here: history's --role is a row filter, not the
-  // rival transcript view logs guards against.
-  const sinceRaw = flagValue(rest, "--since");
+  // value) through parseSinceFlag, so the error wordings cannot drift. `--role` composes with
+  // --since here: history's --role is a row filter, not the rival transcript view logs guards
+  // against.
   let rows: TickRow[];
   let covered = true;
-  let sinceMs: number | null = null;
-  if (sinceRaw !== null) {
+  const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
+  if (sinceMs !== null) {
     if (nRaw !== null) fail("history --since cannot be combined with -n (a count and a window are rival shapes)");
-    sinceMs = parseDurationFlag("--since", sinceRaw);
-    failOverDurationCap("history --since", sinceMs, LOGS_SINCE_MAX_MS);
     const role = parseRoleScope(root, rest);
     const windowed = readTickRowsSince(root, sinceMs, role);
     rows = windowed.rows;
