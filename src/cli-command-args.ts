@@ -50,6 +50,15 @@ const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.v
  * prompt content; single-dash positionals are prompt content, not flags. Without these checks a
  * misspelled --file would be baked into the initial prompt — injected into every tick of every
  * loop until someone edits the project brief. */
+/** The two parsers' shared "each flag at most once" rule: refuse a repeated flag with the
+ * same "may only be given once" wording parseFlagSpecs' spec-driven check applies to the
+ * spec-parsed commands. Two call sites: parseInitArgs (over every known flag) and
+ * parsePromptArgs (over --list/--cancel/--role/--json). */
+function rejectDuplicateFlags(args: readonly string[], flags: readonly string[]): void {
+  for (const flag of flags)
+    if (args.filter((a) => a === flag).length > 1) fail(`${flag} may only be given once`);
+}
+
 export function parseInitArgs(args: string[]): {
   prompt: string;
   branch: string | null;
@@ -67,9 +76,7 @@ export function parseInitArgs(args: string[]): {
       );
     }
   }
-  for (const flag of known) {
-    if (args.filter((a) => a === flag).length > 1) fail(`${flag} may only be given once`);
-  }
+  rejectDuplicateFlags(args, known);
   const branch = parseBranchFlag(args);
   const adopt = args.includes("--adopt");
   const dryRun = args.includes("--dry-run");
@@ -144,18 +151,15 @@ export function parsePromptArgs(args: string[]): PromptArgs {
       fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>)`);
     }
   }
+  // --json's positions, collected in one pass: the list branch's stray-argument claim and
+  // json flag need the indices (the once-check rides rejectDuplicateFlags below).
+  const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
-  // --json's positions, collected in one pass: the once-check here rides the array's length,
-  // and the list branch's stray-argument claim and json flag need the indices.
-  const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
-  if (jsonFlags.length > 1) fail("--json may only be given once");
-  if (args.filter((a) => a === "--list").length > 1) fail("--list may only be given once");
-  if (args.filter((a) => a === "--cancel").length > 1) fail("--cancel may only be given once");
+  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json"]);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
   const roleFlag = args.indexOf("--role");
-  if (args.filter((a) => a === "--role").length > 1) fail("--role may only be given once");
   const roleRaw = roleFlag >= 0 ? args[roleFlag + 1] : undefined;
   if (roleFlag >= 0 && (!roleRaw || roleRaw.startsWith("--"))) fail(ROLE_VALUE_ERROR);
   const role = roleRaw ?? null;
