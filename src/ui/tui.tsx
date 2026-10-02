@@ -28,6 +28,7 @@ import { createTuiKeys } from "./tui-keys.js";
 import {
   backlogLines,
   entryBodyWindow,
+  labeledBacklogEntries,
 } from "./tui-backlog.js";
 import {
   alertLines,
@@ -111,12 +112,9 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
 
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
-  // shared by render and the keypress handlers so stale-selection clamping cannot drift.
-  const flatEntries = (): Array<{ label: string } & BacklogEntry> => [
-    ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
-    ...openBugEntries(root).map((e) => ({ label: "bug", ...e })),
-    ...openQuestionEntries(root).map((e) => ({ label: "question", ...e })),
-  ];
+  // tui-backlog.ts's one definition, shared with the keypress handlers so stale-selection
+  // clamping cannot drift.
+  const flatEntries = (): Array<{ label: string } & BacklogEntry> => labeledBacklogEntries(root);
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
   // line is always one visual line and the height budget below is exact — nothing wraps,

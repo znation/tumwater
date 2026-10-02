@@ -1,9 +1,3 @@
-import {
-  type BacklogEntry,
-  openBugEntries,
-  openQuestionEntries,
-  plannedPlanEntries,
-} from "../backlog.js";
 import { collectReport } from "../report-data.js";
 import { renderReportMarkdown } from "./report.js";
 import { REPORT_DEFAULT_DAYS } from "../event-window.js";
@@ -31,7 +25,7 @@ import {
   resetPromptRecall,
   settlePromptRecall,
 } from "./tui-input.js";
-import { moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
+import { labeledBacklogEntries, moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
 
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
@@ -88,18 +82,13 @@ interface TuiKeys {
   state(): TuiKeysState;
 }
 
-/** The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
- * shared by the keypress handlers so stale-selection clamping cannot drift. */
-const flatEntries = (root: string): Array<{ label: string } & BacklogEntry> => [
-  ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
-  ...openBugEntries(root).map((e) => ({ label: "bug", ...e })),
-  ...openQuestionEntries(root).map((e) => ({ label: "question", ...e })),
-];
-
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
-  const flat = () => flatEntries(root);
+  // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
+  // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
+  // drift.
+  const flat = () => labeledBacklogEntries(root);
 
   let input = "";
   let cursor = 0;

@@ -1,3 +1,9 @@
+import {
+  openBugEntries,
+  openQuestionEntries,
+  plannedPlanEntries,
+  type BacklogEntry,
+} from "../backlog.js";
 import { clipToWidth } from "../text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui.tsx): the three-section backlog body
@@ -6,6 +12,17 @@ import { clipToWidth } from "../text-width.js";
  * guard — because the pane renders and navigates the project backlog (plans/bugs/questions), a
  * self-contained concern sharing no line-editor or key-handling state. Pure, so it is
  * unit-testable without a TTY. */
+
+/** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
+ * with its section, read fresh — the one definition shared by the keypress handlers and the
+ * render (src/ui/tui-keys.ts, src/ui/tui.tsx), so stale-selection clamping cannot drift. */
+export function labeledBacklogEntries(root: string): Array<{ label: string } & BacklogEntry> {
+  return [
+    ...plannedPlanEntries(root).map((e) => ({ label: "plan", ...e })),
+    ...openBugEntries(root).map((e) => ({ label: "bug", ...e })),
+    ...openQuestionEntries(root).map((e) => ({ label: "question", ...e })),
+  ];
+}
 
 /** The project-status body lines for the TUI: a `plans (N):` subheader with one line per plan,
  * an `open bugs (M):` subheader and one line per bug, then an `open questions (K):` subheader
