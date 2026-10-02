@@ -501,7 +501,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       launchDueTicks({
         root,
         reasons,
-        signal,
+        // roleSignal, not signal: the timed tick wrapper watches the full signal PLUS the
+        // role-only stop, exactly as the pre-extraction inline pass did — the restart drain's
+        // give-up abort must also turn away a waiter granted its permit at that moment.
+        signal: roleSignal,
         gateStates,
         breakerPolicy,
         probeDue,

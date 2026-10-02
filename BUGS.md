@@ -27,6 +27,13 @@ _None yet._
 
 ## Fixed
 
+### The organize-loop extraction of the launch pass wired the tick wrappers to the plain shutdown signal, dropping the role-only stop the pre-extraction inline pass observed: `launchDueTicks` receives `roleSignal` again (found by bugfix loop 2026-10-01 latent-bug hunt over the same day's extraction commit b13335dd, fixed 2026-10-01 by bugfix loop)
+
+- **Symptom:** after commit b13335dd moved the launch mechanics into `launchDueTicks` (src/orchestrator-launch.ts), the caller passed `signal` where the inline pass had passed `roleSignal` (src/orchestrator.ts:504 pre-extraction vs src/orchestrator.ts `signal: roleSignal` post-fix) — contradicting both the module's own `LaunchContext.signal` doc ("the full shutdown signal plus the role-only stop") and orchestrator.ts's split comment ("the runners and the timed tick wrapper watch roleSignal"). A waiter granted its semaphore permit at the exact moment the restart drain fires `internalRoleStop` would have re-checked only `signal.aborted` (src/tick-timing.ts runTimedRoleTick) and started a fresh pi run mid-drain — the very shape BUGS.md 2026-09-23 fixed.
+- **Why masked:** in every reachable case `held()` already covers it — `internalRoleStop` fires only when `rolePermitHolders.size > 0` during a drain, when `tickStartHeld()` is true — so no test or run can distinguish the wirings; the fix restores the documented invariant and the exact pre-extraction wiring rather than changing observable behavior.
+- **Fix:** the orchestrator's `launchDueTicks` call passes `signal: roleSignal` (src/orchestrator.ts), matching the module contract and the pre-extraction code byte-for-byte in effect.
+- **Validation gap:** no-repro — the start gate (`tickStartHeld`) is true in every state where the role-only stop is live, so the divergence is masked and no offline test can observe the difference; the find is a doc-contract cross-check, not a failing test.
+
 ### The death-watch grandchild test flakes under load: its 15s self-exit safety timer can outrun the starved 250ms watch polls, so the grandchild dies before its watch fires and the test waits out its full budget watching for a signal that can never come (found by bugfix loop 2026-10-01 — reproduced in a full-suite run at load 72 on 18 cores: `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` failed at 15.7s with `the orphaned grandchild's watch fired and ran its stop path`, fixed 2026-10-01 by bugfix loop)
 
 - **Symptom:** the supervisor.test.ts grandchild test failed once in a full-suite run under fleet load; the failure consumed the test's entire 15s wait budget, meaning `gone` was never written even though the grandchild had started and the supervisor was SIGKILLed.
