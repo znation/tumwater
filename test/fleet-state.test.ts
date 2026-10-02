@@ -19,7 +19,7 @@ import {
   orchestratorAlive,
   type OrchestratorInfo,
 } from "../src/fleet-state.js";
-import { pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
@@ -27,7 +27,7 @@ import { ensureParentDir } from "../src/files.js";
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();
   assert.equal(isFleetPaused(root), false, "a missing .tumwater/ reads false, not throw");
-  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  ensureParentDir(pausedPath(root));
   assert.equal(isFleetPaused(root), false, "no marker file reads false");
 });
 
@@ -35,7 +35,7 @@ test("pauseFleet writes the marker once and is idempotent", () => {
   const root = tmpdir();
   assert.equal(pauseFleet(root), true, "first pause changes state");
   assert.equal(isFleetPaused(root), true);
-  const raw = fs.readFileSync(path.join(root, ".tumwater", "paused.json"), "utf8");
+  const raw = fs.readFileSync(pausedPath(root), "utf8");
   const marker = JSON.parse(raw) as { at: number };
   assert.equal(typeof marker.at, "number", "the marker carries { at: timestamp }");
   assert.ok(Number.isFinite(marker.at) && marker.at > 0);
@@ -49,13 +49,13 @@ test("resumeFleet lifts an existing marker and reports no change when absent", (
   assert.equal(pauseFleet(root), true);
   assert.equal(resumeFleet(root), true, "resume over a marker changes state");
   assert.equal(isFleetPaused(root), false);
-  assert.equal(fs.existsSync(path.join(root, ".tumwater", "paused.json")), false);
+  assert.equal(fs.existsSync(pausedPath(root)), false);
   assert.equal(resumeFleet(root), false, "a vanished marker still resumes as no-change, not throw");
 });
 
 test("readOrchestratorInfo returns null for missing, torn, and non-object files", () => {
   const root = tmpdir();
-  const file = path.join(root, ".tumwater", "state", "orchestrator.json");
+  const file = orchestratorStatePath(root);
   assert.equal(readOrchestratorInfo(root), null, "no file reads null");
 
   ensureParentDir(file);
@@ -71,7 +71,7 @@ test("readOrchestratorInfo returns null for missing, torn, and non-object files"
 
 test("readOrchestratorInfo parses a valid info file", () => {
   const root = tmpdir();
-  const file = path.join(root, ".tumwater", "state", "orchestrator.json");
+  const file = orchestratorStatePath(root);
   ensureParentDir(file);
   const info: OrchestratorInfo = { pid: 42, startedAt: 1234, roles: ["feature", "qa"] };
   fs.writeFileSync(file, JSON.stringify(info));
@@ -91,7 +91,7 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
   assert.equal(orchestratorAlive(root, { ...live, pid: dead.pid }), false, "an exited pid reads dead");
 
   // Callers that already loaded the info may persist it; the disk path then agrees with it.
-  const file = path.join(root, ".tumwater", "state", "orchestrator.json");
+  const file = orchestratorStatePath(root);
   ensureParentDir(file);
   fs.writeFileSync(file, JSON.stringify({ ...live, pid: dead.pid }));
   assert.equal(orchestratorAlive(root), false, "disk-loaded dead pid reads dead");
@@ -104,10 +104,10 @@ test("orchestratorAlive is false with no info and reflects pid liveness otherwis
 test("pausedRoles reads [] with no .tumwater dir and tolerates garbage", () => {
   const root = tmpdir();
   assert.equal(pausedRoles(root).join(), "", "a missing .tumwater/ reads as no paused roles, not throw");
-  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  ensureParentDir(pausedRolesPath(root));
   assert.equal(pausedRoles(root).join(), "", "no marker file reads as no paused roles");
 
-  const file = path.join(root, ".tumwater", "state", "paused-roles.json");
+  const file = pausedRolesPath(root);
   fs.writeFileSync(file, "{not json"); // torn write
   assert.equal(pausedRoles(root).join(), "", "torn JSON reads as no paused roles, never throws");
   fs.writeFileSync(file, "null"); // not an object
@@ -122,7 +122,7 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   const root = tmpdir();
   assert.equal(resumeRole(root, "docs"), false, "resume without a pause is a no-op");
   assert.equal(pauseRole(root, "docs"), true, "first pause changes state");
-  const marker = readJson(path.join(root, ".tumwater", "state", "paused-roles.json")) as {
+  const marker = readJson(pausedRolesPath(root)) as {
     roles: string[];
     at: number;
   };
@@ -137,7 +137,7 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
   assert.equal(resumeRole(root, "dry"), false, "a second resume is a no-op");
   assert.equal(resumeRole(root, "docs"), true);
   assert.equal(
-    fs.existsSync(path.join(root, ".tumwater", "state", "paused-roles.json")),
+    fs.existsSync(pausedRolesPath(root)),
     false,
     "the last removal deletes the marker outright",
   );
@@ -209,9 +209,9 @@ test("simultaneous cross-process pauseRole calls all survive in the marker", asy
   // seeded roles plus all eight new ones.
   const root = tmpdir();
   const seeded = Array.from({ length: 2000 }, (_, i) => `base${i}`);
-  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  ensureParentDir(pausedRolesPath(root));
   fs.writeFileSync(
-    path.join(root, ".tumwater", "state", "paused-roles.json"),
+    pausedRolesPath(root),
     JSON.stringify({ roles: seeded, at: 1 }),
   );
   const roles = Array.from({ length: 8 }, (_, i) => `r${i + 1}`);
@@ -266,7 +266,7 @@ test("a crashed pause writer's lock is stolen, not waited on forever", () => {
   //   once past the no-pid grace, here simulated by backdating the dir six seconds;
   // - a crash after the pid write leaves a dead pid — stolen at once.
   const root = tmpdir();
-  fs.mkdirSync(path.join(root, ".tumwater", "state"), { recursive: true });
+  ensureParentDir(pausedRolesPath(root));
   const empty = pausedRolesLockPath(root);
   fs.mkdirSync(empty);
   fs.writeFileSync(path.join(empty, "pid"), "");
@@ -288,7 +288,7 @@ test("pauseFleet with a deadline writes { at, until } and pausedUntil reads it b
   const root = tmpdir();
   const until = Date.now() + 30 * 60_000;
   assert.equal(pauseFleet(root, until), true, "a timed pause changes state like a plain one");
-  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as {
+  const marker = readJson(pausedPath(root)) as {
     at: number;
     until: number;
   };
@@ -299,15 +299,15 @@ test("pauseFleet with a deadline writes { at, until } and pausedUntil reads it b
 
 test("an expired fleet deadline reads as unpaused everywhere and a re-pause starts fresh", () => {
   const root = tmpdir();
-  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  ensureParentDir(pausedPath(root));
   fs.writeFileSync(
-    path.join(root, ".tumwater", "paused.json"),
+    pausedPath(root),
     JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }),
   );
   assert.equal(isFleetPaused(root), false, "a past deadline is not a pause");
   assert.equal(pausedUntil(root), undefined, "an expired deadline is absent, never exposed");
   assert.equal(pauseFleet(root), true, "a pause after expiry reports a fresh pause, not 'already paused'");
-  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as {
+  const marker = readJson(pausedPath(root)) as {
     at: number;
     until?: number;
   };
@@ -321,7 +321,7 @@ test("an expired fleet deadline reads as unpaused everywhere and a re-pause star
 test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, cleared by a reasonless write", () => {
   const root = tmpdir();
   assert.equal(pauseFleet(root, undefined, "  deploying to prod  "), true);
-  const marker = readJson(path.join(root, ".tumwater", "paused.json")) as { at: number; reason?: string };
+  const marker = readJson(pausedPath(root)) as { at: number; reason?: string };
   assert.equal(marker.reason, "deploying to prod", "the reason is trimmed, quoted verbatim otherwise");
   assert.equal(pausedReason(root), "deploying to prod", "the standing reason is what pausedReason exposes");
 
@@ -347,7 +347,7 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
 
   // A write without a reason clears the stale one — the note belongs to THIS pause.
   assert.equal(pauseFleet(root, later + 1), true, "a reasonless --for overwrite clears the stale reason");
-  const plain = readJson(path.join(root, ".tumwater", "paused.json")) as { reason?: string };
+  const plain = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(plain.reason, undefined, "no reason key survives a reasonless write");
   assert.equal(resumeFleet(root), true);
   assert.equal(pauseFleet(root, undefined, "first why"), true, "a fresh pause applies its own reason");
@@ -367,7 +367,7 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
 // is on disk as T unchecked) must read as no reason, not throw (BUGS.md 2026-09-30).
 test("a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote it", () => {
   const root = tmpdir();
-  const markerPath = path.join(root, ".tumwater", "paused.json");
+  const markerPath = pausedPath(root);
   fs.mkdirSync(path.dirname(markerPath), { recursive: true });
   // Exactly what a pre-fold build's JSON.stringify stored: escaped newline and tab in the file.
   fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "deploying\nthe new build\tv2" }));
