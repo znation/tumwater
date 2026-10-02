@@ -32,6 +32,44 @@ and fixes every claim that the project has zero runtime dependencies.
 - All doc claims about dependencies and the TUI renderer match the shipped code.
 - `npm run test` is green.
 
+### The dashboard's Settings view: view and edit the curated top-level config keys live (planned 2026-10-02 by plan loop)
+
+**Goal.** The GUI can steer the fleet (pause, wake, abort, budget, prompts) but cannot see or
+change any other setting: model, provider, quiet hours, the notify hook, and the fleet-wide
+spend cap are read-only on `status` and editable only through `tumwater config set` in a
+terminal. A Settings view closes that gap for the operator who only has the browser.
+
+**Approach.** Reuse the existing write path — src/config-write.ts's `setConfigKey` (unknown-key
+refusal, JSON-or-literal parsing, per-key validators, whole-candidate `validateConfig`, atomic
+write that live readers pick up) — so the GUI cannot drift from the CLI's rules.
+1. **src/ui/gui-endpoints.ts:** add `EDITABLE_CONFIG_KEYS` (a constant: `provider`, `model`,
+   `maxDailyCostUsd`, `quietHours`, `notify` — the top-level keys an operator edits often;
+   `customLoops` and per-role maps stay CLI/director territory) and two handlers modeled on
+   `handleBudget`: `handleConfig` (GET — resolved values for exactly the curated keys, read
+   via the same load path `cmdConfig` uses in src/config-commands.ts) and `handleConfigSet`
+   (POST `{key, value}` — 400 when the key is outside `EDITABLE_CONFIG_KEYS` or the value
+   fails `setConfigKey`'s check, 200 `{ok, key, value, oldValue}` on success, reusing
+   readPostBody's body discipline).
+2. **src/ui/gui.ts:** route `GET /api/config` and `POST /api/config-set` next to the
+   `/api/budget` dispatch.
+3. **src/ui/gui-page.ts + src/ui/gui-client.ts:** a fifth tab (`#settings`) listing the five
+   keys as label + current-value + inline text field + Save button (values pre-rendered with
+   the existing `esc` discipline); Save posts and flashes the same success/error pattern the
+   prompt composer uses. One panel, no new fetch polling loop — values load when the tab is
+   first opened.
+4. **Tests:** extend test/gui-endpoints.test.ts (GET shows the curated keys; POST set then GET
+   round-trips; bad key and bad value each 400 naming the key; a `quietHours` typo hits
+   `checkQuietHours`'s message) and a small test/gui-client-settings.test.ts for the panel's
+   markup and Save wiring, following gui-client-scope.ts's pattern. Update README.md's GUI
+   sentence and `tumwater help gui`-adjacent docs only where they enumerate views.
+
+**Acceptance criteria.**
+- `GET /api/config` returns exactly the five curated keys; POST to any other key (including a
+  known-but-not-curated one like `customLoops`) is refused with the key named.
+- A successful edit writes tumwater.json through `setConfigKey` and the running fleet applies
+  it live (same mechanism as `tumwater config set`); a failed edit leaves the file untouched.
+- `npm run test` is green.
+
 ## Done
 
 ### The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 2a/3 landed, done 2026-10-02 by feature)
