@@ -77,6 +77,42 @@ test("a clean rebase lands as changed with a merged event and linear history", a
   assert.equal(merged[0]!.summary, "branch work");
 });
 
+test("a fix-claim block in the landing's exempt arm warns, names the reason to the lander, and never runs pi", async () => {
+  const { root, wt } = await initializedWorktree();
+  // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its
+  // body names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
+  // (falseFixReason, src/fix-claim.ts) must block the landing — and, per BUGS.md 2026-10-02,
+  // say so on the feed and to the lander instead of failing silently.
+  fs.appendFileSync(
+    wt + "/BUGS.md",
+    "\n### A bug nobody fixed (found by test 2026-10-02)\n\n- Fix: `noSuchHelperFn` handles it.\n",
+  );
+  commitIn(wt, "md-only fix record");
+  // Move main so the landing rebase rewrites the branch head: a no-op rebase takes the
+  // "byte-identical to what the gate already checked" skip, and this landing was never
+  // reviewed — the rewrite is what routes it through the exempt arm's cross-checks.
+  fs.writeFileSync(path.join(root, "unrelated.txt"), "main moved\n");
+  commitIn(root, "main moves on");
+  const { ctx, calls } = makeCtx(root);
+  const blocked: string[] = [];
+  ctx.onLandingBlocked = (reason) => blocked.push(reason);
+  const mainBefore = mainSha(root);
+
+  const result = await mergeToMain(ctx, wt, "md-only fix record");
+
+  assert.equal(result, "merge_blocked");
+  assert.equal(calls.length, 0, "no check ran on an exempt diff — and no pi run either");
+  assert.equal(mainSha(root), mainBefore, "nothing landed");
+  assert.equal(blocked.length, 1, "the lander is told the block reason for lastError");
+  assert.match(blocked[0]!, /^md-only BUGS.md edit moves/);
+  assert.deepEqual(
+    warningMessages(root).filter((m) => m.startsWith("landing blocked:")),
+    [`landing blocked: ${blocked[0]}`],
+    "the warning names the reason, like a structure block does",
+  );
+  assertWorktreeSettled(wt);
+});
+
 test("a rebase conflict is resolved by one pi run and lands with linear history", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");

@@ -252,6 +252,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   if (ctx.signal().aborted) return "aborted";
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
+  let blocked: string | undefined;
   const result = await mergeToMain(
     {
       root: ctx.root,
@@ -264,6 +265,9 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
       onLandingCheckRed: (check, outcome) => {
         red = { check, outcome };
       },
+      onLandingBlocked: (reason) => {
+        blocked = reason;
+      },
     },
     wt,
     req.summary,
@@ -275,7 +279,12 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   }
   if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);
   // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
-  ctx.state.lastError = `merge failed: ${result}`;
+  // A cross-check block (fix-claim, backlog structure — a resolution's tree can trip either)
+  // names its reason, so the retries of one blocked landing read as explained (BUGS.md
+  // 2026-10-02: five bare "merge failed: merge_blocked" lines with no reason anywhere).
+  ctx.state.lastError = blocked
+    ? `merge failed: ${result} — ${blocked}`
+    : `merge failed: ${result}`;
   return result;
 }
 

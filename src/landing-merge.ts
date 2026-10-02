@@ -61,6 +61,12 @@ export interface MergeContext extends RunsPi {
    * that is the change's own (landing-core.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
    * fast-forward or a false fix never calls it. */
   onLandingCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
+  /** Told when verifyLanding blocks the landing for a reason that is not a red check — the
+   * exempt arm's fix-claim or backlog-structure cross-checks (a conflict resolution's tree can
+   * trip either). The lander puts the reason in lastError; the warning event itself is emitted
+   * here in landing-merge.ts, so a blocked resolution reads on the dashboards (BUGS.md
+   * 2026-10-02: the block used to be silent). */
+  onLandingBlocked?(reason: string): void;
 }
 
 /** Land the worktree branch on main under the shared merge lock: rebase it onto main (keeping
@@ -168,7 +174,13 @@ export async function exemptSkipBlockReason(
 ): Promise<string | null> {
   const structure = await structureBlocked(ctx, wt, files);
   if (structure) return structure;
-  return (await falseFixReason(wt, ctx.mainBranch, files)) ?? null;
+  const fix = await falseFixReason(wt, ctx.mainBranch, files);
+  // Warn like structureBlocked does: a fix-claim block that used to be silent read as five
+  // unexplained merge_blocked retries on the feed (BUGS.md 2026-10-02). The batch stack-skip
+  // caller may warn twice for one change (here, then again when the fallback's exempt arm
+  // blocks it) — a duplicated line is harmless next to a silent block.
+  if (fix) warnEvent(ctx.root, ctx.role, `landing blocked: ${fix}`);
+  return fix ?? null;
 }
 
 /** Verify the exact tree about to land on main — the post-rebase head (BUGS.md 2026-09-08: the
@@ -212,12 +224,21 @@ async function verifyLanding(
     // site that catches what the gate cannot see: a conflict resolution happens AFTER the
     // gate, inside this lock, so a resolution that kept both sides of a `## Done` conflict and
     // duplicated the heading lands here or not at all (PLANS.md 2026-09-25, 9eaae5ac).
-    return (await exemptSkipBlockReason(ctx, wt, files)) === null;
+    const reason = await exemptSkipBlockReason(ctx, wt, files);
+    if (reason !== null) {
+      ctx.onLandingBlocked?.(reason);
+      return false;
+    }
+    return true;
   }
   // The heading check for code diffs too, before the build check: a conflict resolution that
   // broke backlog structure reads as an explained block on the dashboards, not as an
   // unexplained red check run on a tree that could never land.
-  if (await structureBlocked(ctx, wt, files)) return false;
+  const structure = await structureBlocked(ctx, wt, files);
+  if (structure) {
+    ctx.onLandingBlocked?.(structure);
+    return false;
+  }
   // The run itself (build_check event, environmental-skip warning) lives in
   // runScopedBuildCheck, shared with the review gate's pre-check. The landing cell names the
   // check (or its wait for a permit) while it runs, then the merge again for the ff.
