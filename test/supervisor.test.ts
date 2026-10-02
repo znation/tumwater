@@ -306,6 +306,7 @@ test("startParentDeathWatch fires exactly once when the parent pid changes", asy
 
 test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it", async () => {
   const dir = tmpdir();
+  let supervisor: ReturnType<typeof spawn> | undefined;
   try {
     // The grandchild imports the same compiled module the production generation runs, so the
     // watch under test is the shipped code, not a reimplementation.
@@ -319,7 +320,11 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         `fs.writeFileSync(started, String(process.pid));\n` +
         `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, { intervalMs: 250 });\n` +
         `setInterval(() => {}, 10_000);\n` +
-        `setTimeout(() => process.exit(1), 15_000);\n`,
+        // A leak guard, not part of the behavior under test: it must sit far beyond the
+        // test's wait budget, because under fleet load the watch's polls and this timer
+        // stretch together, and a self-exit that can outrun the watch starves the very
+        // signal this test waits for (a 2026-10-01 load flake failed exactly this way).
+        `setTimeout(() => process.exit(1), 60_000);\n`,
     );
     const middle = path.join(dir, "middle.mjs");
     fs.writeFileSync(
@@ -327,11 +332,11 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
       `import { spawn } from "node:child_process";\n` +
         `spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4]], { stdio: "ignore" }).unref();\n` +
         `setInterval(() => {}, 10_000);\n` +
-        `setTimeout(() => process.exit(1), 20_000);\n`,
+        `setTimeout(() => process.exit(1), 60_000);\n`,
     );
     const started = path.join(dir, "started");
     const gone = path.join(dir, "gone");
-    const supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
+    supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
     for (let i = 0; i < 100 && !fs.existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
     assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
@@ -340,6 +345,15 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     for (let i = 0; i < 60 && !fs.existsSync(gone); i++) await new Promise((r) => setTimeout(r, 250));
     assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
   } finally {
+    // The long self-exit timers above are only a leak guard for a crashed run; a passing
+    // or failing test tears both processes down here, so nothing outlives the test.
+    try {
+      if (supervisor?.pid) process.kill(supervisor.pid, "SIGKILL");
+    } catch { /* already gone */ }
+    try {
+      const pid = Number(fs.readFileSync(path.join(dir, "started"), "utf8"));
+      if (Number.isFinite(pid) && pid > 0) process.kill(pid, "SIGKILL");
+    } catch { /* the grandchild never started or is already gone */ }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
