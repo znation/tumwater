@@ -35,7 +35,7 @@ export function fallbackSummary(files: string[], role: string, tick: number): st
 const COMMIT_BODY_FIELD_MAX = 200;
 
 /** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
- * contract declared by prompt.ts. Each field is optional: a non-compliant reply still commits
+ * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still commits
  * (subject + trailer). Module-private: every consumer — extractCommitBody, formatCommitBody,
  * buildCommitMessage — lives in this file, and tick-stage.ts works with the extracted values
  * structurally rather than naming the type. */

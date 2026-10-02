@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  CLAIMS_RULE,
-  PRINCIPLES_MAX_CHARS,
   REPLY_ENDINGS,
+  CLAIMS_RULE,
+} from "../src/reply-contract.js";
+import {
+  PRINCIPLES_MAX_CHARS,
   ROOT_FROM_WORKTREE,
   buildDirectorPrompt,
   buildTickPrompt,

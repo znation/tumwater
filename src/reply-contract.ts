@@ -1,13 +1,45 @@
 /** The machine-detectable half of the reply contract every pi run must follow: the
  * TUMWATER_NOTHING_TO_DO sentinel a loop emits when it found nothing to do, the
  * TUMWATER_REFUSED line a loop emits when it declines its task, and the review gate's VERDICT
- * line. prompt.ts declares this contract in prose (the prompts tell pi what to emit); this
- * module owns the constants and detection the harness uses to parse pi's replies — so the
- * subprocess layer (pi.ts) and the review gate (review.ts) detect it without reaching into
- * prompt construction, and the verdict line's shape lives in exactly one place instead of
- * drifting between detector and parser. */
+ * line. This module owns both halves of that contract: the constants and detection the harness
+ * uses to parse pi's replies — so the subprocess layer (pi.ts) and the review gate (review.ts)
+ * detect it without reaching into prompt construction, and the verdict line's shape lives in
+ * exactly one place instead of drifting between detector and parser — and the prompt-side prose
+ * constants (the shared closing rules and the claims rules) that tell pi what to emit, so the
+ * instructions and the detectors cannot drift apart. */
 
-/** Sentinel a loop's pi run outputs when it found nothing worth doing. */
+
+/** The claim-discipline rules every authoring run carries, stated just before the reply contract
+ * they govern. Written against the budgeted model's review record (GLM-5.3-Flash, 2026-09-25..
+ * 10-01: 191 of ~1,100 reviewed changes rejected): the leading cause was not wrong code but a
+ * false or unchecked claim — "the untested X module" when tests already imported it, a moved block
+ * called "byte-identical" that was not, "all references updated" with one left, a suite count
+ * off by one, a VERIFIED command that does not exist on the tree — and the next was an edit made
+ * after the last green run, which the gate's build check then failed. Each rule names the check
+ * that makes its claim true, and none presumes a reviewer or a check exists: a doc-only diff skips
+ * the review gate (review.exemptPaths), and a project may declare no check — so the rules name
+ * what the run itself must do, and point verification at the check-aware bullet in prompt.ts's
+ * commonRules. Backlog files are included because this repo's own suite reads them
+ * (backlog-structure and validation-gap tests). The header says small changes are welcome on
+ * purpose: a first wording ("one false claim rejects the whole change") made the improve role
+ * decline real, small improvements in lab A/B runs, citing the reviewer. Must not mention the
+ * reviewer's VERDICT form (prompt tests count it in the review prompt only). */
+export const CLAIMS_RULE = `Claims — keep what your change says about itself accurate. Code changes are checked against
+the code by an adversarial reviewer before they merge, and an inaccurate claim is what gets a
+change rejected; a small, correct change is welcome:
+- State only what you verified. SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
+  PLANS.md/BUGS.md line you write are claims about the code.
+- Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical",
+  "unchanged" — with the check that proves it (a grep over the source, the tests, and the docs;
+  a diff), or drop the word.
+- Never state test or suite counts: say what you ran and what you saw. When the landing gate runs
+  the project's check, the harness attests the numbers itself.
+- Verify after your LAST edit, per "Leave the project working" above: an edit made after the last
+  green run is unverified, so verify again before you end. Order your work so the final
+  verification comes after your last edit, backlog files included.`;
+
+/** Sentinel a loop's pi run outputs when it found nothing worth doing (REPLY_ENDINGS below
+ * instructs it). */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";
 
 /** True when `text` declares there was nothing to do (pi.ts's stream parser scans every
@@ -20,6 +52,36 @@ export function isNothingToDo(text: string): boolean {
  * `TUMWATER_REFUSED: <one-line reason>`. The reason is the durable objection — it becomes the
  * commit subject of the refusal note and the tick's lastSummary. */
 export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
+
+/** The four-line SUMMARY/WHY/RISK/VERIFIED block itself — the machine-parsed half of the
+ * closing contract, shared verbatim by REPLY_ENDINGS (tick, director, and resume prompts) and
+ * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
+ * so they cannot drift (sibling of the NOTHING_TO_DO sentinel below, and parsed field-by-field
+ * by commit-message.ts's labeledLine). */
+export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
+  WHY: <why the change was made — one or two sentences>
+  RISK: <what could break and where to look if it does>
+  VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
+
+/** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
+ * exact SUMMARY/WHY/RISK/VERIFIED block commit-message.ts parses into the commit message as the
+ * last one. Shared by the tick and director rules (prompt.ts's commonRules) and
+ * prompt-followup.ts's resume bridge, so a resumed run ends under the same contract as a fresh
+ * one. Written as an either/or list because, stated as separate rules, models filled in every
+ * one: 56 fleet ticks ended a SUMMARY block with the nothing sentinel too, and
+ * `TUMWATER_REFUSED: none` on completed work once made the harness discard it. The nothing
+ * ending says "end your reply with", not "reply with the single line", so a run that must
+ * report something first (the director's answer to a question, qa's FLOW line) can. */
+export const REPLY_ENDINGS = `- End with exactly ONE of these three endings:
+  1. Nothing worth doing for your role right now: make no changes, and end your reply with the
+     line ${NOTHING_TO_DO} — anything your task asks you to report (an answer, a FLOW line) goes
+     above it.
+  2. You refused the task (and recorded its **Refused …** note): end with the line
+     ${REFUSED_SENTINEL}: <the same one-line reason>
+     Use this line ONLY when refusing — never in any other reply, not even as
+     "${REFUSED_SENTINEL}: none", or the harness treats the whole tick as a refusal.
+  3. You made changes: end your reply with this block, one line each:
+${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 
 /** The trimmed remainder of the first line that starts with `<label>:` (leading whitespace on
  * the line allowed); null when no such line carries content. Shared by every parser that pulls a
