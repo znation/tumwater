@@ -76,6 +76,14 @@ const NON_NEGATIVE_OR_DISABLED: NumberRule = {
   ok: (n) => n >= 0,
   what: "a number of 0 or more (0 disables)",
 };
+/** maxDailyCostUsd's rule: like NON_NEGATIVE_OR_DISABLED plus the MAX_SAFE_INTEGER bound
+ * checkDailyBudgetUsd applies (BUGS.md 2026-10-02) — a finite-but-unrepresentable cap
+ * ("9"×25 → 1e24) is an effectively uncapped budget, so `config set` and the GUI's
+ * /api/config-set are refused at the same boundary the TUI's editor enforces. */
+const DOLLAR_CAP: NumberRule = {
+  ok: (n) => n >= 0 && n <= Number.MAX_SAFE_INTEGER,
+  what: `a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} (0 disables)`,
+};
 const POSITIVE: NumberRule = { ok: (n) => n > 0, what: "a number greater than 0" };
 const POSITIVE_INTEGER: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 1,
@@ -223,7 +231,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "toolCallStallSeconds", NON_NEGATIVE_OR_DISABLED);
   checkNumber(r, "", "logMaxBytes", POSITIVE);
   checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
-  checkNumber(r, "", "maxDailyCostUsd", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
   checkNumber(r, "", "thrashTurns", NON_NEGATIVE);
   checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 

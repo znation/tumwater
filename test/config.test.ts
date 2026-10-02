@@ -108,7 +108,8 @@ test("defaultConfig carries the daily cost budget cap and validation guards it",
     // problems; without it the anchor matched only single-line messages.
     assert.match(
       validationError({ maxDailyCostUsd: bad }),
-      new RegExp(`^invalid tumwater\\.json:.*maxDailyCostUsd must be a number of 0 or more \\(0 disables\\) \\(got ${JSON.stringify(bad)}\\)`, "s"),
+      // The message names the MAX_SAFE_INTEGER upper bound too (BUGS.md 2026-10-02).
+      new RegExp(`^invalid tumwater\\.json:.*maxDailyCostUsd must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables\\) \\(got ${JSON.stringify(bad)}\\)`, "s"),
       `maxDailyCostUsd: ${bad} should be rejected with an actionable error`,
     );
   }

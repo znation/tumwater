@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleConfigSet, handleReport, handleFailures, handleRestart, handleTick, EDITABLE_CONFIG_KEYS } from "../src/ui/gui-endpoints.js";
+import { handleBudget, handleConfig, handleConfigSet, handleReport, handleFailures, handleRestart, handleTick, EDITABLE_CONFIG_KEYS } from "../src/ui/gui-endpoints.js";
 import { renderTickDetail } from "../src/ui/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator-requests.js";
@@ -322,6 +322,20 @@ test("handleConfigSet round-trips: set, then GET shows the new value and the fil
   // The file on disk is what the running fleet polls — the write went through setConfigKey.
   const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
   assert.equal(onDisk.maxDailyCostUsd, 30);
+});
+
+test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {
+  // BUGS.md 2026-10-02: /api/budget is the browser surface for the same one-zero typo the
+  // TUI's parseBudgetInput guards — 1e24 is finite, so the old checkDailyBudgetUsd admitted
+  // it and the write made the daily spend cap effectively uncapped.
+  const root = tmpdir();
+  const { res, captured } = fakeRes();
+  await handleBudget(fakeReq(JSON.stringify({ maxDailyCostUsd: 1e24 })), res, root);
+  assert.equal(captured.status, 400);
+  assert.match(captured.body, /at most 9007199254740991/);
+  assert.match(captured.body, /got 1e\+24/);
+  // The config file was never created by the refused write.
+  assert.equal(fs.existsSync(configPath(root)), false);
 });
 
 test("handleConfigSet refuses a key outside the curated five, naming it", async () => {

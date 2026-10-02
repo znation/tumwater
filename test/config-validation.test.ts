@@ -574,3 +574,17 @@ test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and reject
     /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got Infinity\)/,
   );
 });
+
+test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
+  // BUGS.md 2026-10-02: 1e24 is finite, so the old NON_NEGATIVE_OR_DISABLED rule admitted
+  // it, and `config set`/the GUI's /api/config-set wrote an effectively uncapped budget
+  // from a one-zero typo — the same boundary the TUI's parseBudgetInput and
+  // checkDailyBudgetUsd now enforce.
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsd: 1e24 }),
+    new RegExp(
+      `maxDailyCostUsd must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables\\)`,
+    ),
+  );
+  assert.equal(validateConfig({ ...defaultConfig(), maxDailyCostUsd: Number.MAX_SAFE_INTEGER }), undefined);
+});

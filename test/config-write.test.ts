@@ -37,8 +37,10 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
   }
 
   // Invalid values reject with an actionable message and leave the file untouched.
+  // 1e24 is the BUGS.md 2026-10-02 regression: finite, so the old isFinite-only screen
+  // admitted it, and a one-zero typo wrote an effectively uncapped budget.
   const before = fs.readFileSync(path.join(dir, "tumwater.json"), "utf8");
-  for (const value of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+  for (const value of [Number.NaN, -1, Number.POSITIVE_INFINITY, 1e24, Number("9" + "0".repeat(24))]) {
     const r = setDailyBudgetUsd(dir, value);
     assert.equal(r.ok, false, String(value));
     if (!r.ok) assert.match(r.error, /number of 0 or more/);

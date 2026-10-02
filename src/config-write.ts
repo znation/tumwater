@@ -17,10 +17,18 @@ import { parseQuietHours } from "./quiet-hours.js";
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an
  * actionable error message for anything else so both surfaces can flash it without
- * try/catch plumbing. */
+ * try/catch plumbing. A value past Number.MAX_SAFE_INTEGER is rejected too: it stays
+ * finite ("9"×25 → 1e24), so only this screen stands between a one-zero typo in the
+ * browser's budget editor and an effectively uncapped budget (BUGS.md 2026-10-02, the
+ * same rule the TUI's parseBudgetInput applies). */
 export function checkDailyBudgetUsd(value: unknown): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
-    return `maxDailyCostUsd must be a number of 0 or more, 0 disables (got ${show(value)})`;
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > Number.MAX_SAFE_INTEGER
+  )
+    return `maxDailyCostUsd must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}, 0 disables (got ${show(value)})`;
   return null;
 }
 
