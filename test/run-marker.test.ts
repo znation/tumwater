@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 
 import { pidAlive } from "../src/process.js";
@@ -21,6 +21,27 @@ import { errnoError } from "./fs-faults.js";
 // parsers over environment-entry lists and ps -E output, and the sweep that reaps this
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
 // stay pinned in process.test.ts; here the marker plumbing itself is under test.
+
+/** A detached, marked `node -e` victim that writes its pid (or a readiness line) into `file`
+ * and idles until killed. The SIGKILL is armed with the runner the moment the victim exists —
+ * synchronously, before any await or assertion the caller runs — so a failed readiness
+ * assertion (the 2026-09-30 orphan leak) can never strand it at PPID 1. */
+function spawnMarkedVictim(t: TestContext, marker: string, file: string, script: string): ChildProcess {
+  const child = spawn(process.execPath, ["-e", script, file], {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, TUMWATER_RUN: marker },
+  });
+  child.unref();
+  t.after(() => {
+    try {
+      if (child.pid) process.kill(child.pid, "SIGKILL");
+    } catch {
+      // Already gone — the expected outcome.
+    }
+  });
+  return child;
+}
 
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
@@ -147,12 +168,12 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
   const marker = makeRunMarker();
   const dir = tmpdir();
   const pidFile = path.join(dir, "victim.pid");
-  const child = spawn(
-    process.execPath,
-    ["-e", "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)", pidFile],
-    { detached: true, stdio: "ignore", env: { ...process.env, TUMWATER_RUN: marker } },
+  spawnMarkedVictim(
+    t,
+    marker,
+    pidFile,
+    "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)",
   );
-  child.unref();
   // Poll for CONTENT, not existence: writeFileSync creates the (still empty) file before it
   // writes, so an existsSync-then-read poll can catch that window under load and read "" —
   // Number("") is 0 and the assertion below fails with "the orphan recorded its pid". Same
@@ -208,12 +229,12 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
   const marker = makeRunMarker();
   const dir = tmpdir();
   const readyFile = path.join(dir, "ready");
-  const child = spawn(
-    process.execPath,
-    ["-e", "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)", readyFile],
-    { detached: true, stdio: "ignore", env: { ...process.env, TUMWATER_RUN: marker } },
+  const child = spawnMarkedVictim(
+    t,
+    marker,
+    readyFile,
+    "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)",
   );
-  child.unref();
   const upDeadline = Date.now() + 10_000;
   while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
   assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the sweep");
@@ -259,6 +280,15 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
       env: { ...process.env, TUMWATER_RUN: marker },
     });
     child.unref();
+    // Armed before the readiness polls below, so a failed readiness assertion cannot strand
+    // either victim (the 2026-09-30 orphan leak).
+    t.after(() => {
+      try {
+        if (child.pid) process.kill(child.pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    });
     return child;
   };
   const compliant = spawnMarked(
@@ -268,7 +298,7 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   spawnMarked(
     "stubborn.pid",
     `${recordPid}process.on('SIGTERM', () => {});setInterval(() => {}, 1 << 30)`,
-  );
+  );;
   const readPid = (file: string) => {
     try {
       return Number(fs.readFileSync(path.join(dir, file), "utf8").trim()) || 0;
@@ -305,4 +335,39 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   while (pidAlive(stubbornPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
   assert.equal(pidAlive(stubbornPid), false, "the SIGTERM-proof victim was SIGKILLed by the escalation");
   assert.equal(pidAlive(compliantPid), false, "the compliant victim stayed down");
+});
+
+test("the orphan helper arms its kill the moment the victim exists, and the hook reaps it", async (t) => {
+  // Regression (BUGS.md 2026-09-30): the walks and escalation tests armed their victims'
+  // kill only in a finally (or nowhere) AFTER the readiness assertions, so any failed
+  // assertion leaked the victim at PPID 1. Pin both halves of the fix: the hook is
+  // registered synchronously, with no await between spawn and arming, so the caller cannot
+  // throw first — and the armed hook actually reaps the victim, as the runner's end-of-test
+  // call would.
+  const hooks: Array<() => void> = [];
+  const recording = { after: (hook: () => void) => hooks.push(hook) } as unknown as TestContext;
+  const marker = makeRunMarker();
+  const pidFile = path.join(tmpdir(), "victim.pid");
+  const child = spawnMarkedVictim(
+    recording,
+    marker,
+    pidFile,
+    "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)",
+  );
+  // Safety net of the safety net: if an assertion below fails, the real runner still reaps.
+  t.after(() => {
+    try {
+      if (child.pid) process.kill(child.pid, "SIGKILL");
+    } catch {
+      // Already gone.
+    }
+  });
+  assert.equal(hooks.length, 1, "the kill is armed synchronously, before any await can run");
+  const reap = hooks.at(0);
+  assert.ok(reap, "the armed hook exists");
+  reap();
+  const goneDeadline = Date.now() + 10_000;
+  while (child.pid && pidAlive(child.pid) && Date.now() < goneDeadline)
+    await new Promise((r) => setTimeout(r, 50));
+  assert.ok(!child.pid || !pidAlive(child.pid), "the armed hook killed the victim");
 });
