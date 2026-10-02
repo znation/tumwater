@@ -160,6 +160,35 @@ test("failureHeadline names what broke, not the frame it broke in", () => {
   assert.equal(failureHeadline(undefined), undefined);
 });
 
+test("failureHeadline carries a file-level ⚠ marker's cause, not the bare marker", () => {
+  // A file-level failure (process exits nonzero or async activity outlives the file) ends the
+  // spec detail with the file's ⚠ <file> (<file>:1:1) marker followed by the cause; the
+  // marker is a location line, not the headline (BUGS.md 2026-10-02).
+  assert.equal(
+    failureHeadline([
+      "✖ failing tests:",
+      "test at status-data.test.js:1:1",
+      "⚠ /worktrees/_land-dry/dist/test/status-data.test.js (dist/test/status-data.test.js:1:1)",
+      "'test failed'",
+    ]),
+    "⚠ /worktrees/_land-dry/dist/test/status-data.test.js (dist/test/status-data.test.js:1:1) — 'test failed'",
+  );
+  assert.equal(
+    failureHeadline([
+      "✖ failing tests:",
+      "test at status-data.test.js:1:1",
+      "⚠ /worktrees/_land-dry/dist/test/status-data.test.js (dist/test/status-data.test.js:1:1)",
+    ]),
+    "⚠ /worktrees/_land-dry/dist/test/status-data.test.js (dist/test/status-data.test.js:1:1)",
+    "marker alone: print the marker",
+  );
+  // A ⚠ todo marker (`# TODO` suffix, not a `:1:1` location) is not a file-level failure.
+  assert.equal(
+    failureHeadline(["⚠ todo fails (0.27ms) # TODO", "Error: boom"]),
+    "⚠ todo fails (0.27ms) # TODO",
+  );
+});
+
 test("failureHeadline names an unhandled error whose message the tail window would otherwise cut", () => {
   const frames = Array.from({ length: 12 }, (_, i) => `at f${i} (file:///w/x.ts:${i}:1)`);
   const tail = clipBuildTail(

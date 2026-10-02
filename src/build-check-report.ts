@@ -78,6 +78,13 @@ export function clipBuildTail(output: string): string[] {
  * headline they are. */
 const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
 
+/** A file-level failure's spec-reporter marker: `⚠ <file> (<file>:1:1)`. node:test ends the
+ * spec detail with it when a test file fails outside any one test — the file's process exits
+ * nonzero or async activity outlives the file — and the lines beneath it say what actually
+ * broke, so failureHeadline names the marker (the file) and the cause, never the marker alone.
+ * A ⚠ todo marker (`# TODO` suffix, no `:1:1` location) does not match: it is not a failure. */
+const FILE_LEVEL_MARKER = /^⚠ \S+ \(\S+:1:1\)$/;
+
 /** The one-line headline for a red check's clipped tail (clipBuildTail's output): the first
  * line that is neither framing (FRAMING_LINE) nor a failed test's name, prefixed with the
  * test's name (its duration dropped, so one flake's warnings cluster as one) when the tail
@@ -85,8 +92,11 @@ const FRAMING_LINE = /^(?:at\s|ℹ\s|✖ failing tests:|test at \S+:\d+:\d+)/;
  * a caller always has something to print. Undefined for an absent or empty tail. */
 export function failureHeadline(tail: readonly string[] | undefined): string | undefined {
   if (!tail?.length) return undefined;
-  const name = tail.findLast((line) => FAILED_TEST_LINE.test(line))?.replace(/ \([\d.]+m?s\)$/, "");
-  const what = tail.find((line) => !FRAMING_LINE.test(line) && !FAILED_TEST_LINE.test(line));
+  const marker = tail.findLast((line) => FILE_LEVEL_MARKER.test(line));
+  const name = tail.findLast((line) => FAILED_TEST_LINE.test(line))?.replace(/ \([\d.]+m?s\)$/, "") ?? marker;
+  const what = tail.find(
+    (line) => !FRAMING_LINE.test(line) && !FAILED_TEST_LINE.test(line) && !FILE_LEVEL_MARKER.test(line),
+  );
   if (name !== undefined) return what !== undefined ? `${name} — ${what}` : name;
   return what ?? tail[0];
 }
