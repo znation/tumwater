@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
@@ -70,7 +71,7 @@ test("the TUI tears down its terminal and re-execs exactly once when a newer bui
   try {
     // A stamp naming the startup sha is not a newer build: several polls pass, raw mode is
     // on, and the loop is still rendering — no reload, no teardown.
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(60);
     assert.equal(reexecs.n, 0, "an unchanged dist stamp never reloads");
     assert.deepEqual(term.rawModes, [true], "raw mode was entered");
     assert.ok(term.writes.some((w) => w.length > 1), "the TUI rendered at least one frame");
@@ -85,7 +86,7 @@ test("the TUI tears down its terminal and re-execs exactly once when a newer bui
     assert.equal(term.pauses, 1, "stdin was paused");
     assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
     disk = { ...startup, sha: "third-sha" };
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(60);
     assert.equal(reexecs.n, 1, "the reload fires at most once per process, and the watch is stopped");
   } finally {
     // If an assert fired before the trigger, the loop is still waiting: Ctrl+C ends it the
@@ -107,7 +108,7 @@ test("Ctrl+C ends the TUI cleanly and never re-execs while the dist stamp is unc
     ...term.asSeams,
     watch: reloadWatchSeams(() => startup, reexecs),
   });
-  await new Promise((r) => setTimeout(r, 60));
+  await sleep(60);
   term.keypress({ ctrl: true, name: "c" });
   await done;
   assert.equal(reexecs.n, 0, "a Ctrl+C teardown never re-execs");

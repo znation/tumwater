@@ -38,7 +38,7 @@ import { makeLoopRunner } from "./loop-fixtures.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -148,7 +148,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
     // ~10 poll cycles pass with the role due on every one — yet no second tick starts: the
     // entry stays in the queue until the landing settles, and the interlock covers both the
     // queued and the in-flight phases with that one check.
-    await new Promise((r) => setTimeout(r, 1_200));
+    await sleep(1_200);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while its own landing is in flight");
     assert.equal(queueDepth(repo), 1, "the entry stays queued until the landing settles");
     // The pending change is not a completed result: the role's first tick had no prior one,

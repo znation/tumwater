@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -53,7 +54,7 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
     // Wait until the grandchild has recorded itself — the write the old version raced.
     const recordDeadline = Date.now() + 10_000;
     while (!fs.existsSync(pidFile) && Date.now() < recordDeadline) {
-      await new Promise((r) => setTimeout(r, 25));
+      await sleep(25);
     }
     assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid within 10s");
     controller.abort();
@@ -71,7 +72,7 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
       } catch {
         alive = false;
       }
-      if (alive) await new Promise((r) => setTimeout(r, 50));
+      if (alive) await sleep(50);
     }
     assert.equal(alive, false, "the tool-call grandchild is gone after the run resolves");
   } finally {
@@ -136,7 +137,7 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
     const deadline = Date.now() + 5000;
     while (seenDead.size < pids.length && Date.now() < deadline) {
       for (const pid of pids) if (!pidAlive(pid)) seenDead.add(pid);
-      if (seenDead.size < pids.length) await new Promise((r) => setTimeout(r, 50));
+      if (seenDead.size < pids.length) await sleep(50);
     }
     assert.deepEqual(
       pids.filter((pid) => !seenDead.has(pid)),
@@ -211,7 +212,7 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
     // The marker sweep is fire-and-forget after pi's exit (one process-table scan): poll
     // until the marked orphan is gone, or the assertion below fails on a leak.
     const deadline = Date.now() + 15_000;
-    while (pidAlive(pid) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    while (pidAlive(pid) && Date.now() < deadline) await sleep(50);
     swept = !pidAlive(pid);
     assert.equal(swept, true, "the detached tool call's orphan is gone after the run resolves");
   } finally {

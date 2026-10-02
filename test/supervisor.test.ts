@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import { spawn } from "node:child_process";
 import { readJson } from "./json-read.js";
 import test from "node:test";
@@ -291,13 +292,13 @@ test("startParentDeathWatch fires exactly once when the parent pid changes", asy
     gone += 1;
   }, { ppid: () => ppid, intervalMs: 10 });
   try {
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     assert.equal(gone, 0, "an unchanged parent pid never fires the watch");
     ppid = 1; // reparented — the supervisor died without forwarding
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     assert.equal(gone, 1, "a changed parent pid fires the watch");
     ppid = 999;
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    await sleep(60);
     assert.equal(gone, 1, "the watch clears itself after firing");
   } finally {
     clearInterval(timer);
@@ -337,12 +338,12 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     const started = path.join(dir, "started");
     const gone = path.join(dir, "gone");
     supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
-    for (let i = 0; i < 100 && !fs.existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 100 && !fs.existsSync(started); i++) await sleep(50);
     assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
     // just vanishes and the grandchild reparents.
     process.kill(supervisor.pid!, "SIGKILL");
-    for (let i = 0; i < 60 && !fs.existsSync(gone); i++) await new Promise((r) => setTimeout(r, 250));
+    for (let i = 0; i < 60 && !fs.existsSync(gone); i++) await sleep(250);
     assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
   } finally {
     // The long self-exit timers above are only a leak guard for a crashed run; a passing

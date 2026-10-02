@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import fs from "node:fs";
 import path from "node:path";
 import { runPi, type PiRunOptions, type PiRunResult } from "../src/pi.js";
@@ -43,7 +44,7 @@ export async function runPiVerified(opts: Parameters<typeof runPi>[0]): Promise<
   const first = await runPi(opts);
   if (first.ok || first.turns > 0) return first;
   fs.rmSync(opts.rawLogFile, { force: true }); // attempt one may have left a partial log
-  await new Promise((r) => setTimeout(r, 250)); // let the resource pressure clear
+  await sleep(250); // let the resource pressure clear
   const second = await runPi(opts);
   if (second.ok || second.turns > 0) return second;
   throw new Error(

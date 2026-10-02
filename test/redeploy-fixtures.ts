@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
@@ -66,7 +67,7 @@ export function harness(deps: RedeployDeps, selfHosted = true, drainMaxMs?: numb
 }
 
 /** Let the tracked background promises settle (one macrotask is enough). */
-export const settle = () => new Promise((r) => setTimeout(r, 5));
+export const settle = () => sleep(5);
 
 export const IDLE = { roleInFlight: 0, directorInFlight: 0 };
 

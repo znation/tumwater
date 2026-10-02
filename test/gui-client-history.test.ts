@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui-client-history.js";
@@ -105,7 +106,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   assert.match(htmlWith(), /aria-expanded='true'/, "the open row's toggle says so");
 
   // The fetch answers into the cache; the card then shows the pre-rendered trail.
-  await new Promise((r) => setTimeout(r, 0));
+  await sleep(0);
   assert.deepEqual(calls, ["/api/tick?role=clean&tick=9"]);
   assert.equal(histDetails.get("clean#9")?.state, "ok");
   const card = htmlWith();
@@ -124,7 +125,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   histDetails.clear();
   toggleHistDetail("clean", "9"); // collapse the still-open card first
   toggleHistDetail("clean", "9"); // expand again: the cache is empty, so this fetches
-  await new Promise((r) => setTimeout(r, 0));
+  await sleep(0);
   assert.equal(calls.length, 2, "the cleared cache fetches anew");
   assert.ok(renders >= 4, "each transition repaints the view");
 });
@@ -141,7 +142,7 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   });
   const { histDetails, toggleHistDetail, historyTableHtml } = scope;
   toggleHistDetail("clean", "9");
-  await new Promise((r) => setTimeout(r, 0));
+  await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
   const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
   assert.match(html, /no tick #9 for clean in the scanned window/);
@@ -164,7 +165,7 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   });
   const { histDetails, toggleHistDetail, historyTableHtml } = scope;
   toggleHistDetail("clean", "9");
-  await new Promise((r) => setTimeout(r, 0));
+  await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
   const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
   assert.match(html, /\/api\/tick answered clean tick 9 without a text field/);

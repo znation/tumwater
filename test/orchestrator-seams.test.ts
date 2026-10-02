@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -151,7 +152,7 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
       return { result: "changed" } as TickOutcome;
     },
   );
-  while (!holderAcquired) await new Promise((r) => setTimeout(r, 1));
+  while (!holderAcquired) await sleep(1);
 
   // A parked waiter and a landing, both queued behind the one held permit. Each clears its
   // parked marker exactly as the orchestrator's wrapped acquire does.
@@ -174,7 +175,7 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
     () => semaphore.release(),
     async () => ({ result: "changed" } as TickOutcome),
   );
-  await new Promise((r) => setTimeout(r, 5));
+  await sleep(5);
   // Neither queued party holds a permit yet — the fleet serves at most the cap.
   assert.equal(parked.waiter, 1, "the waiter is still parked");
   assert.equal(parked.landing, 1, "the landing is still parked");
@@ -214,7 +215,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
     Date.now,
     held,
   );
-  while (!holderAcquired) await new Promise((r) => setTimeout(r, 1));
+  while (!holderAcquired) await sleep(1);
 
   // Two waiters reserved while the gate was still open (the scheduling-time check passed).
   const ran: string[] = [];
@@ -236,7 +237,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
     );
   const first = parkedWaiter("first");
   const second = parkedWaiter("second");
-  await new Promise((r) => setTimeout(r, 5));
+  await sleep(5);
 
   hold = true; // the redeploy flips into `hold` while both are parked
   releaseHolder();
@@ -249,7 +250,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
   assert.deepEqual(released, ["first", "second"]);
   let free = false;
   void semaphore.acquire(1).then(() => (free = true));
-  await new Promise((r) => setTimeout(r, 5));
+  await sleep(5);
   assert.equal(free, true, "no permit leaked to a tick that never started");
   semaphore.release();
 
@@ -385,7 +386,7 @@ test("awaitLandingForHandoff announces the wait and lets a landing that finishes
   let aborts = 0;
   const outcome = await awaitLandingForHandoff(
     root,
-    { promise: new Promise((r) => setTimeout(r, 20)), roles: ["clean", "dry"] },
+    { promise: sleep(20), roles: ["clean", "dry"] },
     5_000,
     () => void aborts++,
   );

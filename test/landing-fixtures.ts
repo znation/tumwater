@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import fs from "node:fs";
 import path from "node:path";
 import { drainLandings } from "../src/landing-drain.js";
@@ -95,7 +96,7 @@ export async function pumpUntil(
     await drainLandings(ctx, p);
     if (done()) return;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((r) => setTimeout(r, 50));
+    await sleep(50);
   }
 }
 
@@ -105,7 +106,7 @@ export function pump(ctx: LandingPipelineContext, p: LandingPipeline): { stop: (
   const loop = (async () => {
     while (running) {
       await drainLandings(ctx, p);
-      await new Promise((r) => setTimeout(r, 50));
+      await sleep(50);
     }
   })();
   return {

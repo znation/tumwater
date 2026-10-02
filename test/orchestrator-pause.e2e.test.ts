@@ -19,7 +19,7 @@ import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { sh } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
@@ -44,7 +44,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
     // poll cycles pass with no tick and no wake for clean. The marker itself survives — it
     // is persistent state, not a one-shot request like the abort/reset markers.
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a user-paused role starts no new ticks");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "wake" && e.loop === "clean"),
@@ -93,7 +93,7 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 
     // Several fast poll cycles pass with zero role ticks — startup is a wake reason like any
     // other, and the gate sits before eligibility. The marker survives: persistent state.
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "an already-paused role starts no ticks");
     assert.ok(fs.existsSync(marker), "the marker survives startup — not consumed");
 
@@ -148,7 +148,7 @@ test("an in-flight tick finishes and lands while the fleet is paused", async () 
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
 
     // …and no new tick starts while the marker holds.
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while paused");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -168,7 +168,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
   try {
     // The unpaused role ticks normally while the paused one never starts.
     await awaitSettledTick(repo, "dry", 1, "the unpaused role to tick");
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a paused role starts no new ticks");
 
     // One harness-level event per crossing, naming the role — not one per poll.
@@ -180,7 +180,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     // The director is NOT exempt from a per-role pause: its queued prompt waits in the inbox.
     pauseRole(repo, DIRECTOR_ROLE);
     enqueuePrompt(repo, "steer me while the director is paused");
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.ok(
       !readEvents(repo).some((e) => e.type === "tick_start" && e.loop === DIRECTOR_ROLE),
       "a paused director starts no ticks",

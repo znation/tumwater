@@ -5,7 +5,7 @@ import path from "node:path";
 import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/tail.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 test("followFile delivers each complete line once, holds torn tails, resets on shrink", async () => {
   const file = path.join(tmpdir(), "live.jsonl");
@@ -31,7 +31,7 @@ test("followFile delivers each complete line once, holds torn tails, resets on s
   }
 
   fs.appendFileSync(file, "d\n");
-  await new Promise((r) => setTimeout(r, 150)); // Several poll intervals after stopping.
+  await sleep(150); // Several poll intervals after stopping.
   assert.ok(!got.includes("d"), "no delivery after stop()");
   assert.deepEqual(got.filter(Boolean), ["a", "b", "c"]);
 });
@@ -50,7 +50,7 @@ test("followFile delivers appended lines once, in order, and holds a torn tail u
 
     // A write straddling a poll boundary must not be delivered torn or lost.
     fs.appendFileSync(file, '{"torn":"mes');
-    await new Promise((r) => setTimeout(r, 1200)); // several polls with the tail incomplete
+    await sleep(1200); // several polls with the tail incomplete
     assert.deepEqual(seen, ["line one"], "incomplete trailing line is held back");
 
     fs.appendFileSync(file, 'sage"}\n');
@@ -69,13 +69,13 @@ test("followFile survives rotation: lines appended after a rename+rewrite are no
     for (const line of lines.filter(Boolean)) seen.push(line);
   });
   try {
-    await new Promise((r) => setTimeout(r, 700)); // let polls run while nothing changes
+    await sleep(700); // let polls run while nothing changes
     assert.deepEqual(seen, [], "pre-existing content is not re-delivered");
 
     // rotateIfLarge renames the log and a fresh (smaller) file starts.
     fs.renameSync(file, file + ".1");
     fs.writeFileSync(file, "");
-    await new Promise((r) => setTimeout(r, 700)); // a poll sees size < offset and resets it
+    await sleep(700); // a poll sees size < offset and resets it
     fs.appendFileSync(file, "fresh\n");
     await waitFor(() => seen.length === 1, `the fresh file to deliver a line after rotation (got ${JSON.stringify(seen)})`);
     assert.deepEqual(seen, ["fresh"]);
@@ -92,7 +92,7 @@ test("followFile drains the lines the rotation moved into <file>.1: nothing appe
     for (const line of lines.filter(Boolean)) seen.push(line);
   }, 25);
   try {
-    await new Promise((r) => setTimeout(r, 100)); // a poll consumes the pre-existing content
+    await sleep(100); // a poll consumes the pre-existing content
     assert.equal(seen.length, 0);
 
     // Lines appended to the outgoing inode after the last poll, then the rename: the next
@@ -111,7 +111,7 @@ test("followFile drains the lines the rotation moved into <file>.1: nothing appe
 
   // A second poll after everything settled must not re-deliver the drained lines: the
   // archive's size no longer exceeds the offset the follow consumed through.
-  await new Promise((r) => setTimeout(r, 100));
+  await sleep(100);
   assert.deepEqual(seen, ["missed one", "missed two", "fresh"]);
 });
 
@@ -123,7 +123,7 @@ test("followFile survives a rotation whose replacement outgrows the old offset w
     for (const line of lines.filter(Boolean)) seen.push(line);
   }, 25);
   try {
-    await new Promise((r) => setTimeout(r, 100)); // let polls run while nothing changes
+    await sleep(100); // let polls run while nothing changes
 
     // Rotation where the fresh file is written LONGER than the old offset before the next
     // poll: size alone reads as an append, so only the dev/ino guard catches it — the stale
@@ -147,7 +147,7 @@ test("followFile waits for a missing file to appear", async () => {
     for (const line of lines.filter(Boolean)) seen.push(line);
   });
   try {
-    await new Promise((r) => setTimeout(r, 700));
+    await sleep(700);
     assert.deepEqual(seen, [], "a missing file is skipped without failing");
     fs.writeFileSync(file, "appeared\n");
     await waitFor(() => seen.length === 1, `the created file to deliver its line (got ${JSON.stringify(seen)})`);

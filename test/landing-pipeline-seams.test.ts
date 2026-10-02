@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -16,7 +17,7 @@ import { Semaphore } from "../src/semaphore.js";
 
 /** Flush the microtasks (and the auto-release callback) a resolved waiter chain needs. */
 function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  return sleep(0);
 }
 
 /** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a

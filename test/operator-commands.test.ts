@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
@@ -465,7 +466,7 @@ test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", asy
   const deadline = Date.now() + 5_000;
   while (child.pid === undefined || !pidAlive(child.pid)) {
     if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");
-    await new Promise((r) => setTimeout(r, 10));
+    await sleep(10);
   }
   writeOrchestratorMarker(root, [], { pid: child.pid });
   try {

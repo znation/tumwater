@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui-client-drawer.js";
@@ -48,8 +49,8 @@ function drawerScope(names: string[], inject: Record<string, unknown>): DrawerSc
 
 /** Let the blob's fire-and-forget async loads (ticks, transcript, entry) settle. */
 const flush = async () => {
-  await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
+  await sleep(0);
+  await sleep(0);
 };
 
 /** The DOM stand-ins, paint recorder, hash log, and fetch recorder one drawer test runs

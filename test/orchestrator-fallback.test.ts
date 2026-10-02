@@ -27,7 +27,7 @@ import { fakePi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 test("ticks on the engaged fallback feed the breaker: three dead-backend errors demote it", async () => {
   const repo = await makeFastRepo("fallback breaker unit test", ["feature"]);
@@ -103,7 +103,7 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
 
     // And the demoted pause actually holds: no further role tick starts while it stands.
     const ticksAtTrip = loadLoopState(repo, "feature").ticks;
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(
       loadLoopState(repo, "feature").ticks,
       ticksAtTrip,

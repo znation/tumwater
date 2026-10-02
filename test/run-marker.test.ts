@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -114,7 +115,7 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
   spawnOrphan("plain.pid");
   const recordDeadline = Date.now() + 10_000;
   while ((!readPid("ours.pid") || !readPid("plain.pid")) && Date.now() < recordDeadline)
-    await new Promise((r) => setTimeout(r, 25));
+    await sleep(25);
   const oursPid = readPid("ours.pid");
   const plainPid = readPid("plain.pid");
   try {
@@ -122,7 +123,7 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
     const signaled = await sweepRunMarker(own);
     assert.ok(signaled >= 1, "the sweep found the marked victim");
     const goneDeadline = Date.now() + 10_000;
-    while (pidAlive(oursPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+    while (pidAlive(oursPid) && Date.now() < goneDeadline) await sleep(50);
     assert.equal(pidAlive(oursPid), false, "the marked victim is gone");
     assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
   } finally {
@@ -161,7 +162,7 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
   const upDeadline = Date.now() + 10_000;
   let victimPid = 0;
   while (victimPid <= 0 && Date.now() < upDeadline) {
-    await new Promise((r) => setTimeout(r, 25));
+    await sleep(25);
     try {
       victimPid = Number(fs.readFileSync(pidFile, "utf8").trim());
     } catch {
@@ -189,7 +190,7 @@ test("sweepRunMarker on Linux walks /proc environ and signals only the marked pi
       "the scanner's own pid is skipped unread; the vanished pid's read failure is absorbed",
     );
     const goneDeadline = Date.now() + 10_000;
-    while (pidAlive(victimPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+    while (pidAlive(victimPid) && Date.now() < goneDeadline) await sleep(50);
     assert.equal(pidAlive(victimPid), false, "the marked victim is gone");
   } finally {
     if (original) Object.defineProperty(process, "platform", original);
@@ -216,7 +217,7 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
     "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)",
   );
   const upDeadline = Date.now() + 10_000;
-  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
+  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await sleep(25);
   assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the sweep");
   const pid = child.pid as number;
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -229,7 +230,7 @@ test("sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGT
     t.mock.timers.reset();
   }
   const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(pid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  while (pidAlive(pid) && Date.now() < goneDeadline) await sleep(50);
   assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the survivor");
   try {
     process.kill(pid, "SIGKILL");
@@ -271,7 +272,7 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   };
   const recordDeadline = Date.now() + 10_000;
   while ((!readPid("compliant.pid") || !readPid("stubborn.pid")) && Date.now() < recordDeadline)
-    await new Promise((r) => setTimeout(r, 25));
+    await sleep(25);
   const compliantPid = readPid("compliant.pid");
   const stubbornPid = readPid("stubborn.pid");
   assert.ok(compliantPid > 0 && stubbornPid > 0, "both orphans recorded their pids");
@@ -295,7 +296,7 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   t.mock.timers.reset();
 
   const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(stubbornPid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  while (pidAlive(stubbornPid) && Date.now() < goneDeadline) await sleep(50);
   assert.equal(pidAlive(stubbornPid), false, "the SIGTERM-proof victim was SIGKILLed by the escalation");
   assert.equal(pidAlive(compliantPid), false, "the compliant victim stayed down");
 });
@@ -325,6 +326,6 @@ test("the orphan helper arms its kill the moment the victim exists, and the hook
   reap();
   const goneDeadline = Date.now() + 10_000;
   while (child.pid && pidAlive(child.pid) && Date.now() < goneDeadline)
-    await new Promise((r) => setTimeout(r, 50));
+    await sleep(50);
   assert.ok(!child.pid || !pidAlive(child.pid), "the armed hook killed the victim");
 });

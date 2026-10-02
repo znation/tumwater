@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -84,11 +85,11 @@ test("withLock serializes critical sections", async () => {
   await Promise.all([
     withLock(lock, async () => {
       order.push(1);
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
       order.push(2);
     }),
     (async () => {
-      await new Promise((r) => setTimeout(r, 10));
+      await sleep(10);
       await withLock(lock, async () => {
         order.push(3);
       });
@@ -348,7 +349,7 @@ test("withSyncLock waits out a live holder in another process and then proceeds"
     // must wait out the remaining hold (300ms, far inside the 5s budget) rather than steal.
     for (let i = 0; readLockPid(lock) === null; i++) {
       if (i > 200) throw new Error("the holder child never took the lock");
-      await new Promise((r) => setTimeout(r, 10));
+      await sleep(10);
     }
     assert.equal(readLockPid(lock), child.pid!, "the child process holds the lock");
     assert.equal(withSyncLock(lock, () => "after", 5000), "after", "a live holder is waited for");

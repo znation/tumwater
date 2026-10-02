@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -263,7 +264,7 @@ test("a baseline run takes the same process-wide check permit as the scoped chec
   let release!: () => void;
   const held = withCheckPermit(one, CHECK_TIER.merge, () => new Promise<void>((resolve) => (release = resolve)));
   const pending = checkMainBaseline(wt, one);
-  await new Promise((resolve) => setTimeout(resolve, 1_500));
+  await sleep(1_500);
   assert.equal(runsOf(counter), 0, "the suite waits while the only permit is held");
   release();
   await held;

@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,7 +42,7 @@ test("pidAlive follows a real child across its whole lifetime", async () => {
     assert.ok(pid !== undefined, "spawn assigned a pid");
     const deadline = Date.now() + 2_000;
     while (!pidAlive(pid) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 10));
+      await sleep(10);
     }
     assert.equal(pidAlive(pid), true, "a running child reads as alive");
 
@@ -139,7 +140,7 @@ test("systemProcessProbe.runMarkers reads a live child's mark and skips vanished
     let marks = new Map<number, string[]>();
     for (let i = 0; i < 50 && marks.size === 0; i++) {
       marks = await systemProcessProbe.runMarkers([child.pid as number, 2_000_000_000]);
-      if (marks.size === 0) await new Promise((r) => setTimeout(r, 100));
+      if (marks.size === 0) await sleep(100);
     }
     assert.deepEqual([...marks], [[child.pid as number, ["999999123-cafe"]]]);
   } finally {
@@ -358,7 +359,7 @@ test("signalTree kills the child's whole process group, grandchild included, via
     await new Promise<void>((resolve) => child.once("exit", () => resolve()));
     // The grandchild must not outlive its group: a single-PID kill would orphan it.
     const deadline = Date.now() + 2_000;
-    while (pidAlive(grand) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
+    while (pidAlive(grand) && Date.now() < deadline) await sleep(10);
     assert.equal(pidAlive(grand), false, "the grandchild died with its group");
   } finally {
     try {
@@ -450,7 +451,7 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   // the victim (the 2026-09-30 orphan leak).
   armVictimKill(t, child);
   const upDeadline = Date.now() + 10_000;
-  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await new Promise((r) => setTimeout(r, 25));
+  while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await sleep(25);
   assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the terminate");
   const pid = child.pid as number;
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -462,7 +463,7 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
     t.mock.timers.reset();
   }
   const goneDeadline = Date.now() + 10_000;
-  while (pidAlive(pid) && Date.now() < goneDeadline) await new Promise((r) => setTimeout(r, 50));
+  while (pidAlive(pid) && Date.now() < goneDeadline) await sleep(50);
   assert.equal(pidAlive(pid), false, "the SIGKILL leg removed the SIGTERM-trapping survivor");
   try {
     process.kill(pid, "SIGKILL");

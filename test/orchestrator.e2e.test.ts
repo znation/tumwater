@@ -41,7 +41,7 @@ import {
 } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fake-pi.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
@@ -304,7 +304,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     sh(repo, "git", "commit", "-m", "tumwater(readme): x");
 
     // Several poll cycles pass with the interval long since due — still exactly one run.
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
     assert.equal(loadLoopState(repo, "organize").ticks, 1);
 
@@ -361,7 +361,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     const deferred = eventsOfType(repo, "tick_deferred").filter((d) => d.loop === "organize");
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
     // And the second episode still defers: no third tick while it holds.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await sleep(500);
     assert.equal(loadLoopState(repo, "organize").ticks, 2, "the second episode defers, it does not tick");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -388,7 +388,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
-    await new Promise((r) => setTimeout(r, 1000));
+    await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
     assert.equal(loadLoopState(repo, "organize").ticks, 1);
 
@@ -480,7 +480,7 @@ test("sessionRetentionDays 0 disables pruning: old sessions survive orchestrator
     // Pruning (or its skip) runs synchronously at startup; wait for the orchestrator to be up
     // plus a few fast poll cycles so the assertion is not racing the startup code.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
-    await new Promise((r) => setTimeout(r, 400));
+    await sleep(400);
     assert.ok(fs.existsSync(session), "a 30-day-old session survives when retention is 0");
     assert.equal(pruneWarnings(repo), 0, "no prune warning when pruning is disabled");
   } finally {
@@ -521,7 +521,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
     // Startup pruning runs synchronously before the first poll; a few fast poll cycles keep the
     // survival assertion from racing startup.
-    await new Promise((r) => setTimeout(r, 400));
+    await sleep(400);
     assert.ok(fs.existsSync(recent), "a ~2-day-old session survives startup under retention 30");
 
     // Phase 1 (edit to 1): a mid-run edit re-prunes immediately — one change event and one
@@ -557,7 +557,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     // The on-change path already ran when the third event was logged; a few fast poll cycles
     // keep the survival assertion from racing any later poll (none can prune: the daily gate is
     // not due).
-    await new Promise((r) => setTimeout(r, 400));
+    await sleep(400);
     assert.ok(fs.existsSync(ancient), "retention 0 disables pruning — the ancient file survives");
 
     // Exactly one change event per distinct edit (three total); unchanged polls log nothing.
@@ -735,7 +735,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
     );
 
     // Edge-triggered: more polls on the foreign branch stay quiet.
-    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 5));
+    await sleep(FAST_POLL_MS * 5);
     const during = readEvents(repo).filter(
       (e) => e.type === "warning" && /primary checkout moved/.test(String(e.message)),
     );
@@ -743,7 +743,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
 
     // Returning to the target branch re-arms the check, so a second episode warns again.
     sh(repo, "git", "checkout", "main");
-    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 3));
+    await sleep(FAST_POLL_MS * 3);
     sh(repo, "git", "checkout", "experiment");
     await waitFor(
       () =>

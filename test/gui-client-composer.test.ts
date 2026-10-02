@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui-client-composer.js";
@@ -129,7 +130,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
   );
   /** Let the submit handler's awaits (file reads, posts) settle. */
   const flush = async () => {
-    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    for (let i = 0; i < 3; i++) await sleep(0);
   };
   return {
     scope, el, input, form, images, fire, posts, flashes, refreshes: () => refreshes, closeDrawerCalls, location,

@@ -24,7 +24,7 @@ import { seedCounters } from "./loop-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
 import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { ensureParentDir } from "../src/files.js";
 
@@ -99,7 +99,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The backed-off loop must stay asleep on its own (nextRunAt two hours out).
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     assert.equal(loadLoopState(repo, "clean").ticks, 3, "the backed-off loop stays asleep");
 
     // Reproduce what `tumwater wake --role clean` does from the CLI side: clear the state
@@ -144,7 +144,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The slow clock alone must keep the loop asleep.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the fresh-gap loop stays asleep");
 
     // What `tumwater wake --role clean` does from the CLI side (as in the test above).
@@ -156,7 +156,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
     await waitFor(() => !loadLoopState(repo, "clean").running, "the woken tick to finish");
     // Self-clearing: the woken tick's own end re-opens the gap window, so the loop must
     // not immediately tick again.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the woken tick");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -192,7 +192,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
     assert.equal(wakes.length, 1);
     assert.equal(wakes[0]?.reason, "inbox");
     // And the ordinary clock re-arms after the queue-due tick: no second tick.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the gap window re-arms after the tick");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -234,7 +234,7 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
     await waitFor(() => loadLoopState(repo, "feature").ticks >= 2, "the woken tick to follow within polls, not an hour", 10_000);
     await waitFor(() => !loadLoopState(repo, "feature").running, "the woken tick to finish");
     // Then the ordinary clock re-arms: no third tick.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await sleep(300);
     assert.equal(loadLoopState(repo, "feature").ticks, 2, "the gap window re-arms after the woken tick");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -341,7 +341,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
 
     // Rewriting the same content (new mtime, same bytes) is not a change.
     saveConfig(repo, fastConfig(["clean"]));
-    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    await sleep(FAST_POLL_MS * 4);
     assert.equal(changeds().length, 0, "an identical rewrite logs nothing");
 
     // A real edit names exactly the changed keys, once — not once per poll.
@@ -351,7 +351,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
     saveConfig(repo, cfg);
     await waitFor(() => changeds().length === 1, "exactly one config_changed event");
     assert.deepEqual(changeds()[0]!.keys, ["provider", "thrashTurns"]);
-    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    await sleep(FAST_POLL_MS * 4);
     assert.equal(changeds().length, 1, "no repeat event while the file is unchanged");
 
     // A maxConcurrent-only edit keeps its own event and stays out of config_changed.
@@ -409,7 +409,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
     const runsAtVanish = runs().length;
     await waitFor(() => runs().length > runsAtVanish, "a further pi run while the file is missing");
     assert.ok(runs().at(-1)!.includes("model=kept-model"), `retained model: ${runs().at(-1)}`);
-    await new Promise((r) => setTimeout(r, FAST_POLL_MS * 4));
+    await sleep(FAST_POLL_MS * 4);
     assert.equal(warningsWith("tumwater.json missing").length, 1, "one warning per vanish, not per poll");
     assert.equal(ofType("config_changed").length, 0, "a vanish is not a reconfiguration");
     assert.equal(ofType("max_concurrent_changed").length, 0, "the cap is retained");

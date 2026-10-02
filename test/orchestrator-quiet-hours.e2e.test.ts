@@ -14,7 +14,7 @@ import { setConfigKey } from "../src/config-write.js";
 import { defaultConfig, saveConfig } from "../src/config.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { awaitSettledTick, makeFastRepo, startIdleOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 /** A window that always contains the current local wall clock: [now-30min, now+30min]. Near
  * midnight it wraps (start > end), which exercises the wrapping membership on real time. */
@@ -43,7 +43,7 @@ test("quiet hours block role ticks while the director runs; emptying the window 
     );
 
     // Several (fast) poll cycles pass: clean starts no tick while the window holds.
-    await new Promise((r) => setTimeout(r, 600));
+    await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "a quiet-hours role starts no ticks");
 
     // The director is exempt: a queued human prompt still runs during the window.

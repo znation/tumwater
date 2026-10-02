@@ -10,7 +10,7 @@ import { initProject } from "../src/init.js";
 import { enqueueLanding } from "../src/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/ui/gui.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { cli, spawnCli } from "./cli-harness.js";
 
@@ -349,7 +349,7 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
       } catch {
         // The re-exec'd server is still binding; retry.
       }
-      await new Promise((r) => setTimeout(r, 100));
+      await sleep(100);
     }
     assert.ok(reloaded, `a server on port ${port} reports the reloaded stamp`);
     assert.match(

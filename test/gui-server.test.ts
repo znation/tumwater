@@ -17,7 +17,7 @@ import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/ui/gui.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
-import { waitFor } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 
 // The dashboard's HTTP server layer under hostile input: oversized and malformed bodies,
 // raw-socket framing edge cases, and dropped clients. Each test pins a survivability
@@ -203,7 +203,7 @@ test("multi-byte UTF-8 characters straddling chunk boundaries arrive intact", as
       socket.write(Buffer.concat([frame(body.subarray(splitAt)), Buffer.from("0\r\n\r\n", "ascii")]), () => resolve());
     });
     // Wait for the response to land.
-    await new Promise((r) => setTimeout(r, 200));
+    await sleep(200);
 
     assert.match(response, /^HTTP\/1\.1 200/, `expected 200, got: ${response.split("\r\n")[0]}`);
     const queued = dequeuePrompt(repo);
@@ -337,13 +337,13 @@ test("oversized prompt bodies stop buffering at the cap (no unbounded growth)", 
     );
     // Give the server a moment to finish draining what is still in flight.
     for (let waited = 0; waited < 2000 && !/^HTTP\/1\.1 413/.test(response); waited += 50) {
-      await new Promise((r) => setTimeout(r, 50));
+      await sleep(50);
     }
     assert.match(response, /^HTTP\/1\.1 413/, "the oversized upload still gets the 413");
     // Once the upload is in and the server has drained it, readBody holds nothing: the cap
     // rejection must have RELEASED what it kept, not merely stopped growing it.
     for (let waited = 0; waited < 2000 && bufferedBodyBytes() > 0; waited += 50) {
-      await new Promise((r) => setTimeout(r, 50));
+      await sleep(50);
     }
     assert.equal(bufferedBodyBytes(), 0, "a rejected body's buffer is released, not retained");
     socket.destroy();
@@ -372,11 +372,11 @@ test("gui survives a client that disconnects mid-upload and keeps serving", asyn
         () => resolve(),
       );
     });
-    await new Promise((r) => setTimeout(r, 50)); // let the server start reading the body
+    await sleep(50); // let the server start reading the body
     socket.destroy(); // client gone before the body completes
 
     // Give the error path a moment to settle (req 'error' → readBody reject → handler catch).
-    await new Promise((r) => setTimeout(r, 200));
+    await sleep(200);
 
     // The aborted upload queued nothing — a partial body must never become a prompt.
     assert.equal(inboxSize(repo), 0, "the aborted upload queued no prompt");
@@ -697,7 +697,7 @@ test("gui closes its server and re-execs exactly once when a newer build appears
   });
   try {
     // A stamp naming the startup sha is not a newer build: several polls pass, nothing fires.
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(60);
     assert.equal(reexecs, 0, "an unchanged dist stamp never reloads");
     assert.equal(server.listening, true, "the server is still serving the current build");
 
@@ -708,7 +708,7 @@ test("gui closes its server and re-execs exactly once when a newer build appears
     await waitFor(() => reexecs > 0, "the reload watch fires on a newer dist stamp", 5000);
     assert.equal(server.listening, false, "the server closed before the re-exec");
     disk = { ...startup, sha: "third-sha" };
-    await new Promise((r) => setTimeout(r, 60));
+    await sleep(60);
     assert.equal(reexecs, 1, "the reload fires at most once per process");
   } finally {
     server.close();

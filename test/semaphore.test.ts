@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Semaphore } from "../src/semaphore.js";
@@ -10,7 +11,7 @@ test("semaphore bounds concurrency", async () => {
     await sem.acquire(0);
     running += 1;
     peak = Math.max(peak, running);
-    await new Promise((r) => setTimeout(r, 20));
+    await sleep(20);
     running -= 1;
     sem.release();
   });
@@ -59,7 +60,7 @@ test("capacity fully restores after a burst: no slot leak", async () => {
   const sem = new Semaphore(2);
   const tasks = Array.from({ length: 5 }, async () => {
     await sem.acquire(0);
-    await new Promise((r) => setTimeout(r, 10));
+    await sleep(10);
     sem.release();
   });
   await Promise.all(tasks);

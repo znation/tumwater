@@ -38,7 +38,7 @@ import {
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
-import { waitFor, waitForFile } from "./wait.js";
+import { sleep, waitFor, waitForFile } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 
 /** Second slice of the landing-drain suite (landing-drain.test.ts carries the first) — split so
@@ -319,7 +319,7 @@ test("vets leave one permit for authoring: at cap 3 two review, the third waits 
   try {
     await waitForFile(path.join(flags, "alpha-reviewing"));
     await waitForFile(path.join(flags, "beta-reviewing"));
-    await new Promise((r) => setTimeout(r, 500)); // a few more polls: nothing more may start
+    await sleep(500); // a few more polls: nothing more may start
     assert.deepEqual([...pipeline.vetting.keys()], ["alpha", "beta"], "only vetLimit(3) vets exist");
     assert.equal(rowOf("gamma"), "queued", "the third change waits in the queue, not parked on a permit");
     assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role tick takes the permit the vets left free");

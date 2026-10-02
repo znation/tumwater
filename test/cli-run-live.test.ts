@@ -15,7 +15,7 @@ import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
-import { waitForFile } from "./wait.js";
+import { sleep, waitForFile } from "./wait.js";
 
 // `tumwater run` through the real CLI entry point: startup guards, the banner, and the
 // supervisor's shutdown semantics. These are the long-running commands, spawned with a live
@@ -212,7 +212,7 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     // SIGINT to the supervisor alone: it marks stopping but must not touch the child.
     s.child.kill("SIGINT");
-    await new Promise((r) => setTimeout(r, 3000)); // past a poll cycle; a forwarding regression would be done by now
+    await sleep(3000); // past a poll cycle; a forwarding regression would be done by now
     assert.equal(s.child.exitCode, null, "the supervisor must keep running after a SIGINT aimed at it alone");
     assert.ok(
       fs.existsSync(orchestratorStatePath(repo)),

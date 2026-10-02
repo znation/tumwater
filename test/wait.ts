@@ -9,10 +9,15 @@ import fs from "node:fs";
  * setTimeout itself (watchdogClock with `timeouts`). */
 const realSetTimeout = globalThis.setTimeout;
 
-/** A plain real-time sleep, exported because tests outside this module need the same gap
- * primitive (a measurable interval between two wall-clock stamps): it always uses the captured
+/** A plain real-time sleep — the one home for the suite's sleeps: every test or fixture that
+ * pauses in real time calls this instead of hand-rolling `new Promise((r) => setTimeout(r, ms))`.
+ * It always uses the captured
  * real setTimeout, so it keeps sleeping in real time under a test that mocks the timer APIs
- * (watchdogClock) — a test wanting mockable time should advance the mock clock instead. */
+ * instead. Deliberately not sleeps, and left as-is: the value-resolving timeout promises in
+ * semaphore.test.ts and cli-operators-fleet.test.ts (they race and resolve a value, not a gap),
+ * the runner-script string in build-check-process.test.ts (executed by a child process that
+ * cannot import this module), and the two src-side sites (lock.ts, loop-pi.ts), which cannot
+ * import a test helper. */
 export const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
 
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the

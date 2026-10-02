@@ -1,3 +1,4 @@
+import { sleep } from "./wait.js";
 import test from "node:test";
 import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
@@ -249,7 +250,7 @@ test("a paused-roles lock held by another process is waited for, not stolen", as
   try {
     for (let i = 0; !fs.existsSync(lock); i++) {
       if (i > 200) throw new Error("the holder child never took the lock");
-      await new Promise((r) => setTimeout(r, 10));
+      await sleep(10);
     }
     assert.equal(pauseRole(root, "docs"), true, "the caller waits out the live holder and proceeds");
     assert.deepEqual(pausedRoles(root), ["docs"]);
