@@ -207,8 +207,10 @@ while the fleet runs, and each one logs a `config_changed` event.
   its backoff, and `Ctrl+R` opens the role-prompt editor that queues a prompt for that loop's
   next tick (Enter sends it; Esc or `Ctrl+R` again cancels and restores the draft). The prompt
   line names who Enter sends to, and Up/Down recall this session's submitted prompts — director
-  and role alike — readline-style, with a half-typed draft saved and restored around the walk.
-  Each keypress flashes its outcome for a few seconds.
+  and role alike — readline-style, with a half-typed draft saved and restored around the walk;
+  the editor also takes readline's kill keys — `Alt+Backspace` kills the word before the cursor,
+  `Ctrl+U` from the line start, `Ctrl+K` to the line end. Each keypress flashes its outcome for
+  a few seconds.
 - Review runs show as `── review @ <timestamp> ──` in role transcripts.
 - Runtime state lives in `.tumwater/` (gitignored). Durable state lives in tracked markdown and
   `tumwater.json`.
