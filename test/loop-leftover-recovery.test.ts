@@ -24,7 +24,7 @@ import { headLanding, queueDepth } from "../src/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
@@ -105,13 +105,7 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
       ),
       "recovery is recorded as a merge of the leftover work, naming its subject",
     );
-    let refGone = false;
-    try {
-      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
-    } catch {
-      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
-    }
-    assert.ok(refGone, "the pin was deleted once the work landed");
+    assert.ok(!landingRefExists(repo, "improve"), "the pin was deleted once the work landed");
   } finally {
     restore();
   }

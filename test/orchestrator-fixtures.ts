@@ -3,12 +3,13 @@ import path from "node:path";
 import { strict as assert } from "node:assert";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
-import { makeRepo } from "./repo-fixtures.js";
+import { makeRepo, sh } from "./repo-fixtures.js";
 import { runOrchestrator } from "../src/orchestrator.js";
 import { drainMerge } from "../src/landing-drain.js";
 import { newLandingPipeline, type LandingPipelineContext } from "../src/landing-pipeline.js";
 import { startVet } from "../src/landing-vetting.js";
 import { headLanding } from "../src/landing-queue.js";
+import { landingRefName } from "../src/paths.js";
 import { Semaphore } from "../src/semaphore.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { logEvent } from "../src/events.js";
@@ -33,6 +34,23 @@ import type { TickResult } from "../src/tick-outcome.js";
  * Safe because idle ticks back off 1s (fastConfig), so no assertion relies on a >=2s gap
  * between polls to prevent back-to-back ticks. */
 export const FAST_POLL_MS = 100;
+
+/** Does `role`'s pinned landing ref still exist? `git rev-parse --verify` exits nonzero once
+ * the ref is gone, so its absence is the postcondition the rejection, abort, and
+ * successful-landing tests assert. Waiting on the outcome alone races the discard: a
+ * deliberate stop's `discardPinnedRefs` runs in the landing slot's `finally`, AFTER
+ * `writeLandingOutcome` has already recorded `lastResult` (the load-sensitive-test class in
+ * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the loop-tier suites
+ * (loop-3.test.ts, loop-leftover-recovery.test.ts) each held an inline copy before this was
+ * extracted, and orchestrator-3.e2e.test.ts a file-local one. */
+export function landingRefExists(repo: string, role: string): boolean {
+  try {
+    sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
+    return true;
+  } catch {
+    return false; // a missing ref makes rev-parse --verify exit nonzero
+  }
+}
 
 /** The in-flight counts a concurrency-recording fake pi wrote, one per run start (empty before
  * any run). */

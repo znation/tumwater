@@ -11,9 +11,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config.js";
-import { landingRefName, worktreePath } from "../src/paths.js";
+import { worktreePath } from "../src/paths.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { landHead, landingRefExists } from "./orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readPromptRuns, withPi } from "./fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
@@ -43,13 +43,7 @@ test("a rejected change rides along on the role's next tick prompt with its reas
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = worktreePath(repo, "improve");
     assertClean(wt, "a rejected tick leaves the role worktree clean at main");
-    let refGone = false;
-    try {
-      sh(repo, "git", "rev-parse", "--verify", landingRefName("improve"));
-    } catch {
-      refGone = true; // a missing ref makes rev-parse --verify exit nonzero
-    }
-    assert.ok(refGone, "a rejection is terminal: the pin was deleted with it");
+    assert.ok(!landingRefExists(repo, "improve"), "a rejection is terminal: the pin was deleted with it");
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
 
     // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi

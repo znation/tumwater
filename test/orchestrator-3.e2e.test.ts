@@ -27,6 +27,7 @@ import { setRef } from "../src/git.js";
 import {
   fastConfig,
   landHead,
+  landingRefExists,
   makeFastRepo,
   scriptedRedeployer,
   startRedeployRun,
@@ -41,20 +42,6 @@ import { waitFor } from "./wait.js";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 
 const FAST_POLL_MS = 100;
-
-/** Does `role`'s pinned landing ref still exist? `git rev-parse --verify` exits nonzero once
- * the ref is gone, so its absence is the postcondition the abort tests assert. Waiting on the
- * abort outcome alone races the discard: a deliberate stop's `discardPinnedRefs` runs in the
- * landing slot's `finally`, AFTER `writeLandingOutcome` has already recorded `lastResult`
- * (the load-sensitive-test class in BUGS.md, 2026-09-18). */
-function landingRefExists(repo: string, role: string): boolean {
-  try {
-    sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
-    return true;
-  } catch {
-    return false; // a missing ref makes rev-parse --verify exit nonzero
-  }
-}
 
 /** Has `role`'s tick ended `queued` — committed and enqueued its landing? The tick_end event is
  * where that outcome lives: `lastResult` records only completed results, so a queued tick
@@ -213,13 +200,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
       "no failed landing",
     );
     assert.equal(loadLoopState(repo, "clean").commits, 1, "the landed change counts as one commit");
-    let refGone = false;
-    try {
-      sh(repo, "git", "rev-parse", "--verify", landingRefName("clean"));
-    } catch {
-      refGone = true;
-    }
-    assert.ok(refGone, "the pin is deleted with a successful landing");
+    assert.ok(!landingRefExists(repo, "clean"), "the pin is deleted with a successful landing");
   } finally {
     await stopOrchestrator(orch, restore);
   }
