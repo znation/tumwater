@@ -5,7 +5,7 @@
  * gating `npm test` never ran this path; the redeploy e2e tier covers it, but only under
  * `npm run test:e2e`, so the shape was only implied by the orchestrator's source. A scripted
  * fake Redeployer keeps the tier's focus on the orchestrator's own decisions, not the policy's
- * state machine (redeploy-policy.ts has its own tests). */
+ * state machine (redeployer.ts has its own tests). */
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import type { BuildStatus } from "../src/build-info.js";
-import type { Redeployer } from "../src/redeploy-policy.js";
+import type { Redeployer } from "../src/redeployer.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { tmpdir } from "./repo-fixtures.js";

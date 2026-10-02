@@ -37,7 +37,7 @@ import {
 import { piModelsPath } from "./pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
-import { type Redeployer } from "./redeploy-policy.js";
+import { type Redeployer } from "./redeployer.js";
 import type { LaunchServicesWatch } from "./launch-services.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "./work-landed-cache.js";
@@ -60,7 +60,7 @@ interface RunOptions {
   /** Poll interval in ms (default POLL_MS). Tests pass a short value so multi-cycle behavior
    * resolves quickly; production callers omit it and keep the real cadence. */
   pollMs?: number;
-  /** Self-redeploy policy (src/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
+  /** Self-redeploy state machine (src/redeployer.ts; the policy it decides with lives in src/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
   /** launchservicesd's port watch (src/launch-services.ts), stepped every poll; null/absent runs
@@ -317,7 +317,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       });
       const held = gateStates.fleetHold.until !== null;
 
-      // Self-redeploy (src/redeploy-policy.ts): with main's head in hand, let the policy observe it.
+      // Self-redeploy (src/redeployer.ts): with main's head in hand, let the state machine observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's
       // window plus a bounded landing hand-off, and its prompt waits in the inbox for the new
       // build — while the green check/compile/drain run in the background. That covers ticks

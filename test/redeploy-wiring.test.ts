@@ -5,18 +5,19 @@ import path from "node:path";
 import type { HarnessEventInput } from "../src/events.js";
 import { readBuildInfo } from "../src/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy.js";
-import { Redeployer } from "../src/redeploy-policy.js";
+import { Redeployer } from "../src/redeployer.js";
 import { IDLE } from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../src/paths.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { projManifest } from "./fake-commands.js";
 
 /** The production WIRING half of the self-redeploy tests, mirroring the src split
- * (redeploy-policy.ts / redeploy.ts): redeployDeps's real mainGreen/buildRed — the mirror
+ * (redeployer.ts / redeploy.ts): redeployDeps's real mainGreen/buildRed — the mirror
  * worktree, the live config read, the baseline build_check events, the witness-worktree
  * cold-cache recovery — and createRedeployer's composition from the running build's own stamp.
- * The policy half (the Redeployer state machine driven with scripted deps) lives in
- * redeploy.test.ts beside the other policy clusters. */
+ * The state-machine half (the Redeployer driven with scripted deps) lives in
+ * redeploy.test.ts beside the other state-machine clusters; the policy knobs it decides
+ * with are in src/redeploy-policy.ts. */
 
 test("the production mainGreen wiring runs the real check in a fresh mirror and logs the baseline event", async () => {
   // createRedeployer's own closures never ran under test: isSelfHosted pins it to the repo the

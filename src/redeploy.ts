@@ -7,15 +7,10 @@ import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "./paths.js";
-import {
-  type AutoRestartRecord,
-  type RedeployDeps,
-  type RedeployEvent,
-  RESTART_DRAIN_MAX_MS,
-  Redeployer,
-} from "./redeploy-policy.js";
+import { type AutoRestartRecord, type RedeployDeps, RESTART_DRAIN_MAX_MS } from "./redeploy-policy.js";
+import { type RedeployEvent, Redeployer } from "./redeployer.js";
 
-/** The self-redeploy WIRING (the state machine itself lives in redeploy-policy.ts): the
+/** The self-redeploy WIRING (the state machine itself lives in redeployer.ts): the
  * production RedeployDeps bound to one repo — the mirror worktree both the green check and the
  * compile run in, the baseline check that reads the live config per call, the staged compile,
  * and the dist swap — plus the completed-restart record's small state file and the

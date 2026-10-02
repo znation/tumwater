@@ -38,7 +38,7 @@ export function agree(n: number, one: string, many: string): string {
 /** The spine of every phrase naming main's tip as red — `main <short-sha> is red` — built here
  * once so the fleet-wide red-main warning (main-red.ts), the review gate's attribution detail
  * (review.ts), the landing check's attribution error (landing-core.ts), and the redeploy hold's
- * block reason (redeploy-policy.ts) cannot drift over how main's red is worded. Each caller
+ * block reason (redeployer.ts) cannot drift over how main's red is worded. Each caller
  * appends its own consequence — the gate's "— not this change's failure", the hold's
  * " — holding the restart until main is green". */
 export function mainRedPhrase(sha: unknown): string {
