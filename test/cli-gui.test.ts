@@ -482,3 +482,31 @@ test("cmdGui turns a taken port into the friendly port-in-use error and rethrows
     (err: unknown) => err === eio,
   );
 });
+
+test("gui stops on Ctrl+C: SIGINT ends the serve loop instead of wedging the terminal", async () => {
+  // The banner promises "Ctrl+C to stop"; the serve loop relies on node's default SIGINT
+  // disposition (cmdGui's serve promise never resolves on its own). A regression that added a
+  // SIGINT handler which swallows the signal — or a server whose open handles keep the loop
+  // alive after the default termination — would leave the operator's terminal wedged; this
+  // bounds it: the child must actually exit once the signal lands, within the exitCode
+  // helper's own timeout (a hung gui resolves null and fails the assertion).
+  const repo = makeRepo();
+  await initProject(repo, "cli gui sigint");
+
+  const port = await freeTcpPort();
+  const gui = spawnCli(repo, ["gui", "--port", String(port)]);
+  await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the banner");
+  gui.child.kill("SIGINT");
+  // A default-disposition SIGINT death closes with code null and signal SIGINT — so the
+  // timeout, not a null code, is the failure (a hung gui rejects here; a clean stop resolves).
+  const stopped = await new Promise<{ code: number | null; signal: string | null }>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("gui kept running 15s after SIGINT — Ctrl+C no longer stops it")), 15_000);
+    gui.child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    });
+  });
+  assert.equal(stopped.signal, "SIGINT");
+  // The server is down with the process: the port must not keep answering.
+  await assert.rejects(() => fetch(`http://127.0.0.1:${port}/`));
+});
