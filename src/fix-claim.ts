@@ -159,10 +159,15 @@ export async function falseFixReason(
   const baseBodies = new Map(
     fixedHeadings(base).map((h) => [normalizeFixedHeading(h), bugEntryBody(base, h)]),
   );
-  const haystack = sourceHaystack(wt);
+  // Built lazily, only once a Fixed record's body actually changed: the haystack walks and
+  // reads the entire source tree (~5 MB here), and the common BUGS.md edit moves nothing to
+  // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
+  // recheck each paid that walk for a check that never reached a symbol.
+  let haystack: string | undefined;
   for (const heading of fixedHeadings(head)) {
     const body = bugEntryBody(head, heading);
     if (baseBodies.get(normalizeFixedHeading(heading)) === body) continue;
+    haystack ??= sourceHaystack(wt);
     const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
     if (missing.length === 0) continue;
     const names = missingSymbolNames(missing);
