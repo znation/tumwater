@@ -133,9 +133,6 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // discipline timedPauseBits's own `now` parameter follows.
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: now + forMs };
   const untilMs = timed?.untilMs;
-  // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role marker
-  // (the plan 2/2 dashboard endpoint will call it too), so CLI and dashboard cannot drift on
-  // format or idempotence; a false return means the role was already in the set.
   const role = namedRole(root, args);
   if (role) {
     // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
@@ -146,10 +143,11 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
       fail(
         "pause --reason states why the whole fleet is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
       );
-    // pauseRole in src/fleet-state.ts is the single writer of the role marker (the TUI's
-    // Ctrl+P calls it too), so CLI and TUI cannot drift on format or idempotence; a false
-    // return means the role was already in the set, which rolePauseMessage words — unless a
-    // `--for` stands, which overwrites the deadline and reports the fresh confirmation.
+    // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role
+    // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
+    // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
+    // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
+    // which overwrites the deadline and reports the fresh confirmation.
     say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
     return;
   }
