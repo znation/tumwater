@@ -115,7 +115,7 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
 }
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the
- * landing path (src/landing-merge.ts's verifyLanding) and the stack lander (src/landing-batch.ts' landStack) —
+ * landing path (src/landing-merge.ts's verifyLanding) and the stack lander (src/landing-stack.ts' landStack) —
  * both call it only after their fast-forward SUCCEEDED, with the exact SHA that just became
  * main: verifyLanding with the POST-rebase head in two cases — its own in-lock re-check just ran
  * this project's declared check green on that tree, or the rebase was a no-op so the review

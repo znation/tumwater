@@ -197,7 +197,7 @@ export function removeLandingChange(root: string, role: string): void {
  * its pre-check (`build-check`) and before its reviewer run (`reviewing`), landing-core.ts's
  * reviewPinnedChange once the gate returns (`merging`, whatever it decided — a finished
  * reviewer's last turns must not sit in the cell accruing a false `no pi output` flag while the
- * change waits for its merge), and landing-batch.ts around a stack's shared check. It stages
+ * change waits for its merge), and landing-stack.ts around a stack's shared check. It stages
  * `role`'s own record — every concurrent vet advances its own change's cell. A no-op for a role
  * with no record (a gate run outside the pipeline, as the unit tests drive it). Only the stage
  * changes: sha and startedAt are what the

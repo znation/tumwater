@@ -268,7 +268,7 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
  * seeds the stacked tip, because it alone knows whether its own check passed. A failed ff
  * (main moved under the batch — diverged history) returns "merge_blocked" with NO events and
  * no ref changes: the lander re-stacks onto the new tip and calls this again (bounded by
- * landing-batch.ts's BATCH_RESTACK_ATTEMPTS), and only a race lost on every attempt keeps every
+ * landing-stack.ts's BATCH_RESTACK_ATTEMPTS), and only a race lost on every attempt keeps every
  * change's ref for one-at-a-time recovery, whose tryMerge carries the in-lock check. The
  * single-change path is untouched. */
 export async function ffStackToMain(
