@@ -44,11 +44,14 @@ function pruneDir(outDir, srcDir) {
     } else if (KEEP.has(e.name)) {
       // Non-module artifact: keep.
     } else {
-      const source = path.join(
-        srcDir,
-        e.name.endsWith(".js") ? e.name.replace(/\.js$/, ".ts") : e.name,
-      );
-      if (!fs.existsSync(source)) {
+      // A .js output's source is its .ts or its .tsx. Checking .ts alone pruned every .tsx's
+      // output right after tsc emitted it — and `tsc --incremental` never re-emits a file its
+      // build info already records, so the output stayed gone: dist/src/cli.js could not
+      // import ./ui/tui.js, every CLI test failed, and one leaked stand-in hung the suite
+      // (2026-10-01, the ink renderer's first .tsx).
+      const base = e.name.endsWith(".js") ? e.name.slice(0, -3) : null;
+      const sources = base === null ? [e.name] : [`${base}.ts`, `${base}.tsx`];
+      if (!sources.some((s) => fs.existsSync(path.join(srcDir, s)))) {
         try {
           fs.unlinkSync(out);
         } catch {

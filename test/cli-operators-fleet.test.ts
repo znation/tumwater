@@ -235,27 +235,33 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
 
   // A real, killable child process standing in for the orchestrator: a node eval with no
   // SIGTERM handler, so the default behaviour applies and it dies with signal SIGTERM —
-  // letting the test assert the actual signal it dies from.
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
-  writeOrchestratorMarker(repo, [], { pid: child.pid });
+  // letting the test assert the actual signal it dies from. Reaped in the finally: a failed
+  // assertion that left it alive kept this file's process up forever (its event loop held by
+  // the child), hanging the whole suite until the runner's ceiling (2026-10-01, a feature
+  // tick's broken dist failed `stop` here and wedged `npm run test` for 15 min).
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
+  try {
+    writeOrchestratorMarker(repo, [], { pid: child.pid });
 
-  const exited = new Promise<{ signal: NodeJS.Signals | null }>((resolve) => {
-    child.once("exit", (_code, signal) => resolve({ signal }));
-  });
-  const r = await cli(repo, "stop");
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
+    const exited = new Promise<{ signal: NodeJS.Signals | null }>((resolve) => {
+      child.once("exit", (_code, signal) => resolve({ signal }));
+    });
+    const r = await cli(repo, "stop");
+    assert.equal(r.code, 0);
+    assert.match(r.stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
 
-  // The child died from the SIGTERM `stop` sent, not from anything the test tore down.
-  const { signal } = await Promise.race([
-    exited,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("stop did not signal the recorded pid within 5s")), 5_000),
-    ),
-  ]);
-  assert.equal(signal, "SIGTERM");
-
-  fs.rmSync(orchestratorStatePath(repo), { force: true });
+    // The child died from the SIGTERM `stop` sent, not from anything the test tore down.
+    const { signal } = await Promise.race([
+      exited,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("stop did not signal the recorded pid within 5s")), 5_000),
+      ),
+    ]);
+    assert.equal(signal, "SIGTERM");
+  } finally {
+    child.kill("SIGKILL"); // A no-op once `stop` has killed it.
+    fs.rmSync(orchestratorStatePath(repo), { force: true });
+  }
 });
 
 test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error", async () => {
@@ -266,11 +272,16 @@ test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error"
   await new Promise<void>((resolve) => dead.once("exit", () => resolve()));
   assert.equal(signalOrchestrator(dead.pid as number), "gone");
 
-  // The delivered case: a live child takes the SIGTERM and dies from it.
-  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"]);
-  const exited = new Promise((resolve) => live.once("exit", (_c, signal) => resolve(signal)));
-  assert.equal(signalOrchestrator(live.pid as number), "signalled");
-  assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5_000))]), "SIGTERM");
+  // The delivered case: a live child takes the SIGTERM and dies from it — reaped in the
+  // finally like the stop test's stand-in above, so a failure cannot hang the file.
+  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
+  try {
+    const exited = new Promise((resolve) => live.once("exit", (_c, signal) => resolve(signal)));
+    assert.equal(signalOrchestrator(live.pid as number), "signalled");
+    assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5_000))]), "SIGTERM");
+  } finally {
+    live.kill("SIGKILL");
+  }
 });
 
 test("stop takes no flags and appears in the help table", async () => {
