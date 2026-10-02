@@ -56,9 +56,6 @@ interface MainBaselineCheck {
   /** Set when a detected check could not be run (timeout, an external signal kill, no npm on
    * PATH, or a broken toolchain). */
   skipReason?: BuildSkipReason;
-  /** On a "missing-install" skip: the unresolvable modules the run's output named, all declared
-   * by the tree's package.json — the caller's skip warning names them (BUGS.md 2026-10-01). */
-  missingModules?: string[];
   /** A skipped run's timing (the bound it was armed with, and how late its deadline fired), so
    * the caller's skip warning reports the bound actually enforced. Also set for an unverified
    * run — the sleep evidence the caller's warning names. */
@@ -201,12 +198,7 @@ export async function checkMainBaseline(
       if (outcome.status === "skipped") {
         // Environmental (timeout/no-npm): warn-and-proceed semantics like the gate's pre-check;
         // never cache red for a skip.
-        return {
-          baseline: null,
-          skipReason: outcome.skipReason,
-          run: outcome.run,
-          ...(outcome.missingModules ? { missingModules: outcome.missingModules } : {}),
-        };
+        return { baseline: null, skipReason: outcome.skipReason, run: outcome.run };
       }
       if (outcome.status === "failed" && (outcome.run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS) {
         // A failure the host slept through made no verdict about the tree either (BUGS.md

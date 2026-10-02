@@ -128,9 +128,7 @@ export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: Bui
  * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
  * with, and when the caller passes the run and its deadline fired late, the time it really
  * fired at (timedOutPhrase). An "install" skip names the drifted packages and how the install
- * failed when the caller has the outcome's install record (installFailedPhrase). A
- * "missing-install" skip names the unresolvable modules the caller's outcome recorded, so the
- * warning says which dependencies no install provides. */
+ * failed when the caller has the outcome's install record (installFailedPhrase). */
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,
@@ -138,13 +136,10 @@ export function buildCheckSkipWarning(
   timeoutMs: number,
   killed?: { signal: string; durationMs: number },
   run?: BuildCheckRun,
-  extra?: { packages: string[]; detail?: string } | string[],
+  install?: { packages: string[]; detail?: string },
 ): string {
   if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
-  if (skipReason === "install")
-    return installFailedPhrase(label, Array.isArray(extra) ? undefined : extra, proceeding);
-  if (skipReason === "missing-install")
-    return `the unresolvable modules (${(Array.isArray(extra) ? extra : []).join(", ")}) are dependencies the tree declares but no install provides; skipping ${label}; ${proceeding}`;
+  if (skipReason === "install") return installFailedPhrase(label, install, proceeding);
   if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
   if (skipReason === "killed") return killedPhrase(label, killed, proceeding);
   return `${label} ${timedOutPhrase(timeoutMs, run)}; ${proceeding}`;

@@ -107,7 +107,7 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
     const again = await mainRedGate(root, "feature", wt);
     assert.equal(again?.result, "main_red");
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
-    const warnings = eventsOfType(root, "warning");
+    const warnings = harnessWarnings(root);
     assert.equal(warnings.length, 1, "one harness warning for the red SHA, not one per blocked tick");
   } finally {
     restore();
@@ -360,7 +360,7 @@ test("mainTipVerdict reports red with the fleet-wide warning, once per SHA", asy
     assert.ok(verdict.status === "red");
     assert.equal(verdict.status === "red" ? verdict.sha : "", mainSha(root));
     const sha = mainSha(root);
-    const warnings = eventsOfType(root, "warning");
+    const warnings = harnessWarnings(root);
     assert.equal(warnings.length, 1, "one harness-level warning for the newly-discovered red SHA");
     const message = warnings[0] as { message?: string } | undefined;
     assert.match(message?.message ?? "", new RegExp(shortSha(sha)));
@@ -409,33 +409,4 @@ test("mainTipVerdict reports unavailable when the named branch does not exist", 
   const verdict = await mainTipVerdict(root, ROLE, "no-such-branch", defaultConfig());
   assert.deepEqual(verdict, { status: "unavailable", why: "no-such-branch is unreadable" });
   assert.deepEqual(readEvents(root), [], "nothing ran, nothing to say");
-});
-
-test("mainRedGate's missing-install skip warning names the unresolvable modules", async () => {
-  // The 2026-10-01 missing-install classification skips a suite whose only unresolvable
-  // modules are dependencies the tree declares; the skip warning must name them, not lose
-  // them on the baseline path (BUGS.md 2026-10-01 latent).
-  const script = `echo "Cannot find module 'left-pad'"; exit 1`;
-  const { root, wt } = baselineFixture(ROLE, script);
-  const manifest = JSON.stringify({
-    name: "proj",
-    version: "1.0.0",
-    scripts: { test: script },
-    dependencies: { "left-pad": "^1.0.0" },
-  });
-  fs.writeFileSync(path.join(root, "package.json"), manifest);
-  fs.writeFileSync(path.join(wt, "package.json"), manifest);
-  const restore = fakeNpm(script);
-  try {
-    assert.equal(await mainRedGate(root, ROLE, wt), null, "a missing-install skip never blocks authoring");
-    const warnings = eventsOfType(root, "warning");
-    assert.equal(warnings.length, 1, "one harness-level warning for the skip");
-    const message = String(warnings[0]?.message ?? "");
-    assert.ok(
-      message.includes("left-pad"),
-      `the skip warning names the declared module: ${message}`,
-    );
-  } finally {
-    restore();
-  }
 });
