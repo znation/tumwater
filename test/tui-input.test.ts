@@ -195,6 +195,14 @@ test("parseBudgetInput maps empty to disabled and validates the rest", () => {
     "+5",
     // Absurd digit counts overflow to Infinity: the isFinite backstop still rejects them.
     "9".repeat(410),
+    // A 25-digit run stays finite (1e24), so isFinite passes it — but the value is past
+    // Number.MAX_SAFE_INTEGER and no longer an exactly representable dollar amount, the same
+    // overflow rule text.ts's parseDecimalInt applies to every count/position input. The
+    // setter's own check (checkDailyBudgetUsd) admits any finite non-negative number, so
+    // without this bound a one-zero typo in the TUI's cap editor silently writes an
+    // effectively uncapped budget. Regression: parseBudgetInput returned { ok: true,
+    // value: 1e24 } on the unfixed tree.
+    "9".repeat(25),
   ]) {
     const r = parseBudgetInput(bad);
     assert.equal(r.ok, false, bad);

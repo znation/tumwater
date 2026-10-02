@@ -134,11 +134,15 @@ export function parseBudgetInput(
   // Plain decimal dollars only — Number() would also read hex ("0x10" → 16) and finite
   // exponent notation ("1e2" → 100) as a cap, neither of which an operator means when typing
   // a USD amount; the GUI's number input + server check already admit plain decimals, so both
-  // surfaces share one rule. The isFinite backstop catches absurd digit counts (→ Infinity).
+  // surfaces share one rule. The MAX_SAFE_INTEGER bound is the same overflow rule text.ts's
+  // parseDecimalInt applies to every count/position input: a 25-digit run stays finite (1e24)
+  // yet is no longer an exactly representable dollar amount, and checkDailyBudgetUsd (the
+  // setter's own screen) admits any finite non-negative number — without this bound a
+  // one-zero typo silently writes an effectively uncapped budget.
   if (!/^\d*\.?\d+$/.test(t))
     return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
   const n = Number(t);
-  if (!Number.isFinite(n) || n < 0)
+  if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER)
     return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
   return { ok: true, value: n };
 }
