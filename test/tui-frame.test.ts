@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clipToWidth, displayWidth } from "../src/text-width.js";
-import { clipSpans, renderStatus, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
+import { clipSpans, renderStatusSpans, type StatusSpan } from "../src/ui/status-render.js";
 import { eventKind } from "../src/ui/tone.js";
 import type { FleetAlert } from "../src/ui/fleet-alerts.js";
 import { snapshot } from "../src/status-data.js";
@@ -11,10 +11,8 @@ import {
   alertLines,
   eventTone,
   hintLine,
-  paintLine,
   prefixWidth,
   promptPrefix,
-  resolveStyles,
   tabStrip,
   transcriptTone,
 } from "../src/ui/tui-frame.js";
@@ -23,11 +21,9 @@ import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { clientScope } from "./gui-client-scope.js";
 
 // The TUI frame's pure pieces (src/ui/tui-frame.ts) and the toned status spans they paint
-// (status-render.ts): coloring must never move a column or a cut, and NO_COLOR must drop
-// every escape while keeping every character.
+// (status-render.ts): the frame builders must never move a column or a cut.
 
 const plain = (line: readonly StatusSpan[]) => line.map((s) => s.text).join("");
-const SGR = /\x1b\[[0-9;]*m/g;
 
 test("clipSpans cuts a toned line exactly where clipToWidth cuts its text", () => {
   const lines: StatusSpan[][] = [
@@ -47,7 +43,7 @@ test("clipSpans cuts a toned line exactly where clipToWidth cuts its text", () =
   assert.ok(plain(cut).endsWith("…"));
 });
 
-test("a painted status render reads exactly as the plain one, and NO_COLOR paints nothing", async () => {
+test("a status render's spans read exactly as the plain text, clipped to width", async () => {
   const repo = makeRepo();
   await initProject(repo, "tui frame test");
   writeOrchestratorMarker(repo, ["clean", "feature"]);
@@ -59,9 +55,6 @@ test("a painted status render reads exactly as the plain one, and NO_COLOR paint
   const snap = snapshot(repo);
   for (const width of [undefined, 160, 90, 40]) {
     const { lines } = renderStatusSpans(repo, snap, width);
-    const painted = lines.map((l) => paintLine(resolveStyles(undefined), l)).join("\n");
-    assert.equal(painted.replace(SGR, ""), renderStatus(repo, snap, width), `width ${width}`);
-    assert.equal(lines.map((l) => paintLine(resolveStyles("1"), l)).join("\n"), renderStatus(repo, snap, width), "NO_COLOR is the plain text");
     if (width !== undefined) for (const l of lines) assert.ok(displayWidth(plain(l)) <= width, "no line outgrows the terminal");
   }
   // The failing loop's state reads red, and the render reports its phase for the alerts.

@@ -1,5 +1,4 @@
-/** The pieces of a TUI frame, pure so they test without a terminal: the run's styles and the
- * painter that turns toned status spans (status-render.ts) into escape-coded text; the
+/** The pieces of a TUI frame, pure so they test without a terminal: the
  * attention lines under the header (fleet-alerts.ts's fleetAlerts — the dashboard's alert banners,
  * one line each); the view tab strip; the per-view key hints; the prompt line's target; and
  * the tones of activity and transcript lines. The TUI shares the dashboard's vocabulary — the
@@ -11,51 +10,6 @@ import { eventResult } from "../event-format.js";
 import { eventKind, resultTone, type Tone } from "./tone.js";
 import type { FleetAlert } from "./fleet-alerts.js";
 import { displayWidth } from "../text-width.js";
-
-/** The run's escape codes: attributes plus one foreground color per tone. */
-interface TuiStyles {
-  bold: string;
-  dim: string;
-  reset: string;
-  tones: Record<Tone | "brand" | "bold", string>;
-}
-
-const STYLED: TuiStyles = {
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  reset: "\x1b[0m",
-  tones: {
-    blue: "\x1b[34m",
-    red: "\x1b[31m",
-    yellow: "\x1b[33m",
-    green: "\x1b[32m",
-    cyan: "\x1b[36m",
-    magenta: "\x1b[35m",
-    dim: "\x1b[2m",
-    bold: "\x1b[1m",
-    brand: "\x1b[1;36m",
-  },
-};
-
-const PLAIN: TuiStyles = {
-  bold: "",
-  dim: "",
-  reset: "",
-  tones: { blue: "", red: "", yellow: "", green: "", cyan: "", magenta: "", dim: "", bold: "", brand: "" },
-};
-
-/** Resolve a run's styles from the NO_COLOR convention (no-color.org): a set, non-empty
- * variable drops every color and attribute — dim text is unreadable on some terminals and
- * color is invisible to screen readers — while the layout stays the same. Resolved per run
- * (not at module load) so a test can flip the environment between runs. */
-export function resolveStyles(noColor: string | undefined): TuiStyles {
-  return noColor !== undefined && noColor !== "" ? PLAIN : STYLED;
-}
-
-/** One line of toned spans as terminal text: each toned span wrapped in its color and a reset. */
-export function paintLine(s: TuiStyles, line: readonly StatusSpan[]): string {
-  return line.map((sp) => (sp.tone && s.tones[sp.tone] ? `${s.tones[sp.tone]}${sp.text}${s.reset}` : sp.text)).join("");
-}
 
 /** A plain line clipped to the pane, in one tone. */
 export function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {

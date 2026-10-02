@@ -10,9 +10,8 @@ import { Box, Text, useInput } from "ink";
 import type { StatusLine, StatusSpan } from "./status-render.js";
 import { inkKeyToReadline, type TuiKeys } from "./tui-keys.js";
 
-/** A span tone's ink color: the same hues the CLI's ANSI painting (tui-frame.ts's
- * paintLine) gives them, as ink color names — dim reads as gray, bold as bright white,
- * and the brand mark as bright cyan. */
+/** A span tone's ink color: dim reads as gray, bold as bright white, and the brand mark as
+ * bright cyan — the same hues the pre-ink ANSI painter used for the same tones. */
 const TONE_COLORS: Record<NonNullable<StatusSpan["tone"]>, string> = {
   blue: "blue",
   red: "red",
