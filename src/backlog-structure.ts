@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { fenceTracker, headingMetadata } from "./backlog.js";
+import { fenceTracker, headingMetadata, sectionLines } from "./backlog.js";
 import { gitTry } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 
@@ -42,21 +42,23 @@ const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
  * not all carry a date suffix, so the same rule would misfire there. */
 export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
   const stranded: StrandedPlanEntry[] = [];
-  // A section always starts at its non-fenced `## ` heading, so a fresh tracker stays in sync
-  // with the document's fence state — the same filter entryDates scans through.
-  const fenced = fenceTracker();
-  const lines = md.split("\n").filter((line) => !fenced.inside(line));
-  let section: string | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    if (line.startsWith("## ")) {
-      section = line.slice(3).trim();
-      continue;
+  // Each `## ` section is walked through backlog.ts's sectionLines — the single home of
+  // "where a section starts and ends", shared with entryDates' readers — so this scanner and
+  // the entry readers can never disagree about the boundary. Walking the section titles in
+  // file order (each occurrence once) keeps the output in document order, the same order the
+  // whole-document walk it replaced produced. Inside a section, the fence filter matches
+  // entryDates': a fenced `### ` line is quoted content, never an entry.
+  for (const section of sectionTitles(md)) {
+    if (section !== "Planned" && section !== "Done") continue;
+    const fenced = fenceTracker();
+    const lines = sectionLines(md, section).filter((line) => !fenced.inside(line));
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      if (!line.startsWith("### ")) continue;
+      const { text } = headingMetadata(lines, i);
+      if (section === "Done" ? PLANNED_DATE.test(text) && !DONE_DATE.test(text) : DONE_DATE.test(text))
+        stranded.push({ title: line.slice(4).trim(), section });
     }
-    if ((section !== "Planned" && section !== "Done") || !line.startsWith("### ")) continue;
-    const { text } = headingMetadata(lines, i);
-    if (section === "Done" ? PLANNED_DATE.test(text) && !DONE_DATE.test(text) : DONE_DATE.test(text))
-      stranded.push({ title: line.slice(4).trim(), section });
   }
   return stranded;
 }

@@ -64,9 +64,9 @@ export function fenceTracker(): { inside(line: string): boolean } {
  * `## ` line inside a fenced code block (entries quote markdown templates and shell traces) is
  * body content, never a boundary. The single home of "where a section starts and ends" — every
  * reader of a `## ` section (backlog entry parsing here, the usage report's Done/Fixed date
- * scan in src/report-data.ts) walks its section through this, so two independent readers can
- * never disagree about the boundary. */
-function sectionLines(md: string, sectionTitle: string): string[] {
+ * scan in src/report-data.ts, and backlog-structure.ts's strandedPlanEntries) walks its
+ * section through this, so independent readers can never disagree about the boundary. */
+export function sectionLines(md: string, sectionTitle: string): string[] {
   const lines: string[] = [];
   let inSection = false;
   const fenced = fenceTracker();
