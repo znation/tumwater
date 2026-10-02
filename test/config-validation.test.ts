@@ -560,18 +560,37 @@ test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and reject
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organiz: 1 } }),
     /maxDailyCostUsdPerRole\.organiz is not a known role \(valid ids: /,
   );
-  // The value shapes: negative, non-numeric, and non-finite each fail with the wording.
+  // The value shapes: negative, non-numeric, and non-finite each fail with the wording
+  // (which also carries the MAX_SAFE_INTEGER bound, so the old bare-wording assertions
+  // were updated when the bound was added).
+  const perRoleWhat = `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables`;
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: -1 } }),
-    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got -1\)/,
+    new RegExp(perRoleWhat + `; got -1\\)`),
   );
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: "1" } }),
-    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got "1"\)/,
+    new RegExp(perRoleWhat + `; got "1"\\)`),
   );
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: Number.POSITIVE_INFINITY } }),
-    /maxDailyCostUsdPerRole\.organize must be a number of 0 or more \(0 disables; got Infinity\)/,
+    new RegExp(perRoleWhat + `; got Infinity\\)`),
+  );
+});
+
+test("maxDailyCostUsdPerRole rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
+  // BUGS.md 2026-10-02: the per-role sibling of the fixed maxDailyCostUsd gap — 1e24 is
+  // finite, so the old non-finite/negative rule admitted it, and a one-zero typo in a
+  // per-role cap wrote an effectively uncapped budget for that role.
+  assert.match(
+    validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: 1e24 } }),
+    new RegExp(
+      `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables; got 1e\\+24\\)`,
+    ),
+  );
+  assert.equal(
+    validateConfig({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: Number.MAX_SAFE_INTEGER } }),
+    undefined,
   );
 });
 

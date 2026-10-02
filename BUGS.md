@@ -15,6 +15,12 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### The per-role daily-cap rule accepts a finite-but-unrepresentable dollar cap: validateConfig's maxDailyCostUsdPerRole values admitted any finite non-negative number, so a one-zero typo in a per-role cap (`{"maxDailyCostUsdPerRole": {"qa": 1e24}}` via `config set` or /api/config-set) wrote an effectively uncapped budget for that role — the sibling surface the same-day maxDailyCostUsd fix left open (repro: validationError({...defaultConfig(), maxDailyCostUsdPerRole: {organize: 1e24}}) returned undefined on the unfixed tree) (found by bugfix loop 2026-10-02 latent-bug hunt over cf633522's own fixed entry, fixed 2026-10-02 by bugfix loop)
+
+- **Symptom:** `config set maxDailyCostUsdPerRole.qa 1e24` and the GUI's /api/config-set silently accepted it — finite, so the isFinite-era screen passed it — leaving that role with no effective daily cap, while the fleet cap fix cf633522 bounded only maxDailyCostUsd.
+- **Fix:** validateConfig's maxDailyCostUsdPerRole value check (src/config-validation.ts) now rejects values above Number.MAX_SAFE_INTEGER with the bound named — the same DOLLAR_CAP boundary maxDailyCostUsd enforces; role-cap-gates' runtime isFinite guard still passes any written value through, so the config gate is the one screen.
+- **Validation gap:** none — a targeted failing test over the unfixed tree reproduced the acceptance (validateConfig returned undefined for 1e24), and it fails by construction without the fix.
+
 ### The GUI's budget endpoints accept a finite-but-unrepresentable dollar cap: /api/budget's shared screen checkDailyBudgetUsd and validateConfig's maxDailyCostUsd rule both admitted any finite non-negative number, so a one-zero typo in the browser's budget badge editor or the Settings view (`{"maxDailyCostUsd": 1e24}`) wrote an effectively uncapped daily budget — exactly the overflow the same-day TUI fix 27d5a5b1 closed in parseBudgetInput but deliberately left open on the server surfaces it shares that screen with (repro: checkDailyBudgetUsd(1e24) returned null and validateConfig({maxDailyCostUsd:1e24}) returned undefined on the unfixed tree) (found by bugfix loop 2026-10-02 latent-bug hunt over 27d5a5b1's own RISK note, fixed 2026-10-02 by bugfix loop)
 
 - **Symptom:** the browser's /api/budget editor and /api/config-set (and the CLI's `config set maxDailyCostUsd`) silently accepted 1e24 — finite, so the isFinite-era screen passed it — disabling the daily spend cap from a single mistyped zero.

@@ -431,9 +431,17 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     } else {
       for (const [id, cap] of Object.entries(caps)) {
         if (!checkKnownRoleId("maxDailyCostUsdPerRole", id, customNames, problems)) continue;
-        if (typeof cap !== "number" || !Number.isFinite(cap) || cap < 0)
+        // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md
+        // 2026-10-02): a finite-but-unrepresentable per-role cap is an effectively
+        // uncapped budget for that role.
+        if (
+          typeof cap !== "number" ||
+          !Number.isFinite(cap) ||
+          cap < 0 ||
+          cap > Number.MAX_SAFE_INTEGER
+        )
           problems.push(
-            `maxDailyCostUsdPerRole.${id} must be a number of 0 or more (0 disables; got ${show(cap)})`,
+            `maxDailyCostUsdPerRole.${id} must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} (0 disables; got ${show(cap)})`,
           );
       }
     }
