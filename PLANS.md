@@ -7,48 +7,80 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The TUI moves to ink, part 2/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director; requires part 1/3 landed)
+### The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 1/3 landed)
 
-**Needs review 2026-10-02 by feature: too large for one run** — the handler to port is a
-~280-line closure over ~15 mutable locals (input, cursor, budgetMode, view, selection, scroll
-and pane-cache state, prompt history) that runTui's own render step reads back to assemble
-each frame; a faithful port has to re-home that shared state (or split it), rewire every
-branch through a TuiActions callback surface, and re-verify the key-driven tests against
-ink's stdin parsing. Note: the code anchors have drifted — the module is src/ui/tui.tsx
-(not tui.ts) since part 1/3.
+Split from the original part 2/3 (which a feature run found too large for one run): the
+~280-line keypress handler is first extracted *as-is*, with no framework change, so the ink
+swap in 2b/3 becomes a small, mechanical step.
 
-**Goal.** Complete the framework adoption on the input side: the ~280-line readline keypress
-handler inside src/ui/tui.ts's `runTui` (the `stdin.on("keypress", …)` block at :342 and the
-manual `emitKeypressEvents`/`setRawMode`/`resume` setup at :330–:332) is replaced by ink's
-`useInput` inside the component tree, leaving tui.ts with only data polling and state assembly.
+**Goal.** A pure refactor: the readline keypress handler inside src/ui/tui.tsx's `runTui`
+(the `stdin.on("keypress", …)` block and its `emitKeypressEvents`/`setRawMode` setup) moves
+into a new framework-free module src/ui/tui-keys.ts, still driven by the same readline event.
+Behavior is byte-identical; ink's rendering path (part 1/3, src/ui/tui-app.tsx) is untouched.
 
 **Approach.**
-1. **src/ui/tui-app.tsx:** add a `useTuiKeys` hook that wraps ink's `useInput` and dispatches to
-   the *same pure logic* the handler calls today: `applyKey`, `parseBudgetInput`,
-   `parseRolePromptInput`, and the `PromptHistory` functions (`newPromptHistory`,
-   `pushPromptHistory`, `recallPromptHistory`, `settlePromptRecall`, `resetPromptRecall`) from
-   src/ui/tui-input.ts — those are framework-independent and keep their signatures. The tab
-   switching, force-restart, abort, and view-mode branches port verbatim into the hook, calling
-   back into `runTui`'s actions through callback props (a `TuiActions` type passed to `TuiApp`)
-   so the data loop in tui.ts stays the single owner of effects.
-2. **src/ui/tui.ts:** delete the readline keypress block and the raw-mode setup; pass `stdin`
-   into ink's `render` options and set `exitOnCtrlC: false` so the existing quit key keeps
-   exiting through the same cleanup path.
-3. **src/ui/tui-input.ts:** retire only what ink's parsed key object supersedes (the raw
-   `KeyLike` keystroke decoding for input ink now parses); the pure edit/history/parsing functions
-   above stay and keep their tests.
-4. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts drive
-   keys through the injected stdin ink reads (same fake, now consumed by ink's input parser);
-   test/tui-input.test.ts keeps its pure-logic cases minus any asserting raw decoding.
+1. **src/ui/tui-keys.ts (new):** export a `createTuiKeys(deps)` factory owning the handler's
+   mutable locals today scattered through `runTui` — `input`/`cursor`, budget-mode
+   (`budgetMode`, `savedInput`, `savedCursor`), role-prompt mode (`rolePromptFor` and its saved
+   pair), `promptHistory`, `currentCapUsd`/`currentBudgetFree`, flash (`flash`/`flashUntil` and
+   the `flashMessage`/`flashError` helpers), `view`, `selectedEntry`/`entryScroll`,
+   `paneCache`/`paneScroll`, `eventBudget`/`entryBudget`, `roleIds` — plus the keypress
+   dispatch (`applyKey`, `parseBudgetInput`, `parseRolePromptInput`, the `PromptHistory`
+   functions from src/ui/tui-input.ts, all imported unchanged). The factory takes a deps
+   object: the actions it calls out of the handler today (quit/pause/abort/restart, prompt
+   submission, config write) and the getters render feeds it (snapshot data, pane bodies,
+   budgets). It exposes the readers `runTui`'s render step needs (`inputLine`, `view`,
+   `selectedEntry`, scrolls, flash, budget mode state) so render assembles the same frame.
+2. **src/ui/tui.tsx:** `runTui` constructs the handler with its real deps and passes the
+   handlers to `stdin.on("keypress", …)`; every `render()` call the old branches made becomes
+   a `requestRender` callback dep. No behavioral edit anywhere; delete nothing else.
+3. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts pass
+   unchanged (same readline seam). Add test/tui-keys.test.ts driving the factory directly —
+   at minimum one case per handler family: prompt editing via `applyKey`, budget mode open/
+   save/cancel, role-prompt mode, history recall, view cycling and paging, flash expiry.
 
 **Acceptance criteria.**
-- `grep readline src/ui/tui.ts` finds nothing; no manual `setRawMode` outside ink's own setup.
+- `git diff` shows no change to key behavior: all existing key-driven tests pass unmodified.
+- `grep -n 'keypress\|applyKey\|budgetMode' src/ui/tui.tsx` shows only the construction and the
+  single `stdin.on("keypress", …)` call delegating to the factory; the handler body lives in
+  src/ui/tui-keys.ts.
+- test/tui-keys.test.ts exercises the factory without a terminal or a readline event emitter.
+- `npm run test` is green.
+
+### The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 2a/3 landed)
+
+The second half of the split part 2/3: with the handler already framework-free in
+src/ui/tui-keys.ts (2a), this step only swaps who feeds it keys.
+
+**Goal.** Replace the readline keypress path in src/ui/tui.tsx with ink's input parsing:
+`useInput` inside the component tree dispatches to the extracted handler, leaving tui.tsx with
+only data polling and state assembly.
+
+**Approach.**
+1. **src/ui/tui-app.tsx:** add a `useTuiKeys` hook wrapping ink's `useInput` that maps ink's
+   parsed input object to the shape the 2a handler consumes (ink's `key.*` flags and `input`
+   char → the readline `str`/`key` pair, a small pure adapter in src/ui/tui-keys.ts so it is
+   unit-testable), then calls the factory's dispatch. Set `exitOnCtrlC: false` in the `render`
+   options so the existing quit key keeps exiting through the same cleanup path; pass `stdin`
+   into `render` so ink claims the injected stream tests already provide.
+2. **src/ui/tui.tsx:** delete the `emitKeypressEvents`/`setRawMode` setup and the
+   `stdin.on("keypress", …)` block; restore raw mode only through ink's own lifecycle.
+3. **src/ui/tui-input.ts:** retire only what ink's parsed key object supersedes (the raw
+   `KeyLike` keystroke decoding); the pure edit/history/parsing functions stay and keep their
+   tests.
+4. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts drive
+   keys through the injected stdin ink reads (same fake, now consumed by ink's input parser);
+   test/tui-input.test.ts keeps its pure-logic cases minus any asserting raw decoding; the
+   adapter gets direct cases in test/tui-keys.test.ts.
+
+**Acceptance criteria.**
+- `grep readline src/ui/tui.tsx` finds nothing; no manual `setRawMode` outside ink's own setup.
 - All key behaviors the existing tests pin — tab switching, prompt editing (incl. the astral
   surrogate-pair cursor rules in `applyKey`), budget and role-prompt input, history recall,
   quit — pass unchanged.
 - `npm run test` is green.
 
-### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2/3 landed)
+### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2b/3 landed)
 
 **Goal.** After parts 1–2 the ink port is the only TUI path; this part removes what it made dead
 and fixes every claim that the project has zero runtime dependencies.
