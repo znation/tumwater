@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { BuildInfo } from "../src/build-info.js";
 import {
+  captureStartupBuild,
   createReloadWatch,
   DASHBOARD_CHILD_ENV,
   reexecSelf,
@@ -9,6 +10,7 @@ import {
   type ReloadChild,
   type ReloadSpawn,
 } from "../src/ui/self-reload.js";
+import { readBuildInfo } from "../src/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
 import { sleep } from "./wait.js";
@@ -281,6 +283,139 @@ test("createReloadWatch survives a failed self-hosted check: it un-latches and f
     assert.equal(fired, 1, "recovery fires on the same stamp the failed checks kept seeing");
     await sleep(20);
     assert.equal(fired, 1, "still one-shot after a rejected check");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("captureStartupBuild returns this process's own stamp, or null without one", () => {
+  // gui.ts and tui.ts both call this at startup; its contract is a thin pass-through to
+  // readBuildInfo, and the watch's whole gate keys off what it returns.
+  const info = captureStartupBuild();
+  if (info === null) return; // running outside a built tree is legitimate
+  assert.equal(typeof info.sha, "string");
+  assert.deepEqual(info, readBuildInfo(), "the startup stamp is exactly the on-disk stamp at boot");
+});
+
+test("createReloadWatch uses its own dist stamp when readDisk is not injected", async () => {
+  // The seam default is what production runs: the watch polls this process's real dist. With a
+  // startup stamp that differs from it, the watch asks the gate about the REAL on-disk stamp —
+  // proving the default reader supplied it — and refuses to fire onto a stamp naming no commit.
+  const asked: string[] = [];
+  let fired = 0;
+  const real = readBuildInfo();
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("aaaa"),
+    isSelfHostedImpl: async (_root, info) => {
+      asked.push(info.sha);
+      return false; // not resolvable here, so the watch never fires whatever it reads
+    },
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start();
+    await sleep(30);
+    assert.equal(fired, 0);
+    if (real !== null) {
+      assert.ok(asked.includes(real.sha), "the default reader fed the real dist stamp to the gate");
+      assert.equal(asked.filter((s) => s === real.sha).length, 1,
+        "the same default-read stamp is asked about once, like any other stamp");
+    }
+  } finally {
+    watch.stop();
+  }
+});
+
+test("createReloadWatch stays quiet while the on-disk stamp is missing", async () => {
+  // Between a redeploy's swaps the stamp can briefly vanish; that is not a newer build.
+  let disk: BuildInfo | null = stamp("a");
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => disk,
+    isSelfHostedImpl: async () => {
+      throw new Error("the gate must not be asked without a disk stamp");
+    },
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    await watch.start();
+    disk = null;
+    await sleep(30);
+    assert.equal(fired, 0, "a vanished stamp fires nothing");
+    disk = stamp("b");
+    await sleep(30);
+    assert.equal(fired, 1, "the watch is alive again once a stamp reappears");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("createReloadWatch never arms its interval when stopped during the startup gate", async () => {
+  // start() awaits the gate, then checks stopped; a stop that lands inside the gate must leave
+  // no timer behind — the returned object is dead the moment stop() was called.
+  const deferred: Array<() => void> = []; // one resolver per isSelfHosted call: [gate, polls...]
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => stamp("b"),
+    isSelfHostedImpl: () => new Promise<boolean>((resolve) => {
+      deferred.push(() => resolve(true));
+    }),
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    const starting = watch.start();
+    assert.equal(deferred.length, 1, "the gate is the first self-hosted call");
+    watch.stop();
+    deferred[0]?.(); // let the gate settle onto a stopped watch
+    await starting;
+    await sleep(30);
+    assert.equal(fired, 0, "a watch stopped inside its gate never polls, never fires");
+  } finally {
+    watch.stop();
+  }
+});
+
+test("createReloadWatch ignores an in-flight check that settles after stop", async () => {
+  // stop() must win over a check that is already in flight: when the pending self-hosted
+  // promise later resolves "yes", the stopped watch neither fires nor restarts its interval.
+  const deferred: Array<() => void> = []; // one resolver per isSelfHosted call: [gate, polls...]
+  let fired = 0;
+  const watch = createReloadWatch({
+    root: "/r",
+    startupInfo: stamp("a"),
+    readDisk: () => stamp("b"),
+    isSelfHostedImpl: () => new Promise<boolean>((resolve) => {
+      deferred.push(() => resolve(true));
+    }),
+    intervalMs: 5,
+    onTrigger: () => {
+      fired++;
+    },
+  });
+  try {
+    const starting = watch.start();
+    deferred[0]?.(); // the gate passes; the interval arms
+    await starting;
+    await sleep(10); // the first poll's check is now in flight
+    assert.equal(deferred.length, 2, "the first poll asked the gate");
+    watch.stop();
+    deferred[1]?.(); // the in-flight check settles "yes" onto a stopped watch
+    await sleep(30);
+    assert.equal(fired, 0, "a check that settles after stop never fires the reload");
   } finally {
     watch.stop();
   }
