@@ -12,7 +12,7 @@
 import fs from "node:fs";
 
 import { execFileAsync } from "./process.js";
-import { psEnvironTable, runMarkersInEnviron, runMarkersInPs } from "./run-marker.js";
+import { psEnvironTable, readProcEnvironEntries, runMarkersInEnviron, runMarkersInPs } from "./run-marker.js";
 
 /** One row of the host's process table. `etime` (wall-clock since start) and `time`
  * (cumulative CPU) stay ps's own strings: BSD and procps format them differently, and the one
@@ -166,11 +166,10 @@ export const systemProcessProbe: ProcessProbe = {
       const marks = new Map<number, string[]>();
       for (const pid of pids) {
         if (pid === process.pid) continue;
-        try {
-          const values = runMarkersInEnviron(fs.readFileSync(`/proc/${pid}/environ`).toString("utf8").split("\0"));
+        const entries = readProcEnvironEntries(pid);
+        if (entries) {
+          const values = runMarkersInEnviron(entries);
           if (values.length > 0) marks.set(pid, values);
-        } catch {
-          // Exited meanwhile, or another user's process: absent, per the contract.
         }
       }
       return marks;

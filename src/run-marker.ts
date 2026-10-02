@@ -117,6 +117,18 @@ export function procEnvironCarriesMarker(entries: string[], marker: string): boo
   );
 }
 
+/** One `/proc/<pid>/environ` read as its NUL-separated `VAR=value` entry list, or null when
+ * the read fails (exited meanwhile, or another user's process: absent, per the contract).
+ * The shared read for both Linux marker readers — run-marker's pid sweep and
+ * process-table's runMarkers — so neither re-stakes the ENOENT-tolerance contract. */
+export function readProcEnvironEntries(pid: number): string[] | null {
+  try {
+    return fs.readFileSync(`/proc/${pid}/environ`).toString("utf8").split("\0");
+  } catch {
+    return null;
+  }
+}
+
 /** Every same-user process whose environment names `marker`. */
 async function findMarkedPids(marker: string): Promise<number[]> {
   if (process.platform === "linux") {
@@ -125,12 +137,8 @@ async function findMarkedPids(marker: string): Promise<number[]> {
       if (!/^\d+$/.test(name)) continue;
       const pid = Number(name);
       if (pid === process.pid) continue;
-      try {
-        const environ = fs.readFileSync(`/proc/${pid}/environ`).toString("utf8");
-        if (procEnvironCarriesMarker(environ.split("\0"), marker)) pids.push(pid);
-      } catch {
-        // Exited since the readdir, or another user's process: absent, per the contract.
-      }
+      const environ = readProcEnvironEntries(pid);
+      if (environ && procEnvironCarriesMarker(environ, marker)) pids.push(pid);
     }
     return pids;
   }
