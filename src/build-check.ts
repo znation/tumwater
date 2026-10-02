@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck, detectBuildCheck, gateCommandOf } from "./build-check-detect.js";
 import { logEvent, warnEvent } from "./events.js";
 import {
@@ -53,11 +55,15 @@ import type { CheckConfigSlice } from "./config-schema.js";
 
 /** Why a declared check reached no verdict: the script never finished (timeout), the script
  * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
- * 2026-09-23), npm is not on PATH, or the toolchain below the project is broken. Shared with
+ * 2026-09-23), npm is not on PATH, the toolchain below the project is broken, or the run's
+ * only unresolvable modules are dependencies the worktree's own package.json declares but no
+ * install provides (missing-install — BUGS.md 2026-10-01: a dependency-adding change is
+ * deterministically rejected before the reviewer ever sees it, because the gate check runs in
+ * a worktree that walks UP to a root install predating the new package). Shared with
  * main-baseline.ts's MainBaselineCheck, whose skip is the same environmental case family — the
  * string literals live in one place so a new reason can be added without two unions drifting
  * apart. */
-export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain";
+export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "missing-install";
 
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
  * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
@@ -92,6 +98,9 @@ export interface BuildCheckOutcome {
    * output on passed and failed outcomes — absent when the check printed no such block. The
    * harness attests these so no model has to restate them (PLANS.md 2026-09-29). */
   counts?: TestCounts;
+  /** On a "missing-install" skip: the unresolved modules the output named, all declared by the
+   * worktree's package.json — the warning and the reviewer's frame report them by name. */
+  missingModules?: string[];
 }
 
 /** When one check's process group actually ran, as runScriptGroup observed it: carried on
@@ -257,6 +266,17 @@ export async function runBuildCheck(
     if (toolchainErrorInOutput(output)) {
       return { status: "skipped", script, skipReason: "toolchain", run };
     }
+    // A failed run whose ONLY unresolvable modules are dependencies the worktree's own
+    // package.json declares is not a verdict about the tree: node_modules is gitignored, the
+    // check's toolchain resolves by walking UP from wt, and no loop ever installs — so a
+    // legitimate dependency-adding change is rejected before the reviewer sees it (BUGS.md
+    // 2026-10-01). Environmental: skip and proceed to the review, which judges the change on
+    // its merits; a module the diff does NOT declare still fails here (a typo'd import is a
+    // defect, not weather). The declared-dependencies read is best-effort: an unreadable or
+    // dep-less package.json means no classification is owed.
+    const missing = missingInstallModules(output, wt);
+    if (missing)
+      return { status: "skipped", script, skipReason: "missing-install", run, missingModules: missing };
     return {
       status: "failed",
       script,
@@ -267,6 +287,58 @@ export async function runBuildCheck(
   }
   // Spawn failed before anything ran — the runner is missing from PATH.
   return { status: "skipped", script, skipReason: "no-npm" };
+}
+
+/** Package names the output names as unresolvable — tsc's TS2307 (`Cannot find module 'react'`)
+ * and node's own resolver share the phrase. Bare names only: relative and absolute specifiers
+ * and node: builtins say nothing about an install. A subpath import collapses to its package
+ * (`react/jsx-runtime` → `react`) and a scoped package keeps its scope. */
+export function unresolvedModulesInOutput(output: string): string[] {
+  const names = new Set<string>();
+  for (const m of output.matchAll(/Cannot find module ['"]([^'"]+)['"]/g)) {
+    const spec = m[1];
+    if (!spec) continue;
+    if (spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("node:")) continue;
+    const segs = spec.split("/");
+    const first = segs[0];
+    if (!first) continue;
+    const second = segs[1];
+    names.add(first.startsWith("@") && second ? `${first}/${second}` : first);
+  }
+  return [...names];
+}
+
+/** The dependency names the worktree's package.json declares (dependencies, devDependencies,
+ * peerDependencies, optionalDependencies), or null when none are readable — a missing,
+ * unparseable, or dep-less manifest means no missing-install classification is owed. */
+function declaredDependencies(wt: string): Set<string> | null {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(wt, "package.json"), "utf8"));
+    const deps = new Set<string>();
+    for (const key of [
+      "dependencies",
+      "devDependencies",
+      "peerDependencies",
+      "optionalDependencies",
+    ])
+      for (const name of Object.keys(pkg[key] ?? {})) deps.add(name);
+    return deps.size > 0 ? deps : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The worktree's declared dependencies that the run output could not resolve — non-empty only
+ * when the output names unresolvable modules and EVERY one of them is a dependency the
+ * worktree's own package.json declares, the exact missing-install shape (BUGS.md 2026-10-01).
+ * One undeclared module anywhere in the failure means a genuine defect: no classification. */
+function missingInstallModules(output: string, wt: string): string[] | null {
+  const unresolved = unresolvedModulesInOutput(output);
+  if (unresolved.length === 0) return null;
+  const declared = declaredDependencies(wt);
+  if (!declared) return null;
+  if (!unresolved.every((name) => declared.has(name))) return null;
+  return unresolved;
 }
 
 // ── Process-wide check cap ────────────────────────────────────────────────────────────────
@@ -411,6 +483,7 @@ export async function runScopedBuildCheck(
           ? { signal: outcome.killedBy, durationMs }
           : undefined,
         outcome.run,
+        outcome.missingModules,
       ),
     );
   } else if (unverifiedSkip) {

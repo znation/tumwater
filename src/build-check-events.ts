@@ -112,7 +112,8 @@ export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: Bui
  * wall-clock, not the timeout bound — and a signal-less form otherwise, so the warning never
  * again names a timeout that did not fire. A "timeout" skip names the bound the run was armed
  * with, and when the caller passes the run and its deadline fired late, the time it really
- * fired at (timedOutPhrase). */
+ * fired at (timedOutPhrase). A "missing-install" skip names the unresolvable modules the
+ * caller's outcome recorded, so the warning says which dependencies no install provides. */
 export function buildCheckSkipWarning(
   skipReason: BuildSkipReason,
   label: string,
@@ -120,9 +121,12 @@ export function buildCheckSkipWarning(
   timeoutMs: number,
   killed?: { signal: string; durationMs: number },
   run?: BuildCheckRun,
+  missingModules?: string[],
 ): string {
   if (skipReason === "no-npm") return `no npm on PATH; skipping ${label}`;
   if (skipReason === "toolchain") return `the toolchain is broken; skipping ${label}; ${proceeding}`;
+  if (skipReason === "missing-install")
+    return `the unresolvable modules (${(missingModules ?? []).join(", ")}) are dependencies the tree declares but no install provides; skipping ${label}; ${proceeding}`;
   if (skipReason === "killed") return killedPhrase(label, killed, proceeding);
   return `${label} ${timedOutPhrase(timeoutMs, run)}; ${proceeding}`;
 }
