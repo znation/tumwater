@@ -21,7 +21,7 @@ import { shortSha } from "../src/text.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, withPi } from "./fake-pi.js";
+import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
@@ -638,6 +638,82 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     assert.ok(!fs.readFileSync(timedPrompts, "utf8").includes("Do not re-run"), "no verified result, no rule");
     assert.deepEqual(rerunWarnings(timed.root), [], "running the suite is the reviewer's job here");
   });
+});
+
+// BUGS.md 2026-10-02: the nudge turn's own tool calls are checked the same way as the review
+// run's. A reviewer that re-runs the suite even after the no-re-run nudge fails its review —
+// strike-free: the commit stays for the next landing's re-review and the discard counter never
+// advances — instead of paying a third suite run for nothing but another warning.
+const rerunCallEvents = (id: string, command: string): string[] =>
+  [
+    { type: "tool_execution_start", toolCallId: id, toolName: "bash", args: { command } },
+    { type: "tool_execution_end", toolCallId: id, result: {}, isError: false },
+  ].map((event) => `printf '%s\n' '${JSON.stringify(event)}'`);
+const RERUN_COMMAND = "cd /tmp/revrun && npm test 2>&1 | tail -15";
+
+test("a reviewer that re-runs the suite even after the no-re-run nudge fails the review, strike-free", async () => {
+  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  const prompts = path.join(tmpdir(), "prompts.log");
+  await withPi(
+    [
+      TOUCH_SESSION,
+      `${logPromptsTo(prompts)}`,
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then`,
+      ...rerunCallEvents("c2", RERUN_COMMAND),
+      `  printf '%s\n' '${assistantLine("ran the suite again; still no verdict")}'`,
+      `  exit 0`,
+      `fi; done`,
+      ...rerunCallEvents("c1", RERUN_COMMAND),
+      `printf '%s\n' '${assistantLine("I ran the suite to be sure; no verdict yet")}'`,
+    ].join("\n"),
+    async () => {
+      const { state, result } = await reviewGate(green.root, green.wt);
+      assert.equal(result.decision, "failed", "the repeat fails the review");
+      assert.match(result.detail ?? "", /repeat/, "the failure names the bound and what happens next");
+      assert.equal(state.unreviewFailures ?? 0, 0, "strike-free: a repeat is evidence about the reviewer, not the diff");
+      assert.equal(state.lastReview?.verdict, "failed");
+      assert.equal(await aheadOfMain(green.wt, "main"), 1, "the commit stays for the next re-review");
+      assert.ok(result.nudgeRun, "the nudge turn's spend rides back for folding");
+      const runs = readPromptRuns(prompts);
+      assert.equal(runs.length, 2);
+      assert.match(runs[1]!, /Do not re-run it/, "the nudge names the exact tool call");
+      const warnings = readEvents(green.root).filter((e) => e.type === "warning").map((e) => String(e.message));
+      assert.equal(
+        warnings.filter((m) => m.startsWith("reviewer re-ran the suite")).length,
+        2,
+        "the per-occurrence warning is retained for both occurrences",
+      );
+    },
+  );
+});
+
+// The nudge turn's own backend death is backend evidence, exactly like the verdict-recovery
+// follow-up's: strike-free, commit kept, and the failure named. Before the fix the dead nudge
+// bypassed the strike-free branch (followUp was null) and fed the discard ladder, so a flaky
+// backend could destroy a finished, tested commit the reviewer never judged.
+test("a no-re-run nudge that dies on the backend is strike-free and its error names the failure", async () => {
+  const green = await gateBuildFixture("buildcheck-tool --ok", "#!/bin/sh\nexit 0\n", "test");
+  await withPi(
+    [
+      TOUCH_SESSION,
+      `for a in "$@"; do if [ "$a" = "--continue" ]; then echo 'oMLX connection error: backend flake' >&2; exit 1; fi; done`,
+      ...rerunCallEvents("c1", RERUN_COMMAND),
+      `printf '%s\n' '${assistantLine("I ran the suite to be sure; no verdict yet")}'`,
+    ].join("\n"),
+    async () => {
+      const state = freshLoopState(ROLE);
+      state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it is
+      const result = await reviewAheadOfMain({ ...gateCtx(green.root, green.wt) }, state);
+      assert.equal(result.decision, "failed");
+      assert.match(result.detail ?? "", /backend flake/, "the nudge's own failure is named");
+      assert.equal(state.unreviewFailures, 1, "backend evidence, never a strike against the HEAD");
+      assert.equal(await aheadOfMain(green.wt, "main"), 1, "the commit survives for the next re-review");
+      assert.equal(state.lastReview?.verdict, "failed");
+      assert.ok(result.nudgeRun, "the failed nudge's spend still folds into the totals");
+      const events = readEvents(green.root);
+      assert.ok(!events.some((e) => e.type === "warning" && /discarding unreviewed/.test(String(e.message))));
+    },
+  );
 });
 
 // BUGS.md 2026-09-30: a pre-check whose every attempt spanned a host sleep made no verdict

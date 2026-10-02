@@ -173,6 +173,9 @@ export async function reviewPinnedChange(
   // The verdict-recovery follow-up (review.ts) charges to the same role totals as the run
   // that produced it — one more line here, because a GateResult carries two runs now.
   if (gate.followUpRun) foldUsage(gate.followUpRun);
+  // The no-re-run nudge turn (review.ts) charges to the same role totals as the run that
+  // produced it — one more line here, because a GateResult carries a third run now.
+  if (gate.nudgeRun) foldUsage(gate.nudgeRun);
 
   // Shutdown/user abort mid-review: fail closed — the ref stays and the next tick re-lands it.
   // The caller routes "aborted" through its own abort handling (which discards the pin too when
@@ -293,6 +296,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
         );
         if (gate.run) ctx.foldUsage(gate.run);
         if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
+        if (gate.nudgeRun) ctx.foldUsage(gate.nudgeRun);
         setLandingStage(ctx.root, req.role, "merging");
         saveLoopState(ctx.root, ctx.state);
         if (gate.aborted) return { verdict: "retry" };

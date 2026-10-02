@@ -170,6 +170,20 @@ one line in this form:
 followed by numbered reasons (for an approval, state what you checked and why it holds).`;
 }
 
+/** The no-re-run nudge (BUGS.md 2026-10-02): the reviewer broke the prompt's no-re-run rule
+ * despite a green pre-check, so this turn on its own session names the exact tool call and
+ * asks it to finish the review from what it already read. The reviewer's only output channel
+ * is the verdict, so the closing rule names both accepted forms like the review prompt does. */
+export function buildNoRerunPrompt(rerun: string): string {
+  return `You started a tool call the harness's pre-check already covered, so it must not run:
+  ${rerun}
+The full check passed at this exact tree before your review began. Do not re-run it — not in
+this worktree, not in a scratch copy. Finish the review now from what you have already read:
+reply with ONLY the closing block — no tool calls, no other text — one line in this form:
+  VERDICT: approve   or   VERDICT: reject
+followed by numbered reasons (for an approval, state what you checked and why it holds).`;
+}
+
 /** The note injected into a role's next tick prompt after its previous change was rejected in
  * review. Every tick starts a fresh pi session, so this is the only cross-tick memory of what
  * was built and why it failed — it carries the full reasons, not a summary of them. The whole

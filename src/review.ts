@@ -9,7 +9,7 @@ import { piLogPath, reviewSessionDir } from "./paths.js";
 import { hasResumableSession, type PiRunResult } from "./pi.js";
 import type { GateRunsPi } from "./loop-pi.js";
 import { readPrinciples } from "./prompt.js";
-import { buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
+import { buildNoRerunPrompt, buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-apply.js";
 import { saveLoopState } from "./loop-state.js";
@@ -87,6 +87,10 @@ export interface GateResult {
    * one ran — folded into the loop totals by the caller right after `run`. Absent when the
    * reviewer's own reply parsed (no follow-up needed) or there was no session to continue. */
   followUpRun?: PiRunResult;
+  /** The no-re-run nudge turn (requestNoRerun, BUGS.md 2026-10-02), when one ran — folded
+   * into the loop totals like followUpRun. Absent when the reviewer never broke the
+   * no-re-run rule (or there was no session to continue). */
+  nudgeRun?: PiRunResult;
 }
 
 /** Hard caps on the VERDICT follow-up turn: it should take one short reply on a warm session,
@@ -123,6 +127,49 @@ async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | null> {
     label: "review-verdict",
     signal: ctx.signal,
     onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
+  });
+}
+
+/** The suite-rerun nudge (BUGS.md 2026-10-02): the reviewer broke the no-re-run rule, so one
+ * tightly bounded turn on the just-finished review's session names the exact tool call and
+ * asks it to finish without re-running. Mirrors requestVerdict (same caps); `calls` collects
+ * the nudge turn's own started tool calls so the caller can detect a repeat. Null when there
+ * is no session to continue — the caller then has no repeat evidence, only the warning. The
+ * run is returned even when it failed so the caller can honor a shutdown abort and fold the
+ * spend. */
+async function requestNoRerun(
+  ctx: ReviewContext,
+  rerun: string,
+  calls: ToolCallStart[],
+): Promise<PiRunResult | null> {
+  const sessionDir = reviewSessionDir(ctx.root, ctx.role);
+  if (!hasResumableSession(sessionDir)) return null;
+  const cfg = reviewRunConfig(ctx.config);
+  return ctx.runGatePi({
+    cwd: ctx.wt,
+    prompt: buildNoRerunPrompt(rerun),
+    config: {
+      ...cfg,
+      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
+      quietTimeoutSeconds:
+        cfg.quietTimeoutSeconds > 0
+          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
+          : VERDICT_REQUEST_QUIET_S,
+    },
+    sessionDir,
+    // The whole point: continue the just-finished review's session, which already holds
+    // everything the reviewer read and concluded.
+    continueSession: true,
+    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-rerun`,
+    rawLogFile: piLogPath(ctx.root, ctx.role),
+    label: "review-rerun",
+    signal: ctx.signal,
+    onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
+    // Collected unconditionally: a nudge only runs after a detected rerun, so the no-re-run
+    // rule stood and the repeat check below needs every call the nudge started.
+    onToolCallStart: (toolName, args) => {
+      calls.push({ toolName, args });
+    },
   });
 }
 
@@ -299,15 +346,48 @@ export async function reviewAheadOfMain(
     return { decision: "failed", aborted: true, run: pi };
   }
 
+  // The bounded nudge (BUGS.md 2026-10-02): the reviewer broke the no-re-run rule despite a
+  // green pre-check, so one turn on its own session names the call and asks it to finish
+  // without re-running. A repeat on the nudge's own tool calls fails the review — strike-free,
+  // commit kept, re-reviewed under the normal path — instead of paying a third suite run.
+  let nudge: PiRunResult | null = null;
+  let nudgeRepeat: string | null = null;
+  if (rerun && pi.ok) {
+    const nudgeCalls: ToolCallStart[] = [];
+    nudge = await requestNoRerun(ctx, rerun, nudgeCalls);
+    if (nudge?.aborted) {
+      return { decision: "failed", aborted: true, run: pi, ...(nudge ? { nudgeRun: nudge } : {}) };
+    }
+    nudgeRepeat = nudge ? (suiteRerunWarning(nudgeCalls) ?? null) : null;
+    if (nudgeRepeat) {
+      warnEvent(
+        root,
+        role,
+        `${nudgeRepeat} the repeat fails this review: the commit stays, and the landing re-reviews it without a third suite run`,
+      );
+    }
+  }
+
   let verdict = parseVerdict(pi.verdictText ?? "");
+  // The nudge turn's reply can carry the verdict the review run lost — use it before spending
+  // any other recovery turn, but never on a repeat (the repeat fails the review regardless).
+  if (!verdict && nudge && !nudgeRepeat) {
+    const recovered = parseVerdict(nudge.verdictText ?? "");
+    if (recovered) {
+      verdict = recovered;
+      warnEvent(root, role, "the reviewer's reply had no VERDICT line — recovered it with the no-re-run nudge turn on its session");
+    }
+  }
   // A run that FAILED (`ok` false: transport error, failed spawn, timeout) produced no reply,
   // so no follow-up is attempted — it is evidence about the backend, and the strike-free
   // branch below keeps it that way (BUGS.md 2026-09-20). Only a run that completed and
   // replied without a parseable VERDICT earns the recovery turn: that is evidence about the
   // reviewer's output format, not about the diff, and it is as recoverable as the author
-  // side's missing SUMMARY (BUGS.md 2026-09-29).
+  // side's missing SUMMARY (BUGS.md 2026-09-29). The nudge turn is the bounded follow-up when
+  // the reviewer broke the no-re-run rule — one turn total, so a spent nudge never earns the
+  // verdict-recovery turn on top.
   let followUp: PiRunResult | null = null;
-  if (!verdict && pi.ok) {
+  if (!verdict && pi.ok && !nudge) {
     followUp = await requestVerdict(ctx);
     if (followUp?.aborted) return { decision: "failed", aborted: true, run: pi, followUpRun: followUp };
     const recovered = followUp ? parseVerdict(followUp.verdictText ?? "") : null;
@@ -316,8 +396,24 @@ export async function reviewAheadOfMain(
       warnEvent(root, role, "the reviewer's reply had no VERDICT line — recovered it with a follow-up turn on its own session");
     }
   }
+  // A repeat after the nudge (BUGS.md 2026-10-02): the reviewer re-ran the suite on the nudge
+  // turn too. Fail the review — strike-free like a dead backend (BUGS.md 2026-09-20): the
+  // commit stays for the next landing's re-review, the discard counter never advances, and no
+  // rejection is recorded against the author's diff.
+  if (nudgeRepeat) {
+    const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the landing re-reviews it under the normal path.`;
+    logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    recordReview(state, "failed", [message], head);
+    return { decision: "failed", detail: message, run: pi, ...(nudge ? { nudgeRun: nudge } : {}) };
+  }
+
   if (!verdict) {
     const followUpError = followUp && !followUp.ok ? followUp.errorMessage : undefined;
+    // The nudge turn's own death is backend evidence, exactly like the verdict-recovery
+    // follow-up's: a nudge that died with a transport error is the backend failing after the
+    // reviewer judged nothing — about the world, never about the diff — so the strike-free
+    // branch below must see it, and its error names the failure.
+    const nudgeError = nudge && !nudge.ok ? nudge.errorMessage : undefined;
     // runPi's progressing-timeout text promises what authoring ticks do — resume the session
     // and worktree. The reviewer deliberately runs a fresh session every time (no --continue)
     // and its commit simply stays on the branch (BUGS.md 2026-09-20), so the recorded failure
@@ -331,18 +427,32 @@ export async function reviewAheadOfMain(
       );
     const message = reviewTimeoutRewrite(
       followUpError ??
+        nudgeError ??
         pi.errorMessage ??
-        `no parseable VERDICT line in the reviewer's reply${followUp ? ", even after a follow-up turn on its session" : ""}`,
+        `no parseable VERDICT line in the reviewer's reply${
+          nudge
+            ? ", even after the no-re-run nudge turn on its session"
+            : followUp
+              ? ", even after a follow-up turn on its session"
+              : ""
+        }`,
     );
     logEvent(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
     // for the next tick's re-review and do not advance the per-HEAD discard counter. That
-    // holds for the review run itself (BUGS.md 2026-09-20) AND for the verdict-recovery
-    // follow-up (BUGS.md 2026-09-29): the follow-up's death is the backend failing after the
-    // reviewer had already judged nothing — evidence about the world, never about the diff.
-    if (!pi.ok || (followUp && !followUp.ok)) {
+    // holds for the review run itself (BUGS.md 2026-09-20), for the verdict-recovery
+    // follow-up (BUGS.md 2026-09-29), and for the no-re-run nudge turn (BUGS.md 2026-10-02):
+    // each one's death is the backend failing after the reviewer had already judged nothing —
+    // evidence about the world, never about the diff.
+    if (!pi.ok || (followUp && !followUp.ok) || (nudge && !nudge.ok)) {
       recordReview(state, "failed", [message], head);
-      return { decision: "failed", detail: message, run: pi, ...(followUp ? { followUpRun: followUp } : {}) };
+      return {
+        decision: "failed",
+        detail: message,
+        run: pi,
+        ...(followUp ? { followUpRun: followUp } : {}),
+        ...(nudge ? { nudgeRun: nudge } : {}),
+      };
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.
@@ -362,13 +472,14 @@ export async function reviewAheadOfMain(
       detail: message,
       run: pi,
       ...(followUp ? { followUpRun: followUp } : {}),
+      ...(nudge ? { nudgeRun: nudge } : {}),
       ...(discarded ? { discarded: true } : {}),
     };
   }
 
   if (verdict.verdict === "reject") {
     const rejected = await reject(verdict.reasons, Date.now() - reviewStartedAt);
-    return { ...rejected, run: pi, ...(followUp ? { followUpRun: followUp } : {}) };
+    return { ...rejected, run: pi, ...(followUp ? { followUpRun: followUp } : {}), ...(nudge ? { nudgeRun: nudge } : {}) };
   }
 
   // Approve: record the reviewed HEAD and discard any stray working-tree edits the reviewer
@@ -386,5 +497,5 @@ export async function reviewAheadOfMain(
     reason: verdict.reasons[0],
     durationMs: Date.now() - reviewStartedAt,
   });
-  return { decision: "approved", run: pi, verifiedHead, ...(followUp ? { followUpRun: followUp } : {}) };
+  return { decision: "approved", run: pi, verifiedHead, ...(followUp ? { followUpRun: followUp } : {}), ...(nudge ? { nudgeRun: nudge } : {}) };
 }
