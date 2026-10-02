@@ -4,10 +4,14 @@ Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
 ## Planned
+_None yet._
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The dashboard's Settings view: view and edit the curated top-level config keys live (planned 2026-10-02 by plan loop)
+
+## Done
+
+### The dashboard's Settings view: view and edit the curated top-level config keys live (planned 2026-10-02 by plan loop, done 2026-10-02 by feature)
 
 **Goal.** The GUI can steer the fleet (pause, wake, abort, budget, prompts) but cannot see or
 change any other setting: model, provider, quiet hours, the notify hook, and the fleet-wide
@@ -44,10 +48,6 @@ write that live readers pick up) — so the GUI cannot drift from the CLI's rule
 - A successful edit writes tumwater.json through `setConfigKey` and the running fleet applies
   it live (same mechanism as `tumwater config set`); a failed edit leaves the file untouched.
 - `npm run test` is green.
-
-### The dashboard's Settings view: view and edit the curated top-level config keys live (planned 2026-10-02 by plan loop)
-
-## Done
 
 ### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2b/3 landed, done 2026-10-02 by feature)
 

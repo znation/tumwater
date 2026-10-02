@@ -9,7 +9,7 @@
  * concatenation. */
 export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   // view-routing:start
-  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures" };
+  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", settings: "settings-view" };
   function switchView(v) {
     if (!VIEWS[v]) v = "fleet";
     activeView = v;
@@ -24,6 +24,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (v === "history") fetchHistory();
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
+    if (v === "settings") fetchSettings();
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
   // tab refetches its data. #loop/<role> opens that loop's drawer (over Fleet on a fresh load),
@@ -44,6 +45,13 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (a && a.getAttribute("href") === location.hash) { ev.preventDefault(); switchView(location.hash.slice(1)); }
   });
 
+  // The Settings view's Save buttons: the panel's rows are plain forms, and one delegated
+  // submit listener saves the row's key (saveSetting, gui-client-settings). No per-row wiring,
+  // so rows can repaint freely.
+  document.addEventListener("submit", (ev) => {
+    const form = ev.target instanceof Element ? ev.target.closest("form.settings-row") : null;
+    if (form) { ev.preventDefault(); saveSetting(form); }
+  });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   function runAct(act, arg) {
     if (act === "loop") openLoop(arg);

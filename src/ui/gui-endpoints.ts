@@ -14,7 +14,8 @@ import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../back
 import { cancelQueuedFile, promptPreview, queueFileNameProblem } from "../inbox.js";
 import { submitPrompt } from "../inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
-import { checkDailyBudgetUsd, setDailyBudgetUsd } from "../config-write.js";
+import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config-write.js";
+import { loadConfigSafe } from "../config.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles.js";
@@ -279,6 +280,62 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
     return;
   }
   sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
+}
+
+/** The config keys the dashboard's Settings view may show and edit: the top-level settings
+ * an operator changes often from the browser. Everything else — customLoops, the per-role
+ * maps — stays CLI/director territory (the plan's curation decision, 2026-10-02). One
+ * constant so handleConfig (GET) and handleConfigSet (POST) cannot drift apart on what is
+ * editable. */
+export const EDITABLE_CONFIG_KEYS = ["provider", "model", "maxDailyCostUsd", "quietHours", "notify"] as const;
+
+/** Handle GET /api/config: the Settings view's resolved values for exactly
+ * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses
+ * (loadConfigSafe, defaults merged in), so the page shows what the fleet would actually
+ * load. A broken or invalid tumwater.json answers 500 with validateConfig's message instead
+ * of serving a half-empty panel. */
+export function handleConfig(res: http.ServerResponse, root: string): void {
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) {
+    sendJson(res, 500, { error });
+    return;
+  }
+  const record = config as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of EDITABLE_CONFIG_KEYS) out[key] = record[key] ?? null;
+  sendJson(res, 200, out);
+}
+
+/** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
+ * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
+ * (unknown-key refusal, the per-key validators' messages, whole-candidate validateConfig,
+ * atomic write the running fleet picks up live). A key outside EDITABLE_CONFIG_KEYS is
+ * refused 400 with the key named — a known-but-not-curated key (customLoops) included, so
+ * the panel's reach stays exactly the plan's five. The body's value is re-encoded with
+ * JSON.stringify before setConfigKey parses it back, so `set model gpt-5`'s
+ * JSON-or-literal rule is bypassed harmlessly: the browser already sent parsed JSON.
+ * Same body discipline as /api/budget (readPostBody → 400 malformed/non-object, 413
+ * oversized). */
+export async function handleConfigSet(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"key": "model", "value": "gpt-5"}');
+  if (!body) return;
+  const key = body.key;
+  if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
+    sendJson(res, 400, { error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")} (got ${JSON.stringify(key ?? null)})` });
+    return;
+  }
+  if (body.value === undefined) {
+    sendJson(res, 400, { error: `value required for ${key}` });
+    return;
+  }
+  // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
+  // exact (JSON.parse(JSON.stringify(v)) === v), so the shared write path applies unchanged.
+  const result = setConfigKey(root, key, JSON.stringify(body.value));
+  if (!result.ok) {
+    sendJson(res, 400, { error: `${key}: ${result.error}` });
+    return;
+  }
+  sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue });
 }
 
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate

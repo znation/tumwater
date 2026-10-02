@@ -4,11 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleReport, handleFailures, handleRestart, handleTick } from "../src/ui/gui-endpoints.js";
+import { handleConfig, handleConfigSet, handleReport, handleFailures, handleRestart, handleTick, EDITABLE_CONFIG_KEYS } from "../src/ui/gui-endpoints.js";
 import { renderTickDetail } from "../src/ui/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator-requests.js";
 import { writeJsonFile } from "../src/json-files.js";
+import { configPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
@@ -266,4 +267,82 @@ test("consumeRestartRequest forces the redeployer once and removes the marker", 
   consumeRestartRequest(root, null);
   assert.equal(forced, 1, "no redeployer (a non-self-hosting fleet): the marker is still cleaned up");
   assert.equal(fs.existsSync(restartRequestPath(root)), false);
+});
+
+// The Settings view's endpoints (the plan's curated five keys, 2026-10-02): GET /api/config
+// reads through the same load path `tumwater config get` uses; POST /api/config-set writes
+// through setConfigKey, so the browser cannot drift from the CLI's rules.
+
+function serveConfig(root: string): { captured: Captured; data: unknown } {
+  const { res, captured } = fakeRes();
+  handleConfig(res, root);
+  return { captured, data: JSON.parse(captured.body) };
+}
+
+async function serveConfigSet(root: string, body: unknown): Promise<{ captured: Captured; data: unknown }> {
+  const { res, captured } = fakeRes();
+  await handleConfigSet(fakeReq(JSON.stringify(body)), res, root);
+  return { captured, data: JSON.parse(captured.body) };
+}
+
+test("handleConfig returns exactly the five curated keys, resolved values with null for unset", () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
+  const { captured, data } = serveConfig(root);
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  assert.deepEqual(Object.keys(data as Record<string, unknown>).sort(), [...EDITABLE_CONFIG_KEYS].sort());
+  const cfg = data as Record<string, unknown>;
+  assert.equal(cfg.model, "gpt-5");
+  assert.equal(cfg.quietHours, "23:00-07:00");
+  assert.equal(cfg.provider, null);
+  // maxDailyCostUsd resolves to loadConfig's default cap (50) when the file does not set it.
+  assert.equal(cfg.maxDailyCostUsd, 50);
+  assert.equal(cfg.notify, null);
+  // customLoops is deliberately not served: the panel's reach is the curated five.
+  assert.equal("customLoops" in cfg, false);
+});
+
+test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", () => {
+  const root = tmpdir();
+  fs.writeFileSync(configPath(root), "{ not json");
+  const { captured, data } = serveConfig(root);
+  assert.equal(captured.status, 500);
+  assert.match((data as { error: string }).error, /./); // an actionable message, not an empty body
+});
+
+test("handleConfigSet round-trips: set, then GET shows the new value and the file holds it", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { maxDailyCostUsd: 25 });
+  const { captured, data } = await serveConfigSet(root, { key: "maxDailyCostUsd", value: 30 });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, key: "maxDailyCostUsd", value: 30, oldValue: 25 });
+  const after = serveConfig(root);
+  assert.equal((after.data as Record<string, unknown>).maxDailyCostUsd, 30);
+  // The file on disk is what the running fleet polls — the write went through setConfigKey.
+  const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
+  assert.equal(onDisk.maxDailyCostUsd, 30);
+});
+
+test("handleConfigSet refuses a key outside the curated five, naming it", async () => {
+  const root = tmpdir();
+  const unknownKey = await serveConfigSet(root, { key: "modle", value: "gpt-5" });
+  assert.equal(unknownKey.captured.status, 400);
+  assert.match((unknownKey.data as { error: string }).error, /modle/);
+  // A known-but-not-curated key is refused too — curation, not validity, is the gate.
+  const curated = await serveConfigSet(root, { key: "customLoops", value: [] });
+  assert.equal(curated.captured.status, 400);
+  assert.match((curated.data as { error: string }).error, /customLoops/);
+});
+
+test("handleConfigSet refuses a bad value through setConfigKey's validator, naming the key", async () => {
+  const root = tmpdir();
+  writeJsonFile(configPath(root), { quietHours: "23:00-07:00" });
+  const bad = await serveConfigSet(root, { key: "quietHours", value: "25:00-07:00" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /quietHours/);
+  // A failed edit leaves the file untouched.
+  const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
+  assert.equal(onDisk.quietHours, "23:00-07:00");
+  assert.equal(onDisk.model, undefined);
 });

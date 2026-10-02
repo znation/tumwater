@@ -200,6 +200,9 @@ while the fleet runs, and each one logs a `config_changed` event.
   across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
   opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
   and Failures views match `tumwater history`, `tumwater report`, and `tumwater report --failures`.
+  Its Settings view shows the curated top-level config keys (provider, model, the daily spend
+  cap, quiet hours, the notify hook) with inline Save buttons that write through the same path
+  `tumwater config set` uses.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, and Failures.
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`

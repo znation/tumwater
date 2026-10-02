@@ -46,6 +46,7 @@ export const GUI_PAGE = `<!doctype html>
     <a href="#history" id="tab-history" class="tab">${iconSvg("list")}<span>History</span></a>
     <a href="#usage" id="tab-usage" class="tab">${iconSvg("bars")}<span>Usage</span></a>
     <a href="#failures" id="tab-failures" class="tab">${iconSvg("alert")}<span>Failures</span></a>
+    <a href="#settings" id="tab-settings" class="tab">${iconSvg("settings")}<span>Settings</span></a>
   </nav>
   <div class="side-controls">
     <div class="menu-anchor up" id="budgetwrap"></div>
@@ -108,6 +109,7 @@ export const GUI_PAGE = `<!doctype html>
   <section id="history" class="view" aria-label="History" hidden></section>
   <section id="report" class="view" aria-label="Usage" hidden></section>
   <section id="failures" class="view" aria-label="Failures" hidden></section>
+  <section id="settings-view" class="view" aria-label="Settings" hidden></section>
 </main>
 </div>
 <aside id="drawer" class="drawer" role="dialog" aria-labelledby="drawertitle" hidden>

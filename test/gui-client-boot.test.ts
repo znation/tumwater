@@ -24,7 +24,7 @@ function fakeEl(log: string[], tag: string) {
  * assertions read the elements' final state. */
 function bootScope(inject: Record<string, unknown>, log: string[]) {
   const els: Record<string, ReturnType<typeof fakeEl>> = {};
-  for (const id of ["fleet-view", "history", "report", "failures", "tab-fleet", "tab-history", "tab-usage", "tab-failures"]) {
+  for (const id of ["fleet-view", "history", "report", "failures", "settings-view", "tab-fleet", "tab-history", "tab-usage", "tab-failures", "tab-settings"]) {
     els[id] = fakeEl(log, id);
   }
   return clientScope<{ switchView(v: string): void; route(): void; openLoopRole(): string | null }>(

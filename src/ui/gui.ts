@@ -14,6 +14,8 @@ import {
   handleAbort,
   handleBacklog,
   handleBudget,
+  handleConfig,
+  handleConfigSet,
   handleFailures,
   handlePause,
   handlePauseRole,
@@ -250,6 +252,10 @@ export function startGui(
         handleTick(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {
         handleBacklog(target!.searchParams, res, root);
+      } else if (req.method === "GET" && pathname === "/api/config") {
+        handleConfig(res, root);
+      } else if (req.method === "POST" && pathname === "/api/config-set") {
+        await handleConfigSet(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt") {
         await handlePrompt(req, res, root);
       } else if (req.method === "POST" && pathname === "/api/prompt-role") {

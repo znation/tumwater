@@ -36,6 +36,7 @@ export const ICON_PATHS: Record<string, string> = {
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 12.6a10 10 0 0 1 4.2-2.3M14.8 10.3A10 10 0 0 1 19 12.6M12 20h.01"/>',
   sound: '<path d="M4 9.5v5h3l4.5 4v-13L7 9.5z"/><path d="M15.5 8.7a5 5 0 0 1 0 6.6M18 6.2a9 9 0 0 1 0 11.6"/>',
   mute: '<path d="M4 9.5v5h3l4.5 4v-13L7 9.5z"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/>',
+  settings: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21M5.6 5.6l1.9 1.9M16.5 16.5l1.9 1.9M5.6 18.4l1.9-1.9M16.5 7.5l1.9-1.9"/>',
 };
 
 /** One icon's markup — the same shape the browser script's icon() builds. */

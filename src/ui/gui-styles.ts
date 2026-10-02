@@ -242,6 +242,15 @@ export const GUI_STYLES = String.raw`
   .alert-detail { color: var(--text-2); font-size: 13.5px; overflow-wrap: anywhere; }
   .alert-actions { display: flex; flex-wrap: wrap; gap: 6px; align-self: center; }
 
+  /* ---- settings: the curated config keys, one row per key ---- */
+  .settings-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; }
+  .settings-row + .settings-row { border-top: 1px solid var(--line); }
+  .settings-row label { display: flex; flex-direction: column; gap: 1px; width: 220px; min-width: 160px;
+                        font-weight: 600; font-size: 13.5px; color: var(--text); }
+  .settings-row .settings-key { font-family: var(--font-mono); font-weight: 400; font-size: 11.5px; color: var(--text-3); }
+  .settings-row .field { flex: 1; min-width: 0; }
+  .settings-row .btn { flex: none; }
+
   /* ---- composer: the director prompt (or one loop's), always in reach ---- */
   .composer { padding: 8px; border: 1px solid var(--line); border-radius: 12px;
               background: var(--surface); box-shadow: var(--shadow-sm); }

@@ -20,6 +20,7 @@ import { GUI_CLIENT_MARKDOWN_JS } from "./gui-client-markdown.js";
 import { GUI_CLIENT_MODEL_JS } from "./gui-client-model.js";
 import { GUI_CLIENT_OPERATOR_JS } from "./gui-client-operator.js";
 import { GUI_CLIENT_REPORT_JS } from "./gui-client-report.js";
+import { GUI_CLIENT_SETTINGS_JS } from "./gui-client-settings.js";
 import { GUI_CLIENT_SOUND_JS } from "./gui-client-sound.js";
 import { ICON_PATHS } from "./gui-icons.js";
 
@@ -246,4 +247,4 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
 `;
 
 export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_FLEET_JS, GUI_CLIENT_COMPOSER_JS,
-  GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_BOOT_JS].join("\n");
+  GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_SETTINGS_JS, GUI_CLIENT_BOOT_JS].join("\n");
