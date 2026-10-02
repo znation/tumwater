@@ -7,46 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 1/3 landed)
-
-Split from the original part 2/3 (which a feature run found too large for one run): the
-~280-line keypress handler is first extracted *as-is*, with no framework change, so the ink
-swap in 2b/3 becomes a small, mechanical step.
-
-**Goal.** A pure refactor: the readline keypress handler inside src/ui/tui.tsx's `runTui`
-(the `stdin.on("keypress", …)` block and its `emitKeypressEvents`/`setRawMode` setup) moves
-into a new framework-free module src/ui/tui-keys.ts, still driven by the same readline event.
-Behavior is byte-identical; ink's rendering path (part 1/3, src/ui/tui-app.tsx) is untouched.
-
-**Approach.**
-1. **src/ui/tui-keys.ts (new):** export a `createTuiKeys(deps)` factory owning the handler's
-   mutable locals today scattered through `runTui` — `input`/`cursor`, budget-mode
-   (`budgetMode`, `savedInput`, `savedCursor`), role-prompt mode (`rolePromptFor` and its saved
-   pair), `promptHistory`, `currentCapUsd`/`currentBudgetFree`, flash (`flash`/`flashUntil` and
-   the `flashMessage`/`flashError` helpers), `view`, `selectedEntry`/`entryScroll`,
-   `paneCache`/`paneScroll`, `eventBudget`/`entryBudget`, `roleIds` — plus the keypress
-   dispatch (`applyKey`, `parseBudgetInput`, `parseRolePromptInput`, the `PromptHistory`
-   functions from src/ui/tui-input.ts, all imported unchanged). The factory takes a deps
-   object: the actions it calls out of the handler today (quit/pause/abort/restart, prompt
-   submission, config write) and the getters render feeds it (snapshot data, pane bodies,
-   budgets). It exposes the readers `runTui`'s render step needs (`inputLine`, `view`,
-   `selectedEntry`, scrolls, flash, budget mode state) so render assembles the same frame.
-2. **src/ui/tui.tsx:** `runTui` constructs the handler with its real deps and passes the
-   handlers to `stdin.on("keypress", …)`; every `render()` call the old branches made becomes
-   a `requestRender` callback dep. No behavioral edit anywhere; delete nothing else.
-3. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts pass
-   unchanged (same readline seam). Add test/tui-keys.test.ts driving the factory directly —
-   at minimum one case per handler family: prompt editing via `applyKey`, budget mode open/
-   save/cancel, role-prompt mode, history recall, view cycling and paging, flash expiry.
-
-**Acceptance criteria.**
-- `git diff` shows no change to key behavior: all existing key-driven tests pass unmodified.
-- `grep -n 'keypress\|applyKey\|budgetMode' src/ui/tui.tsx` shows only the construction and the
-  single `stdin.on("keypress", …)` call delegating to the factory; the handler body lives in
-  src/ui/tui-keys.ts.
-- test/tui-keys.test.ts exercises the factory without a terminal or a readline event emitter.
-- `npm run test` is green.
-
 ### The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 2a/3 landed)
 
 The second half of the split part 2/3: with the handler already framework-free in
@@ -106,6 +66,53 @@ and fixes every claim that the project has zero runtime dependencies.
 - `npm run test` is green.
 
 ## Done
+
+### The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 1/3 landed, done 2026-10-02 by feature)
+
+Landed with the deps object smaller than the Approach sketch: the factory imports the
+disk-action modules (fleet-state, operator-intent, inbox-submit, config-write, report/
+failure collection) directly and takes only `root`, `quit`, `requestRender`, and an
+injectable `now` clock (so the flash-expiry test runs without waiting the real 3 s).
+Render syncs snapshot data and line budgets in via `syncSnapshot`/`setLineBudgets` and
+reads `state()` out each frame.
+
+Split from the original part 2/3 (which a feature run found too large for one run): the
+~280-line keypress handler is first extracted *as-is*, with no framework change, so the ink
+swap in 2b/3 becomes a small, mechanical step.
+
+**Goal.** A pure refactor: the readline keypress handler inside src/ui/tui.tsx's `runTui`
+(the `stdin.on("keypress", …)` block and its `emitKeypressEvents`/`setRawMode` setup) moves
+into a new framework-free module src/ui/tui-keys.ts, still driven by the same readline event.
+Behavior is byte-identical; ink's rendering path (part 1/3, src/ui/tui-app.tsx) is untouched.
+
+**Approach.**
+1. **src/ui/tui-keys.ts (new):** export a `createTuiKeys(deps)` factory owning the handler's
+   mutable locals today scattered through `runTui` — `input`/`cursor`, budget-mode
+   (`budgetMode`, `savedInput`, `savedCursor`), role-prompt mode (`rolePromptFor` and its saved
+   pair), `promptHistory`, `currentCapUsd`/`currentBudgetFree`, flash (`flash`/`flashUntil` and
+   the `flashMessage`/`flashError` helpers), `view`, `selectedEntry`/`entryScroll`,
+   `paneCache`/`paneScroll`, `eventBudget`/`entryBudget`, `roleIds` — plus the keypress
+   dispatch (`applyKey`, `parseBudgetInput`, `parseRolePromptInput`, the `PromptHistory`
+   functions from src/ui/tui-input.ts, all imported unchanged). The factory takes a deps
+   object: the actions it calls out of the handler today (quit/pause/abort/restart, prompt
+   submission, config write) and the getters render feeds it (snapshot data, pane bodies,
+   budgets). It exposes the readers `runTui`'s render step needs (`inputLine`, `view`,
+   `selectedEntry`, scrolls, flash, budget mode state) so render assembles the same frame.
+2. **src/ui/tui.tsx:** `runTui` constructs the handler with its real deps and passes the
+   handlers to `stdin.on("keypress", …)`; every `render()` call the old branches made becomes
+   a `requestRender` callback dep. No behavioral edit anywhere; delete nothing else.
+3. **Tests:** test/tui-operator-keys.test.ts and the key-driven parts of test/tui.test.ts pass
+   unchanged (same readline seam). Add test/tui-keys.test.ts driving the factory directly —
+   at minimum one case per handler family: prompt editing via `applyKey`, budget mode open/
+   save/cancel, role-prompt mode, history recall, view cycling and paging, flash expiry.
+
+**Acceptance criteria.**
+- `git diff` shows no change to key behavior: all existing key-driven tests pass unmodified.
+- `grep -n 'keypress\|applyKey\|budgetMode' src/ui/tui.tsx` shows only the construction and the
+  single `stdin.on("keypress", …)` call delegating to the factory; the handler body lives in
+  src/ui/tui-keys.ts.
+- test/tui-keys.test.ts exercises the factory without a terminal or a readline event emitter.
+- `npm run test` is green.
 
 ### The TUI moves to ink, part 1/3: adopt ink and render the frame with it (planned 2026-10-01 by director, from the user's answered question in QUESTIONS.md, done 2026-10-01 by feature)
 
