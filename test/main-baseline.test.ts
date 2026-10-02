@@ -273,7 +273,7 @@ test("a baseline run takes the same process-wide check permit as the scoped chec
 });
 
 // mainIsGreen - the redeploy gate's boolean view of checkMainBaseline (moved here from
-// test/redeploy.test.ts, which keeps only the redeployer state machine)
+// test/redeployer.test.ts, which keeps only the redeployer state machine)
 
 test("mainIsGreen: no declared check reads as green", async () => {
   const root = makeRepo();

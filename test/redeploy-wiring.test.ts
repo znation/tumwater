@@ -16,7 +16,7 @@ import { projManifest } from "./fake-commands.js";
  * worktree, the live config read, the baseline build_check events, the witness-worktree
  * cold-cache recovery — and createRedeployer's composition from the running build's own stamp.
  * The state-machine half (the Redeployer driven with scripted deps) lives in
- * redeploy.test.ts beside the other state-machine clusters; the policy knobs it decides
+ * redeployer.test.ts beside the other state-machine clusters; the policy knobs it decides
  * with are in src/redeploy-policy.ts. */
 
 test("the production mainGreen wiring runs the real check in a fresh mirror and logs the baseline event", async () => {

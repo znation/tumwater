@@ -12,7 +12,7 @@ import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 // The build-stage helpers (src/build-stage.ts) — the redeploy's real filesystem effects, exercised
 // against temp projects: swapDist's dist replacement and restore-on-failure invariants, and
 // compileStaged's real tsc runs (stamping, toolchain discovery, spawn failures, timeouts). The
-// redeployer's state machine itself stays in test/redeploy.test.ts, driven by scripted effects.
+// redeployer's state machine itself stays in test/redeployer.test.ts, driven by scripted effects.
 const HEAD_B = "b".repeat(40);
 const HEAD_C = "c".repeat(40);
 

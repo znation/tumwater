@@ -1,7 +1,7 @@
 /** The Redeployer's REJECTED-vs-verdict boundary: a check or compile that could not run — a
  * spawn failure, a thrown promise, a swap that never happened — says nothing about the tree, so
  * the episode must drop and retry rather than latch the head as blocked. Extracted from
- * redeploy.test.ts, whose remaining tests cover the episode lifecycle (hold, drain, restart),
+ * redeployer.test.ts, whose remaining tests cover the episode lifecycle (hold, drain, restart),
  * the cooldown and its prewarm, and the production wiring. */
 
 import test from "node:test";

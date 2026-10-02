@@ -1099,7 +1099,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   (the node_modules sentence appears only for an npm check; a configured command is named
   verbatim), test/review.test.ts (a configured command gates a merge) + test/main-baseline.test.ts
   (a configured command runs at the red-main baseline — and its ~25 `checkMainBaseline(...)` call
-  sites gain the config argument mechanically), test/redeploy.test.ts (its four `mainIsGreen(...)`
+  sites gain the config argument mechanically), test/redeployer.test.ts (its four `mainIsGreen(...)`
   call sites likewise, plus one test that a configured check — no npm anywhere — makes the green
   check run it), test/main-red.test.ts passes unmodified (neither exported signature changes; the
   internal config load degrades to defaults in a tmp repo), test/doctor.test.ts.
@@ -1108,7 +1108,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 src/build-check.ts, src/prompt.ts,
 src/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
 src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
-test/main-baseline.test.ts, test/redeploy.test.ts, test/doctor.test.ts.
+test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
 - A repo with `check.command = "pytest -q"` and no `package.json` anywhere has its check run at
@@ -1262,14 +1262,14 @@ Corrections (pinned in place):
 4. **The Tests bullet and Files-touched disagreed** (the bullet named test/main-red.test.ts, the
    file list test/main-baseline.test.ts, from the 09-18 swap). Resolved: the red-baseline test
    lives at the checkMainBaseline level in test/main-baseline.test.ts (the changed seam);
-   test/main-red.test.ts is out (passes unmodified); test/redeploy.test.ts is in (four
+   test/main-red.test.ts is out (passes unmodified); test/redeployer.test.ts is in (four
    `mainIsGreen` call sites at :725/:756/:759/:788 plus one configured-check test).
 
 Sizing now: build-check.ts ~60 (union + `buildCheckFrom` variant + dispatch + `describeCheck`),
 main-baseline.ts ~5, main-red.ts ~3 (the load + two call sites), redeploy.ts ~10 (signature +
 wiring), doctor.ts ~12, prompt.ts ~15, review/merge/lander ~10, loop.ts ~2 (MergeContext wiring),
 config-validation/types ~10, and tests ~230 (mechanical parameter threading across
-main-baseline.test.ts and redeploy.test.ts plus the new configured-check tests). One run. No
+main-baseline.test.ts and redeployer.test.ts plus the new configured-check tests). One run. No
 design question remains open.
 
 **Refined 2026-09-24 (plan loop) — 6/7 re-audited against main `03edeba` (README's stamp

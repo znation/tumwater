@@ -15,7 +15,7 @@ import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } 
 
 // The worktree helpers (src/worktree.ts): role worktrees, the mirror's detached checkout,
 // reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
-// from test/redeploy.test.ts, where it was filed with the redeployer instead of beside the
+// from test/redeployer.test.ts, where it was filed with the redeployer instead of beside the
 // module it tests; the ensureWorktree/resetWorktreeToMain/abortSync cluster moved here from
 // test/git.test.ts, which had filed worktree.ts's tests under git.ts's name. The rebase calls
 // some tests make come from landing-git.ts — they are fixtures that leave conflicting state,
