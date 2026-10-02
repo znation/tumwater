@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { saveConfig, seedConfig } from "./config.js";
+import { saveConfig } from "./config.js";
+import { seedConfig } from "./config-example.js";
 import { findOnPath } from "./files.js";
 import { GIT_MISSING_MESSAGE, COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
 import {

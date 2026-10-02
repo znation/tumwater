@@ -619,7 +619,8 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
 
 **Approach.**
 - src/paths.ts — `exampleConfigPath(root)` beside `configPath` (src/paths.ts:11).
-- src/config.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)`.
+- src/config-example.ts — `seedConfig(root)` (example → defaults) and `exampleDrift(root)`
+  (moved out of src/config.ts 2026-10-01; the load/save core keeps `overlayDefaults`/`parseJsonConfig`).
 - src/init.ts — seed through `seedConfig`; and two traps that must be fixed together:
   1. `ensureGitignore` (src/init.ts:66–73) returns early as soon as *one* entry matches (line 70)
      — it must test `.tumwater/` and `tumwater.json` independently, and still return true when it

@@ -2,11 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   enabledRoleIds,
-  exampleConfigProblem,
-  exampleDrift,
   loadConfig,
   loadConfigSafe,
 } from "./config.js";
+import { exampleConfigProblem, exampleDrift } from "./config-example.js";
 import { fallbackPair } from "./config-views.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { fallbackModelFree, piModelsPath } from "./pi-models.js";
