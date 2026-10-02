@@ -176,7 +176,14 @@ export function coverageRowsFromDumps(dumpDir: string, distRoot: string): Covera
       const brCov = new Uint8Array(bq.length);
       const fnCov = new Uint8Array(fq.length);
       for (const set of rec.sets) {
-        const look = makeLookup(set);
+        // node:test's V8 dumps record some functions their own tests demonstrably ran as
+        // phantom fn roots — isBlockCoverage: false, count: 0 — while sibling roots in the
+        // same dump carry real counts (BUGS.md 2026-10-01). When the module ran in this
+        // process (some fn root has count > 0), such a zero is a reporting artifact, not
+        // evidence of an unexecuted function: drop the phantom root so its queries resolve
+        // against the enclosing range's real count instead of shadowing it with 0.
+        const ran = set.some((r) => r[4] === 1 && r[2] > 0);
+        const look = makeLookup(ran ? set.filter((r) => !(r[4] === 1 && r[3] === 0 && r[2] === 0)) : set);
         // makeLookup indexes its result by each query's recorded line index, so the forEach
         // index is the line index itself — NOT a position into the filtered, sorted lq. The
         // positional reading scrambled every line after a blank line (BUGS.md 2026-09-30).

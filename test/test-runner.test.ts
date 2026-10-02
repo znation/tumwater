@@ -436,6 +436,47 @@ test("coverageRowsFromDumps keeps blank lines from scrambling which lines a proc
   assert.deepEqual(rows, [{ file: "src/blanks.js", lines: { covered: 4, total: 4 }, branches: { covered: 1, total: 1 }, functions: { covered: 0, total: 0 } }]);
 });
 
+test("coverageRowsFromDumps distrusts node:test's phantom zero-count function roots", () => {
+  // node:test's V8 dumps record some functions their own tests demonstrably ran as phantom fn
+  // roots — isBlockCoverage: false, count: 0 — while sibling roots in the same dump carry real
+  // counts (BUGS.md 2026-10-01, src/ui/self-reload.js). Taking that zero at face value left
+  // lines and functions the tests executed marked uncovered, byte-identically across runs.
+  // When the module ran in the dump's process (some fn root has count > 0), such a root must
+  // not shadow its enclosing range's real count.
+  const lines = ["let r = 0;", "function phantom() { return 1; }", "function real() { return 2; }", "r = real();"];
+  const src = lines.join("\n") + "\n";
+  const lineStart = (i: number): number => lines.slice(0, i).reduce((n, l) => n + l.length + 1, 0);
+  const phantomStart = lineStart(1), phantomEnd = phantomStart + lines[1]!.length;
+  const realStart = lineStart(2), realEnd = realStart + lines[2]!.length;
+  const dist = tmpdir("cov-phantom-");
+  fs.mkdirSync(path.join(dist, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dist, "src", "phantom.js"), src);
+  const url = "file://" + fs.realpathSync(path.join(dist, "src", "phantom.js"));
+  const dumpDir = tmpdir("cov-phantom-dumps-");
+  fs.writeFileSync(
+    path.join(dumpDir, "coverage.json"),
+    JSON.stringify({
+      result: [
+        {
+          url,
+          functions: [
+            { functionName: "", isBlockCoverage: true, ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }] },
+            { functionName: "phantom", isBlockCoverage: false, ranges: [{ startOffset: phantomStart, endOffset: phantomEnd, count: 0 }] },
+            { functionName: "real", isBlockCoverage: true, ranges: [{ startOffset: realStart, endOffset: realEnd, count: 2 }] },
+          ],
+        },
+      ],
+    }),
+  );
+
+  const rows = coverageRowsFromDumps(dumpDir, dist);
+  // The phantom root's zero must not shadow the module root's count 1: every line covered, and
+  // both named functions covered (the offset-0 module root stays excluded from the fn count).
+  assert.deepEqual(rows, [
+    { file: "src/phantom.js", lines: { covered: 4, total: 4 }, branches: { covered: 2, total: 2 }, functions: { covered: 2, total: 2 } },
+  ]);
+});
+
 test("under --coverage the runner prints the deterministic table, and a caller's NODE_V8_COVERAGE passes through untouched", () => {
   // A caller's NODE_V8_COVERAGE reaches node untouched — the dumps land in the caller's dir and
   // the runner prints no table of its own: docs/code-metrics/run.sh sets the variable around
