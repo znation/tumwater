@@ -81,6 +81,20 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
   return lines;
 }
 
+/** The body lines of one `## <sectionTitle>` section with fenced content stripped: the
+ * sectionLines walk, then a fresh fenceTracker's filter — the shape every reader that
+ * classifies a section's lines as markdown structure (entry headings, bullets, dates) walks.
+ * Exactly two call sites today: entryDates (below) and backlog-structure.ts's
+ * strandedPlanEntries. The fresh tracker is in sync with the document here: sectionLines
+ * only recognizes a `## ` boundary outside a fence, so the section's heading line is
+ * non-fenced and the fence state at the section's first line is closed — a tracker started
+ * there sees exactly what a document-wide tracker sees inside the section. Readers that
+ * must KEEP fenced lines as body content (parseEntryDetails) do not use this. */
+export function sectionBodyLines(md: string, sectionTitle: string): string[] {
+  const fenced = fenceTracker();
+  return sectionLines(md, sectionTitle).filter((line) => !fenced.inside(line));
+}
+
 /** The entries inside one `## <sectionTitle>` section of a markdown document, each with its
  * full body: stops at the next `## ` line (so Done/Fixed entries never leak in), skips
  * non-heading placeholders like `_None yet._` and any prose before the first heading, keeps
@@ -130,10 +144,7 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
  * format and always close their metadata parenthetical by convention). */
 export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
   const dates: string[] = [];
-  // A section always starts at its non-fenced `## ` heading, so a fresh tracker is in sync
-  // with the document's fence state here and for the whole section.
-  const fenced = fenceTracker();
-  const lines = sectionLines(md, sectionTitle).filter((line) => !fenced.inside(line));
+  const lines = sectionBodyLines(md, sectionTitle);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
     if (!line.startsWith("### ") && !line.startsWith("- ")) continue;

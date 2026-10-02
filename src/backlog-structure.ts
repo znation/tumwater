@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { fenceTracker, headingMetadata, sectionLines } from "./backlog.js";
+import { fenceTracker, headingMetadata, sectionBodyLines } from "./backlog.js";
 import { gitTry } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 
@@ -50,8 +50,9 @@ export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
   // entryDates': a fenced `### ` line is quoted content, never an entry.
   for (const section of sectionTitles(md)) {
     if (section !== "Planned" && section !== "Done") continue;
-    const fenced = fenceTracker();
-    const lines = sectionLines(md, section).filter((line) => !fenced.inside(line));
+    // Inside a section, the fence filter matches entryDates': a fenced `### ` line is quoted
+    // content, never an entry — the shared sectionBodyLines walk (backlog.ts).
+    const lines = sectionBodyLines(md, section);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
       if (!line.startsWith("### ")) continue;
