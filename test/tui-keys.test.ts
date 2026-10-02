@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createTuiKeys } from "../src/ui/tui-keys.js";
+import { createTuiKeys, inkKeyToReadline } from "../src/ui/tui-keys.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "tui-keys-"));
@@ -151,4 +151,65 @@ test("Ctrl+C quits through the dep, and the modes are mutually exclusive", () =>
   keys.handleKey(undefined, { name: "escape" }); // leave role mode
   keys.handleKey(undefined, { ctrl: true, name: "b" }); // budget opens now
   assert.equal(keys.state().budgetMode, true);
+});
+
+// The ink bridge (PLANS.md "TUI moves to ink, part 2b/3"): ink's useInput hands the
+// dispatch an (input, key) pair, the adapter maps it to the readline (str, key) shape
+// handleKey was extracted with. One case per mapping family.
+test("inkKeyToReadline maps ink's parsed keys to the readline shape the dispatch consumes", () => {
+  // Printable text — single chars and whole composed strings — flows through as `str`.
+  assert.deepEqual(inkKeyToReadline("x", {}), { str: "x", key: {} });
+  assert.deepEqual(inkKeyToReadline(" ", {}), { str: " ", key: {} });
+  assert.deepEqual(inkKeyToReadline("check the queue", {}), { str: "check the queue", key: {} });
+  // Named keys map to their readline names with no str.
+  assert.deepEqual(inkKeyToReadline("", { escape: true }), { str: undefined, key: { name: "escape" } });
+  assert.deepEqual(inkKeyToReadline("\r", { return: true }), { str: undefined, key: { name: "return" } });
+  assert.deepEqual(inkKeyToReadline("", { backspace: true }), { str: undefined, key: { name: "backspace" } });
+  assert.deepEqual(inkKeyToReadline("", { backspace: true, meta: true }), { str: undefined, key: { name: "backspace", meta: true } });
+  assert.deepEqual(inkKeyToReadline("", { delete: true }), { str: undefined, key: { name: "delete" } });
+  assert.deepEqual(inkKeyToReadline("", { tab: true }), { str: undefined, key: { name: "tab" } });
+  assert.deepEqual(inkKeyToReadline("", { upArrow: true }), { str: undefined, key: { name: "up" } });
+  assert.deepEqual(inkKeyToReadline("", { downArrow: true }), { str: undefined, key: { name: "down" } });
+  assert.deepEqual(inkKeyToReadline("", { leftArrow: true }), { str: undefined, key: { name: "left" } });
+  assert.deepEqual(inkKeyToReadline("", { rightArrow: true }), { str: undefined, key: { name: "right" } });
+  assert.deepEqual(inkKeyToReadline("", { pageUp: true }), { str: undefined, key: { name: "pageup" } });
+  assert.deepEqual(inkKeyToReadline("", { pageDown: true }), { str: undefined, key: { name: "pagedown" } });
+  assert.deepEqual(inkKeyToReadline("", { home: true }), { str: undefined, key: { name: "home" } });
+  assert.deepEqual(inkKeyToReadline("", { end: true }), { str: undefined, key: { name: "end" } });
+  // Ctrl+letter arrives as the bare letter in `input` with `ctrl` set — the dispatch's
+  // Ctrl+C/Ctrl+B/Ctrl+T family reads key.ctrl + key.name.
+  assert.deepEqual(inkKeyToReadline("c", { ctrl: true }), { str: undefined, key: { ctrl: true, name: "c" } });
+  assert.deepEqual(inkKeyToReadline("T", { ctrl: true }), { str: undefined, key: { ctrl: true, name: "t" } });
+  // Named keys win before ctrl: ink sets ctrl alongside ctrl+arrows too, and the arrow
+  // must still map to its name, not to an empty ctrl+letter.
+  assert.deepEqual(inkKeyToReadline("", { ctrl: true, upArrow: true }), { str: undefined, key: { name: "up" } });
+  // Alt+letter maps to the meta shape applyKey's kill keys read (and stays out of the
+  // printable-insert branch, which excludes meta).
+  assert.deepEqual(inkKeyToReadline("x", { meta: true }), { str: undefined, key: { meta: true, name: "x" } });
+  // An empty non-key input (ink suppresses text for unrecognized sequences) is inert.
+  assert.deepEqual(inkKeyToReadline("", {}), { str: undefined, key: {} });
+});
+
+// The adapter's output drives the real dispatch: one round-trip case per shape, through
+// the same factory the readline path was tested with.
+test("the adapter's output drives the dispatch exactly like the readline pairs did", () => {
+  const root = makeRoot();
+  const { keys, quitCount } = makeKeys(root, () => 0);
+  const dispatch = (input: string, key: Parameters<typeof inkKeyToReadline>[1]) => {
+    const mapped = inkKeyToReadline(input, key);
+    keys.handleKey(mapped.str, mapped.key);
+  };
+  dispatch("h", {}); // typing
+  dispatch("", { escape: true }); // escape outside any mode is inert
+  assert.equal(keys.state().input, "h");
+  dispatch("", { ctrl: true, upArrow: true }); // ctrl+arrow never moves the prompt cursor
+  assert.equal(keys.state().cursor, 1);
+  dispatch("", { backspace: true }); // backspace deletes
+  assert.equal(keys.state().input, "");
+  dispatch("i", {});
+  dispatch("", { return: true }); // return submits into the inbox
+  assert.equal(keys.state().input, "", "return submits and clears the prompt line");
+  dispatch("", { ctrl: true }); // ctrl with empty input maps to an empty ctrl+letter: inert
+  dispatch("c", { ctrl: true }); // Ctrl+C quits through the mapped shape
+  assert.equal(quitCount(), 1);
 });

@@ -2,10 +2,13 @@
  * frame tui.tsx's render step assembles — the same clipped StatusLines the tui-frame.ts
  * builders produce — and lays one line out per row, one styled Text per span. Ink
  * diff-renders the tree, so a changed cell rewrites only that cell's lines instead of
- * clearing the screen (the flicker BUGS.md recorded is gone); key handling lives in
- * tui.tsx's readline handler, which stays the sole owner of the terminal's stdin. */
-import { Box, Text } from "ink";
+ * clearing the screen (the flicker BUGS.md recorded is gone); key handling lives in the
+ * useTuiKeys hook below, which wraps ink's `useInput` and dispatches through the extracted
+ * handler (tui-keys.ts).
+ */
+import { Box, Text, useInput } from "ink";
 import type { StatusLine, StatusSpan } from "./status-render.js";
+import { inkKeyToReadline, type TuiKeys } from "./tui-keys.js";
 
 /** A span tone's ink color: the same hues the CLI's ANSI painting (tui-frame.ts's
  * paintLine) gives them, as ink color names — dim reads as gray, bold as bright white,
@@ -33,9 +36,29 @@ export interface TuiAppView {
   lines: readonly StatusLine[];
 }
 
+/** The TUI's key bridge: ink's `useInput` parses the stdin the render was given, and this
+ * hook maps each parsed (input, key) pair to the readline shape the extracted handler (the
+ * TuiKeys factory tui.ts creates) consumes. Mounted inside the component tree so ink's
+ * stdin context owns raw mode and the input stream for the TUI's whole lifetime. */
+export function useTuiKeys(keys: TuiKeys): void {
+  useInput((input, inkKey) => {
+    const mapped = inkKeyToReadline(input, inkKey);
+    keys.handleKey(mapped.str, mapped.key);
+  });
+}
+
 /** The frame's component tree: a column of lines, each line's spans inline. A span with no
  * tone (or a NO_COLOR run) takes the terminal's default color. */
-export function TuiApp({ view, noColor }: { view: TuiAppView; noColor: boolean }) {
+export function TuiApp({
+  view,
+  noColor,
+  keys,
+}: {
+  view: TuiAppView;
+  noColor: boolean;
+  keys?: TuiKeys;
+}) {
+  if (keys) useTuiKeys(keys);
   return (
     <Box flexDirection="column">
       {view.lines.map((line, i) =>

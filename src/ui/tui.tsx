@@ -1,4 +1,3 @@
-import readline from "node:readline";
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
 import {
@@ -42,14 +41,19 @@ import {
   type TuiView,
 } from "./tui-frame.js";
 
-/** The half of a terminal the TUI actually touches: raw mode, keypresses, and the size the
- * renderer clips to. Production reads process.stdin/stdout; tests inject fakes so the loop
- * is driven without a TTY. */
+/** The half of a terminal the TUI actually touches: the input stream ink claims (raw mode,
+ * keypresses) and the size the renderer clips to. Production reads process.stdin; tests
+ * inject fakes so the loop is driven without a TTY. The surface is what ink's stdin
+ * handling needs: the TTY flag, raw-mode control, the ref/encoding calls, and the
+ * Readable.read read loop it drains after a `readable` event. */
 export interface TuiStdin extends NodeJS.EventEmitter {
   isTTY?: boolean;
   setRawMode(mode: boolean): void;
-  resume?(): void;
-  pause?(): void;
+  setEncoding(encoding?: string): unknown;
+  ref(): unknown;
+  unref(): unknown;
+  /** One buffered chunk, or null when drained — ink's input loop reads until null. */
+  read(): string | Uint8Array | null;
 }
 /** The output half of the terminal the TUI touches: the size the renderer clips to and where
  * its bytes go. Production reads process.stdout; tests inject fakes so the loop is driven
@@ -89,10 +93,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   // Auto-reload onto a newer compiled tree as soon as one lands on disk (redeploy's dist swap
   // or a manual build). The watch's trigger takes the same teardown path Ctrl+C does, then
-  // re-execs after the terminal is restored. Arming it only after the TTY guard matters: a
-  // non-TTY start throws, and a process about to throw must not re-exec into the same error.
-  // It is armed in the background (not awaited) so the keypress handler still registers
-  // synchronously; `reloadRequested` closes the trigger-before-await race either way.
+  // re-execs after the terminal is restored. `reloadRequested` closes the
+  // trigger-before-await race either way.
   let reloadRequested = false;
   let resolveMain: (() => void) | null = null;
   const reloadWatch = createReloadWatch({
@@ -106,7 +108,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   });
   void reloadWatch.start();
 
-  // The framework-free keypress handler (src/ui/tui-keys.ts, extracted verbatim): it owns
+  // The framework-free keypress handler (src/ui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
@@ -205,38 +207,40 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const prefix = promptPrefix(mode);
     lines.push([...prefix, { text: renderInputView(s.input, s.cursor, width - prefixWidth(prefix) + 2) }]);
     const frame: TuiAppView = { lines };
-    inkApp.rerender(<TuiApp view={frame} noColor={noColor} />);
+    inkApp.rerender(<TuiApp view={frame} noColor={noColor} keys={keys} />);
   };
 
-  // readline's emitter setup only accepts a ReadStream; the fake terminal carries the same
-  // surface (an EventEmitter the test drives keypresses through), so the seam is widened here.
-  // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to.
-  // The last frame written to the terminal: ink's log-update skips the write when a
-  // re-render composes an identical frame, so an idle fleet's per-second repaint (its
-  // "· 3m ago" age cells change only once a minute) costs no terminal I/O at all — the
-  // same redundant-repaint guard the GUI's detail-panel skip removed (the dashboard's
-  // innerHTML guard). Changed frames rewrite only the changed lines: ink diff-renders, so
-  // the full-screen `\x1b[2J` clear — the flicker BUGS.md recorded — is gone entirely.
-  // Key handling is untouched: with no useInput hook mounted, ink claims no stdin, so the
-  // readline keypress setup below keeps sole ownership of the terminal's input.
+  // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
+  // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
   // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
   // off so console.* keeps writing past the TUI exactly as before it; and the render is
   // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
   // on each keypress — so ink's fps limiter would only defer frames this loop already
   // schedules deliberately. `interactive: true` pins the TUI's frame diffing on in every
   // environment (CI detection would otherwise flip ink into non-interactive mode).
-  const inkApp = inkRender(<TuiApp view={{ lines: [] }} noColor={noColor} />, {
+  // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
+  // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
+  // ink's `useInput` and dispatches them through the extracted handler (tui-keys.ts).
+  // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
+  // off so console.* keeps writing past the TUI exactly as before it; and the render is
+  // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
+  // on each keypress — so ink's fps limiter would only defer frames this loop already
+  // schedules deliberately. `interactive: true` pins the TUI's frame diffing on in every
+  // environment (CI detection would otherwise flip ink into non-interactive mode).
+  const inkApp = inkRender(<TuiApp view={{ lines: [] }} noColor={noColor} keys={keys} />, {
     stdout: stdout as unknown as NodeJS.WriteStream,
+    stdin: stdin as unknown as NodeJS.ReadStream,
     exitOnCtrlC: false,
     patchConsole: false,
     interactive: true,
     maxFps: 0,
   });
 
-  readline.emitKeypressEvents(stdin as unknown as NodeJS.ReadStream);
-  stdin.setRawMode(true);
-  stdin.resume?.();
-
+  // Ink owns the input stream: the useTuiKeys hook inside the tree set raw mode on mount
+  // (and restores it at unmount), and its `useInput` subscription dispatches every parsed
+  // keypress through the extracted handler below. Raw mode appears once ink's tree effects
+  // have mounted; production terminals type long after that, and the test harness waits a
+  // tick before pressing keys.
   const timer = setInterval(render, 1000);
   render();
 
@@ -245,15 +249,10 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // The reload trigger may have fired between `start()` and this await; the executor
     // resolves immediately in that case so both orderings reach the same teardown.
     if (reloadRequested) resolve();
-    stdin.on("keypress", (str: string | undefined, key: readline.Key) =>
-      keys.handleKey(str, key),
-    );
   });
 
   clearInterval(timer);
-  stdin.setRawMode(false);
-  stdin.pause?.();
-  inkApp.unmount(); // restore the cursor and drop the frame; the newline below closes it
+  inkApp.unmount(); // restore the cursor and raw mode; the newline below closes it
   stdout.write("\n");
   reloadWatch.stop();
   if (reloadRequested) (seams.watch?.reexec ?? reexecSelf)();

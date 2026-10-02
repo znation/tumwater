@@ -2,7 +2,6 @@ import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import readline from "node:readline";
 import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { makeRepo } from "./repo-fixtures.js";
@@ -16,25 +15,36 @@ import { initProject } from "../src/init.js";
 // seams instead — the same treatment startGui's wiring got — plus a fake terminal, because
 // the keypress loop needs raw mode a piped test process cannot enter.
 
-/** A terminal stand-in: keypresses are emitted directly (already parsed, the way readline
- * delivers them), and every raw-mode toggle and teardown call is recorded for assertions. */
+/** A terminal stand-in: keys are delivered as raw terminal bytes (the way a keyboard
+ * feeds ink's input parser), every raw-mode toggle is recorded, and the Readable.read
+ * surface ink drains is a simple queue. */
 class FakeTerminal extends EventEmitter implements TuiStdin, TuiStdout {
   isTTY = true;
   rows = 40;
   columns = 120;
   rawModes: boolean[] = [];
-  pauses = 0;
   writes: string[] = [];
+  #queue: string[] = [];
 
   setRawMode(mode: boolean): void {
     this.rawModes.push(mode);
   }
-  pause(): void {
-    this.pauses++;
+  setEncoding(): void {}
+  ref(): void {}
+  unref(): void {}
+  read(): string | null {
+    return this.#queue.length > 0 ? (this.#queue.shift() as string) : null;
   }
-  /** Deliver one keypress the way readline does: a possibly-undefined string plus a Key. */
-  keypress(key: Partial<readline.Key>): void {
-    this.emit("keypress", undefined, { name: "", ...key } as readline.Key);
+  /** Deliver one keypress as its raw terminal bytes: Ctrl+letter as its C0 code, named
+   * keys as their escape sequences — ink's parser decodes them back into the same key. */
+  keypress(key: { ctrl?: boolean; name?: string }): void {
+    const raw = key.ctrl && key.name
+      ? String.fromCharCode(key.name.charCodeAt(0) - 96)
+      : key.name === "return"
+        ? "\r"
+        : "";
+    this.#queue.push(raw);
+    this.emit("readable");
   }
   write(s: string): void {
     this.writes.push(s);
@@ -77,13 +87,13 @@ test("the TUI tears down its terminal and re-execs exactly once when a newer bui
     assert.ok(term.writes.some((w) => w.length > 1), "the TUI rendered at least one frame");
 
     // A redeploy swaps dist/ under the running process: the watch wakes the main loop, which
-    // tears the terminal down (raw mode off, stdin paused, newline written) and re-execs.
-    // Firing latches: a stamp that changes again while the old process winds down must not
-    // re-exec twice.
+    // tears the terminal down (raw mode restored off, cursor shown, newline written) and
+    // re-execs. Firing latches: a stamp that changes again while the old process winds down
+    // must not re-exec twice.
     disk = { ...startup, sha: `${startup.sha}-newer` };
     await done;
+    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
     assert.deepEqual(term.rawModes, [true, false], "raw mode was restored before the re-exec");
-    assert.equal(term.pauses, 1, "stdin was paused");
     assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
     disk = { ...startup, sha: "third-sha" };
     await sleep(60);
@@ -111,9 +121,9 @@ test("Ctrl+C ends the TUI cleanly and never re-execs while the dist stamp is unc
   await sleep(60);
   term.keypress({ ctrl: true, name: "c" });
   await done;
+  await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
   assert.equal(reexecs.n, 0, "a Ctrl+C teardown never re-execs");
   assert.deepEqual(term.rawModes, [true, false]);
-  assert.equal(term.pauses, 1);
   assert.equal(term.writes.at(-1), "\n");
 });
 

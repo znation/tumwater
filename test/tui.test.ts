@@ -580,10 +580,11 @@ test("runTui refuses to start without an interactive terminal", async () => {
 });
 
 
-test("Ctrl+C exits cleanly: raw mode off, stdin paused, render timer cleared", async () => {
+test("Ctrl+C exits cleanly: raw mode restored off, render timer cleared", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
-  assert.equal(tui.rawModes.length, 1); // setRawMode(true) on entry
+  await new Promise((r) => setImmediate(r)); // ink's tree effects mount raw mode
+  assert.equal(tui.rawModes.length, 1); // setRawMode(true) on entry, via ink's useInput
   await tui.quit();
   assert.deepEqual(tui.rawModes, [true, false]);
   assert.equal(tui.chunks.at(-1), "\n"); // final newline after the last frame

@@ -7,7 +7,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-### The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 2a/3 landed)
+### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2b/3 landed)
+
+**Goal.** After parts 1–2 the ink port is the only TUI path; this part removes what it made dead
+and fixes every claim that the project has zero runtime dependencies.
+
+**Approach.**
+1. **Dead code:** delete exports in src/ui/tui-frame.ts and src/ui/tui.ts that only the
+   hand-rolled paint path used (candidates: any remaining full-frame ANSI assembly; `toneLine`'s
+   string-painting variant if `status-render.ts` no longer consumes it — check its CLI callers
+   in src/cli.ts first and keep what `tumwater status` still renders through). Verify with the
+   existing zero-dependency/dead-export test the repo already runs (docs/
+   commit-history-analysis.md describes it).
+2. **Docs:** docs/code-metrics.md:80 ("no runtime dependencies, only Node built-ins; four dev
+   dependencies") is updated to name ink and react as the sanctioned runtime exceptions per
+   PRINCIPLES.md; README.md and docs/how-it-works.md passages describing the hand-rolled
+   renderer/repaint are updated to describe the ink renderer; src/ui/tui.ts's header comment and
+   the `TuiSeams` doc comment no longer describe `CLEAR`-style painting.
+3. **Tests:** any test asserting deleted exports goes with them; `npm run test` green.
+
+**Acceptance criteria.**
+- No dead exports flagged by the repo's existing dead-export check; `grep -r '\x1b\[2J' src`
+  finds nothing outside deliberate full-clear sites (resize, if any remain).
+- All doc claims about dependencies and the TUI renderer match the shipped code.
+- `npm run test` is green.
+
+## Done
+
+### The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 2a/3 landed, done 2026-10-02 by feature)
 
 The second half of the split part 2/3: with the handler already framework-free in
 src/ui/tui-keys.ts (2a), this step only swaps who feeds it keys.
@@ -40,32 +67,6 @@ only data polling and state assembly.
   quit — pass unchanged.
 - `npm run test` is green.
 
-### The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01 by director; requires part 2b/3 landed)
-
-**Goal.** After parts 1–2 the ink port is the only TUI path; this part removes what it made dead
-and fixes every claim that the project has zero runtime dependencies.
-
-**Approach.**
-1. **Dead code:** delete exports in src/ui/tui-frame.ts and src/ui/tui.ts that only the
-   hand-rolled paint path used (candidates: any remaining full-frame ANSI assembly; `toneLine`'s
-   string-painting variant if `status-render.ts` no longer consumes it — check its CLI callers
-   in src/cli.ts first and keep what `tumwater status` still renders through). Verify with the
-   existing zero-dependency/dead-export test the repo already runs (docs/
-   commit-history-analysis.md describes it).
-2. **Docs:** docs/code-metrics.md:80 ("no runtime dependencies, only Node built-ins; four dev
-   dependencies") is updated to name ink and react as the sanctioned runtime exceptions per
-   PRINCIPLES.md; README.md and docs/how-it-works.md passages describing the hand-rolled
-   renderer/repaint are updated to describe the ink renderer; src/ui/tui.ts's header comment and
-   the `TuiSeams` doc comment no longer describe `CLEAR`-style painting.
-3. **Tests:** any test asserting deleted exports goes with them; `npm run test` green.
-
-**Acceptance criteria.**
-- No dead exports flagged by the repo's existing dead-export check; `grep -r '\x1b\[2J' src`
-  finds nothing outside deliberate full-clear sites (resize, if any remain).
-- All doc claims about dependencies and the TUI renderer match the shipped code.
-- `npm run test` is green.
-
-## Done
 
 ### The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 1/3 landed, done 2026-10-02 by feature)
 
