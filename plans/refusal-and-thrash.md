@@ -89,7 +89,7 @@ not in the vocabulary.
   - The skip rule lives in COMMON_RULES so every work-picking role sees it: "When choosing work,
     skip entries carrying a Refused note — do not pick them and do not re-refuse them; the
     objection stands until a human or the director edits the entry."
-  - Role find texts gain one line each (`src/roles.ts`): feature — "Skip plans whose entry carries
+  - Role find texts gain one line each (`src/role-catalog.ts`, home of the find texts since the 2026-10-01 catalog split): feature — "Skip plans whose entry carries
     a Refused note"; bugfix — the same for BUGS.md entries (COMMON_RULES makes refusal available to
     every loop, so both pickers need the skip). A fully-blocked backlog is a legitimate
     nothing-to-do state: the loop declares `TUMWATER_NOTHING_TO_DO` and sleeps, while the
@@ -103,7 +103,7 @@ not in the vocabulary.
     the skip rule, the outcome is still `refused` with normal backoff, so the worst case is one
     wasted pi run per (exponentially spaced, capped) interval rather than a hot loop; steward
     curation is the cleanup layer. No state machinery for v1.
-- **Prompt encouragement** (`src/roles.ts`): the feature role's find text gains one line — a plan
+- **Prompt encouragement** (`src/role-catalog.ts`): the feature role's find text gains one line — a plan
   that resists implementation is a finding: refuse with the objection recorded rather than forcing
   it; the bugfix role gets its analogue (a "bug" whose fix would harm the project is refused, not
   force-fixed). The skip lines for blocked entries are specified under Repeated refusals.
