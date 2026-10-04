@@ -1,4 +1,6 @@
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
+import fs from "node:fs";
+import { errCode } from "./errno.js";
 import {
   imageReferenceLines,
   promptImagesProblem,
@@ -48,7 +50,10 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
  * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
  * operator. An optional images array (the GUI composer's drop/paste attachments) rides
  * through savePromptImages beside the queue file, with one [image attached: …] reference line
- * per image appended to the queued text; image problems throw before anything is queued.
+ * appended to the queued text; image problems throw before anything is queued — and so does
+ * an over-cap composed text: the reference lines ride into the tick's prefill just like the
+ * prompt body, so the length cap is enforced on the final text (body + image lines), not the
+ * body alone.
  * An optional `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"):
  * it rides into enqueueRolePrompt's one atomic write as the queue file's marker line. */
 export function submitRolePrompt(
@@ -82,12 +87,32 @@ export function submitRolePrompt(
 function submitPromptWithImages(root: string, role: string, text: string, images: PromptImageInput[], notBeforeMs?: number): string {
   const prompt = text.trim();
   let final = prompt;
-  enqueueRolePrompt(root, role, prompt, notBeforeMs, (file) => {
-    const saved = savePromptImages(root, role, file, images);
-    if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
-    final = prompt + imageReferenceLines(saved.paths);
-    return final;
-  });
+  let savedImagePaths: string[] = [];
+  try {
+    enqueueRolePrompt(root, role, prompt, notBeforeMs, (file) => {
+      const saved = savePromptImages(root, role, file, images);
+      if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
+      savedImagePaths = saved.paths;
+      final = prompt + imageReferenceLines(saved.paths);
+      // The image reference lines ride into the target tick's prefill exactly like the
+      // prompt body, so the shared length cap applies to the composed text, not the body
+      // alone. This runs inside the decorate hook, before enqueueRolePrompt's one atomic
+      // write, so an over-cap composition queues nothing; the images saved above are
+      // removed again, since with no queue file nothing will ever dequeue them.
+      const lengthProblem = promptLengthProblem(final, role);
+      if (lengthProblem) throw new Error(lengthProblem);
+      return final;
+    });
+  } catch (err) {
+    for (const imageFile of savedImagePaths) {
+      try {
+        fs.unlinkSync(imageFile);
+      } catch (unlinkErr) {
+        if (errCode(unlinkErr) !== "ENOENT") throw unlinkErr;
+      }
+    }
+    throw err;
+  }
   logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
   return final;
 }

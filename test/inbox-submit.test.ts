@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { dequeuePrompt, inboxSize, queuedRolePrompts } from "../src/inbox.js";
@@ -75,4 +76,30 @@ test("the director prompt length cap applies to role prompts too", () => {
   const long = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   assert.throws(() => submitRolePrompt(dir, "qa", long), /shorten it to at most/);
   assert.deepEqual(queuedRolePrompts(dir, "qa"), [], "an over-long prompt is never queued");
+});
+
+test("an image-carrying prompt is capped on its composed text, not its body alone", () => {
+  const dir = tmpdir();
+  // The body fits (50 chars of headroom) but the four [image attached: …] reference
+  // lines push the composed text past the cap — the lines ride into the tick's prefill
+  // exactly like the body, so the cap must see them.
+  const body = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS - 50);
+  const images = Array.from({ length: 4 }, (_, i) => ({
+    name: `shot${i}.png`,
+    dataBase64: Buffer.from("a").toString("base64"),
+  }));
+  assert.throws(() => submitRolePrompt(dir, "qa", body, images), (err: unknown) => {
+    const message = String((err as Error).message);
+    return message.includes("chars") && message.includes(String(DIRECTOR_PROMPT_MAX_CHARS));
+  });
+  assert.equal(queuedRolePrompts(dir, "qa").length, 0, "nothing was queued");
+  assert.equal(eventsOfType(dir, "prompt_enqueued").length, 0, "and nothing was logged");
+  // The images saved before the length check fired are removed again: with no queue
+  // file, nothing would ever dequeue them, so they must not linger in the inbox dir.
+  const inboxDir = `${dir}/.tumwater/inbox/qa`;
+  assert.ok(!fs.existsSync(inboxDir) || fs.readdirSync(inboxDir).length === 0, "no orphan image files remain");
+  // The same composition under the cap still queues fine.
+  const short = submitRolePrompt(dir, "qa", "look at this", images);
+  assert.ok(short.includes("[image attached: "));
+  assert.equal(queuedRolePrompts(dir, "qa").length, 1);
 });
