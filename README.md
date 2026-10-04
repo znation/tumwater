@@ -26,6 +26,11 @@ npm install -g tumwater     # or run any command with npx tumwater
                             # from a checkout: npm install && npm run build && npm link
 cd your-project             # a new or existing directory
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
+                            # add --template <id> to seed from a bundled starting point
+                            # (blank, python-cli, node-cli, static-site); --list-templates
+                            # prints the catalog
+                            # add --file <path> to read the brief from a file
+                            # add --adopt to adopt an existing repo as-is
 tumwater run                # start the loops (Ctrl+C to stop)
 ```
 
@@ -38,6 +43,7 @@ Then, from another terminal:
 | Check state | `tumwater status`, `tumwater logs -f`, `tumwater logs --since <duration>`, `tumwater logs --grep <text>`, `tumwater logs --json` (the event feed as NDJSON, for scripts), `tumwater logs --role <id>`, `tumwater backlog` (planned features, open bugs, open questions as Markdown), `tumwater backlog --json` (the backlog as JSON, for scripts), `tumwater role <id>` (one loop's standing prompt — find text, `instructions` override, resolved model and interval, enabled/paused state — plus its next tick's assembled prompt, which shows the oldest queued prompt without consuming it (one is dequeued per tick; `--json` for scripts)) |
 | See a loop's pending change | `tumwater diff --role <id>` — that loop's branch's unlanded commits (with the patch) and its worktree's uncommitted edits (staged and unstaged); without `--role`, one line per loop holding pending work; `--json` prints the payload as data |
 | Steer the project | `tumwater prompt "prefer no third-party deps"` queues a request for the director; add `--role <id>` to aim it at one loop's next tick, `tumwater prompt --list` shows the queued prompts numbered and grouped by loop, with how long each has waited (`--json` for scripts), and `tumwater prompt --cancel <n>` removes the Nth entry as `--list` shows them (add `--role <id>` when several loops share that number) |
+| Answer open questions | `tumwater questions` lists QUESTIONS.md's open questions numbered (as the loops wrote them); `tumwater questions answer <n> "decision text"` moves the Nth entry to ## Answered with your dated answer (loops read the file back on their next tick); `--json` prints the list as data |
 | Control the loops | `tumwater pause [--for <duration>]` / `resume [--role <id>]` (fleet or one loop; `--for 2h` auto-resumes, capped at 90d; add `--reason <text>` on a fleet pause to state why — it shows on `status`, the TUI, and the dashboard), `tumwater wake` (skip backoff), `tumwater abort --role <id>`, `tumwater stop` (drain and exit, like Ctrl+C) |
 | Audit | `tumwater doctor` (pre-flight; `--json` prints the report as JSON, for scripts), `tumwater report` (usage and cost; totals include landing runs — reviewer + conflict resolution), `tumwater report --since <duration>` (totals over a trailing window, capped at 7d), `tumwater report --json` (the `--days`/`--since`/`--failures` reports as JSON, for scripts), `tumwater report --failures` (the failure digest: per-role outcomes, each role's time and spend by outcome, and the top five loss causes ranked by agent-hours, with a marker naming how many were cut) |
 
