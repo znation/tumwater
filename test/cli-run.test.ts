@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { onceSummary, parseRunWindow } from "../src/cli-run.js";
+import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli-run.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { pauseFleet } from "../src/fleet-state.js";
@@ -47,6 +47,33 @@ test("parseRunWindow rejects --for together with --once", () => {
 test("parseRunWindow enforces pause --for's 90-day cap", () => {
   const r = expectFail(() => parseRunWindow(["--for", "200d"], false));
   assert.match(r.stderr, /--for is capped at 90d \(got 200d\)/);
+});
+
+// --- armDeadlineTimer: the deadline timer cmdRun arms for `run --for` ---
+
+// A duration over setTimeout's 32-bit signed limit (2_147_483_647 ms ≈ 24.8 days) is clamped
+// by Node to 1ms with a TimeoutOverflowWarning, so the deadline would fire immediately and a
+// windowed run would stop the instant it booted. `run --for` accepts durations up to the
+// 90-day pause cap, so durations past the limit are ordinary inputs, not errors — the arming
+// helper must chunk them. Without the chunking this test observes the immediate fire.
+test("armDeadlineTimer does not fire an over-32-bit duration immediately", async () => {
+  let fired = 0;
+  const timer = armDeadlineTimer(90 * 24 * 60 * 60 * 1000, () => fired++);
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(fired, 0, "an overflow duration must be chunked, not clamped to 1ms");
+  timer.clear();
+});
+
+test("armDeadlineTimer fires a short duration on schedule and clear() retracts it", async () => {
+  let fired = 0;
+  const firedTimer = armDeadlineTimer(50, () => fired++);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(fired, 1);
+  const cleared = armDeadlineTimer(50, () => fired++);
+  cleared.clear();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(fired, 1, "clear() must retract the armed timer");
+  firedTimer.clear(); // Already fired; clear() is still safe.
 });
 
 test("counts the round's ticks and buckets them by last result, sorted by key", () => {

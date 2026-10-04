@@ -123,13 +123,10 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // A windowed run's deadline arms the same graceful stop a Ctrl+C runs — the identical `stop`
   // closure, so the drain path is one code path either way. clearTimeout in the finally below
   // retracts it when the run ends first (an early Ctrl+C), so no stray timer outlives the run.
-  const deadlineTimer =
-    forMs !== null
-      ? setTimeout(() => {
-          say("deadline reached — stopping");
-          stop();
-        }, forMs)
-      : null;
+  const deadlineTimer = forMs !== null ? armDeadlineTimer(forMs, () => {
+    say("deadline reached — stopping");
+    stop();
+  }) : null;
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
   // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
@@ -177,13 +174,38 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       roleFilter: roleFilter ?? undefined,
     });
   } finally {
-    if (deadlineTimer) clearTimeout(deadlineTimer);
+  if (deadlineTimer) deadlineTimer.clear();
     unsubscribe();
   }
   if (once || forMs !== null) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** Arm the windowed run's deadline timer: the one home of the arming `cmdRun` does for
+ * `run --for <duration>`. A duration over setTimeout's own 32-bit signed ceiling
+ * (2_147_483_647 ms ≈ 24.8 days) is clamped by Node to 1ms with a TimeoutOverflowWarning, so
+ * a raw setTimeout would fire the deadline the instant the run booted — and `run --for`
+ * accepts durations up to the 90-day pause cap (PAUSE_FOR_MAX_MS), so overflow is an ordinary
+ * input, not an error. The timer is therefore armed in ≤32-bit chunks: each setTimeout covers
+ * at most the ceiling, and a chunk that expires with time still left re-arms for the
+ * remainder, so the callback runs exactly once, after the full duration, whatever its size.
+ * Returns a clear() handle (the finally in cmdRun retracts the timer when the run ends first —
+ * an early Ctrl+C — so no stray timer outlives the run); clear() is safe after the callback
+ * has run. Exported for tests. */
+export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): void } {
+  const MAX_TIMEOUT_MS = 2_147_483_647;
+  let timer: NodeJS.Timeout;
+  const arm = (remaining: number): void => {
+    const slice = Math.min(remaining, MAX_TIMEOUT_MS);
+    timer = setTimeout(() => {
+      if (remaining > slice) arm(remaining - slice);
+      else onFired();
+    }, slice);
+  };
+  arm(ms);
+  return { clear: () => clearTimeout(timer) };
 }
 
 /** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or
