@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
-import type { BackendFailureKind, PiRunOptions} from "./pi.js";
+import type { BackendFailureKind, PiRunOptions } from "./pi.js";
 import type { PiRunResult } from "./pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
