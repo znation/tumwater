@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n>` answering the last open question dropped the blank separator line between the restored `_None._` placeholder and the next `## ` heading, gluing the placeholder paragraph against `## Answered` — the empty-Open rebuild pushed "", `_None._`, then resumed verbatim at the `## Answered` line, so the blank line the removed Open content used to carry vanished and the file read `..._None._\n## Answered` (repro: seed a QUESTIONS.md holding one open question and an `## Answered` section, `answerQuestion(root, 1, ...)` — the written file had no blank line before `## Answered`) (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-CLI commit 7cf0c37a, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** none — a scratch script over the built module reproduced the glued heading before the fix ("blank-between: false"), and the added regression test asserts `_None._\n\n## Answered` and fails on the unfixed tree.
+
 ### The template-feature commit a412d97d meant to move the "unbounded prompt is a standing per-tick cost" comment in src/init.ts and instead duplicated it verbatim, leaving two adjacent copies above the `prompt.length > INITIAL_PROMPT_MAX_CHARS` check — the four lines explaining why the initial prompt is capped (tick/director prefill, customLoops.task parity, reject-before-side-effect) read twice (repro: read src/init.ts above the `INITIAL_PROMPT_MAX_CHARS` check at a412d97d — the same four lines appear twice; no code path involved, so the suite stays green both before and after) (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's init-template commit a412d97d, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** no-observability — a duplicated comment leaves no runtime trace, so no test or check can fail on it; only reading the region confirms it.

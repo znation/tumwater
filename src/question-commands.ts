@@ -123,6 +123,9 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
       ...lines!.slice(0, scanned.openIdx + 1),
       "",
       "_None._",
+      // Resume at the next section with the blank separator line the dropped Open content
+      // used to carry, so `_None._` never reads as a paragraph glued to a heading.
+      "",
       ...lines!.slice(scanned.answeredIdx === -1 ? lines!.length : scanned.answeredIdx),
     );
   } else {

@@ -121,6 +121,16 @@ test("answering the last question restores the Open section's _None._ placeholde
   assert.deepEqual(openQuestionEntries(root), []);
 });
 
+test("answering the last question keeps the blank line between the restored placeholder and the next heading", () => {
+  const root = tmpdir();
+  seed(root, twoQuestionFile());
+  answerQuestion(root, 1, "use ink");
+  answerQuestion(root, 1, "any OpenAI-compatible one");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  // The placeholder is its own paragraph: `## Answered` follows a blank line, not the text.
+  assert.ok(md.includes("_None._\n\n## Answered"), md);
+});
+
 test("an out-of-range position fails with the prompt --cancel wording and exit 1", () => {
   const root = tmpdir();
   seed(root, twoQuestionFile());
