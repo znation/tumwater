@@ -1,5 +1,6 @@
 /** The dashboard HTTP server: routing, the shared-token gate, the static page, /api/status,
- * and the self-reload watch. Every /api endpoint's handler lives in gui-endpoints.ts — this
+ * and the self-reload watch. Every /api endpoint's handler lives in gui-endpoints.ts (the GET
+ * data endpoints) and gui-endpoint-commands.ts (the POST operator endpoints) — this
  * module owns the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives here too,
  * so the server and everything that boots and announces it stay in one place. */
 import crypto from "node:crypto";
@@ -11,24 +12,26 @@ import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSea
 import { errorMessage } from "../text.js";
 import { errCode } from "../errno.js";
 import {
-  handleAbort,
   handleBacklog,
-  handleBudget,
   handleConfig,
-  handleConfigSet,
   handleFailures,
+  handleReport,
+  handleHistory,
+  handleTick,
+  handleTranscript,
+} from "./gui-endpoints.js";
+import {
+  handleAbort,
+  handleBudget,
+  handleConfigSet,
   handlePause,
   handlePauseRole,
   handlePrompt,
   handlePromptCancel,
   handlePromptRole,
-  handleReport,
   handleRestart,
-  handleHistory,
-  handleTick,
-  handleTranscript,
   handleWake,
-} from "./gui-endpoints.js";
+} from "./gui-endpoint-commands.js";
 import { sendJson } from "./http-body.js";
 import { fail, say } from "../cli-output.js";
 import { flagValue, parsePortFlag } from "../cli-args.js";

@@ -1,6 +1,7 @@
 /**
  * The request-argument validators behind the dashboard's /api endpoints (gui-endpoints.ts's
- * handlers call them): loop-targeting role validation, integer query parsing, the report
+ * GET handlers and gui-endpoint-commands.ts's POST handlers call them): loop-targeting role
+ * validation, integer query parsing, the report
  * endpoints' days window, and the body-field checks the paired operator endpoints
  * (prompt/prompt-role, pause/pause-role) must answer with identical 400 wording. Pure
  * HTTP-argument adaptation — each helper either returns the parsed value or sends the 400
