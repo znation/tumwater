@@ -6,7 +6,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater prompt --attach <path>` — attach an image to a queued prompt from the CLI (planned 2026-10-04 by plan loop)
+
+**Goal.** The GUI composer accepts image attachments (drop/paste — `src/inbox-attachments.ts` saves them beside the queue file and appends `[image attached: <absolute path>]` lines the loop's pi agent reads), but the terminal's `tumwater prompt` cannot attach anything, so a CLI operator who wants the feature or bugfix loop to see a screenshot must run the dashboard. Close the gap: one `--attach <path>` flag, repeatable up to the existing per-prompt image cap, on the enqueue form of `tumwater prompt` only.
+
+**Approach.**
+- `src/cli-command-args.ts`, `parsePromptArgs`: scan for `--attach` occurrences (repeatable, each claiming itself and its value token like `--role`'s claim — a helper `attachClaims: number[]` beside `roleClaim`/`atClaim`); exclude claimed pairs from prompt text exactly as `roleClaim` and `atClaim` already are. Add `attachPaths: string[]` to the `enqueue` mode of the `PromptArgs` union. Mode guards mirror the existing `--at` guard verbatim: `--attach` only queues a prompt, so with `--list`, `--cancel`, or `--edit` it fails ("--attach only queues a prompt"); a missing value names the flag like `--cancel`'s does; a stray argument with `--list`/`--cancel` uses `failStrayArg` as those modes do.
+- `src/prompt-commands.ts`, `cmdPrompt` enqueue path: for each path, `fs.readFileSync` it (a missing or unreadable path fails with `errorMessage`, naming the path, before anything is queued), then build one `PromptImageInput { name: path.basename(p), dataBase64: bytes.toString("base64") }` per file and pass the array through the existing `submitRolePromptAndWake` images parameter (already plumbed to `submitRolePrompt` → `submitPromptWithImages` → `savePromptImages` — no inbox changes needed). Re-run validation client-side for a clean CLI error by calling `promptImagesProblem` first and `fail`-ing its message (covers the extension list, the 5 MiB per-image cap, and the 4-image cap with the same wording the GUI answers 400 with). The queue confirmation says what landed: the existing "queued for the … loop" line plus " with N image(s)" when attachments rode along.
+- `src/cli.ts` valued-flag list for prompt (`prompt: ["--role", "--file", "--at", "--cancel", "--edit"]`): add `"--attach"` so a value token is never eaten as prompt text.
+- `src/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
+- Tests in `test/` beside the existing prompt-args and prompt-command suites: `parsePromptArgs` keeps `--attach` pairs out of the text (positional before, between, and after flags), refuses it in list/cancel/edit modes, and names a missing value; `cmdPrompt` enqueue writes the image beside the queue file with the queue file's stem, the queued text ends with the `[image attached: <absolute path>]` line, and the confirmation names the count; error cases — a nonexistent path, a non-image extension, a fifth image — all exit nonzero with `promptImagesProblem`'s or the read-error message and queue nothing.
+
+**Files touched.** `src/cli-command-args.ts`, `src/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to `src/inbox*.ts`, `src/ui/*`, or `src/operator-intent.ts`.
+
+**Acceptance criteria.**
+- `tumwater prompt "fix the layout" --role feature --attach shot.png` queues the prompt whose text ends with the image-reference line, saves `shot.png` beside the queue file, and prints the confirmation with the attachment count; the receiving role's next tick prompt carries the reference.
+- `--attach` repeats up to 4; a fifth, an unsupported extension, an oversized file, and a nonexistent path each fail nonzero with the specific message and leave the queue untouched.
+- `--list`, `--cancel`, and `--edit` refuse `--attach`; `--attach` pairs never leak into prompt text in any mode.
+- `npm run test` passes, including the new regression tests.
 
 ## Done
 
