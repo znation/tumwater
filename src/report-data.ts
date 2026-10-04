@@ -7,9 +7,11 @@
  * change for different reasons — and keeps core data collection out of the presentation
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
-import { readTextOrNull } from "./files.js";
+import { readTextOrNull, statOrNull } from "./files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
-import { eventDayKey, eventRole, eventUsage } from "./event-read.js";
+import { eventDayKey, eventRole, eventUsage, parseEventLine } from "./event-read.js";
+import { readCompleteLines } from "./tail.js";
+import { eventsLogPath } from "./paths.js";
 import type { HarnessEvent } from "./events.js";
 import { entryDates } from "./backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
@@ -61,6 +63,137 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.landingTokens = (target.landingTokens ?? 0) + tokens;
     target.landingCostUsd = (target.landingCostUsd ?? 0) + costUsd;
   }
+}
+
+/** One day's worth of folded events, the event-log half of a ReportDay: everything
+ * foldUsageEvent accumulates for a single local day (ticks are not tracked — the series
+ * derives them from ticksByRole). Cached across calls by foldWindowEvents so an appended
+ * log line is folded once, not once per report request. */
+interface DayFold {
+  tokensOut: number;
+  commits: number;
+  costUsd: number;
+  ticksByRole: Record<string, number>;
+  costByRole: Record<string, number>;
+  landingRuns: number;
+  landingTokens: number;
+  landingCostUsd: number;
+}
+
+/** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
+ * many live-log bytes the folds already cover; the log is append-only (events.ts appends
+ * whole lines, rotation replaces the file whole), so appends after `offset` are the only
+ * bytes a repeat request has not folded. `fileCovers` is the day-keyed read's own coverage
+ * proof (readWindowEvents's coversFullWindow) — a property of the retained bytes and the
+ * fromKey, both of which the cache key pins, so it cannot go stale the way a proof carried
+ * across window changes would. `hadEvents`/`firstEventTs` mirror raw.events[0]'s role in
+ * eventWindowCovers: the first in-window event's ts (undefined when it has no numeric ts). */
+interface ReportFoldEntry {
+  root: string;
+  fromKey: string;
+  offset: number;
+  mtimeMs: number;
+  fileCovers: boolean;
+  hadEvents: boolean;
+  firstEventTs?: number;
+  days: Map<string, DayFold>;
+}
+
+/** Bounded memo of window folds. Eight entries cover a dashboard flipping among a few day
+ * counts plus the midnight rollover's new fromKey; oldest-insertion eviction (Map preserves
+ * insertion order) keeps the memory bound to a handful of per-day accumulator maps. */
+const reportFoldCache = new Map<string, ReportFoldEntry>();
+const REPORT_FOLD_CACHE_MAX = 8;
+
+function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
+  let fold = entry.days.get(dayKey);
+  if (!fold) {
+    fold = {
+      tokensOut: 0,
+      commits: 0,
+      costUsd: 0,
+      ticksByRole: {},
+      costByRole: {},
+      landingRuns: 0,
+      landingTokens: 0,
+      landingCostUsd: 0,
+    };
+    entry.days.set(dayKey, fold);
+  }
+  return fold;
+}
+
+/** Fold one appended log line into a cache entry: only in-window events (a non-null day on
+ * or after fromKey) count, matching readWindowEvents's event list; the first such event
+ * seen takes firstEventTs, mirroring raw.events[0] since appends are chronological. */
+function foldLineInto(entry: ReportFoldEntry, line: string): void {
+  const ev = parseEventLine(line);
+  if (!ev) return;
+  const dayKey = eventDayKey(ev);
+  if (dayKey === null || dayKey < entry.fromKey) return;
+  if (!entry.hadEvents) {
+    entry.hadEvents = true;
+    entry.firstEventTs = typeof ev.ts === "number" ? ev.ts : undefined;
+  }
+  foldUsageEvent(dayFoldFor(entry, dayKey), ev);
+}
+
+/** The event-log half of collectReport, memoized: a dashboard re-fetching /api/report every
+ * poll re-read and re-parsed the whole window's log bytes each time (~6.8 MB and tens of ms
+ * on this repo's own day log, growing toward the 16 MB rotation cap). Now a request whose
+ * log has not changed costs one stat; growth folds only the appended complete lines
+ * (readCompleteLines holds back a torn trailing write, so it is folded whole next call).
+ * Same size with a changed mtime, a shrunken file (rotation or rewrite), or a new fromKey
+ * falls back to the full readWindowEvents pass — the fallback re-derives everything, so a
+ * mis-fold can only come from the append assumption, and rotation's whole-file replace
+ * always hits the shrink arm. The entry's coverage parts are pinned by the cache key:
+ * fromKey and file bytes decide them, so an advancing window re-derives fresh instead of
+ * carrying yesterday's proof forward. */
+function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
+  const key = `${root}\0${fromKey}`;
+  const liveStat = statOrNull(eventsLogPath(root));
+  const size = liveStat?.size ?? 0;
+  const mtimeMs = liveStat?.mtimeMs ?? 0;
+  const cached = reportFoldCache.get(key);
+  if (cached && size === cached.offset && mtimeMs === cached.mtimeMs) {
+    reportFoldCache.delete(key); // Refresh LRU position.
+    reportFoldCache.set(key, cached);
+    return cached;
+  }
+  if (cached && size > cached.offset) {
+    const { lines, end } = readCompleteLines(eventsLogPath(root), cached.offset, size);
+    if (end > cached.offset) {
+      for (const line of lines) foldLineInto(cached, line);
+      cached.offset = end;
+      cached.mtimeMs = mtimeMs;
+      return cached;
+    }
+    // Grown but no complete line yet (a torn write in flight): reuse the folds; the next
+    // request sees the completed line and folds it then.
+    return cached;
+  }
+  const raw = readWindowEvents(root, fromKey);
+  const entry: ReportFoldEntry = {
+    root,
+    fromKey,
+    offset: size,
+    mtimeMs,
+    fileCovers: raw.coversFullWindow,
+    hadEvents: raw.events.length > 0,
+    firstEventTs: typeof raw.events[0]?.ts === "number" ? raw.events[0].ts : undefined,
+    days: new Map(),
+  };
+  for (const ev of raw.events) {
+    const dayKey = eventDayKey(ev);
+    if (dayKey === null) continue; // Mirrors the fold loop's null-day guard.
+    foldUsageEvent(dayFoldFor(entry, dayKey), ev);
+  }
+  if (reportFoldCache.size >= REPORT_FOLD_CACHE_MAX) {
+    const oldest = reportFoldCache.keys().next().value;
+    if (oldest !== undefined) reportFoldCache.delete(oldest);
+  }
+  reportFoldCache.set(key, entry);
+  return entry;
 }
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
@@ -225,12 +358,18 @@ export function collectReport(root: string, days: number): ReportData {
   const byDate = new Map<string, ReportDay>();
   for (const d of series) byDate.set(d.date, d);
 
-  const raw = readWindowEvents(root, from);
-  for (const ev of raw.events) {
-    const dayKey = eventDayKey(ev);
-    const day = dayKey === null ? undefined : byDate.get(dayKey);
-    if (!day) continue; // Outside [from, to] — also guards future-dated events.
-    foldUsageEvent(day, ev);
+  const foldEntry = foldWindowEvents(root, from);
+  for (const [dayKey, fold] of foldEntry.days) {
+    const day = byDate.get(dayKey);
+    if (!day) continue; // Out-of-window day key (e.g. future-dated) — no series slot to fill.
+    day.tokensOut = fold.tokensOut;
+    day.ticksByRole = fold.ticksByRole;
+    day.costByRole = fold.costByRole;
+    day.commits = fold.commits;
+    day.costUsd = fold.costUsd;
+    day.landingRuns = fold.landingRuns;
+    day.landingTokens = fold.landingTokens;
+    day.landingCostUsd = fold.landingCostUsd;
   }
 
   // The landing share joins its day's tokensOut/costUsd (the budget charges these same
@@ -279,12 +418,18 @@ export function collectReport(root: string, days: number): ReportData {
     totals.landingCostUsd += d.landingCostUsd ?? 0;
   }
 
-  // The shared coverage proof (event-window.ts), with the window's first local midnight as
-  // the cutoff: an event at that instant is the earliest the window could contain, so the
-  // same-day arm degenerates harmlessly. Without this field the day report was the one
-  // windowed consumer that could undercount in silence — the --since report and the failure
-  // digest both carry the note, and a silent number invites an operator to trust a truncated
-  // window as an idle fleet.
-  const coversFullWindow = eventWindowCovers(raw, dayAt(days - 1, now).getTime());
+  // The shared coverage proof (event-window.ts), rebuilt from the memoized read's pinned
+  // parts: the day-keyed proof (fileCovers — a property of the retained bytes and fromKey,
+  // both in the cache key), the vacuous empty-log arm, and the oldest retained event's ts.
+  // The window's first local midnight is the cutoff: an event at that instant is the
+  // earliest the window could contain, so the same-day arm degenerates harmlessly. Without
+  // this field the day report was the one windowed consumer that could undercount in
+  // silence — the --since report and the failure digest both carry the note, and a silent
+  // number invites an operator to trust a truncated window as an idle fleet.
+  const cutoffMs = dayAt(days - 1, now).getTime();
+  const coversFullWindow =
+    foldEntry.fileCovers ||
+    !foldEntry.hadEvents ||
+    (foldEntry.firstEventTs !== undefined && foldEntry.firstEventTs <= cutoffMs);
   return { days, from, to, series, totals, coversFullWindow };
 }
