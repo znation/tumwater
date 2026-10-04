@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { resolveFromNodeModules } from "./build-check-detect.js";
+import { readJsonFile } from "./json-files.js";
 import { EXEC_MAX_BUFFER } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -37,13 +37,13 @@ export type InstallRunner = (dir: string, timeoutMs: number) => Promise<{ ok: bo
  * (nothing pins a version, so no install is owed) or when everything resolves as pinned.
  * Optional dependencies are left out: their absence on a platform is not drift. Never throws. */
 export function installDrift(dir: string): string[] {
-  let lock: { packages?: Record<string, { version?: string; dependencies?: object; devDependencies?: object }> };
-  try {
-    lock = JSON.parse(fs.readFileSync(path.join(dir, "package-lock.json"), "utf8"));
-  } catch {
-    return [];
-  }
-  const packages = lock.packages;
+  // The lockfile read routes through readJsonFile's tolerant no-data policy — a missing,
+  // unreadable, torn, or non-object file reads as no data (nothing pinned, so no install
+  // owed), never a thrower.
+  const lock = readJsonFile<{
+    packages?: Record<string, { version?: string; dependencies?: object; devDependencies?: object }>;
+  }>(path.join(dir, "package-lock.json"));
+  const packages = lock?.packages;
   const top = packages?.[""];
   if (!packages || !top) return [];
   const names = [...Object.keys(top.dependencies ?? {}), ...Object.keys(top.devDependencies ?? {})];
@@ -59,12 +59,9 @@ export function installDrift(dir: string): string[] {
 function installedVersion(dir: string, name: string): string | undefined {
   const manifest = resolveFromNodeModules(dir, path.join(name, "package.json"));
   if (!manifest) return undefined;
-  try {
-    const version = JSON.parse(fs.readFileSync(manifest, "utf8")).version;
-    return typeof version === "string" ? version : undefined;
-  } catch {
-    return undefined;
-  }
+  // Same tolerant read as the lockfile above: a torn or non-object manifest is no data.
+  const version = readJsonFile<{ version?: unknown }>(manifest)?.version;
+  return typeof version === "string" ? version : undefined;
 }
 
 /** The production installer: `npm install` in `dir` from its own lockfile, run as a process
