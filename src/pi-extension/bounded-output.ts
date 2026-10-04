@@ -15,6 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { toolOutputDir } from "../paths.js";
 
 /** Char budget for a `read` tool result (~300 lines, matching CONTEXT_BUDGET_RULE). */
 export const READ_LIMIT_CHARS = 12_000;
@@ -187,8 +188,9 @@ export function findTumwaterRoot(startDir: string = process.cwd()): string | nul
  * its path, or null when there is no harness root (or the write fails). Files are named
  * by `toolCallId` because parallel tool mode can interleave tool_result events. The
  * orchestrator's retention passes prune this directory with the fleet's
- * sessionRetentionDays window (toolOutputDir in src/paths.ts), so a pointer to a full
- * output stays readable while its tick is recent and never accumulates forever. */
+ * sessionRetentionDays window (paths.ts's toolOutputDir, the single home of this path that
+ * this module shares instead of re-joining it), so a pointer to a full output stays readable
+ * while its tick is recent and never accumulates forever. */
 export function writeFullOutput(
   text: string,
   toolCallId: unknown,
@@ -197,7 +199,7 @@ export function writeFullOutput(
   const root = findTumwaterRoot(startDir);
   if (!root) return null;
   try {
-    const dir = path.join(root, ".tumwater", "log", "tool-output");
+    const dir = toolOutputDir(root);
     fs.mkdirSync(dir, { recursive: true });
     const id = typeof toolCallId === "string" && toolCallId
       ? toolCallId.replace(/[^\w-]/g, "_")
