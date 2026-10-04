@@ -38,7 +38,7 @@ export interface TuiAppView {
 
 /** The TUI's key bridge: ink's `useInput` parses the stdin the render was given, and this
  * hook maps each parsed (input, key) pair to the readline shape the extracted handler (the
- * TuiKeys factory tui.ts creates) consumes. Mounted inside the component tree so ink's
+ * TuiKeys factory tui.tsx creates) consumes. Mounted inside the component tree so ink's
  * stdin context owns raw mode and the input stream for the TUI's whole lifetime. */
 export function useTuiKeys(keys: TuiKeys): void {
   useInput((input, inkKey) => {
