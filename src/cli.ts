@@ -14,7 +14,7 @@ import {
   sinceFlagSpec,
 } from "./cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli-output.js";
-import { parsePromptArgs } from "./cli-command-args.js";
+import { parsePromptArgs, peelPositionals } from "./cli-command-args.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
 import { cmdStop } from "./operator-commands.js";
 import { cmdPrompt } from "./prompt-commands.js";
@@ -28,10 +28,8 @@ import {
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { fileBug, filePlan, fileAndAnnounce } from "./backlog-write.js";
-import { peelPositionals } from "./cli-command-args.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
-import { runMarkerCommand } from "./cli-marker-commands.js";
-import type { MarkerCommand } from "./cli-marker-commands.js";
+import { runMarkerCommand, type MarkerCommand } from "./cli-marker-commands.js";
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./doctor-report.js";
