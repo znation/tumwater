@@ -95,6 +95,24 @@ export function sectionBodyLines(md: string, sectionTitle: string): string[] {
   return sectionLines(md, sectionTitle).filter((line) => !fenced.inside(line));
 }
 
+/** The heading lines of `md` starting with `prefix` (a `"## "` section heading or a `"### "`
+ * entry heading), in file order, fence-aware (fenceTracker): a heading line quoted inside a
+ * fenced code block is body text, never structure. The single home of the whole-document
+ * prefix-heading walk — backlog-structure.ts's sectionTitles ("## ") and planHeadingKeys
+ * ("### ") each carried their own tracker before, so their fence handling could drift from
+ * sectionLines'. Callers slice and trim the prefix themselves. (sectionLines does not use
+ * this: its walk must track which section it is inside, not just collect headings; readers
+ * inside one section go through sectionLines/sectionBodyLines instead.) */
+export function fenceAwareHeadingLines(md: string, prefix: "## " | "### "): string[] {
+  const fenced = fenceTracker();
+  const lines: string[] = [];
+  for (const line of md.split("\n")) {
+    if (fenced.inside(line)) continue;
+    if (line.startsWith(prefix)) lines.push(line);
+  }
+  return lines;
+}
+
 /** The entries inside one `## <sectionTitle>` section of a markdown document, each with its
  * full body: stops at the next `## ` line (so Done/Fixed entries never leak in), skips
  * non-heading placeholders like `_None yet._` and any prose before the first heading, keeps

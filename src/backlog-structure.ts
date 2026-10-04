@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { fenceTracker, headingMetadata, sectionBodyLines } from "./backlog.js";
+import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog.js";
 import { gitTry } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 
@@ -77,11 +77,9 @@ function planHeadingKey(title: string): string {
  * (backlog.ts's shared tracker). The base-side set for the new-plan-under-Done rule: an entry
  * whose key the base already carried is a move between sections, never a stranding. */
 function planHeadingKeys(md: string): Set<string> {
-  const fenced = fenceTracker();
   const keys = new Set<string>();
-  for (const line of md.split("\n")) {
-    if (fenced.inside(line)) continue;
-    if (line.startsWith("### ")) keys.add(planHeadingKey(line.slice(4).trim()));
+  for (const line of fenceAwareHeadingLines(md, "### ")) {
+    keys.add(planHeadingKey(line.slice(4).trim()));
   }
   return keys;
 }
@@ -93,13 +91,7 @@ const BACKLOG_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"];
 /** The `## ` section titles of `md`, in file order, fence-aware (backlog.ts's shared tracker:
  * a `## Done` quoted inside a fenced code block is body text, not structure). */
 function sectionTitles(md: string): string[] {
-  const fenced = fenceTracker();
-  const titles: string[] = [];
-  for (const line of md.split("\n")) {
-    if (fenced.inside(line)) continue;
-    if (line.startsWith("## ")) titles.push(line.slice(3).trim());
-  }
-  return titles;
+  return fenceAwareHeadingLines(md, "## ").map((line) => line.slice(3).trim());
 }
 
 /** How many times each `## ` title appears in `md` — the tally `duplicateHeadings` reports
