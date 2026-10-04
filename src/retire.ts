@@ -100,6 +100,10 @@ function objections(status: RetireStatus): string[] {
     reasons.push(
       `branch ${branchName(status.role)} holds ${status.aheadOfMain} unlanded commit(s) — land or discard them first`,
     );
+  if (status.worktreePresent && !status.worktreeUsable)
+    reasons.push(
+      "the worktree is unusable and cannot be checked for uncommitted changes — remove it manually or use --force",
+    );
   if (status.dirty) reasons.push("the worktree has uncommitted changes");
   if (status.midTick) reasons.push("a tick is in flight for this loop");
   return reasons;

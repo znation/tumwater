@@ -96,6 +96,26 @@ test("retire refuses a dirty worktree and a mid-tick loop before removing anythi
   assert.equal(status.midTick, true);
 });
 
+test("retire refuses an unusable worktree it cannot check for uncommitted changes", async () => {
+  const { root, wt } = await initializedWorktree();
+  disableRole(root, "improve");
+
+  // Present but unusable: the .git pointer is broken, so isDirty cannot run — yet uncommitted
+  // work may sit in the directory. Retire must refuse rather than remove it sight unseen.
+  fs.writeFileSync(path.join(wt, ".git"), "gitdir: /gone/nowhere\n");
+  fs.writeFileSync(path.join(wt, "scratch.txt"), "uncommitted\n");
+
+  const r = await cli(root, "retire", "--role", "improve");
+  assert.equal(r.code, 1, "refuses without --force");
+  assert.match(r.stderr, /unusable/);
+  assert.ok(fs.existsSync(path.join(wt, "scratch.txt")), "uncommitted work survives");
+
+  // --force overrides: the removal goes through.
+  const rf = await cli(root, "retire", "--role", "improve", "--force", "--json");
+  assert.equal(rf.code, 0, rf.stderr);
+  assert.ok(!fs.existsSync(worktreePath(root, "improve")), "worktree removed with --force");
+});
+
 test("a second retire is idempotent: skipped artifacts, exit 0", async () => {
   const { root } = await initializedWorktree();
   disableRole(root, "improve");

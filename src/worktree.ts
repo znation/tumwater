@@ -97,7 +97,12 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
   const removed = (await gitTry(root, "worktree", "remove", "--force", wt)) !== null;
   if (!removed || fs.existsSync(wt)) {
     await gitTry(root, "worktree", "prune");
-    if (fs.existsSync(wt)) removeTree(wt);
+    if (fs.existsSync(wt)) {
+      removeTree(wt);
+      // Prune once more: the registration may have survived the first prune (its directory was
+      // still present, e.g. a corrupt .git pointer) and only a missing directory unregisters it.
+      await gitTry(root, "worktree", "prune");
+    }
   }
 }
 
