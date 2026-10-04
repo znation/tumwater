@@ -70,8 +70,9 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   // waiting the block above shows only the oldest — say so, so the count line and the
   // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
+    const more = p.inboxCount - 1;
     lines.push(
-      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${p.inboxCount - 1} more wait)_`,
+      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${more === 1 ? "waits" : "wait"})_`,
     );
   }
   return lines.join("\n").trimEnd();
