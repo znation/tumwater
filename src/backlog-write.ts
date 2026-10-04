@@ -19,6 +19,7 @@ import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
 import { peelPositionals } from "./cli-command-args.js";
 import { requireReadyRepo } from "./cli-query-commands.js";
 import { submitRolePromptAndWake } from "./operator-intent.js";
+import { promptLengthProblem } from "./inbox-submit.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
@@ -106,6 +107,16 @@ interface FiledEntry {
   stamp: string;
 }
 
+/** The title each file command derives from the CLI positionals, exported so the CLI case
+ * can hand fileAndAnnounce the same derivation the write will carry: fileAndAnnounce
+ * preflights the composed wake prompt (wakeText(title)) against the submission cap BEFORE
+ * the write, and a titleOf that drifted from file()'s own derivation would preflight the
+ * wrong text. bugTitleOf(positionals) is exactly fileBug's symptom when the CLI case passes
+ * positionals.join(" ") as its raw text; planTitleOf(positionals) is exactly filePlan's
+ * title when it passes positionals[0]. */
+export const bugTitleOf = (positionals: string[]): string => collapseWhitespace(positionals.join(" "));
+export const planTitleOf = (positionals: string[]): string => collapseWhitespace(positionals[0] ?? "");
+
 /** The shared shell of the `bug` and `plan` CLI cases — the one home of the five-step
  * sequence both commands run in cli.ts: peel the free-form positionals (the questions
  * command's prose-token pattern), reject anything flag-shaped that is not `--json`, run the
@@ -115,7 +126,13 @@ interface FiledEntry {
  * stdout is the payload document alone (the prompt --json precedent) so a script can parse
  * it. The command name and usage string ride in for the reject/confirmation/empty-arg
  * wordings (fileBug/filePlan's empty-arg usage lines); `wakeText` builds the loop prompt
- * from the filed entry's title. */
+ * from the filed entry's title and `titleOf` derives that title from the positionals (the
+ * exported bugTitleOf/planTitleOf, so the preflight and the write see one derivation).
+ * The wake prompt rides into the target tick's prefill under the same submission cap every
+ * prompt answers to, so fileAndAnnounce checks it (promptLengthProblem) BEFORE calling
+ * `file` — otherwise an over-long operator text would write its entry and only then throw
+ * inside submitRolePromptAndWake, half-applying the command with the backlog file already
+ * grown. */
 export async function fileAndAnnounce(
   root: string,
   args: string[],
@@ -123,11 +140,14 @@ export async function fileAndAnnounce(
   file: (positionals: string[]) => FiledEntry,
   role: string,
   wakeText: (title: string) => string,
+  titleOf: (positionals: string[]) => string,
 ): Promise<void> {
   const { positionals, rest } = peelPositionals(args);
   rejectUnknownArgs(command, rest, [JSON_FLAG]);
   await requireReadyRepo(root);
   const json = rest.includes("--json"); // the one accepted flag: JSON_FLAG's spelling
+  const wakeProblem = promptLengthProblem(wakeText(titleOf(positionals)), role);
+  if (wakeProblem) fail(wakeProblem);
   const filed = file(positionals);
   const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
   sayFiled(command, filed, json);

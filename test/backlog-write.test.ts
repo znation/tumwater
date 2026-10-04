@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { fileBug, filePlan } from "../src/backlog-write.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog.js";
 import { queuedRolePrompts } from "../src/inbox.js";
 import { makeRepo } from "./repo-fixtures.js";
@@ -148,6 +149,30 @@ test("tumwater bug --json prints the {file, title, stamp} payload", async () => 
   assert.equal(payload.file, "BUGS.md");
   assert.equal(payload.title, "a symptom");
   assert.match(payload.stamp, /^reported by the operator \d{4}-\d{2}-\d{2}$/);
+});
+
+test("a symptom that fits the cap but whose wake prompt does not fails before any write", async () => {
+  // The boundary the preflight exists for: the title itself is under the submission cap,
+  // but title plus the wake template's fixed overhead is one char over — the exact window
+  // where submitRolePromptAndWake would throw after the write, half-applying the command.
+  // Probe: file a 1-char bug on a scratch repo and read the queued wake's length — the
+  // template's fixed overhead is that length minus 1.
+  const probe = makeRepo();
+  await initProject(probe, "wake cap probe");
+  await cli(probe, "bug", "x");
+  const queued = queuedRolePrompts(probe, "bugfix");
+  assert.equal(queued.length, 1);
+  const overhead = (queued[0] ?? "").length - 1;
+  const title = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS - overhead + 1);
+  assert.ok(title.length <= DIRECTOR_PROMPT_MAX_CHARS); // the title alone fits the cap
+  const repo = makeRepo();
+  await initProject(repo, "wake cap boundary");
+  const r = await cli(repo, "bug", title);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, new RegExp(`the prompt is ${DIRECTOR_PROMPT_MAX_CHARS + 1} chars`));
+  assert.match(r.stderr, /rides into the bugfix tick's prefill/);
+  assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
+  assert.equal(queuedRolePrompts(repo, "bugfix").length, 0);
 });
 
 test("empty or missing arguments fail with the usage line and write nothing", async () => {

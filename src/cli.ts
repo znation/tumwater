@@ -27,7 +27,7 @@ import {
   requireReadyRepo,
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
-import { fileBug, filePlan, fileAndAnnounce } from "./backlog-write.js";
+import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog-write.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { runMarkerCommand, type MarkerCommand } from "./cli-marker-commands.js";
 import { repoToplevel } from "./git.js";
@@ -229,6 +229,7 @@ async function main(): Promise<void> {
         "bugfix",
         (title) =>
           `Operator filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`,
+        bugTitleOf,
       );
       break;
     }
@@ -242,6 +243,7 @@ async function main(): Promise<void> {
         "feature",
         (title) =>
           `Operator requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
+        planTitleOf,
       );
       break;
     }
