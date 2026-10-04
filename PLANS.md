@@ -5,7 +5,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater init --template` — seeded project templates so a fresh fleet starts with signal (planned 2026-10-04 by plan loop, implementing docs/feature-project-templates.md)
+
+**Goal.** Give `tumwater init` a `--template <id>` option that seeds a fresh project with a
+brief preamble and a starter `PLANS.md`, so the fleet's first ticks land on real work instead
+of cold-starting from a one-line brief. `blank` (today's behavior) stays the default.
+
+**Approach.**
+1. New `src/init-templates.ts` — a static catalog (`INIT_TEMPLATES`) of exactly four templates
+   as bundled string data (zero runtime deps, no file reads): `blank` (no preamble, no seeded
+   backlog — byte-identical to today's init), `python-cli`, `node-cli`, `static-site`. Each
+   non-blank template carries: a one-line `description`, a `briefPreamble` (the framing the doc
+   specifies — entry point, tests, docs expectations; the operator's own words stay appended
+   after it so they read last), `starterPlans` (3–5 concrete first plans for the seeded
+   `PLANS.md`, following the existing `## Planned` before `## Done` convention so the seeded
+   file never trips the gate's structure checks — src/backlog.ts's parser and the clean loop's
+   `<backlog-structure>` block both read that shape), and `starterDirs` (e.g. `src/`,
+   `tests/` — empty directories only, created the way the harness already creates them; the
+   fleet's own first ticks write any code). Export `templateIds()`, `getTemplate(id)`, and
+   `templateCatalog()` (id + description, for `--list-templates`).
+2. Flag plumbing in `src/cli-command-args.ts`: extend `INIT_FLAG_SPECS` and `parseInitArgs`'s
+   return with `template: string | null` (validated against the catalog inside the parse so an
+   unknown id fails fast listing the valid ones), plus `listTemplates: boolean` for
+   `--list-templates`. `--list-templates` with a prompt is an error; alone it prints the
+   catalog (id + description, one per line) and exits 0.
+3. `src/init.ts` — `initProject` gains an `opts.template?: string` and threads the resolved
+   template through the seeding it already does: the `initialPrompt` recorded between the
+   tumwater:prompt markers becomes `briefPreamble + "\n\n" + prompt` (the operator's words
+   remain the tail, so "latest instruction wins" reads naturally and the existing
+   `INITIAL_PROMPT_MAX_CHARS` cap applies to the combined text — reject early if the preamble
+   pushes it over), and when the template has `starterPlans` the seeded `PLANS.md`
+   (the `PLANS_TEMPLATE` constant) gets the plans rendered as entries under `## Planned`.
+   `blank` changes nothing — the existing assertions about today's output stay untouched.
+   `InitResult` reports the template id used; `cmdInit` in `src/cli-run.ts` prints it.
+4. `src/help.ts`: the init usage line gains `--template <id>` / `--list-templates`.
+5. Tests in a new `test/init-templates.test.ts` (catalog shape: four ids, non-blank ones have
+   description/preamble/starterPlans; seeded PLANS.md parses under src/backlog.ts's entry
+   splitter with one entry per starter plan and `## Planned` first) plus extensions to the
+   existing init tests (grep `test/` for `initProject(` fixtures — likely `test/cli-run.test.ts`
+   or an init-focused file) covering: default blank is byte-identical to today, `--template
+   python-cli` seeds preamble+plans+dirs, unknown id fails with the catalog listed,
+   `--list-templates` prints and exits 0, and a preamble that overflows
+   `INITIAL_PROMPT_MAX_CHARS` fails before any side effect.
+
+**Files touched:** src/init-templates.ts (new), src/cli-command-args.ts, src/init.ts,
+src/cli-run.ts, src/help.ts, test/init-templates.test.ts (new), plus the existing init test
+file(s) and `test/cli-command-args.test.ts` for the flag parse.
+
+**Acceptance criteria.**
+- `tumwater init "a markdown-to-html converter" --template python-cli` seeds the brief with the
+  template preamble after the operator's words, a `PLANS.md` holding that template's starter
+  plans under `## Planned`, and the empty starter dirs; `npm run test` passes with the new tests
+  green.
+- Bare `tumwater init "..."` (no flag) produces output identical to before the change.
+- `--list-templates` prints the four ids with descriptions; `--template nope` exits 1 naming the
+  valid ids; no partial repo is left behind on any rejection (validation stays ahead of side
+  effects, as the existing `initProject` preflight does).
+- `docs/feature-project-templates.md` still describes the landed behavior — update it only if an
+  acceptance-relevant detail diverged, and say so in the landing summary.
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
