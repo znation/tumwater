@@ -4,9 +4,6 @@ import {
   parsePortFlag,
 } from "./cli-args.js";
 import {
-  DURATION_FLAG,
-  REASON_FLAG,
-  WAKE_IN_FLAG,
   grepFlagSpec,
   JSON_FLAG,
   LAST_FLAG,
@@ -16,11 +13,10 @@ import {
   RUN_FLAG_SPECS,
   sinceFlagSpec,
 } from "./cli-flag-specs.js";
-import type { FlagSpec } from "./cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
-import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
+import { cmdStop } from "./operator-commands.js";
 import { cmdPrompt } from "./prompt-commands.js";
 import {
   cmdBacklog,
@@ -32,6 +28,8 @@ import {
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
+import { runMarkerCommand } from "./cli-marker-commands.js";
+import type { MarkerCommand } from "./cli-marker-commands.js";
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./ui/doctor-report.js";
@@ -58,42 +56,6 @@ function peelPositionals(args: string[]): { positionals: string[]; rest: string[
   const rest: string[] = [];
   for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
   return { positionals, rest };
-}
-
-/** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
-type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume";
-
-/** The CLI command layer of each marker command, keyed by its CLI name (the command bodies
- * live in operator-commands.ts, the shared marker-writing cores in operator-intent.ts). One
- * map so a new marker command registers its core beside its case label instead of growing
- * another copy of the guard sequence. */
-const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) => Promise<void>> = {
-  "reset-counters": cmdResetCounters,
-  wake: cmdWake,
-  abort: cmdAbort,
-  pause: cmdPause,
-  resume: cmdResume,
-};
-
-/** The shared shape of the five marker commands (reset-counters, wake, abort, pause, resume):
- * reject unknown args (each takes only the optional --role flag), gate on a ready repo, then
- * dispatch to its operator-commands core. One copy of the guard sequence so the five cannot
- * drift on validation order or gating. */
-async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
-  // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
-  // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake); the
-  // other marker commands keep the plain --role vocabulary, so a stray --for, --reason, or
-  // --in fails fast instead of being silently ignored.
-  const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
-    "reset-counters": [ROLE_FLAG],
-    wake: [ROLE_FLAG, WAKE_IN_FLAG],
-    abort: [ROLE_FLAG],
-    pause: [ROLE_FLAG, DURATION_FLAG, REASON_FLAG],
-    resume: [ROLE_FLAG],
-  };
-  rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);
-  await requireReadyRepo(root);
-  await markerCommandCores[command](root, args);
 }
 
 async function main(): Promise<void> {
