@@ -10,7 +10,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { arrowDir, createTuiKeys, inkKeyToReadline, pageDir } from "../src/ui/tui-keys.js";
+import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui-keymap.js";
+import { createTuiKeys } from "../src/ui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 
