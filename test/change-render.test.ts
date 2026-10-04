@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { collectRoleChange } from "../src/change-data.js";
-import { renderRoleChange } from "../src/change-preview.js";
+import { renderRoleChange } from "../src/change-render.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
@@ -15,7 +15,7 @@ import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
 
 test("a half-deleted worktree — the directory survives, its git link does not — degrades to absent", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-preview dead worktree");
+  await initProject(repo, "change-render dead worktree");
   const wt = await ensureWorktree(repo, "ghost", "main");
   // A registered worktree's .git is a file pointing at the gitdir; one whose target is
   // gone leaves a directory existsSync accepts but every git call rejects — the "pruned,
@@ -31,7 +31,7 @@ test("a half-deleted worktree — the directory survives, its git link does not 
 
 test("untracked files show in the dirty list with no patch text", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-preview untracked");
+  await initProject(repo, "change-render untracked");
   const wt = await ensureWorktree(repo, "feature", "main");
   fs.writeFileSync(path.join(wt, "notes.md"), "scratch\n");
   const view = await collectRoleChange(repo, "feature");
@@ -49,7 +49,7 @@ test("untracked files show in the dirty list with no patch text", async () => {
 
 test("an uncommitted diff over the cap truncates to a note plus the --stat summary", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-preview truncation");
+  await initProject(repo, "change-render truncation");
   const wt = await ensureWorktree(repo, "feature", "main");
   // ~360KB of staged additions: past the 200KB cap the full patch must never print.
   const big =
@@ -66,7 +66,7 @@ test("an uncommitted diff over the cap truncates to a note plus the --stat summa
 
 test("a detached primary checkout still resolves a baseline: main", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-preview detached");
+  await initProject(repo, "change-render detached");
   const wt = await ensureWorktree(repo, "feature", "main");
   fs.writeFileSync(path.join(wt, "w.md"), "w\n");
   commitIn(wt, "feature work");
@@ -83,7 +83,7 @@ test("a detached primary checkout still resolves a baseline: main", async () => 
 
 test("two uncommitted files pluralize in the header and the file list", async () => {
   const repo = makeRepo();
-  await initProject(repo, "change-preview plural");
+  await initProject(repo, "change-render plural");
   const wt = await ensureWorktree(repo, "feature", "main");
   fs.writeFileSync(path.join(wt, "a.md"), "a\n");
   fs.writeFileSync(path.join(wt, "b.md"), "b\n");

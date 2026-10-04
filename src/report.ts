@@ -1,10 +1,10 @@
 /** The usage report's CLI command half (cmdReport): parse the flags, collect through
  * report-data.ts / failure-data.ts, and print. The Markdown renderers live in the pure-render
- * modules they pair with: report-render.ts (top level, beside failure-report.ts) and
- * failure-report.ts. */
+ * modules they pair with: report-render.ts (top level, beside failure-render.ts) and
+ * failure-render.ts. */
 import { collectReport, collectReportSince } from "./report-data.js";
 import { collectFailureReport } from "./failure-data.js";
-import { renderFailureMarkdown } from "./failure-report.js";
+import { renderFailureMarkdown } from "./failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
 import { say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli-args.js";

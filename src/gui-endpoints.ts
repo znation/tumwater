@@ -15,7 +15,7 @@ import { loadConfigSafe } from "./config.js";
 import { EDITABLE_CONFIG_KEYS } from "./config-editable-keys.js";
 import { collectReport } from "./report-data.js";
 import { collectFailureReport } from "./failure-data.js";
-import { renderFailureMarkdown } from "./failure-report.js";
+import { renderFailureMarkdown } from "./failure-render.js";
 import { readTranscript } from "./ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "./history-data.js";
 import { readTickDetail } from "./tick-detail-data.js";

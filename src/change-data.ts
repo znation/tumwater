@@ -5,7 +5,7 @@
  * wires the pieces into one operator view, degrading like `report` does when the fleet (or
  * just this role's worktree) does not exist yet. Lives beside the other collectors
  * (report-data.ts, history-data.ts, status-data.ts); the terminal rendering of these views is
- * change-preview.ts's half. */
+ * change-render.ts's half. */
 
 import { knownRoleIdsCached, loadConfigSafe } from "./config.js";
 import { aheadOfMain, branchExists, currentBranch, targetBranch } from "./git.js";

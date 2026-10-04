@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderFailureMarkdown } from "../src/failure-report.js";
+import { renderFailureMarkdown } from "../src/failure-render.js";
 import { collectFailureReport } from "../src/failure-data.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";

@@ -3,7 +3,7 @@
  * loss-cause ranking that weighs causes by agent-hours rather than tick counts. Split from
  * failure-data.ts, which owns the rest of the collection (outcome tallies, deltas, clustered
  * sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
- * failure-report.ts as a pure function of the collected data. */
+ * failure-render.ts as a pure function of the collected data. */
 import type { TickResult } from "./tick-outcome.js";
 import type { HarnessEvent } from "./events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js";
@@ -16,7 +16,7 @@ import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";
  * result is "error-class" — it burned agent time without landing, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
- * failure-report.ts. */
+ * failure-render.ts. */
 const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
   changed: "landed",
   queued: "landed",

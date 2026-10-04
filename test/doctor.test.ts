@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runDoctor } from "../src/doctor.js";
-import { renderDoctor } from "../src/doctor-report.js";
+import { renderDoctor } from "../src/doctor-render.js";
 import { helpTopic } from "../src/help.js";
 import { initProject } from "../src/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./repo-fixtures.js";

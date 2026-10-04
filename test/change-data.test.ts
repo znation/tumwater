@@ -12,7 +12,7 @@ import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 // it through child-process CLI runs, whose coverage node --test never sees, and the collector
 // edges they do not exercise at all — a configured base branch that does not exist, a branch
 // that is fully merged while the worktree stays dirty, and a commit with an empty subject —
-// had no test anywhere before this file. (test/change-preview.test.ts pins the renderer beside
+// had no test anywhere before this file. (test/change-render.test.ts pins the renderer beside
 // the collector's absent-worktree and truncation paths; this file is the collector's
 // remaining half.)
 

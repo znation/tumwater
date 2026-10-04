@@ -47,7 +47,7 @@ import { briefFile } from "./readme.js";
  * only: runDoctor calls each check in fixed order and folds the results into a DoctorReport.
  * The backlog-document checks (BUGS.md / PLANS.md readers) live in doctor-backlog.ts; the
  * report's terminal rendering lives beside the CLI's other Markdown/terminal renderers
- * (doctor-report.ts), and doctor.ts stays the composition layer only. */
+ * (doctor-render.ts), and doctor.ts stays the composition layer only. */
 
 /** One line of the doctor report: a check's verdict plus what it found. "ok" and "warn" never
  * affect the exit code; only "fail" does (the CLI sets process.exitCode = 1 on any fail). The

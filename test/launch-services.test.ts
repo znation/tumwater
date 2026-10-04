@@ -137,7 +137,7 @@ test("a poll that cannot warn — a rejecting probe, an unwritable events log �
 
   // A warning that cannot be written: the events log path occupied by a directory — the
   // class of filesystem damage a crash or a stray tool leaves behind (the same fixture
-  // failure-report.test.ts uses). The warnEvent append throws; poll() must absorb it.
+  // failure-render.test.ts uses). The warnEvent append throws; poll() must absorb it.
   const root = tmpdir();
   fs.mkdirSync(eventsLogPath(root), { recursive: true }); // the log path is a directory now
   const probe = portsProbe(120_000, 120_000);

@@ -99,7 +99,7 @@ function hoursPhrase(ms: number): string {
  * each free field at STATE_CHANGE_FIELD_MAX; the landed list at LANDED_TOP lines, each capped
  * section closing with one remainder line when its cut dropped anything. Nothing here grows with how bad the window was:
  * measured 6,017 bytes at the CLI's default 14 days on the live fleet, and the worst-case
- * byte-bound fixture in test/failure-report.test.ts covers transition events too. Pure function
+ * byte-bound fixture in test/failure-render.test.ts covers transition events too. Pure function
  * of FailureReportData: no I/O, no clock reads. */
 export function renderFailureMarkdown(data: FailureReportData): string {
   const lines: string[] = [];

@@ -6,7 +6,7 @@ import { shortSha, usd } from "./format.js";
 /** The single home of each human-facing PHRASE the fleet renders — the wording fragments
  * (a pause reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget
  * transition's "$x of $y", main's red-tip naming, a tool call's one-line label, the plural
- * helper) shared by the event feed (event-format.ts), the failure digest (failure-report.ts
+ * helper) shared by the event feed (event-format.ts), the failure digest (failure-render.ts
  * and failure-state-change.ts), the status surfaces (ui/), and the CLI messages
  * (operator-commands.ts, cli-run.ts), so their phrasing cannot drift per consumer. Pure
  * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
@@ -15,7 +15,7 @@ import { shortSha, usd } from "./format.js";
 
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
- * (datetime.ts), the failure digest's loss-cause lines (failure-report.ts), and the fleet
+ * (datetime.ts), the failure digest's loss-cause lines (failure-render.ts), and the fleet
  * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
  * lines' "N commit(s) ahead" (event-format.ts, failure-state-change.ts — the singular/plural
  * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit")

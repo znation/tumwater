@@ -1,6 +1,6 @@
 /** Enforces DEVELOPMENT.md's Layout rule for src/ui/: "Imported only by each other and
  * cli.ts." Presentation depends on core, never the reverse — a core module that needs a
- * ui-resident formatter (the failure-report.ts and event-format.ts placements) must pull the
+ * ui-resident formatter (the failure-render.ts and event-format.ts placements) must pull the
  * formatter down to src/ instead of reaching up into ui/. Without this check the rule lives
  * only in prose and a forbidden edge lands silently, as test-green as the rest of the suite. */
 import test from "node:test";

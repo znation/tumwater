@@ -1,7 +1,7 @@
 /** Collection half of the failure digest: read the harness's event log over a 2×-day window
  * and distill it into a `FailureReportData` — outcome tallies, window deltas, clustered
  * failure messages, landed commits, and the harness's own state transitions, each bounded at
- * collection time. The Markdown rendering of this data lives in failure-report.ts, a pure
+ * collection time. The Markdown rendering of this data lives in failure-render.ts, a pure
  * function of it; the split keeps "what happened" (clustering rules, window math, bounds)
  * apart from "how it prints" (column layout, cell wording), which change for different
  * reasons. The cluster-key rules themselves — normalization, timeout pooling, grouping — live
@@ -199,7 +199,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // rankByCount orders strongest role first with the ascending-key tiebreak. The old
   // sort-ascending-then-reverse idiom accidentally flipped equal-total ties into
   // reverse-alphabetical order; equal-total roles now follow the stated deterministic rule
-  // (pinned by the tie test in test/failure-report.test.ts).
+  // (pinned by the tie test in test/failure-render.test.ts).
   const outcomes: OutcomeRow[] = rankByCount(
     [...outcomeMap.entries()].map(([role, counts]) => ({ role, counts })),
     (row) => total(row.counts),

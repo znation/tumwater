@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectReport, type ReportData, type ReportDay } from "../src/report-data.js";
 import { collectFailureReport } from "../src/failure-data.js";
-import { renderFailureMarkdown } from "../src/failure-report.js";
+import { renderFailureMarkdown } from "../src/failure-render.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/format.js";
 import { initProject } from "../src/init.js";
