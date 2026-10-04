@@ -47,7 +47,7 @@ export async function waitForFile(file: string, timeoutMs = 30_000): Promise<voi
   }
 }
 
-/** Put runPi's watchdog (src/pi.ts: the quiet kill and the stall warning) on logical time for
+/** Put runPi's watchdog (src/pi/pi.ts: the quiet kill and the stall warning) on logical time for
  * the rest of test `t`. The watchdog is a setInterval that reads Date.now(), and open tool
  * calls are stamped with Date.now() (pi-event-line.ts); both become node:test mock timers,
  * started at the real current time. setTimeout stays real, so everything else a run or tick

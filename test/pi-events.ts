@@ -73,7 +73,7 @@ export function userLine(text: string, timestamp: number = FIXED_TS): string {
   });
 }
 
-/** A harness-written run-label marker line — src/pi.ts writes it before an agent_start to
+/** A harness-written run-label marker line — src/pi/pi.ts writes it before an agent_start to
  * label that run ("review", landing review, ...), and the transcript renderers read it. */
 export function runMarker(label = "review"): string {
   return JSON.stringify({ type: "tumwater_run", label });

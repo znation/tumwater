@@ -1,7 +1,7 @@
 /**
  * Bundled pi extension: bounds oversized tool results so a single read or command cannot
  * flood the tick's context window (PLANS.md "Bound tool output head+tail with a tumwater
- * pi extension"). Loaded on every pi run via `-e <this file>` from src/pi.ts.
+ * pi extension"). Loaded on every pi run via `-e <this file>` from src/pi/pi.ts.
  *
  * All bounding logic lives in pure, filesystem-free exported functions — `boundText`,
  * `boundReadResult`, `boundBashResult` — so every rule is unit-testable offline without

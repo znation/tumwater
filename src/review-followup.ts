@@ -3,8 +3,8 @@
  * here. Both turns resume the just-finished review's session with tightly capped budgets and
  * return the run even when it failed, so the caller can honor a shutdown abort and fold the
  * spend; null means there was no session to continue. */
-import type { PiRunResult } from "./pi-run-result.js";
-import { hasResumableSession } from "./pi.js";
+import type { PiRunResult } from "./pi/pi-run-result.js";
+import { hasResumableSession } from "./pi/pi.js";
 import { reviewRunConfig } from "./config-views.js";
 import { warnEvent } from "./events.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";

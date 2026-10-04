@@ -1,4 +1,4 @@
-import { parsePiEventLine } from "../pi-event-line.js";
+import { parsePiEventLine } from "../pi/pi-event-line.js";
 import { statRoleLog, type TailState, withTail } from "../tail.js";
 import { collapseWhitespace, squash, truncate } from "../text.js";
 import { describeToolCall } from "../phrases.js";

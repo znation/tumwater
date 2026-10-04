@@ -7,7 +7,7 @@ import { PendingPrompt } from "../src/pending-prompt.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { loadConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
-import type { PiRunResult } from "../src/pi-run-result.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fake-pi.js";
 import { initializedWorktree } from "./repo-fixtures.js";
 

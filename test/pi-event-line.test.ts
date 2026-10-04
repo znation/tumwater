@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parsePiEventLine, piEventType } from "../src/pi-event-line.js";
+import { parsePiEventLine, piEventType } from "../src/pi/pi-event-line.js";
 
 test("piEventType reads pi's compact type-first prefix and returns null on any other shape", () => {
   assert.equal(piEventType('{"type":"message_end","x":1}'), "message_end");

@@ -15,11 +15,11 @@ import { piLogPath, reviewSessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config.js";
 import { type TumwaterConfig } from "../src/config-schema.js";
 import { type ToolCallStart } from "../src/suite-rerun.js";
-import { hasResumableSession} from "../src/pi.js";
-import type { PiRunResult } from "../src/pi-run-result.js";
+import { hasResumableSession} from "../src/pi/pi.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { type ReviewContext } from "../src/review.js";
 
-import type { PiRunOptions } from "../src/pi.js";
+import type { PiRunOptions } from "../src/pi/pi.js";
 
 interface Captured {
   opts: PiRunOptions | null;

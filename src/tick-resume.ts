@@ -1,5 +1,5 @@
 import type { LoopState } from "./loop-state.js";
-import { hasResumableSession } from "./pi.js";
+import { hasResumableSession } from "./pi/pi.js";
 import { RETRIABLE_LANDING_RESULTS } from "./landing/landing-core.js";
 import type { PendingPrompt } from "./pending-prompt.js";
 import { sessionDir } from "./paths.js";

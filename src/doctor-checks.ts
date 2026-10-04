@@ -8,7 +8,7 @@ import {
 import { exampleConfigProblem, exampleDrift } from "./config-example.js";
 import { fallbackPair } from "./config-views.js";
 import { detectBuildCheck } from "./build-check-detect.js";
-import { fallbackModelFree, piModelsPath } from "./pi-models.js";
+import { fallbackModelFree, piModelsPath } from "./pi/pi-models.js";
 import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";

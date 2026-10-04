@@ -131,7 +131,7 @@ export type BudgetGate = "open" | "fallback" | "paused";
 
 /** The budget gate from its three inputs: whether spend has reached the cap (budgetReached for
  * observers, budgetPaused for the scheduler), whether a cost-free fallback model is configured
- * to take over (src/pi-models.ts's fallbackModelFree — kept as a parameter so this module
+ * to take over (src/pi/pi-models.ts's fallbackModelFree — kept as a parameter so this module
  * stays free of pi's model catalog, the same one-way dependency rule that put budgetPaused
  * here), and whether that fallback's backend is serving (fallbackServing over
  * fallback-breaker.ts's breaker). A free pair that cannot serve is not a usable fallback: the

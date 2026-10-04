@@ -6,8 +6,8 @@
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
 
-import { isJsonObject, parseJsonObject } from "./json-object.js";
-import { isNonBlankString } from "./text.js";
+import { isJsonObject, parseJsonObject } from "../json-object.js";
+import { isNonBlankString } from "../text.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
@@ -50,7 +50,7 @@ export function parsePiEventLine<T>(line: string, types: ReadonlySet<string>): T
 
 /** True when a tool_execution_update's partialResult carries new output content. bash emits
  * one empty-content update right after start, and only updates with real text prove the command
- * is alive — so stalled-tool-call tracking (src/pi.ts's warning, src/progress-data.ts's flag)
+ * is alive — so stalled-tool-call tracking (src/pi/pi.ts's warning, src/progress-data.ts's flag)
  * moves its clock on these alone: a content-free keepalive must not mask a hang, exactly as
  * message_update deltas cannot reset the quiet watchdog. */
 export function toolUpdateHasContent(partialResult: unknown): boolean {
@@ -65,14 +65,14 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
 
 /** One tool call started but not yet ended — keyed by pi's toolCallId, with a short human
  * label and the wall-clock time of its start or last content-bearing update. The shared shape
- * behind both open-call trackers: runPi's stall warning (src/pi.ts) and the dashboards' live
+ * behind both open-call trackers: runPi's stall warning (src/pi/pi.ts) and the dashboards' live
  * flag (src/progress-data.ts). */
 export interface OpenToolCall {
   id: string;
   label: string;
   /** The call's full raw command text (bash-like args only; unset for other tools). The
    * label is surface text truncated for display, so anything that inspects the command's
-   * shape — the stall warning's buffered-output check (src/pi.ts) — reads this instead:
+   * shape — the stall warning's buffered-output check (src/pi/pi.ts) — reads this instead:
    * a redirect beyond the label's truncation point would otherwise be invisible. */
   command?: string;
   /** Epoch ms when the call started or last received a content-bearing update. */
@@ -80,7 +80,7 @@ export interface OpenToolCall {
 }
 
 /** The call's full raw command text from a tool-execution event's args (bash-like tools name
- * it `command`, some `cmd`; other tools yield ""). The two open-call trackers (src/pi.ts's
+ * it `command`, some `cmd`; other tools yield ""). The two open-call trackers (src/pi/pi.ts's
  * stall warning, src/progress-data.ts's dashboard flag) store this beside the display label
  * because anything that inspects the command's shape must see the raw text: the label
  * truncates at 32 chars, so an operator past that point would be invisible there. */

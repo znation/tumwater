@@ -17,7 +17,7 @@ import { pausedRoles } from "./fleet-state.js";
 import { loadLoopState } from "./loop-state.js";
 import { assembleTickPrompt } from "./tick-prompt.js";
 import { configForRole, fallbackPair } from "./config-views.js";
-import { fallbackModelFree, piModelsPath } from "./pi-models.js";
+import { fallbackModelFree, piModelsPath } from "./pi/pi-models.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */

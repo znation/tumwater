@@ -4,7 +4,7 @@ import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js
 import { sortedRoles } from "./failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "./loop-state.js";
-import type { BackendFailureKind } from "./pi.js";
+import type { BackendFailureKind } from "./pi/pi.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
  * alarms (src/fleet-hold.ts, src/error-storm.ts, src/failure-spread.ts): each poll gathers

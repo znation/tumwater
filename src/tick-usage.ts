@@ -1,5 +1,5 @@
-import type { BackendFailureKind } from "./pi.js";
-import type { PiRunResult } from "./pi-run-result.js";
+import type { BackendFailureKind } from "./pi/pi.js";
+import type { PiRunResult } from "./pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { recordDailyCost } from "./budget.js";
 
@@ -65,7 +65,7 @@ export class TickUsage {
     if (run.transientRateLimit && !run.ok)
       this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
     // The backend-failure sibling of the stamp above, same rule: only a run that ENDED on the
-    // failure counts, and the kind travels with it (src/pi-stream.ts backendKind classified
+    // failure counts, and the kind travels with it (src/pi/pi-stream.ts backendKind classified
     // the text at parse time). A 429 never lands here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
       this.lastBackendFailure = { at: Date.now(), kind: run.backendKind };

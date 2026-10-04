@@ -47,7 +47,7 @@ export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
  * mapped: `timed out after <dur>` is the reducer's pooled rendering of the tick-timeout errors
- * (src/pi.ts's two `timed out after ${tickTimeoutSeconds}s` shapes, pooled into one key by
+ * (src/pi/pi.ts's two `timed out after ${tickTimeoutSeconds}s` shapes, pooled into one key by
  * poolTimeoutKey — failure-cluster.ts owns the two shapes and their pooling), and a fleet-wide
  * run of it means the tick budget does not fit the serving model — the one cause with a knob
  * to name. Every other cause is left unmapped: the storm warning still names it, but inventing

@@ -15,7 +15,7 @@
  *
  * One storm is one KIND of failure: observations count together only when their kinds match
  * (a "rate-limit" kind for 429s, a backend-failure kind — "connection", "timeout", "server",
- * "model-load" — from src/pi-stream.ts backendKind otherwise). Two roles hitting the provider
+ * "model-load" — from src/pi/pi-stream.ts backendKind otherwise). Two roles hitting the provider
  * with two different failures are two unrelated incidents, each still answered by the per-run
  * retry; a hold is for the fleet collectively sustaining one failure. */
 
@@ -28,7 +28,7 @@
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */
 import { sortedRoles } from "./failure-cluster.js";
-import type { BackendFailureKind } from "./pi-stream.js";
+import type { BackendFailureKind } from "./pi/pi-stream.js";
 
 const HOLD_STORM_ROLES = 2;
 
@@ -60,7 +60,7 @@ export const HOLD_CAP_MS = 15 * 60_000;
 export const HOLD_RELAPSE_MS = 5 * 60_000;
 
 /** The failure kinds a hold can be about: the rate-limit kind for 429 storms, and the
- * backend-failure kinds src/pi-stream.ts's classifier produces for the non-429 texts —
+ * backend-failure kinds src/pi/pi-stream.ts's classifier produces for the non-429 texts —
  * imported as a type rather than re-spelled, so the classifier's kind list and the hold's
  * stay one list by construction: a kind the classifier starts producing is holdable without
  * a second edit here, and the two spellings cannot drift apart. */

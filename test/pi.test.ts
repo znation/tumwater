@@ -6,9 +6,9 @@ import path from "node:path";
 import {
   TRANSIENT_PI_CRASH,
   runPi,
-} from "../src/pi.js";
+} from "../src/pi/pi.js";
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process.js";
-import { toolUpdateHasContent } from "../src/pi-event-line.js";
+import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { defaultConfig } from "../src/config.js";
 import { initProject } from "../src/init.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

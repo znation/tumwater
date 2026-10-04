@@ -1,8 +1,8 @@
 import { sleep } from "./wait.js";
 import fs from "node:fs";
 import path from "node:path";
-import { runPi, type PiRunOptions} from "../src/pi.js";
-import type { PiRunResult } from "../src/pi-run-result.js";
+import { runPi, type PiRunOptions} from "../src/pi/pi.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { defaultConfig } from "../src/config.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

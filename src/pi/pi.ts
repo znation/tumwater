@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
-import type { TumwaterConfig } from "./config-schema.js";
-import { ensureDir, ensureParentDir, rotateIfLarge } from "./files.js";
-import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "./readiness.js";
-import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
-import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./run-marker.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import { ensureDir, ensureParentDir, rotateIfLarge } from "../files.js";
+import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../readiness.js";
+import { terminateChild, withoutLaunchServicesCheckIn } from "../process.js";
+import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../run-marker.js";
 import { piArgs } from "./pi-args.js";
 import { PiStreamParser, STREAM_SEVERED } from "./pi-stream.js";
 import { startPiWatchdogs } from "./pi-watchdogs.js";
@@ -132,7 +132,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       env: runMarkerEnv(withoutLaunchServicesCheckIn(process.env), runMarker),
     });
 
-    // The run's two watchdog clocks (src/pi-watchdogs.ts): the tick deadline and the quiet
+    // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the tick deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
     // (timedOut/timedOutProgressing/quietKilled/sawOutput) read live off the returned handle.
     const wd = startPiWatchdogs({
@@ -153,7 +153,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
 
-    // Quiet watchdog and its stall warning: src/pi-watchdogs.ts.
+    // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
 
     child.stdout.on("data", (chunk: Buffer) => {
       wd.noteByte();

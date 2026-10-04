@@ -1,4 +1,4 @@
-import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "./reply-contract.js";
+import { extractRefusal, hasVerdictLine, isNegatedRefusal, isNothingToDo } from "../reply-contract.js";
 import {
   applyToolExecutionEvent,
   piEventType,
@@ -6,8 +6,8 @@ import {
   toolUpdateHasContent,
   type OpenToolCall,
 } from "./pi-event-line.js";
-import { describeToolCall } from "./phrases.js";
-import { parseJsonObject } from "./json-object.js";
+import { describeToolCall } from "../phrases.js";
+import { parseJsonObject } from "../json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,
@@ -103,7 +103,7 @@ export type BackendFailureKind =
  * on purpose: the real message is the bare word, optionally behind a prefix and closing
  * punctuation, while an unrelated error that merely contains the word ("worker terminated
  * with exit code 1") must not read as a backend failure. Exported because the same spelling
- * can arrive on pi's stderr without any pi event for it (src/pi.ts's close handler). */
+ * can arrive on pi's stderr without any pi event for it (src/pi/pi.ts's close handler). */
 export const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
 
 /** The backend-failure error texts pi actually surfaces, matched against every error text
@@ -114,7 +114,7 @@ export const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
  * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
  * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
  * and never counts as a backend failure. Composed so the stream-severed spelling lives in
- * STREAM_SEVERED alone — src/pi.ts classifies stderr through the same one regex. Only
+ * STREAM_SEVERED alone — src/pi/pi.ts classifies stderr through the same one regex. Only
  * PiStreamParser.feedLine matches the result; backendKind below classifies which phrase
  * matched. */
 const TRANSIENT_BACKEND = new RegExp(

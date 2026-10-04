@@ -1,7 +1,7 @@
 /**
  * Bundled pi extension: tells the model how full its context window is, at a few fixed
  * thresholds, by appending one short note to the tool result that crosses each one. Loaded on
- * every pi run via `-e <this file>` from src/pi-args.ts, after bounded-output.
+ * every pi run via `-e <this file>` from src/pi/pi-args.ts, after bounded-output.
  *
  * Why: a run cannot see its own context usage. pi (0.87) does compact mid-run, but only once the
  * projected context passes contextWindow − reserveTokens (16,384 by default — ~87% of the budget

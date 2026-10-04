@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi-models.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi/pi-models.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 

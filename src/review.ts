@@ -7,7 +7,7 @@ import { headOf, patchId } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
-import type { PiRunResult } from "./pi-run-result.js";
+import type { PiRunResult } from "./pi/pi-run-result.js";
 import type { GateRunsPi } from "./loop-pi.js";
 import { readPrinciples } from "./principles.js";
 import { buildReviewPrompt } from "./gate-prompts.js";

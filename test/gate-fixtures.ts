@@ -3,7 +3,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { reviewAheadOfMain } from "../src/review.js";
-import { runPi } from "../src/pi.js";
+import { runPi } from "../src/pi/pi.js";
 import { headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { makeRepo, sh } from "./repo-fixtures.js";

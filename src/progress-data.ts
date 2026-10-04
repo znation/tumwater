@@ -1,4 +1,4 @@
-import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "./pi-event-line.js";
+import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "./pi/pi-event-line.js";
 import { commandBuffersOutput } from "./command-shape.js";
 import { describeToolCall } from "./phrases.js";
 import { squash } from "./text.js";
@@ -141,7 +141,7 @@ function freshProgress(quietMs: number): LiveProgress {
 /** The event types feedLine acts on — everything else (streaming deltas, turn/agent
  * bookkeeping) is ignored. Also passed as parsePiEventLine's pre-filter to skip JSON.parse for
  * pi lines whose type is verifiably not one of these; a new case in the switch must be added
- * here too. `tumwater_run` is the harness's own label line (src/pi.ts), read only for its
+ * here too. `tumwater_run` is the harness's own label line (src/pi/pi.ts), read only for its
  * run kind — a labeled run ("review") flips the demux, and starts the gate accumulator
  * fresh, before its `session` event lands. */
 const PROGRESS_TYPES = new Set([

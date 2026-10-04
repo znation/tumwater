@@ -66,11 +66,11 @@ export interface PiRunResult {
   transientRateLimit: boolean;
   /** True when any event reported a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load, the stream severed mid-run
-   * (src/pi-stream.ts TRANSIENT_BACKEND). A transient failure of the world like the 429 flag,
+   * (src/pi/pi-stream.ts TRANSIENT_BACKEND). A transient failure of the world like the 429 flag,
    * but with no Retry-After hint to wait out: the fleet-wide hold (src/fleet-hold.ts) and —
    * for the stream-severed kind only — the per-run retry answer it. */
   transientBackend: boolean;
-  /** Which kind of backend failure the run ended on (src/pi-stream.ts backendKind's
+  /** Which kind of backend failure the run ended on (src/pi/pi-stream.ts backendKind's
    * classification) — the fleet-wide hold groups its storms by kind. Undefined when
    * transientBackend is false. */
   backendKind?: BackendFailureKind;

@@ -27,7 +27,7 @@ import {
   consumeResetRequest,
   consumeWakeRequest,
 } from "./operator-requests.js";
-import { piModelsPath } from "./pi-models.js";
+import { piModelsPath } from "./pi/pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";
 import { type Redeployer } from "./redeployer.js";

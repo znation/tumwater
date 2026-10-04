@@ -3,7 +3,7 @@ import type { BuildStatus } from "./build-info.js";
 import { openQuestions } from "./backlog.js";
 import { enabledRoleIds, isCustomRole } from "./config.js";
 import { fallbackPair } from "./config-views.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "./inbox.js";
 import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
@@ -67,7 +67,7 @@ export interface StatusSnapshot {
    * per-loop rows always read their persisted copies, so while ticks are in flight the
    * per-loop cells can sit under the header/total figure: that difference is exactly the
    * charge the scheduler has already counted. `free` is true when every model the fleet could
-   * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi-models.ts):
+   * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
    * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model role loops
    * switch to once the cap is reached (plans/fallback-model.md) — non-null ONLY when one is

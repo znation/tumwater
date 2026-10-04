@@ -72,7 +72,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
 // line stays byte-for-byte (no pre-filled cap, nothing to save on Enter).
 test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet", async () => {
   const repo = await makeTuiRepo();
-  // snapshot() resolves pi's model catalog at $HOME/.pi/agent/models.json (src/pi-models.ts):
+  // snapshot() resolves pi's model catalog at $HOME/.pi/agent/models.json (src/pi/pi-models.ts):
   // aim a temp home at an unpriced model the repo config points at, so the fleet reads free.
   const home = tmpdir("tui-free-home-");
   fs.mkdirSync(path.join(home, ".pi", "agent"), { recursive: true });

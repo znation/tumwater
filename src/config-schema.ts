@@ -146,12 +146,12 @@ export interface TumwaterConfig {
   /** The agent binary to spawn (plans/portability.md §5/7): TUMWATER_PI_BIN overrides it
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time
-   * (src/pi.ts resolveAgentBin), so a relative path names the same file to the run
+   * (src/pi/pi.ts resolveAgentBin), so a relative path names the same file to the run
    * preflight, doctor, and the spawn itself — which runs with each tick's worktree as
    * cwd; a bare name is left to PATH resolution exactly as before. */
   agentBin?: string;
   /** Extra argv passed straight to pi. Must not repeat a flag the harness sets itself
-   * (src/pi.ts's `--print`/`--mode`/`--session-dir`, the provider/model/thinking triple, and
+   * (src/pi/pi.ts's `--print`/`--mode`/`--session-dir`, the provider/model/thinking triple, and
    * the session resume/name flags) — pi's parser is last-wins, so a repeat would silently
    * override the harness; validateConfig rejects the collision. */
   piArgs: string[];
@@ -318,7 +318,7 @@ export const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
  * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
 export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 
-/** pi flags the harness passes itself (src/pi.ts's piArgs: `--print --mode json
+/** pi flags the harness passes itself (src/pi/pi.ts's piArgs: `--print --mode json
  * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
  * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
  * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes

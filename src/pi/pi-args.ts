@@ -5,7 +5,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "../config-schema.js";
 
 /** Paths to the bundled pi extensions, in load order, resolved from this module's own
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps
@@ -13,11 +13,11 @@ import type { TumwaterConfig } from "./config-schema.js";
  * (already bounded) result that crosses a threshold. */
 export function bundledExtensionPaths(): string[] {
   return ["bounded-output.js", "context-budget.js"].map((file) =>
-    fileURLToPath(new URL(`./pi-extension/${file}`, import.meta.url)),
+    fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)),
   );
 }
 
-/** The fields of PiRunOptions (src/pi.ts) that piArgs reads, plus the resolved agent
+/** The fields of PiRunOptions (src/pi/pi.ts) that piArgs reads, plus the resolved agent
  * binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
  * cycle-free from pi.ts, which imports piArgs back for the spawn. */
 interface PiArgOptions {

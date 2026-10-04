@@ -88,7 +88,7 @@ test("clusterMessages marks a truncated example instead of presenting a silent c
 });
 
 test("poolTimeoutKey pools the progressing-timeout variant into the plain key", () => {
-  // These are the exact shapes src/pi.ts emits; TICK_TIMEOUT_KEY is the plain one's
+  // These are the exact shapes src/pi/pi.ts emits; TICK_TIMEOUT_KEY is the plain one's
   // normalized form verbatim.
   const plain = normalizeClusterKey("timed out after 900s");
   const progressing = normalizeClusterKey(

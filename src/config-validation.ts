@@ -253,7 +253,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
 
   // The free fallback model (plans/fallback-model.md): shape only — whether the named pair is
   // actually cost-free is a question about pi's models.json, not about this file, so it is
-  // answered at run time (src/pi-models.ts) rather than failing a load here. An empty object is
+  // answered at run time (src/pi/pi-models.ts) rather than failing a load here. An empty object is
   // rejected: it names nothing, so it would silently never engage.
   if ("fallbackModel" in r) {
     const fb = r.fallbackModel;

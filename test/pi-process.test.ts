@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { runPi } from "../src/pi.js";
+import { runPi } from "../src/pi/pi.js";
 import { pidAlive, signalTree } from "../src/process.js";
 import { defaultConfig } from "../src/config.js";
 import { tmpdir } from "./repo-fixtures.js";

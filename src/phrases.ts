@@ -131,7 +131,7 @@ export function backendKindPhrase(kind: unknown): string {
 
 /** One-line description of a tool call from its name and args — shared by live progress data
  * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
- * warning (src/pi.ts names the hung command through it). Path-like keys reduce to the file
+ * warning (src/pi/pi.ts names the hung command through it). Path-like keys reduce to the file
  * name; the other candidate keys are shown verbatim. */
 export function describeToolCall(toolName: string, args: unknown): string {
   let detail = "";

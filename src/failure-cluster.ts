@@ -71,7 +71,7 @@ export function normalizeClusterKey(message: string): string {
   return normalized.trim().slice(0, EXAMPLE_MAX);
 }
 
-/** normalizeClusterKey's rendering of the two tick-timeout errors src/pi.ts emits — the plain
+/** normalizeClusterKey's rendering of the two tick-timeout errors src/pi/pi.ts emits — the plain
  * kill and the still-making-progress variant (session and worktree edits preserved for
  * resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (tickTimeoutSeconds),
  * so every consumer that counts by cluster key pools them under the plain one. */

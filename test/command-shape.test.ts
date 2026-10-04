@@ -1,5 +1,5 @@
 // The classifier's shape table, moved here from test/pi.test.ts (2026-09-30) when
-// commandBuffersOutput moved from src/pi.ts to src/command-shape.ts. The runPi stall-warning
+// commandBuffersOutput moved from src/pi/pi.ts to src/command-shape.ts. The runPi stall-warning
 // behavior that consumes it stays pinned in test/pi.test.ts ("a stalled piped-stdout call
 // warns nothing; the redirect is found in the full command, not the truncated label"),
 // together with src/progress-data.ts's matching skip (test/progress.test.ts) — the two

@@ -89,7 +89,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/loop.ts`: the tick lifecycle. `src/loop-pi.ts` holds its pi-run plumbing.
 - `src/orchestrator.ts`: the scheduler; `src/orchestrator-launch.ts` holds its launch pass
   (admitting due runners to their ticks).
-- `src/pi.ts`: the pi subprocess integration.
+- `src/pi/pi.ts`: the pi subprocess integration, beside its plumbing (`pi-args.ts`,
+  `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`, `pi-watchdogs.ts`).
 - `src/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
 - `src/git.ts`, `src/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.

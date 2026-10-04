@@ -4,7 +4,7 @@ import { test } from "node:test";
 // reaches their compiled JS and the suite's coverage table shows them as never loaded. The
 // imports here load the modules, and the registry below pins the vocabulary they name.
 import "../src/tick-outcome.js";
-import "../src/pi-run-result.js";
+import "../src/pi/pi-run-result.js";
 import type { TickResult } from "../src/tick-outcome.js";
 
 // The TickResult vocabulary (tick-outcome.ts), one human meaning each. `Record<TickResult, …>`

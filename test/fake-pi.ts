@@ -1,4 +1,4 @@
-import type { PiRunResult } from "../src/pi-run-result.js";
+import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import fs from "node:fs";
 import { APPROVE_PI, assistantLine } from "./pi-events.js";
 import { pathPrepend, writeScript } from "./fake-commands.js";

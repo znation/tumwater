@@ -71,7 +71,7 @@ export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
 
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
- * fallback is configured. One definition so the freeness check (src/pi-models.ts), the
+ * fallback is configured. One definition so the freeness check (src/pi/pi-models.ts), the
  * dashboards' badge, and applyFallbackModel below cannot disagree about WHICH model the
  * budget gate would engage. */
 export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
