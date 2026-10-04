@@ -172,6 +172,27 @@ test("answering in a file with no ## Answered section grows one at the end", () 
   assert.deepEqual(openQuestionEntries(root), []);
 });
 
+test("answering strips the Answered section's _None yet._ placeholder when an entry lands there", () => {
+  // A first answer left the skeleton's placeholder above the real entry, so ## Answered
+  // claimed to be empty while holding an answered question.
+  const root = tmpdir();
+  seed(root, "# Questions\n\n## Open\n\n### Which database?\n\nsqlite or postgres\n\n## Answered\n\n_None yet._\n");
+  answerQuestion(root, 1, "sqlite");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("### Which database?\n\nsqlite or postgres\n\n**Answered"), md);
+  assert.ok(!md.includes("## Answered\n\n_None yet._"), md);
+  assert.ok(md.includes("## Open\n\n_None yet._"), md);
+});
+
+test("answering keeps a quoted _None yet._ inside an Answered fence", () => {
+  const root = tmpdir();
+  seed(root, "# Questions\n\n## Open\n\n### Which database?\n\nsqlite or postgres\n\n## Answered\n\nnotes:\n\n```\n_None yet._\n```\n");
+  answerQuestion(root, 1, "sqlite");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("### Which database?\n\nsqlite or postgres\n\n**Answered"), md);
+  assert.ok(md.includes("```\n_None yet._\n```"), md);
+});
+
 test("answering works when a fence after ## Answered runs unclosed to EOF", () => {
   // scanQuestions walks the file twice with one tracker; a tracker left inside an unclosed
   // fence at EOF made the second walk quote every Open heading, so the list showed the

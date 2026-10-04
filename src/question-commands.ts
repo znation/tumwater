@@ -175,12 +175,28 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   }
   const fenced2 = fenceTracker();
   let answeredAt = -1;
+  const placeholderAt: number[] = [];
   for (let i = 0; i < rebuilt.length; i++) {
     const line = rebuilt[i] ?? "";
-    if (!fenced2.inside(line) && line.startsWith("## ") && line.slice(3).trim() === "Answered") {
-      answeredAt = i;
-      break;
+    if (fenced2.inside(line)) continue;
+    if (answeredAt === -1) {
+      if (line.startsWith("## ") && line.slice(3).trim() === "Answered") answeredAt = i;
+    } else if (line.startsWith("## ")) {
+      break; // The Answered section's end: a placeholder beyond it is another section's.
+    } else if (line.trim() === "_None yet._") {
+      placeholderAt.push(i);
     }
+  }
+  // A section holding only its `_None yet._` skeleton placeholder must lose the placeholder
+  // when a real entry lands there: the placeholder means "no entries", so leaving it above
+  // the moved block makes ## Answered claim to be empty while holding an answered question.
+  // Fence-aware: a `_None yet._` line quoted inside a fenced block is quoted content, never
+  // the placeholder.
+  if (placeholderAt.length > 0) {
+    const dropped = new Set(placeholderAt);
+    const stripped = rebuilt.filter((_, i) => !dropped.has(i));
+    rebuilt.length = 0;
+    rebuilt.push(...stripped);
   }
   let insertAt = rebuilt.length;
   for (let i = answeredAt + 1; i < rebuilt.length; i++) {
