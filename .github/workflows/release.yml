@@ -43,12 +43,10 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}" >&2
             exit 1
           fi
-      # NPM_TOKEN is a Read-and-write (stage-only) granular token: it cannot publish
-      # directly (npm deprecates direct-publish bypass-2FA tokens, removal January 2027).
-      # This stages the version; a maintainer approves it with 2FA (npm stage approve).
-      - run: npm stage publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Publishes via OIDC trusted publishing (configured once with `npm trust github`): no
+      # token involved, and npm generates the provenance attestation automatically. The
+      # stage-only NPM_TOKEN path was the one-time bootstrap for 0.1.0 and is retired.
+      - run: npm publish --access public --provenance
       - name: Attach the packed tarball to a GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
