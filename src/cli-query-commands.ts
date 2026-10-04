@@ -9,6 +9,7 @@ import { flagValue, parseRoleFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
 import { repoNotReady } from "./startup-gate.js";
 import { knownRoleIdsCached } from "./config.js";
+import { parsePositiveInt } from "./text.js";
 import { snapshot } from "./status-data.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { renderStatus } from "./ui/status-render.js";
@@ -137,8 +138,11 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
       fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json)`);
     }
     if (!numbered) {
-      const parsed = Number(arg);
-      if (arg !== "" && Number.isInteger(parsed) && parsed >= 1) numbered = true;
+      // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
+      // one --cancel's position honors): bare Number() admitted hex ("0x2"), exponent
+      // ("1e2"), and whitespace-padded spellings as a valid question number, answering a
+      // question the operator never named.
+      if (parsePositiveInt(arg) !== null) numbered = true;
     }
     words.push(arg);
   }
@@ -148,8 +152,8 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   }
   if (words[0] !== "answer")
     fail(`unknown questions subcommand: ${words[0]} (use "answer <n> <decision>")`);
-  const n = Number(words[1]);
-  if (!Number.isInteger(n) || n < 1)
+  const n = words.length > 1 ? parsePositiveInt(words[1] ?? "") : null;
+  if (n === null)
     fail('questions answer needs a positive question number: questions answer <n> "<decision>"');
   const decision = words.slice(2).join(" ").trim();
   if (decision === "")

@@ -164,6 +164,11 @@ test("questions answer refuses a non-integer or non-positive question number", a
     ["questions", "answer", "-1", "no"],
     ["questions", "answer", "1st", "no"],
     ["questions", "answer"], // a missing number reads as NaN, the same refusal
+    // Bare Number() parsing admitted spellings Number() accepts and the plain-decimal rule
+    // rejects: `answer 0x2` answered question 2, `1e2` would have answered question 100.
+    ["questions", "answer", "0x2", "no"],
+    ["questions", "answer", "1e2", "no"],
+    ["questions", "answer", " 2", "no"],
   ]) {
     const r = await cli(repo, ...args);
     assert.equal(r.code, 1, `exit 1 for ${JSON.stringify(args.slice(1))}`);
