@@ -4,7 +4,43 @@ Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
 ## Planned
-_None yet._
+
+### `tumwater prompt --file <path>` — queue a steering prompt from a file or stdin (planned 2026-10-03 by plan loop)
+
+**Goal.** Steering prompts today must be typed as CLI arguments (`tumwater prompt "..."`), so a long,
+multi-paragraph request means shell quoting pain and hits argv-length limits. `tumwater init` already
+accepts `--file <path>`; the steering command should speak the same idiom. Add `tumwater prompt
+--file <path>`, where a path of `-` reads the prompt from stdin (so `cat note.md | tumwater prompt
+--file -` works), combinable with the existing `--role <id>`.
+
+**Approach.**
+- `parsePromptArgs` in src/cli-command-args.ts: add `--file` to `PROMPT_FLAG_SPECS`, extend the
+  unknown-argument message, and, when the flag is present, claim its value and refuse stray
+  positional tokens (same `failStrayArg` shape init's `--file` branch uses: "with --file the prompt
+  comes from the file"). Read the file with `fs.readFileSync(path, "utf8")`; when the value is
+  `-`, read stdin synchronously (`fs.readFileSync(0, "utf8")`). Fail with the init wording when the
+  file cannot be read (`cannot read prompt file ...`) or is whitespace-only (`the prompt file ...
+  is empty — it carries no prompt text`). `--file` composes with `--role` and `--json`-free enqueue
+  mode only; combining it with `--list` or `--cancel` fails (`--file only queues a prompt`).
+- `cmdPrompt` in src/prompt-commands.ts: in the enqueue branch, `parsed.text` already carries the
+  resolved text — no change beyond whatever field naming the parser needs; the enqueue path
+  (`submitRolePromptAndWake`) and the queued-age/preview rendering are untouched.
+- `help.ts`: list the flag on the prompt command's usage line.
+- Tests: extend the existing parsePromptArgs test file (grep `parsePromptArgs` under test/) with
+  cases — `--file` + `--role` composition, `-` reading stdin (feed a pipe in the test), missing
+  value, unreadable path, empty file, and combination with `--list`/`--cancel` failing; and one
+  cmdPrompt-level test that a queued `--file` prompt lands in the director queue verbatim.
+
+**Files touched.** src/cli-command-args.ts, src/prompt-commands.ts, src/help.ts, test/ (the
+parsePromptArgs and prompt-command test files).
+
+**Acceptance criteria.**
+- `tumwater prompt --file note.md` queues note.md's contents verbatim for the director; with
+  `--role qa` it queues for qa.
+- `echo hi | tumwater prompt --file -` queues "hi".
+- Stray positional tokens with `--file`, a missing/unreadable/empty file, and `--file` plus
+  `--list`/`--cancel` each fail with a message naming the problem.
+- `tumwater help prompt` shows `--file <path>`; the suite passes.
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
