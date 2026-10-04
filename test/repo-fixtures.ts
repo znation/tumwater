@@ -151,12 +151,13 @@ export async function initializedRepo(): Promise<string> {
   return repo;
 }
 
-/** An initializedRepo'd repo plus the improve role's worktree off main — the base the landing
- * git/merge tests stage their scenarios on, which each used to carry their own identical
- * initializedRoot/setup copy. */
-export async function initializedWorktree(): Promise<{ root: string; wt: string }> {
+/** An initializedRepo'd repo plus a role's worktree off main — the base the landing-git,
+ * landing-merge, refusal, retire, tick-stage, and tick-verdict tests stage their scenarios on,
+ * several of which used to carry their own identical initializedRoot/setup copy. The role
+ * defaults to improve; pass one for tests that need a specific role's worktree. */
+export async function initializedWorktree(role = "improve"): Promise<{ root: string; wt: string }> {
   const root = await initializedRepo();
-  const wt = await ensureWorktree(root, "improve", "main");
+  const wt = await ensureWorktree(root, role, "main");
   return { root, wt };
 }
 

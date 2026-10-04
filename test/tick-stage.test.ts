@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { stageTickLanding } from "../src/tick-stage.js";
-import { initProject } from "../src/init.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { initializedWorktree, sh } from "./repo-fixtures.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { defaultConfig } from "../src/config.js";
 import { readQaCoverage } from "../src/qa-coverage.js";
@@ -13,8 +12,15 @@ import type { TickOutcome } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi-run-result.js";
 import type { LoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
+
+/** A fresh initialized repo plus the improve role's worktree with one changed file — the
+ * staged change stageTickLanding commits in these tests. */
+async function setup(): Promise<{ root: string; wt: string }> {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
+  return { root, wt };
+}
 
 /** A successful pi run result; tests override only what they exercise. */
 function okPi(over: Partial<PiRunResult> = {}): PiRunResult {
@@ -90,15 +96,6 @@ function buildCtx(
       return over.abortedOutcome ?? { result: "aborted", summary: "aborted by the user" };
     },
   };
-}
-
-/** A fresh initialized repo plus the improve role's worktree with one changed file. */
-async function setup(): Promise<{ root: string; wt: string }> {
-  const root = makeRepo();
-  await initProject(root, "A test project.");
-  const wt = await ensureWorktree(root, "improve", "main");
-  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  return { root, wt };
 }
 
 test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () => {

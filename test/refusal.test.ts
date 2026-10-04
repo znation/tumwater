@@ -3,13 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/refusal.js";
-import { initProject } from "../src/init.js";
-import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TickResult } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi-run-result.js";
 import type { LoopState } from "../src/loop-state.js";
-import { assertClean, mainSha, makeRepo, sh } from "./repo-fixtures.js";
+import { assertClean, initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */
@@ -44,16 +42,8 @@ function makeCtx(result: TickResult = "changed"): { ctx: RefusalContext; merges:
   };
 }
 
-/** A fresh initialized repo plus the improve role's worktree. */
-async function setup(): Promise<{ root: string; wt: string }> {
-  const root = makeRepo();
-  await initProject(root, "A test project.");
-  const wt = await ensureWorktree(root, "improve", "main");
-  return { root, wt };
-}
-
 test("a refusal with a markdown note commits only the note and merges it directly", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   // The refusing run's leftovers: an objection note (md), a half-done tracked edit, and junk.
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
   fs.appendFileSync(path.join(wt, "seed.txt"), "bad\n");
@@ -82,7 +72,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
 });
 
 test("a refusal with no note resets the worktree and never merges", async () => {
-  const { root, wt } = await setup();
+  const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const broken = true;\n");
 
   const state: LoopState = freshLoopState("improve");
@@ -100,7 +90,7 @@ test("a refusal with no note resets the worktree and never merges", async () => 
 });
 
 test("a bare sentinel falls back to a generic reason", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** no reason written\n");
 
   const state: LoopState = freshLoopState("improve");
@@ -115,7 +105,7 @@ test("a bare sentinel falls back to a generic reason", async () => {
 test("a refusal contradicted by its own reply keeps its work (BUGS.md 2026-09-23)", async () => {
   // A refusal beside a SUMMARY and non-markdown work discredits itself: the harness must
   // surface it, not discard finished output.
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const fixed = true;\n");
   fs.appendFileSync(path.join(wt, "seed.txt"), "tweak\n");
 
@@ -134,12 +124,12 @@ test("a refusal contradicted by its own reply keeps its work (BUGS.md 2026-09-23
 });
 
 test("refusalContradiction returns empty when the worktree is clean", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   assert.deepEqual(await refusalContradiction(wt, "SUMMARY: nothing changed"), []);
 });
 
 test("a failed note merge records lastError and still reports the commit", async () => {
-  const { wt } = await setup();
+  const { wt } = await initializedWorktree();
   fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
 
   const state: LoopState = freshLoopState("improve");

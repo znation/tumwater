@@ -7,19 +7,9 @@ import { PendingPrompt } from "../src/pending-prompt.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { loadConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
-import { initProject } from "../src/init.js";
-import { ensureWorktree } from "../src/worktree.js";
 import type { PiRunResult } from "../src/pi-run-result.js";
 import { piRunResult } from "./fake-pi.js";
-import { makeRepo } from "./repo-fixtures.js";
-
-/** A fresh initialized repo plus one role's worktree. */
-async function setup(role: string): Promise<{ root: string; wt: string }> {
-  const root = makeRepo();
-  await initProject(root, "A test project.");
-  const wt = await ensureWorktree(root, role, "main");
-  return { root, wt };
-}
+import { initializedWorktree } from "./repo-fixtures.js";
 
 /** A TickVerdictContext for a finished, uneventful run: pi declared nothing-to-do on a clean
  * worktree, so the normal classification is a fulfilled no_change. Tests override only what
@@ -59,7 +49,7 @@ function makeCtx(root: string, wt: string, role: string, over: Record<string, un
 // not just the happy path around it.
 
 test("the director's config request is applied to the live config and deleted", async () => {
-  const { root, wt } = await setup(DIRECTOR_ROLE);
+  const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
   fs.writeFileSync(
     configRequestPath(wt),
     JSON.stringify({ customLoops: [{ name: "docs", task: "Keep the examples current." }] }),
@@ -79,7 +69,7 @@ test("the director's config request is applied to the live config and deleted", 
 });
 
 test("a malformed config request is rejected with a warning and still deleted", async () => {
-  const { root, wt } = await setup(DIRECTOR_ROLE);
+  const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
   const before = loadConfig(root).customLoops;
   fs.writeFileSync(configRequestPath(wt), JSON.stringify({ customLoops: "not an array" }));
 
@@ -93,7 +83,7 @@ test("a malformed config request is rejected with a warning and still deleted", 
 });
 
 test("a stray config request in a non-director worktree is left alone", async () => {
-  const { root, wt } = await setup("improve");
+  const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(
     configRequestPath(wt),
     JSON.stringify({ customLoops: [{ name: "docs", task: "injected" }] }),
@@ -114,7 +104,7 @@ test("a stray config request in a non-director worktree is left alone", async ()
 });
 
 test("a clean nothing-to-do run classifies as a fulfilled no_change without requeueing", async () => {
-  const { root, wt } = await setup("improve");
+  const { root, wt } = await initializedWorktree("improve");
   const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_FLOW: tests pass" });
 
   const { ctx, pending } = makeCtx(root, wt, "improve", { pi });
