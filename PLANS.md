@@ -6,7 +6,58 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater prompt --edit <n> <text...>` — correct a queued steering prompt in place, keeping its position and deferral (planned 2026-10-04 by plan loop)
+
+**Goal.** An operator who spots a typo or a stale instruction in a prompt they queued today has
+one blunt tool: `prompt --cancel <n>` and re-queue — which loses the entry's position behind
+older prompts, loses the `--at` deferral (the new text carries no not-before marker), and
+touches the wake marker twice. Give the edit a first-class path: rewrite one queued prompt's
+text in place, keeping its queue position, its enqueue stamp (the filename is untouched), and
+its not-before deferral exactly as it was.
+
+**Approach.**
+- New module `src/inbox-edit.ts`, mirroring `src/inbox-cancel.ts`: `editRolePrompt(root, role,
+  position, newText)` resolves the address through `queuedRolePromptRecords` (the same listing
+  `--list` prints), then writes the new content to the same queue-file path with the same
+  atomic write `enqueueRolePrompt` uses (temp file + rename), so a concurrent dequeue or
+  another edit can never expose a half-written file. The race policy pairs with the outcome:
+  `{ status: "edited", oldText, newText }`, or `{ status: "gone" }` when the file vanished
+  between listing and write — a normal race, never an error, exactly like
+  `takeCancelledPrompt`.
+- Deferral preservation: when the record's `notBeforeMs` is non-null, the new file content is
+  `notBeforeMarker(notBeforeMs)` (from `src/prompt-not-before.ts`) followed by the new text —
+  the marker is plumbing, the edit replaces only content. A non-deferred prompt stays
+  marker-free even if the new text's first line resembles a marker.
+- One `prompt_edited` event under the target loop, preview via `promptPreview` of the new
+  text, logged only after the successful write — the same event/preview pairing
+  `takeCancelledPrompt` pins, so the list surfaces and the history feed cannot disagree.
+- List-wide addressing: `editListedPrompt(root, scope, position, newText)` reuses
+  `cancelListedPrompt`'s candidate resolution (long-enough queues only; one candidate
+  resolves, several are an `ambiguous` error with the `--role` escape hatch, none is a
+  `missing` miss) — factored so the two cannot drift, e.g. a small shared
+  `resolveListedQueue(root, scope, position)` helper both call.
+- CLI: `src/prompt-commands.ts` gains the `--edit <n> <text...>` mode (with the optional
+  `--role`), `src/cli-flag-specs.ts` admits the flag, and `src/help.ts` documents it next to
+  the `--cancel` line: "Replace the Nth queued prompt's text in place (position, enqueue age,
+  and a pending `--at` deferral are kept; as shown by --list)". Same broken-config policy as
+  cancel: a load failure reports and exits non-zero without touching the queue.
+
+**Files touched.** New `src/inbox-edit.ts`; `src/prompt-commands.ts`, `src/cli-flag-specs.ts`,
+`src/help.ts`; new tests beside `test/inbox.test.ts` (a `test/inbox-edit.test.ts` or its
+cases inside the existing file, following the file's local conventions).
+
+**Acceptance criteria.**
+- `tumwater prompt --role bugfix --edit 1 "new text"` rewrites the first queued bugfix prompt's
+  content in place: the next `--list` shows the new text at position 1 with the original
+  `queued <age> ago` stamp (the filename is unchanged), and the queue still holds exactly one
+  entry.
+- A deferred prompt (`prompt --at 45m`) edited in place keeps its countdown in `--list` and
+  stays undeliverable until its time; the marker is not doubled or dropped.
+- No-`--role` `--edit <n>` resolves by the `--list` numbering with the same ambiguity and
+  missing handling as `--cancel <n>` (identical error wording modulo the verb).
+- A prompt that is dequeued between listing and write reports `gone` and exits clean.
+- One `prompt_edited` event appears in the event feed per successful edit, none on failures.
+- `tumwater help prompt` documents `--edit`; `npm run test` passes with the new cases green.
 
 ## Done
 
