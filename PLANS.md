@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater init --template` — seeded project templates so a fresh fleet starts with signal (planned 2026-10-04 by plan loop, implementing docs/feature-project-templates.md)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### `tumwater init --template` — seeded project templates so a fresh fleet starts with signal (planned 2026-10-04 by plan loop, implementing docs/feature-project-templates.md, done 2026-10-04 by feature)
 
 **Goal.** Give `tumwater init` a `--template <id>` option that seeds a fresh project with a
 brief preamble and a starter `PLANS.md`, so the fleet's first ticks land on real work instead
@@ -63,10 +69,6 @@ file(s) and `test/cli-command-args.test.ts` for the flag parse.
   effects, as the existing `initProject` preflight does).
 - `docs/feature-project-templates.md` still describes the landed behavior — update it only if an
   acceptance-relevant detail diverged, and say so in the landing summary.
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### The TUI's Ctrl+D quits like shell EOF and Ctrl+C interrupts the director's in-flight tick (planned 2026-10-04 by director, from the user's request, done 2026-10-04 by feature)
 

@@ -18,6 +18,7 @@ import {
   rejectEqualsForm,
 } from "./cli-args.js";
 import { fail } from "./cli-output.js";
+import { templateIds } from "./init-templates.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
@@ -60,8 +61,10 @@ function failEmptyPromptFile(file: string, contents: string): void {
 const INIT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--file"], value: true, valueName: "<path>" },
   { names: ["--branch"], value: true, valueName: "<name>" },
+  { names: ["--template"], value: true, valueName: "<id>" },
   { names: ["--adopt"] },
   { names: ["--dry-run"] },
+  { names: ["--list-templates"] },
 ];
 /** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
 const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
@@ -86,6 +89,8 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
 export function parseInitArgs(args: string[]): {
   prompt: string;
   branch: string | null;
+  template: string | null;
+  listTemplates: boolean;
   adopt: boolean;
   dryRun: boolean;
 } {
@@ -96,7 +101,7 @@ export function parseInitArgs(args: string[]): {
     rejectEqualsForm(arg, INIT_FLAG_SPECS);
     if (arg.startsWith("--") && !known.includes(arg)) {
       fail(
-        `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>, --adopt, --dry-run)`,
+        `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>, --template <id>, --adopt, --dry-run, --list-templates)`,
       );
     }
   }
@@ -104,6 +109,23 @@ export function parseInitArgs(args: string[]): {
   const branch = parseBranchFlag(args);
   const adopt = args.includes("--adopt");
   const dryRun = args.includes("--dry-run");
+  const listTemplates = args.includes("--list-templates");
+  // Validate the template id here, so an unknown one fails before initProject runs any side
+  // effect — and before a half-seeded repo can result from a typo'd id.
+  const templateFlag = args.indexOf("--template");
+  let template: string | null = null;
+  if (templateFlag >= 0) {
+    template = args[templateFlag + 1] ?? "";
+    if (!template) fail("--template needs an id");
+    if (!templateIds().includes(template)) {
+      fail(
+        `unknown template ${JSON.stringify(template)} — valid templates: ${templateIds().join(", ")}`,
+      );
+    }
+  }
+  if (listTemplates && templateFlag >= 0) {
+    fail("--list-templates takes no --template — it lists the catalog, it does not use one");
+  }
   const fileFlag = args.indexOf("--file");
   if (fileFlag >= 0) {
     const file = args[fileFlag + 1];
@@ -111,24 +133,32 @@ export function parseInitArgs(args: string[]): {
     const claimed = [fileFlag, fileFlag + 1];
     const branchFlag = args.indexOf("--branch");
     if (branchFlag >= 0) claimed.push(branchFlag, branchFlag + 1);
+    if (templateFlag >= 0) claimed.push(templateFlag, templateFlag + 1);
     for (const flag of INIT_BOOLEAN_FLAGS) {
       if (args.includes(flag)) claimed.push(args.indexOf(flag));
     }
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
     const contents = readPromptFile(file);
     failEmptyPromptFile(file, contents);
-    return { prompt: contents, branch, adopt, dryRun };
+    if (listTemplates) {
+      fail("--list-templates takes no prompt — run `tumwater init --list-templates` alone");
+    }
+    return { prompt: contents, branch, template, listTemplates, adopt, dryRun };
   }
-  // Everything except the --branch pair and the booleans is prompt text; the join keeps
-  // single-dash tokens as content, exactly as before — with no flag present this is the old
-  // args.join(" ").
+  // Everything except the --branch/--template pairs and the booleans is prompt text; the join
+  // keeps single-dash tokens as content, exactly as before — with no flag present this is the
+  // old args.join(" ").
   const promptTokens: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
-    if (arg === "--branch") i++; // Skip the pair's value too.
+    if (arg === "--branch" || arg === "--template") i++; // Skip the pair's value too.
     else if (!INIT_BOOLEAN_FLAGS.includes(arg)) promptTokens.push(arg);
   }
-  return { prompt: promptTokens.join(" "), branch, adopt, dryRun };
+  const prompt = promptTokens.join(" ");
+  if (listTemplates && prompt.trim() !== "") {
+    fail("--list-templates takes no prompt — run `tumwater init --list-templates` alone");
+  }
+  return { prompt, branch, template, listTemplates, adopt, dryRun };
 }
 
 /** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the

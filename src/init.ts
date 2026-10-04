@@ -16,6 +16,7 @@ import {
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
 import { projectName } from "./project-name.js";
 import { tooLongMessage } from "./text.js";
+import { getTemplate, templateIds } from "./init-templates.js";
 
 const PLANS_TEMPLATE = `# Plans
 
@@ -113,6 +114,9 @@ interface InitResult {
   adopted: boolean;
   /** True when nothing was written: `created` is what a real run would create. */
   dryRun: boolean;
+  /** The template id the brief and backlog were seeded from — "blank" unless --template named
+   * a catalog template (the default, which reproduces the pre-templates output exactly). */
+  template: string;
 }
 
 /** Initialize a repo for tumwater: README (with prompt + status) when no project brief exists
@@ -128,11 +132,29 @@ export async function initProject(
   root: string,
   initialPrompt: string,
   branch?: string,
-  opts: { adopt?: boolean; dryRun?: boolean } = {},
+  opts: { adopt?: boolean; dryRun?: boolean; template?: string } = {},
 ): Promise<InitResult> {
   const dryRun = opts.dryRun === true;
-  // Fail fast on a missing binary before the probe below can misread it as "not a git
-  // repository" — the same preflight every other command gets in cli.ts.
+  // Resolve the template before any side effect: an unknown id (possible for direct callers of
+  // initProject — the CLI parser already validated its own path) is refused up front, and the
+  // template shapes everything below.
+  const template = opts.template ? getTemplate(opts.template) : null;
+  if (opts.template && !template) {
+    throw new Error(`unknown template ${JSON.stringify(opts.template)} — valid templates: ${templateIds().join(", ")}`);
+  }
+  const tpl = template ?? getTemplate("blank")!;
+  // The brief records the template's preamble ahead of the operator's words, so their words
+  // remain the tail ("latest instruction wins" reads naturally). The combined text rides into
+  // every tick's prefill, so it obeys the same cap as a bare prompt — reject before any side
+  // effect so an overflowing preamble never lands in README.md.
+  const combinedPrompt = tpl.briefPreamble
+    ? `${tpl.briefPreamble}\n\n${initialPrompt.trim()}`
+    : initialPrompt.trim();
+  if (combinedPrompt.length > INITIAL_PROMPT_MAX_CHARS) {
+    throw new Error(
+      `the initial prompt with the ${tpl.id} template's preamble is ${combinedPrompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
+    );
+  }
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
@@ -141,7 +163,7 @@ export async function initProject(
   // initialized project, or a checkout that lost its now-untracked tumwater.json
   // (plans/portability.md §4a/7), re-seeds with a bare `tumwater init` — the existing brief
   // file is never rewritten, so a prompt given here must match it (refused below otherwise).
-  if (!prompt && readInitialPrompt(root) === "") {
+  if (!prompt && combinedPrompt.trim() === "" && readInitialPrompt(root) === "") {
     // A bare init with no prompt is only ever refused for one of two reasons, and they have
     // different fixes: no README (nothing to read — the message below is the whole story) or a
     // README that lacks the managed markers (bare init reads them — name the file and the
@@ -154,6 +176,10 @@ export async function initProject(
       `an initial prompt is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
     );
   }
+  // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
+  // unbounded one is a standing per-tick cost — the same reason customLoops.task and
+  // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
+  // never lands in README.md and is never committed.
   // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
   // unbounded one is a standing per-tick cost — the same reason customLoops.task and
   // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
@@ -200,7 +226,7 @@ export async function initProject(
   // that owns the brief — TUMWATER.md resolves ahead of README.md (plans/portability.md §7a/7),
   // so pointing at README.md would send the user to edit a file nobody reads. A re-run with the
   // same prompt, or a bare init, is the idempotent re-seed and passes.
-  if (prompt && brief !== null && prompt !== readInitialPrompt(root)) {
+  if (prompt && brief !== null && combinedPrompt !== readInitialPrompt(root)) {
     throw new Error(
       `${brief} already carries a different initial prompt between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
@@ -255,9 +281,19 @@ export async function initProject(
   if (brief !== null) leftAlone.push(brief);
   else if (adopted) {
     if (readmeExists) leftAlone.push("README.md");
-    write("TUMWATER.md", briefTemplate(name, initialPrompt));
-  } else write("README.md", readmeTemplate(name, initialPrompt));
-  write("PLANS.md", PLANS_TEMPLATE);
+    write("TUMWATER.md", briefTemplate(name, combinedPrompt));
+  } else write("README.md", readmeTemplate(name, combinedPrompt));
+  // A template with starter plans seeds the backlog with them, rendered as `### ` entries —
+  // the primary entry format every backlog reader parses — so the fleet's first ticks land on
+  // real work. blank keeps the `_None yet._` placeholder byte-identical to today.
+  const plansContent =
+    tpl.starterPlans.length > 0
+      ? PLANS_TEMPLATE.replace(
+          "_None yet._",
+          tpl.starterPlans.map((p) => `### ${p}`).join("\n\n"),
+        )
+      : PLANS_TEMPLATE;
+  write("PLANS.md", plansContent);
   write("BUGS.md", BUGS_TEMPLATE);
   write("QUESTIONS.md", QUESTIONS_TEMPLATE);
   write("PRINCIPLES.md", PRINCIPLES_TEMPLATE);
@@ -268,13 +304,25 @@ export async function initProject(
   }
   if (ensureGitignore(root, dryRun)) created.push(".gitignore");
   else if (fs.existsSync(path.join(root, ".gitignore"))) leftAlone.push(".gitignore");
+  // The template's starter directories: empty ones only, before the first tick — the fleet's
+  // own ticks write any code. Existing directories are left alone, like existing files above.
+  for (const dir of tpl.starterDirs) {
+    const full = path.join(root, dir);
+    if (fs.existsSync(full)) {
+      leftAlone.push(dir);
+      continue;
+    }
+    if (!dryRun) fs.mkdirSync(full, { recursive: true });
+    created.push(dir);
+  }
 
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
   // the just-written .gitignore ignores (plans/portability.md §4a/7). It still heads the
   // `created …` line the CLI prints — the file WAS created, it just must not be tracked. When
   // that leaves the pathspec empty (`git add --` with no pathspec exits 1), there is nothing
   // to commit: a repo that only gained a config reports it and stays uncommitted.
-  const committable = created.filter((name) => name !== CONFIG_BASENAME);
+  const dirSet = new Set(tpl.starterDirs);
+  const committable = created.filter((name) => name !== CONFIG_BASENAME && !dirSet.has(name));
   let committed = false;
   if (!dryRun && committable.length > 0) {
     await git(root, "add", "--", ...committable);
@@ -286,5 +334,5 @@ export async function initProject(
       committed = true;
     }
   }
-  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun };
+  return { created, leftAlone, committed, repoInitialized, branch: createdBranch, adopted, dryRun, template: tpl.id };
 }

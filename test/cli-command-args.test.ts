@@ -18,6 +18,8 @@ test("parseInitArgs joins positionals (single-dash tokens are content, not flags
     prompt: "Build a todo CLI.",
     branch: null,
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: false,
   });
   // Bullets and other single-dash tokens stay prompt content.
@@ -25,6 +27,8 @@ test("parseInitArgs joins positionals (single-dash tokens are content, not flags
     prompt: "- Build A - Build B",
     branch: null,
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: false,
   });
 });
@@ -37,6 +41,8 @@ test("parseInitArgs --file reads the exact file contents", () => {
     prompt: "Build a thing.\nWith care.\n",
     branch: null,
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: false,
   });
 });
@@ -97,6 +103,8 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
     prompt: "Build a todo CLI.",
     branch: "trunk",
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: false,
   });
 
@@ -108,6 +116,8 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
     prompt: "From a file.",
     branch: "trunk",
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: false,
   });
 
@@ -127,6 +137,8 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
     prompt: "Build a thing.",
     branch: null,
     adopt: true,
+    template: null,
+    listTemplates: false,
     dryRun: true,
   });
   // A boolean is valueless: the token after it stays prompt text, even beside --branch.
@@ -134,6 +146,8 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
     prompt: "Go.",
     branch: "trunk",
     adopt: false,
+    template: null,
+    listTemplates: false,
     dryRun: true,
   });
 
@@ -143,7 +157,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
   fs.writeFileSync(file, "From a file.");
   assert.deepEqual(
     expectOk(() => parseInitArgs(["--adopt", "--file", file, "--dry-run", "--branch", "trunk"])),
-    { prompt: "From a file.", branch: "trunk", adopt: true, dryRun: true },
+    { prompt: "From a file.", branch: "trunk", adopt: true, template: null, listTemplates: false, dryRun: true },
   );
   const stray = expectFail(() => parseInitArgs(["--file", file, "--adopt", "extra"]));
   assert.match(stray.stderr, /unexpected argument "extra"/);
@@ -161,7 +175,7 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
   // The unknown-flag message lists every valid flag.
   assert.match(
     expectFail(() => parseInitArgs(["--adpot", "x"])).stderr,
-    /valid flags for tumwater init: --file <path>, --branch <name>, --adopt, --dry-run/,
+    /valid flags for tumwater init: --file <path>, --branch <name>, --template <id>, --adopt, --dry-run, --list-templates/,
   );
 });
 
@@ -368,4 +382,59 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
   // A duplicate fails like the other valued flags; the equals form names a real flag.
   assert.match(expectFail(() => parsePromptArgs(["--file", file, "--file", file])).stderr, /--file may only be given once/);
   assert.match(expectFail(() => parsePromptArgs(["--file=" + file])).stderr, /`--file <path>`/);
+});
+
+test("parseInitArgs --template: never prompt content, validated against the catalog, composes with --file", () => {
+  // The template pair is pulled out of the prompt text and its id validated here, so a typo
+  // fails before initProject can seed a half-formed repo.
+  assert.deepEqual(expectOk(() => parseInitArgs(["Build", "a", "todo CLI.", "--template", "python-cli"])), {
+    prompt: "Build a todo CLI.",
+    branch: null,
+    template: "python-cli",
+    listTemplates: false,
+    adopt: false,
+    dryRun: false,
+  });
+
+  // An unknown id names the valid ones.
+  const unknown = expectFail(() => parseInitArgs(["--template", "nope", "Build a thing."]));
+  assert.match(unknown.stderr, /unknown template "nope" — valid templates: blank, python-cli, node-cli, static-site/);
+
+  // A missing value fails by name, like the other valued flags.
+  assert.match(expectFail(() => parseInitArgs(["--template"])).stderr, /--template needs an id/);
+
+  // With --file, the template pair is claimed alongside the other flags.
+  const dir = tmpdir();
+  const file = path.join(dir, "prompt.md");
+  fs.writeFileSync(file, "From a file.");
+  assert.deepEqual(expectOk(() => parseInitArgs(["--file", file, "--template", "node-cli"])), {
+    prompt: "From a file.",
+    branch: null,
+    template: "node-cli",
+    listTemplates: false,
+    adopt: false,
+    dryRun: false,
+  });
+
+  // A duplicated pair is a mistake, like a doubled --branch.
+  assert.match(expectFail(() => parseInitArgs(["--template", "a", "--template", "b"])).stderr, /--template may only be given once/);
+});
+
+test("parseInitArgs --list-templates: alone with no prompt; refuses a prompt, --file, and --template", () => {
+  assert.deepEqual(expectOk(() => parseInitArgs(["--list-templates"])), {
+    prompt: "",
+    branch: null,
+    template: null,
+    listTemplates: true,
+    adopt: false,
+    dryRun: false,
+  });
+
+  assert.match(expectFail(() => parseInitArgs(["--list-templates", "Build a thing."])).stderr, /--list-templates takes no prompt/);
+  assert.match(expectFail(() => parseInitArgs(["--list-templates", "--template", "python-cli"])).stderr, /--list-templates takes no --template/);
+
+  const dir = tmpdir();
+  const file = path.join(dir, "prompt.md");
+  fs.writeFileSync(file, "From a file.");
+  assert.match(expectFail(() => parseInitArgs(["--list-templates", "--file", file])).stderr, /--list-templates takes no prompt/);
 });

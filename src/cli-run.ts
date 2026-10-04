@@ -10,6 +10,7 @@ import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
+import { templateCatalog } from "./init-templates.js";
 import { logEvent, subscribeEvents } from "./events.js";
 import { LaunchServicesWatch } from "./launch-services.js";
 import { formatEvent } from "./event-format.js";
@@ -25,8 +26,17 @@ import { shortSha } from "./text.js";
  * work; this prints the report). --dry-run prints the would-be actions without writing
  * anything; an already-initialized repo is reported as a no-op, never an error. */
 export async function cmdInit(root: string, args: string[]): Promise<void> {
-  const { prompt, branch, adopt, dryRun } = parseInitArgs(args);
-  const result = await initProject(root, prompt, branch ?? undefined, { adopt, dryRun });
+  const { prompt, branch, template, listTemplates, adopt, dryRun } = parseInitArgs(args);
+  if (listTemplates) {
+    for (const { id, description } of templateCatalog()) say(`${id} — ${description}`);
+    return;
+  }
+  const result = await initProject(root, prompt, branch ?? undefined, {
+    adopt,
+    dryRun,
+    template: template ?? undefined,
+  });
+  if (result.template !== "blank") say(`template: ${result.template}`);
   if (result.adopted) {
     say(
       `${result.dryRun ? "would adopt" : "adopting"} an existing repo: the project brief goes in TUMWATER.md and README.md is left untouched`,
