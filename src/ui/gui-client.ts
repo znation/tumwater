@@ -106,13 +106,17 @@ const FORMAT_JS = String.raw`  // format:start
   // last-tick-fmt:start
   // The absolute local time of a tick end with its age ("14:32:05 · 3m ago"), prefixed MM-DD
   // once older than a day; "-" when never ticked — status-render.ts's lastTickCell.
+  // Whole elapsed seconds since an instant, clamped at zero and rounded to the nearest
+  // second — datetime.ts's elapsedSeconds (the browser runtime cannot import it), shared by
+  // fmtLastTick and fmtAgo below so the clamp cannot drift between the page's ages.
+  const ageSec = (ts) => Math.max(0, Math.round((Date.now() - ts) / 1000));
   const fmtLastTick = (ts) => {
     if (!ts) return "-";
     const d = new Date(ts);
     const p = (n) => String(n).padStart(2, "0");
     let s = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
     if (Date.now() - ts > 86400000) s = p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + s;
-    const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    const sec = ageSec(ts);
     const age = humanSeconds(sec) + " ago";
     return s + " · " + age;
   };
@@ -135,7 +139,7 @@ const FORMAT_JS = String.raw`  // format:start
   // second.
   const fmtAgo = (ts) => {
     if (!ts) return "never";
-    const sec = Math.max(0, Math.round((Date.now() - ts) / 1000));
+    const sec = ageSec(ts);
     return sec < 60 ? "just now" : humanSeconds(sec) + " ago";
   };
   const fmtClock = (ts) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });

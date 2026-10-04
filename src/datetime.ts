@@ -17,6 +17,15 @@ export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/** Whole elapsed seconds since an epoch-ms instant, clamped at zero and rounded to the
+ * nearest second — the age rule status-render.ts's lastTickCell ages its `HH:MM:SS · Ns ago`
+ * stamp through. The GUI page's browser script keeps its own one-line twin (gui-client.ts's
+ * ageSec — a separate runtime that cannot import TypeScript), pinned by its marked regions'
+ * tests, so the three copies cannot disagree on the clamp or the rounding. */
+export function elapsedSeconds(sinceMs: number): number {
+  return Math.max(0, Math.round((Date.now() - sinceMs) / 1000));
+}
+
 /** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,
  * the daily-budget day stamp (todayStamp), and the usage report's per-day buckets, which must
  * all agree on what counts as one day. */

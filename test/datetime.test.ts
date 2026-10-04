@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, pad2, reportWindow } from "../src/datetime.js";
+import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, pad2, reportWindow } from "../src/datetime.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
@@ -109,3 +109,20 @@ test("formatTimestamp renders date and clock from ONE Date, so its halves cannot
 function formatDateOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+test("elapsedSeconds ages an instant in clamped whole seconds", () => {
+  const realNow = Date.now;
+  try {
+    const now = new Date(2026, 9, 4, 12, 0, 0).getTime();
+    Date.now = () => now;
+    // One second before now reads exactly 1; half a second ago rounds to 1 (rounding).
+    assert.equal(elapsedSeconds(now - 1000), 1);
+    assert.equal(elapsedSeconds(now - 500), 1);
+    // Exactly now reads 0, and a future instant (a clock skew) clamps to 0 rather than
+    // reporting a negative age.
+    assert.equal(elapsedSeconds(now), 0);
+    assert.equal(elapsedSeconds(now + 90_000), 0);
+  } finally {
+    Date.now = realNow;
+  }
+});

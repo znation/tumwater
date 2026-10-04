@@ -4,7 +4,7 @@ import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
 import { compactTokens, usd } from "../text.js";
-import { formatTime, humanSeconds, pad2 } from "../datetime.js";
+import { elapsedSeconds, formatTime, humanSeconds, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
 import {
@@ -24,7 +24,7 @@ import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 function ago(ts: number | undefined): string {
   if (!ts) return "-";
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  const s = elapsedSeconds(ts);
   return `${humanSeconds(s)} ago`;
 }
 
