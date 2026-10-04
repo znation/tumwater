@@ -80,7 +80,7 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
   - `fileBug(root, text)` — append one `### <symptom>` entry under BUGS.md's `## Open` (creating the
     file with the `# Bugs` header + `## Open` scaffolding when absent, as `tumwater init` seeds it),
     stamped `(reported by the operator YYYY-MM-DD)` using `datetime.ts`'s local-date helpers; entries
-    are appended after the last existing Open entry, before `## Fixed`, using `backlog.ts`'s
+    are appended after the last existing Open entry, before `## Fixed`, using `backlog-md.ts`'s
     `fenceTracker()` so fenced blocks are never mistaken for the section boundary.
   - `filePlan(root, title, body)` — same for PLANS.md's `## Planned`, entry `### <title>` with the
     body as the entry text and the same operator stamp. No goal/approach/acceptance-criteria
@@ -477,7 +477,7 @@ of cold-starting from a one-line brief. `blank` (today's behavior) stays the def
    specifies — entry point, tests, docs expectations; the operator's own words stay appended
    after it so they read last), `starterPlans` (3–5 concrete first plans for the seeded
    `PLANS.md`, following the existing `## Planned` before `## Done` convention so the seeded
-   file never trips the gate's structure checks — src/backlog.ts's parser and the clean loop's
+   file never trips the gate's structure checks — src/backlog-md.ts's parser and the clean loop's
    `<backlog-structure>` block both read that shape), and `starterDirs` (e.g. `src/`,
    `tests/` — empty directories only, created the way the harness already creates them; the
    fleet's own first ticks write any code). Export `templateIds()`, `getTemplate(id)`, and
@@ -498,7 +498,7 @@ of cold-starting from a one-line brief. `blank` (today's behavior) stays the def
    `InitResult` reports the template id used; `cmdInit` in `src/cli-run.ts` prints it.
 4. `src/help.ts`: the init usage line gains `--template <id>` / `--list-templates`.
 5. Tests in a new `test/init-templates.test.ts` (catalog shape: four ids, non-blank ones have
-   description/preamble/starterPlans; seeded PLANS.md parses under src/backlog.ts's entry
+   description/preamble/starterPlans; seeded PLANS.md parses under src/backlog-md.ts's entry
    splitter with one entry per starter plan and `## Planned` first) plus extensions to the
    existing init tests (grep `test/` for `initProject(` fixtures — likely `test/cli-run.test.ts`
    or an init-focused file) covering: default blank is byte-identical to today, `--template

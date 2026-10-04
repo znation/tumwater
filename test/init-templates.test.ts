@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { cmdInit } from "../src/cli-run.js";
 import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds } from "../src/init-templates.js";
-import { parseEntryDetails } from "../src/backlog.js";
+import { parseEntryDetails } from "../src/backlog-md.js";
 import { parseInitArgs } from "../src/cli-command-args.js";
 import { INITIAL_PROMPT_MAX_CHARS, readInitialPrompt } from "../src/readme.js";
 import { makeRepo, tmpdir, assertClean } from "./repo-fixtures.js";

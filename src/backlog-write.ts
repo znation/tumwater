@@ -9,7 +9,7 @@
  * rather than failing. The wake of the loop that should act stays in cli.ts beside the
  * other command bodies. */
 import path from "node:path";
-import { fencedHeadingTitle, fenceTracker } from "./backlog.js";
+import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";
 import { fail, say, sayJson } from "./cli-output.js";

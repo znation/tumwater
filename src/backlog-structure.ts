@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog.js";
+import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { gitTry } from "./git-run.js";
 import { collapseWhitespace } from "./text.js";
 
@@ -42,7 +42,7 @@ const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
  * not all carry a date suffix, so the same rule would misfire there. */
 export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
   const stranded: StrandedPlanEntry[] = [];
-  // Each `## ` section is walked through backlog.ts's sectionLines — the single home of
+  // Each `## ` section is walked through backlog-md.ts's sectionLines — the single home of
   // "where a section starts and ends", shared with entryDates' readers — so this scanner and
   // the entry readers can never disagree about the boundary. Walking the section titles in
   // file order (each occurrence once) keeps the output in document order, the same order the
@@ -74,7 +74,7 @@ function planHeadingKey(title: string): string {
 }
 
 /** The comparison keys of every `### ` heading in `md`, in ANY `## ` section, fence-aware
- * (backlog.ts's shared tracker). The base-side set for the new-plan-under-Done rule: an entry
+ * (backlog-md.ts's shared tracker). The base-side set for the new-plan-under-Done rule: an entry
  * whose key the base already carried is a move between sections, never a stranding. */
 function planHeadingKeys(md: string): Set<string> {
   const keys = new Set<string>();
@@ -88,7 +88,7 @@ function planHeadingKeys(md: string): Set<string> {
  * readers parse by `## ` section. */
 const BACKLOG_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"];
 
-/** The `## ` section titles of `md`, in file order, fence-aware (backlog.ts's shared tracker:
+/** The `## ` section titles of `md`, in file order, fence-aware (backlog-md.ts's shared tracker:
  * a `## Done` quoted inside a fenced code block is body text, not structure). */
 function sectionTitles(md: string): string[] {
   return fenceAwareHeadingLines(md, "## ").map((line) => line.slice(3).trim());

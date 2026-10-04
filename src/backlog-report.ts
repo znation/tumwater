@@ -1,4 +1,5 @@
-import type { BacklogEntry, BacklogPayload } from "./backlog.js";
+import type { BacklogEntry } from "./backlog-md.js";
+import type { BacklogPayload } from "./backlog.js";
 
 /** The terminal's view of the project backlog — the same three open sections the GUI's
  * /api/backlog endpoint and the TUI's project-status browse show, rendered as Markdown for

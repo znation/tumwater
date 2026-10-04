@@ -9,7 +9,7 @@
  * failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
  * adapts HTTP onto it.
  */
-import type { BacklogEntry } from "./backlog.js";
+import type { BacklogEntry } from "./backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "./backlog.js";
 import { loadConfigSafe } from "./config.js";
 import { EDITABLE_CONFIG_KEYS } from "./config-editable-keys.js";

@@ -3,7 +3,7 @@ import { statOrNull } from "./files.js";
 /** Stat-keyed caching of file-derived values polled on an interval. Split out of files.ts —
  * which keeps the generic file operations — because this is a self-contained memoization
  * primitive with its own data model (StatKeyedValue) and safety cap, shared by every observer
- * and loader that polls a slowly-changing file — backlog.ts's markdown sections, inbox.ts's
+ * and loader that polls a slowly-changing file — backlog-md.ts's markdown sections, inbox.ts's
  * prompt contents, status-polls.ts's loop states, config.ts's live-reloaded tumwater.json,
  * pi-models.ts's models.json, and landing-queue.ts's entry contents. (The poll-cost and
  * freshness contract is documented on cachedByStat below.) */

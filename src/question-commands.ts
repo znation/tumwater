@@ -2,12 +2,13 @@
  * questions in QUESTIONS.md numbered, or `answer <n> <decision>` one, which moves its entry
  * from `## Open` to `## Answered` with a dated operator answer. Split out of cli.ts because
  * the markdown surgery it performs is more than a dispatch case: the answer path must cut
- * exactly one `### ` block (fence-aware, like every backlog reader in backlog.ts) and extend
+ * exactly one `### ` block (fence-aware, like every backlog reader in backlog-md.ts) and extend
  * a missing `## Answered` section with the file's documented skeleton, so the loop→human→loop
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
 import { fail, say, sayJson } from "./cli-output.js";
-import { fencedHeadingTitle, fenceTracker, openQuestionEntries } from "./backlog.js";
+import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
+import { openQuestionEntries } from "./backlog.js";
 import { collapseWhitespace } from "./text.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";

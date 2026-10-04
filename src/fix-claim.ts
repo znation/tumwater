@@ -20,13 +20,13 @@
  * and an entry body was cut at its own quoted fence — so base and head bodies truncated at
  * the same fence compared equal, and a rewrite confined to text after the fence (including
  * a Fix paragraph placed there) never faced the symbol check. Both readers now see fences
- * through parseEntryDetails — backlog.ts's fence-aware entry parser, the same one the
+ * through parseEntryDetails — backlog-md.ts's fence-aware entry parser, the same one the
  * dashboards read — with one scanner serving headings and bodies alike (as of 2026-09-29,
  * replacing the earlier hand-rolled fenceTracker walk), so the two cannot drift apart. */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parseEntryDetails } from "./backlog.js";
+import { parseEntryDetails } from "./backlog-md.js";
 import { gitTry } from "./git-run.js";
 import { collapseWhitespace } from "./text.js";
 
@@ -42,7 +42,7 @@ export function normalizeFixedHeading(heading: string): string {
 
 /** Headings (as written, `### ` stripped) under the `## Fixed` section of a BUGS.md
  * document. Empty when the document has no Fixed section. Walks the section through
- * parseEntryDetails — backlog.ts's fence-aware entry parser, the same reader the dashboards
+ * parseEntryDetails — backlog-md.ts's fence-aware entry parser, the same reader the dashboards
  * use — so this reader and the backlog browsers can never disagree about what is an entry
  * and what is quoted content: a `### ` line inside a fenced code block is body text, never
  * a Fixed entry. */

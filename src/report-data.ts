@@ -11,7 +11,7 @@ import { readTextOrNull } from "./files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
 import { eventDayKey, eventRole, eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { entryDates } from "./backlog.js";
+import { entryDates } from "./backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
