@@ -469,7 +469,8 @@ refusal, JSON-or-literal parsing, per-key validators, whole-candidate `validateC
 write that live readers pick up) — so the GUI cannot drift from the CLI's rules.
 1. **src/ui/gui-endpoints.ts:** add `EDITABLE_CONFIG_KEYS` (a constant: `provider`, `model`,
    `maxDailyCostUsd`, `quietHours`, `notify` — the top-level keys an operator edits often;
-   `customLoops` and per-role maps stay CLI/director territory) and two handlers modeled on
+   `customLoops` and per-role maps stay CLI/director territory; later extracted to its own
+   src/config-editable-keys.ts beside the other config-key vocabularies — organize, 2026-10-04) and two handlers modeled on
    `handleBudget`: `handleConfig` (GET — resolved values for exactly the curated keys, read
    via the same load path `cmdConfig` uses in src/config-commands.ts) and `handleConfigSet`
    (POST `{key, value}` — 400 when the key is outside `EDITABLE_CONFIG_KEYS` or the value

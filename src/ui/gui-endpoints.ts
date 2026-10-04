@@ -1,8 +1,7 @@
 /**
  * The dashboard's GET data endpoint handlers (src/ui/gui-server.ts routes to them): transcript,
- * backlog, report, failures, history, tick, config — the read-only surface — plus the
- * EDITABLE_CONFIG_KEYS curation shared with gui-endpoint-commands.ts's POST config-set
- * handler. The POST operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
+ * backlog, report, failures, history, tick, config — the read-only surface. The POST
+ * operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
  * wake, restart, abort, pause-role) and their body-discipline helpers live in
  * gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond its
  * own `res`; server lifecycle, routing, the static page, and the token gate stay in gui-server.ts.
@@ -13,6 +12,7 @@
 import type { BacklogEntry } from "../backlog.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
 import { loadConfigSafe } from "../config.js";
+import { EDITABLE_CONFIG_KEYS } from "../config-editable-keys.js";
 import { collectReport } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
@@ -127,13 +127,6 @@ export function handleTick(q: URLSearchParams, res: http.ServerResponse, root: s
   }
   sendJson(res, 200, { ...detail, text: renderTickDetail(detail) });
 }
-/** The config keys the dashboard's Settings view may show and edit: the top-level settings
- * an operator changes often from the browser. Everything else — customLoops, the per-role
- * maps — stays CLI/director territory (the plan's curation decision, 2026-10-02). One
- * constant so handleConfig (GET) and handleConfigSet (POST) cannot drift apart on what is
- * editable. */
-export const EDITABLE_CONFIG_KEYS = ["provider", "model", "maxDailyCostUsd", "quietHours", "notify"] as const;
-
 /** Handle GET /api/config: the Settings view's resolved values for exactly
  * EDITABLE_CONFIG_KEYS — read through the same load path `tumwater config get` uses
  * (loadConfigSafe, defaults merged in), so the page shows what the fleet would actually

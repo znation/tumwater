@@ -4,8 +4,8 @@
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages) each mutating handler guards its inputs
  * with. The GET data endpoints (transcript, backlog, report, failures, history, tick, config)
- * stay in gui-endpoints.ts, which also owns the EDITABLE_CONFIG_KEYS curation both config
- * handlers share; each handler answers its request and touches no socket beyond its own `res`,
+ * stay in gui-endpoints.ts; each handler answers its request and touches no socket beyond its
+ * own `res`,
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet-state.ts, operator-intent.ts) — this module only adapts HTTP onto it.
  */
@@ -18,7 +18,7 @@ import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRole
 import { DIRECTOR_ROLE } from "../roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
-import { EDITABLE_CONFIG_KEYS } from "./gui-endpoints.js";
+import { EDITABLE_CONFIG_KEYS } from "../config-editable-keys.js";
 import type http from "node:http";
 
 /** Every POST handler's shared opening: readJsonObject reads the body and — when it is
