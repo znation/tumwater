@@ -85,6 +85,17 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Is `v` a string with non-whitespace content — the "field carries something usable" guard
+ * every structural read of an unknown-typed JSON field applies (a blank or whitespace-only
+ * string reads as unset, exactly like a wrong type or a missing key). A type predicate, so a
+ * true answer also narrows `v` to `string` for the code that consumes it — the one spelling
+ * shared by build-check-detect.ts's check-script/command/cwd/gateCommand reads, config
+ * validation's thinking-level check, and pi-event-line.ts's tool-result content test, so the
+ * blank-means-unset rule cannot drift per call site. */
+export function isNonBlankString(v: unknown): v is string {
+  return typeof v === "string" && v.trim() !== "";
+}
+
 /** True when `code` is a UTF-16 high (leading) surrogate — the first code unit of an astral
  * character's two-unit encoding (emoji and other non-BMP characters). */
 function isHighSurrogate(code: number): boolean {

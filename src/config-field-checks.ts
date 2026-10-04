@@ -3,7 +3,7 @@ import {
   THINKING_LEVELS,
 } from "./config-schema.js";
 import { allRoleIds } from "./roles.js";
-import { truncate } from "./text.js";
+import { truncate, isNonBlankString } from "./text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
  * message rendering (show, typeName), the unknown-key and known-role guards, the NumberRule
@@ -126,7 +126,7 @@ export function checkModelTripleField(
 ): void {
   for (const key of MODEL_TRIPLE_KEYS) checkStringField(problems, obj, prefix, key, false);
   const t = obj.thinking;
-  if (typeof t === "string" && t.trim() !== "" && !THINKING_LEVELS.has(t))
+  if (isNonBlankString(t) && !THINKING_LEVELS.has(t))
     problems.push(
       `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`,
     );

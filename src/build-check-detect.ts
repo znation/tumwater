@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "./json-object.js";
 import { readJsonFile } from "./json-files.js";
+import { isNonBlankString } from "./text.js";
 import type { CheckConfigSlice } from "./config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the
@@ -88,7 +89,7 @@ function buildCheckFrom(dir: string): BuildCheck | null {
  * baseline). Blank values fall through to the next script, exactly like the empty-string case. */
 function isCheckScript(s: Record<string, unknown>, key: string): boolean {
   const v = s[key];
-  return typeof v === "string" && v.trim() !== "";
+  return isNonBlankString(v);
 }
 
 /** Walk UP from `startDir` — at most `maxLevels` ancestors, starting with `startDir`
@@ -130,12 +131,12 @@ export function detectBuildCheck(
   maxLevels = WALK_UP_LEVELS,
 ): BuildCheck | null {
   const c = config?.check;
-  if (c && typeof c.command === "string" && c.command.trim() !== "") {
+  if (c && isNonBlankString(c.command)) {
     const seconds = typeof c.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds : BUILD_CHECK_TIMEOUT_MS / 1000;
     return {
       kind: "command",
       command: c.command,
-      cwd: path.resolve(startDir, typeof c.cwd === "string" && c.cwd.trim() !== "" ? c.cwd : "."),
+      cwd: path.resolve(startDir, isNonBlankString(c.cwd) ? c.cwd : "."),
       timeoutMs: seconds * 1000,
     };
   }
@@ -151,7 +152,7 @@ export function detectBuildCheck(
  * the full check's), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
-  return typeof g === "string" && g.trim() !== "" ? g : undefined;
+  return isNonBlankString(g) ? g : undefined;
 }
 
 /** Resolve `node_modules/<rel>` by walking UP from `startDir` — the same climb detectBuildCheck

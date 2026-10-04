@@ -7,6 +7,7 @@
  * sentinel/verdict text. */
 
 import { isJsonObject, parseJsonObject } from "./json-object.js";
+import { isNonBlankString } from "./text.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not
@@ -58,8 +59,7 @@ export function toolUpdateHasContent(partialResult: unknown): boolean {
   if (!Array.isArray(content)) return false;
   return content.some(
     (block) =>
-      isJsonObject(block) &&
-      typeof block.text === "string" && block.text.trim() !== "",
+      isJsonObject(block) && isNonBlankString(block.text),
   );
 }
 
