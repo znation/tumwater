@@ -5,7 +5,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater bug "<symptom>"` and `tumwater plan "<title>" [body...]` — operator-authored backlog entries from the CLI (planned 2026-10-04 by plan loop)
+
+**Goal.** Today an operator who spots a bug or wants a feature planned must edit BUGS.md or PLANS.md
+by hand — `prompt` queues text and `questions` reads/answers its outbox, but neither writes the
+backlog the loops actually work from. Give the operator a first-class way to file a bug and request a
+plan, stamped and formatted the way loops write those entries, and wake the loop that should act.
+
+**Approach.**
+- New module `src/backlog-write.ts` (write half, mirroring the read half in `src/backlog.ts` and the
+  scan/stamp/move pattern of `src/question-commands.ts`):
+  - `fileBug(root, text)` — append one `### <symptom>` entry under BUGS.md's `## Open` (creating the
+    file with the `# Bugs` header + `## Open` scaffolding when absent, as `tumwater init` seeds it),
+    stamped `(reported by the operator YYYY-MM-DD)` using `datetime.ts`'s local-date helpers; entries
+    are appended after the last existing Open entry, before `## Fixed`, using `backlog.ts`'s
+    `fenceTracker()` so fenced blocks are never mistaken for the section boundary.
+  - `filePlan(root, title, body)` — same for PLANS.md's `## Planned`, entry `### <title>` with the
+    body as the entry text and the same operator stamp. No goal/approach/acceptance-criteria
+    scaffolding is invented: the feature loop's plan-refinement pass (its standing prompt already
+    anchors plans on files and symbols) fleshes the stub out on pickup.
+  - `sayFiled(command, fileName, title, json)` renders confirmation lines; both commands take
+    `--json` and print the `{file, title, stamp}` payload as data, matching the other CLI commands'
+    `sayJsonOrRender` shape (src/cli-output.ts).
+- Wire both into `src/cli.ts`'s switch as plain `case` arms with positional-only args
+  (`bug` takes exactly one rest-joined sentence; `plan` takes a title plus optional body words),
+  gated by the existing `requireReadyRepo` path the other backlog commands use, and after a
+  successful write wake the matching loop via the prompt-queue's role enqueue + wake used by
+  `prompt --role` (`src/prompt-commands.ts`'s `enqueueRolePrompt`/wake pair): a filed bug wakes
+  `bugfix`, a filed plan wakes `feature`. If a matching paused state exists the wake simply waits,
+  like `prompt --role` already does — no new pause logic.
+- Add one `tumwater bug ...` and one `tumwater plan ...` stanza to `src/help.ts`'s `HELP` literal
+  (topics derive automatically via `helpStanzas`), and document both in README.md's steering row of
+  the command table.
+
+**Files touched.** `src/backlog-write.ts` (new), `src/cli.ts`, `src/help.ts`, `README.md`,
+new `test/backlog-write.test.ts`, plus the help-topics pin and CLI smoke tests where the existing
+command tests live (`test/cli.test.ts` — extend, don't duplicate).
+
+**Acceptance criteria.**
+- `tumwater bug "the config parser rejects empty values"` on a repo with BUGS.md open-appends a
+  fenced-safe `### ...` entry stamped with today's operator-reported date, wakes the bugfix loop,
+  and prints a confirmation (the JSON variant prints `{file, title, stamp}`); BUGS.md's Open section
+  shows the entry and `tumwater backlog` lists it.
+- `tumwater plan "Add an export command" keep it JSON first` open-appends the equivalent entry to
+  PLANS.md and wakes the feature loop.
+- On a repo missing BUGS.md/PLANS.md the command seeds the file rather than failing; a malformed or
+  empty text argument fails with a usage line and writes nothing.
+- The help topics pin (`tumwater help bug`, `tumwater help plan`) resolve to the new stanzas, and
+  `npm run test` stays green.
 
 ## Done
 
