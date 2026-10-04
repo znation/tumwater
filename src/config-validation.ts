@@ -13,6 +13,7 @@ import {
 } from "./config-schema.js";
 import { allRoleIds } from "./roles.js";
 import { isJsonObject } from "./json-object.js";
+import { tooLongMessage } from "./text.js";
 import { parseQuietHours } from "./quiet-hours.js";
 import {
   AT_LEAST_ONE,
@@ -282,7 +283,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
           problems.push(`${where}.task must be a non-empty string (got ${show(task)})`);
         } else if (task.length > CUSTOM_TASK_MAX_CHARS) {
           problems.push(
-            `${where}.task is ${task.length} chars — shorten it to at most ${CUSTOM_TASK_MAX_CHARS}: it rides into every tick's prefill`,
+            tooLongMessage(
+              `${where}.task`,
+              task.length,
+              CUSTOM_TASK_MAX_CHARS,
+              "it rides into every tick's prefill",
+            ),
           );
         }
       });
@@ -310,7 +316,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         const instructions = o.instructions;
         if (typeof instructions === "string" && instructions.length > ROLE_INSTRUCTIONS_MAX_CHARS)
           problems.push(
-            `roles.${id}.instructions is ${instructions.length} chars — shorten it to at most ${ROLE_INSTRUCTIONS_MAX_CHARS}: it rides into every tick's prefill`,
+            tooLongMessage(
+              `roles.${id}.instructions`,
+              instructions.length,
+              ROLE_INSTRUCTIONS_MAX_CHARS,
+              "it rides into every tick's prefill",
+            ),
           );
         checkModelTriple(o, `roles.${id}.`);
         checkBoolean(o, `roles.${id}.`, "enabled");

@@ -15,6 +15,7 @@ import {
 } from "./readme.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
 import { projectName } from "./project-name.js";
+import { tooLongMessage } from "./text.js";
 
 const PLANS_TEMPLATE = `# Plans
 
@@ -159,7 +160,12 @@ export async function initProject(
   // never lands in README.md and is never committed.
   if (prompt.length > INITIAL_PROMPT_MAX_CHARS) {
     throw new Error(
-      `the initial prompt is ${prompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
+      tooLongMessage(
+        "the initial prompt",
+        prompt.length,
+        INITIAL_PROMPT_MAX_CHARS,
+        "it rides into every tick's prefill",
+      ),
     );
   }
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the

@@ -8,6 +8,7 @@ import {
 import { logEvent } from "./events.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
 import { DIRECTOR_ROLE } from "./roles.js";
+import { tooLongMessage } from "./text.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
  * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox.ts,
@@ -31,7 +32,12 @@ export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
 export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE): string | null {
   const prompt = text.trim();
   if (prompt.length <= DIRECTOR_PROMPT_MAX_CHARS) return null;
-  return `the prompt is ${prompt.length} chars — shorten it to at most ${DIRECTOR_PROMPT_MAX_CHARS}: it rides into the ${role} tick's prefill`;
+  return tooLongMessage(
+    "the prompt",
+    prompt.length,
+    DIRECTOR_PROMPT_MAX_CHARS,
+    `it rides into the ${role} tick's prefill`,
+  );
 }
 
 /** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
