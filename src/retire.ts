@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import { enabledRoleIds, loadConfigSafe } from "./config.js";
 import {
-  aheadOfMain,
   branchExists,
   currentBranch,
   deleteRef,
@@ -9,8 +8,7 @@ import {
   isMergedInto,
   refSha,
   targetBranch,
-} from "./git.js";
-import { errorMessage } from "./text.js";
+} from "./git.js";import { errorMessage } from "./text.js";
 import { loadLoopState } from "./loop-state.js";
 import { branchName, landingRefName, worktreePath } from "./paths.js";
 import { isUsableWorktree, removeWorktree } from "./worktree.js";
@@ -52,7 +50,16 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     throw new Error(`cannot read tumwater.json: ${errorMessage(config.error)}`);
   }
   const mainBranch = targetBranch(config.config.baseBranch, await currentBranch(root));
-  const ahead = usable ? await aheadOfMain(wt, mainBranch) : 0;
+  // Count unlanded work from the branch ref at root, not from the worktree's HEAD: the worktree
+  // may be gone or unusable (the messy half-state this command exists to clean up) while the
+  // branch still holds commits — reading HEAD through the worktree would report 0 and let
+  // retireRole's `branch -D` delete unlanded work without objection. When the branch is
+  // absent, or a usable worktree sits on it, the rev-list range is empty or matches HEAD.
+  const branch = branchName(role);
+  const branchThere = await branchExists(root, branch);
+  const ahead = branchThere
+    ? Number.parseInt(await git(root, "rev-list", "--count", `${mainBranch}..${branch}`), 10)
+    : 0;
   const dirty = usable ? await isDirty(wt) : false;
   const landing = await refSha(root, landingRefName(role));
   // A landing ref pins a committed-but-unlanded sha (plans/merge-queue.md invariant 4): count
@@ -63,7 +70,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     role,
     worktreePresent: present,
     worktreeUsable: usable,
-    branchPresent: await branchExists(root, branchName(role)),
+    branchPresent: branchThere,
     landingRefPresent: landing !== null,
     aheadOfMain: ahead + pinnedUnlanded,
     dirty,

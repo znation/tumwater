@@ -139,6 +139,27 @@ test("retire removes a dead worktree registration (directory already gone, branc
   assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "");
 });
 
+test("retire counts a dead worktree's unlanded branch commits even when the directory is gone", async () => {
+  const { root, wt } = await initializedWorktree();
+  disableRole(root, "improve");
+
+  // Unlanded work on the branch, then the worktree directory disappears (rm'd, registration
+  // stale) — collectRetire can no longer read HEAD from the worktree, but the branch ref
+  // still holds the commit, so the safety rail must still refuse.
+  fs.writeFileSync(path.join(wt, "work.txt"), "unlanded\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "unlanded work");
+  fs.rmSync(wt, { recursive: true, force: true });
+
+  const status: RetireStatus = await collectRetire(root, "improve");
+  assert.equal(status.aheadOfMain, 1, "the branch ref's unlanded commit is counted");
+
+  const r = await cli(root, "retire", "--role", "improve");
+  assert.equal(r.code, 1, "refuses without --force");
+  assert.match(r.stderr, /unlanded commit/);
+  assert.ok(sh(root, "git", "branch", "--list", branchName("improve")).trim() !== "", "branch survives");
+});
+
 test("retire validates its arguments like the other operator commands", async () => {
   const { root } = await initializedWorktree();
   let r = await cli(root, "retire");
