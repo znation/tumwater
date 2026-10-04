@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "./config-schema.js";
-import type { HarnessEvent } from "./events.js";
-import { subscribeEvents, warnEvent } from "./events.js";
+import { subscribeEvents, warnEvent, type HarnessEvent } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { errorMessage } from "./text.js";
 

@@ -8,8 +8,7 @@ import { dropLanding, queuedLandingFiles, staleHeadFile } from "./landing-queue.
 import { warnEvent } from "./events.js";
 import { errorMessage } from "./text.js";
 import type { LandingEntry } from "./landing-queue.js";
-import type { VetVerdict } from "./landing-batch.js";
-import { vetRequest } from "./landing-batch.js";
+import { vetRequest, type VetVerdict } from "./landing-batch.js";
 import {
   abortOnShutdown,
   acquireUnlessAborted,

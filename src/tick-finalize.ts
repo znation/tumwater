@@ -1,6 +1,5 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LoopState } from "./loop-state.js";
-import { saveLoopState } from "./loop-state.js";
+import { saveLoopState, type LoopState } from "./loop-state.js";
 import { branchHead } from "./git.js";
 import { logEvent, warnEvent } from "./events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
