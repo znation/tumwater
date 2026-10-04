@@ -183,15 +183,15 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
 
 test("parsePromptArgs enqueues free-form text (trimmed; single-dash tokens are content)", () => {
   const r = expectOk(() => parsePromptArgs(["add", "dark mode"]));
-  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode" });
+  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode", atDelayMs: null });
 
   // Surrounding whitespace is trimmed so a queued prompt never starts/ends with padding.
   const padded = expectOk(() => parsePromptArgs(["  hello  "]));
-  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello" });
+  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello", atDelayMs: null });
 
   // Only double-dash tokens are flags; a leading single dash is free-form content.
   const dash = expectOk(() => parsePromptArgs(["-x"]));
-  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x" });
+  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x", atDelayMs: null });
 });
 
 test("parsePromptArgs rejects empty and whitespace-only text", () => {
@@ -266,12 +266,12 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
   // this parser has no config to read.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["--role", "qa", "check", "the flow"])),
-    { mode: "enqueue", role: "qa", text: "check the flow" },
+    { mode: "enqueue", role: "qa", text: "check the flow", atDelayMs: null },
   );
   // The flag pair is never prompt content — before or after the text.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["hello", "--role", "qa", "world"])),
-    { mode: "enqueue", role: "qa", text: "hello world" },
+    { mode: "enqueue", role: "qa", text: "hello world", atDelayMs: null },
   );
   assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa", json: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2", "--role", "qa"])), {
@@ -349,6 +349,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     mode: "enqueue",
     role: null,
     text: "Refactor the parser.\nWith care.\n",
+    atDelayMs: null,
   });
 
   // Composes with --role; the role pair is a scope, not file content.
@@ -356,6 +357,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     mode: "enqueue",
     role: "qa",
     text: "Refactor the parser.\nWith care.\n",
+    atDelayMs: null,
   });
 
   // A missing value fails by name, like init's.

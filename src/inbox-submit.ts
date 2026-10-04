@@ -48,17 +48,25 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
  * DIRECTOR_PROMPT_MAX_CHARS (promptLengthProblem's message) — callers report it to their
  * operator. An optional images array (the GUI composer's drop/paste attachments) rides
  * through savePromptImages beside the queue file, with one [image attached: …] reference line
- * per image appended to the queued text; image problems throw before anything is queued. */
-export function submitRolePrompt(root: string, role: string, text: string, images?: PromptImageInput[]): string {
+ * per image appended to the queued text; image problems throw before anything is queued.
+ * An optional `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"):
+ * it rides into enqueueRolePrompt's one atomic write as the queue file's marker line. */
+export function submitRolePrompt(
+  root: string,
+  role: string,
+  text: string,
+  images?: PromptImageInput[],
+  notBeforeMs?: number,
+): string {
   const problem = promptLengthProblem(text, role);
   if (problem) throw new Error(problem);
   if (images && images.length > 0) {
     const imageProblem = promptImagesProblem(images);
     if (imageProblem) throw new Error(imageProblem);
-    return submitPromptWithImages(root, role, text, images);
+    return submitPromptWithImages(root, role, text, images, notBeforeMs);
   }
   const prompt = text.trim();
-  enqueueRolePrompt(root, role, prompt);
+  enqueueRolePrompt(root, role, prompt, notBeforeMs);
   logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
   return prompt;
 }
@@ -71,10 +79,10 @@ export function submitRolePrompt(root: string, role: string, text: string, image
  * images were validated before the enqueue (submitRolePrompt above), so savePromptImages's
  * own re-check failing here is unreachable — and if it ever fired, the decorate throw
  * happens before writeTextAtomic, leaving no queue file behind at all. */
-function submitPromptWithImages(root: string, role: string, text: string, images: PromptImageInput[]): string {
+function submitPromptWithImages(root: string, role: string, text: string, images: PromptImageInput[], notBeforeMs?: number): string {
   const prompt = text.trim();
   let final = prompt;
-  enqueueRolePrompt(root, role, prompt, (file) => {
+  enqueueRolePrompt(root, role, prompt, notBeforeMs, (file) => {
     const saved = savePromptImages(root, role, file, images);
     if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
     final = prompt + imageReferenceLines(saved.paths);

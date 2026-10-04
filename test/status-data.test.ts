@@ -642,11 +642,11 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   // file-queue.test.ts), execution order; roles with an empty queue are absent, like the
   // director.
   assert.deepEqual(snap.roleInboxPrompts.clean, [
-    { file: path.basename(one), preview: "one", queuedAtMs: queueFileStamp(path.basename(one)) },
+    { file: path.basename(one), preview: "one", queuedAtMs: queueFileStamp(path.basename(one)), notBeforeMs: null },
   ]);
   assert.deepEqual(snap.roleInboxPrompts.dry, [
-    { file: path.basename(two), preview: "two", queuedAtMs: queueFileStamp(path.basename(two)) },
-    { file: path.basename(three), preview: "three", queuedAtMs: queueFileStamp(path.basename(three)) },
+    { file: path.basename(two), preview: "two", queuedAtMs: queueFileStamp(path.basename(two)), notBeforeMs: null },
+    { file: path.basename(three), preview: "three", queuedAtMs: queueFileStamp(path.basename(three)), notBeforeMs: null },
   ]);
   assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });

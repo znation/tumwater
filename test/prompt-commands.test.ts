@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize, dequeuePrompt } from "../src/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt, notBeforeMs } from "../src/inbox.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { defaultConfig } from "../src/config.js";
 import { writeJsonFile } from "../src/json-files.js";
@@ -190,4 +190,68 @@ test("prompt --file queues the file's contents verbatim for the director", async
   // pre-existing trim (inbox-submit.ts) strips the trailing newline, so the queued text is
   // the file's content trimmed at the edges.
   assert.equal(dequeuePrompt(root), "Refactor the parser.\nWith care.");
+});
+test("prompt --at 90m queues a prompt whose marker decodes to now+90m", async (t) => {
+  const root = makeRoot();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--at", "90m", "re-check coverage"]));
+  // The confirmation names the delivery delay in the same duration vocabulary --at parsed.
+  assert.match(stdout, /queued for the director loop — delivers in 90m/);
+  const file = fs.readdirSync(dirOf(root, DIRECTOR_ROLE)).filter((f) => f.endsWith(".md"))[0];
+  const text = fs.readFileSync(path.join(dirOf(root, DIRECTOR_ROLE), file ?? ""), "utf8");
+  assert.equal(notBeforeMs(text), Date.now() + 90 * 60_000);
+  // The store's deliverability filter sees it as not yet deliverable.
+  assert.equal(inboxSize(root), 0);
+});
+
+test("prompt --at composes with --role and defers that loop's queue", async (t) => {
+  const root = makeRoot();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  await expectOk(() => cmdPrompt(root, ["--at", "2h", "--role", "clean", "look again"]));
+  const file = fs.readdirSync(dirOf(root, "clean")).filter((f) => f.endsWith(".md"))[0];
+  const text = fs.readFileSync(path.join(dirOf(root, "clean"), file ?? ""), "utf8");
+  assert.equal(notBeforeMs(text), Date.now() + 2 * 3_600_000);
+  assert.equal(inboxSize(root, "clean"), 0);
+});
+
+test("prompt --list shows a deferred prompt's countdown instead of its age", async (t) => {
+  const root = makeRoot();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "re-check coverage", Date.now() + 90 * 60_000);
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "deliverable now");
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--list"]));
+  assert.match(stdout, /^1\. re-check coverage \(delivers in 2h\)$/m);
+  // A deliverable entry keeps the age suffix; the countdown never replaces it.
+  assert.match(stdout, /^2\. deliverable now \(queued \S+ ago\)$/m);
+  const json = await expectOk(() => cmdPrompt(root, ["--list", "--json"]));
+  const payload = JSON.parse(json.stdout) as { prompts: { notBeforeMs: number | null }[] };
+  assert.equal(payload.prompts[0]?.notBeforeMs, Date.now() + 90 * 60_000);
+  assert.equal(payload.prompts[1]?.notBeforeMs, null);
+  // The queued preview never shows the marker line — plumbing, not content.
+  t.mock.timers.tick(91 * 60_000);
+  const due = await expectOk(() => cmdPrompt(root, ["--list"]));
+  assert.match(due.stdout, /^1\. re-check coverage \(queued \S+ ago\)$/m);
+});
+
+test("prompt --list --json carries notBeforeMs for a deferred role prompt", async (t) => {
+  const root = makeRoot();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  enqueueRolePrompt(root, "clean", "later", Date.now() + 60_000);
+  const json = await expectOk(() => cmdPrompt(root, ["--list", "--role", "clean", "--json"]));
+  const payload = JSON.parse(json.stdout) as { prompts: { notBeforeMs: number | null }[] };
+  assert.equal(payload.prompts[0]?.notBeforeMs, Date.now() + 60_000);
+});
+
+test("prompt --at is refused in the read-only and destructive modes", async () => {
+  const root = makeRoot();
+  const list = await expectFail(() => cmdPrompt(root, ["--list", "--at", "90m"]));
+  assert.match(list.stderr, /--at only queues a prompt/);
+  const cancel = await expectFail(() => cmdPrompt(root, ["--cancel", "1", "--at", "90m"]));
+  assert.match(cancel.stderr, /--at only queues a prompt/);
+  // A malformed duration fails with parseDurationFlag's message before anything is queued.
+  const bad = await expectFail(() => cmdPrompt(root, ["--at", "nope", "hello"]));
+  assert.match(bad.stderr, /--at needs a duration like 45s, 90m, 2h, or 1d/);
+  const zero = await expectFail(() => cmdPrompt(root, ["--at", "0m", "hello"]));
+  assert.match(zero.stderr, /--at needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.equal(inboxSize(root), 0, "nothing was queued by the refused shapes");
 });

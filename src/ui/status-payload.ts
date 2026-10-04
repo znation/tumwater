@@ -127,6 +127,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // Enqueue stamps beside the previews (same order — see StatusSnapshot.inboxQueuedAt):
     // the Queued tab shows each prompt's age from it. Raw data, like inboxFiles.
     inboxQueuedAt: snap.inboxQueuedAt,
+    // Not-before stamps beside the previews (same order — see StatusSnapshot.inboxNotBefore):
+    // the Queued tab shows each deferred prompt's delivery countdown from it. Raw data, like
+    // inboxQueuedAt.
+    inboxNotBefore: snap.inboxNotBefore,
     // Per-role queued-prompt counts (PLANS.md "Per-role prompts 2/2"): the loop table's
     // `p:N` state marker and the queued-prompts section's per-loop lines render from it.
     // Raw data, like inbox/inboxPrompts.

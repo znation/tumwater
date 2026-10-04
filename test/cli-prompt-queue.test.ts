@@ -389,10 +389,10 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   const payload = JSON.parse(r.stdout);
   assert.deepEqual(payload, {
     prompts: [
-      { role: "director", position: 1, text: "director task", queuedAtMs: dirStamp },
-      { role: "readme", position: 1, text: "docs task", queuedAtMs: fileStamps(roleInboxDir(repo, "readme"))[0] },
-      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0] },
-      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1] },
+      { role: "director", position: 1, text: "director task", queuedAtMs: dirStamp, notBeforeMs: null },
+      { role: "readme", position: 1, text: "docs task", queuedAtMs: fileStamps(roleInboxDir(repo, "readme"))[0], notBeforeMs: null },
+      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
+      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
     ],
   });
 
@@ -410,8 +410,8 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
     prompts: [
-      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0] },
-      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1] },
+      { role: "qa", position: 1, text: "qa task one", queuedAtMs: qaStamps[0], notBeforeMs: null },
+      { role: "qa", position: 2, text: "qa task two", queuedAtMs: qaStamps[1], notBeforeMs: null },
     ],
   });
 
@@ -475,8 +475,8 @@ test("prompt --list shows each prompt's age; a hand-placed file shows none", asy
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
     prompts: [
-      { role: "director", position: 1, text: "patient task", queuedAtMs: stamped },
-      { role: "director", position: 2, text: "by hand", queuedAtMs: null },
+      { role: "director", position: 1, text: "patient task", queuedAtMs: stamped, notBeforeMs: null },
+      { role: "director", position: 2, text: "by hand", queuedAtMs: null, notBeforeMs: null },
     ],
   });
 

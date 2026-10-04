@@ -114,6 +114,10 @@ Usage:
   tumwater prompt --file <path>    Queue a prompt read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
                                    Queue a prompt for that loop's next tick (wakes it)
+  tumwater prompt --at <duration> <text...>
+                                   Queue a prompt that stays hidden until the duration has
+                                   passed (45s, 90m, 2h, 1d — listed and cancellable while
+                                   it waits, delivered to the tick only once due)
   tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop
                                    (--json prints the {prompts} array as
                                    machine-readable data)

@@ -1,8 +1,7 @@
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
-import {
+import path from "node:path";import {
   cancelPrompt,
   cancelRolePrompt,
   dequeuePrompt,
@@ -10,14 +9,27 @@ import {
   enqueuePrompt,
   enqueueRolePrompt,
   inboxSize,
+  notBeforeMs,
+  peekRolePrompt,
   queuedPrompts,
+  queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox.js";
+import { queueFileStamp } from "../src/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox-submit.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { errCode } from "../src/errno.js";
 import { errnoError } from "./fs-faults.js";
+
+/** Freeze the wall clock for the not-before tests and hand back the ticking handle: the
+ * deliverability filters read Date.now(), so node:test's mock Date both pins the stamp math
+ * and advances past a marker with one tick. The test context's own mock auto-restores after
+ * the test, so one test's clock never leaks into its siblings. */
+function mockTimersForInbox(t: TestContext): { tick: (ms: number) => void } {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  return { tick: (ms: number) => t.mock.timers.tick(ms) };
+}
 
 test("inbox is FIFO and dequeues to empty", () => {
   const dir = tmpdir();
@@ -343,3 +355,75 @@ test("submitRolePrompt and cancelRolePrompt log their events under the named loo
 });
 
 
+
+test("a deferred prompt is not dequeued before its time and is the first popped after it", (t) => {
+  const dir = tmpdir();
+  const clock = mockTimersForInbox(t);
+  const due = Date.now() + 90 * 60_000;
+  enqueueRolePrompt(dir, "feature", "later", due);
+  enqueueRolePrompt(dir, "feature", "earlier");
+  // The deferred file rides in its enqueue: marker line, blank line, then the prompt — and
+  // the marker keeps it out of the execution order until its time arrives.
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), ["earlier"]);
+  assert.equal(dequeueRolePrompt(dir, "feature"), "earlier");
+  assert.equal(dequeueRolePrompt(dir, "feature"), null);
+  // Advance past the marker: the prompt becomes deliverable and pops first (only) — the
+  // marker text rides along, as the plan leaves it for the opaquely-consuming tick.
+  clock.tick(91 * 60_000);
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), ["tumwater:not-before " + new Date(due).toISOString() + "\n\nlater"]);
+  assert.equal(dequeueRolePrompt(dir, "feature"), "tumwater:not-before " + new Date(due).toISOString() + "\n\nlater");
+  assert.equal(dequeueRolePrompt(dir, "feature"), null);
+});
+
+test("a queue holding only deferred prompts dequeues null and reads as empty", (t) => {
+  const dir = tmpdir();
+  mockTimersForInbox(t);
+  enqueueRolePrompt(dir, "feature", "later", Date.now() + 60_000);
+  assert.equal(inboxSize(dir, "feature"), 0);
+  assert.equal(dequeueRolePrompt(dir, "feature"), null);
+  assert.equal(peekRolePrompt(dir, "feature"), null);
+});
+
+test("counts exclude deferred prompts and include them once due", (t) => {
+  const dir = tmpdir();
+  const clock = mockTimersForInbox(t);
+  enqueueRolePrompt(dir, "feature", "later", Date.now() + 60_000);
+  enqueueRolePrompt(dir, "feature", "now");
+  assert.equal(inboxSize(dir, "feature"), 1);
+  clock.tick(61_000);
+  assert.equal(inboxSize(dir, "feature"), 2);
+});
+
+test("cancel by position still reaches a deferred entry", (t) => {
+  const dir = tmpdir();
+  mockTimersForInbox(t);
+  enqueueRolePrompt(dir, "feature", "later", Date.now() + 60_000);
+  const outcome = cancelRolePrompt(dir, "feature", 1);
+  assert.deepEqual(outcome, { status: "cancelled", text: "tumwater:not-before " + new Date(Date.now() + 60_000).toISOString() + "\n\nlater" });
+  assert.equal(inboxSize(dir, "feature"), 0);
+});
+
+test("a malformed or missing not-before marker reads as deliverable", () => {
+  const dir = tmpdir();
+  const f1 = enqueueRolePrompt(dir, "feature", "no marker");
+  assert.equal(fs.readFileSync(f1, "utf8"), "no marker");
+  assert.equal(dequeueRolePrompt(dir, "feature"), "no marker");
+  // Hand-edited malformed markers never strand a prompt: unparseable stamps deliver.
+  const f2 = enqueueRolePrompt(dir, "feature", "broken marker");
+  fs.writeFileSync(f2, "tumwater:not-before not-a-timestamp\n\nbroken marker");
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), ["tumwater:not-before not-a-timestamp\n\nbroken marker"]);
+  assert.equal(dequeueRolePrompt(dir, "feature"), "tumwater:not-before not-a-timestamp\n\nbroken marker");
+  // A parseable stamp parses through notBeforeMs; entries carry it for the countdowns.
+  const f3 = enqueueRolePrompt(dir, "feature", "stamped", 1_000_000_000);
+  const text = fs.readFileSync(f3, "utf8");
+  assert.match(text, /^tumwater:not-before \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z\n\nstamped$/);
+  assert.equal(notBeforeMs(text), 1_000_000_000);
+  assert.deepEqual(queuedRolePromptEntries(dir, "feature"), [
+    {
+      file: path.basename(f3),
+      preview: "stamped",
+      queuedAtMs: queueFileStamp(path.basename(f3)),
+      notBeforeMs: 1_000_000_000,
+    },
+  ]);
+});

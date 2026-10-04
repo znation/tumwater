@@ -63,6 +63,7 @@ export function snapshotWith(
     // no cancel addresses and no per-role rows either.
     inboxFiles: [],
     inboxQueuedAt: [],
+    inboxNotBefore: [],
     roleInboxPrompts: {},
     roleInbox,
     questions: 0,

@@ -9,7 +9,7 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { parseBranchFlag } from "./cli-args.js";
+import { parseBranchFlag, parseDurationFlag } from "./cli-args.js";
 import {
   type FlagSpec,
   JSON_FLAG,
@@ -166,7 +166,7 @@ export function parseInitArgs(args: string[]): {
  * (null when absent) — cli.ts validates it against the live config, since this parser has no
  * config to read. `json` is list-only: the machine-readable render of the same listing. */
 type PromptArgs =
-  | { mode: "enqueue"; role: string | null; text: string }
+  | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null }
   | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number };
 
@@ -182,21 +182,26 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   JSON_FLAG,
   { names: ["--cancel"], value: true, valueName: "<n>" },
   { names: ["--file"], value: true, valueName: "<path>" },
+  { names: ["--at"], value: true, valueName: "<duration>" },
 ];
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
  * positionals are free-form prompt content — but a double-dash token must be a real flag
- * (`--role <id>`, `--list`, `--cancel <n>`), or it would be baked into the queued prompt (the
- * same class of bug parseInitArgs fixed: today `tumwater prompt --foo text` enqueues
- * "--foo text"). Single-dash positionals remain prompt content. `--list` and `--cancel` are
- * mutually exclusive and may not combine with positional text; `--role` is accepted in every
- * mode (PLANS.md "Per-role prompts 1/2") and is never prompt content. */
+ * (`--role <id>`, `--list`, `--json`, `--cancel <n>`, `--file <path>`, `--at <duration>`), or
+ * it would be baked into the queued prompt (the same class of bug parseInitArgs fixed: today
+ * `tumwater prompt --foo text` enqueues "--foo text"). Single-dash positionals remain prompt
+ * content. `--list` and `--cancel` are mutually exclusive and may not combine with positional
+ * text; `--role` is accepted in every mode (PLANS.md "Per-role prompts 1/2") and is never
+ * prompt content. `--at <duration>` (PLANS.md "tumwater prompt --at <duration>") only queues
+ * a prompt: it defers delivery — parsed here with parseDurationFlag, riding the enqueue as
+ * the queue file's not-before marker — so the read-only and destructive modes refuse it
+ * rather than silently ignore it. */
 export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
     // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
     rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
-    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json" && arg !== "--file") {
-      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>)`);
+    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json" && arg !== "--file" && arg !== "--at") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>, --at <duration>)`);
     }
   }
   // --json's positions, collected in one pass: the list branch's stray-argument claim and
@@ -205,7 +210,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
   const fileFlag = args.indexOf("--file");
-  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json", "--file"]);
+  const atFlag = args.indexOf("--at");
+  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json", "--file", "--at"]);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
   const roleFlag = args.indexOf("--role");
@@ -223,6 +229,16 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // --file only queues a prompt: it is the file-shaped twin of free-form text, so the read-only
   // and destructive modes must refuse it rather than silently ignore it.
   if (fileFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0)) fail("--file only queues a prompt");
+
+  // --at only queues a prompt, like --file: a delivery deferral has nothing to mean to a
+  // listing or a cancel.
+  if (atFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0)) fail("--at only queues a prompt");
+  // The pair is claimed like --role's: the flag and its value are never prompt content.
+  const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
+  let atDelayMs: number | null = null;
+  if (atFlag >= 0) {
+    atDelayMs = parseDurationFlag("--at", args[atFlag + 1]);
+  }
 
   if (listFlag >= 0) {
     failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim);
@@ -253,7 +269,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // stdin; errorMessage names it, and the operator passes a real pipe instead).
     const file = args[fileFlag + 1];
     if (!file) fail("--file needs a path");
-    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim);
+    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim);
     let contents: string;
     if (file === "-") {
       if (stdinPrompt === null) {
@@ -269,15 +285,15 @@ export function parsePromptArgs(args: string[]): PromptArgs {
       contents = readPromptFile(file);
     }
     failEmptyPromptFile(file, contents);
-    return { mode: "enqueue", role, text: contents };
+    return { mode: "enqueue", role, text: contents, atDelayMs };
   }
 
-  // Everything except the --role pair is prompt text; the join keeps multi-word requests as
-  // one string exactly like the pre-1/2 behavior.
+  // Everything except the --role pair and the --at pair is prompt text; the join keeps
+  // multi-word requests as one string exactly like the pre-1/2 behavior.
   const text = args
-    .filter((_, i) => !roleClaim.includes(i))
+    .filter((_, i) => !roleClaim.includes(i) && !atClaim.includes(i))
     .join(" ")
     .trim();
   if (!text) fail("prompt text required");
-  return { mode: "enqueue", role, text };
+  return { mode: "enqueue", role, text, atDelayMs };
 }

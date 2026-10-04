@@ -43,6 +43,12 @@ export interface StatusSnapshot {
    * Same single inbox pass as inboxPrompts (queuedRolePromptEntries), so the arrays cannot
    * drift. */
   inboxQueuedAt: Array<number | null>;
+  /** The director queue's not-before times (epoch ms parsed from each queue file's
+   * `tumwater:not-before` marker line by notBeforeMs — null when absent or malformed), same
+   * order as inboxPrompts — the established pairing pattern; the dashboard's Queued tab shows
+   * each deferred prompt's delivery countdown from it. Same single inbox pass as inboxPrompts
+   * (queuedRolePromptEntries), so the arrays cannot drift. */
+  inboxNotBefore: Array<number | null>;
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
   /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
@@ -149,7 +155,7 @@ export interface StatusSnapshot {
    * the previews (queuedRolePromptEntries, stat-keyed like the director's — each entry also
    * carries its enqueue stamp, queuedAtMs, for the Queued tab's age); filled only when
    * the count above is nonzero, so the common empty case costs one listing per role. */
-  roleInboxPrompts: Record<string, Array<{ file: string; preview: string; queuedAtMs: number | null }>>;
+  roleInboxPrompts: Record<string, Array<{ file: string; preview: string; queuedAtMs: number | null; notBeforeMs: number | null }>>;
   /** The durable land queue (plans/merge-queue.md 4/5), unconditionally (depth 0 when
    * empty) so `status --json` consumers see one stable shape: the number of committed-but-
    * unlanded changes in the landing pipeline, and — only while a landing is actually
@@ -204,19 +210,20 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const inboxPrompts = queued.map((e) => e.preview);
   const inboxFiles = queued.map((e) => e.file);
   const inboxQueuedAt = queued.map((e) => e.queuedAtMs);
+  const inboxNotBefore = queued.map((e) => e.notBeforeMs);
   // One directory listing per role per poll (no content reads — queuedRolePromptCount) fills
   // the per-role counts; the director is excluded because its queue is the shared inbox above.
   // A role with prompts queued gets one read pass for its cancel-addressable entries — the
-  // stat-keyed prompt cache keeps an unchanged file at one stat per poll.
+  // stat-keyed prompt cache keeps an unchanged file at one stat per poll. Entries follow the
+  // full list, deferred prompts included (the Queued tab lists and cancels them; only the
+  // deliverable count above excludes them).
   const roleInbox: Record<string, number> = {};
   const roleInboxPrompts: StatusSnapshot["roleInboxPrompts"] = {};
   for (const r of roles) {
     if (r === DIRECTOR_ROLE) continue;
     roleInbox[r] = queuedRolePromptCount(root, r);
-    if (roleInbox[r] > 0) {
-      const entries = queuedRolePromptEntries(root, r);
-      if (entries.length) roleInboxPrompts[r] = entries;
-    }
+    const entries = queuedRolePromptEntries(root, r);
+    if (entries.length) roleInboxPrompts[r] = entries;
   }
   const running = orchestratorAlive(root, info);
   // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
@@ -263,6 +270,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     inboxPrompts,
     inboxFiles,
     inboxQueuedAt,
+    inboxNotBefore,
     roleInbox,
     roleInboxPrompts,
     questions: openQuestions(root).length,

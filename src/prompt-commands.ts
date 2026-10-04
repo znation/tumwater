@@ -15,8 +15,10 @@ import {
   cancelRolePrompt,
   promptPreview,
   queuedRolePromptRecords,
+  stripNotBeforeMarker,
 } from "./inbox.js";
 import { humanSeconds } from "./datetime.js";
+import { durationLabel } from "./cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";
 import { errorMessage } from "./text.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
@@ -28,15 +30,20 @@ import { submitRolePromptAndWake } from "./operator-intent.js";
  * prints. `position` is the 1-based per-loop number the prose prints and `--cancel`
  * consumes; `text` is the full verbatim prompt, not a preview; `queuedAtMs` is the enqueue
  * stamp parsed from the queue filename (null for a hand-placed name), which the prose turns
- * into a `queued <age> ago` suffix and `--json` carries as-is. */
+ * into a `queued <age> ago` suffix; `notBeforeMs` is the prompt's not-before time parsed from
+ * its queue file's marker line (null when absent or malformed), which the prose turns into a
+ * `delivers in <duration>` countdown instead of the age — and `--json` carries both as-is. */
 function promptListPayload(
   root: string,
   role: string | null,
   validIds: string[],
-): { prompts: { role: string; position: number; text: string; queuedAtMs: number | null }[] } {
-  const prompts: { role: string; position: number; text: string; queuedAtMs: number | null }[] = [];
-  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null }) =>
-    prompts.push({ role: r, position, text: e.text, queuedAtMs: e.queuedAtMs });
+): { prompts: { role: string; position: number; text: string; queuedAtMs: number | null; notBeforeMs: number | null }[] } {
+  const prompts: { role: string; position: number; text: string; queuedAtMs: number | null; notBeforeMs: number | null }[] = [];
+  const record = (r: string, position: number, e: { text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
+    // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
+    // prose and --json are the operator's view of what a loop will tick, and the marker is
+    // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
+    prompts.push({ role: r, position, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
   if (role !== null) {
     queuedRolePromptRecords(root, role).forEach((e, i) => record(role, i + 1, e));
     return { prompts };
@@ -52,8 +59,15 @@ function promptListPayload(
 /** The ` (queued <age> ago)` suffix a prose `--list` line carries when its queue filename
  * stamps the enqueue time (queueFileStamp) — omitted when the stamp is unparseable, so a
  * hand-placed file renders exactly as it did before the age existed. Age buckets through
- * humanSeconds, the same phrasing every other relative time in the harness prints. */
-function queuedAgeSuffix(queuedAtMs: number | null, now: number): string {
+ * humanSeconds, the same phrasing every other relative time in the harness prints.
+ * A deferred prompt (the not-before marker still in the future) shows its countdown instead
+ * — ` (delivers in <duration>)` from the same humanSeconds — since the age of a prompt that
+ * has not been delivered yet is not the fact an operator scanning the list needs. */
+function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
+  if (notBeforeMs !== null && notBeforeMs > now) {
+    const seconds = Math.max(0, Math.round((notBeforeMs - now) / 1000));
+    return ` (delivers in ${humanSeconds(seconds)})`;
+  }
   if (queuedAtMs === null) return "";
   const ageSeconds = Math.max(0, Math.round((now - queuedAtMs) / 1000));
   return ` (queued ${humanSeconds(ageSeconds)} ago)`;
@@ -130,7 +144,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
         currentRole = p.role;
         lines = [];
       }
-      lines.push(`${p.position}. ${p.text}${queuedAgeSuffix(p.queuedAtMs, now)}`);
+      lines.push(`${p.position}. ${p.text}${queuedAgeSuffix(p.queuedAtMs, p.notBeforeMs, now)}`);
     }
     if (currentRole !== null) sections.push(`${currentRole}:\n${lines.join("\n")}`);
     say(sections.join("\n"));
@@ -165,8 +179,16 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
-  const wake = submitRolePromptAndWake(root, target, parsed.text);
-  if (role === null) {
+  // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
+  // parsed duration, computed at submit so the deferral starts when the operator queued it.
+  const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
+  const wake = submitRolePromptAndWake(root, target, parsed.text, undefined, dueMs);
+  if (parsed.atDelayMs !== null) {
+    // A deferred prompt's confirmation names the delivery delay, in the same duration
+    // vocabulary --at parsed (durationLabel), so the operator can re-type it.
+    const deferred = ` — delivers in ${durationLabel(parsed.atDelayMs)}`;
+    say(role === null ? `queued for the director loop${deferred}` : `queued for the ${role} loop${deferred}`);
+  } else if (role === null) {
     say("queued for the director loop");
   } else {
     say(`queued for the ${role} loop`);

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, readTextOrNull, writeTextAtomic } from "./files.js";
+import { ensureParentDir, writeTextAtomic } from "./files.js";
 import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
 import { logEvent } from "./events.js";
@@ -22,12 +22,52 @@ import { errCode } from "./errno.js";
  * log line, the dashboard payload, or the CLI output. */
 const PROMPT_PREVIEW_MAX = 80;
 
+/** The marker line a deferred prompt's queue file starts with (PLANS.md "tumwater prompt --at
+ * <duration>"): one line `tumwater:not-before <iso-utc>` followed by a blank line, then the
+ * prompt text. Everything downstream treats queue-file text opaquely, so the marker rides in
+ * the content and no queue format migrates. Composed by notBeforeMarker, parsed by notBeforeMs
+ * — the two live together so format and parser cannot drift. */
+const NOT_BEFORE_PREFIX = "tumwater:not-before ";
+
+/** The marker line (plus the blank separator) that defers a queue file to `at` epoch ms.
+ * enqueueRolePrompt composes it in the same single atomic write that births the queue file. */
+function notBeforeMarker(at: number): string {
+  return `${NOT_BEFORE_PREFIX}${new Date(at).toISOString()}\n\n`;
+}
+
+/** A queued prompt's not-before time (epoch ms) parsed from the marker line at the top of its
+ * queue-file text, or null when the prompt carries no marker or a malformed one. An ISO stamp
+ * that fails to parse reads as null (deliverable) so a hand-edited file can never strand a
+ * prompt forever. A past or present stamp reads as itself — deliverable now, like null. */
+export function notBeforeMs(text: string): number | null {
+  if (!text.startsWith(NOT_BEFORE_PREFIX)) return null;
+  const firstLine = text.slice(NOT_BEFORE_PREFIX.length).split("\n", 1)[0] ?? "";
+  const stamp = Date.parse(firstLine);
+  return Number.isNaN(stamp) ? null : stamp;
+}
+
+/** The prompt text without its not-before marker line — the operator-facing shape (the CLI
+ * list's text, the previews): the marker is plumbing, not content, so no display surface
+ * shows it. A text without a marker passes through unchanged. */
+export function stripNotBeforeMarker(text: string): string {
+  if (!text.startsWith(NOT_BEFORE_PREFIX)) return text;
+  return text.replace(/^tumwater:not-before .+\n\n/, "");
+}
+
+/** Deliverable now: no marker, or its time has arrived. The one predicate every
+ * deliverability filter (dequeue, peek, the counts) shares. */
+function deliverableNow(text: string, now: number): boolean {
+  const at = notBeforeMs(text);
+  return at === null || at <= now;
+}
+
 /** One-line preview of a queued prompt — the single width shared by the prompt_enqueued and
  * prompt_cancelled event previews (this module), the dashboards' inboxPrompts (status-data.ts), and
  * the CLI's cancel output (cli.ts). Surrogate-safe via truncate: an over-long prompt is marked
  * with an ellipsis like every other label and never carries a lone surrogate at the cut point. */
 export function promptPreview(text: string): string {
-  return truncate(text, PROMPT_PREVIEW_MAX);
+  // The queued preview never shows the marker line — plumbing, not content.
+  return truncate(stripNotBeforeMarker(text), PROMPT_PREVIEW_MAX);
 }
 
 let seq = 0;
@@ -44,16 +84,26 @@ let seq = 0;
  * optional decorate hook runs before that one write with the file's path and may return the
  * final text instead — submitPromptWithImages uses it to save the prompt's images beside the
  * queue file and append their reference lines, so the queue file is born complete and no
- * reader can ever see a prompt whose image lines point at not-yet-written files. */
-export function enqueueRolePrompt(root: string, role: string, prompt: string, decorate?: (file: string) => string): string {
+ * reader can ever see a prompt whose image lines point at not-yet-written files. An optional
+ * `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"): its queue file
+ * is born with the `tumwater:not-before <iso-utc>` marker line in that same single atomic
+ * write, so no reader can ever see the text without the marker that hides it. */
+export function enqueueRolePrompt(
+  root: string,
+  role: string,
+  prompt: string,
+  notBeforeMs?: number,
+  decorate?: (file: string) => string,
+): string {
   const dir = roleInboxDir(root, role);
   // Timestamp orders across processes; the counter orders within one; pid breaks ties.
   const name = queueFileName(Date.now(), seq++, ".md");
   const file = path.join(dir, name);
   // The decorate hook may write files beside the queue file (submitPromptWithImages's
   // images), so the directory must exist before it runs — not only at the write below.
-  if (decorate) ensureParentDir(file);
-  writeTextAtomic(file, decorate ? decorate(file) : prompt);
+  if (decorate || notBeforeMs !== undefined) ensureParentDir(file);
+  const text = (notBeforeMs !== undefined ? notBeforeMarker(notBeforeMs) : "") + (decorate ? decorate(file) : prompt);
+  writeTextAtomic(file, text);
   return file;
 }
 
@@ -61,12 +111,19 @@ function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
 
-/** Number of prompts currently queued for one loop — a directory listing only; no file
- * content is read. Defaults to the director's queue; a role argument counts that loop's own
+/** Number of prompts currently queued for one loop and deliverable now — a directory listing
+ * plus, per file, one stat-cached content read (the prompt cache below; an unchanged file
+ * costs one stat). Defaults to the director's queue; a role argument counts that loop's own
  * per-role queue (scheduling passes it so a queued prompt makes its loop due by itself).
- * A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
+ * A prompt deferred by the not-before marker (its time still in the future) stays excluded,
+ * so a deferred prompt alone never makes its loop due; once due, the marker falls out of the
+ * count naturally. A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
 export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
-  return queuedFiles(root, role).length;
+  const now = Date.now();
+  return queuedFiles(root, role).filter((f) => {
+    const text = cachedPromptText(f);
+    return text !== null && deliverableNow(text, now);
+  }).length;
 }
 
 // Per-poll prompt-content cache (stat-cache.cachedByStat): both dashboards poll snapshot() every
@@ -77,6 +134,27 @@ export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
 // inside cachedByStat so many short-lived roots in tests cannot grow it unbounded.
 const promptCache = new Map<string, StatKeyedValue<string>>();
 
+/** One cached read of a queue file's text through the stat cache above — the single reader
+ * both the listing passes and the deliverability filters (inboxSize, queuedRolePromptCount,
+ * dequeueRolePrompt) go through, so an unchanged file costs one stat wherever it is touched. */
+function cachedPromptText(file: string): string | null {
+  return cachedByStat(promptCache, file, file, () => readQueueText(file), (t) => t);
+}
+
+/** Read one queue file, tolerating only its disappearance (a concurrent dequeue or cancel —
+ * null, like readTextOrNull) and rethrowing any other error: a permission failure is not a
+ * race, and reporting it as "empty queue" would make a loop skip its tick while the prompt
+ * stays queued — the same ENOENT discrimination cancelPrompt's and dequeuePrompt's take
+ * already pin (test/inbox.test.ts). */
+function readQueueText(file: string): string | null {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if (errCode(err) === "ENOENT") return null;
+    throw err;
+  }
+}
+
 /** One queued prompt paired with the queue-file basename that addresses it: the file name is
  * what the dashboard's per-row cancel affordance sends (/api/prompt-cancel) — addressed by
  * file, not by list position, so a 1 s-stale poll can never cancel the wrong entry. The stamp
@@ -86,6 +164,7 @@ interface QueuedPromptEntry {
   file: string;
   preview: string;
   queuedAtMs: number | null;
+  notBeforeMs: number | null;
 }
 
 /** The one read pass over a loop's queue that serves every list-shaped consumer: each queued
@@ -94,31 +173,39 @@ interface QueuedPromptEntry {
  * queuedRolePrompts (a file that vanishes mid-listing is skipped, not thrown), and the same
  * stat-keyed cache, so an unchanged file still costs one stat per poll. Exported so the CLI's
  * `prompt --list` (prompt-commands.ts) reads text and stamp from the same pass the snapshot's
- * entries do — the two views of one queue cannot disagree. */
+ * entries do — the two views of one queue cannot disagree. Each record also carries the
+ * prompt's not-before time parsed from its marker line (notBeforeMs; null when absent or
+ * malformed) — deferred entries are listed and cancellable, only not deliverable. */
 export function queuedRolePromptRecords(
   root: string,
   role: string,
-): Array<{ file: string; text: string; queuedAtMs: number | null }> {
-  const out: Array<{ file: string; text: string; queuedAtMs: number | null }> = [];
+): Array<{ file: string; text: string; queuedAtMs: number | null; notBeforeMs: number | null }> {
+  const out: Array<{ file: string; text: string; queuedAtMs: number | null; notBeforeMs: number | null }> = [];
   for (const f of queuedFiles(root, role)) {
     // Strings are immutable — no copy needed; a file that vanished mid-listing reads null.
-    const text = cachedByStat(promptCache, f, f, () => readTextOrNull(f), (t) => t);
+    const text = cachedPromptText(f);
     if (text !== null) {
       const name = path.basename(f);
-      out.push({ file: name, text, queuedAtMs: queueFileStamp(name) });
+      out.push({ file: name, text, queuedAtMs: queueFileStamp(name), notBeforeMs: notBeforeMs(text) });
     }
   }
   return out;
 }
 
 /** Full text of every prompt queued for one loop, in execution order (oldest first) — the same
- * filename sort dequeueRolePrompt pops by. A missing queue directory reads as an empty queue,
+ * filename sort dequeueRolePrompt pops by. A not-yet-deliverable prompt (the not-before marker
+ * still in the future) is not part of the execution order: it is skipped here, so peek and
+ * dequeue can never hand a tick a prompt its time has not reached. A missing queue directory
+ * reads as an empty queue,
  * like inboxSize and dequeueRolePrompt; a file that vanishes between listing and reading (a
  * concurrent dequeue or cancel) is skipped rather than throwing, so a polled snapshot can never
  * crash on it. Unchanged files are served from the stat-keyed cache above — fresh content
  * requires an actual write to the path, which enqueueRolePrompt never does for an existing file. */
 export function queuedRolePrompts(root: string, role: string): string[] {
-  return queuedRolePromptRecords(root, role).map((e) => e.text);
+  const now = Date.now();
+  return queuedRolePromptRecords(root, role)
+    .filter((e) => e.notBeforeMs === null || e.notBeforeMs <= now)
+    .map((e) => e.text);
 }
 
 /** Every queued prompt of one loop with the queue-file basename that addresses it and its
@@ -130,15 +217,22 @@ export function queuedRolePromptEntries(root: string, role: string): QueuedPromp
     file: e.file,
     preview: promptPreview(e.text),
     queuedAtMs: e.queuedAtMs,
+    notBeforeMs: e.notBeforeMs,
   }));
 }
 
-/** How many prompts are queued for one loop, without reading their contents — the snapshot's
- * per-role counts (PLANS.md "Per-role prompts 2/2") poll every role every second, so the
- * count stays a directory listing rather than a read per queued file. A missing queue
- * directory reads as an empty queue, like queuedRolePrompts. */
+/** How many prompts are queued for one loop and deliverable now, without re-reading unchanged
+ * contents — the snapshot's per-role counts (PLANS.md "Per-role prompts 2/2") poll every role
+ * every second, so the count stays a listing plus one stat-cached read per file (the prompt
+ * cache above keeps an unchanged file at one stat). A deferred prompt (its not-before time
+ * still in the future) stays excluded, like inboxSize. A missing queue directory reads as an
+ * empty queue, like queuedRolePrompts. */
 export function queuedRolePromptCount(root: string, role: string): number {
-  return queuedFiles(root, role).length;
+  const now = Date.now();
+  return queuedFiles(root, role).filter((f) => {
+    const text = cachedPromptText(f);
+    return text !== null && deliverableNow(text, now);
+  }).length;
 }
 
 /** Outcome of cancelPrompt: the cancelled prompt's text, or "gone" when the director dequeued
@@ -286,7 +380,11 @@ export function cancelQueuedFile(root: string, role: string, name: string): Canc
  * already read. Non-ENOENT errors (e.g. EACCES) are rethrown — they are not a race with a
  * cancel. */
 export function dequeueRolePrompt(root: string, role: string): string | null {
-  const [oldest] = queuedFiles(root, role);
+  const now = Date.now();
+  const oldest = queuedFiles(root, role).find((f) => {
+    const text = cachedPromptText(f);
+    return text !== null && deliverableNow(text, now);
+  });
   if (!oldest) return null;
   return takeQueuedFile(oldest);
 }

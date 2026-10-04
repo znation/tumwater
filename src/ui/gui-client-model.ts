@@ -130,9 +130,9 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // never cancel the wrong prompt).
   function queuedPrompts(d) {
     const out = (d.inboxPrompts || []).map((p, i) => ({ role: "director", preview: p, file: (d.inboxFiles || [])[i] || "",
-      queuedAtMs: (d.inboxQueuedAt || [])[i] ?? null }));
+      queuedAtMs: (d.inboxQueuedAt || [])[i] ?? null, notBeforeMs: (d.inboxNotBefore || [])[i] ?? null }));
     for (const r of Object.keys(d.roleInboxPrompts || {}).sort()) {
-      for (const e of d.roleInboxPrompts[r] || []) out.push({ role: r, preview: e.preview, file: e.file, queuedAtMs: e.queuedAtMs ?? null });
+      for (const e of d.roleInboxPrompts[r] || []) out.push({ role: r, preview: e.preview, file: e.file, queuedAtMs: e.queuedAtMs ?? null, notBeforeMs: e.notBeforeMs ?? null });
     }
     return out;
   }

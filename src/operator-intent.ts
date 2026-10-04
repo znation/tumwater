@@ -105,9 +105,12 @@ export function requestRestart(root: string): { ok: true; message: string } | { 
  * no fleet running — the same contract as `tumwater wake`). Returns requestWake's
  * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
  * call keeps a surface from ever queueing a prompt without the wake that delivers it
- * promptly — the pairing is the invariant, not each surface's private discipline. */
-export function submitRolePromptAndWake(root: string, role: string, text: string, images?: PromptImageInput[]): string {
-  submitRolePrompt(root, role, text, images);
+ * promptly — the pairing is the invariant, not each surface's private discipline. An optional
+ * `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"); the wake
+ * still fires — it brings the loop in at its time to find a deliverable queue, and a queue
+ * holding only future prompts keeps it asleep. */
+export function submitRolePromptAndWake(root: string, role: string, text: string, images?: PromptImageInput[], notBeforeMs?: number): string {
+  submitRolePrompt(root, role, text, images, notBeforeMs);
   return requestWake(root, [role]);
 }
 

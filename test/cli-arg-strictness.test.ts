@@ -257,3 +257,14 @@ test("tui reaches its dispatch and answers a non-interactive terminal", async ()
   assert.match(r.stderr, /needs an interactive terminal/);
   assert.match(r.stderr, /tumwater status/);
 });
+
+test("prompt --at without a value fails with parseDurationFlag's message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt at missing value");
+  // A bare --at claims a duration: a missing value is parseDurationFlag's own error, not a
+  // silent enqueue of "--at re-check" as prompt text.
+  const r = await cli(repo, "prompt", "--at");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--at needs a value/);
+  assert.equal(inboxSize(repo), 0, "the flag pair was not baked into queued content");
+});

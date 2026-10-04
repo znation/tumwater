@@ -232,7 +232,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     else if (key === "queued") {
       html = list.map((q) => "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
         "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + q.role + " loop") +
-          (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : "")) + "</span></div>" +
+          (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
+            : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
         "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'>Cancel</button></div>").join("");
     } else {
       const open = openEntryKey();

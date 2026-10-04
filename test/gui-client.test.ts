@@ -151,17 +151,18 @@ test("backlog titles split off their date notes; queued prompts list in executio
     inboxPrompts: ["first", "second"],
     inboxFiles: ["a.md", "b.md"],
     inboxQueuedAt: [1000, null],
+    inboxNotBefore: [null, null],
     roleInboxPrompts: { qa: [{ file: "q.md", preview: "qa one", queuedAtMs: 2000 }], feature: [{ file: "f.md", preview: "feature one" }] },
   }), [
-    { role: "director", preview: "first", file: "a.md", queuedAtMs: 1000 },
-    { role: "director", preview: "second", file: "b.md", queuedAtMs: null },
-    { role: "feature", preview: "feature one", file: "f.md", queuedAtMs: null },
-    { role: "qa", preview: "qa one", file: "q.md", queuedAtMs: 2000 },
+    { role: "director", preview: "first", file: "a.md", queuedAtMs: 1000, notBeforeMs: null },
+    { role: "director", preview: "second", file: "b.md", queuedAtMs: null, notBeforeMs: null },
+    { role: "feature", preview: "feature one", file: "f.md", queuedAtMs: null, notBeforeMs: null },
+    { role: "qa", preview: "qa one", file: "q.md", queuedAtMs: 2000, notBeforeMs: null },
   ]);
   // An older payload without the stamps at all must not break the render — everything
   // defaults to null (the age is omitted, not an error).
   assert.deepEqual(model.queuedPrompts({ inboxPrompts: ["only"], inboxFiles: ["c.md"] }), [
-    { role: "director", preview: "only", file: "c.md", queuedAtMs: null },
+    { role: "director", preview: "only", file: "c.md", queuedAtMs: null, notBeforeMs: null },
   ]);
 });
 
