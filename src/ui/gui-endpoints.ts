@@ -19,7 +19,7 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { readTranscript } from "./transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history-data.js";
 import { readTickDetail } from "../tick-detail-data.js";
-import { renderTickDetail, tickNotFoundMessage } from "./tick-detail.js";
+import { renderTickDetail, tickNotFoundMessage } from "../tick-detail.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import type http from "node:http";

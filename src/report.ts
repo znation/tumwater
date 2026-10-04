@@ -2,13 +2,13 @@
  * report-data.ts / failure-data.ts, and print. The Markdown renderers live in the pure-render
  * modules they pair with: report-render.ts (top level, beside failure-report.ts) and
  * failure-report.ts. */
-import { collectReport, collectReportSince } from "../report-data.js";
-import { collectFailureReport } from "../failure-data.js";
-import { renderFailureMarkdown } from "../failure-report.js";
-import { renderReportMarkdown, renderSinceReportMarkdown } from "../report-render.js";
-import { say, sayJson, sayJsonOrRender } from "../cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli-args.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";
+import { collectReport, collectReportSince } from "./report-data.js";
+import { collectFailureReport } from "./failure-data.js";
+import { renderFailureMarkdown } from "./failure-report.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
+import { say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli-args.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "./event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags,
  * collect through report-data.ts / failure-data.ts, and print. Unknown-args rejection and the

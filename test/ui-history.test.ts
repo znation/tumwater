@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cmdHistory } from "../src/ui/history.js";
+import { cmdHistory } from "../src/history.js";
 import { logEvent } from "../src/events.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
 import { displayWidth } from "../src/text-width.js";
 
-// The rendering half of `tumwater history` (ui/history.ts) had no direct tests: the
+// The rendering half of `tumwater history` (history.ts) had no direct tests: the
 // history-data.test.ts slice covers the row collector, and gui-endpoints covers its JSON
 // payload, but the CLI table renderer — column alignment, the grep haystack, the empty-log
 // and no-match prose, the --since/--json surface, and the rival-flag failures — went

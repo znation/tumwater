@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events.js";
 import { initProject } from "../src/init.js";
-import { cmdTick, renderTickDetail } from "../src/ui/tick-detail.js";
+import { cmdTick, renderTickDetail } from "../src/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";

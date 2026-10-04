@@ -1,17 +1,17 @@
 /** Rendering + command half of `tumwater tick <role> <n>`: one completed tick's full event
  * block printed as a short summary header followed by the tick's events through the shared
  * formatEvent. The payload itself is collected by tick-detail-data.ts (the collector-in-core
- * convention beside history-data.ts / ui/history.ts), so the CLI and the GUI History drill-down
+ * convention beside history-data.ts / history.ts), so the CLI and the GUI History drill-down
  * serve the same payload; this module renders it for the terminal. Read-only over the event
  * log, stdout only. */
-import { fail, say, sayJson } from "../cli-output.js";
-import { parseCountFlag } from "../cli-args.js";
-import { knownRoleIdsCached } from "../config.js";
-import { readTickDetail, type TickDetail } from "../tick-detail-data.js";
-import { formatEvent } from "../event-format.js";
-import { unknownRoleMessage } from "../roles.js";
-import { shortSpanPhrase } from "../phrases.js";
-import { shortSha } from "../text.js";
+import { fail, say, sayJson } from "./cli-output.js";
+import { parseCountFlag } from "./cli-args.js";
+import { knownRoleIdsCached } from "./config.js";
+import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
+import { formatEvent } from "./event-format.js";
+import { unknownRoleMessage } from "./roles.js";
+import { shortSpanPhrase } from "./phrases.js";
+import { shortSha } from "./text.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart

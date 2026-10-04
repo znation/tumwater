@@ -7,7 +7,7 @@ import type http from "node:http";
 import { handleConfig, handleReport, handleFailures, handleTick } from "../src/ui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleRestart } from "../src/ui/gui-endpoint-commands.js";
-import { renderTickDetail } from "../src/ui/tick-detail.js";
+import { renderTickDetail } from "../src/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator-requests.js";
 import { writeJsonFile } from "../src/json-files.js";

@@ -1,9 +1,9 @@
-import { say, sayJson } from "../cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
-import { displayWidth, padToWidth } from "../text-width.js";
-import { shortSpanPhrase } from "../phrases.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
-import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../event-window.js";
+import { say, sayJson } from "./cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
+import { displayWidth, padToWidth } from "./text-width.js";
+import { shortSpanPhrase } from "./phrases.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "./history-data.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "./event-window.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
