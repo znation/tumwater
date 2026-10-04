@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type os from "node:os";
 import { loadConfig, saveConfig } from "../src/config.js";
-import { lanAddresses } from "../src/ui/gui.js";
+import { lanAddresses } from "../src/gui-command.js";
 import { startGui } from "../src/ui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";

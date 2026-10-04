@@ -37,7 +37,7 @@ import { renderDoctor } from "./ui/doctor-report.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
 import { cmdTick, TICK_USAGE } from "./tick-detail.js";
 import { cmdReport } from "./report.js";
-import { cmdGui, TOKEN_VALUE_ERROR } from "./ui/gui.js";
+import { cmdGui, TOKEN_VALUE_ERROR } from "./gui-command.js";
 import { errorMessage, didYouMean } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
@@ -156,7 +156,7 @@ async function main(): Promise<void> {
           names: ["--port"],
           value: true,
           valueName: "<n>",
-          // gui is gui.ts's only flag, so the shape parser lives beside its one body; the
+          // gui is gui-command.ts's only flag, so the shape parser lives beside its one body; the
           // gate's early report re-runs it so `gui --port abc` names the typo before the
           // ready-repo gate can mask it.
           validate: (value) => {

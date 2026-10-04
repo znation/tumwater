@@ -58,7 +58,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     // A flag-looking value is a dropped `--` in disguise: `config set model --json` would
     // otherwise take the literal string "--json" as the value (the JSON-parse fallback
     // swallows any token) and validateConfig's string keys accept it silently — the same
-    // shape gui.ts's --token gate refuses, where the value the next flag holds is never
+    // shape gui-command.ts's --token gate refuses, where the value the next flag holds is never
     // what the operator meant. Refuse before setConfigKey reads it; a value that really
     // does begin with `--` has no legitimate shape among the config keys' values
     // (identifiers, durations, windows, JSON scalars and arrays), so nothing is lost.
