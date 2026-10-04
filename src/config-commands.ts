@@ -55,7 +55,19 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     return;
   }
   if (sub === "set") {
-    const result = setConfigKey(root, key ?? "", rest[0] ?? "");
+    // A flag-looking value is a dropped `--` in disguise: `config set model --json` would
+    // otherwise take the literal string "--json" as the value (the JSON-parse fallback
+    // swallows any token) and validateConfig's string keys accept it silently — the same
+    // shape gui.ts's --token gate refuses, where the value the next flag holds is never
+    // what the operator meant. Refuse before setConfigKey reads it; a value that really
+    // does begin with `--` has no legitimate shape among the config keys' values
+    // (identifiers, durations, windows, JSON scalars and arrays), so nothing is lost.
+    const raw = rest[0] ?? "";
+    if (raw.startsWith("--"))
+      fail(
+        `config set got the flag-looking value ${JSON.stringify(raw)} instead of a value — is a flag missing its value, or did a token slip into the value's position? (e.g. \`tumwater config set model gpt-5\`)`,
+      );
+    const result = setConfigKey(root, key ?? "", raw);
     if (!result.ok) fail(result.error);
     say(`set ${key} to ${JSON.stringify((result as { value: unknown }).value)}`);
     return;

@@ -51,6 +51,23 @@ test("get of an unknown key fails with the valid-keys message and the suggestion
   assert.equal(out.stdout, "", "a failed get prints no JSON");
 });
 
+test("set of a flag-looking value fails without writing", async () => {
+  const root = makeRepo();
+  writeConfig(root, { model: "m1" });
+  // `config set model --json` — a dropped `--` in front of what was meant to be a command
+  // or a flag — must not silently write the literal string "--json" as the model.
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "model", "--json"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, /flag-looking value "--json"/);
+  assert.equal(out.stdout, "", "a failed set prints no confirmation");
+  assert.equal(
+    fs.readFileSync(path.join(root, "tumwater.json"), "utf8"),
+    before,
+    "the file stays byte-identical",
+  );
+});
+
 test("set writes one top-level key and confirms with the parsed value", async () => {
   const root = makeRepo();
   writeConfig(root, { model: "m1" });
