@@ -7,7 +7,7 @@ import { parsePositiveInt } from "./text.js";
  * layer calls these before running a command, so a bad flag fails fast with an actionable
  * message instead of the command silently running with default behavior. The plain-decimal
  * integer core (parsePositiveInt/parseNonNegativeInt) lives in text.ts — shared by these flags
- * and gui.ts's query-param validation, so one definition of a valid count/position covers both
+ * and gui-args.ts's query-param validation, so one definition of a valid count/position covers both
  * input surfaces without the UI layer importing this module. The two commands whose positionals
  * are free-form prompt text (`init`, `prompt`) parse their own args in cli-command-args.ts —
  * their rules contradict this module's reject-everything-left-over contract, and `--file`'s

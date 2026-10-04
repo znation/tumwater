@@ -189,7 +189,7 @@ write that live readers pick up) — so the GUI cannot drift from the CLI's rule
    (POST `{key, value}` — 400 when the key is outside `EDITABLE_CONFIG_KEYS` or the value
    fails `setConfigKey`'s check, 200 `{ok, key, value, oldValue}` on success, reusing
    readPostBody's body discipline).
-2. **src/ui/gui.ts:** route `GET /api/config` and `POST /api/config-set` next to the
+2. **src/ui/gui-server.ts:** route `GET /api/config` and `POST /api/config-set` next to the
    `/api/budget` dispatch.
 3. **src/ui/gui-page.ts + src/ui/gui-client.ts:** a fifth tab (`#settings`) listing the five
    keys as label + current-value + inline text field + Save button (values pre-rendered with

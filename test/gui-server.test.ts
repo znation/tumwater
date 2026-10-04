@@ -14,7 +14,7 @@ import { readEvents } from "../src/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/ui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
-import { startGui } from "../src/ui/gui.js";
+import { startGui } from "../src/ui/gui-server.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";

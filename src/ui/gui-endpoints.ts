@@ -1,11 +1,11 @@
 /**
- * The dashboard's GET data endpoint handlers (src/ui/gui.ts routes to them): transcript,
+ * The dashboard's GET data endpoint handlers (src/ui/gui-server.ts routes to them): transcript,
  * backlog, report, failures, history, tick, config — the read-only surface — plus the
  * EDITABLE_CONFIG_KEYS curation shared with gui-endpoint-commands.ts's POST config-set
  * handler. The POST operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
  * wake, restart, abort, pause-role) and their body-discipline helpers live in
  * gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond its
- * own `res`; server lifecycle, routing, the static page, and the token gate stay in gui.ts.
+ * own `res`; server lifecycle, routing, the static page, and the token gate stay in gui-server.ts.
  * The domain work itself lives one layer down (transcript.ts, backlog.ts, report.ts,
  * failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
  * adapts HTTP onto it.
@@ -28,7 +28,7 @@ import type http from "node:http";
  * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
- * once (gui.ts's parseRequestTarget) and threads it down, so the parse idiom lives in one
+ * once (gui-server.ts's parseRequestTarget) and threads it down, so the parse idiom lives in one
  * place and cannot disagree with the routing or the token gate about what the URL said. */
 export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role");
@@ -44,7 +44,7 @@ export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, r
  * section in the same order statusPayload lists its titles — PLANS.md ## Planned,
  * BUGS.md ## Open, QUESTIONS.md ## Open — zero-based. Unknown/missing file, missing or bad
  * index, and out-of-range index → 400 JSON error via sendJson. The query arrives pre-parsed
- * (gui.ts's parseRequestTarget), like every GET-data handler here. */
+ * (gui-server.ts's parseRequestTarget), like every GET-data handler here. */
 export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const file = q.get("file");
   if (file === null) {

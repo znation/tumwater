@@ -167,7 +167,7 @@ test("handleRestart with no fleet running writes the marker harmlessly and says 
 });
 
 // The live server's dispatch arm for POST /api/restart. The tests above drive handleRestart
-// directly with a fake req, so the routing branch in gui.ts's request dispatcher — the
+// directly with a fake req, so the routing branch in gui-server.ts's request dispatcher — the
 // method+path match that turns the build-stale alert's refresh button into a handler call —
 // had no coverage: a renamed path or a dropped else-if would leave every endpoint test green
 // while the button 404s. This pins the wiring through a real listening server.

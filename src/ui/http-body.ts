@@ -5,7 +5,7 @@
  * handlers there (and, since the POST operators moved to gui-endpoint-commands.ts, those too)
  * read as endpoint logic alone — the streaming internals and the buffered-bytes
  * counter live here, one layer down from any single endpoint. Server lifecycle, routing, the
- * static page, and the token gate stay in gui.ts.
+ * static page, and the token gate stay in gui-server.ts.
  */
 import type http from "node:http";
 import { parseJsonObject } from "../json-object.js";

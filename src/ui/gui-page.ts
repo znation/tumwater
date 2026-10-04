@@ -7,7 +7,7 @@
  * (alerts for whatever needs a human, the composer that steers the director or one loop,
  * today's progress, every loop grouped by what it is doing, the backlog, and the notable
  * activity), History, Usage, or Failures. A drawer opens
- * any loop's detail and live transcript, or any backlog entry in full. Kept apart from gui.ts
+ * any loop's detail and live transcript, or any backlog entry in full. Kept apart from gui-server.ts
  * so the server module stays about serving. */
 import { GUI_CLIENT_JS } from "./gui-client.js";
 import { GUI_STYLES } from "./gui-styles.js";

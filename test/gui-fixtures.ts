@@ -3,7 +3,7 @@
  * cli-harness.ts. */
 import type { Server } from "node:http";
 import { strict as assert } from "node:assert";
-import { startGui } from "../src/ui/gui.js";
+import { startGui } from "../src/ui/gui-server.js";
 
 /** Start the GUI server on an ephemeral port and return it with its `http://127.0.0.1:<port>`
  * base URL: the same three lines (startGui on port 0, narrow the address, build the base)

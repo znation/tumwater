@@ -1,5 +1,5 @@
 /**
- * The dashboard's POST operator endpoint handlers (src/ui/gui.ts routes to them): prompt,
+ * The dashboard's POST operator endpoint handlers (src/ui/gui-server.ts routes to them): prompt,
  * prompt-role, prompt-cancel, budget, config-set, pause, wake, restart, abort, pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages) each mutating handler guards its inputs
