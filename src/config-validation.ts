@@ -44,6 +44,25 @@ import {
  * lives in config-field-checks.ts; this module is the section-by-section rules plus the
  * cross-field checks, and the one export gate (validateConfig) for them. */
 
+/** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s
+ * × 1000 stays inside node's signed-32-bit setTimeout/setInterval range (2^31−1 ms,
+ * about 24.8 days). Above it node clamps the delay to 1ms — a one-zero typo like
+ * `"tickTimeoutSeconds": 1e300` became Infinity ms, and every pi run died the moment it
+ * started (BUGS.md 2026-10-03). */
+const MAX_DURATION_SECONDS = 2147483;
+const DURATION_POSITIVE: NumberRule = {
+  ok: (n) => n > 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number greater than 0, at most ${MAX_DURATION_SECONDS}`,
+};
+const DURATION_NON_NEGATIVE: NumberRule = {
+  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS}`,
+};
+const DURATION_OR_DISABLED: NumberRule = {
+  ok: (n) => n >= 0 && n <= MAX_DURATION_SECONDS,
+  what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
+};
+
 /** Validate tumwater.json values, so a typo fails fast with an actionable message instead
  * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
  * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
@@ -108,10 +127,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
-  checkNumber(r, "", "minTickIntervalSeconds", NON_NEGATIVE);
-  checkNumber(r, "", "tickTimeoutSeconds", POSITIVE);
-  checkNumber(r, "", "quietTimeoutSeconds", NON_NEGATIVE_OR_DISABLED);
-  checkNumber(r, "", "toolCallStallSeconds", NON_NEGATIVE_OR_DISABLED);
+  checkNumber(r, "", "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
+  checkNumber(r, "", "tickTimeoutSeconds", DURATION_POSITIVE);
+  checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);
+  checkNumber(r, "", "toolCallStallSeconds", DURATION_OR_DISABLED);
   checkNumber(r, "", "logMaxBytes", POSITIVE);
   checkNumber(r, "", "sessionRetentionDays", NON_NEGATIVE_OR_DISABLED);
   checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
@@ -153,7 +172,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       // the FULL check at the gate — the stronger check, never a silently weaker one.
       checkString(o, "check.", "gateCommand");
       checkString(o, "check.", "cwd");
-      checkNumber(o, "check.", "timeoutSeconds", POSITIVE);
+      checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
     }
   }
 
@@ -164,9 +183,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     } else {
       const o = b;
       checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
-      checkNumber(o, "idleBackoff.", "initialSeconds", NON_NEGATIVE);
+      checkNumber(o, "idleBackoff.", "initialSeconds", DURATION_NON_NEGATIVE);
       checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
-      checkNumber(o, "idleBackoff.", "maxSeconds", NON_NEGATIVE);
+      checkNumber(o, "idleBackoff.", "maxSeconds", DURATION_NON_NEGATIVE);
     }
   }
 
@@ -200,7 +219,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         });
       }
       checkModelTriple(o, "review.");
-      checkNumber(o, "review.", "timeoutSeconds", POSITIVE);
+      checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
     }
   }
 
@@ -295,7 +314,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
           );
         checkModelTriple(o, `roles.${id}.`);
         checkBoolean(o, `roles.${id}.`, "enabled");
-        checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", NON_NEGATIVE);
+        checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
       }
     }
   }

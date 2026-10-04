@@ -205,14 +205,14 @@ test("validateConfig reports every invalid value in one error", () => {
   assert.match(msg, /^invalid tumwater\.json:/);
   for (const field of [
     "maxConcurrent must be an integer of at least 1 (got -3)",
-    'tickTimeoutSeconds must be a number greater than 0 (got "90m")',
+    'tickTimeoutSeconds must be a number greater than 0, at most 2147483 (got "90m")',
     "logMaxBytes must be a number greater than 0 (got 0)",
     'piArgs must be an array of strings (got "--verbose")',
     "idleBackoff.factor must be a number of at least 1 (got 0)",
     'roles.clean.enabled must be true or false (got "false")',
     // AC3 (plans/steward-role.md): the per-role slow clock is validated like its siblings —
     // a negative interval would schedule ticks in the past and spin the loop.
-    "roles.feature.minTickIntervalSeconds must be a number of 0 or more (got -5)",
+    "roles.feature.minTickIntervalSeconds must be a number of 0 or more, at most 2147483 (got -5)",
   ]) {
     assert.ok(msg.includes(field), `error message should mention: ${field}`);
   }
@@ -344,7 +344,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
   for (const bad of [0, -30, "900"]) {
     assert.match(
       validationError({ review: { timeoutSeconds: bad } }),
-      new RegExp(`review\\.timeoutSeconds must be a number greater than 0 \\(got ${JSON.stringify(bad)}\\)`),
+      new RegExp(`review\\.timeoutSeconds must be a number greater than 0, at most 2147483 \\(got ${JSON.stringify(bad)}\\)`),
       `review.timeoutSeconds: ${JSON.stringify(bad)}`,
     );
   }
@@ -510,11 +510,11 @@ test("validateConfig rejects a wrongly-typed check.cwd and non-positive timeoutS
   );
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "x", timeoutSeconds: 0 } }),
-    /check\.timeoutSeconds must be a number greater than 0 \(got 0\)/,
+    /check\.timeoutSeconds must be a number greater than 0, at most 2147483 \(got 0\)/,
   );
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "x", timeoutSeconds: -30 } }),
-    /check\.timeoutSeconds must be a number greater than 0 \(got -30\)/,
+    /check\.timeoutSeconds must be a number greater than 0, at most 2147483 \(got -30\)/,
   );
 });
 
@@ -607,4 +607,46 @@ test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INT
     ),
   );
   assert.equal(validateConfig({ ...defaultConfig(), maxDailyCostUsd: Number.MAX_SAFE_INTEGER }), undefined);
+});
+
+test("duration-seconds fields reject values whose milliseconds overflow node's timer range", () => {
+  // BUGS.md 2026-10-03: the seconds rules admitted any finite number, so a one-zero typo
+  // (`{"tickTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/pi.ts — and node's
+  // setTimeout/setInterval clamp a delay that does not fit in a signed 32-bit integer down
+  // to 1ms (verified: a setTimeout(1e300*1000) fired ~2ms later), killing every pi run the
+  // moment it started. All seconds fields that feed a ×1000 duration share one bound:
+  // 2147483 seconds × 1000 stays inside setTimeout's 2^31−1 ms range.
+  const MAX_DURATION_SECONDS = 2147483;
+  const tooBig = 1e300;
+  assert.match(
+    validationError({ ...defaultConfig(), tickTimeoutSeconds: tooBig }),
+    new RegExp(`tickTimeoutSeconds must be a number greater than 0, at most ${MAX_DURATION_SECONDS}`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), quietTimeoutSeconds: tooBig }),
+    new RegExp(`quietTimeoutSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS} \\(0 disables\\)`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), toolCallStallSeconds: tooBig }),
+    new RegExp(`toolCallStallSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS} \\(0 disables\\)`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), minTickIntervalSeconds: tooBig }),
+    new RegExp(`minTickIntervalSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS}`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), check: { command: "npm test", timeoutSeconds: tooBig } }),
+    new RegExp(`check\\.timeoutSeconds must be a number greater than 0, at most ${MAX_DURATION_SECONDS}`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), review: { timeoutSeconds: tooBig } }),
+    new RegExp(`review\\.timeoutSeconds must be a number greater than 0, at most ${MAX_DURATION_SECONDS}`),
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), idleBackoff: { initialSeconds: tooBig } }),
+    new RegExp(`idleBackoff\\.initialSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS}`),
+  );
+  // The bound itself is representable: every default sits far inside it.
+  assert.equal(validateConfig({ ...defaultConfig(), tickTimeoutSeconds: MAX_DURATION_SECONDS }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig() }), undefined);
 });
