@@ -15,7 +15,7 @@ import {
   JSON_FLAG,
   ROLE_FLAG,
   ROLE_VALUE_ERROR,
-  rejectEqualsForm,
+  rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
 import { templateIds } from "./init-templates.js";
@@ -96,16 +96,9 @@ export function parseInitArgs(args: string[]): {
   dryRun: boolean;
 } {
   const known = INIT_FLAG_SPECS.flatMap((s) => s.names);
-  for (const arg of args) {
-    // An equals-form token names a real flag; refuse it with its own message before the
-    // generic unknown-argument error misreports `--branch=main` as a misspelling.
-    rejectEqualsForm(arg, INIT_FLAG_SPECS);
-    if (arg.startsWith("--") && !known.includes(arg)) {
-      fail(
-        `unknown argument: ${arg} (valid flags for tumwater init: --file <path>, --branch <name>, --template <id>, --adopt, --dry-run, --list-templates)`,
-      );
-    }
-  }
+  // The unknown-double-dash gate reads the specs, so the list its error names admits exactly
+  // what the duplicate-flag check below accepts — one vocabulary, one message renderer.
+  rejectUnknownDoubleDash("init", args, INIT_FLAG_SPECS);
   rejectDuplicateFlags(args, known);
   const branch = parseBranchFlag(args);
   const adopt = args.includes("--adopt");
@@ -198,17 +191,9 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
  * the queue file's not-before marker — so the read-only and destructive modes refuse it
  * rather than silently ignore it. */
 export function parsePromptArgs(args: string[]): PromptArgs {
-  // Derive the accepted vocabulary from PROMPT_FLAG_SPECS, as parseInitArgs does — the
-  // unknown-flag gate and the duplicate-flag check both read the one list, so adding a flag
-  // to the specs admits it everywhere at once.
-  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names);
-  for (const arg of args) {
-    // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
-    rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
-    if (arg.startsWith("--") && !known.includes(arg)) {
-      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>, --at <duration>)`);
-    }
-  }
+  // The unknown-double-dash gate reads PROMPT_FLAG_SPECS, so the list its error names admits
+  // exactly what the duplicate-flag check below accepts — one vocabulary, one message renderer.
+  rejectUnknownDoubleDash("prompt", args, PROMPT_FLAG_SPECS);
   // --json's positions, collected in one pass: the list branch's stray-argument claim and
   // json flag need the indices (the once-check rides rejectDuplicateFlags below).
   const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
@@ -216,6 +201,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const cancelFlag = args.indexOf("--cancel");
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
+  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names);
   rejectDuplicateFlags(args, known);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 

@@ -33,6 +33,42 @@ export interface FlagSpec {
   validate?: (value: string) => void;
 }
 
+/** One command's accepted flag list as error-message text (`--file <path>, --branch <name>, …`),
+ * derived from the specs — the one home of the rendering, so the lists the error messages
+ * print cannot drift from the vocabulary they name. */
+function validFlagsList(specs: readonly FlagSpec[]): string {
+  return specs
+    .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
+    .join(", ");
+}
+
+/** The unknown-double-dash gate for the two parsers whose positionals are free-form text
+ * (init's brief, prompt's message) and therefore cannot use rejectUnknownArgs wholesale:
+ * each `--`-prefixed token must be a known flag spelling or it fails with the same
+ * "unknown argument … (valid flags for tumwater CMD: …)" wording rejectUnknownArgs prints,
+ * the list derived from the specs so adding a flag admits it everywhere at once. Equals-form
+ * spellings of known flags fail first with rejectEqualsForm's message, as the generic gate
+ * does. Non-double-dash tokens pass through untouched (the caller decides what they mean —
+ * prompt content or a positional). Two call sites: parseInitArgs and parsePromptArgs. */
+export function rejectUnknownDoubleDash(
+  command: string,
+  args: readonly string[],
+  specs: readonly FlagSpec[],
+): void {
+  const known = new Set(specs.flatMap((s) => s.names));
+  for (const arg of args) {
+    rejectEqualsForm(arg, specs);
+    if (arg.startsWith("--") && !known.has(arg)) failUnknownArgument(command, arg, specs);
+  }
+}
+
+/** The one refusal for a token naming no known flag: the generic wording both the spec-parsed
+ * gate (rejectUnknownArgs) and the free-form parsers' double-dash gate
+ * (rejectUnknownDoubleDash) print, so the message cannot drift between the two gates. */
+function failUnknownArgument(command: string, arg: string, specs: readonly FlagSpec[]): never {
+  fail(`unknown argument: ${arg} (valid flags for tumwater ${command}: ${validFlagsList(specs)})`);
+}
+
 /** A `--flag=value` token's flag name ("--role" from "--role=feature"), or null when the
  * token is not in equals form. "--=x" and bare "--" carry no flag name and stay null. */
 function equalsFormFlag(arg: string): string | null {
@@ -220,14 +256,8 @@ export function rejectUnknownArgs(command: string, args: string[], specs: FlagSp
       // An equals-form token names a real flag; refuse it with its own message before the
       // generic "unknown argument" misreports `--role=feature` as a misspelling.
       rejectEqualsForm(arg, specs);
-      const valid = specs
-        .map((s) => s.names.join("/") + (s.value ? ` ${s.valueName ?? "<value>"}` : ""))
-        .join(", ");
-      fail(
-        specs.length === 0
-          ? `tumwater ${command} takes no arguments`
-          : `unknown argument: ${arg} (valid flags for tumwater ${command}: ${valid})`,
-      );
+      if (specs.length === 0) fail(`tumwater ${command} takes no arguments`);
+      failUnknownArgument(command, arg, specs);
     }
     if (seen.has(spec)) fail(`${spec.names[0]} may only be given once`);
     seen.add(spec);
