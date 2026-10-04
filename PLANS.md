@@ -5,7 +5,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater run --for <duration>` — a bounded fleet run that drains and exits at the deadline (planned 2026-10-04 by plan loop)
+
+**Goal.** `tumwater run --once` gives a single round of ticks and exits — the cron-style invocation. An operator who wants the fleet to run for a bounded *window* (an overnight trial, a demo, a CI step, "run for two hours then stop") has to background the process and kill it by hand, which loses the graceful drain. Add `tumwater run --for <duration>` (e.g. `run --for 2h`): boot the fleet, run it until the deadline, then run the same graceful stop a Ctrl+C would run — in-flight ticks finish, the loop drains, a summary line prints — and exit.
+
+**Approach.** Everything hangs off machinery that already exists; no orchestrator changes.
+
+- `src/cli-flag-specs.ts` — add `{ names: ["--for"], value: true, valueName: "<duration>", validate: (v) => parseDurationFlag("--for", v) }` to `RUN_FLAG_SPECS`, so the dispatcher's `rejectUnknownArgs` gate accepts the spelling and rejects a malformed value with the parser's own wording before the ready-repo gate.
+- `src/cli-run.ts` `cmdRun` — parse `--for` with `parseDurationFlag` (the same helper the gate ran). Two body-level rules, both fail fast before boot: `--for` and `--once` are rivals (a one-round run and a windowed run cannot both apply — fail with a message naming both flags), and the cap is `pause --for`'s (`PAUSE_FOR_MAX_MS`, via the `failOverDurationCap` helper in operator-commands.ts — import it or move the shared helper; pick one site and keep the wording identical). Where `--once` sets `once = true`, a `--for` run stays a daemon-shaped run: keep `createRedeployer` and `LaunchServicesWatch` exactly as they are — a mid-run self-redeploy hands off to the supervisor, which forwards the same args (including `--for`), so the deadline restarts in the new generation; state that in the command's doc comment rather than coding around it.
+- After the boot banner, when a deadline was given: `setTimeout(forMs, stop)` armed beside the existing `SIGINT`/`SIGTERM` handlers (the same `stop` closure, so the drain-and-exit path is literally identical), plus `clearTimeout` in the existing `finally` so an early Ctrl+C or a redeploy hand-off does not leave a stray timer. The boot banner says the window: `tumwater running on branch <name> · for 2h · build <sha>… — Ctrl+C to stop`. When the timer fires first, say a one-line `deadline reached — stopping` before the existing stop message so the log shows why.
+- Summary: a `--for` run prints the `onceSummary` line on exit (reuse the existing function; it already supports being called without settle reasons, deriving from `ticksBefore` deltas), so a scheduled invocation's log shows what the window accomplished. `--once` keeps its own settle-reason summary; the two stay separate call sites.
+- `src/help.ts` — extend the `run` usage line to `[--branch <name>] [--once] [--for <duration>] [--role <id>]` with a one-line explanation (windowed run, drains like Ctrl+C at the deadline; `--role` stays once-only).
+- `README.md` — one row/note in the usage table for `run --for <duration>`, phrased like the `--once` sibling.
+
+**Files touched:** `src/cli-flag-specs.ts`, `src/cli-run.ts`, `src/help.ts`, `README.md`, plus tests in `test/cli-run.test.ts` (flag parsing: `--for` accepted, `--for abc` rejected with the duration wording, `--for` + `--once` rival rule, over-cap rejection, `--for` without a value named by the gate) and `test/cli-run-live.test.ts` (one harness run with a short `--for` boots, stops itself at the deadline, drains, and prints the summary line — no real model; the fake pi shim stays on PATH).
+
+**Acceptance criteria:**
+- `tumwater run --for 45m` boots the fleet, and without any operator input stops, drains in-flight ticks, prints the deadline line and the summary, and exits 0.
+- `run --once --for 5m` fails before boot naming both flags; `run --for 200d` fails with the cap wording; `run --for abc` and a trailing bare `--for` fail with the parser's wording before any repo gate.
+- Ctrl+C during a `--for` run still works and cancels the pending timer; the graceful-stop path is the same code either way.
+- `npm run test` passes with the new tests added and no existing behavior changed for plain `run` and `run --once`.
+
+
 
 ## Done
 
