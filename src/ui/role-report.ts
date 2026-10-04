@@ -66,5 +66,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
     ),
   );
   lines.push(...fencedOrNone("Next tick prompt", p.nextPrompt, "nothing to run this tick"));
+  // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
+  // waiting the block above shows only the oldest — say so, so the count line and the
+  // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
+  if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
+    lines.push(
+      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${p.inboxCount - 1} more wait)_`,
+    );
+  }
   return lines.join("\n").trimEnd();
 }

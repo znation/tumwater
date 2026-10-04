@@ -98,8 +98,8 @@ Usage:
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is
                                    configured), the min-tick interval, enabled/paused state, and
-                                   the next tick's assembled prompt (queued prompts appear in it
-                                   and are NOT consumed); --json prints the collector's payload
+                                   the next tick's assembled prompt (the oldest queued prompt appears in it
+                                   and is NOT consumed — one is dequeued per tick); --json prints the collector's payload
                                    as machine-readable data
   tumwater prompt <text...>        Queue a prompt for the director loop
   tumwater prompt --file <path>    Queue a prompt read from a file ("-" reads stdin)

@@ -159,6 +159,18 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   assert.match(md, /## Next tick prompt/);
 });
 
+test("with several prompts queued, the next-tick block discloses that only the oldest rides", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, "feature", "cover the empty-input case");
+  enqueueRolePrompt(dir, "feature", "also test the NaN path");
+  const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.match(md, /- Queued prompts: 2/);
+  assert.match(
+    md,
+    /_\(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; 1 more waits?\)_/,
+  ); // tick-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
+});
+
 test("unset things render as explicit placeholder lines, not omissions", () => {
   const dir = root();
   const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
