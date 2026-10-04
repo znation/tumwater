@@ -5,7 +5,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater questions` — read and answer the open-question outbox from the CLI (planned 2026-10-04 by plan loop)
+
+**Goal.** QUESTIONS.md is the harness's channel for decisions that are genuinely the user's, but
+answering one means hand-editing markdown: move the `### ` heading from `## Open` to `## Answered`
+and append the decision. `tumwater backlog` lists questions read-only, and no CLI command can
+answer one (grep over src/ finds no `tumwater questions`). Give operators a CLI so the
+loop→human→loop round trip is one command each way, matching the `prompt --list` /
+`prompt --cancel` pattern.
+
+**Approach.**
+- New module `src/question-commands.ts`:
+  - `openQuestionList(root)` — number `openQuestionEntries(root)` (src/backlog.ts) 1..N, keeping
+    file order; render as numbered lines with the question title and an ellipsized first body
+    line (the `prompt --list` shape).
+  - `answerQuestion(root, n, decision)` — load QUESTIONS.md, cut the Nth `### ` entry (heading
+    plus its body lines) out of `## Open` using `sectionLines`/`sectionBodyLines`
+    (src/backlog.ts), append it at the end of `## Answered` with a
+    `**Answered YYYY-MM-DD by operator:** <decision>` paragraph (today's local date,
+    src/datetime.ts's local-date helper), and write the file back. `n` out of range → an
+    `tumwater: no question at position N (M open)` error and exit 1, mirroring
+    `prompt --cancel`'s wording. A missing or `## Answered`-less QUESTIONS.md is created/extended
+    with the file's documented two-section skeleton.
+  - `questionListPayload(root)` — the same entries as data for `--json` (the backlog --json
+    pattern: a JSON document in every exit-0 case, never prose).
+- `src/cli.ts`: new `case "questions"` next to `backlog` — no requireReadyRepo gate (the readers
+  degrade to empty like backlog's); with no args, the numbered list; `answer <n> <decision>`
+  (one positional n plus the rest as the decision text) performs the move and prints one
+  confirmation line; `--json` swaps list and answer result for payloads. `rejectUnknownArgs`
+  allows only `--json`.
+- `src/help.ts`: one usage entry — `tumwater questions [--json]` and
+  `tumwater questions answer <n> "<decision>"`, naming that the answer stamps today's date and
+  moves the entry to `## Answered`, which loops read at their next tick.
+- Tests `test/question-commands.test.ts`: numbering of a seeded two-question file; an answer
+  moves only the named heading block (its body and neighbors intact, file order kept);
+  `**Answered …by operator:**` carries the real local date; out-of-range n errors with the exact
+  wording; `--json` payload shape; missing QUESTIONS.md degrades to the empty list.
+
+**Files touched:** src/question-commands.ts (new), src/cli.ts, src/help.ts,
+test/question-commands.test.ts (new).
+
+**Acceptance criteria.**
+- `tumwater questions` lists open questions numbered as `--list` shows them; `questions answer 1
+  "use ink"` on a two-question file moves question 1's full block to `## Answered` with the
+  decision and today's date, leaves question 2 numbered 1 afterward, and exits 0.
+- `tumwater questions answer 9 "x"` exits 1 with the `no question at position` wording.
+- `tumwater questions --json` prints the payload document; `questions answer … --json` prints the
+  answer result as JSON.
+- `npm run test` passes, including the new test file.
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
