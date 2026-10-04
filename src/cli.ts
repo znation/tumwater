@@ -12,11 +12,12 @@ import {
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   sinceFlagSpec,
+  FORCE_FLAG,
 } from "./cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli-command-args.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
-import { cmdStop } from "./operator-commands.js";
+import { cmdRetire, cmdStop } from "./operator-commands.js";
 import { cmdPrompt } from "./prompt-commands.js";
 import {
   cmdBacklog,
@@ -278,6 +279,14 @@ async function main(): Promise<void> {
     case "pause":
     case "resume": {
       await runMarkerCommand(root, command as MarkerCommand, args);
+      break;
+    }
+    case "retire": {
+      // Not a marker command (it acts immediately, not via a request file), but it shares the
+      // marker commands' gate shape: unknown-args rejection, then the ready-repo gate.
+      rejectUnknownArgs("retire", args, [ROLE_FLAG, FORCE_FLAG, JSON_FLAG]);
+      await requireReadyRepo(root);
+      await cmdRetire(root, args);
       break;
     }
     case "stop": {

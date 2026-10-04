@@ -216,6 +216,11 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `--force` flag spec, accepted by `retire` (the only override-the-rails command): one
+ * definition of the flag's spelling beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
+ * vocabulary cannot drift from the command body's `args.includes("--force")`. */
+export const FORCE_FLAG: FlagSpec = { names: ["--force"] };
+
 /** The `--last` flag spec for `tumwater tick <role> --last`: one definition of the flag's
  * spelling, beside JSON_FLAG, so tick's gate and cmdTick's arity guards cannot disagree on
  * what the command admits. Like --json it takes no value and needs no wording — the

@@ -1,8 +1,9 @@
 import { knownRoleIds, loadConfig } from "./config.js";
-import { fail, say } from "./cli-output.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";
 import { REASON_VALUE_ERROR } from "./cli-flag-specs.js";
+import { artifactPhrase, retireRole } from "./retire.js";
 import { agree, pauseReasonSuffix } from "./phrases.js";
 import { errCode } from "./errno.js";
 import { allRoleIds } from "./roles.js";
@@ -259,4 +260,24 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
     : "";
   say(`fleet resumed — role loops tick again${when}${roleNote}${tail}`);
+}
+
+/** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
+ * branch, landing ref, and paused-state marker. The collection, safety rails, and removal live
+ * in src/retire.ts; this is the render layer — one line per removed artifact, the skip lines
+ * that make a second run idempotent, or the `--json` payload. */
+export async function cmdRetire(root: string, args: string[]): Promise<void> {
+  // As in cmdAbort: the config exists only to validate the id against built-ins plus
+  // user-defined loops; a missing --role fails before it is ever needed.
+  const role = namedRole(root, args);
+  if (!role) fail("retire requires --role <id> (e.g. `--role feature`)");
+  const result = await retireRole(root, role, { force: args.includes("--force") });
+  if (args.includes("--json")) {
+    sayJson({ role, removed: result.removed, skipped: result.skipped });
+    return;
+  }
+  for (const name of result.removed) say(`removed ${artifactPhrase(name, role)}`);
+  for (const name of result.skipped) say(`nothing to remove: ${artifactPhrase(name, role)}`);
+  if (result.removed.length === 0 && result.skipped.length === 0)
+    say(`nothing to remove for role ${role}`);
 }

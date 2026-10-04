@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater retire --role <id>` — remove a disabled loop's worktree and branch (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater retire --role <id>` — remove a disabled loop's worktree and branch (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** When a role is disabled or removed from `tumwater.json`, its persistent git worktree
 (`.tumwater/worktrees/<role>/`) and its branch (`tumwater/<role>`) stay behind forever — disk
@@ -45,7 +49,11 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   nothing remained (idempotent, not an error).
 - The whole suite passes (`npm run test`).
 
-## Done
+Implementation notes: `collectRetire` counts a landing ref pinning a sha not merged into main as
+unlanded work too (the branch can sit at main while the pin holds the crash survivor), the
+branch deletion always runs after a `removeWorktree` that prunes even an absent directory (a
+stale registration keeps the branch checked out, so `git branch -D` would otherwise fail), and
+the paused-state marker is only reported removed when the role was actually listed in it.
 
 ### A shared test-fake catalog — the infrastructure that retires the recurring `no-fake` validation gap (planned 2026-10-04 by steward, promoted from the gap tally, done 2026-10-04 by feature)
 

@@ -153,6 +153,9 @@ Usage:
                                    ticks; --reason states why the whole FLEET is paused (no
                                    per-role reason); --for auto-resumes (capped at 90d)
   tumwater resume [--role <id>]    Lift a fleet or per-role pause
+  tumwater retire --role <id>      Remove a disabled loop's worktree, branch, and per-role
+                                   state (landing ref, pause marker); --force overrides the
+                                   safety rails; --json prints what was removed
   tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
