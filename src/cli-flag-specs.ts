@@ -185,6 +185,10 @@ export function grepFlagSpec(missingValue: string): FlagSpec {
 export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
+  // `run --for <duration>` (the windowed run): the same spec `pause --for` passes, so the
+  // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
+  // 90-day cap and the --once rival rule stay in cmdRun beside the timer they arm.
+  DURATION_FLAG,
   ROLE_FLAG,
 ];
 

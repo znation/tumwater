@@ -12,11 +12,14 @@ Usage:
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
                                    lists them), --dry-run: write nothing)
-  tumwater run [--branch <name>] [--once] [--role <id>]
+  tumwater run [--branch <name>] [--once] [--for <duration>] [--role <id>]
                                    Run all enabled loops (headless; Ctrl+C stops);
                                    --once runs one full round of ticks, drains the
                                    landings it produced, and exits (for cron/CI);
-                                   --once --role <id> scopes that round to one loop
+                                   --once --role <id> scopes that round to one loop;
+                                   --for <duration> runs for that window then drains
+                                   and exits like Ctrl+C would (for an overnight
+                                   trial, a demo, a CI step)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,

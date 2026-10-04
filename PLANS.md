@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater run --for <duration>` — a bounded fleet run that drains and exits at the deadline (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater run --for <duration>` — a bounded fleet run that drains and exits at the deadline (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** `tumwater run --once` gives a single round of ticks and exits — the cron-style invocation. An operator who wants the fleet to run for a bounded *window* (an overnight trial, a demo, a CI step, "run for two hours then stop") has to background the process and kill it by hand, which loses the graceful drain. Add `tumwater run --for <duration>` (e.g. `run --for 2h`): boot the fleet, run it until the deadline, then run the same graceful stop a Ctrl+C would run — in-flight ticks finish, the loop drains, a summary line prints — and exit.
 
@@ -25,10 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `run --once --for 5m` fails before boot naming both flags; `run --for 200d` fails with the cap wording; `run --for abc` and a trailing bare `--for` fail with the parser's wording before any repo gate.
 - Ctrl+C during a `--for` run still works and cancels the pending timer; the graceful-stop path is the same code either way.
 - `npm run test` passes with the new tests added and no existing behavior changed for plain `run` and `run --once`.
-
-
-
-## Done
 
 ### Dotted per-role config keys: `config get/set maxDailyCostUsdPerRole.<role>` and `roles.<id>.<field>` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
@@ -82,7 +82,6 @@ plus tests.
 - New tests beside them cover: merge-not-replace for both maps and a role entry, dotted get
   hit/miss/null, and the three failure shapes (bad value, bad field, bad role id).
   `npm run test` passes.
-
 
 ### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
@@ -144,7 +143,6 @@ src/operator-intent.ts, src/operator-requests.ts, src/help.ts, README.md, plus t
   consumed), `requestWake`'s marker field, `cmdWake`'s flag parsing, and the strict-args gate
   for the new flag — in test/operator-requests.test.ts, test/operator-intent.test.ts, and
   test/cli-operators.test.ts beside the wake cases already there. `npm run test` passes.
-
 
 ### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
@@ -440,8 +438,6 @@ Ctrl+D), test/tui-role-prompt.test.ts (one hint-line regex).
   lines in src/help.ts, src/cli-run.ts, src/operator-commands.ts, which are about the harness
   process, not the TUI).
 
-
-
 ### `tumwater prompt --file <path>` — queue a steering prompt from a file or stdin (planned 2026-10-03 by plan loop, done 2026-10-03 by feature)
 
 **Goal.** Steering prompts today must be typed as CLI arguments (`tumwater prompt "..."`), so a long,
@@ -584,7 +580,6 @@ only data polling and state assembly.
   surrogate-pair cursor rules in `applyKey`), budget and role-prompt input, history recall,
   quit — pass unchanged.
 - `npm run test` is green.
-
 
 ### The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01 by director, split 2026-10-02 by plan loop; requires part 1/3 landed, done 2026-10-02 by feature)
 

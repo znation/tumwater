@@ -5,7 +5,16 @@
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "./config.js";
 import { fail, say } from "./cli-output.js";
-import { parseBranchFlag, parseRoleFlag } from "./cli-args.js";
+import {
+  durationLabel,
+  failOverDurationCap,
+  failRivalShapes,
+  flagValue,
+  parseBranchFlag,
+  parseDurationFlag,
+  parseRoleFlag,
+} from "./cli-args.js";
+import { PAUSE_FOR_MAX_MS } from "./operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "./fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
@@ -69,13 +78,18 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
  * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
  * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
  * into one round of ticks and a summary line (onceSummary below), for cron-style invocations.
- */
+ * `--for <duration>` keeps the daemon shape (redeployer, LaunchServicesWatch, supervisor hand-off
+ * all stay) but arms a deadline: at the deadline the same graceful stop a Ctrl+C runs fires, and
+ * the process exits after printing the summary. A mid-run self-redeploy hands the same args
+ * (including `--for`) to the supervisor's next child, so the deadline restarts in the new
+ * generation — the window is per-generation, stated here rather than coded around. */
 export async function cmdRun(root: string, args: string[]): Promise<void> {
   // The one function the self-redeploy asks before swapping onto a successor and the supervisor
   // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
   // half runs it too, so a start that cannot boot fails before any child spawns. The flag
   // vocabulary is validated by the dispatcher (cli.ts, from the same RUN_FLAG_SPECS).
   const once = args.includes("--once");
+  const forMs = parseRunWindow(args, once);
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
   if ("problem" in startup) fail(startup.problem);
@@ -106,6 +120,16 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
+  // A windowed run's deadline arms the same graceful stop a Ctrl+C runs — the identical `stop`
+  // closure, so the drain path is one code path either way. clearTimeout in the finally below
+  // retracts it when the run ends first (an early Ctrl+C), so no stray timer outlives the run.
+  const deadlineTimer =
+    forMs !== null
+      ? setTimeout(() => {
+          say("deadline reached — stopping");
+          stop();
+        }, forMs)
+      : null;
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
   // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
@@ -128,10 +152,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
+  const forNote = forMs !== null ? ` · for ${durationLabel(forMs)}` : "";
   say(
     once
       ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit`
-      : `tumwater running on branch ${mainBranch}${build}${rootNote} — Ctrl+C to stop`,
+      : `tumwater running on branch ${mainBranch}${forNote}${build}${rootNote} — Ctrl+C to stop`,
   );
   say(`loops: ${roles.join(", ")}`);
   say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
@@ -152,12 +177,29 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       roleFilter: roleFilter ?? undefined,
     });
   } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
     unsubscribe();
   }
-  if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
+  if (once || forMs !== null) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
   if (exit.restart) process.exit(RESTART_EXIT_CODE);
+}
+
+/** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or
+ * null when the flag is absent. The two body-level rules fail fast, before any repo gate or
+ * boot: the value must parse as a duration (parseDurationFlag's own wording, the same messages
+ * the dispatcher's DURATION_FLAG gate already ran), and `--for` and `--once` are rivals — a
+ * one-round run and a windowed run cannot both apply. The 90-day ceiling is `pause --for`'s
+ * (PAUSE_FOR_MAX_MS), the same cap every scheduled window in the harness honors. Exported for
+ * tests, exactly as onceSummary below is. */
+export function parseRunWindow(args: string[], once: boolean): number | null {
+  const raw = flagValue(args, "--for");
+  if (raw === null) return null;
+  const ms = parseDurationFlag("--for", raw);
+  if (once) failRivalShapes("--for", "--once", "a one-round run and a windowed run cannot both apply");
+  failOverDurationCap("--for", ms, PAUSE_FOR_MAX_MS);
+  return ms;
 }
 
 /** The once round's one-line summary, read from the runners' persisted loop state plus the

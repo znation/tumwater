@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { onceSummary } from "../src/cli-run.js";
+import { onceSummary, parseRunWindow } from "../src/cli-run.js";
+import { expectFail, expectOk } from "./exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { pauseFleet } from "../src/fleet-state.js";
 import type { LoopState } from "../src/loop-state.js";
@@ -20,6 +21,33 @@ import { makeRepo } from "./repo-fixtures.js";
 function state(role: string, over: Partial<LoopState>): LoopState {
   return { ...freshLoopState(role), ...over };
 }
+
+// --- parseRunWindow: the run --for body rules (the dispatcher's DURATION_FLAG gate has
+// already named a malformed value with parseDurationFlag's wording by the time these run;
+// here the same parse is pinned through the helper cmdRun itself calls) ---
+
+test("parseRunWindow parses --for's duration and returns null without the flag", () => {
+  assert.equal(expectOk(() => parseRunWindow(["--for", "2h"], false)), 2 * 60 * 60 * 1000);
+  assert.equal(expectOk(() => parseRunWindow(["--once"], false)), null);
+});
+
+test("parseRunWindow fails a malformed --for with the duration wording", () => {
+  const r = expectFail(() => parseRunWindow(["--for", "abc"], false));
+  assert.match(r.stderr, /--for needs a duration like 45s, 90m, 2h, or 1d \(got "abc"\)/);
+  // A trailing bare --for fails the same way (the dispatcher's gate names it first in real use).
+  const bare = expectFail(() => parseRunWindow(["--for"], false));
+  assert.match(bare.stderr, /--for needs a value/);
+});
+
+test("parseRunWindow rejects --for together with --once", () => {
+  const r = expectFail(() => parseRunWindow(["--once", "--for", "5m"], true));
+  assert.match(r.stderr, /--for cannot be combined with --once/);
+});
+
+test("parseRunWindow enforces pause --for's 90-day cap", () => {
+  const r = expectFail(() => parseRunWindow(["--for", "200d"], false));
+  assert.match(r.stderr, /--for is capped at 90d \(got 200d\)/);
+});
 
 test("counts the round's ticks and buckets them by last result, sorted by key", () => {
   const root = makeRepo();

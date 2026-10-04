@@ -41,6 +41,7 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                             # add --file <path> to read the brief from a file
                             # add --adopt to adopt an existing repo as-is
 tumwater run                # start the loops (Ctrl+C to stop)
+tumwater run --for 2h       # run for a bounded window, then drain and exit like Ctrl+C would
 ```
 
 Then, from another terminal:

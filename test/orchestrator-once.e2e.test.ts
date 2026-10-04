@@ -227,7 +227,7 @@ test("once: a typo'd flag fails fast with the unknown-argument wording", async (
     const r = await cli(repo, "run", "--onc");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /unknown argument: --onc/);
-    assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --role <id>/);
+    assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --for <duration>, --role <id>/);
   } finally {
     restore();
   }

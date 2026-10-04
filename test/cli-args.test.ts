@@ -158,7 +158,7 @@ test("run's flag vocabulary accepts --branch, --once, and --role and rejects eve
   // A typo'd --once must fail with the standard wording, not silently run a daemon round.
   const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], RUN_FLAG_SPECS));
   assert.match(r.stderr, /unknown argument: --onc/);
-  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --role <id>/);
+  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>, --once, --for <duration>, --role <id>/);
   // --once takes no value: a following token is a stray, not its argument.
   const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], RUN_FLAG_SPECS));
   assert.match(valued.stderr, /unknown argument: yes/);

@@ -236,6 +236,33 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
   });
 });
 
+// `run --for <duration>`: the windowed run boots the daemon-shaped fleet, stops itself at the
+// deadline through the same graceful stop a Ctrl+C runs, prints the deadline line and the
+// summary, and exits 0 — no operator signal needed.
+test("run --for boots, stops itself at the deadline, and prints the summary", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run for window");
+
+  onlyCleanRole(repo);
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run", "--for", "3s"]);
+  try {
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
+    assert.match(s.out(), /tumwater running on branch main · for 3s ·/);
+    assert.match(s.out(), /deadline reached — stopping/);
+    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
+    assert.match(s.out(), /once: \d+ ticks?/);
+    assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
+    // A deadline stop the run asked for is not the fleet dying: no supervisor_exit trace.
+    assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,
+      `a deadline stop must not be recorded as a fleet death:\n${JSON.stringify(readEvents(repo))}`);
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
 // Ctrl+C from a terminal also reaches the orchestrator generation itself (same foreground
 // group): cmdRun's own SIGINT handler must stop the fleet gracefully — announce, abort
 // in-flight ticks — and hand both processes a clean exit, and a SECOND Ctrl+C must force the
