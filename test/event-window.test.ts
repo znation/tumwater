@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { readEventsSince, readWindowEvents } from "../src/event-window.js";
 import { collectReport } from "../src/report-data.js";
-import { renderReportMarkdown } from "../src/ui/report-render.js";
+import { renderReportMarkdown } from "../src/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";

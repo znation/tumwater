@@ -1,11 +1,11 @@
 /** The usage report's CLI command half (cmdReport): parse the flags, collect through
- * report-data.ts / failure-data.ts, and print. The Markdown renderers live beside it in
- * report-render.ts (the cmdLogs/cmdHistory pattern of this directory: command in one file,
- * render in its render module). */
+ * report-data.ts / failure-data.ts, and print. The Markdown renderers live in the pure-render
+ * modules they pair with: report-render.ts (top level, beside failure-report.ts) and
+ * failure-report.ts. */
 import { collectReport, collectReportSince } from "../report-data.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
-import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "../report-render.js";
 import { say, sayJson, sayJsonOrRender } from "../cli-output.js";
 import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../event-window.js";

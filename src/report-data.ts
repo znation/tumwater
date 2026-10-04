@@ -1,7 +1,7 @@
 /** Collection half of the usage report: read the harness's event log and backlog history over
  * a window of local calendar days and distill it into a `ReportData` — per-day tick/token/
  * commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and BUGS.md.
- * The Markdown rendering of this data lives in ui/report-render.ts, a pure function of it; the split
+ * The Markdown rendering of this data lives in report-render.ts, a pure function of it; the split
  * mirrors the failure report's (failure-data.ts / failure-report.ts) and keeps "what happened"
  * (window math, aggregation, bounds) apart from "how it prints" (bars, cell wording), which
  * change for different reasons — and keeps core data collection out of the presentation

@@ -1,15 +1,17 @@
 /** The usage report's Markdown render: turn a collected `ReportData` (report-data.ts) into the
  * bounded Markdown the CLI prints and the TUI usage pane reuses (pure function of the data —
  * no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The
- * command half (cmdReport) lives beside it in ui/report.ts, the cmdLogs/cmdHistory pattern
- * of this directory. */
-import { type ReportData, type ReportDay, type SinceReport } from "../report-data.js";
-import { rankCountEntries } from "../rank.js";
-import { compactTokens, usd } from "../text.js";
-import { reportWindow } from "../datetime.js";
-import { durationLabel } from "../cli-args.js";
-import { eventsRotationLabel } from "../events.js";
-import { SPARSE_WINDOW_NOTE } from "../event-window.js";
+ * command half (cmdReport) lives in ui/report.ts. It sits at the top level beside
+ * failure-report.ts — the failure digest's Markdown render of the same shape — because it is
+ * a pure render with no ink or UI dependency, and core modules (rank.ts, history-data.ts)
+ * name it in their contracts. */
+import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
+import { rankCountEntries } from "./rank.js";
+import { compactTokens, usd } from "./text.js";
+import { reportWindow } from "./datetime.js";
+import { durationLabel } from "./cli-args.js";
+import { eventsRotationLabel } from "./events.js";
+import { SPARSE_WINDOW_NOTE } from "./event-window.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
