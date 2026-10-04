@@ -170,17 +170,25 @@ export async function landVetted(
   let aborted = false;
   const finish = (): Array<TickResult | undefined> =>
     aborted ? results.map((r) => r ?? "aborted") : results;
+  // The landing step the degenerate case and the abandon fallback share: land one request
+  // through landApprovedChange on its role's wiring, and degrade a throw to "error" on that
+  // change (its ref kept for recovery) with the reason on the role's state — a throw means
+  // this change's plumbing failed, never that an earlier one is lost (see the catches below
+  // and test/lander-errors.test.ts, which pins the degradation).
+  const landOne = async (s: number, req: LandRequest): Promise<void> => {
+    try {
+      results[s] = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
+    } catch (err) {
+      results[s] = "error";
+      wiringFor(req.role).state.lastError = errorMessage(err);
+    }
+  };
 
   // ── The degenerate case: one vetted change lands on its own ──────────────────────────
   if (vetted.length === 1) {
     const req = vetted[0]!;
     report(0, "landing");
-    try {
-      results[0] = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
-    } catch (err) {
-      results[0] = "error";
-      wiringFor(req.role).state.lastError = errorMessage(err);
-    }
+    await landOne(0, req);
     return results;
   }
 
@@ -263,14 +271,8 @@ export async function landVetted(
     for (let s = landedCount; s < vetted.length; s++) {
       const req = vetted[s]!;
       report(s, "landing");
-      try {
-        const result = await landApprovedChange(landerCtx(wiringFor(req.role)), req);
-        results[s] = result;
-        if (result === "aborted") aborted = true;
-      } catch (err) {
-        results[s] = "error";
-        wiringFor(req.role).state.lastError = errorMessage(err);
-      }
+      await landOne(s, req);
+      if (results[s] === "aborted") aborted = true;
       report(s, "done");
       if (results[s] !== "changed") break;
     }
