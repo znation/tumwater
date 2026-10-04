@@ -65,6 +65,24 @@ export function fenceTracker(): { inside(line: string): boolean; open(): boolean
   };
 }
 
+/** The trimmed title of `line` when it is a markdown heading line at `prefix` level and not
+ * quoted content — null otherwise, including when fenceTracker reports the line inside a fenced
+ * code block. The single home of the fence-aware heading guard (`!fenced.inside(line) &&
+ * line.startsWith(prefix)` plus the slice/trim) that every line-level reader of the backlog
+ * docs repeats: sectionLines' section boundaries and parseEntryDetails' entry boundaries here,
+ * and question-commands.ts's five walks of QUESTIONS.md (the Open/Answered scan, the Open
+ * section's end, the `### ` block split, the Answered section's start, and the section's
+ * end when a moved block is inserted). Readers that walk
+ * whole documents collecting heading lines go through fenceAwareHeadingLines instead; callers
+ * that only need "is this a heading" pass a tracker and compare the title or test for null. */
+export function fencedHeadingTitle(
+  line: string,
+  fenced: ReturnType<typeof fenceTracker>,
+  prefix: "## " | "### ",
+): string | null {
+  return !fenced.inside(line) && line.startsWith(prefix) ? line.slice(prefix.length).trim() : null;
+}
+
 /** The body lines of the `## <sectionTitle>` section of a markdown document: everything
  * between that heading line and the next `## ` line (or EOF), neither boundary included. A
  * `## ` line inside a fenced code block (entries quote markdown templates and shell traces) is
@@ -77,8 +95,7 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
   let inSection = false;
   const fenced = fenceTracker();
   for (const line of md.split("\n")) {
-    const inFence = fenced.inside(line);
-    if (!inFence && line.startsWith("## ")) {
+    if (fencedHeadingTitle(line, fenced, "## ") !== null) {
       inSection = line.slice(3).trim() === sectionTitle;
       continue;
     }
@@ -139,7 +156,7 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
   const fenced = fenceTracker();
   for (const line of sectionLines(md, sectionTitle)) {
     if (fenced.inside(line)) bodyLines.push(line);
-    else if (line.startsWith("### ")) {
+    else if (fencedHeadingTitle(line, fenced, "### ") !== null) {
       close();
       title = line.slice(4).trim();
     } else {

@@ -7,7 +7,7 @@
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
 import { fail, say, sayJson } from "./cli-output.js";
-import { fenceTracker, openQuestionEntries } from "./backlog.js";
+import { fencedHeadingTitle, fenceTracker, openQuestionEntries } from "./backlog.js";
 import { collapseWhitespace } from "./text.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";
@@ -70,8 +70,8 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   let answeredIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
-    if (!fenced.inside(line) && line.startsWith("## ")) {
-      const title = line.slice(3).trim();
+    const title = fencedHeadingTitle(line, fenced, "## ");
+    if (title !== null) {
       if (title === "Open" && openIdx === -1) openIdx = i;
       else if (title === "Answered" && answeredIdx === -1) answeredIdx = i;
     }
@@ -89,7 +89,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   // intermediate section and let one answer move another section's entries.
   let openEnd = lines.length;
   for (let i = openIdx + 1; i < lines.length; i++) {
-    if (!fencedBlocks.inside(lines[i] ?? "") && (lines[i] ?? "").startsWith("## ")) {
+    if (fencedHeadingTitle(lines[i] ?? "", fencedBlocks, "## ") !== null) {
       openEnd = i;
       break;
     }
@@ -103,9 +103,10 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   let current: OpenEntryBlock | null = null;
   for (let i = openIdx + 1; i < openEnd; i++) {
     const line = lines[i] ?? "";
-    if (!fencedEntries.inside(line) && line.startsWith("### ")) {
+    const entryTitle = fencedHeadingTitle(line, fencedEntries, "### ");
+    if (entryTitle !== null) {
       if (current !== null) current.end = i;
-      current = { start: i, end: openEnd, title: line.slice(4).trim() };
+      current = { start: i, end: openEnd, title: entryTitle };
       blocks.push(current);
     }
   }
@@ -188,8 +189,8 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
     const line = rebuilt[i] ?? "";
     if (fenced2.inside(line)) continue;
     if (answeredAt === -1) {
-      if (line.startsWith("## ") && line.slice(3).trim() === "Answered") answeredAt = i;
-    } else if (line.startsWith("## ")) {
+      if (fencedHeadingTitle(line, fenced2, "## ") === "Answered") answeredAt = i;
+    } else if (fencedHeadingTitle(line, fenced2, "## ") !== null) {
       break; // The Answered section's end: a placeholder beyond it is another section's.
     } else if (line.trim() === "_None yet._") {
       placeholderAt.push(i);
@@ -208,7 +209,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   }
   let insertAt = rebuilt.length;
   for (let i = answeredAt + 1; i < rebuilt.length; i++) {
-    if (!fenced2.inside(rebuilt[i] ?? "") && (rebuilt[i] ?? "").startsWith("## ")) {
+    if (fencedHeadingTitle(rebuilt[i] ?? "", fenced2, "## ") !== null) {
       insertAt = i;
       break;
     }
