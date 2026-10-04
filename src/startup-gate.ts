@@ -30,7 +30,8 @@ import {
  * checks what the running build knows of startup; a precondition the new build adds is
  * invisible to it until that build runs. */
 
-/** The repo-level preconditions every repo-bound command shares (requireReadyRepo in cli.ts): git
+/** The repo-level preconditions every repo-bound command shares (requireReadyRepo in
+ * cli-query-commands.ts): git
  * on PATH, a repository, tumwater.json present, at least one commit. The first unmet one's
  * message, or null when the repo is ready. A missing tumwater.json is "not initialized" here,
  * never "use defaults": starting a fleet is the moment an operator's config must exist. */

@@ -29,8 +29,8 @@ export function sayJson(value: unknown): void {
  * whose Markdown view is its own collection of the same files): the `--json` branch is chosen
  * FIRST, then the payload is resolved exactly once inside the branch that consumes it — a
  * thunk never runs for a discarded result, so the human path never gathers the JSON document
- * and vice versa. (status --json stays hand-rolled in cli.ts: its JSON document and human
- * table collect different data, so neither branch can feed the other.) */
+ * and vice versa. (status --json stays hand-rolled in cli-query-commands.ts: its JSON
+ * document and human table collect different data, so neither branch can feed the other.) */
 export function sayJsonOrRender<T>(args: string[], payload: T | (() => T), render: (payload: T) => string): void {
   const resolve = () => (typeof payload === "function" ? (payload as () => T)() : payload);
   if (args.includes("--json")) sayJson(resolve());
