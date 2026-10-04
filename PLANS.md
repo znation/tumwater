@@ -5,7 +5,53 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### A shared test-fake catalog — the infrastructure that retires the recurring `no-fake` validation gap (planned 2026-10-04 by steward, promoted from the gap tally)
+
+**Goal.** 33 retained Fixed entries in BUGS.md carry the validation gap `no-fake` — the fix could not
+be confirmed until a fake or shim that did not exist was written, one entry at a time. Each such fix
+hand-rolls a private fake into its own test file, so the next entry needing the same fake pays the
+cost again. A small shared catalog of fakes under `test/fakes/` (the fake-pi-on-PATH shim's home)
+makes the common shapes reusable, retiring the most recurring gap class in the file.
+
+Representative entries carrying the tag (of the 33, found by reading each Fixed entry's
+`**Validation gap:**` line as of 2026-10-04):
+"A SUMMARY follow-up turn bypasses the loop's shared transient retry" — needed a transient-failure
+fake for a follow-up pi run; "A provider `Request timed out.` fails a tick that has already spent
+hours of authoring with no retry" — same shape, backend-level; "A build check that spans a host
+sleep but finishes inside its deadline reads as a real red" — needed a clock/sleep fake;
+"The harness tells every loop to pipe its verification through `tail`, and the tool-call stall
+watchdog then files a false stall" — needed a slow-output fake; "A real supervisor that dies
+without forwarding its signal" and "The doctor CLI tests in test/doctor.test.ts assert exit 0
+against the host's REAL process table" — needed a process-table fake; "HTTP 429 is not a transient
+failure class" — needed a rate-limit-responding fake endpoint.
+
+**Approach.**
+- New directory `test/fakes/` with one module per fake family, each exporting a factory the
+  existing tests can adopt incrementally (no big-bang rewrite of passing tests):
+  - `time.ts` — injectable clock and sleep for deadline/window logic (host-sleep, watchdog,
+    min-gap cases), mirroring how `todayStamp` is already injectable in prompt building.
+  - `transient.ts` — a `runPi`/HTTP stub that fails N times with a chosen class (429, timeout,
+    5xx) then succeeds, so retry-policy tests stop hand-rolling failure sequences.
+  - `process.ts` — a fake process table for supervisor/orphan/sweep tests, replacing assertions
+    that read the host's real process list.
+  - `log.ts` — an event-log fixture builder that writes well-formed `tick_end`/`review_verdict`/
+    `build_check` events to a scratch repo's `.tumwater/log/events.jsonl`, the shape several
+    digest and history fixes had to improvise.
+- Keep the existing fake-pi-on-PATH shim as the top-level mechanism; these fakes compose with it
+  (the shim stays the pi boundary, the catalog fakes the world around it).
+- Zero runtime dependencies: the fakes use node built-ins only, like the rest of the suite.
+
+**Files touched.** `test/fakes/` (new: `time.ts`, `transient.ts`, `process.ts`, `log.ts`), plus
+adopting them in the test files of one or two of the cited entries as the pattern demonstration;
+suite-wide adoption is not part of this plan.
+
+**Acceptance criteria.**
+- Each fake module is used by at least one test that previously hand-rolled the equivalent
+  (cite the migrated test in the PR/commit body).
+- A fixed-but-recurring shape (transient retry) is covered by one test written against the fake
+  alone, with no real process, network, or clock involvement.
+- `npm run test` stays green, and the fake modules are plain node built-ins with no new
+  dependencies in package.json.
 
 ## Done
 
