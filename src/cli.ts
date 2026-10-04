@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 import {
   flagValue,
+  parseCountFlag,
+  parsePortFlag,
+  parseRoleFlag,
+} from "./cli-args.js";
+import {
   DURATION_FLAG,
   REASON_FLAG,
   grepFlagSpec,
   JSON_FLAG,
   N_FLAG,
-  parseCountFlag,
-  parsePortFlag,
-  parseRoleFlag,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   SINCE_FLAG,
-} from "./cli-args.js";
+} from "./cli-flag-specs.js";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";

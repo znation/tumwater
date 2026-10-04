@@ -9,14 +9,14 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
+import { parseBranchFlag } from "./cli-args.js";
 import {
   type FlagSpec,
   JSON_FLAG,
   ROLE_FLAG,
   ROLE_VALUE_ERROR,
-  parseBranchFlag,
   rejectEqualsForm,
-} from "./cli-args.js";
+} from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
 import { templateIds } from "./init-templates.js";
 import { errorMessage, parsePositiveInt } from "./text.js";

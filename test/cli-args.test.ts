@@ -8,10 +8,8 @@ import {
   parseDurationFlag,
   parsePortFlag,
   parseRoleFlag,
-  rejectUnknownArgs,
-  ROLE_VALUE_ERROR,
-  RUN_FLAG_SPECS,
 } from "../src/cli-args.js";
+import { rejectUnknownArgs, ROLE_VALUE_ERROR, RUN_FLAG_SPECS } from "../src/cli-flag-specs.js";
 import { allRoleIds } from "../src/roles.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 
