@@ -580,7 +580,7 @@ test("runTui refuses to start without an interactive terminal", async () => {
 });
 
 
-test("Ctrl+C exits cleanly: raw mode restored off, render timer cleared", async () => {
+test("Ctrl+D exits cleanly: raw mode restored off, render timer cleared", async () => {
   const repo = await makeTuiRepo();
   const tui = startTui(repo);
   await new Promise((r) => setImmediate(r)); // ink's tree effects mount raw mode

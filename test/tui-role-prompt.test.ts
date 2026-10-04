@@ -18,7 +18,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     tui.key(undefined, "r", { ctrl: true });
     assert.match(tui.lastFrame(), /prompt for clean: Enter to send, Esc to cancel/);
     // The bottom hint names the addressed loop while the mode holds the line.
-    assert.match(tui.lastFrame(), /Enter send to clean · ↑↓ history · Esc cancel · Ctrl\+C quit/);
+    assert.match(tui.lastFrame(), /Enter send to clean · ↑↓ history · Esc cancel · Ctrl\+D quit/);
     for (const ch of "check the clean queue") tui.key(ch, ch);
     tui.key(undefined, "return");
 

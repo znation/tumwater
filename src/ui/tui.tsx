@@ -111,7 +111,6 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
-
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
   // tui-backlog.ts's one definition, shared with the keypress handlers so stale-selection
   // clamping cannot drift.
@@ -128,11 +127,14 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const rows = stdout.rows || 40;
     const width = stdout.columns || 120;
     const snap = snapshot(root);
-    keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.loops.map((l) => l.role));
+    const status = renderStatusSpans(root, snap, width);
+    // The director row's in-flight flag is Ctrl+C's interrupt gate (tui-keys.ts): the render
+    // already computes the per-loop rows, so it feeds the flag back rather than re-deriving it.
+    keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.loops.map((l) => l.role),
+      status.loops.find((r) => r.role === "director")?.inFlight === true);
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;
-    const status = renderStatusSpans(root, snap, width);
     // What needs the operator — the dashboard's alert banners (fleet-alerts.ts's fleetAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
     const attention = alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width);
@@ -212,7 +214,8 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // Ink renders the frame (tui-app.tsx) into the same stdout every earlier frame went to,
   // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
   // ink's `useInput` and dispatches them through the extracted handler (tui-keys.ts).
-  // exitOnCtrlC is false because Ctrl+C is the TUI's own quit key; console patching stays
+  // exitOnCtrlC is false because the TUI owns its own keys: Ctrl+D quits and Ctrl+C
+  // interrupts the director's in-flight tick (tui-keys.ts); console patching stays
   // off so console.* keeps writing past the TUI exactly as before it; and the render is
   // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
   // on each keypress — so ink's fps limiter would only defer frames this loop already

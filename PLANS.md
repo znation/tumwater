@@ -5,7 +5,13 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The TUI's Ctrl+D quits like shell EOF and Ctrl+C interrupts the director's in-flight tick (planned 2026-10-04 by director, from the user's request)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+## Done
+
+### The TUI's Ctrl+D quits like shell EOF and Ctrl+C interrupts the director's in-flight tick (planned 2026-10-04 by director, from the user's request, done 2026-10-04 by feature)
 
 **Goal.** In `tumwater tui` the director prompt line is the site of text input, so the keys should
 behave like a shell line editor: Ctrl+D on (any) line counts as EOF and exits the TUI, while
@@ -41,7 +47,9 @@ is running and does nothing (beyond a short flash notice) when none is.
    so no real fleet is touched.
 
 **Files touched:** src/ui/tui-keys.ts, src/ui/tui.tsx, src/ui/tui-frame.ts,
-test/tui-keys.test.ts, test/tui-frame.test.ts (possibly test/tui-operator-keys.test.ts).
+test/tui-keys.test.ts, test/tui-frame.test.ts, test/tui-fixtures.ts (the fake-TTY quit now
+presses Ctrl+D), test/tui.test.ts and test/tui-reload.test.ts (teardown tests renamed to
+Ctrl+D), test/tui-role-prompt.test.ts (one hint-line regex).
 
 **Acceptance criteria.**
 - Ctrl+D in the TUI exits (the quit path — render teardown and main-loop resolve — exactly as
@@ -56,10 +64,7 @@ test/tui-keys.test.ts, test/tui-frame.test.ts (possibly test/tui-operator-keys.t
   lines in src/help.ts, src/cli-run.ts, src/operator-commands.ts, which are about the harness
   process, not the TUI).
 
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
-
-## Done
 
 ### `tumwater prompt --file <path>` — queue a steering prompt from a file or stdin (planned 2026-10-03 by plan loop, done 2026-10-03 by feature)
 

@@ -99,16 +99,16 @@ test("the TUI tears down its terminal and re-execs exactly once when a newer bui
     await sleep(60);
     assert.equal(reexecs.n, 1, "the reload fires at most once per process, and the watch is stopped");
   } finally {
-    // If an assert fired before the trigger, the loop is still waiting: Ctrl+C ends it the
+    // If an assert fired before the trigger, the loop is still waiting: Ctrl+D ends it the
     // way a user would.
-    term.keypress({ ctrl: true, name: "c" });
+    term.keypress({ ctrl: true, name: "d" });
     await done;
   }
 });
 
-test("Ctrl+C ends the TUI cleanly and never re-execs while the dist stamp is unchanged", async () => {
+test("Ctrl+D ends the TUI cleanly and never re-execs while the dist stamp is unchanged", async () => {
   const repo = makeRepo();
-  await initProject(repo, "tui ctrl-c teardown");
+  await initProject(repo, "tui ctrl-d teardown");
 
   const startup = readBuildInfo();
   assert.ok(startup, "the suite runs from a stamped dist");
@@ -119,10 +119,10 @@ test("Ctrl+C ends the TUI cleanly and never re-execs while the dist stamp is unc
     watch: reloadWatchSeams(() => startup, reexecs),
   });
   await sleep(60);
-  term.keypress({ ctrl: true, name: "c" });
+  term.keypress({ ctrl: true, name: "d" });
   await done;
   await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
-  assert.equal(reexecs.n, 0, "a Ctrl+C teardown never re-execs");
+  assert.equal(reexecs.n, 0, "a Ctrl+D teardown never re-execs");
   assert.deepEqual(term.rawModes, [true, false]);
   assert.equal(term.writes.at(-1), "\n");
 });

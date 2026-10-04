@@ -137,11 +137,11 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
     globalThis.clearInterval = origClearInterval;
   }
 
-  /** Ctrl+C and wait for runTui to finish, then restore every patched global. The extra
-   * tick after `done` lets ink's deferred raw-mode teardown microtask (queued at unmount)
-   * run before assertions read `rawModes`. */
+  /** Ctrl+D (shell EOF — the TUI's quit key) and wait for runTui to finish, then restore
+   * every patched global. The extra tick after `done` lets ink's deferred raw-mode teardown
+   * microtask (queued at unmount) run before assertions read `rawModes`. */
   async function quit(): Promise<void> {
-    press(undefined, "c", { ctrl: true });
+    press(undefined, "d", { ctrl: true });
     await done;
     await new Promise((r) => setImmediate(r));
     cleanup();

@@ -14,6 +14,7 @@ import {
   submitRolePromptAndWake,
 } from "../operator-intent.js";
 import { errorMessage, usdCap } from "../text.js";
+import { DIRECTOR_ROLE } from "../roles.js";
 import {
   applyKey,
   newPromptHistory,
@@ -35,14 +36,14 @@ const FLASH_MS = 3000;
  * keypress dispatch used to keep in runTui's closure — the prompt line, budget-edit and
  * role-prompt modes, the session history, the flash notice, the view/selection/scroll state,
  * and the line budgets render feeds back. It takes only the seams it cannot own itself: the
- * repo root the disk actions run against, the quit callback (Ctrl+C), a render request callback
+ * repo root the disk actions run against, the quit callback (Ctrl+D), a render request callback
  * (every branch that painted a frame), and an injectable clock so the flash expiry is
  * testable without waiting the real 3 s. Rendering (src/ui/tui.tsx) stays the caller: it
  * syncs snapshot data and line budgets in, and reads the resulting state out to compose the
  * frame — the same data flow, one module boundary added. */
 interface TuiKeysDeps {
   root: string;
-  /** Ctrl+C: the caller resolves its main loop (and tears down the terminal) here. */
+  /** Ctrl+D: the caller resolves its main loop (and tears down the terminal) here. */
   quit(): void;
   /** Every branch that used to call render() after a state change calls this instead. */
   requestRender(): void;
@@ -66,6 +67,8 @@ interface TuiKeysState {
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
+  /** Whether the director loop currently has a tick in flight (render's feed, Ctrl+C's gate). */
+  directorInFlight: boolean;
   /** The live flash notice, or null when none is armed or the clock passed its expiry. */
   flash: string | null;
 }
@@ -75,8 +78,9 @@ export interface TuiKeys {
    * calls into this with the same (str, key) shape the readline "keypress" event delivered. */
   handleKey(str: string | undefined, key: { ctrl?: boolean; name?: string }): void;
   /** Render feeds the snapshot's cap/free flag/roles in each frame (the locals the handler
-   * reads without re-reading config itself); the view clamps against a changed role count. */
-  syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[]): void;
+   * reads without re-reading config itself), plus the director loop's in-flight flag —
+   * Ctrl+C's interrupt gate; the view clamps against a changed role count. */
+  syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[], directorInFlight?: boolean): void;
   /** Render feeds the activity pane's line budgets in each frame. */
   setLineBudgets(eventBudget: number, entryBudget: number): void;
   /** The state render composes the frame from. */
@@ -209,6 +213,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let eventBudget = 0;
   let entryBudget = 0;
   let roleIds: string[] = [];
+  // Whether the director's status row is in flight, fed by render each frame: the gate for
+  // Ctrl+C's interrupt — with no director tick running, Ctrl+C flashes a notice instead of
+  // writing an abort marker nothing would consume.
+  let directorInFlight = false;
 
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
   // The recall state resets with it: the restored text is the live draft now, so the next
@@ -234,8 +242,29 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   };
 
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }): void => {
-    if (key.ctrl && key.name === "c") {
+    if (key.ctrl && key.name === "d") {
       deps.quit();
+      return;
+    }
+    if (key.ctrl && key.name === "c") {
+      // Ctrl+C interrupts the director's in-flight tick (shell-EOF behavior moved to
+      // Ctrl+D): when the director row is in flight, write the same abort marker the
+      // CLI's `abort --role director` does, through the shared requestAbort core so the
+      // marker format and wording cannot drift; when none is, flash a notice and leave
+      // the fleet untouched. A failed marker write flashes the reason instead of
+      // escaping the handler — the same contract the per-loop controls above honor.
+      if (!directorInFlight) {
+        flashMessage("no director task in flight");
+        deps.requestRender();
+        return;
+      }
+      try {
+        const result = requestAbort(root, DIRECTOR_ROLE);
+        flashMessage(result.ok ? result.message : `error: ${result.error}`);
+      } catch (err) {
+        flashError(err);
+      }
+      deps.requestRender();
       return;
     }
     if (key.ctrl && key.name === "b") {
@@ -507,10 +536,11 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
 
   return {
     handleKey,
-    syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[]): void {
+    syncSnapshot(capUsd: number, budgetFree: boolean, roles: string[], directorRunning = false): void {
       currentCapUsd = capUsd;
       currentBudgetFree = budgetFree;
       roleIds = roles;
+      directorInFlight = directorRunning;
       view = Math.min(view, roleIds.length + 3); // clamp a stale index if roles changed
     },
     setLineBudgets(evBudget: number, enBudget: number): void {
@@ -531,6 +561,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         eventBudget,
         entryBudget,
         roleIds,
+        directorInFlight,
         flash: flash && now() < flashUntil ? flash : null,
       };
     },

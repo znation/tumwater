@@ -11,6 +11,8 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createTuiKeys, inkKeyToReadline } from "../src/ui/tui-keys.js";
+import { abortRequestPath } from "../src/paths.js";
+import { writeOrchestratorMarker } from "./log-fixtures.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "tui-keys-"));
@@ -136,11 +138,14 @@ test("a flash notice expires on the injected clock", () => {
   assert.equal(keys.state().flash, "budget n/a — all models free");
 });
 
-test("Ctrl+C quits through the dep, and the modes are mutually exclusive", () => {
+test("Ctrl+D quits through the dep, Ctrl+C flashes a no-task notice, and the modes are mutually exclusive", () => {
   const root = makeRoot();
   const { keys, quitCount } = makeKeys(root, () => 0);
   keys.handleKey(undefined, { ctrl: true, name: "c" });
-  assert.equal(quitCount(), 1, "Ctrl+C calls the quit dep and nothing else");
+  assert.equal(quitCount(), 0, "Ctrl+C never quits");
+  assert.equal(keys.state().flash, "no director task in flight");
+  keys.handleKey(undefined, { ctrl: true, name: "d" });
+  assert.equal(quitCount(), 1, "Ctrl+D calls the quit dep and nothing else");
 
   keys.syncSnapshot(0, false, ["clean"]);
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
@@ -151,6 +156,24 @@ test("Ctrl+C quits through the dep, and the modes are mutually exclusive", () =>
   keys.handleKey(undefined, { name: "escape" }); // leave role mode
   keys.handleKey(undefined, { ctrl: true, name: "b" }); // budget opens now
   assert.equal(keys.state().budgetMode, true);
+});
+
+test("Ctrl+C interrupts the director's in-flight tick: abort marker when in flight, notice when not", () => {
+  const root = makeRoot();
+  const { keys, quitCount } = makeKeys(root, () => 0);
+  // A live harness marker (this process's pid) so requestAbort passes its liveness gate.
+  writeOrchestratorMarker(root, ["director"]);
+  keys.syncSnapshot(0, false, ["director"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "c" });
+  assert.equal(quitCount(), 0, "Ctrl+C quits nothing");
+  assert.equal(keys.state().flash, "no director task in flight");
+  assert.ok(!fs.existsSync(abortRequestPath(root, "director")), "no marker without a tick in flight");
+
+  keys.syncSnapshot(0, false, ["director"], true);
+  keys.handleKey(undefined, { ctrl: true, name: "c" });
+  assert.equal(quitCount(), 0);
+  assert.match(keys.state().flash!, /abort requested for director/);
+  assert.ok(fs.existsSync(abortRequestPath(root, "director")), "the abort marker is written");
 });
 
 // The ink bridge (PLANS.md "TUI moves to ink, part 2b/3"): ink's useInput hands the
@@ -210,6 +233,9 @@ test("the adapter's output drives the dispatch exactly like the readline pairs d
   dispatch("", { return: true }); // return submits into the inbox
   assert.equal(keys.state().input, "", "return submits and clears the prompt line");
   dispatch("", { ctrl: true }); // ctrl with empty input maps to an empty ctrl+letter: inert
-  dispatch("c", { ctrl: true }); // Ctrl+C quits through the mapped shape
+  dispatch("c", { ctrl: true }); // Ctrl+C is the director interrupt, not a quit
+  assert.equal(quitCount(), 0);
+  assert.equal(keys.state().flash, "no director task in flight");
+  dispatch("d", { ctrl: true }); // Ctrl+D quits through the mapped shape
   assert.equal(quitCount(), 1);
 });
