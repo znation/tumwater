@@ -2,7 +2,7 @@ import type { TestCounts } from "../build-check-counts.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { humanSeconds, pad2 } from "../datetime.js";
+import { humanSeconds, pad2, secondsUntil } from "../datetime.js";
 import { pauseReasonSuffix } from "../phrases.js";
 import { shortSha, usd, usdCap } from "../text.js";
 
@@ -153,12 +153,13 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
  * (no deadline, or an already-expired one: the read side treats an expired marker as
  * unpaused). The one home of the guard + ms→seconds rounding behind the fleet's pause
  * countdowns, shared by pauseBadge's header fragment and fleet-alerts.ts's paused alert
- * title, so the two surfaces cannot disagree about how much time remains. The GUI's pause
+ * title, so the two surfaces cannot disagree about how much time remains. The guard is this
+ * function's own; the ms→seconds rounding rides datetime.ts's secondsUntil. The GUI's pause
  * control recomputes the ticking number client-side from the payload's raw `pausedUntil`
  * (gui-client-operator.ts) — a separate runtime that cannot import TypeScript. */
 export function pauseCountdown(pausedUntil: number | undefined, now: number): string | null {
   if (pausedUntil === undefined || pausedUntil <= now) return null;
-  return humanSeconds(Math.round((pausedUntil - now) / 1000));
+  return humanSeconds(secondsUntil(pausedUntil, now));
 }
 
 /** The header's quiet-hours fragment (plans: "Quiet hours … part 2/2, observability"): the

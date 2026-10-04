@@ -17,13 +17,30 @@ export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/** Whole seconds between two epoch-ms instants, rounded to the nearest second: `secondsSince`
+ * clamps at zero (an age never goes negative when the clock skews), `secondsUntil` clamps at
+ * zero the same way for the future direction (a countdown never reads negative once its
+ * deadline has passed). The one home of the clamp + rounding behind every elapsed age and
+ * countdown — status-render.ts's lastTickCell, the queued-prompt age and deliver-in suffix,
+ * and the fleet pause's auto-resume countdown all render through. The GUI page's browser
+ * script keeps its own one-line twins (gui-client.ts's ageSec and its inline countdown
+ * rounding — a separate runtime that cannot import TypeScript), pinned by its marked regions'
+ * tests, so the copies cannot disagree on the clamp or the rounding. */
+export function secondsSince(sinceMs: number, now: number): number {
+  return Math.max(0, Math.round((now - sinceMs) / 1000));
+}
+
+/** `secondsSince` mirrored: whole seconds from `now` to a future epoch-ms instant, clamped at
+ * zero once the instant has passed. */
+export function secondsUntil(atMs: number, now: number): number {
+  return Math.max(0, Math.round((atMs - now) / 1000));
+}
+
 /** Whole elapsed seconds since an epoch-ms instant, clamped at zero and rounded to the
  * nearest second — the age rule status-render.ts's lastTickCell ages its `HH:MM:SS · Ns ago`
- * stamp through. The GUI page's browser script keeps its own one-line twin (gui-client.ts's
- * ageSec — a separate runtime that cannot import TypeScript), pinned by its marked regions'
- * tests, so the three copies cannot disagree on the clamp or the rounding. */
+ * stamp through (secondsSince against the real clock). */
 export function elapsedSeconds(sinceMs: number): number {
-  return Math.max(0, Math.round((Date.now() - sinceMs) / 1000));
+  return secondsSince(sinceMs, Date.now());
 }
 
 /** Calendar date as `YYYY-MM-DD` in local time — shared by the transcript run separators,

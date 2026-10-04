@@ -17,7 +17,7 @@ import {
   queuedRolePromptRecords,
 } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
-import { humanSeconds } from "./datetime.js";
+import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";
 import { errorMessage } from "./text.js";
@@ -65,11 +65,11 @@ function promptListPayload(
  * has not been delivered yet is not the fact an operator scanning the list needs. */
 function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, now: number): string {
   if (notBeforeMs !== null && notBeforeMs > now) {
-    const seconds = Math.max(0, Math.round((notBeforeMs - now) / 1000));
+    const seconds = secondsUntil(notBeforeMs, now);
     return ` (delivers in ${humanSeconds(seconds)})`;
   }
   if (queuedAtMs === null) return "";
-  const ageSeconds = Math.max(0, Math.round((now - queuedAtMs) / 1000));
+  const ageSeconds = secondsSince(queuedAtMs, now);
   return ` (queued ${humanSeconds(ageSeconds)} ago)`;
 }
 
