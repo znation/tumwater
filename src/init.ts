@@ -16,7 +16,7 @@ import {
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
 import { projectName } from "./project-name.js";
 import { tooLongMessage } from "./text.js";
-import { getTemplate, templateIds } from "./init-templates.js";
+import { getTemplate, unknownTemplateError } from "./init-templates.js";
 
 const PLANS_TEMPLATE = `# Plans
 
@@ -140,7 +140,7 @@ export async function initProject(
   // template shapes everything below.
   const template = opts.template ? getTemplate(opts.template) : null;
   if (opts.template && !template) {
-    throw new Error(`unknown template ${JSON.stringify(opts.template)} — valid templates: ${templateIds().join(", ")}`);
+    throw new Error(unknownTemplateError(opts.template));
   }
   const tpl = template ?? getTemplate("blank")!;
   // The brief records the template's preamble ahead of the operator's words, so their words

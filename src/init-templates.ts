@@ -98,6 +98,14 @@ export function getTemplate(id: string): InitTemplate | null {
   return INIT_TEMPLATES.find((t) => t.id === id) ?? null;
 }
 
+/** The error message for a typo'd or unknown `--template` id: the id, every valid template id,
+ * catalog order. Exactly two call sites today: the CLI parser (cli-command-args.ts, which fails
+ * before initProject runs any side effect) and initProject itself (which re-checks for its direct
+ * callers) — one renderer, so the two refusals can never drift apart. */
+export function unknownTemplateError(template: string): string {
+  return `unknown template ${JSON.stringify(template)} — valid templates: ${templateIds().join(", ")}`;
+}
+
 /** The catalog as id + description pairs, for `--list-templates`. */
 export function templateCatalog(): { id: string; description: string }[] {
   return INIT_TEMPLATES.map((t) => ({ id: t.id, description: t.description }));

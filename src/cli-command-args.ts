@@ -18,7 +18,7 @@ import {
   rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
-import { templateIds } from "./init-templates.js";
+import { templateIds, unknownTemplateError } from "./init-templates.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
@@ -112,9 +112,7 @@ export function parseInitArgs(args: string[]): {
     template = args[templateFlag + 1] ?? "";
     if (!template) fail("--template needs an id");
     if (!templateIds().includes(template)) {
-      fail(
-        `unknown template ${JSON.stringify(template)} — valid templates: ${templateIds().join(", ")}`,
-      );
+      fail(unknownTemplateError(template));
     }
   }
   if (listTemplates && templateFlag >= 0) {
