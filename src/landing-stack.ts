@@ -9,7 +9,8 @@
 import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { exemptSkipBlockReason, logNewQuestions } from "./landing-merge.js";
+import { exemptSkipBlockReason } from "./landing-merge.js";
+import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
 import { ffMainTo } from "./landing-git.js";

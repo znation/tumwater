@@ -22,6 +22,7 @@ import { warnEvent } from "./events.js";
 import { withLock } from "./lock.js";
 import { buildConflictPrompt } from "./gate-prompts.js";
 import { mergeLockDir } from "./paths.js";
+import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import { syncRootInstall } from "./dep-install.js";
 import type { TumwaterConfig } from "./config-schema.js";
@@ -184,19 +185,8 @@ function subsetOf(small: string[], big: string[]): boolean {
   return true;
 }
 
-/** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before` —
- * the capture-and-diff both merge paths record alongside their `merged` events (tryMerge and
- * landing-stack.ts's ffStackToMain). The capture (`openQuestions(root)` under the merge lock,
- * before the ff) stays with the callers: the lock window is theirs to define, and the diff is
- * only exact while the capture and this call share it. */
-export function logNewQuestions(root: string, before: string[], role: string): void {
-  for (const question of openQuestions(root)) {
-    if (!before.includes(question)) {
-      logEvent(root, { loop: role, type: "question_posted", question });
-    }
-  }
-}
-
+/** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before`,
+ * recorded by landing-questions.ts's logNewQuestions alongside this module's `merged` event. */
 async function tryMerge(
   ctx: MergeContext,
   wt: string,
