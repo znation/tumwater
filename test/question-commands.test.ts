@@ -152,6 +152,21 @@ test("answering in a file with no ## Answered section grows one at the end", () 
   assert.deepEqual(openQuestionEntries(root), []);
 });
 
+test("answering works when a fence after ## Answered runs unclosed to EOF", () => {
+  // scanQuestions walks the file twice with one tracker; a tracker left inside an unclosed
+  // fence at EOF made the second walk quote every Open heading, so the list showed the
+  // question while `answer` refused it with "0 open".
+  const root = tmpdir();
+  seed(root, '# Questions\n\n## Open\n\n### Which database?\n\nsqlite or postgres\n\n## Answered\n\n_None yet._\n\nfenced tail:\n\n```\nnever closed\n');
+  assert.match(openQuestionList(root), /^1\. Which database\?/);
+  const { title } = answerQuestion(root, 1, "sqlite");
+  assert.equal(title, "Which database?");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("### Which database?\n\nsqlite or postgres\n\n**Answered"));
+  assert.ok(md.includes("## Open\n\n_None yet._"));
+  assert.ok(md.includes("```\nnever closed"));
+});
+
 test("sayAnswered renders the prose confirmation or the answer-result JSON", async () => {
   const prose = attempt(() => sayAnswered(2, "Second: which backend?", false, "openai")).stdout.trimEnd();
   assert.equal(prose, "answered question 2: Second: which backend? — moved to ## Answered");

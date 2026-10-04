@@ -76,12 +76,17 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
     }
   }
   if (openIdx === -1) return null;
+  // A fresh tracker for this walk: the first loop consumed every line and left the tracker in
+  // its end-of-file state, so reusing it here would quote all Open headings whenever a fence
+  // after the Open section runs unclosed to EOF — and `answer` would refuse a question the
+  // list just showed.
+  const fencedBlocks = fenceTracker();
   const blocks: OpenEntryBlock[] = [];
   const openEnd = answeredIdx === -1 ? lines.length : answeredIdx;
   let current: OpenEntryBlock | null = null;
   for (let i = openIdx + 1; i < openEnd; i++) {
     const line = lines[i] ?? "";
-    if (!fenced.inside(line) && line.startsWith("### ")) {
+    if (!fencedBlocks.inside(line) && line.startsWith("### ")) {
       if (current !== null) current.end = i;
       current = { start: i, end: openEnd, title: line.slice(4).trim() };
       blocks.push(current);
