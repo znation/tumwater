@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater questions` — read and answer the open-question outbox from the CLI (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater questions` — read and answer the open-question outbox from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** QUESTIONS.md is the harness's channel for decisions that are genuinely the user's, but
 answering one means hand-editing markdown: move the `### ` heading from `## Open` to `## Answered`
@@ -53,10 +57,6 @@ test/question-commands.test.ts (new).
 - `tumwater questions --json` prints the payload document; `questions answer … --json` prints the
   answer result as JSON.
 - `npm run test` passes, including the new test file.
-
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-## Done
 
 ### `tumwater init --template` — seeded project templates so a fresh fleet starts with signal (planned 2026-10-04 by plan loop, implementing docs/feature-project-templates.md, done 2026-10-04 by feature)
 

@@ -21,6 +21,7 @@ import { parsePromptArgs } from "./cli-command-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
 import { cmdPrompt } from "./prompt-commands.js";
+import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";
@@ -330,6 +331,27 @@ async function main(): Promise<void> {
       // thunk, so whichever branch runs reads the three entry files exactly once — the
       // Markdown renderer consumes the same arrays the JSON document prints.
       sayJsonOrRender(args, () => backlogPayload(root), renderBacklogMarkdown);
+      break;
+    }
+    case "questions": {
+      // No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
+      // missing QUESTIONS.md, so the command inspects any directory instead of refusing.
+      const { positionals, rest } = peelPositionals(args);
+      rejectUnknownArgs("questions", rest, [JSON_FLAG]);
+      if (positionals.length === 0) {
+        sayQuestionList(root, rest.includes("--json"));
+        break;
+      }
+      if (positionals[0] !== "answer")
+        fail(`unknown questions subcommand: ${positionals[0]} (use "answer <n> <decision>")`);
+      const n = Number(positionals[1]);
+      if (!Number.isInteger(n) || n < 1)
+        fail('questions answer needs a positive question number: questions answer <n> "<decision>"');
+      const decision = positionals.slice(2).join(" ").trim();
+      if (decision === "")
+        fail('questions answer needs a decision: questions answer <n> "<decision>"');
+      const { title } = answerQuestion(root, n, decision);
+      sayAnswered(n, title, rest.includes("--json"), decision);
       break;
     }
     case "role": {

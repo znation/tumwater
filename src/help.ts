@@ -95,6 +95,14 @@ Usage:
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
                                    same data the Markdown view renders
+  tumwater questions [--json]      List open questions numbered (the read half of the
+                                   question outbox); --json prints the {questions}
+                                   array — position, title, body — as data
+  tumwater questions answer <n> "<decision>" [--json]
+                                   Answer the Nth open question: stamps today's date on the
+                                   entry and moves it to ## Answered with your decision
+                                   (--json prints the result as data); loops read the
+                                   answer at their next tick
   tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
                                    find text, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is

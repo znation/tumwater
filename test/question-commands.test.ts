@@ -1,0 +1,155 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/question-commands.js";
+import { openQuestionEntries } from "../src/backlog.js";
+import { writeTextAtomic } from "../src/files.js";
+import { tmpdir } from "./repo-fixtures.js";
+import { attempt } from "./exit-capture.js";
+
+/** src/question-commands.ts's own tests: the `tumwater questions` CLI layer — list
+ * numbering, the answer move (one block, verbatim, with the dated operator paragraph), the
+ * out-of-range error wording, the --json payloads, and the missing-file degradation —
+ * exercised in-process against a seeded QUESTIONS.md in a temp project root. cmdQuestion's
+ * paths only read or write QUESTIONS.md, so attempt's in-process exit capture is safe for them
+ * (see test/exit-capture.ts's scope limit). */
+
+const SKELETON = `# Questions
+
+Open questions loops have posted for a human decision — each with context, the options, and the
+loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
+director). Loops never block on their own questions; they check here at the start of each tick.
+
+## Open
+
+_None._
+
+## Answered
+`;
+
+function seed(root: string, text: string): string {
+  const file = path.join(root, "QUESTIONS.md");
+  writeTextAtomic(file, text);
+  return file;
+}
+
+function twoQuestionFile(): string {
+  return `# Questions
+
+## Open
+
+### First: which renderer? (asked by director 2026-10-01)
+
+The user reported flicker. Options and a recommendation follow.
+
+- **Option A (recommended):** fix in place.
+- **Option B:** adopt a framework.
+
+### Second: which backend? (asked by bugfix 2026-10-03)
+
+Any OpenAI-compatible model works.
+
+## Answered
+`;
+}
+
+test("the list numbers open questions 1..N in file order with an ellipsized body line", () => {
+  const root = tmpdir();
+  seed(root, twoQuestionFile());
+  const rendered = openQuestionList(root);
+  const lines = rendered.split("\n");
+  assert.equal(lines.length, 2);
+  assert.match(lines[0]!, /^1\. First: which renderer\? \(asked by director 2026-10-01\) — The user reported flicker/);
+  assert.match(lines[1]!, /^2\. Second: which backend\? \(asked by bugfix 2026-10-03\) — Any OpenAI-compatible model works\.$/);
+});
+
+test("a file with no open questions renders the empty line, not an error", () => {
+  const root = tmpdir();
+  seed(root, SKELETON);
+  assert.equal(openQuestionList(root), "no open questions");
+});
+
+test("a missing QUESTIONS.md degrades to the empty list", () => {
+  const root = tmpdir();
+  assert.equal(openQuestionList(root), "no open questions");
+  assert.deepEqual(questionListPayload(root), { questions: [] });
+});
+
+test("the --json payload numbers entries with verbatim titles and bodies", () => {
+  const root = tmpdir();
+  seed(root, twoQuestionFile());
+  const payload = questionListPayload(root);
+  assert.deepEqual(
+    payload.questions.map((q) => [q.position, q.title]),
+    [
+      [1, "First: which renderer? (asked by director 2026-10-01)"],
+      [2, "Second: which backend? (asked by bugfix 2026-10-03)"],
+    ],
+  );
+  assert.match(payload.questions[0]!.body, /Option A \(recommended\)/);
+});
+
+test("answering question 1 moves only its block to ## Answered with the dated decision", () => {
+  const root = tmpdir();
+  const file = seed(root, twoQuestionFile());
+  const { title } = answerQuestion(root, 1, "use ink");
+  assert.equal(title, "First: which renderer? (asked by director 2026-10-01)");
+  const md = read(file);
+  // The Open section holds exactly the second question, renumbered 1 by the readers.
+  assert.deepEqual(openQuestionEntries(root).map((q) => q.title), ["Second: which backend? (asked by bugfix 2026-10-03)"]);
+  // The moved block is verbatim, in ## Answered, followed by the dated operator paragraph.
+  assert.ok(md.includes("## Answered\n\n### First: which renderer? (asked by director 2026-10-01)"));
+  const today = new Date();
+  const stamp = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  assert.ok(md.includes(`**Answered ${stamp} by operator:** use ink`));
+  // The decision is the last content in the Answered section.
+  assert.ok(md.trimEnd().endsWith(`**Answered ${stamp} by operator:** use ink`));
+  // The first question's body travelled with its heading, intact.
+  assert.ok(md.includes("- **Option A (recommended):** fix in place."));
+  // The Open section did not leak its old position numbering or a stray placeholder.
+  assert.ok(!md.includes("_None._"));
+});
+
+test("answering the last question restores the Open section's _None._ placeholder", () => {
+  const root = tmpdir();
+  seed(root, twoQuestionFile());
+  answerQuestion(root, 1, "use ink");
+  answerQuestion(root, 1, "any OpenAI-compatible one");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("## Open\n\n_None._"));
+  assert.deepEqual(openQuestionEntries(root), []);
+});
+
+test("an out-of-range position fails with the prompt --cancel wording and exit 1", () => {
+  const root = tmpdir();
+  seed(root, twoQuestionFile());
+  const o = attempt(() => answerQuestion(root, 9, "x"));
+  if (!o.exited) assert.fail("expected process.exit, but the call returned");
+  assert.equal(o.code, 1);
+  assert.match(o.stderr, /^tumwater: no question at position 9 \(2 open\)\n$/);
+});
+
+test("answering in a file with no ## Answered section grows one at the end", () => {
+  const root = tmpdir();
+  seed(root, `# Questions\n\n## Open\n\n### Only: ship it? (asked by feature 2026-10-04)\n\nYes or no.\n`);
+  answerQuestion(root, 1, "ship it");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("## Answered\n\n### Only: ship it? (asked by feature 2026-10-04)"));
+  assert.ok(md.includes("Yes or no."));
+  assert.ok(md.includes("by operator:** ship it"));
+  assert.deepEqual(openQuestionEntries(root), []);
+});
+
+test("sayAnswered renders the prose confirmation or the answer-result JSON", async () => {
+  const prose = attempt(() => sayAnswered(2, "Second: which backend?", false, "openai")).stdout.trimEnd();
+  assert.equal(prose, "answered question 2: Second: which backend? — moved to ## Answered");
+  const json = attempt(() => sayAnswered(2, "Second: which backend?", true, "openai")).stdout.trimEnd();
+  assert.deepEqual(JSON.parse(json), { answered: 2, question: "Second: which backend?", decision: "openai" });
+});
+
+// --- helpers -------------------------------------------------------------
+
+function read(file: string): string {
+  return fs.readFileSync(file, "utf8");
+}
