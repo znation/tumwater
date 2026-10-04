@@ -6,7 +6,8 @@
  * and the per-attempt abort observation. The bisect over a red stack (landVetted, in
  * landing-batch.ts) drives this file's landStack one prefix at a time. */
 
-import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
+import { COMMIT_IDENT, gitTry } from "./git-run.js";
+import { deleteRef, gitLines, headOf } from "./git.js";
 import { landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";

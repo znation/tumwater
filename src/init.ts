@@ -3,7 +3,8 @@ import path from "node:path";
 import { saveConfig } from "./config.js";
 import { seedConfig } from "./config-example.js";
 import { findOnPath } from "./files.js";
-import { GIT_MISSING_MESSAGE, COMMIT_IDENT, git, gitTry, hasCommits, isGitRepo } from "./git.js";
+import { COMMIT_IDENT, GIT_MISSING_MESSAGE, git, gitTry } from "./git-run.js";
+import { hasCommits, isGitRepo } from "./git.js";
 import {
   INITIAL_PROMPT_MAX_CHARS,
   PROMPT_END,

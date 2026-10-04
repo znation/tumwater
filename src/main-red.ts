@@ -11,7 +11,7 @@ import type { TickOutcome } from "./tick-outcome.js";
 import type { TumwaterConfig } from "./config-schema.js";
 import { errorMessage } from "./text.js";
 import { mainRedPhrase } from "./phrases.js";
-import { gitTry } from "./git.js";
+import { gitTry } from "./git-run.js";
 import { gateMainWorktreePath } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 

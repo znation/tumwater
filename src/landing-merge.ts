@@ -1,6 +1,7 @@
 import { openQuestions } from "./backlog.js";
 import { logEvent } from "./events.js";
-import { headOf, gitTry } from "./git.js";
+import { headOf } from "./git.js";
+import { gitTry } from "./git-run.js";
 import { aheadOfMainFiles } from "./git-diff.js";
 import {
   conflictedFiles,

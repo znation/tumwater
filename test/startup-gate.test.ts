@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findOnPath } from "../src/files.js";
 import { initProject } from "../src/init.js";
-import { GIT_MISSING_MESSAGE } from "../src/git.js";
+import { GIT_MISSING_MESSAGE } from "../src/git-run.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { git, gitTry, resolveGitDir } from "./git.js";
+import { git, gitTry } from "./git-run.js";
+import { resolveGitDir } from "./git.js";
 import { removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 

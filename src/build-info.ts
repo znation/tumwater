@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitTry } from "./git.js";
+import { gitTry } from "./git-run.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written

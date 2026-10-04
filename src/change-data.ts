@@ -8,7 +8,8 @@
  * change-preview.ts's half. */
 
 import { knownRoleIdsCached, loadConfigSafe } from "./config.js";
-import { aheadOfMain, branchExists, currentBranch, gitTry, targetBranch } from "./git.js";
+import { aheadOfMain, branchExists, currentBranch, targetBranch } from "./git.js";
+import { gitTry } from "./git-run.js";
 import { aheadOfMainDiff, changedFiles } from "./git-diff.js";
 import { branchName, worktreePath } from "./paths.js";
 import { isUsableWorktree } from "./worktree.js";

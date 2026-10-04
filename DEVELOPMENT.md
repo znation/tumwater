@@ -90,7 +90,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/orchestrator.ts`: the scheduler; `src/orchestrator-launch.ts` holds its launch pass
   (admitting due runners to their ticks).
 - `src/pi.ts`: the pi subprocess integration.
-- `src/git.ts`, `src/git-diff.ts`: git plumbing and git-output parsing.
+- `src/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
+- `src/git.ts`, `src/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.
 - `src/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
   the git plumbing in `src/landing-git.ts` (rebase, conflict inspection, fast-forward).

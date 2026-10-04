@@ -13,11 +13,10 @@ import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "./version.js";
+import { GIT_MISSING_MESSAGE, gitTry } from "./git-run.js";
 import {
-  GIT_MISSING_MESSAGE,
   branchExists,
   currentBranch,
-  gitTry,
   hasCommits,
   branchesPhrase,
   isGitRepo,

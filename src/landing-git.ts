@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { COMMIT_IDENT, currentBranch, git, gitLines, gitTry, headOf, runGit } from "./git.js";
+import { COMMIT_IDENT, git, gitTry, runGit } from "./git-run.js";
+import { currentBranch, gitLines, headOf } from "./git.js";
 import { unquotePorcelainPath } from "./git-diff.js";
 import { CONFIG_BASENAME, configPath } from "./paths.js";
 

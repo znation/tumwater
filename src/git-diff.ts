@@ -2,7 +2,8 @@
  * in git.ts and its callers: porcelain-status path decoding, worktree change listing, and
  * ahead-of-main diff extraction (including its oversized-diff truncation). Everything here
  * interprets git output; spawning git stays in git.ts. */
-import { gitLines, gitTry } from "./git.js";
+import { gitLines } from "./git.js";
+import { gitTry } from "./git-run.js";
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
  * characters (control characters, quotes, non-ASCII under core.quotePath) and escapes them —
