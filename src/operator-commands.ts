@@ -2,6 +2,7 @@ import { knownRoleIds, loadConfig } from "./config.js";
 import { fail, say } from "./cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";
+import { REASON_VALUE_ERROR } from "./cli-flag-specs.js";
 import { agree, pauseReasonSuffix } from "./phrases.js";
 import { errCode } from "./errno.js";
 import { allRoleIds } from "./roles.js";
@@ -128,7 +129,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // — a raw newline in the flag's value would otherwise break the header's one-line badge.
   const reasonRaw = flagValue(args, "--reason");
   if (reasonRaw !== null && (reasonRaw === undefined || reasonRaw.trim() === ""))
-    fail("pause --reason needs a reason");
+    fail(REASON_VALUE_ERROR);
   const reason = normalizePauseReason(reasonRaw ?? undefined);
   // Fail fast beside the parse, before any marker is written: an over-cap deadline is a
   // standing pause in disguise, and the message names the command that is one (the same

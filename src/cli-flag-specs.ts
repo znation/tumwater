@@ -152,13 +152,16 @@ export const WAKE_IN_FLAG: FlagSpec = {
  * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value
  * wording names its only command (the GREP_VALUE_ERROR idiom — each command's parser names
  * itself); the 200-char cap stays in pauseFleet beside the marker it bounds, and per-role
- * pauses carry no reason, so cmdPause rejects the `--role` + `--reason` combination.
- * Exported so the gate and the command body share one definition of what `pause` accepts. */
+ * pauses carry no reason, so cmdPause rejects the `--role` + `--reason` combination. Exported
+ * so the gate and the command body share one definition of what `pause` accepts. Its
+ * missing-value wording is REASON_VALUE_ERROR, exported so cmdPause's own guard reads it too. */
+export const REASON_VALUE_ERROR = "pause --reason needs a reason";
+
 export const REASON_FLAG: FlagSpec = {
   names: ["--reason"],
   value: true,
   valueName: "<text>",
-  missingValue: "pause --reason needs a reason",
+  missingValue: REASON_VALUE_ERROR,
 };
 
 /** The `--since <duration>` flag spec shared by the three windowed read-only views (logs,
