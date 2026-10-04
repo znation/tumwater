@@ -21,8 +21,9 @@ export function pad2(n: number): string {
  * clamps at zero (an age never goes negative when the clock skews), `secondsUntil` clamps at
  * zero the same way for the future direction (a countdown never reads negative once its
  * deadline has passed). The one home of the clamp + rounding behind every elapsed age and
- * countdown — status-render.ts's lastTickCell, the queued-prompt age and deliver-in suffix,
- * and the fleet pause's auto-resume countdown all render through. The GUI page's browser
+ * countdown — status-render.ts's lastTickCell and nextRunCell, the queued-prompt age and
+ * deliver-in suffix, the fleet pause's auto-resume countdown, and status-model.ts's sleeping
+ * phase label (which re-floors at 1s) all render through. The GUI page's browser
  * script keeps its own one-line twins (gui-client.ts's ageSec and its inline countdown
  * rounding — a separate runtime that cannot import TypeScript), pinned by its marked regions'
  * tests, so the copies cannot disagree on the clamp or the rounding. */

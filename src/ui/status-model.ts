@@ -5,7 +5,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { humanSeconds } from "../datetime.js";
+import { humanSeconds, secondsUntil } from "../datetime.js";
 import {
   duration,
   inFlightDetail,
@@ -180,7 +180,7 @@ export function loopPhase(
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
     // never renders as "sleeping (for now)".
-    const remain = Math.max(1, Math.round((s.nextRunAt - Date.now()) / 1000));
+    const remain = Math.max(1, secondsUntil(s.nextRunAt, Date.now()));
     return `sleeping (for ${humanSeconds(remain)})`;
   }
   return "queued";

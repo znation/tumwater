@@ -4,7 +4,7 @@ import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
 import { compactTokens, usd } from "../format.js";
-import { elapsedSeconds, formatTime, humanSeconds, pad2 } from "../datetime.js";
+import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../datetime.js";
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
@@ -49,7 +49,7 @@ export function lastTickCell(ts: number | undefined): string {
  * fleet's running flag lives on the snapshot, not the loop. */
 export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunning: boolean): string {
   if (!fleetRunning || s.running || isActivePhase(phase)) return "-";
-  const remain = Math.round((s.nextRunAt - now) / 1000);
+  const remain = secondsUntil(s.nextRunAt, now);
   // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
   // role whose recent ticks landed nothing keeps a longer effective gap than nextRunAt's
   // countdown shows, and the suffix is what makes that visible. The multiplier gates the
