@@ -61,18 +61,35 @@ export function requestResetCounters(root: string, roles: string[]): string {
   return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
 }
 
-/** The marker-writing core of `wake`, shared with the GUI's POST /api/wake: clear the named
- * roles' backoff and pull nextRunAt to now (touching ONLY the schedule — counters, wake
- * tracking, and session continuity are untouched), and drop the marker a running fleet
- * consumes within one poll. Returns the confirmation the CLI prints verbatim and the GUI
- * flashes. */
-export function requestWake(root: string, roles: string[]): string {
+/** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:
+ * clear the named roles' backoff and pull nextRunAt to now (touching ONLY the schedule —
+ * counters, wake tracking, and session continuity are untouched), and drop the marker a
+ * running fleet consumes within one poll. With a `notBeforeMs` still in the future the wake
+ * is SCHEDULED: only the marker is written — the state change belongs to the deadline, not
+ * to the submit, so a fleet stopped at submit (or restarted before the deadline) does not
+ * wake early; consumeWakeRequest clears the schedules when it consumes the marker at or
+ * after the deadline. Returns the confirmation the CLI prints verbatim and the GUI flashes. */
+export function requestWake(root: string, roles: string[], notBeforeMs?: number): string {
   const now = Date.now();
-  for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
-  writeJsonFile(wakeRequestPath(root), { at: now, roles });
+  // Deferred only when the deadline is genuinely ahead: an at-or-past deadline reads as
+  // immediate, so the immediate and scheduled paths share one consumer contract.
+  const deferred = notBeforeMs !== undefined && notBeforeMs > now;
+  if (!deferred)
+    for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
+  writeJsonFile(
+    wakeRequestPath(root),
+    deferred ? { at: now, roles, notBeforeMs } : { at: now, roles },
+  );
   // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
   // marker, so say so instead of promising a poll that will not happen.
   const { live, when } = markerApplyNote(root);
+  if (deferred)
+    return (
+      `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(notBeforeMs! - now)} — ` +
+      (live
+        ? "a running fleet applies it within one poll after the deadline"
+        : "no harness is running — the next `tumwater run` applies it after the deadline")
+    );
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
 

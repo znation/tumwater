@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
+import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox.js";
 import { cli } from "./cli-harness.js";
@@ -377,4 +377,69 @@ test("role validates its arguments like every other command", async () => {
   r = await cli(repo, "role", "--role", "qa");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /# tumwater role: qa/);
+});
+
+// --- wake [--in <duration>]: the immediate and scheduled wake request ---
+// Like pause --for, the scheduled wake rides the wake marker: the CLI writes it now and the
+// fleet's poll consumes it no earlier than the deadline (the consume gate is pinned in
+// test/operator-requests.test.ts). Here we pin the CLI half: the flag gate, the cap, and the
+// marker the three wake forms drop.
+
+test("wake keeps the plain --role vocabulary and rejects --in everywhere else", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake args");
+
+  // A malformed --in names the flag and the shape it wants, before any marker work.
+  let r = await cli(repo, "wake", "--in", "xyz");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--in needs a duration like 45s, 90m, 2h, or 1d/);
+  r = await cli(repo, "wake", "--in");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--in needs a value/);
+
+  // The flag belongs to wake alone: pause/reset-counters reject it instead of ignoring it.
+  r = await cli(repo, "pause", "--in", "5m");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --in \(valid flags for tumwater pause: --role <id>, --for <duration>, --reason <text>\)/);
+  r = await cli(repo, "reset-counters", "--in", "5m");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown argument: --in/);
+
+  // The rejections happened before any marker work.
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker on a refused --in");
+});
+
+test("wake --in schedules the marker; without --in the immediate shape is unchanged", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake scheduled");
+
+  // The scheduled form: the marker carries the ms-epoch deadline and the confirmation names
+  // both the deferral and where the state change actually happens (the deadline-crossing
+  // poll, not the submit).
+  let r = await cli(repo, "wake", "--role", "qa", "--in", "45m");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /wake scheduled for qa — wakes in 45m — /);
+  const scheduled = readJson(wakeRequestPath(repo)) as { at: number; roles: string[]; notBeforeMs: number };
+  assert.ok(scheduled, "the scheduled marker is written");
+  assert.ok(scheduled.notBeforeMs > Date.now() + 44 * 60_000, "the deadline is 45 minutes out");
+  assert.deepEqual(scheduled.roles, ["qa"]);
+
+  // Without --in, today's behavior is byte-for-byte the old contract: immediate consume, no
+  // notBeforeMs field, "wake requested" wording.
+  r = await cli(repo, "wake");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /wake requested for /);
+  const immediate = readJson(wakeRequestPath(repo)) as { at: number; roles: string[]; notBeforeMs?: number };
+  assert.ok(immediate, "the immediate marker is written");
+  assert.equal(immediate.notBeforeMs, undefined);
+  assert.match(r.stdout, /no harness is running/);
+});
+
+test("wake --in is capped at 90d like pause --for", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli wake cap");
+  const r = await cli(repo, "wake", "--in", "91d");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /wake --in is capped at 90d \(got 91d\)/);
+  assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker on a refused --in");
 });

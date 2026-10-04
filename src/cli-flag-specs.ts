@@ -97,6 +97,21 @@ export const DURATION_FLAG: FlagSpec = {
   },
 };
 
+/** The `--in <duration>` flag spec, accepted by `wake` alone (the scheduled wake): one
+ * definition of the flag's spelling and value shape, beside DURATION_FLAG, so the gate's
+ * accepted vocabulary and parseDurationFlag's error messages cannot drift apart. validate
+ * re-runs the shape parser at the gate, so `wake --in xyz` names the typo before the
+ * ready-repo gate can mask it; the 90-day cap stays in cmdWake beside the writer it feeds
+ * (the same ceiling `pause --for` honors). */
+export const WAKE_IN_FLAG: FlagSpec = {
+  names: ["--in"],
+  value: true,
+  valueName: "<duration>",
+  validate: (value) => {
+    parseDurationFlag("--in", value);
+  },
+};
+
 /** The `--reason <text>` flag spec, accepted by `pause` alone (the operator pause's why):
  * one definition of the flag's spelling and value shape, beside ROLE_FLAG and DURATION_FLAG,
  * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value

@@ -71,11 +71,22 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
   say(requestResetCounters(root, targetRoles(root, args)));
 }
 
-/** `tumwater wake [--role <id>]`: tell the fleet "whatever the loops were failing on is
- * fixed — try again", so the named roles tick within one poll instead of sleeping until
- * their backoff expires. */
+/** `tumwater wake [--role <id>] [--in <duration>]`: tell the fleet "whatever the loops were
+ * failing on is fixed — try again", so the named roles tick within one poll instead of
+ * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
+ * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
+ * auto-resume takes — the wake applies at the deadline, not at submit. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
-  say(requestWake(root, targetRoles(root, args)));
+  // `--in <duration>` (the scheduled wake): the gate in cli.ts has already restricted the
+  // flag to this command and validated its shape, so its value is parsed (and fails fast)
+  // here, beside the writer it feeds. The cap is pause --for's: a longer horizon is a
+  // queued prompt or a standing schedule's job, not a one-shot wake.
+  const inRaw = flagValue(args, "--in");
+  const inMs = inRaw !== null ? parseDurationFlag("--in", inRaw) : undefined;
+  if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
+  // requestWake takes the absolute ms-epoch deadline; the deferral starts when the operator
+  // typed the command (the same decision prompt --at's deferral records).
+  say(requestWake(root, targetRoles(root, args), inMs !== undefined ? Date.now() + inMs : undefined));
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot

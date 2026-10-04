@@ -115,6 +115,43 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
   assert.match(msg, /no harness is running/);
 });
 
+test("requestWake with a future notBeforeMs schedules the marker and skips the state change", () => {
+  const root = deadRoot();
+  saveLoopState(root, {
+    ...loadLoopState(root, "fix"),
+    role: "fix",
+    backoffSeconds: 300,
+    nextRunAt: Date.now() + 300_000,
+  });
+  const before = stateOf(root, "fix");
+  const msg = requestWake(root, ["fix"], Date.now() + 45 * 60_000);
+  // The submit writes only the marker: the state change belongs to the deadline, so a fleet
+  // stopped at submit (or restarted before the deadline) must not wake early.
+  const s = stateOf(root, "fix");
+  assert.equal(s.backoffSeconds, before.backoffSeconds, "the submit must not clear backoff");
+  assert.equal(s.nextRunAt, before.nextRunAt, "the submit must not pull nextRunAt to now");
+  const m = readJsonFile<{ roles: string[]; notBeforeMs: number }>(path.join(root, STATE_DIR, "wake.json"));
+  assert.ok(m?.notBeforeMs && m.notBeforeMs > Date.now() + 44 * 60_000, "the marker carries the deadline");
+  assert.deepEqual(m?.roles, ["fix"]);
+  assert.match(msg, /^wake scheduled for fix — wakes in 45m — /);
+});
+
+test("requestWake with an at-or-past notBeforeMs behaves immediately", () => {
+  const root = deadRoot();
+  saveLoopState(root, {
+    ...loadLoopState(root, "fix"),
+    role: "fix",
+    backoffSeconds: 300,
+    nextRunAt: Date.now() + 300_000,
+  });
+  const msg = requestWake(root, ["fix"], Date.now() - 1000);
+  const s = stateOf(root, "fix");
+  assert.equal(s.backoffSeconds, 0, "a past deadline reads as immediate");
+  assert.match(msg, /^wake requested for fix — /);
+  const m = readJsonFile<{ notBeforeMs?: number }>(path.join(root, STATE_DIR, "wake.json"));
+  assert.equal(m?.notBeforeMs, undefined, "the immediate marker keeps the bare { at, roles } shape");
+});
+
 test("submitRolePromptAndWake queues the prompt and wakes only that role", () => {
   const root = deadRoot();
   const msg = submitRolePromptAndWake(root, "fix", "  add a test  ");

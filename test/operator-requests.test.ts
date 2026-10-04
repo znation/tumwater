@@ -140,6 +140,39 @@ test("consumeWakeRequest with no marker changes nothing", () => {
   assert.equal(readEvents(root).length, 0);
 });
 
+test("consumeWakeRequest leaves a scheduled wake in place before its deadline", () => {
+  const root = tmpdir();
+  const a = fakeRunner("coverage");
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["coverage"], notBeforeMs: Date.now() + 60_000 });
+  consumeWakeRequest(root, asRunners(a));
+  assert.equal(a.wakes, 0, "a wake not yet due must wake nothing");
+  assert.equal(fs.existsSync(wakeRequestPath(root)), true, "the marker must survive for a later poll to retry");
+  assert.equal(eventsOfType(root, "wake").length, 0);
+});
+
+test("consumeWakeRequest consumes a scheduled wake at its deadline", () => {
+  const root = tmpdir();
+  const a = fakeRunner("coverage");
+  const b = fakeRunner("clean");
+  writeMarker(wakeRequestPath(root), { at: Date.now() - 60_000, roles: ["coverage"], notBeforeMs: Date.now() });
+  consumeWakeRequest(root, asRunners(a, b));
+  assert.equal(a.wakes, 1, "the deadline-crossing poll applies the wake");
+  assert.equal(b.wakes, 0);
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+  const events = eventsOfType(root, "wake");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.loop, "coverage");
+});
+
+test("consumeWakeRequest reads a non-numeric notBeforeMs as immediate", () => {
+  const root = tmpdir();
+  const a = fakeRunner("coverage");
+  writeMarker(wakeRequestPath(root), { at: Date.now(), roles: ["coverage"], notBeforeMs: "soon" });
+  consumeWakeRequest(root, asRunners(a));
+  assert.equal(a.wakes, 1, "defensive: validation happens at the CLI, the consumer only gates on numbers");
+  assert.equal(fs.existsSync(wakeRequestPath(root)), false);
+});
+
 test("consumeAbortRequests tolerates a missing .tumwater directory", () => {
   const root = tmpdir(); // never created — the fresh-repo case the catch exists for
   const a = fakeRunner("coverage", true);

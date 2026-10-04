@@ -53,14 +53,23 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   removeQuiet(markerFile);
 }
 
-/** Consume a pending wake request from `tumwater wake [--role <id>]`, if any: the CLI
- * already cleared the state files; this also clears the affected runners' in-memory
- * schedules (backoffSeconds, nextRunAt), or their next save would resurrect the pre-wake
- * sleep window and the loops would keep sleeping until the original backoff expired. Each
- * woken role logs the existing `wake` event with the operator reason, so the fleet's
- * early ticks read in the feed as deliberate. */
+/** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if
+ * any. Immediate wakes find the state files already cleared by the CLI; this also clears the
+ * affected runners' in-memory schedules (backoffSeconds, nextRunAt), or their next save would
+ * resurrect the pre-wake sleep window and the loops would keep sleeping until the original
+ * backoff expired. A scheduled wake (`--in`) carries a `notBeforeMs`: before the deadline the
+ * marker is left in place (a later poll retries it — the wake lands within one poll cycle
+ * after the deadline, the same delivery granularity prompt --at's consumer gives), and the
+ * deadline-crossing poll's `wake()` call is what applies the state change, since the submit
+ * deliberately skipped it. A non-numeric value reads as immediate (defensive; validation
+ * happens at the CLI). Each woken role logs the existing `wake` event with the operator
+ * reason, so the fleet's early ticks read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = wakeRequestPath(root);
+  const marker = readJsonFile<{ notBeforeMs?: unknown }>(markerFile);
+  if (marker === null) return;
+  const notBefore = typeof marker.notBeforeMs === "number" ? marker.notBeforeMs : undefined;
+  if (notBefore !== undefined && notBefore > Date.now()) return;
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
   for (const r of affected) {

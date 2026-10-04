@@ -58,7 +58,9 @@ plus tests.
   hit/miss/null, and the three failure shapes (bad value, bad field, bad role id).
   `npm run test` passes.
 
-### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop)
+## Done
+
+### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** `tumwater wake` clears backoff the moment it runs, but an operator often knows the
 world changes LATER — a cron finishes at 02:00, a CI run ends in 40 minutes, a dependency
@@ -85,15 +87,21 @@ no new consumer loop — the existing wake request path grows one optional field
   deferral starts when the operator typed it — the decision `prompt --at`'s comment records),
   and pass it through.
 - `src/operator-intent.ts` `requestWake`: add an optional trailing `notBeforeMs?: number`
-  parameter, written into the marker as `notBeforeMs` when present (`{ at, roles }` stays the
-  absent case, so older markers keep parsing). The confirmation gains
-  ` — wakes in ${durationLabel(ms)}` on the deferred path, reusing the phrase `prompt --at`'s
-  confirmation uses.
+  parameter — the absolute ms-epoch deadline. When it is still ahead the wake is SCHEDULED:
+  ONLY the marker is written (`{ at, roles, notBeforeMs }`; `{ at, roles }` stays the absent
+  case, so older markers keep parsing) and the backoff-clearing state change is SKIPPED — it
+  belongs to the deadline, not the submit, so a fleet stopped at submit (or restarted before
+  the deadline) does not wake early; `consumeWakeRequest` applies it when it consumes the
+  marker at or after the deadline. At-or-past deadlines read as immediate. The confirmation
+  gains `wake scheduled for <roles> — wakes in ${durationLabel(ms)} — …` on the deferred path,
+  reusing the phrasing `prompt --at`'s confirmation uses.
 - `src/operator-requests.ts` `consumeWakeRequest`: before the `roleRequestTargets` read, if
   the marker carries a numeric `notBeforeMs` greater than `Date.now()`, return WITHOUT removing
   the marker — a later poll retries it; the wake lands within one poll cycle after the
-  deadline, the same delivery granularity `prompt --at`'s consumer gives. A non-numeric value
-  reads as immediate (defensive; validation happens at the CLI).
+  deadline, the same delivery granularity `prompt --at`'s consumer gives. At or past the
+  deadline the existing consume path runs, and its `wake()` call is what clears the schedules
+  the submit skipped. A non-numeric value reads as immediate (defensive; validation happens at
+  the CLI).
 - `src/help.ts` and README.md's control-table `wake` row: append `--in <duration>` to the wake
   usage with a one-clause scheduled-wake phrase, beside `pause --for`.
 
@@ -113,7 +121,6 @@ src/operator-intent.ts, src/operator-requests.ts, src/help.ts, README.md, plus t
   for the new flag — in test/operator-requests.test.ts, test/operator-intent.test.ts, and
   test/cli-operators.test.ts beside the wake cases already there. `npm run test` passes.
 
-## Done
 
 ### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

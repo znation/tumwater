@@ -128,8 +128,9 @@ Usage:
                                    Zero lifetime ticks/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
-  tumwater wake [--role <id>]      Wake a backed-off fleet — the named roles (or all) tick
-                                   within one poll
+  tumwater wake [--role <id>] [--in <dur>]
+                                   Wake a backed-off fleet — the named roles (or all) tick
+                                   within one poll; --in schedules the wake for later
   tumwater abort --role <id>       Abort that loop's in-flight tick (work discarded; the loop
                                    keeps running)
   tumwater pause [--role <id>] [--for <dur>] [--reason <text>]

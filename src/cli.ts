@@ -8,6 +8,7 @@ import {
 import {
   DURATION_FLAG,
   REASON_FLAG,
+  WAKE_IN_FLAG,
   grepFlagSpec,
   JSON_FLAG,
   N_FLAG,
@@ -17,6 +18,7 @@ import {
   RUN_FLAG_SPECS,
   sinceFlagSpec,
 } from "./cli-flag-specs.js";
+import type { FlagSpec } from "./cli-flag-specs.js";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
 import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdStop, cmdWake } from "./operator-commands.js";
@@ -116,9 +118,17 @@ const markerCommandCores: Record<MarkerCommand, (root: string, args: string[]) =
  * drift on validation order or gating. */
 async function runMarkerCommand(root: string, command: MarkerCommand, args: string[]): Promise<void> {
   // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
-  // operator pause's why); the other marker commands keep the plain --role vocabulary, so a
-  // stray --for or --reason fails fast instead of being silently ignored.
-  rejectUnknownArgs(command, args, command === "pause" ? [ROLE_FLAG, DURATION_FLAG, REASON_FLAG] : [ROLE_FLAG]);
+  // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake); the
+  // other marker commands keep the plain --role vocabulary, so a stray --for, --reason, or
+  // --in fails fast instead of being silently ignored.
+  const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
+    "reset-counters": [ROLE_FLAG],
+    wake: [ROLE_FLAG, WAKE_IN_FLAG],
+    abort: [ROLE_FLAG],
+    pause: [ROLE_FLAG, DURATION_FLAG, REASON_FLAG],
+    resume: [ROLE_FLAG],
+  };
+  rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);
   await requireReadyRepo(root);
   await markerCommandCores[command](root, args);
 }
