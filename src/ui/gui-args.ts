@@ -11,7 +11,7 @@ import { knownRoleIdsCached } from "../config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { promptLengthProblem } from "../inbox-submit.js";
 import { DIRECTOR_ROLE } from "../roles.js";
-import { parseNonNegativeInt, parsePositiveInt } from "../text.js";
+import { parseNonNegativeInt, parsePositiveInt, suggestClosest } from "../text.js";
 import { sendJson } from "./http-body.js";
 import type http from "node:http";
 
@@ -28,7 +28,10 @@ export function validRoleIds(root: string): string[] {
  * a miss and reporting whether the request should stop: an absent id reads "role required
  * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default, which
  * only a truly absent `undefined` may ride; an explicit null is always rejected — and a
- * present-but-unknown one reads "unknown role X (valid ids: …)". /api/transcript and the
+ * present-but-unknown one reads "unknown role X (valid ids: …)", with a "did you mean"
+ * hint when the id is a string and a near miss of a valid one (suggestClosest — the same
+ * hint unknownRoleMessage arms the CLI's unknown-role errors with, so both surfaces
+ * correct the same typos). /api/transcript and the
  * wake/abort operator endpoints share it so their validation and 400 wording cannot drift. */
 export function rejectBadRole(root: string, res: http.ServerResponse, role: unknown, allowMissing = false): boolean {
   // The all-roles default rides only a truly absent id — check it first, so the wake path
@@ -40,7 +43,16 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
     return true;
   }
   if (typeof role !== "string" || !validIds.includes(role)) {
-    sendJson(res, 400, { error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})` });
+    const suggestion = typeof role === "string" ? suggestClosest(role, validIds) : null;
+    sendJson(
+      res,
+      400,
+      {
+        error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})${
+          suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+        }`,
+      },
+    );
     return true;
   }
   return false;

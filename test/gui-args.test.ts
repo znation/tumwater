@@ -48,6 +48,14 @@ test("rejectBadRole rejects an unknown id with the shared 400 naming the valid i
   );
 });
 
+test("rejectBadRole suggests the closest valid id for a string near miss", () => {
+  const { res, captured } = fakeRes();
+  const stopped = rejectBadRole(noRepoRoot(), res, "bugfx");
+  assert.equal(stopped, true);
+  assert.equal(captured.status, 400);
+  assert.match(captured.body, /unknown role \\"bugfx\\" \(valid ids: .*did you mean `bugfix`\?/);
+});
+
 test("rejectBadRole rejects a non-string id, never treating it as absent", () => {
   const { res, captured } = fakeRes();
   const stopped = rejectBadRole(noRepoRoot(), res, 123 as unknown as string);
