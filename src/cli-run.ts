@@ -23,7 +23,7 @@ import { templateCatalog } from "./init-templates.js";
 import { logEvent, subscribeEvents } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
-import { loadLoopState } from "./loop-state.js";
+import { loadLoopState, stateSkipReason } from "./loop-state.js";
 import { plural } from "./phrases.js";
 import { shortSha } from "./format.js";
 
@@ -268,11 +268,7 @@ export function onceSummary(
         settled?.get(role) ??
         (isFleetPaused(root) || pausedRoles(root).includes(role)
           ? "paused"
-          : s.resumePending
-            ? "resume pending"
-            : s.backoffSeconds > 0
-              ? "backoff"
-              : "idle");
+          : stateSkipReason(s));
       skipped.push(reason);
     }
   }

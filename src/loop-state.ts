@@ -197,3 +197,16 @@ export function saveLoopState(root: string, state: LoopState): void {
 export function zeroCounters(s: LoopState): LoopState {
   return { ...s, ticks: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
 }
+
+/** The skip reason a loop's persisted state yields when it does not run this round: a pending
+ * resume wait outranks backoff, anything else is idle. The shared tail of the two skip
+ * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli-run.ts's
+ * once-summary (which adds the fleet-pause arm) — so the two surfaces cannot drift on which
+ * reason wins when several conditions hold at once. */
+export function stateSkipReason(
+  s: Pick<LoopState, "resumePending" | "backoffSeconds">,
+): string {
+  if (s.resumePending) return "resume pending";
+  if (s.backoffSeconds > 0) return "backoff";
+  return "idle";
+}

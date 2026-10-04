@@ -1,3 +1,4 @@
+import { stateSkipReason } from "./loop-state.js";
 import type { LoopRunner } from "./loop.js";
 
 /**
@@ -72,11 +73,7 @@ export class OnceRound {
       runner.role,
       !runner.config.roles[runner.role]?.enabled
         ? "disabled"
-        : runner.state.resumePending
-          ? "resume pending"
-          : runner.state.backoffSeconds > 0
-            ? "backoff"
-            : "idle",
+        : stateSkipReason(runner.state),
     );
   }
 
