@@ -85,11 +85,24 @@ export function queuedFiles(root: string, role: string): string[] {
  * so a deferred prompt alone never makes its loop due; once due, the marker falls out of the
  * count naturally. A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
 export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
-  const now = Date.now();
-  return queuedFiles(root, role).filter((f) => {
+  return deliverablePromptCount(root, role);
+}
+
+/** The shared deliverability predicate over one queue file (the prompt cache's read, plus the
+ * not-before check): the callers are deliverablePromptCount's count and dequeueRolePrompt's
+ * oldest-first find, and nothing else. */
+function deliverablePredicate(now: number): (f: string) => boolean {
+  return (f) => {
     const text = cachedPromptText(f);
     return text !== null && deliverableNow(text, now);
-  }).length;
+  };
+}
+
+/** The shared body of the two deliverable-prompt counters (inboxSize, queuedRolePromptCount):
+ * a directory listing plus one stat-cached content read per file (the prompt cache above),
+ * counting only files whose text is readable and deliverable now. */
+function deliverablePromptCount(root: string, role: string): number {
+  return queuedFiles(root, role).filter(deliverablePredicate(Date.now())).length;
 }
 
 // Per-poll prompt-content cache (stat-cache.cachedByStat): both dashboards poll snapshot() every
@@ -194,11 +207,7 @@ export function queuedRolePromptEntries(root: string, role: string): QueuedPromp
  * still in the future) stays excluded, like inboxSize. A missing queue directory reads as an
  * empty queue, like queuedRolePrompts. */
 export function queuedRolePromptCount(root: string, role: string): number {
-  const now = Date.now();
-  return queuedFiles(root, role).filter((f) => {
-    const text = cachedPromptText(f);
-    return text !== null && deliverableNow(text, now);
-  }).length;
+  return deliverablePromptCount(root, role);
 }
 
 /** Read a queued prompt and remove its file, treating either half of the concurrent-cancel
@@ -255,11 +264,7 @@ function removeSameStemSiblings(file: string): void {
  * already read. Non-ENOENT errors (e.g. EACCES) are rethrown — they are not a race with a
  * cancel. */
 export function dequeueRolePrompt(root: string, role: string): string | null {
-  const now = Date.now();
-  const oldest = queuedFiles(root, role).find((f) => {
-    const text = cachedPromptText(f);
-    return text !== null && deliverableNow(text, now);
-  });
+  const oldest = queuedFiles(root, role).find(deliverablePredicate(Date.now()));
   if (!oldest) return null;
   return takeQueuedFile(oldest);
 }
