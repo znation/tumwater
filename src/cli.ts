@@ -11,6 +11,7 @@ import {
   grepFlagSpec,
   JSON_FLAG,
   N_FLAG,
+  rejectEqualsForm,
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
@@ -336,22 +337,39 @@ async function main(): Promise<void> {
     case "questions": {
       // No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
       // missing QUESTIONS.md, so the command inspects any directory instead of refusing.
-      const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("questions", rest, [JSON_FLAG]);
-      if (positionals.length === 0) {
-        sayQuestionList(root, rest.includes("--json"));
+      // The answer form's decision is free-form prose, so peelPositionals cannot route the
+      // tokens: a decision word may begin with a single dash (`questions answer 1 "-50% spend
+      // cap"`), and peelPositionals would hand it to the flag gate as an unknown flag — the
+      // same masking parsePromptArgs avoids for prompt text by owning only `--`-prefixed
+      // tokens. So the questions parse scans args itself: exact `--json` tokens are the one
+      // flag (repeats refused, equals form named by rejectEqualsForm), any other
+      // `--`-prefixed token is refused as unknown, and every remaining token in order is
+      // prose — subcommand, position number, then the decision words.
+      const jsonCount = args.filter((a) => a === "--json").length;
+      if (jsonCount > 1) fail("--json may only be given once");
+      const words: string[] = [];
+      for (const arg of args) {
+        if (arg === "--json") continue;
+        if (arg.startsWith("--")) {
+          rejectEqualsForm(arg, [JSON_FLAG]);
+          fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json)`);
+        }
+        words.push(arg);
+      }
+      if (words.length === 0) {
+        sayQuestionList(root, jsonCount > 0);
         break;
       }
-      if (positionals[0] !== "answer")
-        fail(`unknown questions subcommand: ${positionals[0]} (use "answer <n> <decision>")`);
-      const n = Number(positionals[1]);
+      if (words[0] !== "answer")
+        fail(`unknown questions subcommand: ${words[0]} (use "answer <n> <decision>")`);
+      const n = Number(words[1]);
       if (!Number.isInteger(n) || n < 1)
         fail('questions answer needs a positive question number: questions answer <n> "<decision>"');
-      const decision = positionals.slice(2).join(" ").trim();
+      const decision = words.slice(2).join(" ").trim();
       if (decision === "")
         fail('questions answer needs a decision: questions answer <n> "<decision>"');
       const { title } = answerQuestion(root, n, decision);
-      sayAnswered(n, title, rest.includes("--json"), decision);
+      sayAnswered(n, title, jsonCount > 0, decision);
       break;
     }
     case "role": {

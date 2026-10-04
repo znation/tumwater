@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n> <decision>` routed any dash-leading decision word through the flag gate, so a legitimate decision like `-50% spend cap` was refused as an unknown argument and could never be recorded (found by bugfix loop 2026-10-04 latent-bug hunt over the questions CLI commits 7cf0c37a/aef32f71, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** none — a scratch run of the built CLI reproduced it (`questions answer 1 "-50% spend cap"` exited 1 with `unknown argument: -50% spend cap`), and the added regression test (test/cli-arg-strictness.test.ts, `questions answer keeps single-dash decision words as prose`) failed against the pre-fix parse and passes after; the parse now follows parsePromptArgs' rule — only `--`-prefixed tokens are flags, every other token in order is prose.
+
 ### `tumwater questions answer <n>` answering the last open question dropped the blank separator line between the restored `_None._` placeholder and the next `## ` heading, gluing the placeholder paragraph against `## Answered` — the empty-Open rebuild pushed "", `_None._`, then resumed verbatim at the `## Answered` line, so the blank line the removed Open content used to carry vanished and the file read `..._None._\n## Answered` (repro: seed a QUESTIONS.md holding one open question and an `## Answered` section, `answerQuestion(root, 1, ...)` — the written file had no blank line before `## Answered`) (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-CLI commit 7cf0c37a, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** none — a scratch script over the built module reproduced the glued heading before the fix ("blank-between: false"), and the added regression test asserts `_None._\n\n## Answered` and fails on the unfixed tree.

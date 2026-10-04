@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt, inboxSize } from "../src/inbox.js";
 import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
@@ -37,6 +38,30 @@ test("prompt keeps single-dash positionals as prompt content", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /queued for the director loop/);
   assert.equal(dequeuePrompt(repo), "-x");
+});
+
+test("questions answer keeps single-dash decision words as prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions dash decision");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
+  );
+
+  // The answer form's decision is free-form prose, so a dash-leading word ("-50%") is
+  // content, not a flag — the parsePromptArgs rule. peelPositionals used to hand such a
+  // token to the flag gate, so `questions answer 1 "-50% spend cap"` failed with
+  // "unknown argument" and the decision could never be recorded.
+  const r = await cli(repo, "questions", "answer", "1", "-50%", "spend", "cap");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /answered question 1/);
+  const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+  assert.match(md, /\*\*Answered .* by operator:\*\* -50% spend cap/);
+
+  // Unknown double-dash flags stay refused, never baked into the decision.
+  const bad = await cli(repo, "questions", "answer", "1", "--rol", "x");
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /unknown argument: --rol/);
 });
 
 test("commands reject unknown arguments instead of silently ignoring them", async () => {
