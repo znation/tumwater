@@ -45,7 +45,7 @@ import { backlogPayload } from "./backlog.js";
 import { collectFleetChanges, collectRoleChange } from "./change-data.js";
 import { renderFleetChange, renderRoleChange } from "./ui/change-preview.js";
 import { knownRoleIdsCached } from "./config.js";
-import { errorMessage } from "./text.js";
+import { errorMessage, didYouMean } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -478,7 +478,7 @@ async function main(): Promise<void> {
         if (topic === null) {
           const suggestion = suggestCommand(name);
           fail(
-            `no help topic: ${name}${suggestion ? ` — did you mean \`${suggestion}\`?` : ""} (try \`tumwater help\` for the full command list)`,
+            `no help topic: ${name}${didYouMean(suggestion)} (try \`tumwater help\` for the full command list)`,
           );
         }
         say(topic);
@@ -490,7 +490,7 @@ async function main(): Promise<void> {
     default: {
       const suggestion = suggestCommand(command);
       fail(
-        `unknown command: ${command}${suggestion ? ` — did you mean \`${suggestion}\`?` : ""} (try \`tumwater help\`)`,
+        `unknown command: ${command}${didYouMean(suggestion)} (try \`tumwater help\`)`,
       );
     }
   }

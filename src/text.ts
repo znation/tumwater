@@ -57,6 +57,14 @@ export function suggestClosest(
   return best !== null && best.distance <= maxDistance ? best.candidate : null;
 }
 
+/** The " — did you mean \`<suggestion>\`?" annotation for a suggestion suggestClosest (or a
+ * caller's own suggestion) returned — the empty string when there is none. One home for the
+ * wording so every unknown-role, unknown-command, unknown-config-key, and unknown-help-topic
+ * message spells the hint the same way, and its tests can pin it once. */
+export function didYouMean(suggestion: string | null): string {
+  return suggestion ? ` — did you mean \`${suggestion}\`?` : "";
+}
+
 /** The human-facing message of whatever was thrown: its `.message` when it is an Error,
  * `String(err)` otherwise (a thrown string or other value). Every catch site that surfaces a
  * failure as text renders unknown throws through this one coercion instead of repeating the

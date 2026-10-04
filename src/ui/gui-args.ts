@@ -11,7 +11,7 @@ import { knownRoleIdsCached } from "../config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
 import { promptLengthProblem } from "../inbox-submit.js";
 import { DIRECTOR_ROLE } from "../roles.js";
-import { parseNonNegativeInt, parsePositiveInt, suggestClosest } from "../text.js";
+import { parseNonNegativeInt, parsePositiveInt, suggestClosest, didYouMean } from "../text.js";
 import { sendJson } from "./http-body.js";
 import type http from "node:http";
 
@@ -48,9 +48,7 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
       res,
       400,
       {
-        error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})${
-          suggestion ? ` — did you mean \`${suggestion}\`?` : ""
-        }`,
+        error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})${didYouMean(suggestion)}`,
       },
     );
     return true;

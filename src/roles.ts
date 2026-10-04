@@ -6,7 +6,7 @@
  * lookup helpers the CLI, GUI, and tick prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
-import { suggestClosest } from "./text.js";
+import { suggestClosest, didYouMean } from "./text.js";
 
 export { ROLES };
 export type { Role };
@@ -114,9 +114,7 @@ export function roleById(id: string): Role | undefined {
  * the GUI, and a tick's internal error. */
 export function unknownRoleMessage(role: string, validIds: readonly string[]): string {
   const suggestion = suggestClosest(role, validIds);
-  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${
-    suggestion ? ` — did you mean \`${suggestion}\`?` : ""
-  }`;
+  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${didYouMean(suggestion)}`;
 }
 
 /** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the
