@@ -9,6 +9,7 @@
  * inside the window simply starts at window end. */
 
 import { logEvent } from "./events.js";
+import { gotSuffix } from "./text.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
  * window that wraps midnight (23:00-07:00 spans 23:00 → 00:00 → 07:00). */
@@ -35,14 +36,14 @@ export function parseQuietHours(value: unknown): ParsedQuietHours {
   if (typeof value !== "string")
     return {
       ok: false,
-      error: `quietHours must be a string like "23:00-07:00" (got ${JSON.stringify(value)})`,
+      error: `quietHours must be a string like "23:00-07:00"${gotSuffix(value)}`,
     };
   if (value.trim() === "") return { ok: true, window: null }; // empty means off
   const parts = value.split("-");
   if (parts.length !== 2)
     return {
       ok: false,
-      error: `quietHours must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00" (got ${JSON.stringify(value)})`,
+      error: `quietHours must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00"${gotSuffix(value)}`,
     };
   const ends: number[] = [];
   for (const part of parts) {
@@ -51,14 +52,14 @@ export function parseQuietHours(value: unknown): ParsedQuietHours {
     if (!m)
       return {
         ok: false,
-        error: `quietHours times must be 24-hour "HH:MM", e.g. "23:00" (got ${JSON.stringify(trimmed)})`,
+        error: `quietHours times must be 24-hour "HH:MM", e.g. "23:00"${gotSuffix(trimmed)}`,
       };
     const hours = Number(m[1]);
     const minutes = Number(m[2]);
     if (hours > 23 || minutes > 59)
       return {
         ok: false,
-        error: `quietHours times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59 (got ${JSON.stringify(trimmed)})`,
+        error: `quietHours times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59${gotSuffix(trimmed)}`,
       };
     ends.push(hours * 60 + minutes);
   }
@@ -67,7 +68,7 @@ export function parseQuietHours(value: unknown): ParsedQuietHours {
   if (startMin === endMin)
     return {
       ok: false,
-      error: `quietHours start and end must differ — a zero-length window means nothing schedulable (got ${JSON.stringify(value)})`,
+      error: `quietHours start and end must differ — a zero-length window means nothing schedulable${gotSuffix(value)}`,
     };
   return { ok: true, window: { startMin, endMin } };
 }

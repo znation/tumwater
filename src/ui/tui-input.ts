@@ -1,4 +1,4 @@
-import { cutSplitsSurrogatePair } from "../text.js";
+import { cutSplitsSurrogatePair, gotSuffix } from "../text.js";
 import { displayWidth } from "../text-width.js";
 
 /** Pure prompt-line editing for the TUI (src/ui/tui.tsx): the line editor, its display window,
@@ -146,7 +146,7 @@ export function parseBudgetInput(
     !/^\d*\.?\d+$/.test(t) ||
     !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER
   )
-    return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
+    return { ok: false, error: `budget must be a number of 0 or more${gotSuffix(text)}` };
   return { ok: true, value: n };
 }
 

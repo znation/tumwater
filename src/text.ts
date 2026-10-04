@@ -26,6 +26,22 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The error message's " (got …)" value suffix, spelled one way everywhere: JSON.stringify for
+ * the value's debug form, wrapped in the established parenthetical. The human-facing
+ * validation errors that echo back a rejected value with this suffix — the CLI flag
+ * parsers (cli-args, cli-command-args), the GUI's request validators (gui-args,
+ * gui-endpoint-commands), quiet-hours' window checks, and the TUI's budget input — append
+ * this one helper, so the "got" wording and its quoting cannot drift between surfaces.
+ * (Deliberately different suffixes: config-field-checks's show() truncates long config values
+ * before the parenthetical, and cli-args's duration cap renders the value through
+ * durationLabel — neither fits a plain stringify.) Undefined values are the
+ * caller's call: append the suffix only for a value that is actually present (see
+ * gui-args's string/boolean validators), since ` (got undefined)` would name a field the
+ * request simply did not carry. */
+export function gotSuffix(v: unknown): string {
+  return ` (got ${JSON.stringify(v)})`;
+}
+
 /** Is `v` a string with non-whitespace content — the "field carries something usable" guard
  * every structural read of an unknown-typed JSON field applies (a blank or whitespace-only
  * string reads as unset, exactly like a wrong type or a missing key). A type predicate, so a

@@ -2,7 +2,7 @@ import { fail } from "./cli-output.js";
 import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "./config.js";
 import { allRoleIds, unknownRoleMessage } from "./roles.js";
-import { parsePositiveInt } from "./text.js";
+import { gotSuffix, parsePositiveInt } from "./text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -60,9 +60,9 @@ export function parseGrepFlag(args: string[], missingValueError: string): { rest
 export function parseCountFlag(flag: string, raw: string | undefined, max?: number): number {
   if (raw === undefined) fail(`${flag} needs a value`);
   const n = parsePositiveInt(raw);
-  if (n === null) fail(`${flag} needs a positive integer (got ${JSON.stringify(raw)})`);
+  if (n === null) fail(`${flag} needs a positive integer${gotSuffix(raw)}`);
   if (max !== undefined && n > max)
-    fail(`${flag} must be between 1 and ${max} (got ${JSON.stringify(raw)})`);
+    fail(`${flag} must be between 1 and ${max}${gotSuffix(raw)}`);
   return n;
 }
 
@@ -87,7 +87,7 @@ export function parsePortFlag(raw: string | undefined): number {
   if (raw === undefined) fail("--port needs a value");
   const n = parsePositiveInt(raw);
   if (n === null || n > 65535)
-    fail(`--port must be an integer between 1 and 65535 (got ${JSON.stringify(raw)})`);
+    fail(`--port must be an integer between 1 and 65535${gotSuffix(raw)}`);
   return n;
 }
 
@@ -132,7 +132,7 @@ export function parseDurationFlag(flag: string, raw: string | undefined): number
   if (raw === undefined) fail(`${flag} needs a value`);
   const ms = parseDurationMs(raw);
   if (ms === null)
-    fail(`${flag} needs a duration like 45s, 90m, 1h30m, or 2d (got ${JSON.stringify(raw)})`);
+    fail(`${flag} needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(raw)}`);
   return ms;
 }
 

@@ -20,6 +20,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "./config-editable-keys.js";
+import { gotSuffix } from "./text.js";
 import type http from "node:http";
 
 /** Every POST handler's shared opening: readJsonObject reads the body and — when it is
@@ -182,7 +183,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    sendJson(res, 400, { error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")} (got ${JSON.stringify(key ?? null)})` });
+    sendJson(res, 400, { error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${gotSuffix(key ?? null)}` });
     return;
   }
   if (body.value === undefined) {
@@ -219,7 +220,7 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
       return;
     }
     if (typeof forSeconds !== "number" || !Number.isFinite(forSeconds) || forSeconds <= 0) {
-      sendJson(res, 400, { error: `forSeconds must be a positive number of seconds (got ${JSON.stringify(forSeconds)})` });
+      sendJson(res, 400, { error: `forSeconds must be a positive number of seconds${gotSuffix(forSeconds)}` });
       return;
     }
     if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {

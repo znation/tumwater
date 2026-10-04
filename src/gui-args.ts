@@ -11,7 +11,7 @@ import { knownRoleIdsCached } from "./config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./event-window.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { parseNonNegativeInt, parsePositiveInt } from "./text.js";
+import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "./text.js";
 import { typoSuffix } from "./suggest.js";
 import { sendJson } from "./http-body.js";
 import type http from "node:http";
@@ -81,7 +81,7 @@ export function intQuery(
       res,
       400,
       {
-        error: `${name} must be a ${kind === "positive" ? "positive" : "non-negative"} integer (got ${JSON.stringify(raw)})`,
+        error: `${name} must be a ${kind === "positive" ? "positive" : "non-negative"} integer${gotSuffix(raw)}`,
       },
     );
     return null;
@@ -117,7 +117,7 @@ export function requirePromptText(
     sendJson(
       res,
       400,
-      { error: `text must be a string${text === undefined ? "" : ` (got ${JSON.stringify(text)})`}` },
+      { error: `text must be a string${text === undefined ? "" : gotSuffix(text)}` },
     );
     return null;
   }
@@ -144,7 +144,7 @@ export function requirePausedFlag(res: http.ServerResponse, body: Record<string,
     sendJson(
       res,
       400,
-      { error: `paused must be a boolean${value === undefined ? "" : ` (got ${JSON.stringify(value)})`}` },
+      { error: `paused must be a boolean${value === undefined ? "" : gotSuffix(value)}` },
     );
     return null;
   }

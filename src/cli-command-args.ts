@@ -19,7 +19,7 @@ import {
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
 import { templateIds, unknownTemplateError } from "./init-templates.js";
-import { errorMessage, parsePositiveInt } from "./text.js";
+import { errorMessage, gotSuffix, parsePositiveInt } from "./text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
@@ -278,7 +278,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // offending token left `tumwater prompt --cancel --role feature` guessing what arrived.
     if (raw === undefined) fail(`--cancel needs a position number (e.g. \`--cancel 2\`)`);
     const n = parsePositiveInt(raw);
-    if (n === null) fail(`--cancel needs a positive integer (got ${JSON.stringify(raw)})`);
+    if (n === null) fail(`--cancel needs a positive integer${gotSuffix(raw)}`);
     // The position is the only token --cancel may carry; anything else alongside it would be
     // prompt text, and this mode has none.
     failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
