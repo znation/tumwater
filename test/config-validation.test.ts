@@ -563,19 +563,20 @@ test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and reject
   );
   // The value shapes: negative, non-numeric, and non-finite each fail with the wording
   // (which also carries the MAX_SAFE_INTEGER bound, so the old bare-wording assertions
-  // were updated when the bound was added).
-  const perRoleWhat = `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables`;
+  // were updated when the bound was added). checkNumberField places the got-value in
+  // its own parenthetical after the rule's what-text.
+  const perRoleWhat = `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables\\)`;
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: -1 } }),
-    new RegExp(perRoleWhat + `; got -1\\)`),
+    new RegExp(perRoleWhat + ` \\(got -1\\)`),
   );
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: "1" } }),
-    new RegExp(perRoleWhat + `; got "1"\\)`),
+    new RegExp(perRoleWhat + ` \\(got "1"\\)`),
   );
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: Number.POSITIVE_INFINITY } }),
-    new RegExp(perRoleWhat + `; got Infinity\\)`),
+    new RegExp(perRoleWhat + ` \\(got Infinity\\)`),
   );
 });
 
@@ -586,7 +587,7 @@ test("maxDailyCostUsdPerRole rejects a finite-but-unrepresentable cap past MAX_S
   assert.match(
     validationError({ ...defaultConfig(), maxDailyCostUsdPerRole: { organize: 1e24 } }),
     new RegExp(
-      `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables; got 1e\\+24\\)`,
+      `maxDailyCostUsdPerRole\\.organize must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} \\(0 disables\\) \\(got 1e\\+24\\)`,
     ),
   );
   assert.equal(

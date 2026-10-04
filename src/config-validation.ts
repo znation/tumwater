@@ -331,20 +331,13 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         `maxDailyCostUsdPerRole must be an object mapping role ids to USD caps (got ${show(caps)})`,
       );
     } else {
-      for (const [id, cap] of Object.entries(caps)) {
+      for (const id of Object.keys(caps)) {
         if (!checkKnownRoleId("maxDailyCostUsdPerRole", id, customNames, problems)) continue;
         // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md
         // 2026-10-02): a finite-but-unrepresentable per-role cap is an effectively
-        // uncapped budget for that role.
-        if (
-          typeof cap !== "number" ||
-          !Number.isFinite(cap) ||
-          cap < 0 ||
-          cap > Number.MAX_SAFE_INTEGER
-        )
-          problems.push(
-            `maxDailyCostUsdPerRole.${id} must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER} (0 disables; got ${show(cap)})`,
-          );
+        // uncapped budget for that role — DOLLAR_CAP is that rule, so the predicate
+        // and its wording have one home.
+        checkNumberField(problems, caps, "maxDailyCostUsdPerRole.", id, DOLLAR_CAP);
       }
     }
   }
