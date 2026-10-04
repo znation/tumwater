@@ -8,8 +8,9 @@ import { terminateChild, withoutLaunchServicesCheckIn } from "./process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "./run-marker.js";
 import { piArgs } from "./pi-args.js";
 import { PiStreamParser, STREAM_SEVERED } from "./pi-stream.js";
+import { startPiWatchdogs } from "./pi-watchdogs.js";
 import type { PiRunResult } from "./pi-run-result.js";
-import { commandBuffersOutput } from "./command-shape.js";
+
 export type { BackendFailureKind } from "./pi-stream.js";
 
 /** pi crashing on malformed JSON, as Node's JSON.parse phrases it on pi's stderr — five ticks in
@@ -108,8 +109,6 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     // holds back the incomplete trailing bytes until the next chunk completes them.
     const decoder = new StringDecoder("utf8");
     let stderr = "";
-    let timedOut = false;
-    let timedOutProgressing = false;
     let settled = false;
 
     // plans/portability.md §5/7: the agent binary is configurable. resolveAgentBin
@@ -133,17 +132,18 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       env: runMarkerEnv(withoutLaunchServicesCheckIn(process.env), runMarker),
     });
 
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      // A deadline that fires on a run still making progress killed a slow run, not a hung
-      // one: "recent progress" is the same window the quiet watchdog itself honors, so the
-      // two watchdogs agree on what a healthy run looks like (BUGS.md 2026-09-29). A run
-      // with no progress event at all — never emitted a byte, or bytes without one structured
-      // event — keeps today's discard path: it has not demonstrably begun. Callback runs
-      // after the sync declarations below, so quietMs/lastProgressAt are initialized here.
-      timedOutProgressing = parser.progressCount > 0 && Date.now() - lastProgressAt <= quietMs;
-      terminateChild(child);
-    }, opts.config.tickTimeoutSeconds * 1000);
+    // The run's two watchdog clocks (src/pi-watchdogs.ts): the tick deadline and the quiet
+    // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
+    // (timedOut/timedOutProgressing/quietKilled/sawOutput) read live off the returned handle.
+    const wd = startPiWatchdogs({
+      progressCount: () => parser.progressCount,
+      openToolCalls: () => parser.openToolCalls,
+      tickTimeoutMs: opts.config.tickTimeoutSeconds * 1000,
+      quietMs: opts.config.quietTimeoutSeconds * 1000,
+      stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
+      kill: () => terminateChild(child),
+      onToolCallStalled: opts.onToolCallStalled,
+    });
 
     let aborted = false;
     const onAbort = () => {
@@ -153,100 +153,15 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     opts.signal?.addEventListener("abort", onAbort, { once: true });
     if (opts.signal?.aborted) onAbort();
 
-    // Quiet watchdog: a healthy run makes PROGRESS continuously even when slow — messages
-    // start and end, turns and tool calls complete. Prolonged lack of progress means a hung
-    // tool (an interactive command waiting for input) or a zombie stream (a dead generation
-    // whose connection drips content-free keepalive updates for hours) that would otherwise
-    // burn the whole tick timeout. Raw output bytes deliberately do NOT reset the clock:
-    // keepalives are bytes without progress. Checked on an interval against the wall clock,
-    // so it also fires promptly after a machine sleep rather than pausing with a suspended
-    // timer. The stall warning below rides the same interval: it needs no kill of its own,
-    // only a periodic look at which open tool calls have gone silent.
-    let lastProgressAt = Date.now();
-    let lastProgressCount = 0;
-    let quietKilled = false;
-    const quietMs = opts.config.quietTimeoutSeconds * 1000;
-    // A run that has not yet produced progress is starting, not hung: process creation and
-    // model connect are legitimately slow on a loaded machine (a full test suite, a busy
-    // fleet), and charging that startup latency as pi silence quiet-kills runs that never
-    // had the chance to speak (BUGS.md 2026-09-23). The one extra quiet window that fix
-    // granted a zero-progress run still false-killed under merge-check load: the kill runs
-    // on an interval against the wall clock, so the firing check can predate the child's
-    // first bytes entirely — fork/exec starved by the same load, or bytes already written
-    // but not yet drained (a firing timer phase precedes the poll phase that delivers
-    // stdout, and a suspended machine resumes the same way). The 2026-09-23 fix therefore
-    // gave a byte-silent run no quiet kill at all, delegating its bound to the tick timeout
-    // — which holds only while tickTimeoutSeconds is near the quiet window's scale (BUGS.md
-    // 2026-09-29: the live 54000 s config left a wedged model connection 15 hours in a
-    // concurrency slot). A zero-byte run now gets a finite bound of its own, independent of
-    // the tick timeout: max(two quiet windows, 30 min). Startup latency under healthy load
-    // stays far below it, so the runs the 2026-09-23 fix protected are still protected; a
-    // run that is genuinely wedged before its first byte (dead connection, unscheduled
-    // fork/exec) is reaped at half an hour instead of at the tick timeout. The false
-    // positive it can cost — a machine so loaded the child has not been scheduled in 30
-    // minutes — is a quiet kill, which resumes the session and the worktree's edits like
-    // an interruption: a restart, not discarded work. Once bytes have flowed the run has
-    // begun; bytes without progress keep the doubled window (the zombie-stream case), and
-    // once real progress has landed quietTimeoutSeconds applies unchanged.
-    let sawOutput = false;
-    const zeroByteSilenceMs = Math.max(quietMs * 2, 30 * 60_000);
-    const allowedSilenceMs = () =>
-      parser.progressCount > 0 ? quietMs : sawOutput ? quietMs * 2 : zeroByteSilenceMs;
-    // The stall warning's threshold (distinct from the kill above): one hung tool call is
-    // surfaced by name even while sibling calls keep streaming, so total silence is not
-    // required. One warning per stalled call — the interval keeps firing until the kill or
-    // the call ends.
-    const stallMs = Math.max(0, opts.config.toolCallStallSeconds) * 1000;
-    const warnedStalledCalls = new Set<string>();
-    const checkEveryMs = quietMs > 0 ? quietMs : stallMs;
-    const quietCheck =
-      checkEveryMs > 0
-        ? setInterval(
-            () => {
-              if (parser.progressCount > lastProgressCount) {
-                lastProgressCount = parser.progressCount;
-                lastProgressAt = Date.now();
-              } else if (quietMs > 0 && Date.now() - lastProgressAt > allowedSilenceMs()) {
-                quietKilled = true;
-                terminateChild(child);
-              }
-              if (stallMs > 0) {
-                for (const call of parser.openToolCalls) {
-                  if (warnedStalledCalls.has(call.id)) continue;
-                  // A command whose stdout is piped or redirected holds its bytes away from
-                  // pi until it exits, so "no output" there is the prescribed shape, not
-                  // evidence of a hang — warn only when silence could mean something
-                  // (BUGS.md 2026-09-28: the tick prompt tells every loop to pipe its
-                  // verification through `tail`, and the resulting false alarms were the
-                  // digest's top warning cluster, drowning real hangs). The call's full raw
-                  // command is classified, never its display label: the label truncates at
-                  // 32 chars, so an operator past that point would be invisible there.
-                  if (commandBuffersOutput(call.command || call.label)) continue;
-                  const silentMs = Date.now() - call.lastActivityAt;
-                  if (silentMs >= stallMs) {
-                    warnedStalledCalls.add(call.id);
-                    // Whole minutes read cleaner in the feed; sub-minute thresholds stay in seconds.
-                    const silent =
-                      silentMs < 60_000
-                        ? `${Math.round(silentMs / 1000)}s`
-                        : `${Math.round(silentMs / 60_000)}m`;
-                    opts.onToolCallStalled?.(`tool call stalled: ${call.label} — no output for ${silent}`);
-                  }
-                }
-              }
-            },
-            Math.min(Math.max(checkEveryMs / 2, 250), 30_000),
-          )
-        : undefined;
+    // Quiet watchdog and its stall warning: src/pi-watchdogs.ts.
 
     child.stdout.on("data", (chunk: Buffer) => {
-      sawOutput = true; // any byte ends the starting phase, progress or not
+      wd.noteByte();
       parser.feed(decoder.write(chunk), (line) => rawLog.write(line + "\n"));
     });
     child.stderr.on("data", (chunk: Buffer) => {
       // stderr is rare and meaningful (crash traces, warnings): treat it as progress.
-      sawOutput = true;
-      lastProgressAt = Date.now();
+      wd.noteStderr();
       stderr += chunk.toString("utf8");
       if (stderr.length > 64 * 1024) stderr = stderr.slice(-64 * 1024);
     });
@@ -254,8 +169,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
     const finish = (result: PiRunResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      if (quietCheck) clearInterval(quietCheck);
+      wd.stop();
       opts.signal?.removeEventListener("abort", onAbort);
       // Resolve only once the raw log has flushed: writes complete on libuv's threadpool, so
       // resolving before 'finish' can leave the tail of <role>.pi.jsonl unwritten — a tick
@@ -342,14 +256,14 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       parser.feed(decoder.end(), (line) => rawLog.write(line + "\n"));
       const failed =
         aborted ||
-        timedOut ||
-        quietKilled ||
+        wd.timedOut ||
+        wd.quietKilled ||
         parser.stopReason === "error" ||
         (code !== 0 && !parser.finalText.trim());
       // A nonzero exit whose stderr ends in a JSON.parse failure is pi dying on a torn server
       // chunk: transient, retryable with --continue (the loop decides). Never set for a run the
       // harness itself killed — those have their own cause.
-      const crashed = !aborted && !timedOut && !quietKilled && code !== 0 && TRANSIENT_PI_CRASH.test(stderr);
+      const crashed = !aborted && !wd.timedOut && !wd.quietKilled && code !== 0 && TRANSIENT_PI_CRASH.test(stderr);
       // The provider severing the in-flight HTTP stream — undici's bare "terminated" — can
       // arrive on pi's stderr (pi dying on the cut, nonzero exit) as well as in a pi event
       // errorMessage (pi catching it): classify the stderr spelling through the same anchored
@@ -357,7 +271,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // harness itself killed, and never when the JSON-parse crash pattern already named the
       // cause — one exit has one cause (BUGS.md 2026-09-30).
       const streamSevered =
-        !aborted && !timedOut && !quietKilled && !crashed && STREAM_SEVERED.test(stderr.trim());
+        !aborted && !wd.timedOut && !wd.quietKilled && !crashed && STREAM_SEVERED.test(stderr.trim());
       finish(
         resultFromParser({
           ok: !failed,
@@ -366,10 +280,10 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
           backendKind: parser.backendFailureKind ?? (streamSevered ? "stream-severed" : undefined),
           errorMessage: aborted
             ? "aborted by harness shutdown"
-            : quietKilled
+            : wd.quietKilled
               ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
-              : timedOut
-                ? timedOutProgressing
+              : wd.timedOut
+                ? wd.timedOutProgressing
                   ? `timed out after ${opts.config.tickTimeoutSeconds}s while still making progress — session and worktree edits preserved for resume`
                   : `timed out after ${opts.config.tickTimeoutSeconds}s`
                 : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
@@ -377,9 +291,9 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
           // intact, so the loop resumes them (quiet_killed) instead of discarding them as an
           // unfulfilled timeout does. A deadline that fired on a run still making progress
           // gets the same treatment (BUGS.md 2026-09-29).
-          timedOut,
-          timedOutProgressing: timedOut && timedOutProgressing,
-          quietKilled,
+          timedOut: wd.timedOut,
+          timedOutProgressing: wd.timedOut && wd.timedOutProgressing,
+          quietKilled: wd.quietKilled,
         }),
       );
     });
