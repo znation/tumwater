@@ -245,6 +245,7 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       const BUG_USAGE = 'tumwater bug "<symptom>"';
       const filed = fileBug(root, positionals.join(" "), BUG_USAGE);
+      const json = rest.includes("--json");
       // The wake always fires; its confirmation line rides the prose output only — in
       // --json mode stdout is the payload document alone (the prompt --json precedent),
       // so a script can parse it.
@@ -253,8 +254,8 @@ async function main(): Promise<void> {
         "bugfix",
         `Operator filed a new bug with \`tumwater bug\`: "${filed.title}" — it is under BUGS.md ## Open; fix it.`,
       );
-      sayFiled("bug", filed, rest.includes("--json"));
-      if (!rest.includes("--json")) say(wake);
+      sayFiled("bug", filed, json);
+      if (!json) say(wake);
       break;
     }
     case "plan": {
@@ -263,13 +264,14 @@ async function main(): Promise<void> {
       await requireReadyRepo(root);
       const PLAN_USAGE = 'tumwater plan "<title>" [body...]';
       const filed = filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), PLAN_USAGE);
+      const json = rest.includes("--json");
       const wake = submitRolePromptAndWake(
         root,
         "feature",
         `Operator requested a plan with \`tumwater plan\`: "${filed.title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
       );
-      sayFiled("plan", filed, rest.includes("--json"));
-      if (!rest.includes("--json")) say(wake);
+      sayFiled("plan", filed, json);
+      if (!json) say(wake);
       break;
     }
     case "questions":
