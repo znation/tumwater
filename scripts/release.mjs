@@ -135,5 +135,6 @@ console.log(`CI green (run ${state.databaseId}); pushing tag ${tag}…`);
 sh("tag", "-a", tag, "-m", `tumwater ${version}`, pushed);
 sh("push", "origin", tag);
 
-console.log(`tag ${tag} pushed — release.yml now publishes to npm and creates the GitHub release.`);
+console.log(`tag ${tag} pushed — release.yml now stages the package on npm and creates the GitHub release.`);
+console.log("then approve the stage with 2FA: npm stage list && npm stage approve <stage-id>");
 console.log("watch it: gh run watch $(gh run list --workflow Release --limit 1 --json databaseId -q '.[0].databaseId')");

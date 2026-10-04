@@ -42,10 +42,15 @@ Cutting a release is one command; `scripts/release.mjs` does the bookkeeping and
 It refuses to run on a dirty tree or a non-main branch, bumps package.json + lockfile
 (when asked), commits as `tumwater(release): <version>`, pushes main, waits for CI to go
 green, then tags `v<version>` and pushes the tag — the tag push triggers Release, which
-re-runs the suite, publishes to npm (`--provenance`), and attaches the tarball to a GitHub
-release. `node scripts/release.mjs --status` reports version/tag/CI state without acting.
-Prerequisites (once): an npm automation-token granular-PAT stored as the repo secret
-`NPM_TOKEN`, and `gh` authenticated locally.
+re-runs the suite, stages the package on npm (`npm stage publish --provenance`), and
+attaches the tarball to a GitHub release. Staging is not publishing: a maintainer approves
+the staged version with 2FA (`npm stage list`, then `npm stage approve <stage-id>`; local
+npm ≥ 11 has the commands, or use the pending-publish UI on npmjs.com). Direct-publish
+bypass-2FA tokens are deprecated by npm (removal January 2027), so CI uses a **Read and
+write (stage only)** granular token scoped to the tumwater package.
+`node scripts/release.mjs --status` reports version/tag/CI state without acting.
+Prerequisites (once): that stage-only token stored as the repo secret `NPM_TOKEN`, and
+`gh` authenticated locally.
 
 ## Keeping the suite fast
 

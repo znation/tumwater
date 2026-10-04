@@ -24,6 +24,8 @@ jobs:
           git config --global user.email "release@tumwater.local"
       - run: npm ci
       - run: npm test
+      # `npm stage publish` needs npm >= 11.5.1; Node 22 on the runner ships npm 10.
+      - run: npm install -g npm@11
       - name: Refuse a tag whose name disagrees with package.json
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -32,7 +34,10 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}" >&2
             exit 1
           fi
-      - run: npm publish --access public --provenance
+      # NPM_TOKEN is a Read-and-write (stage-only) granular token: it cannot publish
+      # directly (npm deprecates direct-publish bypass-2FA tokens, removal January 2027).
+      # This stages the version; a maintainer approves it with 2FA (npm stage approve).
+      - run: npm stage publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Attach the packed tarball to a GitHub release
