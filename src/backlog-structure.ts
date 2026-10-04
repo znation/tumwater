@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
 import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
-import { gitTry } from "./git-run.js";
+import { changeBaseRev, fileContentAt } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
@@ -138,11 +138,11 @@ export async function backlogStructureReason(
 ): Promise<string | undefined> {
   const touched = files.filter((f) => BACKLOG_FILES.includes(f));
   if (touched.length === 0) return undefined;
-  const baseRev = (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
+  const baseRev = await changeBaseRev(wt, mainBranch);
   for (const file of touched) {
     // A deleted file reads as empty: every heading the base had is gone — rule (b).
     const head = readTextOrNull(path.join(wt, file)) ?? "";
-    const base = (await gitTry(wt, "show", `${baseRev}:${file}`)) ?? "";
+    const base = await fileContentAt(wt, baseRev, file);
     const headCounts = sectionTitleCounts(head);
     const baseCounts = sectionTitleCounts(base);
     for (const [title, count] of headCounts)

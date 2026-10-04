@@ -27,7 +27,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseEntryDetails } from "./backlog-md.js";
-import { gitTry } from "./git-run.js";
+import { changeBaseRev, fileContentAt } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
@@ -151,8 +151,8 @@ export async function falseFixReason(
   // merge-base, and the entry's Open/Fixed state lives in the tree the change builds on —
   // pre-batch main can still carry the record as (falsely) Fixed and make an Open→Fixed
   // restoration in a stacked batch compare as already done (BUGS.md 2026-09-23).
-  const baseRev = (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
-  const base = (await gitTry(wt, "show", `${baseRev}:BUGS.md`)) ?? "";
+  const baseRev = await changeBaseRev(wt, mainBranch);
+  const base = await fileContentAt(wt, baseRev, "BUGS.md");
   // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
   // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
   // 2026-09-23 — the in-place narrative rewrite is how a second phantom landing evaded it).

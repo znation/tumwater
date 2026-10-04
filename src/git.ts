@@ -110,6 +110,24 @@ export async function branchExists(root: string, branch: string): Promise<boolea
   return (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
 }
 
+/** The revision a worktree's change should be judged against: the merge-base of its HEAD
+ * with `mainBranch`, falling back to main's tip when the merge-base fails (no common
+ * ancestor, or no commits yet). The one home of the "diff against the merge-base, not
+ * main's tip" policy shared by falseFixReason's BUGS.md base read and
+ * backlogStructureReason's per-file base reads — both judge a backlog edit against the
+ * tree the change builds on, so a stacked batch's earlier landing cannot make an
+ * Open→Fixed restoration compare as already done (BUGS.md 2026-09-23). */
+export async function changeBaseRev(wt: string, mainBranch: string): Promise<string> {
+  return (await gitTry(wt, "merge-base", "HEAD", mainBranch)) ?? mainBranch;
+}
+
+/** A file's content at a revision, or "" when the run fails (the file did not exist at that
+ * revision, or the revision is gone) — the base-side read the backlog gates pair with
+ * changeBaseRev, where a missing base file reads as empty. */
+export async function fileContentAt(cwd: string, rev: string, file: string): Promise<string> {
+  return (await gitTry(cwd, "show", `${rev}:${file}`)) ?? "";
+}
+
 /** The non-empty lines of a completed git command's stdout — the shape every
  * porcelain/log/list parser starts from. Null output (a failed run) yields no lines. */
 export function gitLines(out: string | null): string[] {
