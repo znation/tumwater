@@ -5,12 +5,62 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop)
 
-_Further entries go above this line._
+**Goal.** `tumwater wake` clears backoff the moment it runs, but an operator often knows the
+world changes LATER — a cron finishes at 02:00, a CI run ends in 40 minutes, a dependency
+update lands after midnight. Today the only scheduled lever is a queued prompt (`prompt --at`,
+which deliberately wakes the target loop when it delivers), but that burns a model run whose
+text must be invented; the operator wants the plain "try again at T" demand. Add
+`--in <duration>` to `wake`: the marker is written now but consumed no earlier than
+`now + duration`, exactly mirroring `pause --for`'s auto-resume and `prompt --at`'s
+deferred-delivery marker. Without `--in`, behavior is identical to today. No new marker file,
+no new consumer loop — the existing wake request path grows one optional field and one gate.
+
+**Approach.**
+- `src/cli-flag-specs.ts`: add `WAKE_IN_FLAG` (`names: ["--in"]`, `value: true`,
+  `valueName: "<duration>"`, validate: `parseDurationFlag("--in", value)`) beside
+  `DURATION_FLAG`, so the gate names a typo'd value before the ready-repo gate — same shape
+  as the `--for` spec.
+- `src/cli.ts` `runMarkerCommand`: the accepted-flag list becomes
+  `command === "pause" ? [ROLE_FLAG, DURATION_FLAG, REASON_FLAG] : command === "wake" ?
+  [ROLE_FLAG, WAKE_IN_FLAG] : [ROLE_FLAG]`, so a stray `--in` on pause/reset-counters still
+  fails fast. Update the comment naming the per-command vocabularies.
+- `src/operator-commands.ts` `cmdWake`: when `flagValue(args, "--in")` is non-null, parse it
+  with `parseDurationFlag("--in", ...)` (the failOverDurationCap idiom in cli-args.ts applies —
+  the same ceiling `pause --for` honors), compute `dueMs = Date.now() + ms` at submit (the
+  deferral starts when the operator typed it — the decision `prompt --at`'s comment records),
+  and pass it through.
+- `src/operator-intent.ts` `requestWake`: add an optional trailing `notBeforeMs?: number`
+  parameter, written into the marker as `notBeforeMs` when present (`{ at, roles }` stays the
+  absent case, so older markers keep parsing). The confirmation gains
+  ` — wakes in ${durationLabel(ms)}` on the deferred path, reusing the phrase `prompt --at`'s
+  confirmation uses.
+- `src/operator-requests.ts` `consumeWakeRequest`: before the `roleRequestTargets` read, if
+  the marker carries a numeric `notBeforeMs` greater than `Date.now()`, return WITHOUT removing
+  the marker — a later poll retries it; the wake lands within one poll cycle after the
+  deadline, the same delivery granularity `prompt --at`'s consumer gives. A non-numeric value
+  reads as immediate (defensive; validation happens at the CLI).
+- `src/help.ts` and README.md's control-table `wake` row: append `--in <duration>` to the wake
+  usage with a one-clause scheduled-wake phrase, beside `pause --for`.
+
+**Files touched:** src/cli-flag-specs.ts, src/cli.ts, src/operator-commands.ts,
+src/operator-intent.ts, src/operator-requests.ts, src/help.ts, README.md, plus tests.
+
+**Acceptance criteria.**
+- `tumwater wake --in 45m` writes a wake marker whose `notBeforeMs` is ~45 minutes out; a poll
+  run before the deadline leaves the marker in place and wakes nothing; a poll after it wakes
+  exactly the marker's roles and removes it.
+- `tumwater wake --role qa --in 2h` targets only qa; without `--in` every existing wake
+  behavior (all-roles default, immediate consume, marker shape) is unchanged.
+- `--in` on any other marker command, a malformed duration (`--in xyz`), and a missing value
+  each fail fast at the CLI gate with a message naming the flag.
+- Tests cover the consume-gate (before/at/after the deadline: marker preserved, then
+  consumed), `requestWake`'s marker field, `cmdWake`'s flag parsing, and the strict-args gate
+  for the new flag — in test/operator-requests.test.ts, test/operator-intent.test.ts, and
+  test/cli-operators.test.ts beside the wake cases already there. `npm run test` passes.
 
 ## Done
-
 
 ### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
