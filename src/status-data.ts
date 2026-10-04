@@ -5,7 +5,7 @@ import { enabledRoleIds, isCustomRole } from "./config.js";
 import { fallbackPair } from "./config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
-import { queuedRolePromptCount, queuedRolePromptEntries } from "./inbox.js";
+import { queuedRolePromptEntries } from "./inbox.js";
 import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import {
@@ -156,7 +156,7 @@ export interface StatusSnapshot {
    * `landQueue`; the dashboards render a `p:N` marker and the GUI's per-row prompt affordance
    * from it. Counts only — full previews stay in each queue file, readable via
    * `tumwater prompt --list --role <id>`. Fresh per poll (a directory listing per role, no
-   * content reads — see queuedRolePromptCount), like `inbox`/`inboxPrompts`. */
+   * content reads — the stat-keyed prompt cache), like `inbox`/`inboxPrompts`. */
   roleInbox: Record<string, number>;
   /** Each non-director role's queued prompts with the queue-file basename that addresses
    * them (the /api/prompt-cancel target), execution order — the dashboard renders one cancel
@@ -221,18 +221,26 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const inboxFiles = queued.map((e) => e.file);
   const inboxQueuedAt = queued.map((e) => e.queuedAtMs);
   const inboxNotBefore = queued.map((e) => e.notBeforeMs);
-  // One directory listing per role per poll (no content reads — queuedRolePromptCount) fills
-  // the per-role counts; the director is excluded because its queue is the shared inbox above.
-  // A role with prompts queued gets one read pass for its cancel-addressable entries — the
+  // One directory listing pass per role per poll (below) fills the per-role counts; the
+  // director is excluded because its queue is the shared inbox above.
+  // A role with prompts queued also fills its cancel-addressable entries — the
   // stat-keyed prompt cache keeps an unchanged file at one stat per poll. Entries follow the
   // full list, deferred prompts included (the Queued tab lists and cancels them; only the
   // deliverable count above excludes them).
   const roleInbox: Record<string, number> = {};
   const roleInboxPrompts: StatusSnapshot["roleInboxPrompts"] = {};
+  // One listing pass per role serves both the deliverable count and the cancel-addressable
+  // entries: queuedRolePromptRecords already carries each readable prompt's notBeforeMs, and
+  // deliverableNow is exactly `notBeforeMs === null || notBeforeMs <= now` (prompt-not-before.ts)
+  // over the same cached text — so the old second pass (queuedRolePromptCount's own readdir +
+  // deliverability filter, once per role per poll across all 12 non-director loops) repeated
+  // work the entries pass had just done. One clock read outside the loop pins the count and the
+  // entries to the same instant.
+  const nowMs = Date.now();
   for (const r of roles) {
     if (r === DIRECTOR_ROLE) continue;
-    roleInbox[r] = queuedRolePromptCount(root, r);
     const entries = queuedRolePromptEntries(root, r);
+    roleInbox[r] = entries.filter((e) => e.notBeforeMs === null || e.notBeforeMs <= nowMs).length;
     if (entries.length) roleInboxPrompts[r] = entries;
   }
   const running = orchestratorAlive(root, info);
