@@ -215,6 +215,56 @@ test("sayAnswered renders the prose confirmation or the answer-result JSON", asy
   assert.deepEqual(JSON.parse(json), { answered: 2, question: "Second: which backend?", decision: "openai" });
 });
 
+test("answering lands the block at the end of ## Answered when another section follows it", () => {
+  // ## Answered is not always the file's last section: the moved block must go before the
+  // next ## heading, and a _None yet._ scan that walks past ## Answered must stop there —
+  // a placeholder belonging to the later section is another section's, not one to strip.
+  const root = tmpdir();
+  const file = seed(
+    root,
+    `# Questions
+
+## Open
+
+### Which renderer?
+
+fix in place
+
+## Answered
+
+_None yet._
+
+## Archive
+
+_None yet._
+`,
+  );
+  const { title } = answerQuestion(root, 1, "use ink");
+  assert.equal(title, "Which renderer?");
+  const md = read(file);
+  // The answered question sits at the end of ## Answered, before ## Archive.
+  assert.ok(md.includes("## Answered\n\n### Which renderer?\n\nfix in place\n\n**Answered"), md);
+  assert.ok(md.includes("by operator:** use ink\n\n## Archive"), md);
+  // The later section is untouched, placeholder included.
+  assert.ok(md.includes("## Archive\n\n_None yet._\n"), md);
+  assert.deepEqual(openQuestionEntries(root).map((q) => q.title), []);
+});
+
+test("answering a missing QUESTIONS.md fails with the (0 open) wording", () => {
+  const root = tmpdir();
+  const o = attempt(() => answerQuestion(root, 1, "x"));
+  if (!o.exited) assert.fail("expected process.exit, but the call returned");
+  assert.equal(o.code, 1);
+  assert.match(o.stderr, /^tumwater: no question at position 1 \(0 open\)\n$/);
+});
+
+test("an open entry with no body lists without a body suffix", () => {
+  const root = tmpdir();
+  seed(root, "# Questions\n\n## Open\n\n### Which database?\n\n## Answered\n");
+  assert.equal(openQuestionList(root), "1. Which database?");
+  assert.deepEqual(questionListPayload(root).questions[0]!.body, "");
+});
+
 // --- helpers -------------------------------------------------------------
 
 test("an intermediate ## section between Open and Answered survives an answer untouched", () => {
