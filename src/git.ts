@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileAsync } from "./process.js";
-import { COMMIT_IDENT, git, gitTry } from "./git-run.js";
+import { COMMIT_IDENT, git, gitTry, resolvedGitBin } from "./git-run.js";
 
 /** A valid object id (SHA-1 or SHA-256). */
 function isSha(s: string): boolean {
@@ -283,12 +283,12 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
 export async function patchId(wt: string, base: string, head: string): Promise<string | null> {
   try {
     const { stdout: diff } = await execFileAsync(
-      "git",
+      resolvedGitBin(),
       ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
       { cwd: wt },
     );
     if (diff === "") return null;
-    const run = execFileAsync("git", ["patch-id", "--verbatim"], { cwd: wt });
+    const run = execFileAsync(resolvedGitBin(), ["patch-id", "--verbatim"], { cwd: wt });
     // A patch-id that dies before reading its input must not surface as an unhandled EPIPE.
     run.child.stdin?.on("error", () => {});
     run.child.stdin?.end(diff);

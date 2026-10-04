@@ -3,6 +3,10 @@
  * refs, branches, diffs) live in git.ts and its siblings — this module knows git's argv,
  * not the repository's shape. */
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { findOnPath } from "./files.js";
 import { execFileAsync } from "./process.js";
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
@@ -36,6 +40,32 @@ export class GitError extends Error {
 export const GIT_MISSING_MESSAGE =
   "git not found on PATH — install git first, or add its bin directory to your PATH";
 
+/** The git binary the harness spawns, resolved once per process. On macOS the first git on
+ * PATH is routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer
+ * directory on every exec before running the real binary (the same cost test-runner.ts's
+ * suiteEnv already keeps out of the suite). Resolving the real binary once and spawning it
+ * by absolute path cuts that per-spawn tax from every harness git call without changing what
+ * any command does: the same binary ends up executing the same argv. Any other first git —
+ * Linux, Homebrew — spawns by name exactly as before, and a machine with no git at all keeps
+ * the "git" name so the spawn still fails ENOENT and GIT_MISSING_MESSAGE still applies.
+ * Resolution caches the found absolute path (null = spawn by name); it never re-walks. The
+ * deliberate exception is build-check.ts's toolchain probe, which must keep spawning PATH's
+ * stub — its "broken" verdict exists to catch exactly the stub's exit-69-on-invalid-license
+ * failure, which the real binary would never surface. */
+let resolvedGit: string | null | undefined;
+
+export function resolvedGitBin(): string {
+  if (resolvedGit !== undefined) return resolvedGit ?? "git";
+  let bin: string | null = null;
+  if (process.platform === "darwin" && findOnPath("git") === "/usr/bin/git") {
+    const found = spawnSync("xcrun", ["--find", "git"], { encoding: "utf8" });
+    const real = found.status === 0 ? found.stdout.trim() : "";
+    if (real && path.isAbsolute(real) && real !== "/usr/bin/git" && fs.existsSync(real)) bin = real;
+  }
+  resolvedGit = bin;
+  return bin ?? "git";
+}
+
 /** Run git in `cwd`, throwing GitError on a nonzero exit or when the binary cannot be
  * started at all (the error then names the spawn failure, since git prints no stderr). */
 export async function git(cwd: string, ...args: string[]): Promise<string> {
@@ -51,7 +81,7 @@ export async function runGit(
   extraEnv?: NodeJS.ProcessEnv,
 ): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("git", args, {
+    const { stdout } = await execFileAsync(resolvedGitBin(), args, {
       cwd,
       ...(extraEnv ? { env: { ...process.env, ...extraEnv } } : {}),
     });
