@@ -6,6 +6,18 @@
 import { plural } from "../phrases.js";
 import type { FleetChangeView, RoleChangeView } from "../change-data.js";
 
+/** The work-summary phrase both change views open their work lines with — `N commit(s) ahead
+ * of <main>` plus `, M uncommitted file(s)` when the worktree is dirty (both halves through
+ * plural, so the singular/plural wording the tests pin cannot drift between the fleet roster
+ * and the per-role header). Exactly two call sites: renderFleetChange's per-role line and
+ * renderRoleChange's header line. */
+function workSummary(ahead: number, mainBranch: string, dirtyFiles: string[]): string {
+  return (
+    `${plural(ahead, "commit")} ahead of ${mainBranch}` +
+    (dirtyFiles.length > 0 ? `, ${plural(dirtyFiles.length, "uncommitted file")}` : "")
+  );
+}
+
 /** Render the roster as the operator-facing text `tumwater diff` (no --role) prints: one
  * line per role that holds pending work, in roster order; roles with no worktree and roles
  * holding nothing are skipped. Every entry no-base means the baseline itself is gone — the
@@ -18,8 +30,7 @@ export function renderFleetChange(view: FleetChangeView): string {
     .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
     .map(
       (r) =>
-        `${r.role}: ${plural(r.ahead, "commit")} ahead of ${view.mainBranch}` +
-        (r.dirtyFiles.length > 0 ? `, ${plural(r.dirtyFiles.length, "uncommitted file")}` : ""),
+        `${r.role}: ${workSummary(r.ahead, view.mainBranch, r.dirtyFiles)}`,
     );
   return lines.length > 0 ? lines.join("\n") : "no pending changes";
 }
@@ -30,8 +41,7 @@ export function renderRoleChange(view: RoleChangeView): string {
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
   if (view.ahead === 0 && view.dirtyFiles.length === 0) return `no pending change for ${view.role}`;
   const lines = [
-    `${view.role}: ${view.branch}, ${plural(view.ahead, "commit")} ahead of ${view.mainBranch}` +
-      (view.dirtyFiles.length > 0 ? `, ${plural(view.dirtyFiles.length, "uncommitted file")}` : ""),
+    `${view.role}: ${view.branch}, ${workSummary(view.ahead, view.mainBranch, view.dirtyFiles)}`,
   ];
   for (const c of view.commits) lines.push(`${c.sha} ${c.subject}`);
   if (view.diff) lines.push("", view.diff.trimEnd());
