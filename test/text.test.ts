@@ -144,7 +144,7 @@ test("compactTokens renders one-decimal M at and above 1,000,000", () => {
 test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, and padded forms are null", () => {
   assert.equal(parsePositiveInt("1"), 1);
   assert.equal(parsePositiveInt("65535"), 65535);
-  for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0"]) {
+  for (const raw of ["0x10", "1e3", "+5", "-5", " 5", "5 ", "", "abc", "2.5", "0", "007", "08", "00"]) {
     assert.equal(parsePositiveInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
   }
   // A digit run Number() cannot represent exactly must not read as a valid count. 400 nines
@@ -159,7 +159,7 @@ test("parsePositiveInt accepts plain decimal only — hex, scientific, signed, a
 test("parseNonNegativeInt accepts plain decimal only and allows zero", () => {
   assert.equal(parseNonNegativeInt("0"), 0);
   assert.equal(parseNonNegativeInt("42"), 42);
-  for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc"]) {
+  for (const raw of ["0x10", "1e3", "+5", "-5", "-0", " 5", "", "abc", "007", "00"]) {
     assert.equal(parseNonNegativeInt(raw), null, `expected ${JSON.stringify(raw)} to be rejected`);
   }
   for (const raw of ["9".repeat(400), "1".repeat(17)]) {

@@ -144,15 +144,20 @@ export function truncateWithNote(text: string, max: number, label: string): stri
 
 /** The one definition of a valid plain-decimal integer across every input surface (CLI flags
  * and the GUI's query params): a run of digits `Number()` represents exactly, or null. Number()
- * would silently coerce hex ("0x10" → 16), scientific ("1e3" → 1000), and signed or
- * whitespace-padded forms, none of which a user typing a count or position meant; a digit run
+ * would silently coerce hex ("0x10" → 16), scientific ("1e3" → 1000), and signed,
+ * whitespace-padded, or leading-zero-padded forms, none of which a user typing a count or
+ * position meant; a digit run
  * too long to represent exactly (it overflows to Infinity, or lands above
  * Number.MAX_SAFE_INTEGER) is null too — there is no honest count to return, and passing the
  * overflow on let `logs -n <40 digits>` read the whole log. The two public parsers below add
  * their own sign/zero policy; each caller keeps its own missing-value check and failure mode
  * (fail vs HTTP 400), and bounded variants like --port add their upper limit. */
 function parseDecimalInt(raw: string): number | null {
-  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or padding.
+  if (!/^\d+$/.test(raw)) return null; // Decimal digits only — no hex, exponent, sign, or whitespace padding.
+  // Leading-zero padding ("007", "08", "00") is rejected too: no count or position is typed
+  // that way, so the documented plain-decimal rule reads it as not-a-count rather than
+  // silently reading "007" as 7. A lone "0" stays valid — it is the plain spelling of zero.
+  if (raw.length > 1 && raw.charCodeAt(0) === 48) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) ? n : null;
 }
