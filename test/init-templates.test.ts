@@ -8,7 +8,7 @@ import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds } from "../sr
 import { parseEntryDetails } from "../src/backlog-md.js";
 import { parseInitArgs } from "../src/cli-command-args.js";
 import { INITIAL_PROMPT_MAX_CHARS, readInitialPrompt } from "../src/readme.js";
-import { makeRepo, tmpdir, assertClean } from "./repo-fixtures.js";
+import { makeRepo, tmpdir, assertClean, sh } from "./repo-fixtures.js";
 import { attempt, expectFail } from "./exit-capture.js";
 
 test("the template catalog has exactly four ids; blank is inert, the rest are complete seeds", () => {
@@ -78,6 +78,41 @@ test("initProject --template python-cli seeds preamble+plans+dirs and reports th
     assert.ok(fs.statSync(path.join(repo, dir)).isDirectory());
     assert.equal(fs.readdirSync(path.join(repo, dir)).length, 0);
   }
+});
+
+test("initProject --template leaves existing starter directories alone and reports them as leftAlone", async () => {
+  const repo = makeRepo();
+  // A repo that already carries the template's starter directories — with real content in
+  // them, since the fleet's own ticks would have written code there. Init must not mkdir
+  // over them, must not empty them, and must report them the way it reports existing files:
+  // leftAlone, not created.
+  fs.mkdirSync(path.join(repo, "src"));
+  fs.mkdirSync(path.join(repo, "tests"));
+  fs.writeFileSync(path.join(repo, "src", "main.py"), "print('hi')\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-m", "own starter dirs");
+
+  const result = await initProject(repo, "A markdown-to-html converter.", undefined, {
+    template: "python-cli",
+  });
+  assert.ok(result.committed);
+  assert.deepEqual(result.created.filter((f) => f === "src" || f === "tests"), []);
+  assert.ok(result.leftAlone.includes("src") && result.leftAlone.includes("tests"));
+  assert.equal(fs.readFileSync(path.join(repo, "src", "main.py"), "utf8"), "print('hi')\n");
+  assertClean(repo);
+
+  // A dry run on the same shape reports the same leftAlone and creates nothing new.
+  const dry = tmpdir();
+  fs.mkdirSync(path.join(dry, "src"));
+  fs.writeFileSync(path.join(dry, "src", "main.py"), "print('hi')\n");
+  const dryRun = await initProject(dry, "A markdown-to-html converter.", undefined, {
+    template: "python-cli",
+    dryRun: true,
+  });
+  assert.ok(dryRun.dryRun);
+  assert.ok(dryRun.leftAlone.includes("src"));
+  assert.ok(dryRun.created.includes("tests")); // would create
+  assert.ok(!fs.existsSync(path.join(dry, "tests")));
 });
 
 test("an unknown template id and an overflowing preamble fail before any side effect", async () => {
