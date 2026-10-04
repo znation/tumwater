@@ -66,8 +66,6 @@ export function rejectEqualsForm(
 /** The missing-value error parseRoleFlag and parsePromptArgs share with ROLE_FLAG's trailing
  * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
 export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
-/** The missing-or-flag-shaped-value error parseBranchFlag shares with RUN_FLAG_SPECS'
- * --branch entry, for the same no-drift reason. */
 /** The missing-or-flag-shaped-value error parseBranchFlag (cli-args.ts) shares with
  * RUN_FLAG_SPECS' --branch entry, for the same no-drift reason. */
 export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
