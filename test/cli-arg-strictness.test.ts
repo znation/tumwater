@@ -149,6 +149,36 @@ test("questions rejects a non-answer subcommand and an answer with no decision",
   assert.doesNotMatch(md, /\*\*Answered/);
 });
 
+test("questions answer refuses a non-integer or non-positive question number", async () => {
+  // The number is read before the decision (the noDecision test covers the sibling), so a
+  // number that fails Number.isInteger(n) || n >= 1 must fail with the number form — a
+  // mistyped "0" or "1st" must never be read as a question to answer.
+  const repo = makeRepo();
+  await initProject(repo, "cli questions bad number");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
+  );
+  for (const args of [
+    ["questions", "answer", "0", "no"],
+    ["questions", "answer", "-1", "no"],
+    ["questions", "answer", "1st", "no"],
+    ["questions", "answer"], // a missing number reads as NaN, the same refusal
+  ]) {
+    const r = await cli(repo, ...args);
+    assert.equal(r.code, 1, `exit 1 for ${JSON.stringify(args.slice(1))}`);
+    assert.match(
+      r.stderr,
+      /needs a positive question number: questions answer <n> "<decision>"/,
+      `number usage for ${JSON.stringify(args.slice(1))}`,
+    );
+  }
+  // And every refusal left the question open.
+  const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+  assert.match(md, /### Cap the spend\?/, "the open entry stayed open");
+  assert.doesNotMatch(md, /\*\*Answered/);
+});
+
 test("commands reject unknown arguments instead of silently ignoring them", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli strict args");
