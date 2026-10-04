@@ -81,11 +81,12 @@ export const ROLE_FLAG: FlagSpec = {
   missingValue: ROLE_VALUE_ERROR,
 };
 
-/** The `--for <duration>` flag spec, accepted by `pause` alone (the timed pause): one
- * definition of the flag's spelling and value shape, beside ROLE_FLAG, so the gate's accepted
- * vocabulary and parseDurationFlag's error messages cannot drift apart. validate re-runs the
- * shape parser at the gate, so `pause --for xyz` names the typo before the ready-repo gate
- * can mask it; the 90-day cap stays in cmdPause beside the writers it feeds. */
+/** The `--for <duration>` flag spec, accepted by `pause` (the timed pause) and `run` (the
+ * windowed run): one definition of the flag's spelling and value shape, beside ROLE_FLAG, so
+ * the gate's accepted vocabulary and parseDurationFlag's error messages cannot drift apart.
+ * validate re-runs the shape parser at the gate, so `pause --for xyz` and `run --for xyz`
+ * name the typo before the ready-repo gate can mask it; the 90-day cap stays in cmdPause and
+ * cmdRun beside the timers/writers they feed. */
 export const DURATION_FLAG: FlagSpec = {
   names: ["--for"],
   value: true,
