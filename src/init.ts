@@ -180,10 +180,6 @@ export async function initProject(
   // unbounded one is a standing per-tick cost — the same reason customLoops.task and
   // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
   // never lands in README.md and is never committed.
-  // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
-  // unbounded one is a standing per-tick cost — the same reason customLoops.task and
-  // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
-  // never lands in README.md and is never committed.
   if (prompt.length > INITIAL_PROMPT_MAX_CHARS) {
     throw new Error(
       tooLongMessage(
