@@ -110,7 +110,7 @@ export interface CheckConfig {
 }
 
 /** The config slice the build-check family reads (src/build-check-detect.ts's detectBuildCheck,
- * src/build-check.ts's runScopedBuildCheck, src/main-baseline.ts's checkMainBaseline and
+ * src/build-check-scoped.ts's runScopedBuildCheck, src/main-baseline.ts's checkMainBaseline and
  * mainIsGreen, src/doctor-checks.ts's checkBuildCheck, and src/check-permit.ts's withCheckPermit):
  * the declared check plus the cap that sizes the process-wide check permit. Every field is
  * optional because every caller differs — most hand a full TumwaterConfig, doctor hands a

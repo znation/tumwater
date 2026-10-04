@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
-import { runScopedBuildCheck } from "../src/build-check.js";
+import { runScopedBuildCheck } from "../src/build-check-scoped.js";
 import { readEvents } from "../src/event-read.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { sleep } from "./wait.js";
