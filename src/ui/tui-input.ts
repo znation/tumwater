@@ -139,10 +139,13 @@ export function parseBudgetInput(
   // yet is no longer an exactly representable dollar amount, and checkDailyBudgetUsd (the
   // setter's own screen) admits any finite non-negative number — without this bound a
   // one-zero typo silently writes an effectively uncapped budget.
-  if (!/^\d*\.?\d+$/.test(t))
-    return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
   const n = Number(t);
-  if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER)
+  // Both guards return the one error message below, so the wording cannot drift between the
+  // shape rejection and the bounds rejection (a prior copy pasted the same line twice).
+  if (
+    !/^\d*\.?\d+$/.test(t) ||
+    !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER
+  )
     return { ok: false, error: `budget must be a number of 0 or more (got ${JSON.stringify(text)})` };
   return { ok: true, value: n };
 }
