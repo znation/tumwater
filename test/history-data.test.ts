@@ -58,15 +58,21 @@ test("rows keep the in-window ticks, newest first, and drop everything before th
 
 test("a tick spanning the cutoff renders a dash: the ts filter removes its start too", () => {
   const root = tmpdir();
-  const cutoff = Date.now() - TWO_HOURS;
+  // One clock read per test, every ts derived from it (the BUGS.md 2026-09-30 strictEqual
+  // flake in the --role test below was exactly this shape: a durationMs asserted at an exact
+  // value while its two ts reads were independent Date.now() calls, so a clock slew between
+  // them jitters the span). A span is now exact arithmetic on one base.
+  const base = Date.now();
+  const t = (mins: number) => base - mins * MIN;
+  const cutoff = base - TWO_HOURS;
   writeEvents(root, [
     // Started before the cutoff, ended inside it: the window's ts filter drops the start,
     // so the row must show the dash, not a duration spanning the cutoff.
     startEvent({ ts: cutoff - MIN, tick: 1 }),
-    endEvent({ ts: Date.now() - 10 * MIN, tick: 1 }),
+    endEvent({ ts: t(10), tick: 1 }),
     // Fully inside the window: still paired, still timed.
-    startEvent({ ts: Date.now() - 30 * MIN, tick: 2 }),
-    endEvent({ ts: Date.now() - 20 * MIN, tick: 2 }),
+    startEvent({ ts: t(30), tick: 2 }),
+    endEvent({ ts: t(20), tick: 2 }),
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
   assert.equal(rows.length, 2);
@@ -78,11 +84,15 @@ test("a tick spanning the cutoff renders a dash: the ts filter removes its start
 
 test("--role narrows the window to one loop", () => {
   const root = tmpdir();
+  // One clock read (see the span test above): the durationMs assertion at the bottom is
+  // exact arithmetic on this base, not a difference of two independent Date.now() calls.
+  const base = Date.now();
+  const t = (mins: number) => base - mins * MIN;
   writeEvents(root, [
-    startEvent({ ts: Date.now() - 30 * MIN, loop: "feature", tick: 1 }),
-    endEvent({ ts: Date.now() - 20 * MIN, loop: "feature", tick: 1 }),
-    endEvent({ ts: Date.now() - 15 * MIN, loop: "clean", tick: 1, result: "no_change" }),
-    endEvent({ ts: Date.now() - 5 * MIN, loop: "clean", tick: 2, result: "changed" }),
+    startEvent({ ts: t(30), loop: "feature", tick: 1 }),
+    endEvent({ ts: t(20), loop: "feature", tick: 1 }),
+    endEvent({ ts: t(15), loop: "clean", tick: 1, result: "no_change" }),
+    endEvent({ ts: t(5), loop: "clean", tick: 2, result: "changed" }),
   ]);
   const all = readTickRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(all.rows.map((r) => [r.loop, r.tick]), [
