@@ -74,7 +74,7 @@ async function main(): Promise<void> {
   // prose, so it answers help like the flag-only shape it is. bug/plan admit no valued flags,
   // so their check never skips a token (a flag-only `--json` rides alone).
   const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
-    prompt: ["--role", "--file", "--at", "--cancel", "--edit"],
+    prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
     init: ["--branch", "--template", "--file"],
     bug: [],
     plan: [],

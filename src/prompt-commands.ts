@@ -7,6 +7,8 @@
  * lives beside the queue module it drives. The fleet-side half (the dequeues a loop performs)
  * is inbox.ts and pending-prompt.ts. */
 import { fail, say, sayJson } from "./cli-output.js";
+import fs from "node:fs";
+import path from "node:path";
 import { parsePromptArgs } from "./cli-command-args.js";
 import {
   type CancelOutcome,
@@ -26,6 +28,7 @@ import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";
 import { errorMessage } from "./text.js";
+import { promptImagesProblem, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
 import { submitRolePromptAndWake } from "./operator-intent.js";
 
@@ -216,16 +219,36 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
   const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
-  const wake = submitRolePromptAndWake(root, target, parsed.text, undefined, dueMs);
+  // `--attach <path>`: read each file whole and fail naming the path before anything is
+  // queued, then re-run the GUI endpoint's validation client-side (promptImagesProblem) so
+  // the CLI's error names the broken rule — extension list, per-image cap, image-count cap —
+  // with the same wording the dashboard answers 400 with, instead of deferring to
+  // savePromptImages's post-enqueue rejection.
+  let images: PromptImageInput[] | undefined;
+  if (parsed.attachPaths.length > 0) {
+    images = parsed.attachPaths.map((p) => {
+      let bytes: Buffer;
+      try {
+        bytes = fs.readFileSync(p);
+      } catch (err) {
+        return fail(`cannot read attached image ${JSON.stringify(p)}: ${errorMessage(err)}`);
+      }
+      return { name: path.basename(p), dataBase64: bytes.toString("base64") };
+    });
+    const problem = promptImagesProblem(images);
+    if (problem !== null) fail(problem);
+  }
+  const wake = submitRolePromptAndWake(root, target, parsed.text, images, dueMs);
+  const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
   if (parsed.atDelayMs !== null) {
     // A deferred prompt's confirmation names the delivery delay, in the same duration
     // vocabulary --at parsed (durationLabel), so the operator can re-type it.
     const deferred = ` — delivers in ${durationLabel(parsed.atDelayMs)}`;
-    say(role === null ? `queued for the director loop${deferred}` : `queued for the ${role} loop${deferred}`);
+    say(role === null ? `queued for the director loop${deferred}${attached}` : `queued for the ${role} loop${deferred}${attached}`);
   } else if (role === null) {
-    say("queued for the director loop");
+    say(`queued for the director loop${attached}`);
   } else {
-    say(`queued for the ${role} loop`);
+    say(`queued for the ${role} loop${attached}`);
   }
   say(wake);
 }

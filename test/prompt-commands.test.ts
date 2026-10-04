@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize, dequeuePrompt, queuedRolePrompts } from "../src/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
@@ -331,4 +331,65 @@ test("prompt --edit refuses the sibling modes and out-of-range positions exit no
   const outOfRange = await expectFail(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
   assert.match(outOfRange.stderr, /no prompt at position 9 \(1 queued\)/);
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
+});
+
+// --- --attach <path> ---
+
+test("prompt --attach saves the image beside the queue file, ends the text with the reference line, and names the count", async () => {
+  const root = makeRoot();
+  const img = path.join(root, "shot.png");
+  fs.writeFileSync(img, Buffer.from("png-bytes"));
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "fix the layout"]));
+  assert.match(stdout, /queued for the feature loop with 1 image\(s\)/);
+  const dir = dirOf(root, "feature");
+  const md = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
+  assert.equal(md.length, 1);
+  const text = fs.readFileSync(path.join(dir, md[0] as string), "utf8");
+  // The reference line is the queue file's last line, naming the absolute saved path.
+  const refLine = text.trimEnd().split("\n").pop() as string;
+  const m = refLine.match(/^\[image attached: (.+)\]$/) ?? [];
+  const saved = m[1] as string;
+  assert.ok(fs.statSync(saved).size > 0, "the image bytes landed beside the queue file");
+  assert.equal(path.basename(saved), (md[0] as string).replace(/\.md$/, "") + ".png");
+  // The queued text the loop dequeues carries the same reference line.
+  const dequeued = dequeueRolePrompt(root, "feature") as string;
+  assert.match(dequeued, /\[image attached: .+\.png\]$/);
+  assert.match(dequeued, /fix the layout/);
+});
+
+test("prompt --attach repeats up to 4 and fails the fifth with the count-cap message", async () => {
+  const root = makeRoot();
+  const paths: string[] = [];
+  for (const ext of [".png", ".jpg", ".gif", ".bmp"]) {
+    const p = path.join(root, `img${ext}`);
+    fs.writeFileSync(p, "x");
+    paths.push(p);
+  }
+  const { stdout } = await expectOk(() =>
+    cmdPrompt(root, ["--attach", paths[0] as string, "--attach", paths[1] as string, "note"]),
+  );
+  assert.match(stdout, /with 2 image\(s\)/);
+  const fifth = path.join(root, "img5.png");
+  fs.writeFileSync(fifth, "x");
+  const over = await expectFail(() =>
+    cmdPrompt(root, ["--attach", paths[0] as string, "--attach", paths[1] as string, "--attach", paths[2] as string, "--attach", paths[3] as string, "--attach", fifth, "note"]),
+  );
+  assert.equal(over.code, 1);
+  assert.match(over.stderr, /at most 4 images per prompt \(got 5\)/);
+  assert.equal(inboxSize(root), 1, "only the earlier successful enqueue is in the queue");
+});
+
+test("prompt --attach fails on a nonexistent path, an unsupported extension, and an oversized image — queue untouched", async () => {
+  const root = makeRoot();
+  const missing = await expectFail(() => cmdPrompt(root, ["--attach", path.join(root, "nope.png"), "hello"]));
+  assert.match(missing.stderr, /cannot read attached image/);
+  const badExt = path.join(root, "notes.txt");
+  fs.writeFileSync(badExt, "x");
+  const ext = await expectFail(() => cmdPrompt(root, ["--attach", badExt, "hello"]));
+  assert.match(ext.stderr, /unsupported image type "\*\.txt"/);
+  const big = path.join(root, "big.png");
+  fs.writeFileSync(big, Buffer.alloc(5 * 1024 * 1024 + 1));
+  const size = await expectFail(() => cmdPrompt(root, ["--attach", big, "hello"]));
+  assert.match(size.stderr, /at most 5242880 \(5 MiB\) per image/);
+  assert.equal(inboxSize(root), 0, "none of the refused shapes queued anything");
 });

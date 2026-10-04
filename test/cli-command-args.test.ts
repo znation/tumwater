@@ -183,15 +183,15 @@ test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine 
 
 test("parsePromptArgs enqueues free-form text (trimmed; single-dash tokens are content)", () => {
   const r = expectOk(() => parsePromptArgs(["add", "dark mode"]));
-  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode", atDelayMs: null });
+  assert.deepEqual(r, { mode: "enqueue", role: null, text: "add dark mode", atDelayMs: null, attachPaths: [] });
 
   // Surrounding whitespace is trimmed so a queued prompt never starts/ends with padding.
   const padded = expectOk(() => parsePromptArgs(["  hello  "]));
-  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello", atDelayMs: null });
+  assert.deepEqual(padded, { mode: "enqueue", role: null, text: "hello", atDelayMs: null, attachPaths: [] });
 
   // Only double-dash tokens are flags; a leading single dash is free-form content.
   const dash = expectOk(() => parsePromptArgs(["-x"]));
-  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x", atDelayMs: null });
+  assert.deepEqual(dash, { mode: "enqueue", role: null, text: "-x", atDelayMs: null, attachPaths: [] });
 });
 
 test("parsePromptArgs rejects empty and whitespace-only text", () => {
@@ -267,12 +267,12 @@ test("parsePromptArgs --role: accepted in every mode, never prompt content", () 
   // this parser has no config to read.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["--role", "qa", "check", "the flow"])),
-    { mode: "enqueue", role: "qa", text: "check the flow", atDelayMs: null },
+    { mode: "enqueue", role: "qa", text: "check the flow", atDelayMs: null, attachPaths: [] },
   );
   // The flag pair is never prompt content — before or after the text.
   assert.deepEqual(
     expectOk(() => parsePromptArgs(["hello", "--role", "qa", "world"])),
-    { mode: "enqueue", role: "qa", text: "hello world", atDelayMs: null },
+    { mode: "enqueue", role: "qa", text: "hello world", atDelayMs: null, attachPaths: [] },
   );
   assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--list"])), { mode: "list", role: "qa", json: false });
   assert.deepEqual(expectOk(() => parsePromptArgs(["--cancel", "2", "--role", "qa"])), {
@@ -351,6 +351,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     role: null,
     text: "Refactor the parser.\nWith care.\n",
     atDelayMs: null,
+    attachPaths: [],
   });
 
   // Composes with --role; the role pair is a scope, not file content.
@@ -359,6 +360,7 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
     role: "qa",
     text: "Refactor the parser.\nWith care.\n",
     atDelayMs: null,
+    attachPaths: [],
   });
 
   // A missing value fails by name, like init's.
@@ -511,4 +513,43 @@ test("parsePromptArgs --edit refuses the sibling modes and --at", () => {
   assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--edit", "1", "x"])).stderr, /--cancel and --edit are mutually exclusive/);
   assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--at", "5m"])).stderr, /--at only queues a prompt/);
   assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--json"])).stderr, /--json only applies to --list/);
+});
+
+// --- parsePromptArgs --attach ---
+
+test("parsePromptArgs --attach: repeatable pairs ride out of the prompt text in every position", () => {
+  const attach = (args: string[]) => expectOk(() => parsePromptArgs(args));
+  // Before, between, and after the text: each pair claims the flag and its value.
+  assert.deepEqual(
+    attach(["--attach", "a.png", "fix", "the layout"]),
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"] },
+  );
+  assert.deepEqual(
+    attach(["fix", "--attach", "a.png", "the layout"]),
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["a.png"] },
+  );
+  assert.deepEqual(
+    attach(["fix", "the", "--attach", "b.jpg", "layout", "--attach", "a.png"]),
+    { mode: "enqueue", role: null, text: "fix the layout", atDelayMs: null, attachPaths: ["b.jpg", "a.png"] },
+  );
+  // Composes with --role and --at; every claimed pair stays out of the text.
+  assert.deepEqual(
+    attach(["--role", "qa", "--at", "5m", "--attach", "a.png", "check"]),
+    { mode: "enqueue", role: "qa", text: "check", atDelayMs: 5 * 60_000, attachPaths: ["a.png"] },
+  );
+});
+
+test("parsePromptArgs --attach: missing value names the flag", () => {
+  const r = expectFail(() => parsePromptArgs(["hello", "--attach"]));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--attach needs a path \(e\.g\. `--attach shot\.png`\)/);
+});
+
+test("parsePromptArgs --attach is refused in the read-only and destructive modes", () => {
+  assert.match(expectFail(() => parsePromptArgs(["--list", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--attach", "a.png"])).stderr, /--attach only queues a prompt/);
+  // A stray token beside --list is still the stray-argument error; the guard only covers
+  // the pair itself.
+  assert.match(expectFail(() => parsePromptArgs(["--list", "--attach"])).stderr, /--attach only queues a prompt/);
 });

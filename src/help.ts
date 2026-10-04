@@ -134,6 +134,11 @@ Usage:
                                    Queue a prompt that stays hidden until the duration has
                                    passed (45s, 90m, 1h30m, 1d — listed and cancellable while
                                    it waits, delivered to the tick only once due)
+  tumwater prompt --attach <path> <text...>
+                                   Queue a prompt with an image attached (repeat up to 4
+                                   images: png, jpg, jpeg, gif, webp, bmp; each at most 5
+                                   MiB — saved beside the queue file for the loop's next
+                                   tick)
   tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop
                                    (--json prints the {prompts} array as
                                    machine-readable data)

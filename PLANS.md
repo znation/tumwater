@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --attach <path>` — attach an image to a queued prompt from the CLI (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater prompt --attach <path>` — attach an image to a queued prompt from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** The GUI composer accepts image attachments (drop/paste — `src/inbox-attachments.ts` saves them beside the queue file and appends `[image attached: <absolute path>]` lines the loop's pi agent reads), but the terminal's `tumwater prompt` cannot attach anything, so a CLI operator who wants the feature or bugfix loop to see a screenshot must run the dashboard. Close the gap: one `--attach <path>` flag, repeatable up to the existing per-prompt image cap, on the enqueue form of `tumwater prompt` only.
 
@@ -25,7 +29,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `--list`, `--cancel`, and `--edit` refuse `--attach`; `--attach` pairs never leak into prompt text in any mode.
 - `npm run test` passes, including the new regression tests.
 
-## Done
 
 ### `tumwater prompt --edit <n> <text...>` — correct a queued steering prompt in place, keeping its position and deferral (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

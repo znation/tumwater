@@ -195,7 +195,7 @@ export function parseInitArgs(args: string[]): {
  * against the live config, since this parser has no config to read. `json` is list-only: the
  * machine-readable render of the same listing. */
 type PromptArgs =
-  | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null }
+  | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
   | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number }
   | { mode: "edit"; role: string | null; position: number; text: string };
@@ -214,6 +214,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--edit"], value: true, valueName: "<n>" },
   { names: ["--file"], value: true, valueName: "<path>" },
   { names: ["--at"], value: true, valueName: "<duration>" },
+  { names: ["--attach"], value: true, valueName: "<path>" },
 ];
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
@@ -239,7 +240,10 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const editFlag = args.indexOf("--edit");
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
-  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names);
+  // --attach is repeatable: every occurrence claims itself and its value token, like --role's
+  // single pair, so the pairs ride out of the prompt text in every mode.
+  const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
+  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names).filter((f) => f !== "--attach"); // repeatable: the once-check skips it
   rejectDuplicateFlags(args, known);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
   if (listFlag >= 0 && editFlag >= 0) fail("--list and --edit are mutually exclusive");
@@ -265,10 +269,21 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // --at only queues a prompt, like --file: a delivery deferral has nothing to mean to a
   // listing or a cancel.
   if (atFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail("--at only queues a prompt");
+  // --attach only queues a prompt, like --at: an image attachment has nothing to mean to a
+  // listing, a cancel, or an edit's replacement text.
+  if (attachFlags.length > 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0))
+    fail("--attach only queues a prompt");
   // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
   // plumbing the edit carries over), so a --at alongside it has nothing to mean.
   // The pair is claimed like --role's: the flag and its value are never prompt content.
   const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
+  // Each --attach pair claims the flag and its value; a trailing flag with no value names the
+  // flag here, like --cancel's missing-value wording, before any queue write.
+  const attachPaths = attachFlags.map((i) => args[i + 1] as string);
+  const attachClaims = attachFlags.flatMap((i) => [i, i + 1]);
+  for (const i of attachFlags) {
+    if (args[i + 1] === undefined) fail(`--attach needs a path (e.g. \`--attach shot.png\`)`);
+  }
   let atDelayMs: number | null = null;
   if (atFlag >= 0) {
     atDelayMs = parseDurationFlag("--at", args[atFlag + 1]);
@@ -330,7 +345,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
     // stdin; errorMessage names it, and the operator passes a real pipe instead).
     const file = promptFileValue(args[fileFlag + 1]);
-    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim);
+    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim, ...attachClaims);
     let contents: string;
     if (file === "-") {
       if (stdinPrompt === null) {
@@ -347,18 +362,18 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     } else {
       contents = readPromptFileChecked(file);
     }
-    return { mode: "enqueue", role, text: contents, atDelayMs };
+    return { mode: "enqueue", role, text: contents, atDelayMs, attachPaths: attachPaths };
   }
 
   // Everything except the --role pair and the --at pair is prompt text; the join keeps
   // multi-word requests as one string exactly like the pre-1/2 behavior.
   const text = args
-    .filter((_, i) => !roleClaim.includes(i) && !atClaim.includes(i))
+    .filter((_, i) => !roleClaim.includes(i) && !atClaim.includes(i) && !attachClaims.includes(i))
     .join(" ")
     .trim();
   // Name the fix, like the sibling operator commands' usage errors (bug/plan carry their
   // BUG_USAGE/PLAN_USAGE lines): "prompt text required" alone never said what to type.
   if (!text)
     fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one loop)');
-  return { mode: "enqueue", role, text, atDelayMs };
+  return { mode: "enqueue", role, text, atDelayMs, attachPaths: attachPaths };
 }
