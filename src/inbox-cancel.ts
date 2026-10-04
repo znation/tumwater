@@ -40,12 +40,37 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
   return takeCancelledPrompt(root, role, queuedFileAtPosition(root, role, position));
 }
 
+/** The miss half of a list-wide position outcome — an ambiguity (several loops hold the
+ * position) or a miss (none does, carrying the largest queue length for the error's count) —
+ * exactly the two shapes resolveListedQueue returns when it finds no single loop, restated
+ * once so the three outcome types (ListedQueueResolution, ListedCancelOutcome,
+ * ListedEditOutcome) and their two forwarders cannot drift on the miss fields. */
+export type ListedQueueMiss =
+  | { status: "ambiguous"; roles: string[] }
+  | { status: "missing"; queued: number };
+
+/** Forward a resolution to a list-wide command's outcome: a miss shape returns verbatim, a
+ * found one calls `found` with the resolved loop (so the command's own side-effecting queue
+ * action stays lazy — it runs only for the single loop that holds the position). Both
+ * list-wide commands — cancelListedPrompt and editListedPrompt — are the call sites. */
+export function listedQueueOutcome<T>(
+  resolved: ListedQueueResolution,
+  found: (role: string) => T,
+): T | ListedQueueMiss {
+  switch (resolved.status) {
+    case "ambiguous":
+    case "missing":
+      return resolved;
+    case "found":
+      return found(resolved.role);
+  }
+}
+
 /** Outcome of cancelListedPrompt: a resolved cancel (naming the loop it landed in, since the
  * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
 export type ListedCancelOutcome =
   | { status: "cancelled"; role: string; outcome: CancelOutcome }
-  | { status: "ambiguous"; roles: string[] }
-  | { status: "missing"; queued: number };
+  | ListedQueueMiss;
 
 /** Resolve a list-wide position to the one loop whose queue holds it — the shared half of
  * cancelListedPrompt and editListedPrompt (inbox-edit.ts), so the two cannot drift on how
@@ -58,8 +83,7 @@ export type ListedCancelOutcome =
  * no file. */
 type ListedQueueResolution =
   | { status: "found"; role: string }
-  | { status: "ambiguous"; roles: string[] }
-  | { status: "missing"; queued: number };
+  | ListedQueueMiss;
 
 export function resolveListedQueue(root: string, scope: string[], position: number): ListedQueueResolution {
   const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
@@ -77,9 +101,11 @@ export function resolveListedQueue(root: string, scope: string[], position: numb
  * takes the cancel (cancelRolePrompt's race policy and event). */
 export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
   const resolved = resolveListedQueue(root, scope, position);
-  if (resolved.status === "ambiguous") return { status: "ambiguous", roles: resolved.roles };
-  if (resolved.status === "missing") return { status: "missing", queued: resolved.queued };
-  return { status: "cancelled", role: resolved.role, outcome: cancelRolePrompt(root, resolved.role, position) };
+  return listedQueueOutcome(resolved, (role) => ({
+    status: "cancelled",
+    role,
+    outcome: cancelRolePrompt(root, role, position),
+  }));
 }
 
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is

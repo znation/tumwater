@@ -3,8 +3,8 @@ import { writeTextAtomic } from "./files.js";
 import { logEvent } from "./events.js";
 import { errCode } from "./errno.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
+import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
-import { resolveListedQueue } from "./inbox-cancel.js";
 
 /** The edit half of the prompt queues: rewriting one queued prompt's text in place
  * (`tumwater prompt --edit`), by per-loop position or by list-wide position numbering.
@@ -64,8 +64,7 @@ export function editRolePrompt(root: string, role: string, position: number, new
  * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
 export type ListedEditOutcome =
   | { status: "edited"; role: string; outcome: EditOutcome }
-  | { status: "ambiguous"; roles: string[] }
-  | { status: "missing"; queued: number };
+  | ListedQueueMiss;
 
 /** Edit by the position numbering `tumwater prompt --list` prints with no --role: the same
  * candidate resolution cancelListedPrompt uses — resolveListedQueue, in inbox-cancel.ts, so
@@ -74,7 +73,9 @@ export type ListedEditOutcome =
  * hatch, none is a miss carrying the largest queue length for the error's count. */
 export function editListedPrompt(root: string, scope: string[], position: number, newText: string): ListedEditOutcome {
   const resolved = resolveListedQueue(root, scope, position);
-  if (resolved.status === "ambiguous") return { status: "ambiguous", roles: resolved.roles };
-  if (resolved.status === "missing") return { status: "missing", queued: resolved.queued };
-  return { status: "edited", role: resolved.role, outcome: editRolePrompt(root, resolved.role, position, newText) };
+  return listedQueueOutcome(resolved, (role) => ({
+    status: "edited",
+    role,
+    outcome: editRolePrompt(root, role, position, newText),
+  }));
 }
