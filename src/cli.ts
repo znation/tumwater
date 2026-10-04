@@ -29,7 +29,7 @@ import {
   cmdStatus,
   requireReadyRepo,
 } from "./cli-query-commands.js";
-import { cmdLogs, GREP_VALUE_ERROR } from "./ui/log-commands.js";
+import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor.js";

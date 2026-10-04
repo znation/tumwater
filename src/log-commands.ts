@@ -1,24 +1,25 @@
-import { fail, say } from "../cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
+import { fail, say } from "./cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
   SPARSE_WINDOW_NOTE,
-} from "../event-window.js";
-import { parseEventLine, readEventsTailWithEnd } from "../event-read.js";
-import type { HarnessEvent } from "../events.js";
-import { formatEvent } from "../event-format.js";
-import { followFile } from "../tail.js";
-import { createTranscriptRenderer } from "./transcript.js";
-import { readTranscriptTail } from "./transcript-tail.js";
-import { eventsLogPath, piLogPath } from "../paths.js";
+} from "./event-window.js";
+import { parseEventLine, readEventsTailWithEnd } from "./event-read.js";
+import type { HarnessEvent } from "./events.js";
+import { formatEvent } from "./event-format.js";
+import { followFile } from "./tail.js";
+import { createTranscriptRenderer } from "./ui/transcript.js";
+import { readTranscriptTail } from "./ui/transcript-tail.js";
+import { eventsLogPath, piLogPath } from "./paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.
  * Unlike operator-commands.ts these write nothing but stdout — they only read the event log
- * and each loop's pi transcript. It lives in ui/ with the rendering layer it drives: it imports
- * the event formatter, the transcript renderer, and the file-following helpers, so placing it
- * here keeps the documented rule that src/ui/ is imported only by itself and cli.ts. */
+ * and each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
+ * cli-query-commands.ts, operator-commands.ts), which may import the ui/ rendering layer they
+ * drive — here the event formatter and the transcript renderer — while src/ui/ itself stays
+ * off src/ module boundaries it does not own. */
 
 /** Print one event as the feed line: formatEvent's rendered line, or — in `--json` mode — the
  * raw HarnessEvent serialized exactly as stored in the log. The one home of the

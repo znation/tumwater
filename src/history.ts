@@ -147,7 +147,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // `no ticks in 2h` are statements about the LOG and the WINDOW, and both are false when
     // rows were scanned and filtered out — the operator would read a quiet fleet where the
     // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
-    // matching "<pattern>"`, src/ui/log-commands.ts) names the pattern instead; --json stays
+    // matching "<pattern>"`, src/log-commands.ts) names the pattern instead; --json stays
     // a bare {"rows":[]} document above, never prose in either form.
     say(
       grepPattern !== null

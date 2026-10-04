@@ -95,10 +95,11 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
   the git plumbing in `src/landing-git.ts` (rebase, conflict inspection, fast-forward).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
-- `src/ui/`: TUI, GUI, status table, backlog report, transcript, and log-command rendering
-  (the `logs` command's transcript view). Imported only by each other and `cli.ts`.
+- `src/ui/`: TUI, GUI, status table, backlog report, and transcript rendering. Imported only by
+  each other and the CLI command layer that drives it (`cli.ts` and the `src/` command bodies).
 - `src/history.ts`, `src/tick-detail.ts`, `src/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `tick-detail-data.ts`,
-  `report-data.ts`) whose payloads they print, and `src/cli-query-commands.ts` (the other
+  `report-data.ts`) whose payloads they print, `src/log-commands.ts` (the `logs` command body),
+  and `src/cli-query-commands.ts` (the other
   read-only command bodies).
 - `test/`: unit tests.
