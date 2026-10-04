@@ -10,7 +10,8 @@ import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage, suggestClosest } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
-import { show, validateConfig } from "./config-validation.js";
+import { show } from "./config-field-checks.js";
+import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
 import { parseQuietHours } from "./quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's

@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/config.js";
-import { show, validateConfig } from "../src/config-validation.js";
+import { show } from "../src/config-field-checks.js";
+import { validateConfig } from "../src/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 
-// Tests for src/config-validation.ts — validateConfig/show — plus the load and save paths that
+// Tests for src/config-validation.ts — validateConfig — plus the load and save paths that
 // enforce it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
 // refuse-to-persist). The rest of src/config.ts's surface (defaults, per-role views, the read
 // cache, customLoops, the example template) stays in test/config.test.ts.
