@@ -33,6 +33,7 @@ import {
   perRoleReviewerPi,
   runBatchRecorded,
 } from "./lander-fixtures.js";
+import { assistantLine } from "./pi-events.js";
 
 // Unit coverage for the two halves of a landing — landing-batch.ts's vetRequest (checkout in
 // _land-<role>, rebase onto main, landing-core.ts's review gate) and landVetted (the merge: one change
@@ -211,6 +212,101 @@ test("a conflicting landing gets one resolution run and then lands", async () =>
     assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
     // The rebase rewrote the pinned commit onto main's advance: linear history, no merge commits.
     assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
+  } finally {
+    restore();
+  }
+});
+
+// The re-review gate over a diverging resolution (landing-core.ts's recheckResolved) has two
+// non-approval outcomes the approved test above cannot reach: a model REJECT (the verdict is
+// final — the pin is deleted, nothing lands) and a FAILED review (no parseable verdict — no
+// verdict about the tree, the pin stays for recovery's retry). The shim numbers the review
+// runs it sees: run 1 is the vet's approval, run 2 is the re-review.
+
+test("a resolution the re-review rejects deletes the pin and lands nothing", async () => {
+  const rec = path.join(tmpdir("lander-rereview-rej-"), "n");
+  const restore = fakePi(
+    `n=1
+     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
+     printf '%s\n' "$n" > '${rec}'
+     for a in "$@"; do case "$a" in *"VERDICT:"*)
+       if [ "$n" -eq 1 ]; then
+         printf '%s\n' '${assistantLine("VERDICT: approve")}'
+       else
+         printf '%s\n' '${assistantLine("VERDICT: reject\n1. the resolution restored code main reverted")}'
+       fi
+       exit 0;; esac; done`,
+  );
+  try {
+    const { root, sha } = await pinnedFixture();
+    fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-m", "conflicting main edit");
+
+    const state = freshLoopState(ROLE);
+    const { ctx, calls } = makeCtx(root, state, (wt) => {
+      fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // diverges from the reviewed diff
+    });
+    const mainBefore = mainSha(root);
+
+    assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
+
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+    assert.equal(await refSha(root, REF), null, "a rejected re-review is final: the pin is deleted");
+    assert.equal(
+      state.lastError,
+      "merge failed: conflict resolution rejected on re-review",
+    );
+    assert.equal(state.lastReview?.verdict, "reject", "the re-review's verdict is recorded");
+    assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
+    // The resolution run went through the wiring stub; the re-review was a real gate run.
+    assert.equal(calls.length, 1);
+    // The reject path reset the landing worktree to main, discarding the resolution.
+    assert.equal(
+      fs.readFileSync(path.join(landWorktreePath(root, ROLE), "seed.txt"), "utf8"),
+      "main\n",
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("a re-review with no parseable verdict keeps the pin for a retry", async () => {
+  const rec = path.join(tmpdir("lander-rereview-fail-"), "n");
+  const restore = fakePi(
+    `n=1
+     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
+     printf '%s\n' "$n" > '${rec}'
+     for a in "$@"; do case "$a" in *"VERDICT:"*)
+       if [ "$n" -eq 1 ]; then
+         printf '%s\n' '${assistantLine("VERDICT: approve")}'
+       else
+         printf '%s\n' '${assistantLine("looks fine to me")}'
+       fi
+       exit 0;; esac; done`,
+  );
+  try {
+    const { root, sha } = await pinnedFixture();
+    fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+    sh(root, "git", "add", "-A");
+    sh(root, "git", "commit", "-m", "conflicting main edit");
+
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state, (wt) => {
+      fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
+    });
+    const mainBefore = mainSha(root);
+
+    assert.equal(await vetAndLand(ctx, request(sha)), "merge_conflict");
+
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+    assert.equal(await refSha(root, REF), sha, "a failed re-review is no verdict: the pin stays");
+    // The retry's lastError names the retryable outcome (the failed review's detail rides
+    // state.lastReview and the unreviewFailures counter instead — landing-core.ts keeps a
+    // rejected recheck's own lastError, and a retry gets the plain one).
+    assert.equal(state.lastError, "merge failed: merge_conflict");
+    assert.equal(state.unreviewFailures, 1, "the failed review counts toward the discard cap");
+    assert.equal(state.lastReview?.verdict, "failed");
   } finally {
     restore();
   }
