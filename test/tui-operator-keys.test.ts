@@ -10,6 +10,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { freshLoopState, saveLoopState } from "../src/loop-state.js";
+import { loadConfig, saveConfig } from "../src/config.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeTuiRepo, withTui } from "./tui-fixtures.js";
 
@@ -73,6 +75,40 @@ test("Ctrl+A flashes the abort confirmation with a live harness and the liveness
     tui.key(undefined, "a", { ctrl: true });
     assert.match(tui.lastFrame(), /abort requested for clean — a running fleet applies it within ~2s/);
     assert.equal(fs.existsSync(abortRequestPath(repo, "clean")), true);
+  });
+});
+
+// Ctrl+C is the director's interrupt, not a quit: runTui's render feeds the flag from the
+// rendered snapshot itself (the director row's in-flight phase), so the wiring — not just the
+// handler's branch — decides what a Ctrl+C does. The handler-level test (tui-keys.test.ts)
+// passes syncSnapshot's flag by hand; this one drives the real render path.
+test("Ctrl+C interrupts a director tick in flight through the rendered snapshot, and refuses without", async () => {
+  const repo = await makeTuiRepo();
+  const cfg = loadConfig(repo);
+  cfg.roles.director!.enabled = true;
+  saveConfig(repo, cfg);
+  // A director mid-tick: running with a started-at stamp renders the "working" phase, which
+  // isActivePhase reads as in flight; the orchestrator marker keeps the fleet live for the gate.
+  saveLoopState(repo, { ...freshLoopState("director"), running: true, lastTickStartedAt: Date.now() - 60_000 });
+  writeOrchestratorMarker(repo, ["clean", "director"]);
+  await withTui(repo, async (tui) => {
+    assert.match(tui.lines().join("\n"), /director[^\n]*working/); // the row the flag is read from
+    tui.key(undefined, "c", { ctrl: true });
+    assert.match(tui.lastFrame(), /abort requested for director/);
+    assert.equal(fs.existsSync(abortRequestPath(repo, "director")), true);
+  });
+});
+
+test("Ctrl+C with no director tick in flight flashes the notice and writes no marker", async () => {
+  const repo = await makeTuiRepo();
+  const cfg = loadConfig(repo);
+  cfg.roles.director!.enabled = true;
+  saveConfig(repo, cfg);
+  writeOrchestratorMarker(repo, ["clean", "director"]); // live harness, idle director
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "c", { ctrl: true });
+    assert.match(tui.lastFrame(), /no director task in flight/);
+    assert.equal(fs.existsSync(abortRequestPath(repo, "director")), false);
   });
 });
 
