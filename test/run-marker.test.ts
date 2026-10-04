@@ -255,14 +255,14 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   const recordPid = "require('node:fs').writeFileSync(process.argv[1], String(process.pid));";
   const marker = makeRunMarker();
   const spawnMarked = (file: string, script: string) => spawnMarkedVictim(t, marker, path.join(dir, file), script);
-  const compliant = spawnMarked(
+  spawnMarked(
     "compliant.pid",
     `${recordPid}setInterval(() => {}, 1 << 30)`, // no SIGTERM handler: the leg kills it
   );
   spawnMarked(
     "stubborn.pid",
     `${recordPid}process.on('SIGTERM', () => {});setInterval(() => {}, 1 << 30)`,
-  );;
+  );
   const readPid = (file: string) => {
     try {
       return Number(fs.readFileSync(path.join(dir, file), "utf8").trim()) || 0;
@@ -291,7 +291,16 @@ test("sweepRunMarker escalates to SIGKILL when a victim survives the SIGTERM", a
   const signaled = await sweepRunMarker(marker);
   assert.equal(signaled, 2, "the sweep signaled both marked victims");
   // The compliant victim dies on the leg; the escalation must then find it already gone.
-  await new Promise<void>((resolve) => compliant.once("exit", () => resolve()));
+  // Wait on the real condition — the pid leaving the process table — not on the child's
+  // exit event: the victims are detached and unref'd, so an await on that event inside the
+  // mock window can be left pending with nothing holding the event loop, and node:test
+  // cancels the test as "promise resolution is still pending" (2026-10-04, both v0.1.0 tag
+  // runs, Node 22 only; the lts gate's loop won the same race). Fake timers cannot deliver
+  // a real process exit, so this poll — like the sibling test's — stays on the platform
+  // clock, bounded by a deadline.
+  const reapedDeadline = Date.now() + 10_000;
+  while (pidAlive(compliantPid) && Date.now() < reapedDeadline) await sleep(50);
+  assert.equal(pidAlive(compliantPid), false, "the compliant victim died on the SIGTERM leg");
   t.mock.timers.tick(10_000); // fire the escalation: SIGKILL every victim
   t.mock.timers.reset();
 
