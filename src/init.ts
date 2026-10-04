@@ -16,7 +16,6 @@ import {
 } from "./readme.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
 import { projectName } from "./project-name.js";
-import { tooLongMessage } from "./text.js";
 import {
   getTemplate,
   BUGS_TEMPLATE,
@@ -124,20 +123,6 @@ export async function initProject(
       : "";
     throw new Error(
       `an initial prompt is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
-    );
-  }
-  // The prompt rides into every tick's and director's prefill (readInitialPrompt), so an
-  // unbounded one is a standing per-tick cost — the same reason customLoops.task and
-  // roles.<id>.instructions are capped. Reject before any side effect so a too-long prompt
-  // never lands in README.md and is never committed.
-  if (prompt.length > INITIAL_PROMPT_MAX_CHARS) {
-    throw new Error(
-      tooLongMessage(
-        "the initial prompt",
-        prompt.length,
-        INITIAL_PROMPT_MAX_CHARS,
-        "it rides into every tick's prefill",
-      ),
     );
   }
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
