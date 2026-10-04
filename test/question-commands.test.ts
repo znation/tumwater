@@ -215,6 +215,23 @@ _None yet._
   assert.ok(answered.includes("### Which color?\nblue or red"), answered);
 });
 
+test("answering works when a fence inside ## Open runs unclosed to EOF", () => {
+  // The openEnd walk and the blocks walk must not share a tracker: an unclosed fence in Open
+  // runs the openEnd walk to EOF and leaves the tracker inside, so a shared blocks walk
+  // quoted every `### ` heading and answered a later entry — Question B — on a file `--list`
+  // had numbered as just Question A (whose body the fence swallows, per the list reader).
+  const root = tmpdir();
+  seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody\n\n```\nunclosed fence\n\n## Answered\n\n### Question B\n');
+  assert.match(openQuestionList(root), /^1\. Question A/);
+  const { title } = answerQuestion(root, 1, "yes");
+  // The answer names the entry the list numbered, not a fenced tail's heading.
+  assert.equal(title, "Question A");
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("### Question A\n\nbody"), md);
+  assert.ok(md.includes("**Answered"), md);
+  assert.ok(md.includes("## Open\n\n_None yet._"), md);
+});
+
 function read(file: string): string {
   return fs.readFileSync(file, "utf8");
 }

@@ -15,6 +15,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n>` shared one fence tracker between the openEnd walk and the blocks walk, so an unclosed fence inside `## Open` made it answer a later entry the `--list` numbering never showed — `--list` printed `1. Question A` while `answer 1` returned Question B and duplicated the `## Answered` heading (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-CLI commits 4a512c41/772b8f2c, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** no-fake — the existing suite's unclosed-fence fixture put the fence after `## Answered`, where the reuse is harmless; the bug needed a fixture with the fence inside `## Open`, which no test built until this one.
+
+**Symptom:** `answerQuestion` returned `{title: "Question B"}` and wrote a file with a second `## Answered` heading on a file whose list held one entry, Question A.
+**Cause:** 4a512c41's openEnd walk consumed the lines up to the section's end with `fencedBlocks`; an unclosed fence in Open ran it to EOF and left the tracker inside, so the shared blocks walk quoted every `### ` heading (the same tracker-reuse class 772b8f2c fixed for the first walk).
+**Fix:** the blocks walk in scanQuestions gets its own fresh fenceTracker, like the first walk already did.
+
 ### `tumwater questions answer <n>` relocated any section sitting between `## Open` and `## Answered`, and moved that section's entries into the answer (fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** none — a scratch repro against dist showed the corruption immediately, but the two parsers had never been run against a file shape they disagree on, so the suite's skeleton-shaped fixtures could not see it until the shape was written.

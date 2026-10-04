@@ -94,10 +94,15 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
     }
   }
   const blocks: OpenEntryBlock[] = [];
+  // A fresh tracker for this walk too: the openEnd walk consumed the lines up to the section's
+  // end, so a fence in Open left unclosed at that boundary (an unclosed fence runs openEnd to
+  // EOF) would leave the shared tracker inside and quote every `### ` heading — answer would
+  // then see no blocks, or answer a later entry, on a file `--list` just numbered.
+  const fencedEntries = fenceTracker();
   let current: OpenEntryBlock | null = null;
   for (let i = openIdx + 1; i < openEnd; i++) {
     const line = lines[i] ?? "";
-    if (!fencedBlocks.inside(line) && line.startsWith("### ")) {
+    if (!fencedEntries.inside(line) && line.startsWith("### ")) {
       if (current !== null) current.end = i;
       current = { start: i, end: openEnd, title: line.slice(4).trim() };
       blocks.push(current);
