@@ -35,7 +35,7 @@ interface SchedulingPassCtx {
   probeDue: boolean;
   /** The fleet-wide failure hold: no new role ticks while it stands (the director exempt). */
   held: boolean;
-  /** BUGS.md `## Open` non-empty (openBugs.ts), read once per poll by the poll body. */
+  /** BUGS.md `## Open` non-empty (backlog.ts's openBugs), read once per poll by the poll body. */
   openBugsNow: boolean;
   /** A pending self-redeploy hold: nothing new starts, on any loop. */
   holdForRestart: boolean;
