@@ -324,8 +324,8 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         // A leak guard, not part of the behavior under test: it must sit far beyond the
         // test's wait budget, because under fleet load the watch's polls and this timer
         // stretch together, and a self-exit that can outrun the watch starves the very
-        // signal this test waits for (a 2026-10-01 load flake failed exactly this way).
-        `setTimeout(() => process.exit(1), 60_000);\n`,
+        // signal this test waits for (the 2026-10-01 load flake failed exactly this way).
+        `setTimeout(() => process.exit(1), 180_000);\n`,
     );
     const middle = path.join(dir, "middle.mjs");
     fs.writeFileSync(
@@ -333,17 +333,21 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
       `import { spawn } from "node:child_process";\n` +
         `spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[4]], { stdio: "ignore" }).unref();\n` +
         `setInterval(() => {}, 10_000);\n` +
-        `setTimeout(() => process.exit(1), 60_000);\n`,
+        `setTimeout(() => process.exit(1), 180_000);\n`,
     );
     const started = path.join(dir, "started");
     const gone = path.join(dir, "gone");
     supervisor = spawn(process.execPath, [middle, grandchild, started, gone], { stdio: "ignore" });
-    for (let i = 0; i < 100 && !fs.existsSync(started); i++) await sleep(50);
+    // The guards (180s) now sit far above the wait budgets (15s start / 40s gone), so
+    // under load the only way this test can fail is budget exhaustion while a late but
+    // alive watch has yet to fire — a 2026-10-04 land-gate run at fleet load exhausted
+    // the old 5s/15s budgets at 15.5s while the guards never fired.
+    for (let i = 0; i < 300 && !fs.existsSync(started); i++) await sleep(50);
     assert.ok(fs.existsSync(started), "the grandchild started with its watch running");
     // The shape SIGTERM cannot cover: no handler runs, nothing is forwarded — the supervisor
     // just vanishes and the grandchild reparents.
     process.kill(supervisor.pid!, "SIGKILL");
-    for (let i = 0; i < 60 && !fs.existsSync(gone); i++) await sleep(250);
+    for (let i = 0; i < 400 && !fs.existsSync(gone); i++) await sleep(100);
     assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
   } finally {
     // The long self-exit timers above are only a leak guard for a crashed run; a passing
