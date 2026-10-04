@@ -16,6 +16,10 @@ import { say, sayJson } from "./cli-output.js";
 import { fail } from "./cli-output.js";
 import { collapseWhitespace } from "./text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "./init.js";
+import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
+import { peelPositionals } from "./cli-command-args.js";
+import { requireReadyRepo } from "./cli-query-commands.js";
+import { submitRolePromptAndWake } from "./operator-intent.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
@@ -97,6 +101,34 @@ interface FiledEntry {
   stamp: string;
 }
 
+/** The shared shell of the `bug` and `plan` CLI cases — the one home of the five-step
+ * sequence both commands run in cli.ts: peel the free-form positionals (the questions
+ * command's prose-token pattern), reject anything flag-shaped that is not `--json`, run the
+ * ready-repo gate the other backlog commands run, write the entry via `file`, wake the
+ * `role` loop that should act so it picks the entry up within one poll, then announce — the
+ * wake always fires, its confirmation line rides the prose output only, in `--json` mode
+ * stdout is the payload document alone (the prompt --json precedent) so a script can parse
+ * it. The command name and usage string ride in for the reject/confirmation/empty-arg
+ * wordings (fileBug/filePlan's empty-arg usage lines); `wakeText` builds the loop prompt
+ * from the filed entry's title. */
+export async function fileAndAnnounce(
+  root: string,
+  args: string[],
+  command: string,
+  file: (positionals: string[]) => FiledEntry,
+  role: string,
+  wakeText: (title: string) => string,
+): Promise<void> {
+  const { positionals, rest } = peelPositionals(args);
+  rejectUnknownArgs(command, rest, [JSON_FLAG]);
+  await requireReadyRepo(root);
+  const json = rest.includes("--json"); // the one accepted flag: JSON_FLAG's spelling
+  const filed = file(positionals);
+  const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
+  sayFiled(command, filed, json);
+  if (!json) say(wake);
+}
+
 /** `tumwater bug "<symptom>"`: append one `### <symptom> (reported by the operator <date>)`
  * entry to BUGS.md's `## Open`. The symptom is operator prose, so it folds to one line
  * (collapseWhitespace, the questions answer precedent) — a multi-line raw text could carry
@@ -128,8 +160,9 @@ export function filePlan(root: string, rawTitle: string, rawBody: string, usage:
 
 /** One confirmation for both file commands, prose or `--json`: the JSON branch prints the
  * {file, title, stamp} payload as data, the prose branch one line naming the command, the
- * file, and the entry title. */
-export function sayFiled(command: string, filed: FiledEntry, json: boolean): void {
+ * file, and the entry title. Private to this module — cli.ts reaches it through
+ * fileAndAnnounce, the shared shell both file commands' CLI cases run through. */
+function sayFiled(command: string, filed: FiledEntry, json: boolean): void {
   if (json) sayJson({ file: filed.file, title: filed.title, stamp: filed.stamp });
   else say(`filed ${command} in ${filed.file}: ${filed.title}`);
 }

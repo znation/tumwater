@@ -21,6 +21,23 @@ import { fail } from "./cli-output.js";
 import { templateIds, unknownTemplateError } from "./init-templates.js";
 import { errorMessage, parsePositiveInt } from "./text.js";
 
+/** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
+ * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
+ * with no valued flags (tick: `--json` alone; bug/plan via fileAndAnnounce) the split is a
+ * prefix test — a negative tick number (`tick bugfix -3`) arrives flag-shaped and fails the
+ * unknown-arg gate, which is the right answer for a non-positive n anyway. Lives here with
+ * the CLI's other argument helpers, shared by cli.ts's tick case and
+ * backlog-write.ts's fileAndAnnounce. */
+export function peelPositionals(args: string[]): {
+  positionals: string[];
+  rest: string[];
+} {
+  const positionals: string[] = [];
+  const rest: string[] = [];
+  for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
+  return { positionals, rest };
+}
+
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
  * check for commands whose positionals are free-form prompt text (init, prompt): with their
  * flags present, every other token would be silently baked into the prompt. Names the first
@@ -69,7 +86,7 @@ const INIT_FLAG_SPECS: readonly FlagSpec[] = [
 /** init's valueless flags, derived from the vocabulary so the two lists cannot drift. */
 const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.value).flatMap((s) => s.names);
 
-/** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
+/** The free-form-prompt commands' bespoke argument parsers: `tumwater init` and
  * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
  * can't be used wholesale. The rules instead: a double-dash token must be a known flag from
  * INIT_FLAG_SPECS (`--file`, `--branch`, `--template`, `--adopt`, `--dry-run` or

@@ -27,8 +27,8 @@ import {
   requireReadyRepo,
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
-import { fileBug, filePlan, sayFiled } from "./backlog-write.js";
-import { submitRolePromptAndWake } from "./operator-intent.js";
+import { fileBug, filePlan, fileAndAnnounce } from "./backlog-write.js";
+import { peelPositionals } from "./cli-command-args.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { runMarkerCommand } from "./cli-marker-commands.js";
 import type { MarkerCommand } from "./cli-marker-commands.js";
@@ -45,20 +45,6 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
 // would run main(), so tests pin the topics against help.ts directly.
-
-/** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
- * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
- * with no valued flags (tick: `--json` alone) the split is a prefix test — a negative tick
- * number (`tick bugfix -3`) arrives flag-shaped and fails the unknown-arg gate, which is the
- * right answer for a non-positive n anyway. Lives in cli.ts because it exists only for the
- * tick command's positional vocabulary (the role command's peelRolePositional moved to
- * cli-query-commands.ts beside its only caller). */
-function peelPositionals(args: string[]): { positionals: string[]; rest: string[] } {
-  const positionals: string[] = [];
-  const rest: string[] = [];
-  for (const arg of args) (arg.startsWith("-") ? rest : positionals).push(arg);
-  return { positionals, rest };
-}
 
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
@@ -236,42 +222,29 @@ async function main(): Promise<void> {
       await cmdBacklog(root, args);
       break;
     case "bug": {
-      // Operator-authored backlog writes (the questions command's prose-token pattern):
-      // the symptom is free-form, so positional-first peeling with --json as the one flag —
-      // the ready-repo gate the other backlog commands run, then the write, then the wake
-      // that brings the loop that should act in within one poll.
-      const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("bug", rest, [JSON_FLAG]);
-      await requireReadyRepo(root);
-      const BUG_USAGE = 'tumwater bug "<symptom>"';
-      const filed = fileBug(root, positionals.join(" "), BUG_USAGE);
-      const json = rest.includes("--json");
-      // The wake always fires; its confirmation line rides the prose output only — in
-      // --json mode stdout is the payload document alone (the prompt --json precedent),
-      // so a script can parse it.
-      const wake = submitRolePromptAndWake(
+      const usage = 'tumwater bug "<symptom>"';
+      await fileAndAnnounce(
         root,
+        args,
+        "bug",
+        (positionals) => fileBug(root, positionals.join(" "), usage),
         "bugfix",
-        `Operator filed a new bug with \`tumwater bug\`: "${filed.title}" — it is under BUGS.md ## Open; fix it.`,
+        (title) =>
+          `Operator filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`,
       );
-      sayFiled("bug", filed, json);
-      if (!json) say(wake);
       break;
     }
     case "plan": {
-      const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("plan", rest, [JSON_FLAG]);
-      await requireReadyRepo(root);
-      const PLAN_USAGE = 'tumwater plan "<title>" [body...]';
-      const filed = filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), PLAN_USAGE);
-      const json = rest.includes("--json");
-      const wake = submitRolePromptAndWake(
+      const usage = 'tumwater plan "<title>" [body...]';
+      await fileAndAnnounce(
         root,
+        args,
+        "plan",
+        (positionals) => filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), usage),
         "feature",
-        `Operator requested a plan with \`tumwater plan\`: "${filed.title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
+        (title) =>
+          `Operator requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
       );
-      sayFiled("plan", filed, json);
-      if (!json) say(wake);
       break;
     }
     case "questions":
