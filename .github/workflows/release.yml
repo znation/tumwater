@@ -25,6 +25,13 @@ jobs:
           git config --global user.name "tumwater release"
           git config --global user.email "release@tumwater.local"
       - run: npm ci
+      # setup-node writes `always-auth=false` into its temp .npmrc (its input default);
+      # npm 11 warns "Unknown user config" on every invocation and the warning leaks into
+      # captured build output, failing review-precheck's exact-match assertions — an
+      # environment difference the CI gate never sees (it passes no registry-url, so no
+      # line is written). Drop the line; the registry + authToken lines stay.
+      - name: Drop setup-node's unknown always-auth line from the runner npmrc
+        run: sed -i '/^always-auth=/d' "${NPM_CONFIG_USERCONFIG:-${RUNNER_TEMP:-/tmp}/.npmrc}"
       - run: npm test
       # `npm stage publish` needs npm >= 11.5.1; Node 22 on the runner ships npm 10.
       - run: npm install -g npm@11
