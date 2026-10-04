@@ -94,6 +94,28 @@ test("an entry's fenced block quoting ## headings does not end the section early
   assert.ok(open.indexOf("second symptom") < open.lastIndexOf("## Fixed"), "the quoted ## Fixed must not end ## Open");
 });
 
+test("a filed entry keeps the blank-line separators the rest of the backlog files use", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "bug write separators");
+  fileBug(repo, "first symptom", 'tumwater bug "<symptom>"');
+  fileBug(repo, "second symptom", 'tumwater bug "<symptom>"');
+  const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  // The entry heading never abuts the next ## heading: one blank line between the last
+  // line of the section and ## Fixed, like the init template and every loop-written move.
+  assert.match(bugs, /### second symptom[^\n]*\n\n## Fixed\n/, "entry must be blank-separated from ## Fixed");
+  // The same for a plan whose body is the last line before ## Done.
+  filePlan(repo, "Add an export command", "keep it JSON first", 'tumwater plan "<title>" [body...]');
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  assert.match(plans, /keep it JSON first\n\n## Done\n/, "plan body must be blank-separated from ## Done");
+  // A file that lacks the target section grows it at the end with the body blank-separated
+  // under its heading (the no-## Open fallback path).
+  const bare = makeRepo();
+  fs.writeFileSync(path.join(bare, "BUGS.md"), "# Bugs\n\n## Fixed\n\n_None yet._\n");
+  fileBug(bare, "symptom with a body shape", 'tumwater bug "<symptom>"');
+  const grown = fs.readFileSync(path.join(bare, "BUGS.md"), "utf8");
+  assert.match(grown, /## Open\n\n### symptom with a body shape[^\n]*\n$/, "grown section keeps the template's blank-line shape");
+});
+
 test("tumwater bug files the entry, confirms, and wakes the bugfix loop", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli bug test");

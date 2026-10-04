@@ -57,7 +57,7 @@ function appendEntry(
   if (sectionIdx === -1) {
     // The file exists but lacks the section: grow it at the end with the section plus the
     // entry, so the write never silently drops the entry.
-    const grown = `${md.replace(/\n+$/, "")}\n\n## ${sectionTitle}\n\n${heading}\n${body}\n`;
+    const grown = `${md.replace(/\n+$/, "")}\n\n## ${sectionTitle}\n\n${heading}${body === "" ? "" : `\n\n${body}`}\n`;
     writeTextAtomic(file, grown.endsWith("\n") ? grown : `${grown}\n`);
     return;
   }
@@ -80,12 +80,18 @@ function appendEntry(
   while (content.length > 0 && (content[0] ?? "").trim() === "") content.shift();
   while (content.length > 0 && (content[content.length - 1] ?? "").trim() === "") content.pop();
   const rest = lines.slice(sectionEnd);
+  // One blank line after the entry block, before whatever follows the section: the trailing
+  // blanks the trim above popped were the separator between the section and the next `## `
+  // heading, and without restoring one here the filed entry's heading abuts that heading —
+  // the only writer of these files that produced a heading-on-heading join. When the section
+  // ends at EOF the blank is the file's trailing newline shape, never an extra line.
   const out = [
     ...lines.slice(0, sectionIdx + 1),
     ...(content.length > 0 ? ["", ...content] : []),
     "",
     heading,
     ...(body === "" ? [] : ["", body]),
+    "",
     ...rest,
   ];
   writeTextAtomic(file, out.join("\n"));
