@@ -245,7 +245,18 @@ export function tickRows(
  *   after its tick_end, so any tail window holding the row holds the verdict too — or there
  *   is none yet, the genuinely-pending case that keeps the raw label.) */
 export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
-  let window = limit * 2 + 50;
+  const key = `${root}\u0000${role ?? ""}\u0000${limit}`;
+  // A repeated ask's steady state starts where the last one ended, not back at the base
+  // window: the GUI drawer's history panel re-issues this ask every second while events flow,
+  // and each poll's ladder re-parsed every intermediate window (base → ×4 → …) before the one
+  // that satisfied it — window sizes the previous poll had already proven too small. Rows are
+  // a pure function of the window's events, and a larger tail window is a superset of a
+  // smaller one's, so starting higher changes nothing the ask can see: a window that satisfied
+  // last poll still satisfies now (events only accumulate), and if it no longer does — a
+  // rotation shrank the live log, or the ask itself changed — the loop below keeps growing
+  // exactly as before. In-memory only; a stale note costs one larger first read, never a
+  // wrong row.
+  let window = tickRowWindowMemo.get(key) ?? limit * 2 + 50;
   let events = readEvents(root, window);
   let rows = tickRows(events, limit, role);
   while (
@@ -257,8 +268,17 @@ export function readTickRows(root: string, limit: number, role: string | null): 
     events = readEvents(root, window);
     rows = tickRows(events, limit, role);
   }
+  if (tickRowWindowMemo.size >= TICK_ROW_WINDOW_MEMO_MAX) tickRowWindowMemo.clear();
+  tickRowWindowMemo.set(key, window);
   return rows;
 }
+
+/** Per (root, role, limit): the window readTickRows' last ask ended on — the first window that
+ * satisfied it, or the cap when the ladder ran out (the next poll then skips the ladder's
+ * proven-too-small windows, the same steady-state note mainCheckForPoll's grewFull carries).
+ * Bounded so many short-lived roots in tests cannot grow it unbounded. */
+const tickRowWindowMemo = new Map<string, number>();
+const TICK_ROW_WINDOW_MEMO_MAX = 256;
 
 /** The window-shaped sibling of readTickRows: the completed ticks of the last `sinceMs`, not
  * the last N — the collector behind `history --since`. The window read itself (cutoff, the
