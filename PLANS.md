@@ -6,7 +6,44 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater retire --role <id>` — remove a disabled loop's worktree and branch (planned 2026-10-04 by plan loop)
+
+**Goal.** When a role is disabled or removed from `tumwater.json`, its persistent git worktree
+(`.tumwater/worktrees/<role>/`) and its branch (`tumwater/<role>`) stay behind forever — disk
+the project never reclaims, and stale branches that `git branch` listings and `tumwater diff`
+scans keep tripping over. `tumwater doctor` reports orphan processes but nothing offers a way
+to clean up a retired loop's workspace. Give the operator one command that does it safely.
+
+**Approach.**
+- New module `src/retire.ts` with `collectRetire(root, role)` returning what exists today
+  (worktree present? branch present? `aheadOfMain` count, dirty flag, enabled-in-config flag)
+  and `retireRole(root, role, { force })` performing the removal. Reuse the existing pieces:
+  `worktreePath`/`branchName` from `src/paths.ts`, `aheadOfMain`/`isDirty`/`deleteRef` from
+  `src/git.ts`, and a new `removeWorktree(root, role)` in `src/worktree.ts` that unlocks the
+  worktree's `locked` file (see `ensureWorktree`'s comment on the `locked` race) before
+  `git worktree remove --force`, falling back to `git worktree prune` for a dead registration —
+  the same recovery `isUsableWorktree` already classifies.
+- Safety rails, each refusing with a one-line reason the operator can override with `--force`:
+  the role must not be enabled in config (disable it first); the branch must have no unlanded
+  commits (`aheadOfMain` against main) and no uncommitted worktree edits; the loop must not be
+  mid-tick. On success also delete the per-role landing ref `refs/tumwater/landing/<role>`
+  (`landingRefName`) when present, and drop the role's paused-state marker if any.
+- CLI: `tumwater retire --role <id> [--force]` in `src/cli.ts`/`src/cli-args.ts` (follow the
+  `abort --role` vocabulary), a `--json` payload `{role, removed: [worktree, branch, landingRef...],
+  skipped: []}`, a help entry in `src/help.ts`, and a `tumwater help retire` shape test in the
+  style of `test/command-shape.test.ts`. Doctor stays read-only — out of scope.
+
+**Files touched.** `src/retire.ts` (new), `src/worktree.ts`, `src/cli.ts`, `src/cli-args.ts`,
+`src/help.ts`, `test/retire.test.ts` (new), `test/cli-operators.test.ts` (command-shape rows).
+
+**Acceptance criteria.**
+- On a fixture repo with a role worktree and branch: `retire --role <id>` removes the directory
+  (no registration left, verified by `git worktree list`), the branch, and the landing ref, and
+  prints one line per removed artifact; `--json` mirrors them.
+- Retiring an enabled role, a role with unlanded commits, or a dirty worktree refuses without
+  removing anything; `--force` goes through; a second `retire` on the same role reports that
+  nothing remained (idempotent, not an error).
+- The whole suite passes (`npm run test`).
 
 ## Done
 
