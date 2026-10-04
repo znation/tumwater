@@ -78,6 +78,32 @@ const DURATION_OR_DISABLED: NumberRule = {
  * the file holds), and the fully merged config (load's second pass, saveConfig,
  * applyConfigRequest) — the shape that actually runs, so cross-field rules that depend on
  * defaults are judged here, where both sides of the comparison are always present. */
+/** Validate one per-role map section (`maxDailyCostUsdPerRole`, `quietHoursPerRole`): the
+ * value must be an object mapping role ids to entries, every key must name a known role
+ * (checkKnownRoleId's guard — a typo'd id would silently no-op the section), and each entry
+ * goes through `checkValue` with its role id. `expectation` is the value description the
+ * type-error message quotes. One home for the section shape the two dotted per-role keys
+ * share, so a third per-role map reuses it instead of re-copying the loop. */
+function checkPerRoleMap(
+  r: Record<string, unknown>,
+  key: string,
+  expectation: string,
+  customNames: ReadonlySet<string>,
+  problems: string[],
+  checkValue: (id: string, value: unknown) => void,
+): void {
+  if (!(key in r)) return;
+  const map = r[key];
+  if (!isJsonObject(map)) {
+    problems.push(`${key} must be an object mapping role ids to ${expectation} (got ${show(map)})`);
+    return;
+  }
+  for (const [id, value] of Object.entries(map)) {
+    if (!checkKnownRoleId(key, id, customNames, problems)) continue;
+    checkValue(id, value);
+  }
+}
+
 export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   if (!isJsonObject(raw)) {
     throw new Error(`${label} must be a JSON object (got ${typeName(raw)})`);
@@ -335,50 +361,36 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
   // is fully collected by this point, so a custom loop can be capped). Each value is a
   // spend threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap.
-  if ("maxDailyCostUsdPerRole" in r) {
-    const caps = r.maxDailyCostUsdPerRole;
-    if (!isJsonObject(caps)) {
-      problems.push(
-        `maxDailyCostUsdPerRole must be an object mapping role ids to USD caps (got ${show(caps)})`,
-      );
-    } else {
-      for (const id of Object.keys(caps)) {
-        if (!checkKnownRoleId("maxDailyCostUsdPerRole", id, customNames, problems)) continue;
-        // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md
-        // 2026-10-02): a finite-but-unrepresentable per-role cap is an effectively
-        // uncapped budget for that role — DOLLAR_CAP is that rule, so the predicate
-        // and its wording have one home.
-        checkNumberField(problems, caps, "maxDailyCostUsdPerRole.", id, DOLLAR_CAP);
-      }
-    }
-  }
+  checkPerRoleMap(r, "maxDailyCostUsdPerRole", "USD caps", customNames, problems, (id) => {
+    // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md
+    // 2026-10-02): a finite-but-unrepresentable per-role cap is an effectively
+    // uncapped budget for that role — DOLLAR_CAP is that rule, so the predicate
+    // and its wording have one home. checkPerRoleMap narrowed the map, so the cast
+    // is sound and checkNumberField sees the entry's value typed as before.
+    checkNumberField(
+      problems,
+      r.maxDailyCostUsdPerRole as Record<string, unknown>,
+      "maxDailyCostUsdPerRole.",
+      id,
+      DOLLAR_CAP,
+    );
+  });
 
   // Per-role quiet hours (src/quiet-hours.ts): the same known-role gate as the caps — a
   // typo'd role id would silently no-op the window. Each value must parse as a quiet-hours
   // window (an empty string means off for that role, the same disablement the fleet-wide
   // key takes), and the message names the key and the offending id/value verbatim.
-  if ("quietHoursPerRole" in r) {
-    const windows = r.quietHoursPerRole;
-    if (!isJsonObject(windows)) {
+  checkPerRoleMap(r, "quietHoursPerRole", '"HH:MM-HH:MM" windows', customNames, problems, (id, value) => {
+    if (typeof value !== "string") {
       problems.push(
-        `quietHoursPerRole must be an object mapping role ids to "HH:MM-HH:MM" windows (got ${show(windows)})`,
+        `quietHoursPerRole.${id} must be a "HH:MM-HH:MM" string like "23:00-07:00" (an empty string means off) (got ${show(value)})`,
       );
-    } else {
-      for (const id of Object.keys(windows)) {
-        if (!checkKnownRoleId("quietHoursPerRole", id, customNames, problems)) continue;
-        const value = windows[id];
-        if (typeof value !== "string") {
-          problems.push(
-            `quietHoursPerRole.${id} must be a "HH:MM-HH:MM" string like "23:00-07:00" (an empty string means off) (got ${show(value)})`,
-          );
-          continue;
-        }
-        if (value.trim() === "") continue; // empty = off for that role
-        const parsed = parseQuietHours(value);
-        if (!parsed.ok) problems.push(`quietHoursPerRole.${id}: ${parsed.error}`);
-      }
+      return;
     }
-  }
+    if (value.trim() === "") return; // empty = off for that role
+    const parsed = parseQuietHours(value);
+    if (!parsed.ok) problems.push(`quietHoursPerRole.${id}: ${parsed.error}`);
+  });
 
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
