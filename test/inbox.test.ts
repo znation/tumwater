@@ -403,6 +403,27 @@ test("cancel by position still reaches a deferred entry", (t) => {
   assert.equal(inboxSize(dir, "feature"), 0);
 });
 
+test("operator content that merely starts with a marker-shaped line is never treated as plumbing", () => {
+  const dir = tmpdir();
+  // Only the writer's exact `tumwater:not-before <iso-utc>` shape is plumbing. A queued
+  // prompt whose own first line starts with the prefix — e.g. one asking a loop to fix the
+  // marker feature itself — must deliver verbatim, not be silently deferred or stripped.
+  const spoof = "tumwater:not-before 2030-01-01\n\nfix the not-before marker feature";
+  const f = enqueueRolePrompt(dir, "feature", spoof);
+  assert.equal(notBeforeMs(fs.readFileSync(f, "utf8")), null);
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), [spoof]);
+  assert.equal(dequeueRolePrompt(dir, "feature"), spoof);
+  // Loose date spellings a hand-edited file might carry are malformed too: deliver now.
+  for (const stamp of ["tomorrow", "Dec 25 2030", "2030-01-01T00:00:00Z"]) {
+    const text = `tumwater:not-before ${stamp}\n\ncontent`;
+    const g = enqueueRolePrompt(dir, "feature", "x");
+    fs.writeFileSync(g, text);
+    assert.equal(notBeforeMs(text), null, stamp);
+    assert.deepEqual(queuedRolePrompts(dir, "feature"), [text], stamp);
+    assert.equal(dequeueRolePrompt(dir, "feature"), text, stamp);
+  }
+});
+
 test("a malformed or missing not-before marker reads as deliverable", () => {
   const dir = tmpdir();
   const f1 = enqueueRolePrompt(dir, "feature", "no marker");

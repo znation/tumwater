@@ -35,13 +35,22 @@ function notBeforeMarker(at: number): string {
   return `${NOT_BEFORE_PREFIX}${new Date(at).toISOString()}\n\n`;
 }
 
+/** The exact stamp shape notBeforeMarker writes — Date.prototype.toISOString()'s
+ * `YYYY-MM-DDTHH:MM:SS.sssZ`. Only a stamp in this shape counts as plumbing; anything else
+ * after the prefix is the prompt's own content (e.g. a queued prompt that begins with a
+ * marker-like line asking a loop to fix the marker itself), not a deferral. */
+const NOT_BEFORE_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 /** A queued prompt's not-before time (epoch ms) parsed from the marker line at the top of its
- * queue-file text, or null when the prompt carries no marker or a malformed one. An ISO stamp
- * that fails to parse reads as null (deliverable) so a hand-edited file can never strand a
- * prompt forever. A past or present stamp reads as itself — deliverable now, like null. */
+ * queue-file text, or null when the prompt carries no marker or a malformed one. Only the
+ * writer's exact ISO-UTC stamp shape (NOT_BEFORE_STAMP) reads as a marker, so operator
+ * content that merely starts with the prefix stays content; an ISO stamp that fails to
+ * parse reads as null (deliverable) so a hand-edited file can never strand a prompt
+ * forever. A past or present stamp reads as itself — deliverable now, like null. */
 export function notBeforeMs(text: string): number | null {
   if (!text.startsWith(NOT_BEFORE_PREFIX)) return null;
   const firstLine = text.slice(NOT_BEFORE_PREFIX.length).split("\n", 1)[0] ?? "";
+  if (!NOT_BEFORE_STAMP.test(firstLine)) return null;
   const stamp = Date.parse(firstLine);
   return Number.isNaN(stamp) ? null : stamp;
 }
@@ -50,7 +59,9 @@ export function notBeforeMs(text: string): number | null {
  * list's text, the previews): the marker is plumbing, not content, so no display surface
  * shows it. A text without a marker passes through unchanged. */
 export function stripNotBeforeMarker(text: string): string {
-  if (!text.startsWith(NOT_BEFORE_PREFIX)) return text;
+  // Only a writer-shaped marker (notBeforeMs's exact stamp) is plumbing: a prompt whose own
+  // first line starts with the prefix passes through whole.
+  if (notBeforeMs(text) === null) return text;
   return text.replace(/^tumwater:not-before .+\n\n/, "");
 }
 
