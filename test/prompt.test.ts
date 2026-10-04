@@ -7,12 +7,14 @@ import {
   CLAIMS_RULE,
 } from "../src/reply-contract.js";
 import {
-  PRINCIPLES_MAX_CHARS,
   ROOT_FROM_WORKTREE,
   buildDirectorPrompt,
   buildTickPrompt,
-  readPrinciples,
 } from "../src/prompt.js";
+import {
+  PRINCIPLES_MAX_CHARS,
+  readPrinciples,
+} from "../src/principles.js";
 import { buildResumePrompt } from "../src/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gate-prompts.js";

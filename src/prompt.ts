@@ -1,6 +1,4 @@
 import path from "node:path";
-import { readTextOrNull } from "./files.js";
-import { truncateWithNote } from "./text.js";
 import { describeCheck } from "./build-check-report.js";
 import type { BuildCheck } from "./build-check-detect.js";
 import { type Role } from "./roles.js";
@@ -26,11 +24,8 @@ import { worktreePath } from "./paths.js";
  * must end — so the rules are grouped with one rule per bullet, budgets are numeric, role tasks are
  * numbered steps, claims carry the check that proves them, the three possible endings are a
  * mutually exclusive list, and that closing contract comes last, where a model attends to it most.
- * Nothing here is model-conditional. */
-
-/** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
- * each tick's prefill. */
-export const PRINCIPLES_MAX_CHARS = 4000;
+ * Nothing here is model-conditional. The PRINCIPLES.md reader the principles block is fed from
+ * lives in principles.ts (readPrinciples, with its injection cap). */
 
 /** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
  * at the ceiling landing nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
@@ -169,15 +164,9 @@ How to end your reply — the harness parses it, so the form matters:
 ${REPLY_ENDINGS}`;
 }
 
-/** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty
- * string when the file is missing or unreadable — prompt building must never throw on it. */
-export function readPrinciples(root: string): string {
-  const file = path.join(root, "PRINCIPLES.md");
-  return truncateWithNote(readTextOrNull(file)?.trim() ?? "", PRINCIPLES_MAX_CHARS, "PRINCIPLES.md");
-}
-
 /** The <principles> block injected into every tick and director prompt: the project's codified
- * taste, phrased positively so loops follow it rather than merely avoid violations. */
+ * taste, phrased positively so loops follow it rather than merely avoid violations. The file
+ * itself is read by principles.ts's readPrinciples. */
 function principlesBlock(principles: string): string {
   return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principles}\n</principles>`;
 }

@@ -4,7 +4,8 @@ import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } f
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
-import { buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.js";
+import { buildDirectorPrompt, buildTickPrompt } from "./prompt.js";
+import { readPrinciples } from "./principles.js";
 import { buildCutOffNote } from "./prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
 import { detectBuildCheck } from "./build-check-detect.js";

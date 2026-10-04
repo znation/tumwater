@@ -240,7 +240,7 @@ is now `833cabf` and none of the landings since the README's stamp touches this 
 The audit found one design defect and pinned five seams; the Shape bullets above are corrected in
 place. Verified anchors: `TickPromptInput` at src/prompt.ts:142 and
 `buildTickPrompt` at :163; `tickPrompt()` at src/loop.ts:144, which reads `readPrinciples` from
-core prompt.ts (so a core digest function is the only clean injection); the `qa` catalog entry at
+core principles.ts (so a core digest function is the only clean injection); the `qa` catalog entry at
 src/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles.ts:274;
 `DEFERRABLE_ROLES` at :282 and `BASELINE_BLOCKED_ROLES` at :312; `roles.qa`'s clock at
 src/config.ts:21; the observer no-backoff arm at src/state.ts:217; `"*.md"` in

@@ -23,7 +23,7 @@ constraints are scattered across `COMMON_RULES` in src/prompt.ts and README frag
   header explaining its purpose and 3–4 starter principles phrased positively (e.g. "prefer the
   standard library over a new dependency", "keep every module under ~500 lines", "every behavior
   change ships with a test"). Add to the init commit and to `initProject`'s created-files list.
-- **Injection** (`src/prompt.ts`): new `readPrinciples(root)` reads the file (cap at ~4,000 chars,
+- **Injection** (`src/principles.ts`): new `readPrinciples(root)` reads the file (cap at ~4,000 chars,
   clipping with a note so a runaway file cannot blow up every prompt). `buildTickPrompt` and
   `buildDirectorPrompt` include it as a `<principles>` block introduced as "design principles this
   project holds — uphold them in everything you produce". Positive framing preserved verbatim.
