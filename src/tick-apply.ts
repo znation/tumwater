@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "./config-schema.js";
-import type { LandingEntry } from "./landing-queue.js";
+import type { LandingEntry } from "./landing/landing-queue.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
 import {

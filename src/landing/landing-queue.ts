@@ -1,8 +1,8 @@
 import path from "node:path";
-import { listQueueFiles, queueFileName, removeQueueFile } from "./file-queue.js";
-import { readJsonFile, writeJsonFile } from "./json-files.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { landQueueDir } from "./paths.js";
+import { listQueueFiles, queueFileName, removeQueueFile } from "../file-queue.js";
+import { readJsonFile, writeJsonFile } from "../json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { landQueueDir } from "../paths.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no

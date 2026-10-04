@@ -1,4 +1,4 @@
-/** The error-degradation paths of landVetted (src/landing-batch.ts) — the catches that turn a
+/** The error-degradation paths of landVetted (src/landing/landing-batch.ts) — the catches that turn a
  * THROWN failure (not a returned one) during the merge stage into a per-change "error" with
  * the message on the role's state, instead of losing an already-landed prefix or crashing the
  * merge slot. The wiring's runPi is the one stubbed call that can throw its way out
@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing-batch.js";
+import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { refSha } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { mainSha } from "./repo-fixtures.js";

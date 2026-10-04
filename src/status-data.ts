@@ -14,10 +14,10 @@ import {
   readOrchestratorInfo,
   standingFleetPause,
 } from "./fleet-state.js";
-import { readLandingMarker, type LandingInFlight } from "./landing-slot.js";
+import { readLandingMarker, type LandingInFlight } from "./landing/landing-slot.js";
 import { fleetDailyCost, projectCapHit } from "./budget.js";
 import { roleCapPaused } from "./role-cap-gates.js";
-import { queuedLandings } from "./landing-queue.js";
+import { queuedLandings } from "./landing/landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers

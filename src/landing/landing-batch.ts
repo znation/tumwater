@@ -6,8 +6,8 @@
  * beside it in landing-stack.ts. The shared review gate (reviewPinnedChange) and the
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
-import { ensureDetachedWorktree } from "./worktree.js";
-import { landWorktreePath } from "./paths.js";
+import { ensureDetachedWorktree } from "../worktree.js";
+import { landWorktreePath } from "../paths.js";
 import {
   landApprovedChange,
   reviewPinnedChange,
@@ -16,13 +16,13 @@ import {
   type LanderContext,
 } from "./landing-core.js";
 import { attributeRedCheck } from "./landing-check-failures.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "../text.js";
 import { type LandingChangeStatus } from "./landing-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./landing-stack.js";
-import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./tick-outcome.js";
-import type { GateRunsPi, PiRunWiring } from "./loop-pi.js";
-import type { LoopState } from "./loop-state.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import type { TickResult } from "../tick-outcome.js";
+import type { GateRunsPi, PiRunWiring } from "../loop-pi.js";
+import type { LoopState } from "../loop-state.js";
 
 /** The identity a vet or a merge needs from the harness: root, main branch, live config, and
  * the task's abort signal. Deliberately thinner than LanderContext — no single `state` and no

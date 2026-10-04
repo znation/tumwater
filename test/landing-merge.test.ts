@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ffMainTo } from "../src/landing-git.js";
-import { diffLineMultiset } from "../src/landing-diff.js";
-import { mergeToMain, type MergeContext } from "../src/landing-merge.js";
+import { ffMainTo } from "../src/landing/landing-git.js";
+import { diffLineMultiset } from "../src/landing/landing-diff.js";
+import { mergeToMain, type MergeContext } from "../src/landing/landing-merge.js";
 import { defaultConfig } from "../src/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
@@ -299,7 +299,7 @@ test("the landing-flow git helpers are exported from landing-git.js (regression)
   // half-finished organize tick 78 move) → landing-git.ts (when the lander and batch lander
   // started calling them directly). Pin the placement at runtime so a half-finished move
   // fails loudly instead of silently stranding the landing flow.
-  const landingGit = await import("../src/landing-git.js");
+  const landingGit = await import("../src/landing/landing-git.js");
   for (const name of [
     "conflictedFiles",
     "rebaseOntoMain",

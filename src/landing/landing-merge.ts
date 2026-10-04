@@ -1,7 +1,7 @@
-import { openQuestions } from "./backlog.js";
-import { logEvent } from "./events.js";
-import { headOf } from "./git.js";
-import { aheadOfMainFiles } from "./git-diff.js";
+import { openQuestions } from "../backlog.js";
+import { logEvent } from "../events.js";
+import { headOf } from "../git.js";
+import { aheadOfMainFiles } from "../git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
 import {
   conflictedFiles,
@@ -11,24 +11,24 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "./landing-git.js";
-import { abortSync } from "./worktree.js";
-import { type BuildCheckOutcome } from "./build-check.js";
-import { runScopedBuildCheck } from "./build-check-scoped.js";
-import { type BuildCheck, gateCommandOf } from "./build-check-detect.js";
-import { noteGreenBaseline } from "./main-baseline.js";
-import { isExemptDiff } from "./exemptions.js";
-import { falseFixReason } from "./fix-claim.js";
-import { backlogStructureReason } from "./backlog-structure.js";
-import { warnEvent } from "./events.js";
-import { withLock } from "./lock.js";
-import { buildConflictPrompt } from "./gate-prompts.js";
-import { mergeLockDir } from "./paths.js";
+import { abortSync } from "../worktree.js";
+import { type BuildCheckOutcome } from "../build-check.js";
+import { runScopedBuildCheck } from "../build-check-scoped.js";
+import { type BuildCheck, gateCommandOf } from "../build-check-detect.js";
+import { noteGreenBaseline } from "../main-baseline.js";
+import { isExemptDiff } from "../exemptions.js";
+import { falseFixReason } from "../fix-claim.js";
+import { backlogStructureReason } from "../backlog-structure.js";
+import { warnEvent } from "../events.js";
+import { withLock } from "../lock.js";
+import { buildConflictPrompt } from "../gate-prompts.js";
+import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
-import { syncRootInstall } from "./dep-install.js";
-import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./tick-outcome.js";
-import type { RunsPi } from "./loop-pi.js";
+import { syncRootInstall } from "../dep-install.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import type { TickResult } from "../tick-outcome.js";
+import type { RunsPi } from "../loop-pi.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —

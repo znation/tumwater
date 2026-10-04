@@ -1,4 +1,4 @@
-import { gitTry } from "./git-run.js";
+import { gitTry } from "../git-run.js";
 
 /** The landing-scope DIFF COMPARISON (see landing-merge.ts for the merge flow that consults
  * it): whether a conflict-resolved tree's diff ahead of main stays inside the diff the review

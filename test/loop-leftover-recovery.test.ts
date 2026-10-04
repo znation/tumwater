@@ -20,7 +20,7 @@ import { loadLoopState } from "../src/loop-state.js";
 import { ERROR_STREAK_WARN } from "../src/tick-apply.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { headLanding, queueDepth } from "../src/landing-queue.js";
+import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

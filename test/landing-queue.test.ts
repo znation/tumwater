@@ -15,9 +15,9 @@ import {
   queuedLandingFiles,
   queuedLandings,
   staleHeadFile,
-} from "../src/landing-queue.js";
+} from "../src/landing/landing-queue.js";
 import { landQueueDir } from "../src/paths.js";
-import type { LandingEntry } from "../src/landing-queue.js";
+import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 function entry(role: string, sha: string, tick = 1): LandingEntry {

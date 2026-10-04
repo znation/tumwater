@@ -12,7 +12,7 @@ import type { BudgetGate } from "./budget.js";
 import { deferTick, isEligible } from "./scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "./roles.js";
 import { inboxSize } from "./inbox.js";
-import { queuedLandingFiles } from "./landing-queue.js";
+import { queuedLandingFiles } from "./landing/landing-queue.js";
 import { logEvent } from "./events.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when

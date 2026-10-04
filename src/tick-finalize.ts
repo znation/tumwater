@@ -79,7 +79,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // and resets it on any other completed result — so warn only when THIS outcome incremented
   // the streak up to the threshold: a preserved streak already sitting at the bar must not
   // re-warn on the queued tick's end. A rejection's crossing warns from the landing side
-  // instead (writeLandingOutcome, src/landing-slot.ts), which is where rejections resolve.
+  // instead (writeLandingOutcome, src/landing/landing-slot.ts), which is where rejections resolve.
   if (
     (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
     (s.consecutiveErrors ?? 0) === ERROR_STREAK_WARN

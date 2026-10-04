@@ -1,17 +1,17 @@
-import { deleteRef, headOf, patchId } from "./git.js";
-import { landingRefName } from "./paths.js";
-import { recordReview } from "./tick-apply.js";
-import { saveLoopState } from "./loop-state.js";
-import { unverifiedTreeOutcome } from "./build-check-events.js";
-import { checkFailureReasons } from "./build-check-report.js";
-import { mainTipVerdict } from "./main-red.js";
-import { logEvent } from "./events.js";
-import { mainRedPhrase } from "./phrases.js";
-import type { BuildCheckOutcome } from "./build-check.js";
-import type { BuildCheck } from "./build-check-detect.js";
-import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./tick-outcome.js";
-import type { LoopState } from "./loop-state.js";
+import { deleteRef, headOf, patchId } from "../git.js";
+import { landingRefName } from "../paths.js";
+import { recordReview } from "../tick-apply.js";
+import { saveLoopState } from "../loop-state.js";
+import { unverifiedTreeOutcome } from "../build-check-events.js";
+import { checkFailureReasons } from "../build-check-report.js";
+import { mainTipVerdict } from "../main-red.js";
+import { logEvent } from "../events.js";
+import { mainRedPhrase } from "../phrases.js";
+import type { BuildCheckOutcome } from "../build-check.js";
+import type { BuildCheck } from "../build-check-detect.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import type { TickResult } from "../tick-outcome.js";
+import type { LoopState } from "../loop-state.js";
 import type { LanderContext } from "./landing-core.js";
 
 /** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before

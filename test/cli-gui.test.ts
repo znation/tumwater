@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
-import { enqueueLanding } from "../src/landing-queue.js";
+import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui-command.js";
 import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";

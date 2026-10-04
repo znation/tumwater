@@ -219,7 +219,7 @@ test("a red is provisional: the next worktree re-runs it unasked, and a pass pro
   assert.equal(runsOf(counter), 2);
 });
 
-// --- noteGreenBaseline: the landing path (src/landing-merge.ts) seeds this cache with the post-rebase
+// --- noteGreenBaseline: the landing path (src/landing/landing-merge.ts) seeds this cache with the post-rebase
 // head after a green check, so a merged tree is never re-verified by checkMainBaseline.
 
 test("noteGreenBaseline records a directly-observed green verdict: checkMainBaseline returns it without running the suite", async () => {

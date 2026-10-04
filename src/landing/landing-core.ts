@@ -1,20 +1,20 @@
-import { deleteRef, headOf, setRef } from "./git.js";
-import { landWorktreePath, landingRefName } from "./paths.js";
-import { ensureDetachedWorktree } from "./worktree.js";
+import { deleteRef, headOf, setRef } from "../git.js";
+import { landWorktreePath, landingRefName } from "../paths.js";
+import { ensureDetachedWorktree } from "../worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
-import { reviewAheadOfMain, type GateResult } from "./review.js";
-import type { GateRunsPi } from "./loop-pi.js";
-import { saveLoopState } from "./loop-state.js";
+import { reviewAheadOfMain, type GateResult } from "../review.js";
+import type { GateRunsPi } from "../loop-pi.js";
+import { saveLoopState } from "../loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
-import type { BuildCheckOutcome } from "./build-check.js";
-import type { BuildCheck } from "./build-check-detect.js";
-import type { TumwaterConfig } from "./config-schema.js";
-import type { TickResult } from "./tick-outcome.js";
-import type { PiRunResult } from "./pi-run-result.js";
-import type { PiRunWiring } from "./loop-pi.js";
-import type { LoopState } from "./loop-state.js";
+import type { BuildCheckOutcome } from "../build-check.js";
+import type { BuildCheck } from "../build-check-detect.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import type { TickResult } from "../tick-outcome.js";
+import type { PiRunResult } from "../pi-run-result.js";
+import type { PiRunWiring } from "../loop-pi.js";
+import type { LoopState } from "../loop-state.js";
 
 /** Reviewing and landing a pinned commit outside the author's worktree (plans/merge-queue.md,
  * entry 2/5). A tick commits in its role worktree, pins the sha by `refs/tumwater/landing/<role>`,

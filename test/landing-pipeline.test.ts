@@ -2,19 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings, settleAbortedVetted } from "../src/landing-drain.js";
+import { drainLandings, settleAbortedVetted } from "../src/landing/landing-drain.js";
 import {
   abortableLandings,
   landingTasks,
   type InFlightLanding,
-} from "../src/landing-pipeline.js";
-import { vetLimit } from "../src/landing-vetting.js";
+} from "../src/landing/landing-pipeline.js";
+import { vetLimit } from "../src/landing/landing-vetting.js";
 import { consumeAbortRequests } from "../src/operator-requests.js";
-import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing-queue.js";
+import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/event-read.js";
-import { landingChanges, readLandingMarker } from "../src/landing-slot.js";
+import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { writeJsonFile } from "../src/json-files.js";
@@ -48,7 +48,7 @@ import { assistantLine } from "./pi-events.js";
  * between the files. This slice carries the pipeline's end-to-end behaviors — torn-head
  * recovery, the merge stack, abort and shutdown, and the failure recoveries — while the dedupe
  * basics live in landing-drain.test.ts. */
-// Unit coverage for src/landing-drain.ts — the scheduler seam between the durable land queue and
+// Unit coverage for src/landing/landing-drain.ts — the scheduler seam between the durable land queue and
 // the landing pipeline (land-queue speed 2c): the dedupe against main and torn-head recovery,
 // the vetting stage (one vet per queued change, each on a shared maxConcurrent permit), and the
 // merge slot (every vetted change, stacked), with the abort and shutdown rules and the marker

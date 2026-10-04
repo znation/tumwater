@@ -9,7 +9,7 @@ import {
   ensureWorktree,
   resetWorktreeToMain,
 } from "../src/worktree.js";
-import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing-git.js";
+import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
 

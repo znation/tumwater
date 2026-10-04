@@ -93,8 +93,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
 - `src/git.ts`, `src/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.
-- `src/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
-  the git plumbing in `src/landing-git.ts` (rebase, conflict inspection, fast-forward).
+- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
+  the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection, fast-forward).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
 - `src/ui/`: TUI, GUI, status table, backlog report, and transcript rendering. Imported only by
   each other and the CLI command layer that drives it (`cli.ts` and the `src/` command bodies).

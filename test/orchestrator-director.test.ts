@@ -27,7 +27,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { loadLoopState } from "../src/loop-state.js";
-import { enqueueLanding, queueDepth } from "../src/landing-queue.js";
+import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { pauseFleet } from "../src/fleet-state.js";
 import { submitRolePrompt } from "../src/inbox-submit.js";
 import {

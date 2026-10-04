@@ -1,4 +1,4 @@
-/** Unit coverage for src/landing-slot.ts's bookkeeping — the usage accounting that charges a
+/** Unit coverage for src/landing/landing-slot.ts's bookkeeping — the usage accounting that charges a
  * landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live state and
  * records them on the landed/land_failed event, the write-back, and the 4/5 marker's per-change
  * records. The full landing flow is pinned end-to-end through the pipeline
@@ -21,16 +21,16 @@ import {
   setLandingStage,
   writeLandingMarker,
   writeLandingOutcome,
-} from "../src/landing-slot.js";
+} from "../src/landing/landing-slot.js";
 import { landingRefName, landingStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick-apply.js";
-import { enqueueLanding, headLanding, queueDepth } from "../src/landing-queue.js";
+import { enqueueLanding, headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/event-read.js";
 import { LoopRunner } from "../src/loop.js";
-import type { LandingEntry } from "../src/landing-queue.js";
+import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi-run-result.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

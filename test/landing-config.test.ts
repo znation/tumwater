@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing-git.js";
+import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing/landing-git.js";
 import { loadConfig } from "../src/config.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { assertClean, commitIn, makeRepo, sh } from "./repo-fixtures.js";

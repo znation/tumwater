@@ -211,7 +211,7 @@ export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
-/** The durable land queue (src/landing-queue.ts): a changed tick's pinned commit waits here as
+/** The durable land queue (src/landing/landing-queue.ts): a changed tick's pinned commit waits here as
  * one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
@@ -250,7 +250,7 @@ export function witnessWorktreePath(root: string): string {
   return path.join(worktreesDir(root), "_build");
 }
 
-/** A role's lander worktree (src/landing-core.ts): the detached checkout where its pinned commit is
+/** A role's lander worktree (src/landing/landing-core.ts): the detached checkout where its pinned commit is
  * reviewed and rebased onto main, outside the role's own worktree. One per role so two roles'
  * landings never wait on each other; the leading underscore follows the _main convention above,
  * so it can never collide with a role worktree (plans/merge-queue.md). */

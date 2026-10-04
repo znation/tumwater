@@ -12,7 +12,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config.js";
 import { readEvents } from "../src/event-read.js";
 import { refSha } from "../src/git.js";
-import { queueDepth } from "../src/landing-queue.js";
+import { queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

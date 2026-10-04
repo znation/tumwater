@@ -1,7 +1,7 @@
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { warnEvent } from "./events.js";
 import { removeQuiet } from "./files.js";
-import type { InFlightLanding } from "./landing-pipeline.js";
+import type { InFlightLanding } from "./landing/landing-pipeline.js";
 import { landingStatePath } from "./paths.js";
 import type { TickOutcome } from "./tick-outcome.js";
 

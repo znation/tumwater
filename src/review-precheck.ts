@@ -16,7 +16,7 @@ import { sampleSleepClock } from "./host-sleep.js";
 import { recordReview } from "./tick-apply.js";
 import { mainRedPhrase } from "./phrases.js";
 import { shortSha } from "./format.js";
-import { checkWaitStage, setLandingStage } from "./landing-slot.js";
+import { checkWaitStage, setLandingStage } from "./landing/landing-slot.js";
 import { mainTipVerdict } from "./main-red.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run

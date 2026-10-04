@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainLandings } from "../src/landing-drain.js";
-import { landingTasks } from "../src/landing-pipeline.js";
-import { enqueueLanding, queueDepth } from "../src/landing-queue.js";
+import { drainLandings } from "../src/landing/landing-drain.js";
+import { landingTasks } from "../src/landing/landing-pipeline.js";
+import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/event-read.js";
-import { readLandingMarker, writeLandingMarker } from "../src/landing-slot.js";
+import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./landing-fixtures.js";
 import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 
@@ -14,7 +14,7 @@ import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
  * gets its own process. The slices are balanced by measured per-test duration (~10.6s vs ~6.9s
  * at 2026-10-04 — this file holds the one ~10.5s dedupe-cache stress test alone, so the split's
  * balance point is that test); keep the files roughly equal when moving tests between them. */
-// Unit coverage for src/landing-drain.ts — the scheduler seam between the durable land queue and
+// Unit coverage for src/landing/landing-drain.ts — the scheduler seam between the durable land queue and
 // the landing pipeline (land-queue speed 2c): the dedupe against main and torn-head recovery,
 // the vetting stage (one vet per queued change, each on a shared maxConcurrent permit), and the
 // merge slot (every vetted change, stacked), with the abort and shutdown rules and the marker

@@ -1,14 +1,14 @@
-import type { LoopRunner } from "./loop.js";
-import type { Semaphore } from "./semaphore.js";
-import type { TumwaterConfig } from "./config-schema.js";
-import { deleteRef } from "./git.js";
+import type { LoopRunner } from "../loop.js";
+import type { Semaphore } from "../semaphore.js";
+import type { TumwaterConfig } from "../config-schema.js";
+import { deleteRef } from "../git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
-import { landingRefName } from "./paths.js";
-import type { AbortableLanding } from "./operator-requests.js";
+import { landingRefName } from "../paths.js";
+import type { AbortableLanding } from "../operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
-import type { TickResult } from "./tick-outcome.js";
-import type { FoldsUsage } from "./loop-pi.js";
-import type { LoopState } from "./loop-state.js";
+import type { TickResult } from "../tick-outcome.js";
+import type { FoldsUsage } from "../loop-pi.js";
+import type { LoopState } from "../loop-state.js";
 
 /** One landing task the pipeline owns (merge queue 3/5, land-queue speed 2c) — a vet or the
  * merge: its task, the controller that aborts it (harness shutdown OR `tumwater abort --role`

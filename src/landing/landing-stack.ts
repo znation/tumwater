@@ -6,25 +6,25 @@
  * and the per-attempt abort observation. The bisect over a red stack (landVetted, in
  * landing-batch.ts) drives this file's landStack one prefix at a time. */
 
-import { COMMIT_IDENT, gitTry } from "./git-run.js";
-import { deleteRef, gitLines, headOf } from "./git.js";
-import { landingRefName } from "./paths.js";
-import { ensureDetachedWorktree } from "./worktree.js";
+import { COMMIT_IDENT, gitTry } from "../git-run.js";
+import { deleteRef, gitLines, headOf } from "../git.js";
+import { landingRefName } from "../paths.js";
+import { ensureDetachedWorktree } from "../worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
-import { openQuestions } from "./backlog.js";
-import { logEvent } from "./events.js";
+import { openQuestions } from "../backlog.js";
+import { logEvent } from "../events.js";
 import { ffMainTo } from "./landing-git.js";
-import { syncRootInstall } from "./dep-install.js";
-import { withLock } from "./lock.js";
-import { mergeLockDir } from "./paths.js";
-import { type BuildCheckOutcome } from "./build-check.js";
-import { runScopedBuildCheck } from "./build-check-scoped.js";
-import type { BuildCheck } from "./build-check-detect.js";
-import { noteGreenBaseline } from "./main-baseline.js";
-import { isExemptDiff } from "./exemptions.js";
+import { syncRootInstall } from "../dep-install.js";
+import { withLock } from "../lock.js";
+import { mergeLockDir } from "../paths.js";
+import { type BuildCheckOutcome } from "../build-check.js";
+import { runScopedBuildCheck } from "../build-check-scoped.js";
+import type { BuildCheck } from "../build-check-detect.js";
+import { noteGreenBaseline } from "../main-baseline.js";
+import { isExemptDiff } from "../exemptions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "../config-schema.js";
 
 /** What landStack needs from its caller (landing-batch.ts's BatchContext): the repo, main,
  * the live config, and the task's abort signal — deliberately thinner than BatchContext. */
@@ -99,7 +99,7 @@ async function assembleStack(
  * the gate's own doc-only test (isExemptDiff over config.review.exemptPaths). A re-stack whose
  * new commits from main were doc-only rebuilds the checked tree with nothing but doc bytes
  * changed, and a doc-only delta cannot break the build: the reasoning verifyLanding
- * (src/landing-merge.ts) applies when it skips its in-lock re-check for a moved doc-only landing. Its
+ * (src/landing/landing-merge.ts) applies when it skips its in-lock re-check for a moved doc-only landing. Its
  * false-fix cross-check has no counterpart here — the delta is commits main already landed
  * through their own gate, not a claim this batch makes. --no-renames so a rename out of a
  * code path lists the deleted source, not only its exempt destination. An unreadable diff is

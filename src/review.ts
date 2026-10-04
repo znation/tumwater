@@ -21,7 +21,7 @@ import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
 import { backlogStructureReason } from "./backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
-import { setLandingStage } from "./landing-slot.js";
+import { setLandingStage } from "./landing/landing-slot.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 
 /** Attach the review gate's pi runs onto a partial GateResult — `run` plus the optional
@@ -74,7 +74,7 @@ export interface ReviewContext {
 export interface GateResult {
   decision: "approved" | "exempt" | "rejected" | "failed";
   /** The branch HEAD this gate invocation's pre-check just ran green on — the one tree the
-   * landing path may trust without re-running the check (src/landing-merge.ts seeds the red-main
+   * landing path may trust without re-running the check (src/landing/landing-merge.ts seeds the red-main
    * baseline with it when the rebase is a no-op, and re-verifies anything else). Absent when
    * no fresh green observation was made: gate disabled, exempt diff, already-approved early
    * return, or a pre-check that failed or skipped. */

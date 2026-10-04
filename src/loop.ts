@@ -21,7 +21,7 @@ import { finalizeTick } from "./tick-finalize.js";
 import { TickUsage } from "./tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
-import { mergeToMain } from "./landing-merge.js";
+import { mergeToMain } from "./landing/landing-merge.js";
 import { resolveTickVerdict } from "./tick-verdict.js";
 import { extractFlow, type FlowResult } from "./reply-contract.js";
 import { landingRefName } from "./paths.js";
@@ -244,7 +244,7 @@ export class LoopRunner {
     return this.handedBack ? { result: "aborted", resumeCause: "budget-resumed" } : { result: "aborted" };
   }
 
-  /** Land the worktree branch on main (see src/landing-merge.ts for the rebase → verify → ff-merge →
+  /** Land the worktree branch on main (see src/landing/landing-merge.ts for the rebase → verify → ff-merge →
    * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
    * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
    * merge queue 2/5 only the refusal-note landing (src/refusal.ts) still uses it — reviewed
@@ -323,7 +323,7 @@ export class LoopRunner {
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
    * accounting itself lives in TickUsage.fold (src/tick-usage.ts); this keeps the once-per-run
    * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
-   * wiring (src/landing-slot.ts) reach them. */
+   * wiring (src/landing/landing-slot.ts) reach them. */
   private foldUsage(run: PiRunResult): void {
     this.usage.fold(this.state, run);
   }

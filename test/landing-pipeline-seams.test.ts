@@ -2,10 +2,10 @@ import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { abortOnShutdown, acquireUnlessAborted } from "../src/landing-pipeline.js";
+import { abortOnShutdown, acquireUnlessAborted } from "../src/landing/landing-pipeline.js";
 import { Semaphore } from "../src/semaphore.js";
 
-// Unit-tier coverage for the landing pipeline's two shutdown seams (src/landing-pipeline.ts):
+// Unit-tier coverage for the landing pipeline's two shutdown seams (src/landing/landing-pipeline.ts):
 // the wiring that turns the harness stop into a landing task's own abort, and the
 // permit-taking race that lets a parked vet lose its grant to a shutdown without leaking the
 // permit. Both run in every shutdown of every fleet (landing-drain.ts and landing-vetting.ts

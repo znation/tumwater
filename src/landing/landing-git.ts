@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { COMMIT_IDENT, git, gitTry, runGit } from "./git-run.js";
-import { currentBranch, gitLines, headOf } from "./git.js";
-import { unquotePorcelainPath } from "./git-diff.js";
-import { CONFIG_BASENAME, configPath } from "./paths.js";
+import { COMMIT_IDENT, git, gitTry, runGit } from "../git-run.js";
+import { currentBranch, gitLines, headOf } from "../git.js";
+import { unquotePorcelainPath } from "../git-diff.js";
+import { CONFIG_BASENAME, configPath } from "../paths.js";
 
 /** Git plumbing for the landing flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no landing

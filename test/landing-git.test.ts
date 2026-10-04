@@ -8,7 +8,7 @@ import {
   hasConflictMarkers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
-} from "../src/landing-git.js";
+} from "../src/landing/landing-git.js";
 import { assertClean, commitIn, initializedWorktree, sh } from "./repo-fixtures.js";
 
 // Behavioral coverage for the landing flow's git plumbing (landing-git.ts). The export pin in

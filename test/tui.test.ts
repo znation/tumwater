@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { logEvent } from "../src/events.js";
 import { submitPrompt } from "../src/inbox-submit.js";
 import { initProject } from "../src/init.js";
-import { enqueueLanding } from "../src/landing-queue.js";
+import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { runTui } from "../src/ui/tui.js";
 import { formatDate } from "../src/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";

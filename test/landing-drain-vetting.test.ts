@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings } from "../src/landing-drain.js";
-import { abortableLandings, landingTasks } from "../src/landing-pipeline.js";
-import { queuedLandingFiles } from "../src/landing-queue.js";
+import { drainLandings } from "../src/landing/landing-drain.js";
+import { abortableLandings, landingTasks } from "../src/landing/landing-pipeline.js";
+import { queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
 import { refSha } from "../src/git.js";
 import { readEvents } from "../src/event-read.js";
-import { readLandingMarker } from "../src/landing-slot.js";
+import { readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config.js";
 import {
   APPROVE,

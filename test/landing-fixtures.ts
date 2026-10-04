@@ -1,16 +1,16 @@
 import { sleep } from "./wait.js";
 import fs from "node:fs";
 import path from "node:path";
-import { drainLandings } from "../src/landing-drain.js";
+import { drainLandings } from "../src/landing/landing-drain.js";
 import {
   landingTasks,
   newLandingPipeline,
   type InFlightLanding,
   type LandingPipeline,
   type LandingPipelineContext,
-} from "../src/landing-pipeline.js";
+} from "../src/landing/landing-pipeline.js";
 import { LoopRunner } from "../src/loop.js";
-import { enqueueLanding, queueDepth } from "../src/landing-queue.js";
+import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
 import { setRef } from "../src/git.js";
 import { Semaphore } from "../src/semaphore.js";
@@ -19,7 +19,7 @@ import { freshLoopState } from "../src/loop-state.js";
 import { snapshot } from "../src/status-data.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import type { TumwaterConfig } from "../src/config-schema.js";
-import type { LandingEntry } from "../src/landing-queue.js";
+import type { LandingEntry } from "../src/landing/landing-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { sh, tmpdir } from "./repo-fixtures.js";

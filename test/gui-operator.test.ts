@@ -12,7 +12,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.
 import { todayStamp } from "../src/budget.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox-submit.js";
-import { enqueueLanding } from "../src/landing-queue.js";
+import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { postJson, withGui } from "./gui-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

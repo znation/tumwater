@@ -39,7 +39,7 @@ import {
   hasConflictMarkers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
-} from "../src/landing-git.js";
+} from "../src/landing/landing-git.js";
 import { branchName } from "../src/paths.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
