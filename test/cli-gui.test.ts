@@ -9,7 +9,7 @@ import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
 import { enqueueLanding } from "../src/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/ui/gui.js";
-import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
+import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { cli, spawnCli } from "./cli-harness.js";
@@ -48,6 +48,23 @@ test("gui --port validates its range instead of listening on an unexpected port"
   const withAll = await cli(repo, "gui", "--all-interfaces", "--port", "abc");
   assert.equal(withAll.code, 1);
   assert.match(withAll.stderr, /--port must be an integer/);
+});
+
+test("gui gates on a ready repo, but names a flag typo before the gate", async () => {
+  // Outside any git repo the dispatch's ready-repo gate answers with readiness.ts's
+  // wording (exit 1) — the operator's diagnosis, like every other gated command's.
+  const dir = tmpdir();
+  const bare = await cli(dir, "gui");
+  assert.equal(bare.code, 1);
+  assert.match(bare.stderr, /not a git repository/);
+
+  // The arg gate runs first by design (cli.ts's gui case re-runs parsePortFlag in its
+  // validate so the typo is named before the ready-repo gate can mask it): a bad --port
+  // outside a repo names the port, not the repo.
+  const typo = await cli(dir, "gui", "--port", "abc");
+  assert.equal(typo.code, 1);
+  assert.match(typo.stderr, /--port must be an integer between 1 and 65535/);
+  assert.doesNotMatch(typo.stderr, /not a git repository/);
 });
 
 test("gui starts, prints its banner, and --all-interfaces names the LAN exposure", async () => {
