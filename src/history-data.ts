@@ -130,6 +130,17 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
   return { landQueuedByLoop, outcomeByLoop };
 }
 
+/** Resolve one queued tick row's eventual landing verdict: a "queued" tick_end carries no
+ * result until its landing batch lands or fails, so the row joins its `end` tick_end to the
+ * tick's land_queued pin and that pin's landed/land_failed outcome (both from the
+ * bucketLandingEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
+ * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
+ * at or before its end, so several queued ticks cannot claim one pin. `joinStarts` maps
+ * loop#tick to its tick_start's ts; when `floorTs` (a since-window's cutoff, null in the
+ * count view) sits after that start, the row's join evidence is not whole in the windowed
+ * read and the row keeps its raw "queued" label (null). Returns the outcome's result text
+ * and the landed sha, or null when the landing has not happened yet or the outcome cannot
+ * be matched. Pure apart from the cursor it owns. */
 export function resolveQueuedResult(
   end: HarnessEvent,
   landQueuedByLoop: Map<string, HarnessEvent[]>,
