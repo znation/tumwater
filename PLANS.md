@@ -5,7 +5,61 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater prompt --at <duration>` — queue a steering prompt that stays hidden until its time arrives (planned 2026-10-04 by plan loop)
+
+**Goal.** Operators can already queue a prompt for a loop's next tick, but "remind the fleet to
+re-check coverage in 3h" means staying awake to run `tumwater prompt` then. Let a queued prompt
+carry a not-before time: it is listed and cancellable from the moment it is queued, but the loop
+cannot dequeue it until the time arrives, and its existence alone never wakes the loop early.
+
+**Approach.**
+- Marker format: a deferred prompt's queue file starts with one line
+  `tumwater:not-before <iso-utc>` followed by a blank line, then the prompt text. Everything
+  downstream already treats queue-file text opaquely, so the marker rides in the content and no
+  queue format migrates.
+- `src/inbox.ts` owns the mechanics:
+  - New exported `notBeforeMs(text: string): number | null` — parse the marker line; anything
+    absent or malformed reads as null (deliverable). An ISO stamp missing/unparseable is null so
+    a hand-edited file can never strand a prompt forever.
+  - `enqueueRolePrompt` gains an optional `notBeforeMs` argument (or callers prepend the marker
+    via the existing decorate hook) — pick whichever keeps the marker written in the same single
+    atomic `writeTextAtomic` call.
+  - `dequeueRolePrompt` iterates `queuedFiles` and pops the first file whose text (via the
+    existing stat-keyed `promptCache` read) is deliverable now; a queue holding only future
+    prompts returns null. The dequeue-vs-cancel race policy is unchanged.
+  - `peekRolePrompt`/`queuedRolePrompts` follow the same filter, so `tumwater role <id>`'s
+    next-prompt preview never shows a prompt the tick cannot yet take.
+  - `inboxSize` and `queuedRolePromptCount` exclude not-yet-deliverable prompts, so a deferred
+    prompt does not make its loop due by itself (scheduling.ts's queued-prompt wake reads
+    `inboxSize`); once due, the marker falls out of the count naturally. These functions
+    currently document "no content read" — the stat cache makes the added read one stat per
+    unchanged file, matching what the listing consumers already pay; update their doc comments.
+  - `queuedRolePromptEntries` and `queuedRolePromptRecords` gain `notBeforeMs`, so `prompt
+    --list` and the dashboard's Queued tab can render a countdown (`in 2h 5m`, using
+    `src/datetime.ts`'s `humanSeconds`) instead of an age for deferred entries.
+  - Cancel paths are untouched: positions still number the full list, deferred entries included.
+- `src/prompt-commands.ts` + `src/cli.ts`: the `prompt` command accepts `--at <duration>`, parsed
+  with `parseDurationFlag` (src/cli-args.ts), joined onto the enqueue for both the director and
+  `--role <id>` forms; the enqueue confirmation names the delivery time. `help.ts`'s prompt
+  stanza documents the flag.
+- Dashboard (`src/status-data.ts` consumers and the GUI client's Queued tab) renders the same
+  `notBeforeMs` as the CLI list — defer a concrete GUI rendering decision to what the entries
+  payload already carries; no new endpoint.
+
+**Acceptance criteria.**
+- New tests in test/inbox.test.ts: a deferred prompt is not dequeued before its time and is the
+  first popped after it; a queue holding only deferred prompts dequeues null; counts exclude
+  deferred prompts and include them once due; cancel by position still reaches a deferred entry;
+  a malformed or missing marker reads as deliverable.
+- test/prompt-commands.test.ts: `--at 90m` queues a prompt whose marker decodes to now+90m
+  (inject the clock the way the pause --for tests do); `--list` shows the countdown; the
+  confirmation names the delivery time.
+- test/cli-arg-strictness.test.ts covers `--at` without a value failing with the
+  parseDurationFlag message.
+- `npm run test` passes; no other command's output changes except the documented list/countdown
+  additions.
+
+_Further entries go above this line._
 
 ## Done
 
