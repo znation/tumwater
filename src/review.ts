@@ -6,10 +6,11 @@ import { git, headOf, patchId } from "./git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
-import { hasResumableSession, type PiRunResult } from "./pi.js";
+import { type PiRunResult } from "./pi.js";
 import type { GateRunsPi } from "./loop-pi.js";
 import { readPrinciples } from "./prompt.js";
-import { buildNoRerunPrompt, buildReviewPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
+import { buildReviewPrompt } from "./gate-prompts.js";
+import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "./tick-apply.js";
 import { saveLoopState } from "./loop-state.js";
@@ -91,86 +92,6 @@ export interface GateResult {
    * into the loop totals like followUpRun. Absent when the reviewer never broke the
    * no-re-run rule (or there was no session to continue). */
   nudgeRun?: PiRunResult;
-}
-
-/** Hard caps on the VERDICT follow-up turn: it should take one short reply on a warm session,
- * so it never gets the review run's own budget (mirrors LoopPi's SUMMARY-request caps). */
-const VERDICT_REQUEST_TIMEOUT_S = 900;
-const VERDICT_REQUEST_QUIET_S = 300;
-
-/** Ask the reviewer's own session (--continue) for the missing VERDICT line: one tightly
- * bounded turn on the just-finished review's session, mirroring LoopPi.requestSummary on the
- * author side (BUGS.md 2026-09-29). Null when there is no session to continue — the caller
- * then counts the strike exactly as before. The run is returned even when it failed so the
- * caller can honor a shutdown abort and fold the spend. */
-async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | null> {
-  const sessionDir = reviewSessionDir(ctx.root, ctx.role);
-  if (!hasResumableSession(sessionDir)) return null;
-  const cfg = reviewRunConfig(ctx.config);
-  return ctx.runGatePi({
-    cwd: ctx.wt,
-    prompt: buildVerdictRequestPrompt(),
-    config: {
-      ...cfg,
-      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
-      quietTimeoutSeconds:
-        cfg.quietTimeoutSeconds > 0
-          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
-          : VERDICT_REQUEST_QUIET_S,
-    },
-    sessionDir,
-    // The whole point: continue the just-finished review's session, which already holds
-    // everything the reviewer read and concluded.
-    continueSession: true,
-    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-verdict`,
-    rawLogFile: piLogPath(ctx.root, ctx.role),
-    label: "review-verdict",
-    signal: ctx.signal,
-    onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
-  });
-}
-
-/** The suite-rerun nudge (BUGS.md 2026-10-02): the reviewer broke the no-re-run rule, so one
- * tightly bounded turn on the just-finished review's session names the exact tool call and
- * asks it to finish without re-running. Mirrors requestVerdict (same caps); `calls` collects
- * the nudge turn's own started tool calls so the caller can detect a repeat. Null when there
- * is no session to continue — the caller then has no repeat evidence, only the warning. The
- * run is returned even when it failed so the caller can honor a shutdown abort and fold the
- * spend. */
-async function requestNoRerun(
-  ctx: ReviewContext,
-  rerun: string,
-  calls: ToolCallStart[],
-): Promise<PiRunResult | null> {
-  const sessionDir = reviewSessionDir(ctx.root, ctx.role);
-  if (!hasResumableSession(sessionDir)) return null;
-  const cfg = reviewRunConfig(ctx.config);
-  return ctx.runGatePi({
-    cwd: ctx.wt,
-    prompt: buildNoRerunPrompt(rerun),
-    config: {
-      ...cfg,
-      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
-      quietTimeoutSeconds:
-        cfg.quietTimeoutSeconds > 0
-          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
-          : VERDICT_REQUEST_QUIET_S,
-    },
-    sessionDir,
-    // The whole point: continue the just-finished review's session, which already holds
-    // everything the reviewer read and concluded.
-    continueSession: true,
-    sessionName: `tumwater-review-${ctx.role}-${ctx.tick}-rerun`,
-    rawLogFile: piLogPath(ctx.root, ctx.role),
-    label: "review-rerun",
-    signal: ctx.signal,
-    onToolCallStalled: (message) => warnEvent(ctx.root, ctx.role, message),
-    // Collected unconditionally: a nudge only runs after a detected rerun, so the no-re-run
-    // rule stood and the repeat check below needs every call the nudge started.
-    onToolCallStart: (toolName, args) => {
-      calls.push({ toolName, args });
-    },
-  });
 }
 
 /** Run the adversarial review gate over everything ahead of main in `wt` and update `state`
