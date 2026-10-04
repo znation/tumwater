@@ -91,6 +91,36 @@ test("nodeFloorProblem words the startup refusal with floor, found version, and 
   assert.equal(nodeFloorProblem("not-a-version", ">=20.3"), undefined);
 });
 
+// The dispatcher's own startup gate (cli.ts's main, before any command dispatch) runs in a
+// process that imported cli.js, so it too is exercised through the compiled entry point: a
+// --require preload lowers the child's process.versions.node below the engines floor (the
+// property is getter-only, so the shim redefines it), and every command must fail with
+// nodeFloorProblem's wording before doing any work — `version` here doubles as the cheapest
+// command to name.
+test("the compiled CLI refuses a Node below the engines floor, before any command", async () => {
+  const { execFile } = await import("node:child_process");
+  const distDir = fileURLToPath(new URL("../../dist", import.meta.url));
+  const dir = tmpdir("tw-floor-cli-");
+  const shim = path.join(dir, "floor-shim.cjs");
+  await fs.promises.writeFile(
+    shim,
+    "Object.defineProperty(process.versions, 'node', { value: '18.20.4', configurable: true });\n",
+  );
+  const r = await new Promise<{ code: number; stderr: string }>((resolve) => {
+    execFile(
+      process.execPath,
+      [path.join(distDir, "src", "cli.js"), "version"],
+      { cwd: dir, timeout: 20_000, env: { ...process.env, NODE_OPTIONS: `--require ${shim}` } },
+      (err, _stdout, stderr) => resolve({ code: err ? Number(err.code ?? 1) : 0, stderr }),
+    );
+  });
+  assert.equal(r.code, 1);
+  assert.equal(
+    r.stderr,
+    "tumwater: tumwater needs Node >=20.3 (found v18.20.4) — upgrade Node, then run tumwater again\n",
+  );
+});
+
 // The dispatcher's own fail (cli.ts's version case) runs in a process that imported cli.js,
 // so it can only be exercised through the compiled entry point: a copy of dist beside a
 // package.json the version read cannot supply must exit 1 with version.ts's wording instead
