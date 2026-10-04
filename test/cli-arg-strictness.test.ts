@@ -359,3 +359,16 @@ test("prompt --at without a value fails with parseDurationFlag's message", async
   assert.match(r.stderr, /--at needs a value/);
   assert.equal(inboxSize(repo), 0, "the flag pair was not baked into queued content");
 });
+
+test("tick's dispatcher admits --last for tick alone, and still rejects it elsewhere", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli tick last flag");
+  // The one-positional --last form reaches cmdTick through the dispatcher's gate.
+  const ok = await cli(repo, "tick", "bugfix", "--last");
+  assert.equal(ok.code, 0);
+  assert.match(ok.stdout, /^no completed tick for bugfix in the scanned window/);
+  // The same flag is not part of another command's vocabulary — the unknown-argument gate.
+  const other = await cli(repo, "logs", "--last");
+  assert.equal(other.code, 1);
+  assert.match(other.stderr, /unknown argument: --last/);
+});

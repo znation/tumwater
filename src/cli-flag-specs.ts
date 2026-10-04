@@ -204,6 +204,13 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `--last` flag spec for `tumwater tick <role> --last`: one definition of the flag's
+ * spelling, beside JSON_FLAG, so tick's gate and cmdTick's arity guards cannot disagree on
+ * what the command admits. Like --json it takes no value and needs no wording — the
+ * command body owns the meaning (resolve the newest completed tick instead of numbering
+ * one) and the arity rules it implies. */
+export const LAST_FLAG: FlagSpec = { names: ["--last"] };
+
 /** The `--grep <text>` flag spec shared by the two filtering views (logs, history): one
  * definition of the flag's spelling and value shape, beside ROLE_FLAG and sinceFlagSpec, so the
  * gate's accepted vocabulary cannot drift apart. The missing-value wording differs per command

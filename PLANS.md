@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater tick <role> --last` — the newest tick's trail without knowing its number (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater tick <role> --last` — the newest tick's trail without knowing its number (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** `tumwater tick <role> <n>` answers "what did tick #7 do?" — but the operator's actual question after an incident is "what did the latest tick do?", and getting there today means running `history --role <id>` first to learn the number, then `tick <role> <n>`. Add a `--last` form: `tumwater tick <role> --last` resolves the role's newest completed tick in the scanned window and prints its trail exactly as `tick <role> <n>` would, sharing every rendering path. `--last` and a numeric `<n>` are rivals: `tick <role> --last 3` and `tick <role> 3 --last` fail with the usage.
 
@@ -26,8 +30,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `--last` combined with a numeric `<n>`, a missing role, or an unknown role fails with the usage or the unknown-role wording before any read.
 - Plain `tick <role> <n>` behavior is byte-unchanged, and `npm run test` passes.
 
-
-## Done
 
 ### `tumwater run --for <duration>` — a bounded fleet run that drains and exits at the deadline (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

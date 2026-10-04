@@ -7,6 +7,7 @@
 import { fail, say, sayJson } from "./cli-output.js";
 import { parseCountFlag } from "./cli-args.js";
 import { knownRoleIdsCached } from "./config.js";
+import { readTickRows } from "./history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
 import { formatEvent } from "./event-format.js";
 import { unknownRoleMessage } from "./roles.js";
@@ -16,7 +17,7 @@ import { shortSha } from "./text.js";
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater tick <role> <n> [--json]";
+export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--json]";
 
 /** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
  * stdout line and the GUI /api/tick endpoint's 404 JSON error, one template so the CLI's prose
@@ -25,6 +26,14 @@ export const TICK_USAGE = "tumwater tick <role> <n> [--json]";
  * came up empty. */
 export function tickNotFoundMessage(role: string, tick: number): string {
   return `no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`;
+}
+
+/** The not-found wording for `tumwater tick <role> --last`, sibling of tickNotFoundMessage —
+ * the same surfaces but naming what the last-form scan actually asked for: the newest
+ * completed tick, not a number the user supplied. Module-local: the GUI's /api/tick 404 only
+ * ever serves the numbered form, so this wording has no second consumer. */
+function tickNotFoundLastMessage(role: string): string {
+  return `no completed tick for ${role} in the scanned window (the retained log may have rotated past it)`;
 }
 
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
@@ -45,27 +54,49 @@ export function renderTickDetail(d: TickDetail): string {
   return [header, ...d.events.map(formatEvent)].join("\n");
 }
 
-/** `tumwater tick <role> <n> [--json]`: print one completed tick's full event trail. Read-only:
+/** `tumwater tick <role> [<n>] [--last] [--json]`: print one completed tick's full event trail. Read-only:
  * stdout only, no state file created — a tick the scan cannot find prints a not-found line and
  * exits 0 (history's empty-output convention: an absent record is an answer, not a failure),
  * and under --json it prints the JSON document `null` instead — the report --json precedent
- * that every exit-0 output is parseable, never prose. */
-export async function cmdTick(root: string, positionals: string[], json: boolean): Promise<void> {
-  // Positional arity is exactly <role> <n> — cli.ts has already peeled the flags off and gated
-  // them (only --json is admitted), so anything left over that is not the pair is a mistake.
-  if (positionals.length !== 2) fail(`usage: ${TICK_USAGE}`);
-  const [role, nRaw] = positionals as [string, string];
+ * that every exit-0 output is parseable, never prose. `tumwater tick <role> --last` resolves
+ * the role's newest completed tick in the scanned window and prints its trail exactly as the
+ * numbered form would — the summary header and event rendering are shared, only the number's
+ * provenance differs (readTickRows' newest-first scan, not the user's argument). --last and a
+ * numeric <n> are rivals: exactly one positional under --last, exactly two without. */
+export async function cmdTick(
+  root: string,
+  positionals: string[],
+  json: boolean,
+  last = false,
+): Promise<void> {
+  // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
+  // --json and --last are admitted), so anything left over that does not fit the chosen form
+  // is a mistake. --last takes exactly one positional (<role>); the numeric path keeps
+  // exactly two (<role> <n>).
+  const arity = last ? 1 : 2;
+  if (positionals.length !== arity) fail(`usage: ${TICK_USAGE}`);
+  const role = positionals[0] as string;
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
   // built-ins plus user-defined loops, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared
   // unknown-role wording plus the usage the positional command owes.
   const ids = knownRoleIdsCached(root);
   if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`);
-  // The tick number is a positive integer, through the shared count parser (a non-positive or
-  // non-numeric n fails naming the shape; there is no cap — the number selects, it does not
-  // size the scan).
-  const tick = parseCountFlag("<n>", nRaw);
-  const detail = readTickDetail(root, role, tick);
+  // The tick number: either the user's positive integer (the numbered path, through the
+  // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
+  // no cap — the number selects, it does not size the scan) or the newest completed tick's
+  // number, read from readTickRows' newest-first scan for the role. An empty scan is not
+  // found by construction, so the not-found path below takes it with the last-form wording.
+  const tick = last
+    ? (readTickRows(root, 1, role)[0]?.tick ?? null)
+    : parseCountFlag("<n>", positionals[1]);
+  const detail = tick === null ? null : readTickDetail(root, role, tick);
+  if (tick === null) {
+    // The --last scan came up empty: not found by construction, the last-form wording.
+    if (json) sayJson(null);
+    else say(tickNotFoundLastMessage(role));
+    return;
+  }
   if (detail === null) {
     // Not found stays exit 0 in both renderings, but --json still owes a parseable document in
     // every exit-0 case (the report --json precedent, the invariant this command's own doc

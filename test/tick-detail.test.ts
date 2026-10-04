@@ -213,13 +213,13 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   const repo = makeRepo();
   await initProject(repo, "tick arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
-  for (const argv of [[], ["bugfix"], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater tick <role> <n> \[--json\]/);
+  for (const argv of [[], ["bugfix", "3", "extra"]]) {
+    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater tick <role> \[<n>\] \[--last\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdTick(repo, ["nosuch", "3"], false));
   assert.match(role, /unknown role: nosuch/);
-  assert.match(role, /usage: tumwater tick <role> <n>/);
+  assert.match(role, /usage: tumwater tick <role>/);
   // A non-positive or non-numeric n: the shared count parser's wording.
   for (const bad of ["0", "-1", "1.5", "abc"]) {
     assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", bad], false)), /<n> needs a positive integer/);
@@ -245,10 +245,53 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   // even a git repository, where a dropped guard would surface as an environment error.
   // run outside any repo on purpose: the arity check must precede the ready-repo gate.
   const empty = tmpdir();
-  for (const args of [["tick"], ["tick", "bugfix"], ["tick", "bugfix", "3", "extra"]]) {
+  for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater tick <role> <n> \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater tick <role> \[<n>\] \[--last\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
+});
+
+test("cmdTick --last resolves the newest tick's trail, identical to naming that number", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick last test");
+  writeEvents(repo, [
+    start({ ts: 1000, tick: 2 }),
+    end({ ts: 2000, tick: 2, result: "no_change", summary: "older" }),
+    start({ ts: 3000, tick: 7 }),
+    end({ ts: 31_000, tick: 7, result: "changed", summary: "the newest", tokens: 900, costUsd: 0.01 }),
+  ]);
+  // --last prints exactly what the numbered form prints for the newest tick number.
+  const last = await expectOkAsync(() => cmdTick(repo, ["bugfix"], false, true));
+  const numbered = await expectOkAsync(() => cmdTick(repo, ["bugfix", "7"], false));
+  assert.equal(last.stdout, numbered.stdout);
+  assert.match(last.stdout, /^bugfix tick #7 — changed · 28s · /);
+  // And the JSON payload matches too.
+  const lastJson = JSON.parse(
+    (await expectOkAsync(() => cmdTick(repo, ["bugfix"], true, true))).stdout,
+  ) as TickDetail;
+  const numJson = JSON.parse(
+    (await expectOkAsync(() => cmdTick(repo, ["bugfix", "7"], true))).stdout,
+  ) as TickDetail;
+  assert.deepEqual(lastJson, numJson);
+});
+
+test("cmdTick --last on an empty log: not-found line at exit 0, parseable null under --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick last empty");
+  const none = await expectOkAsync(() => cmdTick(repo, ["bugfix"], false, true));
+  assert.match(none.stdout, /^no completed tick for bugfix in the scanned window/);
+  const noneJson = await expectOkAsync(() => cmdTick(repo, ["bugfix"], true, true));
+  assert.equal(JSON.parse(noneJson.stdout), null);
+});
+
+test("cmdTick --last with a numeric n is refused with the usage, and an unknown role keeps its wording", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "tick last rivals");
+  // --last and a numeric <n> are rivals: either order, the usage.
+  assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", "3"], false, true)), /usage: tumwater tick <role>/);
+  const unknown = await expectFailAsync(() => cmdTick(repo, ["nosuch"], false, true));
+  assert.match(unknown, /unknown role: nosuch/);
+  assert.match(unknown, /usage: tumwater tick <role>/);
 });

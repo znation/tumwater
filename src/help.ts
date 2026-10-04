@@ -78,13 +78,14 @@ Usage:
                                    line matches, case-insensitively (like logs --grep);
                                    --json prints the rows as machine-readable history data —
                                    ts, tokens, and costUsd kept raw, the GUI's /api/history payload
-  tumwater tick <role> <n> [--json]
+  tumwater tick <role> [<n>] [--last] [--json]
                                    One completed tick's full event trail — a summary header
                                    (result or in-flight, duration, tokens/cost, the pinned
                                    commit sha) then every event of that tick's block in time
                                    order; a still-running tick shows its events so far, marked
-                                   in flight; --json prints the collector's payload as
-                                   machine-readable data
+                                   in flight; --last shows the newest completed tick's trail
+                                   instead of numbering one; --json prints the collector's
+                                   payload as machine-readable data
   tumwater diff [--json]           One line per loop holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles
                                    with no worktree or nothing pending are skipped, and a
