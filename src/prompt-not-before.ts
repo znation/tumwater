@@ -17,33 +17,37 @@ export function notBeforeMarker(at: number): string {
 }
 
 /** The exact stamp shape notBeforeMarker writes — Date.prototype.toISOString()'s
- * `YYYY-MM-DDTHH:MM:SS.sssZ`. Only a stamp in this shape counts as plumbing; anything else
+ * `YYYY-MM-DDTHH:MM:SS.sssZ`. Only a marker carrying the writer's full shape — the stamp line
+ * plus the blank separator notBeforeMarker appends — counts as plumbing; anything else
  * after the prefix is the prompt's own content (e.g. a queued prompt that begins with a
- * marker-like line asking a loop to fix the marker itself), not a deferral. */
-const NOT_BEFORE_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+ * marker-like line asking a loop to fix the marker itself, or a hand-edited file that lost
+ * the blank line), not a deferral. The stamp and separator are checked together so this
+ * parser and stripNotBeforeMarker — which strips exactly this shape — can never disagree
+ * about what is plumbing. */
+const NOT_BEFORE_MARKER = /^tumwater:not-before (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\n\n/;
 
-/** A queued prompt's not-before time (epoch ms) parsed from the marker line at the top of its
+/** A queued prompt's not-before time (epoch ms) parsed from the marker at the top of its
  * queue-file text, or null when the prompt carries no marker or a malformed one. Only the
- * writer's exact ISO-UTC stamp shape (NOT_BEFORE_STAMP) reads as a marker, so operator
- * content that merely starts with the prefix stays content; an ISO stamp that fails to
- * parse reads as null (deliverable) so a hand-edited file can never strand a prompt
- * forever. A past or present stamp reads as itself — deliverable now, like null. */
+ * writer's exact marker shape (NOT_BEFORE_MARKER — stamp line plus blank separator) reads as
+ * a marker, so operator content that merely starts with the prefix stays content; an ISO
+ * stamp that fails to parse reads as null (deliverable) so a hand-edited file can never
+ * strand a prompt forever. A past or present stamp reads as itself — deliverable now, like
+ * null. */
 export function notBeforeMs(text: string): number | null {
-  if (!text.startsWith(NOT_BEFORE_PREFIX)) return null;
-  const firstLine = text.slice(NOT_BEFORE_PREFIX.length).split("\n", 1)[0] ?? "";
-  if (!NOT_BEFORE_STAMP.test(firstLine)) return null;
-  const stamp = Date.parse(firstLine);
+  const m = NOT_BEFORE_MARKER.exec(text);
+  if (!m) return null;
+  const stamp = Date.parse(m[1] ?? "");
   return Number.isNaN(stamp) ? null : stamp;
 }
 
-/** The prompt text without its not-before marker line — the operator-facing shape (the CLI
+/** The prompt text without its not-before marker — the operator-facing shape (the CLI
  * list's text, the previews): the marker is plumbing, not content, so no display surface
- * shows it. A text without a marker passes through unchanged. */
+ * shows it. A text without the writer's marker shape passes through unchanged. */
 export function stripNotBeforeMarker(text: string): string {
-  // Only a writer-shaped marker (notBeforeMs's exact stamp) is plumbing: a prompt whose own
-  // first line starts with the prefix passes through whole.
+  // Only a writer-shaped marker (the same NOT_BEFORE_MARKER shape notBeforeMs accepts) is
+  // plumbing: a prompt whose own first line starts with the prefix passes through whole.
   if (notBeforeMs(text) === null) return text;
-  return text.replace(/^tumwater:not-before .+\n\n/, "");
+  return text.replace(NOT_BEFORE_MARKER, "");
 }
 
 /** Deliverable now: no marker, or its time has arrived. The one predicate every

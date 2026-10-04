@@ -424,6 +424,21 @@ test("operator content that merely starts with a marker-shaped line is never tre
   }
 });
 
+test("a marker line without the writer's blank separator is content, not a deferral", () => {
+  const dir = tmpdir();
+  // The writer's marker shape is `<iso-utc>\n\n` — notBeforeMarker always writes the blank
+  // separator, and stripNotBeforeMarker only strips that full shape. A hand-edited file that
+  // lost the blank line must therefore read as the prompt's own content on every surface:
+  // deliverable now (notBeforeMs null, like the malformed-stamp policy) and never shown
+  // stripped on one surface while deferred on another.
+  const text = `tumwater:not-before ${new Date(Date.now() + 60_000).toISOString()}\nno blank separator line`;
+  const f = enqueueRolePrompt(dir, "feature", "placeholder");
+  fs.writeFileSync(f, text);
+  assert.equal(notBeforeMs(text), null);
+  assert.deepEqual(queuedRolePrompts(dir, "feature"), [text]);
+  assert.equal(dequeueRolePrompt(dir, "feature"), text);
+});
+
 test("a malformed or missing not-before marker reads as deliverable", () => {
   const dir = tmpdir();
   const f1 = enqueueRolePrompt(dir, "feature", "no marker");

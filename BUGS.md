@@ -14,6 +14,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected:** once a warning names it, make that test's timing assumptions hold under the fleet's load, then close this.
 
 ## Fixed
+
+### A queue-file marker that lost its writer's blank separator line deferred the prompt on every deliverability surface while `prompt --list` showed the marker line as content: `notBeforeMs` accepted an exact ISO stamp without the `\n\n` notBeforeMarker always writes, but `stripNotBeforeMarker` strips only that full writer shape, so the parser and the stripper disagreed about what is plumbing and a hand-edited queue file was deferred on one surface and displayed unstripped on another (repro: a queue file holding `tumwater:not-before <iso-utc>\nno blank separator line` returned a future epoch from `notBeforeMs` while `stripNotBeforeMarker` returned it unchanged; found by bugfix loop 2026-10-04 latent-bug hunt over 098b0f5f, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** none — the existing inbox tests covered malformed stamps and spoofed prefixes but never the missing-separator shape; a new regression test in test/inbox.test.ts failed before the fix (notBeforeMs returned 1791132520983, expected null) and passes after.
+
 ### Loop prompts hardcode npm tooling, so non-Node projects get Node commands in their standing instructions: the coverage role's `find` prompt prescribes `npm run test:coverage` and the reply-contract's VERIFIED example says "npm test", so a Rust/Python/Go project's coverage loop is told to run npm and spends its tick complaining instead of measuring (observed 2026-10-04: the fleet's coverage loop status read "This is a Rust project despite the task mentioning npm"), fixed 2026-10-04 by bugfix loop)
 
 - **Symptom:** on a non-npm project the coverage loop's status shows the model objecting to the npm instruction in its standing prompt rather than doing coverage work. The reviewer prompt has the same disease in one line: its no-rerun rule names `npm ci` as the reinstall example, which reads npm-specific on any non-Node project.
