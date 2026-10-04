@@ -1,7 +1,8 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import type { LoopState } from "./loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "./roles.js";
-import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt, stripNotBeforeMarker } from "./inbox.js";
+import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "./inbox.js";
+import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { briefFile, readInitialPrompt } from "./readme.js";
 import { buildDirectorPrompt, buildTickPrompt, readPrinciples } from "./prompt.js";
 import { buildCutOffNote } from "./prompt-followup.js";

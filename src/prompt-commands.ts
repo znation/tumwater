@@ -15,8 +15,8 @@ import {
   cancelRolePrompt,
   promptPreview,
   queuedRolePromptRecords,
-  stripNotBeforeMarker,
 } from "./inbox.js";
+import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";

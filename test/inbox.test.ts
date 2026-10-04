@@ -9,12 +9,12 @@ import path from "node:path";import {
   enqueuePrompt,
   enqueueRolePrompt,
   inboxSize,
-  notBeforeMs,
   peekRolePrompt,
   queuedPrompts,
   queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox.js";
+import { notBeforeMs } from "../src/prompt-not-before.js";
 import { queueFileStamp } from "../src/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox-submit.js";
 import { eventsOfType } from "./log-fixtures.js";
