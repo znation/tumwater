@@ -68,6 +68,18 @@ test("savePromptImages writes beside the queue file under the same stem, sanitiz
   assert.deepEqual(fs.readdirSync(dir), before);
 });
 
+test("savePromptImages removes its partial writes when a later image's write fails", () => {
+  const root = tmpdir();
+  const queueFile = enqueueRolePrompt(root, "qa", "look");
+  const dir = roleInboxDir(root, "qa");
+  const stem = path.basename(queueFile, ".md");
+  // Occupy the second image's target path with a directory, so the first write succeeds
+  // and the second throws (EISDIR) mid-loop.
+  fs.mkdirSync(path.join(dir, `${stem}.jpg`));
+  assert.throws(() => savePromptImages(root, "qa", queueFile, [png(), { name: "b.jpg", dataBase64: PNG.toString("base64") }]));
+  assert.ok(!fs.existsSync(path.join(dir, `${stem}.png`)), "the already-written first image is removed again");
+});
+
 test("savePromptImages keeps the validated extension when the client name's safe characters all strip away", () => {
   // `截图.png` validates (raw extname .png) but its basename sanitizes to ".png", whose
   // extname is "" — the saved file once landed extension-less, which pi's read tool cannot

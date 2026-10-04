@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { errCode } from "./errno.js";
 import { roleInboxDir } from "./paths.js";
 import { agree } from "./phrases.js";
 
@@ -83,14 +84,29 @@ export function savePromptImages(
   const stem = path.basename(queueFile).replace(/\.md$/, "");
   const taken = new Set<string>();
   const paths: string[] = [];
-  for (const image of images) {
-    const ext = path.extname(image.name).toLowerCase();
-    let name = `${stem}${ext}`;
-    for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
-    taken.add(name);
-    const file = path.join(dir, name);
-    fs.writeFileSync(file, Buffer.from(image.dataBase64, "base64"));
-    paths.push(path.resolve(file));
+  try {
+    for (const image of images) {
+      const ext = path.extname(image.name).toLowerCase();
+      let name = `${stem}${ext}`;
+      for (let n = 2; taken.has(name); n++) name = `${stem}-${n}${ext}`;
+      taken.add(name);
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, Buffer.from(image.dataBase64, "base64"));
+      paths.push(path.resolve(file));
+    }
+  } catch (err) {
+    // A write that failed after earlier images were written (EISDIR on an occupied target,
+    // ENOSPC, …) must not strand those earlier images in the inbox dir: nothing here is
+    // ever referenced by a queue file yet, so an unwound partial save removes its own
+    // writes and leaves the directory exactly as it found it.
+    for (const written of paths) {
+      try {
+        fs.unlinkSync(written);
+      } catch (unlinkErr) {
+        if (errCode(unlinkErr) !== "ENOENT") throw unlinkErr;
+      }
+    }
+    throw err;
   }
   return { paths };
 }
