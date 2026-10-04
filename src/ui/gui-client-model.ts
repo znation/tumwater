@@ -29,7 +29,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the fleet is not running" };
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
-  // A stalled tool call or a long silence, as the phase label names them (status-model.ts's
+  // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
   // inFlightDetail) — the cue that a working loop may be stuck.
   const STALL = /tool call stalled[^·]*|no pi output for [^·]*/;
   // A tick result (tick-outcome.ts TickResult) in words, with the tone of its outcome.

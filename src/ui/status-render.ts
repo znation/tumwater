@@ -7,13 +7,8 @@ import { compactTokens, usd } from "../text.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
-import {
-  isActivePhase,
-  loopRowCells,
-  progressOfTick,
-  sortLoopsByState,
-  yieldMultiplierFor,
-} from "./status-model.js";
+import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
+import { progressOfTick, yieldMultiplierFor } from "./tick-progress-model.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by

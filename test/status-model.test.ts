@@ -1,4 +1,6 @@
-/** The status-model suite: loopPhase, workingDetail, and the per-loop display model. Split
+/** The status-model suite: loopPhase and the per-loop display model, plus the moved
+ * workingDetail's tests (the helper now lives in src/ui/tick-progress-model.ts, its suite
+ * kept here beside loopPhase's, which consumes it). Split
  * out of status-render.test.ts, whose name promised the rendered table but also carried this
  * whole suite — src/ui/status-model.ts now has its tests under its own name and its own
  * fixture imports (shared builders live in status-fixtures.ts). The header badges travel
@@ -8,7 +10,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
-import { loopPhase, loopRank, loopRowCells, sortLoopsByState, workingDetail } from "../src/ui/status-model.js";
+import { loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
+import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
