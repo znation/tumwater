@@ -50,8 +50,11 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-/** Wall-clock time as zero-padded `HH:MM:SS` in local time — shared by the transcript run
- * separators and the status table's last-tick cell. */
+/** Wall-clock time as zero-padded `HH:MM:SS` in local time — the clock half formatTimestamp
+ * builds, and the direct rendering of the status table's last-tick cell (status-render.ts's
+ * lastTickCell), doctor-checks's probe-at stamp, failure-report's state-change stamp, and
+ * operator-intent's pause/deadline wording, so a local time of day reads the same shape at
+ * every surface. */
 export function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
