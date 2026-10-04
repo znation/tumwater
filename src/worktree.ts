@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { git, gitTry } from "./git-run.js";
-import { resolveGitDir } from "./git.js";
+import { branchExists, resolveGitDir } from "./git.js";
 import { removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 
@@ -69,8 +69,7 @@ export async function ensureWorktree(root: string, role: string, mainBranch: str
   return serializeSetup(root, async () => {
     if (await isUsableWorktree(wt)) return wt; // a setup queued ahead of this one made it
     await clearStaleWorktree(root, wt);
-    const branchExists = (await gitTry(root, "rev-parse", "--verify", `refs/heads/${branch}`)) !== null;
-    if (branchExists) {
+    if (await branchExists(root, branch)) {
       await git(root, "worktree", "add", wt, branch);
     } else {
       await git(root, "worktree", "add", "-b", branch, wt, mainBranch);

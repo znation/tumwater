@@ -13,13 +13,14 @@ import type { CheckConfigSlice, TumwaterConfig } from "./config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
 import { findOnPath } from "./files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "./version.js";
-import { GIT_MISSING_MESSAGE, gitTry } from "./git-run.js";
+import { GIT_MISSING_MESSAGE } from "./git-run.js";
 import {
   branchExists,
   currentBranch,
   hasCommits,
   branchesPhrase,
   isGitRepo,
+  refSha,
   repoToplevel,
 } from "./git.js";
 import {
@@ -359,7 +360,8 @@ export async function checkBuild(
   return { level: "ok", detail: `dist/ from ${sha}, matches main` };
 }
 
-/** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo). */
-async function currentHead(root: string): Promise<string | null> {
-  return gitTry(root, "rev-parse", "HEAD");
+/** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo) —
+ * git.ts's refSha, the one home of the rev-parse probe. */
+function currentHead(root: string): Promise<string | null> {
+  return refSha(root, "HEAD");
 }

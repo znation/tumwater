@@ -8,7 +8,7 @@ import { SLEEP_SPAN_TOLERANCE_MS } from "./build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { detectBuildCheck } from "./build-check-detect.js";
-import { gitTry } from "./git-run.js";
+import { refSha } from "./git.js";
 import type { CheckConfigSlice } from "./config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
@@ -173,7 +173,7 @@ export async function checkMainBaseline(
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep: SleepSampler = sampleSleepClock,
 ): Promise<MainBaselineCheck> {
-  const sha = await gitTry(wt, "rev-parse", "HEAD");
+  const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
   const cached = baselineCache.get(sha);
   if (cached && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };

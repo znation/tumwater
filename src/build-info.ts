@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitTry } from "./git-run.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
+import { refSha } from "./git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
  * by `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the
@@ -57,7 +58,7 @@ export function readBuildInfo(dist = distDir()): BuildInfo | null {
  * or null when `root` has no resolvable HEAD (not a git repo) — then no stamp is written and the
  * build reads as unknown provenance. */
 export async function stampBuild(root: string, dist: string, sha?: string): Promise<BuildInfo | null> {
-  const head = sha ?? (await gitTry(root, "rev-parse", "HEAD"));
+  const head = sha ?? (await refSha(root, "HEAD"));
   if (!head) return null;
   const info: BuildInfo = { sha: head, builtAt: Date.now(), root: path.resolve(root) };
   writeJsonFile(buildInfoPath(dist), info);
