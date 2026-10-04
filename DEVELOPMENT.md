@@ -34,21 +34,25 @@ push (`v*`) runs the release workflow, which attaches the packed tarball to a Gi
 
 ## Releases
 
-Cutting a release is one command; `scripts/release.mjs` does the bookkeeping and the
-`Release` workflow (.github/workflows/release.yml) does the publish:
+Main always carries the **next** version; a release tags the version main already has:
 
-    node scripts/release.mjs patch   # or minor|major; omit to release the current version
+    node scripts/release.mjs                  # release: push main, wait for CI, tag v<version>
+    node scripts/release.mjs bump [patch|minor|major]   # right after a release: bump, commit, push
+    node scripts/release.mjs --status         # report version/tag/CI state without acting
 
-It refuses to run on a dirty tree or a non-main branch, bumps package.json + lockfile
-(when asked), commits as `tumwater(release): <version>`, pushes main, waits for CI to go
-green, then tags `v<version>` and pushes the tag — the tag push triggers Release, which
-re-runs the suite on the same Node the CI gate uses (lts/*), publishes to npm with
-`--provenance` (OIDC trusted publishing; no token involved), and attaches the tarball to
-a GitHub release. `node scripts/release.mjs --status` reports version/tag/CI state
-without acting. Prerequisites (once): `gh` authenticated locally, and the trusted
-publisher registered on npm (`npm trust github tumwater --file release.yml --repo
-znation/tumwater --allow-publish`, package must already exist on the registry; first
-`npm trust`/approve-style actions prompt for an interactive 2FA challenge).
+The release flow refuses a dirty tree or a non-main branch, pushes main, waits for CI to
+go green, then tags `v<version>` — the tag push triggers Release, which re-runs the suite
+on the same Node the CI gate uses (lts/*), publishes to npm with `--provenance` (OIDC
+trusted publishing; no token involved), and attaches the tarball to a GitHub release.
+The tag always names the exact commit CI green-lit while package.json still said the
+released version, so the workflow's tag-vs-version check passes trivially. The bump is a
+separate `tumwater(release): <version>` commit made AFTER a release (it replays on a
+rejected push, since the fleet lands commits continuously), keeping main's version
+meaning what's next while npm's `latest` means what shipped.
+Prerequisites (once): `gh` authenticated locally, and the trusted publisher registered
+on npm (`npm trust github tumwater --file release.yml --repo znation/tumwater
+--allow-publish`, package must already exist on the registry; first `npm trust`
+commands prompt for an interactive 2FA challenge).
 
 ## Keeping the suite fast
 
