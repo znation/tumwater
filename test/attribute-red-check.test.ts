@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { attributeRedCheck } from "../src/landing-core.js";
+import { attributeRedCheck } from "../src/landing-check-failures.js";
 import { defaultConfig } from "../src/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop-state.js";
 import { refSha, setRef } from "../src/git.js";
@@ -13,7 +13,7 @@ import type { BuildCheckOutcome, BuildCheckRun } from "../src/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./loop-fixtures.js";
 
-// Unit coverage for attributeRedCheck (src/landing-core.ts): the gate's final attribution
+// Unit coverage for attributeRedCheck (src/landing-check-failures.ts): the gate's final attribution
 // step, shared by a batch bisect's last move and a single landing's in-lock check at the
 // failure limit. The red change's verdict is not the test's subject — main's OWN verdict at
 // its current tip is (the land-queue 1/3 rule): main green → the change broke the check and

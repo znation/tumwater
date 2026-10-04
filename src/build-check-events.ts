@@ -112,7 +112,7 @@ export function installFailedPhrase(
 /** Did this outcome make no verdict about the tree? runScopedBuildCheck records that verdict-
  * less shape explicitly (`unverified: true`) at the merge scopes; a gate-scope failure carries
  * only the run's own sleep evidence (BuildCheckRun.sleptMs), so both spellings count. The
- * consumers that attribute a red — review.ts's gate, landing-core.ts's attribution, the
+ * consumers that attribute a red — review.ts's gate, landing-check-failures.ts's attribution, the
  * red-main baseline — ask this instead of re-deriving the evidence, so the attribution policy
  * cannot drift between them (BUGS.md 2026-09-30). */
 export function unverifiedTreeOutcome(outcome: { unverified?: boolean; run?: BuildCheckRun }): boolean {

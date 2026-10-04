@@ -58,7 +58,7 @@ export interface MergeContext extends RunsPi {
   /** The current tick number (names the conflict-resolution pi session). */
   tick: number;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
-   * that is the change's own (landing-core.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
+   * that is the change's own (landing-check-failures.ts counts it toward LANDING_CHECK_FAILURE_LIMIT); a failed
    * fast-forward or a false fix never calls it. */
   onLandingCheckRed?(check: BuildCheck, outcome: BuildCheckOutcome): void;
   /** Told when verifyLanding blocks the landing for a reason that is not a red check — the

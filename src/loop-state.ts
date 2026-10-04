@@ -132,7 +132,7 @@ export interface LoopState {
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
   /** Consecutive landings of one patch (git.ts patchId, stable across a clean rebase) whose
-   * in-lock check went red on the rebased tree. At landing-core.ts's LANDING_CHECK_FAILURE_LIMIT the
+   * in-lock check went red on the rebased tree. At landing-check-failures.ts's LANDING_CHECK_FAILURE_LIMIT the
    * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */
   landingCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick

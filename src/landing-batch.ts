@@ -9,13 +9,13 @@
 import { ensureDetachedWorktree } from "./worktree.js";
 import { landWorktreePath } from "./paths.js";
 import {
-  attributeRedCheck,
   landApprovedChange,
   reviewPinnedChange,
   syncPinToMain,
   type LandRequest,
   type LanderContext,
 } from "./landing-core.js";
+import { attributeRedCheck } from "./landing-check-failures.js";
 import { errorMessage } from "./text.js";
 import { type LandingChangeStatus } from "./landing-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./landing-stack.js";
@@ -125,7 +125,7 @@ export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRo
  * the first half of the ones the last red check ran over — so every prefix that lands, lands on
  * its own green check with nothing rewritten before its ff. A green prefix lands and the rest of
  * the red run is bisected next; a red one is halved. The one change a red check ran over alone
- * is attributed through main's own baseline (landing-core.ts's attributeRedCheck): main green → rejected with the
+ * is attributed through main's own baseline (landing-check-failures.ts's attributeRedCheck): main green → rejected with the
  * check's reasons, no pi run; main red → "main_red", pin kept. Its red is the second one observed
  * with it in the tree, so a single flaky run never rejects a change. The changes after it stay
  * unattempted for the next merge. A stack of N with one broken change costs about log2(N) + 1
