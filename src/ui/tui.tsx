@@ -1,18 +1,9 @@
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
-import {
-  type BacklogEntry,
-  openBugEntries,
-  openQuestionEntries,
-  openQuestions,
-  plannedPlanEntries,
-} from "../backlog.js";
-import { readEvents } from "../event-read.js";
-import { formatEvent } from "../event-format.js";
+import { openQuestions } from "../backlog.js";
 import { snapshot } from "../status-data.js";
 import { renderStatusSpans, type StatusLine } from "./status-render.js";
 import { fleetAlerts } from "./fleet-alerts.js";
-import { readTranscript } from "./transcript.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -24,20 +15,14 @@ import {
   tuiTerminalError,
 } from "./tui-input.js";
 import { createTuiKeys } from "./tui-keys.js";
-import {
-  backlogLines,
-  entryBodyWindow,
-  labeledBacklogEntries,
-} from "./tui-backlog.js";
+import { paneBody } from "./tui-pane.js";
 import {
   alertLines,
-  eventTone,
   hintLine,
   prefixWidth,
   promptPrefix,
   tabStrip,
   toneLine,
-  transcriptTone,
   type TuiView,
 } from "./tui-frame.js";
 
@@ -111,10 +96,6 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
   // data and line budgets in and reads the resulting state out each frame.
   const keys = createTuiKeys({ root, quit: () => resolveMain?.(), requestRender: () => render() });
-  // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
-  // tui-backlog.ts's one definition, shared with the keypress handlers so stale-selection
-  // clamping cannot drift.
-  const flatEntries = (): Array<{ label: string } & BacklogEntry> => labeledBacklogEntries(root);
 
   // Every rendered line is clipped to the terminal width (clipToWidth), so one logical
   // line is always one visual line and the height budget below is exact — nothing wraps,
@@ -155,41 +136,11 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
         : view === roleIds.length + 2 ? { kind: "usage" }
           : view === roleIds.length + 3 ? { kind: "failures" }
             : { kind: "activity" };
-    let body: StatusLine[];
-    let emptyNote = "(no events yet)";
-    if (pane.kind === "transcript") {
-      body = readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l)));
-      emptyNote = "(no transcript yet)";
-    } else if (pane.kind === "backlog") {
-      // Planned features, open bugs, and open questions from PLANS.md/BUGS.md/QUESTIONS.md,
-      // read fresh each render like events. Keeps the HEAD of the list when it overflows —
-      // file order is newest-first, unlike events which keep the tail.
-      const planEntries = plannedPlanEntries(root);
-      const bugEntries = openBugEntries(root);
-      const questionEntries = openQuestionEntries(root);
-      const flat = s.selectedEntry === null ? [] : flatEntries();
-      const sel = s.selectedEntry === null || flat.length === 0 ? null : Math.min(s.selectedEntry, flat.length - 1);
-      if (sel === null) {
-        // List mode (and a stale selection with no entries left falls back to it): section
-        // headings stand out, empty sections read dim.
-        body = backlogLines(planEntries.map((e) => e.title), bugEntries.map((e) => e.title), questionEntries.map((e) => e.title))
-          .slice(0, eventBudget)
-          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined));
-      } else {
-        // Entry browsing: the selected entry's full body under a line naming its section and
-        // title. A stale selection (an entry removed since the last render) clamps to the last.
-        const e = flat[sel]!;
-        const win = entryBodyWindow(e.body, s.entryScroll, entryBudget, width);
-        body = [toneLine(`${e.label}: ${e.title}`, width, "bold"), ...win.lines.map((l) => toneLine(l, width))];
-      }
-    } else if (pane.kind === "usage" || pane.kind === "failures") {
-      // The Markdown `tumwater report` prints, windowed like backlog entry mode. The cache is
-      // set on view entry by the Ctrl+T handler, so this only re-windows a string.
-      const win = entryBodyWindow(s.paneCache ?? "", s.paneScroll, eventBudget, width);
-      body = win.lines.map((l) => toneLine(l, width, l.startsWith("#") ? "bold" : undefined));
-    } else {
-      body = readEvents(root, eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))).slice(-eventBudget);
-    }
+    // The pane's body lines (tui-pane.ts, extracted from this closure): transcripts, the
+    // backlog views, usage/failures, or activity, composed at this frame's budgets.
+    const paneResult = paneBody(pane, { root, width, eventBudget, entryBudget, state: s });
+    const body = paneResult.body;
+    const emptyNote = paneResult.emptyNote;
 
     // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
     // hand-painted string frame joined, as clipped StatusLines — one column row per line,
