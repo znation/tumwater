@@ -11,6 +11,7 @@ import {
   type RedeployDeps,
   RESTART_COOLDOWN_MS,
   RESTART_DRAIN_MAX_MS,
+  RESTART_URGENT_COOLDOWN_MIN,
   RESTART_URGENT_COOLDOWN_MS,
   STALE_ESCALATE_AFTER_MS,
   STALE_ESCALATE_EVERY_MS,
@@ -174,7 +175,7 @@ export class Redeployer {
         if (now < until)
           s.restartBlocked =
             `cooldown until ${new Date(until).toISOString()}` +
-            (urgent ? ` (the running build's own commit is red — cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min)` : "");
+            (urgent ? ` (the running build's own commit is red — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
         else if (this.refusedReason !== null) s.restartBlocked = `the new build could not start: ${this.refusedReason}`;
       }
     }
@@ -311,7 +312,7 @@ export class Redeployer {
         this.warn(
           `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()}` +
             (urgent
-              ? ` (the running build ${shortSha(this.build.sha)} is red — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min)`
+              ? ` (the running build ${shortSha(this.build.sha)} is red — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MIN} min)`
               : " (at most one completed restart per 12 h)"),
         );
       }
@@ -330,7 +331,7 @@ export class Redeployer {
       this.urgentLapseWarnedFor = this.cooldownUntil();
       this.warn(
         `auto-restart of ${shortSha(mainHead)} proceeding early — the running build ${shortSha(this.build.sha)} is red, ` +
-          `the cooldown was cut to ${RESTART_URGENT_COOLDOWN_MS / 60_000} min and that deadline has already passed`,
+          `the cooldown was cut to ${RESTART_URGENT_COOLDOWN_MIN} min and that deadline has already passed`,
       );
     }
 

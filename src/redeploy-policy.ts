@@ -65,6 +65,11 @@ export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
  * window at most, each swap giving the fleet a chance to land on green. */
 export const RESTART_URGENT_COOLDOWN_MS = 15 * 60_000;
 
+/** The urgent carve-out in whole minutes — the one home of that ms→min division, beside the
+ * constant it derives from, so the three redeployer.ts warnings that restate the length in
+ * their operator-facing text cannot disagree with the ms value if either is ever retuned. */
+export const RESTART_URGENT_COOLDOWN_MIN = RESTART_URGENT_COOLDOWN_MS / 60_000;
+
 /** How long a build may stay CONTINUOUSLY stale before the pin itself — not any one head's
  * failure — is warned about (BUGS.md 2026-09-29): under churn each per-head warning names a
  * different commit, so the aggregate — hours pinned on a stale build while every rebuild dies —
