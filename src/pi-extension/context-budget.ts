@@ -74,17 +74,16 @@ interface PiExtensionApi {
   ): void;
 }
 
-/** The highest threshold — once it has fired, no further note is possible. */
-const LAST_THRESHOLD = CONTEXT_THRESHOLDS[CONTEXT_THRESHOLDS.length - 1] ?? 0;
-
-/** The pi extension entry point: append the context note to the tool result that crosses a
- * threshold, keeping the result's own content (as bounded-output left it) in front. Once the last
- * threshold has fired it stops asking for usage at all — getContextUsage rebuilds the session
- * projection and its token estimate on every call. */
+/** The default export's guard reads the thresholds at call time (not module load), so the
+ * degenerate "no thresholds configured" case stays testable: an empty list warns at nothing
+ * and never asks for a usage projection. Once the last threshold has fired it stops asking
+ * for usage at all — getContextUsage rebuilds the session projection and its token estimate
+ * on every call. */
 export default function contextBudget(pi: PiExtensionApi): void {
+  const lastThreshold = CONTEXT_THRESHOLDS[CONTEXT_THRESHOLDS.length - 1] ?? 0;
   let lastWarned = 0;
   pi.on("tool_result", (event, ctx) => {
-    if (lastWarned >= LAST_THRESHOLD) return undefined;
+    if (lastWarned >= lastThreshold) return undefined;
     let usage: ContextUsage | undefined;
     try {
       usage = ctx?.getContextUsage?.();

@@ -54,6 +54,15 @@ test("contextNote advice is role-agnostic, so the reviewer and conflict runs can
 test("contextNote omits the token counts when they are unknown", () => {
   const note = contextNote(60, null, 0, 0);
   assert.match(note!.text, /^\[tumwater: your context window is 60% full\. /);
+  // pi's projection can carry a percent with no token estimate at all (undefined, not null):
+  // the counts stay out rather than rendering "undefined of …".
+  const noTokens = contextNote(60, undefined, 100_000, 0);
+  assert.match(noTokens!.text, /^\[tumwater: your context window is 60% full\. /);
+  // And a known token count with an unknown window (0) must not render a half reading —
+  // "55.0k of 0 tokens" would be worse than silence.
+  const noWindow = contextNote(60, 55_000, 0, 0);
+  assert.match(noWindow!.text, /^\[tumwater: your context window is 60% full\. /);
+  assert.ok(!noWindow!.text.includes("55.0k"), "known tokens are held back with the window");
 });
 
 test("the extension appends the note after the tool result's own content, once per threshold", () => {
@@ -98,6 +107,24 @@ test("the extension tolerates a context without usage or a throwing getter", () 
     handler!({ content: [] }, { getContextUsage: () => { throw new Error("no session"); } }),
     undefined,
   );
+});
+
+test("empty thresholds warn at nothing and never ask for a projection", () => {
+  // The degenerate configuration (no thresholds configured) must degrade to silence, not to
+  // a crash on the missing last threshold — and with nothing to warn about the extension
+  // never spends a projection rebuild either.
+  const thresholds = CONTEXT_THRESHOLDS as number[];
+  const saved = thresholds.splice(0, thresholds.length);
+  try {
+    let handler: ((event: object, ctx?: unknown) => unknown) | undefined;
+    contextBudget({ on: (_event, cb) => { handler = cb as typeof handler; } });
+    let calls = 0;
+    const ctx = { getContextUsage: () => { calls++; return { tokens: 90_000, contextWindow: 100_000, percent: 90 }; } };
+    assert.equal(handler!({ content: [] }, ctx), undefined);
+    assert.equal(calls, 0, "nothing to warn about, so no usage is asked for");
+  } finally {
+    thresholds.push(...saved);
+  }
 });
 
 test("the extension stops asking for usage once the last threshold has fired", () => {
