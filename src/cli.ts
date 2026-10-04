@@ -341,23 +341,37 @@ async function main(): Promise<void> {
       // tokens: a decision word may begin with a single dash (`questions answer 1 "-50% spend
       // cap"`), and peelPositionals would hand it to the flag gate as an unknown flag — the
       // same masking parsePromptArgs avoids for prompt text by owning only `--`-prefixed
-      // tokens. So the questions parse scans args itself: exact `--json` tokens are the one
-      // flag (repeats refused, equals form named by rejectEqualsForm), any other
-      // `--`-prefixed token is refused as unknown, and every remaining token in order is
-      // prose — subcommand, position number, then the decision words.
-      const jsonCount = args.filter((a) => a === "--json").length;
-      if (jsonCount > 1) fail("--json may only be given once");
+      // tokens. So the questions parse scans args itself: a `--json` token before the
+      // question's number positional is the one flag (repeats refused, equals form named by
+      // rejectEqualsForm), any other `--`-prefixed token before it is refused as unknown, and
+      // every remaining token in order is prose — subcommand, position number, then the
+      // decision words. Past the number positional, tokens are decision words even when one
+      // is spelled `--json`: unquoted decision prose (`questions answer 1 keep --json output`)
+      // reaches the command as separate argv tokens, and a flag scan that matched `--json`
+      // anywhere silently ate the token out of the recorded decision and flipped the command
+      // into JSON mode. Unknown `--`-prefixed tokens stay refused even there, so a misspelled
+      // flag is still an error rather than silent decision text.
       const words: string[] = [];
+      let jsonFlag = false;
+      let numbered = false;
       for (const arg of args) {
-        if (arg === "--json") continue;
-        if (arg.startsWith("--")) {
+        if (!numbered && arg === "--json") {
+          if (jsonFlag) fail("--json may only be given once");
+          jsonFlag = true;
+          continue;
+        }
+        if (arg.startsWith("--") && arg !== "--json") {
           rejectEqualsForm(arg, [JSON_FLAG]);
           fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json)`);
+        }
+        if (!numbered) {
+          const parsed = Number(arg);
+          if (arg !== "" && Number.isInteger(parsed) && parsed >= 1) numbered = true;
         }
         words.push(arg);
       }
       if (words.length === 0) {
-        sayQuestionList(root, jsonCount > 0);
+        sayQuestionList(root, jsonFlag);
         break;
       }
       if (words[0] !== "answer")
@@ -369,7 +383,7 @@ async function main(): Promise<void> {
       if (decision === "")
         fail('questions answer needs a decision: questions answer <n> "<decision>"');
       const { title } = answerQuestion(root, n, decision);
-      sayAnswered(n, title, jsonCount > 0, decision);
+      sayAnswered(n, title, jsonFlag, decision);
       break;
     }
     case "role": {

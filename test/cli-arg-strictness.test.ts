@@ -64,6 +64,35 @@ test("questions answer keeps single-dash decision words as prose", async () => {
   assert.match(bad.stderr, /unknown argument: --rol/);
 });
 
+test("questions answer keeps a decision token spelled --json as prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions json decision");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
+  );
+
+  // Unquoted decision prose reaches the command as separate argv tokens, so a word spelled
+  // like the command's one flag is a decision word once the question number has been read:
+  // `tumwater questions answer 1 keep --json output` used to have its `--json` token eaten
+  // by the flag scan — the decision was recorded as "keep output" and the command flipped
+  // into JSON mode. A `--json` token before the number is still the flag.
+  const r = await cli(repo, "questions", "answer", "1", "keep", "--json", "output");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /answered question 1/, "the flag was not consumed from the decision");
+  const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+  assert.match(md, /\*\*Answered .* by operator:\*\* keep --json output/);
+
+  // Unknown double-dash tokens stay refused past the number, never baked into the decision.
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
+  );
+  const bad = await cli(repo, "questions", "answer", "1", "keep", "--rol", "output");
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /unknown argument: --rol/);
+});
+
 test("commands reject unknown arguments instead of silently ignoring them", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli strict args");

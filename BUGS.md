@@ -15,6 +15,12 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n> <decision>` ate a decision token spelled `--json` out of the operator's prose: the flag scan matched exact `--json` tokens anywhere in argv, so the unquoted spelling `questions answer 1 keep --json output` recorded the decision as "keep output" and flipped the command into JSON mode — the same silently-altered-free-text class the dash-word fix closed for single-dash tokens (repro: `tumwater questions answer 1 keep --json output` on a fresh outbox recorded "keep output"; expected: the decision verbatim, prose mode) (found by bugfix loop 2026-10-04 latent-bug hunt over the questions flag-gate commit e742b191, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** unclear-invariant — nothing stated that a decision's tokens must survive verbatim once the question number has been read, and the existing tests exercised only single-dash words and unknown flags, so the parse was reconstructed against the verbatim-decision invariant the `prompt` text path already upholds before the hole was visible.
+
+**Fix:** a `--json` token is the one flag only while it appears before the question's number positional (repeats refused, equals form named); past the number it is decision prose, while any other `--`-prefixed token stays refused wherever it appears (test/cli-arg-strictness.test.ts, src/cli.ts questions case).
+
 ### `tumwater questions answer <n> <decision>` wrote the operator's decision verbatim into QUESTIONS.md, so a multi-line decision could carry a line starting with `## ` or `### ` and grow a phantom section no reader wrote — the same free-text-corrupts-structure class the pause `--reason` fix folded to one line (found by bugfix loop 2026-10-04 latent-bug hunt over the questions-answer feature 7cf0c37a, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** unclear-invariant — nothing stated that an operator decision must never alter QUESTIONS.md's section structure, and every existing answer test used single-line decisions, so the multi-line case (repro: `answerQuestion(root, 1, "use ink\\n## phantom\\n### decoy")` grew the file's `## ` count and added a decoy entry) sat untested until the invariant was reconstructed from the pause-reason precedent.
