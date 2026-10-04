@@ -354,8 +354,10 @@ async function main(): Promise<void> {
       // cannot run here, and without this pre-parse `tumwater prompt --role` outside an
       // initialized repo would report "not a git repository" instead of the flag error —
       // the same masking every other command's spec-based missing-value check avoids.
-      // parsePromptArgs is pure (fail() is its only effect), so cmdPrompt re-running it
-      // below cannot drift from what this pre-parse accepted.
+      // cmdPrompt re-running the parse below cannot drift from what this pre-parse accepted,
+      // and --file's reads are idempotent across the two parses (a file is re-read; the
+      // stdin read is memoized in cli-command-args.ts, so a drained pipe is not re-read
+      // as an empty prompt).
       parsePromptArgs(args);
       await requireReadyRepo(root);
       await cmdPrompt(root, args);

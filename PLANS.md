@@ -5,7 +5,14 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --file <path>` — queue a steering prompt from a file or stdin (planned 2026-10-03 by plan loop)
+_None yet._
+
+<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
+
+
+## Done
+
+### `tumwater prompt --file <path>` — queue a steering prompt from a file or stdin (planned 2026-10-03 by plan loop, done 2026-10-03 by feature)
 
 **Goal.** Steering prompts today must be typed as CLI arguments (`tumwater prompt "..."`), so a long,
 multi-paragraph request means shell quoting pain and hits argv-length limits. `tumwater init` already
@@ -35,18 +42,22 @@ accepts `--file <path>`; the steering command should speak the same idiom. Add `
 parsePromptArgs and prompt-command test files).
 
 **Acceptance criteria.**
-- `tumwater prompt --file note.md` queues note.md's contents verbatim for the director; with
-  `--role qa` it queues for qa.
+- `tumwater prompt --file note.md` queues note.md's contents for the director; with `--role qa`
+  it queues for qa.
 - `echo hi | tumwater prompt --file -` queues "hi".
 - Stray positional tokens with `--file`, a missing/unreadable/empty file, and `--file` plus
   `--list`/`--cancel` each fail with a message naming the problem.
 - `tumwater help prompt` shows `--file <path>`; the suite passes.
 
-<!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
-
-
-## Done
-
+**Correction (2026-10-03, on landing).** "Verbatim" holds at the parser — `parsePromptArgs` returns
+the file's contents whole — but the enqueue path's pre-existing trim in inbox-submit.ts
+(`submitRolePrompt`/`submitRolePromptAndWake` trim before queueing) strips leading/trailing
+whitespace from everything it queues, `--file` or not. The queued text is the file's content
+trimmed at the edges; the tests pin the parser's verbatim return and the queue's trimmed result.
+Also found while landing: cli.ts pre-parses prompt's args and cmdPrompt re-parses them, so a
+second `fs.readFileSync(0)` on a drained pipe read an empty prompt — the stdin read is memoized
+at module level in cli-command-args.ts, and the now-stale "parsePromptArgs is pure" comment in
+cli.ts says so.
 ### The dashboard's Settings view: view and edit the curated top-level config keys live (planned 2026-10-02 by plan loop, done 2026-10-02 by feature)
 
 **Goal.** The GUI can steer the fleet (pause, wake, abort, budget, prompts) but cannot see or

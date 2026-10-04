@@ -102,6 +102,7 @@ Usage:
                                    and are NOT consumed); --json prints the collector's payload
                                    as machine-readable data
   tumwater prompt <text...>        Queue a prompt for the director loop
+  tumwater prompt --file <path>    Queue a prompt read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
                                    Queue a prompt for that loop's next tick (wakes it)
   tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop

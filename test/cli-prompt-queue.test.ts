@@ -9,7 +9,8 @@ import { queueFileStamp } from "../src/file-queue.js";
 import { truncate } from "../src/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";
-import { cli } from "./cli-harness.js";
+import { cli, CLI } from "./cli-harness.js";
+import { spawnSync } from "node:child_process";
 
 // The prompt queue's child-process tests — enqueue/list/cancel basics first, then
 // flag-validation, per-role queues, and the broken-config policy the list mode follows. Spawned
@@ -486,4 +487,16 @@ test("prompt --list shows each prompt's age; a hand-placed file shows none", asy
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^1\. patient task \(queued \d+[smh] ago\)$/m);
   assert.ok(!r.stdout.includes("by hand"));
+});
+
+test("prompt --file - reads the prompt from stdin", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt stdin");
+  const r = spawnSync(process.execPath, [CLI, "prompt", "--file", "-"], {
+    cwd: repo, timeout: 20_000, input: "hi from stdin\n", encoding: "utf8",
+  });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /queued for the director loop/);
+  // The queue layer's pre-existing trim (inbox-submit.ts) strips the trailing newline.
+  assert.equal(dequeuePrompt(repo), "hi from stdin");
 });

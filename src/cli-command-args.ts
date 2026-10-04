@@ -127,6 +127,10 @@ type PromptArgs =
   | { mode: "list"; role: string | null; json: boolean }
   | { mode: "cancel"; role: string | null; position: number };
 
+/** The stdin prompt read once per process: cli.ts pre-parses prompt's args and cmdPrompt
+ * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
+let stdinPrompt: string | null = null;
+
 /** prompt's flag vocabulary, one definition shared by the unknown-flag loop and the
  * equals-form refusal inside it (ROLE_FLAG rides in with its shared missing-value wording). */
 const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
@@ -134,6 +138,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--list"] },
   JSON_FLAG,
   { names: ["--cancel"], value: true, valueName: "<n>" },
+  { names: ["--file"], value: true, valueName: "<path>" },
 ];
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
@@ -147,8 +152,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   for (const arg of args) {
     // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
     rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
-    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json") {
-      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>)`);
+    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json" && arg !== "--file") {
+      fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>)`);
     }
   }
   // --json's positions, collected in one pass: the list branch's stray-argument claim and
@@ -156,7 +161,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
-  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json"]);
+  const fileFlag = args.indexOf("--file");
+  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json", "--file"]);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
   const roleFlag = args.indexOf("--role");
@@ -170,6 +176,10 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // --json is list-only: in enqueue or cancel mode it must never silently ride along as
   // prompt text (or beside a state change), so it is refused before either branch runs.
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
+
+  // --file only queues a prompt: it is the file-shaped twin of free-form text, so the read-only
+  // and destructive modes must refuse it rather than silently ignore it.
+  if (fileFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0)) fail("--file only queues a prompt");
 
   if (listFlag >= 0) {
     failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim);
@@ -189,6 +199,40 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // prompt text, and this mode has none.
     failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
     return { mode: "cancel", role, position: n };
+  }
+
+  if (fileFlag >= 0) {
+    // The file is the prompt: read it whole (a path of `-` reads stdin, so a pipe or heredoc
+    // works), following parseInitArgs' --file branch — the same claim/stray/read/empty shape,
+    // so the two commands speak one idiom. The stdin read is memoized at module level: cli.ts
+    // pre-parses prompt's args and cmdPrompt re-parses them, and a second readFileSync(0) on a
+    // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
+    // stdin; errorMessage names it, and the operator passes a real pipe instead).
+    const file = args[fileFlag + 1];
+    if (!file) fail("--file needs a path");
+    failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim);
+    let contents: string;
+    if (file === "-") {
+      if (stdinPrompt === null) {
+        try {
+          stdinPrompt = fs.readFileSync(0, "utf8");
+        } catch (err) {
+          stdinPrompt = "";
+          fail(`cannot read prompt file "-" (stdin): ${errorMessage(err)}`);
+        }
+      }
+      contents = stdinPrompt;
+    } else {
+      try {
+        contents = fs.readFileSync(file, "utf8");
+      } catch (err) {
+        // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
+        fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
+      }
+    }
+    if (contents.trim() === "")
+      fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
+    return { mode: "enqueue", role, text: contents };
   }
 
   // Everything except the --role pair is prompt text; the join keeps multi-word requests as

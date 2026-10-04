@@ -196,7 +196,7 @@ test("parsePromptArgs rejects unknown double-dash flags instead of baking them i
   const r = expectFail(() => parsePromptArgs(["--foo", "text"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>/);
+  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>/);
 });
 
 test("parsePromptArgs --list: exact mode, no text allowed", () => {
@@ -321,4 +321,51 @@ test("parsePromptArgs --json: list-only, at most once, never prompt content", ()
   // A duplicate fails like --list/--cancel do.
   const dup = expectFail(() => parsePromptArgs(["--list", "--json", "--json"]));
   assert.match(dup.stderr, /--json may only be given once/);
+});
+
+test("parsePromptArgs --file: reads the file as the prompt, composes with --role, refuses bad shapes", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "note.md");
+  fs.writeFileSync(file, "Refactor the parser.\nWith care.\n");
+
+  // The file's contents are the prompt, byte for byte (no trim in the parser: the --file
+  // prompt is handed whole to the enqueue path, unlike the joined-and-trimmed positional
+  // path; the queue layer's own trim still applies downstream).
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--file", file])), {
+    mode: "enqueue",
+    role: null,
+    text: "Refactor the parser.\nWith care.\n",
+  });
+
+  // Composes with --role; the role pair is a scope, not file content.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "qa", "--file", file])), {
+    mode: "enqueue",
+    role: "qa",
+    text: "Refactor the parser.\nWith care.\n",
+  });
+
+  // A missing value fails by name, like init's.
+  assert.match(expectFail(() => parsePromptArgs(["--file"])).stderr, /--file needs a path/);
+
+  // An unreadable path names the file and its role as the prompt source.
+  const missing = expectFail(() => parsePromptArgs(["--file", path.join(dir, "nope.md")]));
+  assert.match(missing.stderr, /cannot read prompt file/);
+
+  // An empty (or whitespace-only) file reads as an empty prompt — name the file.
+  const empty = path.join(dir, "empty.md");
+  fs.writeFileSync(empty, "   \n\n");
+  const blank = expectFail(() => parsePromptArgs(["--file", empty]));
+  assert.match(blank.stderr, /the prompt file .* is empty/);
+
+  // Stray positional tokens are refused: the file IS the prompt.
+  const stray = expectFail(() => parsePromptArgs(["--file", file, "extra"]));
+  assert.match(stray.stderr, /unexpected argument "extra" — with --file the prompt comes from the file/);
+
+  // The read-only and destructive modes refuse --file rather than silently ignore it.
+  assert.match(expectFail(() => parsePromptArgs(["--list", "--file", file])).stderr, /--file only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--file", file])).stderr, /--file only queues a prompt/);
+
+  // A duplicate fails like the other valued flags; the equals form names a real flag.
+  assert.match(expectFail(() => parsePromptArgs(["--file", file, "--file", file])).stderr, /--file may only be given once/);
+  assert.match(expectFail(() => parsePromptArgs(["--file=" + file])).stderr, /`--file <path>`/);
 });

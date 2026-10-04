@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize } from "../src/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt } from "../src/inbox.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { defaultConfig } from "../src/config.js";
 import { writeJsonFile } from "../src/json-files.js";
@@ -177,4 +177,17 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   const o = await expectFail(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
   assert.equal(o.code, 1);
   assert.match(o.stderr, /no prompt at position 5 \(1 queued\)/);
+});
+
+test("prompt --file queues the file's contents verbatim for the director", async () => {
+  const root = makeRoot();
+  const file = path.join(root, "note.md");
+  fs.writeFileSync(file, "Refactor the parser.\nWith care.\n");
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--file", file]));
+  assert.match(stdout, /queued for the director loop/);
+  assert.equal(inboxSize(root), 1);
+  // The parser hands the file's contents to the enqueue path whole; the queue layer's
+  // pre-existing trim (inbox-submit.ts) strips the trailing newline, so the queued text is
+  // the file's content trimmed at the edges.
+  assert.equal(dequeuePrompt(root), "Refactor the parser.\nWith care.");
 });
