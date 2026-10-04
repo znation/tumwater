@@ -1,5 +1,5 @@
 import { fail, say } from "../cli-output.js";
-import { durationLabel, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -37,7 +37,7 @@ function sayEventLine(e: HarnessEvent, json: boolean): void {
  * --grep and --since call from inside their own presence guards. */
 function rejectRoleViewRival(rest: string[], flag: string, active: boolean): void {
   if (active && (rest.includes("--role") || rest.includes("--prompt")))
-    fail(`logs ${flag} cannot be combined with --role (the --role view is a pi transcript, not the event log; --prompt requires --role)`);
+    failRivalShapes(`logs ${flag}`, "--role", "the --role view is a pi transcript, not the event log; --prompt requires --role");
 }
 
 /** The missing-pattern error cmdLogs prints for a valueless `--grep`, exported so cli.ts's
@@ -74,7 +74,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   if (grepPattern !== null) {
     rejectRoleViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
-      fail("logs --grep cannot be combined with --since (--since is a filter of its own; --grep filters the -n view and its follow)");
+      failRivalShapes("logs --grep", "--since", "--since is a filter of its own; --grep filters the -n view and its follow");
   }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
@@ -85,8 +85,8 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
   if (ms !== null) {
     if (follow)
-      fail('logs --since cannot be combined with -f/--follow (follow means "from now on"; --since shows a bounded past window)');
-    if (rest.includes("-n")) fail("logs --since cannot be combined with -n (a count and a window are rival shapes)");
+      failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+    if (rest.includes("-n")) failRivalShapes("logs --since", "-n", "a count and a window are rival shapes");
     rejectRoleViewRival(rest, "--since", true);
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.

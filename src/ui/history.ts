@@ -1,5 +1,5 @@
-import { fail, say, sayJson } from "../cli-output.js";
-import { durationLabel, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
+import { say, sayJson } from "../cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli-args.js";
 import { displayWidth, padToWidth } from "../text-width.js";
 import { shortSpanPhrase } from "../phrases.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "../history-data.js";
@@ -113,7 +113,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   let covered = true;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   if (sinceMs !== null) {
-    if (nRaw !== null) fail("history --since cannot be combined with -n (a count and a window are rival shapes)");
+    if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
     const role = parseRoleScope(root, rest);
     const windowed = readTickRowsSince(root, sinceMs, role);
     rows = windowed.rows;

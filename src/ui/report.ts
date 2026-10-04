@@ -9,8 +9,8 @@ import { renderFailureMarkdown } from "../failure-report.js";
 import { compactTokens, usd } from "../text.js";
 import { reportWindow } from "../datetime.js";
 import { eventsRotationLabel } from "../events.js";
-import { fail, say, sayJson, sayJsonOrRender } from "../cli-output.js";
-import { durationLabel, flagValue, parseCountFlag, parseSinceFlag } from "../cli-args.js";
+import { say, sayJson, sayJsonOrRender } from "../cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli-args.js";
 
 // The REPORT_*_DAYS bounds live in core event-window.ts so the failure digest can share
 // them without a core→ui import; callers needing them import that module directly.
@@ -168,9 +168,9 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
   if (ms !== null) {
     if (args.includes("--days"))
-      fail("report --since cannot be combined with --days (--days counts whole local days; --since totals a trailing window)");
+      failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
     if (args.includes("--failures"))
-      fail("report --since cannot be combined with --failures (the failure digest has no windowed-since mode)");
+      failRivalShapes("report --since", "--failures", "the failure digest has no windowed-since mode");
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
     const since = collectReportSince(root, ms);

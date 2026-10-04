@@ -128,6 +128,16 @@ export function failOverDurationCap(flag: string, ms: number, maxMs: number, hin
   fail(`${flag} is capped at ${durationLabel(maxMs)} (got ${durationLabel(ms)})${hint ? ` — ${hint}` : ""}`);
 }
 
+/** The shared rival-shape failure: `<subject> cannot be combined with <rival> (<why>)` —
+ * the sentence shape every mutually-exclusive flag pair fails through, so the wording around
+ * the two flags cannot drift per command (logs --since vs -f/-n/--role, logs --grep vs
+ * --since, history --since vs -n, report --since vs --days/--failures). Callers keep their
+ * own presence checks and their own why-clauses; this owns only the sentence around them,
+ * exactly as failOverDurationCap above owns the cap sentence. Declared never like fail(). */
+export function failRivalShapes(subject: string, rival: string, why: string): never {
+  fail(`${subject} cannot be combined with ${rival} (${why})`);
+}
+
 /** Read an optional `--since <duration>` window from a command's args and cap it: the one
  * home of the flagValue → parseDurationFlag → failOverDurationCap idiom the three windowed
  * read-only views (logs, history, report) share. Returns the parsed milliseconds, or null
