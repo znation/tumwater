@@ -12,22 +12,17 @@ import { defaultConfig } from "../src/config.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { firstRunThenIdle, withPi } from "./fake-pi.js";
+import { withPi } from "./fake-pi.js";
+import { failingThenIdle } from "./fakes/transient.js";
+import { sleepRecorder } from "./fakes/time.js";
 import { warningMessages } from "./log-fixtures.js";
 import { APPROVE_PI, assistantLine, errorLine } from "./pi-events.js";
 
 test("a transient model-server timeout is retried once and the tick succeeds (regression)", async () => {
   const repo = await initializedRepo();
-  const marker = path.join(tmpdir(), "phase");
-  // Attempt 1 (the tick's pi run): LM Studio kills an idle predict stream after a machine
-  // sleep. Attempt 2 (the harness retry, detected by the phase file): a fresh request
-  // succeeds within seconds of the wake.
-  const script = [
-    ...firstRunThenIdle(marker, [
-      `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'`,
-      `exit 1`,
-    ]),
-  ].join("\n");
+  // The phase file doubles as the retry counter (test/fakes/transient.ts): attempt 1 fails
+  // on the timeout class, attempt 2 — the harness's one retry — idles.
+  const script = failingThenIdle(path.join(tmpdir(), "phase"), 1, "timeout").join("\n");
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
@@ -48,22 +43,17 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase-429");
   // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the fleet's
-  // single largest error source, and by definition retryable. Attempt 2 (the harness retry,
-  // detected by the phase file): the limit has passed and the request succeeds.
-  const script = [
-    ...firstRunThenIdle(marker, [
-      `printf '%s\\n' '${errorLine('429 "Rate limit exceeded"')}'`,
-      `exit 1`,
-    ]),
-  ].join("\n");
+  // single largest error source, and by definition retryable. Attempt 2 (the harness retry):
+  // the limit has passed and the request succeeds. The failure class lives in the shared
+  // test-fake catalog (test/fakes/transient.ts) so the next retry test pays no cost again.
+  const script = failingThenIdle(marker, 1, "rateLimit").join("\n");
   await withPi(script, async () => {
     // The hint-less 429 now defaults its retry wait to the minute-scale refill pause (BUGS.md
     // 2026-09-25); this end-to-end test injects an instant sleep and asserts the recorded wait
-    // instead of living through the minute.
-    const sleeps: number[] = [];
-    const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", undefined, async (ms) => {
-      sleeps.push(ms);
-    });
+    // instead of living through the minute. The injectable sleep collector lives in the
+    // shared test-fake catalog too (test/fakes/time.ts).
+    const { sleeps, sleep } = sleepRecorder();
+    const runner = makeLoopRunner(repo, "clean", defaultConfig(), "main", undefined, sleep);
     const before = Date.now();
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events.js";
+// The tick_end/tick_start fixture builders' single home is the shared test-fake catalog
+// (test/fakes/log.ts, PLANS.md 2026-10-04); aliased here so the call sites read as before.
+import { tickEnd as endEvent, tickStart as startEvent } from "./fakes/log.js";
 import { initProject } from "../src/init.js";
 import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history-data.js";
 import { displayWidth } from "../src/text-width.js";
@@ -11,14 +14,6 @@ import { cli } from "./cli-harness.js";
 
 // The `history` command: the tickRows collector's pairing/filtering/bounding as unit cases,
 // plus CLI smoke runs over a seeded event log — the pattern test/cli-logs.test.ts uses.
-
-function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_end", tick: 1, result: "changed", ...over } as HarnessEvent;
-}
-
-function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;
-}
 
 test("tickRows pairs each tick_end with its tick_start for the duration", () => {
   const rows = tickRows(

@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ProcessProbe, ProcessRow } from "../src/process-table.js";
 import { writeScript } from "./fake-commands.js";
+// The process-table fake's single home is the shared test-fake catalog (test/fakes/process.ts,
+// PLANS.md 2026-10-04); these re-exports keep the doctor files' existing import surface while
+// the fake itself lives with its siblings. That host-facing fixture was doctor-fixtures's only
+// process-table content — the doctor files never read the host's real state.
+export { noProcesses, fakeProbe } from "./fakes/process.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 
 /** Fixtures shared by the doctor test files (doctor.test.ts, doctor-checks.test.ts,
@@ -42,42 +46,4 @@ export function hermeticHostBins(psRan: string): string {
   return dir;
 }
 
-/** An empty process table and a healthy launchservicesd: runDoctor's report tests pin every
- * other check without reading the host's real table or daemon (the orphan check's own tests
- * drive it with fakeProbe in test/doctor-orphans.test.ts; the port check's live in
- * launch-services.test.ts). */
-export const noProcesses: ProcessProbe = {
-  list: async () => [],
-  cwds: async () => new Map(),
-  runMarkers: async () => new Map(),
-  launchServicesPorts: async () => 1_000,
-};
 
-/** A fake process table for checkOrphans: each row defaults to a parentless (PPID 1) process
- * of this user, `cwds` answers from the given map, and `marks` gives each pid's raw
- * `TUMWATER_RUN` environment value (comma-separated markers) for the run-mark half of the
- * check. `asked` records every cwd lookup, so a test can pin that only parentless candidates
- * reach lsof. No real process is spawned. */
-export function fakeProbe(
-  rows: Array<Partial<ProcessRow> & { pid: number; command: string }>,
-  cwds: Record<number, string> = {},
-  marks: Record<number, string> = {},
-): { probe: ProcessProbe; asked: number[][] } {
-  const asked: number[][] = [];
-  const uid = process.getuid?.() ?? 0;
-  const probe: ProcessProbe = {
-    list: async () => rows.map((r) => ({ ppid: 1, uid, etime: "01:00", time: "0:00.10", ...r })),
-    cwds: async (pids) => {
-      asked.push(pids);
-      return new Map(pids.flatMap((p): Array<[number, string]> => (cwds[p] !== undefined ? [[p, cwds[p]]] : [])));
-    },
-    runMarkers: async (pids) =>
-      new Map(
-        pids.flatMap((p): Array<[number, string[]]> =>
-          marks[p] !== undefined ? [[p, marks[p].split(",")]] : [],
-        ),
-      ),
-    launchServicesPorts: async () => null,
-  };
-  return { probe, asked };
-}

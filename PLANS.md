@@ -3,9 +3,14 @@
 Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
+
 ## Planned
 
-### A shared test-fake catalog — the infrastructure that retires the recurring `no-fake` validation gap (planned 2026-10-04 by steward, promoted from the gap tally)
+_None yet._
+
+## Done
+
+### A shared test-fake catalog — the infrastructure that retires the recurring `no-fake` validation gap (planned 2026-10-04 by steward, promoted from the gap tally, done 2026-10-04 by feature)
 
 **Goal.** 33 retained Fixed entries in BUGS.md carry the validation gap `no-fake` — the fix could not
 be confirmed until a fake or shim that did not exist was written, one entry at a time. Each such fix
@@ -53,7 +58,14 @@ suite-wide adoption is not part of this plan.
 - `npm run test` stays green, and the fake modules are plain node built-ins with no new
   dependencies in package.json.
 
-## Done
+**Done note (2026-10-04, feature).** All four modules shipped, plus `test/fakes-catalog.test.ts`,
+which pins each fake's contract with no real process, network, model, or clock. Migrations: the
+`transient.ts` and `time.ts` fakes replaced the hand-rolled failure sequences and sleep collector
+in test/loop-transient-retry.test.ts's two regression tests; the `log.ts` builders replaced
+cli-history.test.ts's local `endEvent`/`startEvent` fixtures; the `process.ts` fake is doctor-
+fixtures.ts's `fakeProbe`/`noProcesses`, moved to the catalog and re-exported (test/doctor-
+orphans.test.ts, test/doctor.test.ts unchanged importers).
+
 
 ### `tumwater bug "<symptom>"` and `tumwater plan "<title>" [body...]` — operator-authored backlog entries from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
