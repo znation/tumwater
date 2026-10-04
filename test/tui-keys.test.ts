@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createTuiKeys, inkKeyToReadline } from "../src/ui/tui-keys.js";
+import { arrowDir, createTuiKeys, inkKeyToReadline, pageDir } from "../src/ui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 
@@ -211,6 +211,20 @@ test("inkKeyToReadline maps ink's parsed keys to the readline shape the dispatch
   assert.deepEqual(inkKeyToReadline("x", { meta: true }), { str: undefined, key: { meta: true, name: "x" } });
   // An empty non-key input (ink suppresses text for unrecognized sequences) is inert.
   assert.deepEqual(inkKeyToReadline("", {}), { str: undefined, key: {} });
+});
+
+test("arrowDir and pageDir name the vertical direction the dispatch branches steer by", () => {
+  // Arrows map to up/down; the other named keys and an undefined name are inert.
+  assert.equal(arrowDir("up"), "up");
+  assert.equal(arrowDir("down"), "down");
+  assert.equal(arrowDir("pageup"), null);
+  assert.equal(arrowDir("left"), null);
+  assert.equal(arrowDir(undefined), null);
+  // PgUp walks up and PgDn walks down — the inversion the scroll branches used to hand-roll.
+  assert.equal(pageDir("pageup"), "up");
+  assert.equal(pageDir("pagedown"), "down");
+  assert.equal(pageDir("up"), null);
+  assert.equal(pageDir(undefined), null);
 });
 
 // The adapter's output drives the real dispatch: one round-trip case per shape, through

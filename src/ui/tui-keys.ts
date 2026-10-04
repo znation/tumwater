@@ -139,6 +139,27 @@ export function inkKeyToReadline(
   return { str: input || undefined, key: {} };
 }
 
+/** The `"up" | "down"` direction an arrow key names — Up/Down only, so the branches that
+ * reserve the arrows for one purpose (entry browse, history recall) reject the page keys —
+ * null for anything else. Shared by handleKey's entry-browse and history-recall branches so
+ * the key→direction mapping lives in one place beside inkKeyToReadline, which mints the
+ * names. Pure, so it is unit-testable without a TTY. */
+export function arrowDir(name: string | undefined): "up" | "down" | null {
+  if (name === "up") return "up";
+  if (name === "down") return "down";
+  return null;
+}
+
+/** The `"up" | "down"` direction a page key names — PgUp walks up, PgDn walks down, the
+ * inversion handleKey's two pane-scroll branches used to hand-roll inline (a `pagedown ?
+ * "down" : "up"` ternary at each) — null for anything else. Pure, so it is unit-testable
+ * without a TTY. */
+export function pageDir(name: string | undefined): "up" | "down" | null {
+  if (name === "pageup") return "up";
+  if (name === "pagedown") return "down";
+  return null;
+}
+
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
@@ -388,30 +409,27 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (view === roleIds.length + 1 && (key.name === "up" || key.name === "down")) {
+    const arrow = arrowDir(key.name);
+    const page = pageDir(key.name);
+    if (view === roleIds.length + 1 && arrow !== null) {
       // In the project-status pane, up/down browse entries in full instead of editing the
       // prompt; every other view keeps today's behavior (arrows are ignored by applyKey).
       const count = flat().length;
-      selectedEntry = moveEntrySelection(count, selectedEntry, key.name);
+      selectedEntry = moveEntrySelection(count, selectedEntry, arrow);
       entryScroll = 0; // a newly opened entry starts at its body's head
       deps.requestRender();
       return;
     }
-    if (view >= roleIds.length + 2 && (key.name === "pageup" || key.name === "pagedown")) {
+    if (view >= roleIds.length + 2 && page !== null) {
       // Within-body scroll in the Markdown panes (usage report, failures): PgDn/PgUp page the
       // cached string, clamped at both ends. The total is derived from the cache, mirroring how
       // entry mode derives it from e.body; every other view ignores these keys as today.
       const total = (paneCache ?? "").split("\n").length;
-      paneScroll = stepEntryScroll(
-        paneScroll,
-        total,
-        eventBudget,
-        key.name === "pagedown" ? "down" : "up",
-      );
+      paneScroll = stepEntryScroll(paneScroll, total, eventBudget, page);
       deps.requestRender();
       return;
     }
-    if (view === roleIds.length + 1 && (key.name === "pageup" || key.name === "pagedown")) {
+    if (view === roleIds.length + 1 && page !== null) {
       // Within-body scroll in project-status ENTRY mode: PgDn/PgUp page the selected entry's
       // body, clamped at both ends. No-op in list mode and for bodies that fit — every other
       // view ignores these keys as today (applyKey drops them).
@@ -423,13 +441,13 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           entryScroll,
           body ? body.split("\n").length : 0,
           entryBudget,
-          key.name === "pagedown" ? "down" : "up",
+          page,
         );
       }
       deps.requestRender();
       return;
     }
-    if (!budgetMode && (key.name === "up" || key.name === "down")) {
+    if (!budgetMode && arrow !== null) {
       // Up/Down walk the submitted-prompt history the way readline does (tui-input.ts's
       // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
       // above already returned), and budget mode keeps them out — recalling a prompt into
