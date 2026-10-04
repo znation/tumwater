@@ -15,7 +15,7 @@ import {
   rejectUnknownArgs,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
-  SINCE_FLAG,
+  sinceFlagSpec,
 } from "./cli-flag-specs.js";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { parsePromptArgs } from "./cli-command-args.js";
@@ -241,7 +241,7 @@ async function main(): Promise<void> {
           },
         },
         { names: ["--failures"] },
-        SINCE_FLAG,
+        sinceFlagSpec("report --since"),
         JSON_FLAG,
       ]);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
@@ -265,7 +265,7 @@ async function main(): Promise<void> {
       rejectUnknownArgs("logs", args, [
         { names: ["-f", "--follow"] },
         N_FLAG,
-        SINCE_FLAG,
+        sinceFlagSpec("logs --since"),
         grepFlagSpec(GREP_VALUE_ERROR),
         JSON_FLAG,
         ROLE_FLAG,
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
     case "history":
       rejectUnknownArgs("history", args, [
         N_FLAG,
-        SINCE_FLAG,
+        sinceFlagSpec("history --since"),
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
         JSON_FLAG,
         ROLE_FLAG,

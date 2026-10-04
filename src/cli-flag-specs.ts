@@ -1,5 +1,5 @@
 /** The declarative flag-vocabulary layer shared by every command's argument gate: the
- * FlagSpec shape, the per-flag specs (ROLE_FLAG, DURATION_FLAG, REASON_FLAG, SINCE_FLAG,
+ * FlagSpec shape, the per-flag specs (ROLE_FLAG, DURATION_FLAG, REASON_FLAG, sinceFlagSpec,
  * N_FLAG, JSON_FLAG, grepFlagSpec, RUN_FLAG_SPECS), and the unknown-argument gate
  * (rejectUnknownArgs, with rejectEqualsForm). Split from cli-args.ts, whose imperative
  * single-flag parsers (flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, ...)
@@ -111,22 +111,30 @@ export const REASON_FLAG: FlagSpec = {
   missingValue: "pause --reason needs a reason",
 };
 
-/** The `--since <duration>` flag spec, shared by the three windowed read-only views (logs,
+/** The `--since <duration>` flag spec shared by the three windowed read-only views (logs,
  * history, report): one definition of the flag's spelling and value shape, beside ROLE_FLAG
  * and DURATION_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages
- * cannot drift apart. validate re-runs the shape parser at the gate; each window's 7-day cap
- * and its rival-flag rules stay in the command body beside the window read they bound. */
-export const SINCE_FLAG: FlagSpec = {
-  names: ["--since"],
-  value: true,
-  valueName: "<duration>",
-  validate: (value) => {
-    parseDurationFlag("--since", value);
-  },
-};
+ * cannot drift apart. The error wording differs per command — every failure names its own
+ * command with the flag (`logs --since needs a value`, `logs --since needs a duration like
+ * 45s, 90m, 2h, or 1d (got …)`), the same label the command body's parseSinceFlag rides into
+ * its messages and the over-cap check already uses — so the spec is a factory taking it,
+ * the same pattern grepFlagSpec arms its missing-value error with. validate re-runs the shape
+ * parser at the gate; each window's 7-day cap and its rival-flag rules stay in the command
+ * body beside the window read they bound. */
+export function sinceFlagSpec(label: string): FlagSpec {
+  return {
+    names: ["--since"],
+    value: true,
+    valueName: "<duration>",
+    missingValue: `${label} needs a value`,
+    validate: (value) => {
+      parseDurationFlag(label, value);
+    },
+  };
+}
 
 /** The `-n <count>` flag spec, shared by the two tail views that take a row count (logs,
- * history): one definition of the flag's spelling and value shape, beside SINCE_FLAG, so the
+ * history): one definition of the flag's spelling and value shape, beside sinceFlagSpec, so the
  * gate's accepted vocabulary and parseCountFlag's error messages cannot drift apart. validate
  * re-runs the shape parser at the gate; the bodies keep their own defaults and rival rules. */
 export const N_FLAG: FlagSpec = {
@@ -140,14 +148,14 @@ export const N_FLAG: FlagSpec = {
 
 /** The `--json` flag spec, shared by every command with a machine-readable form (status,
  * doctor, logs, history, tick, diff, backlog, role, report, prompt --list): one definition of
- * the flag's spelling, beside ROLE_FLAG and SINCE_FLAG, so the gate's accepted vocabulary
+ * the flag's spelling, beside ROLE_FLAG and sinceFlagSpec, so the gate's accepted vocabulary
  * cannot drift apart. It takes no value and carries no per-command wording — unlike its
  * siblings it needs neither a factory nor a missing-value error — so the constant is the
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
 /** The `--grep <text>` flag spec shared by the two filtering views (logs, history): one
- * definition of the flag's spelling and value shape, beside ROLE_FLAG and SINCE_FLAG, so the
+ * definition of the flag's spelling and value shape, beside ROLE_FLAG and sinceFlagSpec, so the
  * gate's accepted vocabulary cannot drift apart. The missing-value wording differs per command
  * (each names its own command), so the spec is a factory taking it — the same string
  * parseGrepFlag fails with in the command body. */

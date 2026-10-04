@@ -274,11 +274,11 @@ test("tumwater report --since prints the window totals and validates its flags",
   for (const bad of ["abc", ""]) {
     const r = await runCli(root, "report", "--since", bad);
     assert.notEqual(r.code, 0, `--since ${bad} fails`);
-    assert.match(r.out, /--since needs a duration like 45s, 90m, 2h, or 1d/);
+    assert.match(r.out, /report --since needs a duration like 45s, 90m, 2h, or 1d/);
   }
   const missing = await runCli(root, "report", "--since");
   assert.notEqual(missing.code, 0);
-  assert.match(missing.out, /--since needs a value/);
+  assert.match(missing.out, /report --since needs a value/);
 
   const help = await runCli(root, "help", "report");
   assert.equal(help.code, 0);

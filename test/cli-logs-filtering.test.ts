@@ -90,15 +90,15 @@ test("logs --since validates its duration against the 7-day cap", async () => {
 
   r = await cli(repo, "logs", "--since");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--since needs a value/);
+  assert.match(r.stderr, /logs --since needs a value/);
 
   r = await cli(repo, "logs", "--since", "45x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--since needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(r.stderr, /logs --since needs a duration like 45s, 90m, 2h, or 1d/);
 
   r = await cli(repo, "logs", "--since", "0s");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--since needs a duration/);
+  assert.match(r.stderr, /logs --since needs a duration/);
 });
 
 test("logs --since reports an empty window gently, with no rotation claim", async () => {

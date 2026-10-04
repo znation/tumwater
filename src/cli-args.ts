@@ -145,15 +145,17 @@ export function failRivalShapes(subject: string, rival: string, why: string): ne
 /** Read an optional `--since <duration>` window from a command's args and cap it: the one
  * home of the flagValue → parseDurationFlag → failOverDurationCap idiom the three windowed
  * read-only views (logs, history, report) share. Returns the parsed milliseconds, or null
- * when the flag is absent. A malformed value fails with parseDurationFlag's message and an
- * over-cap window with failOverDurationCap's, named `<label>` (e.g. "logs --since").
+ * when the flag is absent. Every failure names the command with the flag — `<label>`
+ * (e.g. "logs --since") rides into parseDurationFlag's missing-value and malformed-duration
+ * messages, the same wording the over-cap check already uses, so all three errors read
+ * "logs --since …" instead of the malformed and missing-value forms naming a bare "--since".
  * Rival-flag rules stay in each command body, checked on the returned non-null value — so a
  * malformed or over-cap `--since` fails on its own wording before a rival-flag check fires,
  * the same precedence a command with only --since shows. */
 export function parseSinceFlag(args: string[], label: string, maxMs: number): number | null {
   const raw = flagValue(args, "--since");
   if (raw === null) return null;
-  const ms = parseDurationFlag("--since", raw);
+  const ms = parseDurationFlag(label, raw);
   failOverDurationCap(label, ms, maxMs);
   return ms;
 }
