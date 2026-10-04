@@ -24,8 +24,16 @@ export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--json]";
  * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
  * can act on: the tick number, the loop, and that the scanned window (not the world) is what
  * came up empty. */
+/** The shared not-found frame both wordings complete — what the scan looked for, the loop,
+ * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
+ * the not-found wordings below (the numbered form's exported message and the --last form's
+ * module-local sibling), so the trailing hedge cannot drift between them. */
+function tickNotFoundPhrase(role: string, what: string): string {
+  return `no ${what} for ${role} in the scanned window (the retained log may have rotated past it)`;
+}
+
 export function tickNotFoundMessage(role: string, tick: number): string {
-  return `no tick #${tick} for ${role} in the scanned window (the retained log may have rotated past it)`;
+  return tickNotFoundPhrase(role, `tick #${tick}`);
 }
 
 /** The not-found wording for `tumwater tick <role> --last`, sibling of tickNotFoundMessage —
@@ -33,7 +41,7 @@ export function tickNotFoundMessage(role: string, tick: number): string {
  * completed tick, not a number the user supplied. Module-local: the GUI's /api/tick 404 only
  * ever serves the numbered form, so this wording has no second consumer. */
 function tickNotFoundLastMessage(role: string): string {
-  return `no completed tick for ${role} in the scanned window (the retained log may have rotated past it)`;
+  return tickNotFoundPhrase(role, "completed tick");
 }
 
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
