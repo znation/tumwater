@@ -36,7 +36,7 @@ test("lastTickCell prefixes the date once older than a day", () => {
   const ts = Date.now() - 2 * 86_400_000;
   const d = new Date(ts);
   const p = (n: number) => String(n).padStart(2, "0");
-  assert.equal(lastTickCell(ts), `${p(d.getMonth() + 1)}-${p(d.getDate())} ${stampOf(ts)} · 48h ago`);
+  assert.equal(lastTickCell(ts), `${p(d.getMonth() + 1)}-${p(d.getDate())} ${stampOf(ts)} · 2d ago`);
 });
 
 test("lastTickCell is a bare dash for loops that never ticked", () => {

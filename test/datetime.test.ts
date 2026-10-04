@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, pad2, reportWindow } from "../src/datetime.js";
+import { dayAt, dayKey, dayLabel, dayWindow, elapsedSeconds, formatDate, formatTime, formatTimestamp, humanSeconds, pad2, reportWindow } from "../src/datetime.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
@@ -109,6 +109,16 @@ test("formatTimestamp renders date and clock from ONE Date, so its halves cannot
 function formatDateOf(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+test("humanSeconds buckets sub-second-to-day spans compactly", () => {
+  // Each value sits well inside its bucket so the rounding edge cannot flip it.
+  assert.equal(humanSeconds(45), "45s", "sub-minute reads seconds");
+  assert.equal(humanSeconds(120), "2m", "sub-hour reads minutes");
+  assert.equal(humanSeconds(3 * 3600), "3h", "sub-day reads hours");
+  assert.equal(humanSeconds(90 * 86400), "90d", "days read days, not an hour count");
+  // A day-plus-a-few-hours span rounds to whole days.
+  assert.equal(humanSeconds(3 * 86400 + 2 * 3600), "3d");
+});
 
 test("elapsedSeconds ages an instant in clamped whole seconds", () => {
   const realNow = Date.now;

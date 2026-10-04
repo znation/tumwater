@@ -363,7 +363,7 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
 
   // Timestamps sit well inside each bucket so Date.now() drift between the call and the
   // assertion cannot flip a result: 45 s (not near 60); 190 s → 3m (far from the 2.5/3.5 m
-  // rounding edges); 7500 s → 2h; ~3 d + 2 h → 74h with the MM-DD prefix.
+  // rounding edges); 7500 s → 2h; ~3 d + 2 h → 3d with the MM-DD prefix.
   const t45 = now - 45_000;
   assert.equal(fmtLastTick(t45), `${abs(t45)} · 45s ago`);
 
@@ -375,7 +375,7 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
 
   const t3d = now - (3 * 86_400_000 + 7_200_000);
   const d3 = new Date(t3d);
-  assert.equal(fmtLastTick(t3d), `${p2(d3.getMonth() + 1)}-${p2(d3.getDate())} ${abs(t3d)} · 74h ago`);
+  assert.equal(fmtLastTick(t3d), `${p2(d3.getMonth() + 1)}-${p2(d3.getDate())} ${abs(t3d)} · 3d ago`);
 
   // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
   // lastTickCell, so a drift in either surface fails here.

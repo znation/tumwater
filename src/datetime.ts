@@ -90,14 +90,17 @@ export function dayWindow(days: number, now: Date): { from: string; to: string }
   return { from: formatDate(dayAt(days - 1, now)), to: formatDate(dayAt(0, now)) };
 }
 
-/** Compact whole-second duration: `45s`, `12m`, or `3h` — the phrasing every relative time
- * renders through (ago labels, sleeping-remaining countdowns, `prompt --list`'s queued age),
- * so the s/m/h bucketing and rounding cannot drift per consumer. Lives here, beside the other
- * time phrasing, so core modules (which may not import src/ui) share the same bucketing too. */
+/** Compact whole-second duration: `45s`, `12m`, `3h`, or `2d` — the phrasing every relative
+ * time renders through (ago labels, sleeping-remaining countdowns, `prompt --list`'s queued
+ * age, the fleet pause's auto-resume countdown), so the s/m/h/d bucketing and rounding cannot
+ * drift per consumer. A day or more reads days, not an hour count (`pause --for 90d`'s
+ * countdown reads `90d`, not `2160h`). Lives here, beside the other time phrasing, so core
+ * modules (which may not import src/ui) share the same bucketing too. */
 export function humanSeconds(s: number): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.round(s / 60)}m`;
-  return `${Math.round(s / 3600)}h`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
 }
 
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window

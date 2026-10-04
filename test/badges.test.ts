@@ -118,6 +118,7 @@ test("pauseCountdown returns the remaining duration, or null when no countdown s
   assert.equal(pauseCountdown(now - 1, now), null, "an expired deadline is no countdown, matching the unpaused read");
   assert.equal(pauseCountdown(now + 45_000, now), "45s", "sub-minute reads seconds");
   assert.equal(pauseCountdown(now + 3 * 3_600_000, now), "3h", "hours read hours");
+  assert.equal(pauseCountdown(now + 90 * 86_400_000, now), "90d", "days read days, not an hour count");
 });
 
 // The counts fragment both main-check surfaces render (BUGS.md 2026-09-30: the GUI sidebar

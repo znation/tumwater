@@ -116,9 +116,9 @@ const FORMAT_JS = String.raw`  // format:start
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   const plural = (n, one, many) => n + " " + (n === 1 ? one : many || one + "s");
   // human-seconds-fmt:start
-  // Whole-second s/m/h label: <60 → Ns, <3600 → rounded Nm, else rounded Nh — badges.ts's
-  // humanSeconds, shared by every relative time on the page.
-  const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : Math.round(sec / 3600) + "h");
+  // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
+  // rounded Nd — badges.ts's humanSeconds, shared by every relative time on the page.
+  const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : sec < 86400 ? Math.round(sec / 3600) + "h" : Math.round(sec / 86400) + "d");
   // human-seconds-fmt:end
   // active-phase-fmt:start
   // A loop in flight — status-model.ts's isActivePhase: its phase starts with working,
