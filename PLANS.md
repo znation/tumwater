@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Dotted per-role config keys: `config get/set maxDailyCostUsdPerRole.<role>` and `roles.<id>.<field>` (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### Dotted per-role config keys: `config get/set maxDailyCostUsdPerRole.<role>` and `roles.<id>.<field>` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** `tumwater config set` writes whole top-level keys only (src/config-write.ts
 `setConfigKey`): the per-role maps (`maxDailyCostUsdPerRole`, `quietHoursPerRole`) and the
@@ -58,7 +62,6 @@ plus tests.
   hit/miss/null, and the three failure shapes (bad value, bad field, bad role id).
   `npm run test` passes.
 
-## Done
 
 ### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

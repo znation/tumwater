@@ -5,7 +5,11 @@
  * loading, saving, and the role-selection helpers — lives in config.ts, and the per-run
  * model derivations in config-views.ts. */
 import fs from "node:fs";
-import { TOP_LEVEL_KEYS, type TumwaterConfig } from "./config-schema.js";
+import {
+  ROLE_ENTRY_KEYS,
+  TOP_LEVEL_KEYS,
+  type TumwaterConfig,
+} from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";
 import { errorMessage, suggestClosest } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
@@ -94,6 +98,43 @@ export function setDailyBudgetUsd(
   return writeConfigMutation(root, (cfg) => ({ ...cfg, maxDailyCostUsd: value }));
 }
 
+/** The per-role maps `config get/set` reaches with dotted keys: each names ONE entry
+ * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`) that merges into the
+ * existing map, so raising one role's cap never requires re-typing another's. The per-key
+ * value validator runs before the write, the same screening a bare top-level key gets. */
+const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
+
+/** A parsed config key: a bare top-level key (whole-value semantics, unchanged), a dotted
+ * per-role map entry, a dotted role-entry field, or the error a malformed dotted shape
+ * produces. The parser checks shape only — an unknown role id or an invalid value is left
+ * for the validators downstream, which own the actionable wording. */
+type ParsedConfigKey =
+  | { kind: "top"; key: string }
+  | { kind: "map"; map: (typeof DOTTED_MAP_KEYS)[number]; role: string }
+  | { kind: "role"; id: string; field: string }
+  | { kind: "error"; error: string };
+
+/** Split a config key into its write/get shape: `foo` is top-level,
+ * `maxDailyCostUsdPerRole.feature` / `quietHoursPerRole.qa` name one map entry,
+ * `roles.qa.model` names one role-entry field, and anything else dotted is an error
+ * naming the supported dotted forms. */
+export function parseConfigKey(key: string): ParsedConfigKey {
+  if (!key.includes(".")) return { kind: "top", key };
+  const parts = key.split(".");
+  const first = parts[0] ?? "";
+  const second = parts.length > 1 ? parts[1] ?? "" : undefined;
+  const third = parts.length > 2 ? parts[2] ?? "" : undefined;
+  if (third === undefined && second !== undefined && second !== "" && (DOTTED_MAP_KEYS as readonly string[]).includes(first))
+    return { kind: "map", map: first as (typeof DOTTED_MAP_KEYS)[number], role: second };
+  if (parts.length === 3 && first === "roles" && second !== undefined && second !== "" && third !== undefined && third !== "")
+    return { kind: "role", id: second, field: third };
+  return {
+    kind: "error",
+    error:
+      `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`); a bare key names a whole top-level value`,
+  };
+}
+
 /** The error `tumwater config get <key>` and `config set <key> <value>` both surface for a
  * key outside TOP_LEVEL_KEYS — the valid-keys list plus text.ts's did-you-mean suggestion —
  * or null when the key is known. One home for the phrasing so whichever verb misspells a
@@ -113,23 +154,74 @@ export function unknownConfigKeyError(key: string): string | null {
  * string (so `set maxDailyCostUsd 20` is the number 20 and `set model gpt-5` is the string
  * "gpt-5"; the whole merged candidate is then validated, so a type mismatch like
  * `set maxDailyCostUsd "20"` fails with validateConfig's own message and the file stays
- * byte-identical). Top-level keys only: nested sections (roles, review, check, idleBackoff,
- * fallbackModel) are replaced wholesale when named, and finer edits stay file-edited — one
- * op per run. Returns the parsed value and the previous one so the caller can confirm the
+ * byte-identical). Top-level keys are replaced wholesale; a DOTTED key
+ * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`, `roles.<id>.<field>` —
+ * parseConfigKey) merges ONE entry into the existing map/section, so an operator steers one
+ * role at a time without re-typing the others. A dotted role field must be a member of
+ * ROLE_ENTRY_KEYS (a did-you-mean suggestion otherwise, via suggestClosest); a typo'd role
+ * id and a type-invalid value are left for validateConfig to reject with its own actionable
+ * message. Returns the parsed value and the previous one so the caller can confirm the
  * change; on any failure the file is untouched (see writeConfigMutation). */
 export function setConfigKey(
   root: string,
   key: string,
   rawValue: string,
 ): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
-  const unknown = unknownConfigKeyError(key);
-  if (unknown) return { ok: false, error: unknown };
+  const parsed = parseConfigKey(key);
+  if (parsed.kind === "error") return { ok: false, error: parsed.error };
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
   } catch {
     value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
   }
+  if (parsed.kind !== "top") {
+    const validator =
+      parsed.kind === "map"
+        ? parsed.map === "maxDailyCostUsdPerRole"
+          ? checkDailyBudgetUsd
+          : checkQuietHours
+        : undefined;
+    if (validator) {
+      const problem = validator(value);
+      if (problem) return { ok: false, error: problem };
+    }
+    if (parsed.kind === "role" && !(ROLE_ENTRY_KEYS as readonly string[]).includes(parsed.field)) {
+      const suggestion = suggestClosest(parsed.field, ROLE_ENTRY_KEYS);
+      return {
+        ok: false,
+        error: `unknown role field "${parsed.field}" for roles.${parsed.id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${
+          suggestion ? ` — did you mean \`${suggestion}\`?` : ""
+        }`,
+      };
+    }
+    let oldValue: unknown;
+    const result = writeConfigMutation(root, (cfg) => {
+      const record = cfg as unknown as {
+        roles?: Record<string, Record<string, unknown>>;
+        [key: string]: unknown;
+      };
+      if (parsed.kind === "map") {
+        const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
+        oldValue = existing[parsed.role];
+        return { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
+      }
+      const existing = record.roles?.[parsed.id] ?? {};
+      oldValue = existing[parsed.field];
+      const roles = {
+        ...record.roles,
+        [parsed.id]: { ...existing, [parsed.field]: value },
+      };
+      // The merged entry is only partially typed here (the value is unknown until
+      // validation); validateConfig below owns the type truth, so the cast is safe —
+      // a type-invalid merge fails there and nothing is written.
+      return { ...cfg, roles } as unknown as TumwaterConfig;
+    });
+    if (!result.ok) return result;
+    return { ok: true, value, oldValue };
+  }
+  const unknown = unknownConfigKeyError(key);
+  if (unknown) return { ok: false, error: unknown };
   const perKeyValidator = PER_KEY_VALIDATORS[key];
   if (perKeyValidator) {
     const problem = perKeyValidator(value);

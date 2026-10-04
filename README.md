@@ -73,7 +73,8 @@ breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER
 Edits apply live while the fleet runs.
 From the terminal, `tumwater config` prints the effective config as JSON, `tumwater config get
 <key>` reads one resolved value, and `tumwater config set <key> <value>` writes one top-level
-key.
+key; dotted keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry
+into the existing map or role entry, while bare keys replace the whole value.
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `provider` and `model` in
 `tumwater.json`. See [docs/backends.md](docs/backends.md) for requirements and a worked setup.

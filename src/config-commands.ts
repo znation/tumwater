@@ -1,6 +1,6 @@
 import { loadConfigSafe } from "./config.js";
 import { fail, say, sayJson } from "./cli-output.js";
-import { setConfigKey, unknownConfigKeyError } from "./config-write.js";
+import { setConfigKey, parseConfigKey, unknownConfigKeyError } from "./config-write.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator-commands.ts, which holds
  * only the operator-intent marker commands): with no arguments, print the effective merged
@@ -32,13 +32,25 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
   const [sub, key, ...rest] = args;
   if (sub === "get") {
     const k = key ?? "";
-    // setConfigKey's shared unknown-key error, so a typo'd key reads the same whichever
-    // verb misspelled it.
-    const unknown = unknownConfigKeyError(k);
+    const parsed = parseConfigKey(k); // shape only — the verbs below own the unknown-key wording
+    const unknown =
+      parsed.kind === "error"
+        ? parsed.error
+        : parsed.kind === "top"
+          ? unknownConfigKeyError(k) // setConfigKey's shared unknown-key error, so a typo'd key reads the same whichever verb misspelled it
+          : null;
     if (unknown) fail(unknown);
     const { config, error } = loadConfigSafe(root);
     if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-    const value = (config as unknown as Record<string, unknown>)[k];
+    const record = config as unknown as Record<string, unknown>;
+    const value =
+      parsed.kind === "map"
+        ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
+        : parsed.kind === "role"
+          ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+              parsed.field
+            ]
+          : record[k];
     say(JSON.stringify(value === undefined ? null : value)); // Absent optional key → JSON null.
     return;
   }

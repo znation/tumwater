@@ -127,3 +127,58 @@ test("the defensive usage tail fails an unrecognized subcommand", async () => {
   assert.ok(out.exited && out.code === 1);
   assert.match(out.stderr, new RegExp(CONFIG_USAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
+
+// Dotted per-role keys: get indexes the resolved map/role entry (null when absent); set
+// merges one entry through setConfigKey's dotted path, preserving the other roles.
+test("get resolves a dotted key: map entry, role field, and absent-key null", async () => {
+  const root = makeRepo();
+  writeConfig(root, {
+    maxDailyCostUsdPerRole: { qa: 2, feature: 1.5 },
+    roles: { qa: { model: "m-qa" } },
+  });
+  const f = await attemptAsync(() => cmdConfig(root, ["get", "maxDailyCostUsdPerRole.feature"]));
+  assert.ok(!f.exited);
+  assert.equal(f.stdout, "1.5\n");
+  const m = await attemptAsync(() => cmdConfig(root, ["get", "roles.qa.model"]));
+  assert.ok(!m.exited);
+  assert.equal(m.stdout, '"m-qa"\n');
+  const miss = await attemptAsync(() => cmdConfig(root, ["get", "maxDailyCostUsdPerRole.clean"]));
+  assert.ok(!miss.exited);
+  assert.equal(miss.stdout, "null\n", "an unset role prints JSON null, like a bare absent key");
+});
+
+test("get rejects a dotted key outside the supported shapes", async () => {
+  const root = makeRepo();
+  const out = await attemptAsync(() => cmdConfig(root, ["get", "review.enabled"]));
+  assert.ok(out.exited && out.code === 1);
+  assert.match(out.stderr, /dotted keys/);
+});
+
+test("set of a dotted map key merges without touching the other roles' entries", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxDailyCostUsdPerRole: { qa: 2 } });
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  assert.ok((JSON.parse(before) as { maxDailyCostUsdPerRole?: Record<string, number> }).maxDailyCostUsdPerRole?.qa === 2, "fixture holds qa's entry");
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "maxDailyCostUsdPerRole.feature", "1.5"]));
+  assert.ok(!out.exited);
+  assert.equal(out.stdout, "set maxDailyCostUsdPerRole.feature to 1.5\n", "the confirmation names the dotted key");
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  assert.deepEqual(raw.maxDailyCostUsdPerRole, { qa: 2, feature: 1.5 }, "merge, not replace");
+});
+
+test("set of a dotted role field merges the entry; a bad field fails naming the valid ones", async () => {
+  const root = makeRepo();
+  writeConfig(root, { roles: { qa: { model: "m-qa", instructions: "test things" } } });
+  const out = await attemptAsync(() => cmdConfig(root, ["set", "roles.qa.model", "m-new"]));
+  assert.ok(!out.exited);
+  const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as {
+    roles: Record<string, Record<string, unknown>>;
+  };
+  assert.equal(raw.roles.qa!.model, "m-new");
+  assert.equal(raw.roles.qa!.instructions, "test things", "the entry's other fields preserved");
+
+  const bad = await attemptAsync(() => cmdConfig(root, ["set", "roles.qa.colour", "x"]));
+  assert.ok(bad.exited && bad.code === 1);
+  assert.match(bad.stderr, /unknown role field "colour" for roles\.qa/);
+  assert.match(bad.stderr, /valid fields:/);
+});

@@ -52,7 +52,9 @@ Usage:
                                    quietHoursPerRole (per-role windows), maxDailyCostUsd,
                                    fallbackModel, among others
                                    (JSON-parsed when parseable, else a literal string) —
-                                   and confirm it
+                                   and confirm it. Dotted keys (maxDailyCostUsdPerRole.feature
+                                   1.5, roles.qa.model x) merge one entry into the existing
+                                   map or role entry; bare keys replace the whole value
   tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows

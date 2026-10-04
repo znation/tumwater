@@ -3,7 +3,12 @@ import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { applyConfigRequest, setConfigKey, setDailyBudgetUsd } from "../src/config-write.js";
+import {
+  applyConfigRequest,
+  parseConfigKey,
+  setConfigKey,
+  setDailyBudgetUsd,
+} from "../src/config-write.js";
 import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
@@ -338,4 +343,102 @@ test("a validation failure outranks a failed deletion in the surfaced error", (t
     fs.chmodSync(wt, 0o755);
   }
   assert.ok(fs.existsSync(configRequestPath(wt)), "still undeletable after the failure");
+});
+
+// Dotted per-role keys (parseConfigKey via setConfigKey): `<map>.<role>` and
+// `roles.<id>.<field>` MERGE one entry into the existing map/section, so steering one role
+// never requires re-typing the others; bare keys keep their whole-value semantics.
+test("setConfigKey merges one dotted map entry, preserving the other roles' entries", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.maxDailyCostUsdPerRole = { qa: 2 };
+  base.quietHoursPerRole = { qa: "23:00-07:00" };
+  saveConfig(dir, base);
+  const file = path.join(dir, "tumwater.json");
+
+  // A dotted dollar-cap entry merges: qa's value stays byte-identical in the file.
+  const before = fs.readFileSync(file, "utf8");
+  let r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", "1.5");
+  assert.ok(r.ok && r.value === 1.5 && r.oldValue === undefined, JSON.stringify(r));
+  const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  assert.deepEqual(raw.maxDailyCostUsdPerRole, { qa: 2, feature: 1.5 }, "merge, not replace");
+  assert.ok(before.includes('"qa": 2') && fs.readFileSync(file, "utf8").includes('"qa": 2'), "qa's entry survives verbatim");
+
+  // A second write to the same dotted key reports the previous value.
+  r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", "3");
+  assert.ok(r.ok && r.value === 3 && r.oldValue === 1.5, JSON.stringify(r));
+
+  // quietHoursPerRole.<role> merges too, and an invalid window fails untouched.
+  r = setConfigKey(dir, "quietHoursPerRole.clean", "01:00-06:00");
+  assert.ok(r.ok && r.value === "01:00-06:00");
+  assert.deepEqual(
+    (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>).quietHoursPerRole,
+    { qa: "23:00-07:00", clean: "01:00-06:00" },
+  );
+  const untouched = fs.readFileSync(file, "utf8");
+  r = setConfigKey(dir, "quietHoursPerRole.clean", "25:00-07:00");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /quietHours times must be 24-hour/);
+  assert.equal(fs.readFileSync(file, "utf8"), untouched, "a rejected dotted value changes nothing");
+
+  // A non-numeric dollar cap fails with checkDailyBudgetUsd's message, before the write.
+  r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", '"lots"');
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /number of 0 or more/);
+  assert.equal(fs.readFileSync(file, "utf8"), untouched);
+});
+
+test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids fail", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.roles.qa!.model = "m-qa";
+  base.roles.qa!.instructions = "test things";
+  saveConfig(dir, base);
+  const file = path.join(dir, "tumwater.json");
+
+  // The field write merges: the entry's other fields survive.
+  let r = setConfigKey(dir, "roles.qa.model", "m-new");
+  assert.ok(r.ok && r.value === "m-new" && r.oldValue === "m-qa", JSON.stringify(r));
+  const roles = (JSON.parse(fs.readFileSync(file, "utf8")) as { roles: Record<string, Record<string, unknown>> }).roles;
+  assert.equal(roles.qa!.model, "m-new");
+  assert.equal(roles.qa!.instructions, "test things", "the entry's other fields preserved");
+
+  // A field outside ROLE_ENTRY_KEYS fails with the nearest-key suggestion, file untouched.
+  const before = fs.readFileSync(file, "utf8");
+  r = setConfigKey(dir, "roles.qa.colour", "x");
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.match(r.error, /unknown role field "colour" for roles\.qa/);
+    assert.match(r.error, /did you mean `model`|did you mean `provider`|valid fields:/);
+  }
+
+  // A typo'd role id is left for validateConfig's known-roles message.
+  r = setConfigKey(dir, "roles.qqq.model", "x");
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /roles\.qqq|unknown role/i);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "both failures left the file byte-identical");
+
+  // A type-invalid field value fails with validateConfig's own message.
+  r = setConfigKey(dir, "roles.qa.minTickIntervalSeconds", '"fast"');
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.match(r.error, /minTickIntervalSeconds must be a number of 0 or more/);
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+});
+
+test("parseConfigKey rejects dotted shapes outside the per-role maps and roles entries", () => {
+  // A bare key stays top-level; the dotted forms parse; anything else is an error naming
+  // the supported dotted shapes.
+  assert.deepEqual(parseConfigKey("model"), { kind: "top", key: "model" });
+  assert.deepEqual(parseConfigKey("maxDailyCostUsdPerRole.feature"), {
+    kind: "map",
+    map: "maxDailyCostUsdPerRole",
+    role: "feature",
+  });
+  assert.deepEqual(parseConfigKey("quietHoursPerRole.qa"), { kind: "map", map: "quietHoursPerRole", role: "qa" });
+  assert.deepEqual(parseConfigKey("roles.qa.model"), { kind: "role", id: "qa", field: "model" });
+  for (const key of ["review.enabled", "roles.qa", "roles.", "maxDailyCostUsdPerRole.", "roles.qa.model.x"]) {
+    const parsed = parseConfigKey(key);
+    assert.equal(parsed.kind, "error", key);
+    if (parsed.kind === "error") assert.match(parsed.error, /dotted keys/);
+  }
 });
