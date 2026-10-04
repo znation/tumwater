@@ -85,6 +85,9 @@ type ListedQueueResolution =
   | { status: "found"; role: string }
   | ListedQueueMiss;
 
+/** Resolve a list-wide 1-based position (a `prompt --cancel`/`--edit` with no --role) to the
+ * one loop whose queue is long enough to hold it, in `scope` order — the semantics the
+ * ListedQueueResolution doc above specifies. Sizes only: no queue content is read. */
 export function resolveListedQueue(root: string, scope: string[], position: number): ListedQueueResolution {
   const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
   if (candidates.length === 0) {

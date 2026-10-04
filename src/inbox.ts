@@ -76,6 +76,10 @@ export function enqueueRolePrompt(
   return file;
 }
 
+/** Every queued prompt file for one loop as a path joined onto the loop's inbox dir, oldest first (listQueueFiles
+ * over the loop's inbox dir, .md entries only). Prompts still deferred by a not-before marker
+ * are included — deliverability filtering is the callers' job (deliverablePredicate,
+ * deliverablePromptCount) — and a missing inbox dir reads as an empty queue. */
 export function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
