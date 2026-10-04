@@ -6,6 +6,7 @@ import { backendKindPhrase } from "./phrases.js";
 import { configForRole } from "./config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt-followup.js";
 import { piLogPath, sessionDir } from "./paths.js";
+import { cappedRequestTimeouts } from "./request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
  * before re-attempting a rate-limited run. Honouring the hint is the point; capping it is
@@ -251,11 +252,7 @@ export class LoopPi {
       ...this.loopPiOpts(wt, buildSummaryRequestPrompt(), `tumwater-${this.host.role}-${this.host.tickNumber()}-summary`, true),
       config: {
         ...cfg,
-        tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, LoopPi.SUMMARY_REQUEST_TIMEOUT_S),
-        quietTimeoutSeconds:
-          cfg.quietTimeoutSeconds > 0
-            ? Math.min(cfg.quietTimeoutSeconds, LoopPi.SUMMARY_REQUEST_QUIET_S)
-            : LoopPi.SUMMARY_REQUEST_QUIET_S,
+        ...cappedRequestTimeouts(cfg, LoopPi.SUMMARY_REQUEST_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
       },
     });
   }

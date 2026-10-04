@@ -10,6 +10,7 @@ import { warnEvent } from "./events.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";
 import { type ToolCallStart } from "./suite-rerun.js";
+import { cappedRequestTimeouts } from "./request-timeouts.js";
 import type { ReviewContext } from "./review.js";
 
 /** Hard caps on the VERDICT follow-up turn: it should take one short reply on a warm session,
@@ -31,11 +32,7 @@ export async function requestVerdict(ctx: ReviewContext): Promise<PiRunResult | 
     prompt: buildVerdictRequestPrompt(),
     config: {
       ...cfg,
-      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
-      quietTimeoutSeconds:
-        cfg.quietTimeoutSeconds > 0
-          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
-          : VERDICT_REQUEST_QUIET_S,
+      ...cappedRequestTimeouts(cfg, VERDICT_REQUEST_TIMEOUT_S, VERDICT_REQUEST_QUIET_S),
     },
     sessionDir,
     // The whole point: continue the just-finished review's session, which already holds
@@ -69,11 +66,7 @@ export async function requestNoRerun(
     prompt: buildNoRerunPrompt(rerun),
     config: {
       ...cfg,
-      tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, VERDICT_REQUEST_TIMEOUT_S),
-      quietTimeoutSeconds:
-        cfg.quietTimeoutSeconds > 0
-          ? Math.min(cfg.quietTimeoutSeconds, VERDICT_REQUEST_QUIET_S)
-          : VERDICT_REQUEST_QUIET_S,
+      ...cappedRequestTimeouts(cfg, VERDICT_REQUEST_TIMEOUT_S, VERDICT_REQUEST_QUIET_S),
     },
     sessionDir,
     // The whole point: continue the just-finished review's session, which already holds
