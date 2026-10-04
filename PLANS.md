@@ -5,6 +5,59 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Dotted per-role config keys: `config get/set maxDailyCostUsdPerRole.<role>` and `roles.<id>.<field>` (planned 2026-10-04 by plan loop)
+
+**Goal.** `tumwater config set` writes whole top-level keys only (src/config-write.ts
+`setConfigKey`): the per-role maps (`maxDailyCostUsdPerRole`, `quietHoursPerRole`) and the
+`roles` section must be replaced wholesale, so `config set maxDailyCostUsdPerRole
+'{"feature":1.5}'` silently drops every other role's entry and `roles.<id>` edits require
+re-typing the whole entry. The per-role knobs landed 2026-10-04 are exactly the ones an
+operator steers one role at a time — raising `feature`'s cap should not require knowing
+qa's. Add dotted keys: `<map>.<role>` for the two per-role maps and `roles.<id>.<field>`
+for role entries, each MERGING one entry into the existing map/section; bare keys keep
+today's whole-key behavior.
+
+**Approach.**
+- `src/config-write.ts`: a `DOTTED_MAP_KEYS` table `{ maxDailyCostUsdPerRole: number,
+  quietHoursPerRole: string }` and a dotted-key parser `parseConfigKey(key)` →
+  `{ kind: "map", map, role } | { kind: "role", id, field } | { kind: "top", key } | { error }`.
+  - Map write: fresh load → spread the existing map (or `{}`) with the new entry →
+    validateConfig (its `checkKnownRoleId` and `checkNumberField`/quiet-hours checks over the
+    merged map stay the single source of type and role-id truth) → atomic write. The dollar
+    cap pre-check reuses `checkDailyBudgetUsd`; the quiet-hours value reuses
+    `PER_KEY_VALIDATORS`' `checkQuietHours`.
+  - `roles.<id>.<field>`: spread the existing entry, set `field` (must be in
+    `ROLE_ENTRY_KEYS` — a `setConfigKey`-style did-you-mean via `suggestClosest` otherwise),
+    then the same validate → write idiom. `<id>` naming an unknown role fails with
+    validateConfig's known-roles message when validation runs; the parser only checks shape.
+  - `unknownConfigKeyError` keeps top-level membership for bare keys unchanged.
+- `src/config-commands.ts` `cmdConfig`: `config get maxDailyCostUsdPerRole.feature` reads
+  the resolved config and prints `config.maxDailyCostUsdPerRole?.["feature"] ?? null` — the
+  same absent-key→null rule the whole-key get applies. The get path needs no new module:
+  split the dotted key in place and index.
+- `src/help.ts` CONFIG area and README.md's audit/`config` mention: one clause — "dotted
+  keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry; bare
+  keys replace the whole value".
+
+**Files touched:** src/config-write.ts, src/config-commands.ts, src/help.ts, README.md,
+plus tests.
+
+**Acceptance criteria.**
+- `config set maxDailyCostUsdPerRole.feature 1.5` leaves qa's existing entry byte-identical
+  in the file and sets feature's to 1.5; `config get maxDailyCostUsdPerRole.feature` prints
+  `1.5`, and an unset role prints `null`.
+- `config set quietHoursPerRole.qa "23:00-07:00"` merges into the existing per-role map;
+  an invalid window fails with `checkQuietHours`'s message and the file is untouched.
+- `config set roles.qa.model x` merges into qa's existing entry (other fields preserved);
+  `config set roles.qa.colour x` fails naming `ROLE_ENTRY_KEYS`' nearest match; a typo'd
+  role id fails with validateConfig's known-roles message.
+- Bare-key behavior (whole-value replace, unknown-key error, absent-key `null` get) is
+  unchanged — covered by the tests already in test/config-write.test.ts and
+  test/config-commands.test.ts, which must keep passing.
+- New tests beside them cover: merge-not-replace for both maps and a role entry, dotted get
+  hit/miss/null, and the three failure shapes (bad value, bad field, bad role id).
+  `npm run test` passes.
+
 ### `tumwater wake --in <duration>` — schedule a wake that arrives later, the scheduled sibling of `pause --for` (planned 2026-10-04 by plan loop)
 
 **Goal.** `tumwater wake` clears backoff the moment it runs, but an operator often knows the
