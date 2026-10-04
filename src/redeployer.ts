@@ -408,9 +408,9 @@ export class Redeployer {
       // every tsc exit into a result). Like the REJECTED green check above, no blockedHead —
       // warn once per head, drop the pending head, and re-attempt on the next poll, so
       // repairing the mirror or the toolchain redeploys the current head without main moving
-      // (BUGS.md 2026-09-28). A real compiler exit below still blocks.
+      // (BUGS.md 2026-09-28). A real compiler exit below still blocks — but the noteFailure
+      // above covers it too: block() never records a failure, and a failed verdict is one.
       if (c === undefined || c.rejected) {
-        this.noteFailure(now);
         if (this.compileFailedHead !== mainHead) {
           this.compileFailedHead = mainHead;
           this.warn(
