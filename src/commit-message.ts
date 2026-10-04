@@ -115,6 +115,13 @@ export interface CommitMetadata {
  * refusal.ts) adds before the SUMMARY line, space included when a summary follows. */
 const SUBJECT_PREFIX = /^tumwater\([^)]+\):(?:\s|$)/;
 
+/** Build a harness-stamped commit subject: `tumwater(<role>): <summary>` — the exact shape
+ * SUBJECT_PREFIX below matches, so the stamp's writers (tick-stage.ts's normal tick commit and
+ * refusal.ts's refusal note) and its parser live in one file and cannot drift apart. */
+export function stampedSubject(role: string, summary: string): string {
+  return `tumwater(${role}): ${summary}`;
+}
+
 /** The commit subject's summary portion: the message's first line with the harness's
  * `tumwater(<role>): ` stamp stripped. A hand-made commit has no stamp and rides its whole
  * subject; undefined when the line is empty or the stamp is all there is (nothing left to

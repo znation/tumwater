@@ -11,6 +11,7 @@ import {
   extractSummary,
   fallbackSummary,
   formatCommitBody,
+  stampedSubject,
 } from "./commit-message.js";
 import { logEvent } from "./events.js";
 import { enqueueLanding } from "./landing-queue.js";
@@ -110,7 +111,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // runs only (conflict-resolution and review runs fold after the commit). A high-friction
   // tick appends its Friction line here — both values are already computed above.
   const message = buildCommitMessage(
-    `tumwater(${ctx.role}): ${summary}`,
+    stampedSubject(ctx.role, summary),
     body,
     commitTrailer(ctx.role, s.ticks, authoringTurns, s.peakContextTokens, highFriction ? minutes : undefined),
   );

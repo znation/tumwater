@@ -1,7 +1,7 @@
 import { commitPathsAndDiscardRest } from "./git.js";
 import { changedFiles } from "./git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
-import { buildCommitMessage, commitTrailer } from "./commit-message.js";
+import { buildCommitMessage, commitTrailer, stampedSubject } from "./commit-message.js";
 import { labeledLine } from "./reply-contract.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import type { PiRunResult } from "./pi.js";
@@ -64,7 +64,7 @@ export async function handleRefusal(
     // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
     // the subject, and the trailer's turn count is the same field the friction flag reads.
     const message = buildCommitMessage(
-      `tumwater(${ctx.role}): refuse — ${reason}`,
+      stampedSubject(ctx.role, `refuse — ${reason}`),
       null,
       commitTrailer(ctx.role, state.ticks, ctx.turns, state.peakContextTokens),
     );
