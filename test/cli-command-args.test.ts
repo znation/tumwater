@@ -199,7 +199,8 @@ test("parsePromptArgs rejects empty and whitespace-only text", () => {
   for (const args of [[], ["   "]]) {
     const r = expectFail(() => parsePromptArgs(args));
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /prompt text required/);
+    // The message names the fix, like the sibling bug/plan usage errors.
+    assert.match(r.stderr, /prompt text required — usage: tumwater prompt/);
   }
 });
 

@@ -283,6 +283,9 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     .filter((_, i) => !roleClaim.includes(i) && !atClaim.includes(i))
     .join(" ")
     .trim();
-  if (!text) fail("prompt text required");
+  // Name the fix, like the sibling operator commands' usage errors (bug/plan carry their
+  // BUG_USAGE/PLAN_USAGE lines): "prompt text required" alone never said what to type.
+  if (!text)
+    fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one loop)');
   return { mode: "enqueue", role, text, atDelayMs };
 }
