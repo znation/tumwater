@@ -115,7 +115,7 @@ on compression, which is the same deliberate lossiness the existing compression 
   - `steward.find` — the BUGS.md compression rule (the one-line form at line 244, the no-commit
     clause at line 254) gains the `gap:` suffix clause, and the curation-move list (lines
     213–216) gains gap promotion.
-- `src/init.ts` — `BUGS_TEMPLATE`'s guidance line (line 26) mentions the field, so a fresh
+- `src/init-templates.ts` — `BUGS_TEMPLATE`'s guidance line (line 134) mentions the field, so a fresh
   project starts with the convention rather than acquiring it.
 - `test/prompt.test.ts` — assert the `bugfix` prompt embeds the shared constant and names the
   line, that every tag in the vocabulary appears in the guidance, and that the steward's Fixed
@@ -166,8 +166,8 @@ embeds `${DECOMPOSITION_GUIDANCE}` at line 81, and `plan.find` embeds `${PLAN_SI
 `${DECOMPOSITION_GUIDANCE}` at lines 100–101. The `bugfix.find` Fixed sentence is at line 79
 ("… and update BUGS.md to mark it fixed (move it to a Fixed section with the date)."), and the
 `steward` role (line 207) carries the BUGS.md Fixed compression paragraph at lines 242–259, whose
-exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init.ts's
-`BUGS_TEMPLATE` (line 23) has its guidance line at line 26, and no test pins its content.
+exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init-templates.ts's
+`BUGS_TEMPLATE` (line 130) has its guidance line at line 134, and no test pins its content.
 `highFriction` exists as the problem statement says (src/loop.ts:693, stamped by
 commit-message.ts:84) and attaches to the commit, not the bug.
 

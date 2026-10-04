@@ -110,3 +110,65 @@ export function unknownTemplateError(template: string): string {
 export function templateCatalog(): { id: string; description: string }[] {
   return INIT_TEMPLATES.map((t) => ({ id: t.id, description: t.description }));
 }
+/** The seed-file templates `tumwater init` writes (PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md):
+ * static string data beside the rest of the catalog. A starter template's `starterPlans` render
+ * into PLANS_TEMPLATE under `## Planned`; the other three files land byte-identically. */
+export const PLANS_TEMPLATE = `# Plans
+
+Planned features, written by the plan loop and implemented by the feature loop.
+Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
+
+## Planned
+
+_None yet._
+
+## Done
+
+_None yet._
+`;
+
+export const BUGS_TEMPLATE = `# Bugs
+
+Known bugs, recorded by any loop and fixed by the bugfix loop.
+Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs to Fixed, with the
+required \`**Validation gap:** <tag> — <one sentence>\` line recording what made the bug hard to
+confirm (tag one of: none, no-repro, no-fake, real-run-needed, no-observability, slow-check,
+unclear-invariant).
+
+## Open
+
+_None yet._
+
+## Fixed
+
+_None yet._
+`;
+
+export const QUESTIONS_TEMPLATE = `# Questions
+
+Open questions loops have posted for a human decision — each with context, the options, and the
+loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
+director). Loops never block on their own questions; they check here at the start of each tick.
+
+## Open
+
+_None yet._
+
+## Answered
+
+_None yet._
+`;
+
+export const PRINCIPLES_TEMPLATE = `# Principles
+
+Design principles this project holds — the codified answer to "what would a senior engineer on
+this team always do." Every loop's prompt carries these; uphold them in everything you produce.
+Only the director and steward roles may edit this file. Phrase new principles positively: state
+what to do, not what to avoid. This list is a starting point: the director and steward own it
+and will tune it to this project.
+
+- Prefer the standard library over a new dependency.
+- Keep each file focused on one responsibility, and small enough to read in one sitting.
+- Every behavior change ships with a test.
+- Small, complete, and correct beats big and half-done: one focused change per tick.
+`;
