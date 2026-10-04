@@ -5,7 +5,56 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The TUI's Ctrl+D quits like shell EOF and Ctrl+C interrupts the director's in-flight tick (planned 2026-10-04 by director, from the user's request)
+
+**Goal.** In `tumwater tui` the director prompt line is the site of text input, so the keys should
+behave like a shell line editor: Ctrl+D on (any) line counts as EOF and exits the TUI, while
+Ctrl+C is repurposed as the interrupt — it aborts the director's current in-flight tick when one
+is running and does nothing (beyond a short flash notice) when none is.
+
+**Approach.**
+1. `createTuiKeys` in src/ui/tui-keys.ts: in `handleKey`, add a `key.ctrl && key.name === "d"`
+   branch calling `deps.quit()` (same callback today's Ctrl+C branch at the top of `handleKey`
+   uses). Change the existing `key.ctrl && key.name === "c"` branch: instead of `deps.quit()`, it
+   calls `requestAbort(root, DIRECTOR_ROLE)` from src/operator-intent.ts and arms the flash
+   notice (the same `FLASH_MS` mechanism the other actions use) with the abort confirmation from
+   its `{ok, message|error}` result — on `ok:false` (e.g. `NO_HARNESS_ERROR`, no fleet running)
+   flash the error text instead. Gate the abort on a new `directorInFlight` flag: extend
+   `TuiKeysState`/`syncSnapshot` with it (src/ui/tui.tsx already calls `syncSnapshot` each frame
+   at tui.tsx:131, and `renderStatusSpans` at tui.tsx:135 returns the per-loop `StatusLoopRow[]`
+   with `inFlight` — pass `loops.find(r => r.role === "director")?.inFlight === true`, reading
+   rows from the render it already computes). When `directorInFlight` is false, Ctrl+C flashes a
+   short notice ("no director task in flight") and quits nothing.
+2. Hint lines in src/ui/tui-frame.ts: every `hintKeys` branch that lists `["Ctrl+C", "quit"]`
+   (the budget-mode, role-prompt, backlog, usage/failures, and default branches) becomes
+   `["Ctrl+D", "quit"]`; the default (director-prompt) branch gains `["Ctrl+C", "interrupt director"]`.
+   Extend the `mode`/hint input shape if the flag needs to reach it.
+3. Update the stale claims: the `TuiKeysDeps.quit()` doc comment ("Ctrl+C: …") and the
+   `exitOnCtrlC is false because Ctrl+C is the TUI's own quit key` comment in src/ui/tui.tsx —
+   reword to name Ctrl+D as quit and Ctrl+C as director interrupt.
+4. Tests in test/tui-keys.test.ts (and tui-frame.test.ts for the hint lines): extend the existing
+   key-dispatch fixtures — ctrl+d quits (quit callback fired), ctrl+c with `directorInFlight`
+   true fires `requestAbort` for the director and flashes the confirmation, ctrl+c with it false
+   does not abort and flashes the no-task notice, and quit is not called by ctrl+c in either case.
+   `requestAbort` writes a marker file — point the test's `root` at a fixture dir the way the
+   existing operator-key tests do (see test/tui-operator-keys.test.ts and test/tui-fixtures.ts),
+   so no real fleet is touched.
+
+**Files touched:** src/ui/tui-keys.ts, src/ui/tui.tsx, src/ui/tui-frame.ts,
+test/tui-keys.test.ts, test/tui-frame.test.ts (possibly test/tui-operator-keys.test.ts).
+
+**Acceptance criteria.**
+- Ctrl+D in the TUI exits (the quit path — render teardown and main-loop resolve — exactly as
+  today's Ctrl+C does).
+- Ctrl+C while the director row's `inFlight` is true writes the director abort marker (via
+  `requestAbort`) and flashes its confirmation; Ctrl+C with no director tick in flight flashes a
+  no-task notice and leaves the fleet untouched.
+- Every hint line shows Ctrl+D as quit; the director-prompt view additionally shows Ctrl+C as
+  interrupt-director.
+- `npm run test` green; no doc or comment in the repo still claims Ctrl+C quits the TUI
+  (`grep -rn 'Ctrl+C.*quit' src/ docs/ README.md` returns only the CLI's own `run`/`stop` Ctrl+C
+  lines in src/help.ts, src/cli-run.ts, src/operator-commands.ts, which are about the harness
+  process, not the TUI).
 
 <!-- One more plan already in ## Planned would end a plan tick in TUMWATER_NOTHING_TO_DO -->
 
