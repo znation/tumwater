@@ -1,4 +1,4 @@
-import type { RoleViewPayload } from "../role-view.js";
+import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
  * from the payload role-view.ts's rolePayload collects (the same document `--json` prints).

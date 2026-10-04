@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { collectRoleChange } from "../src/change-data.js";
-import { renderRoleChange } from "../src/ui/change-preview.js";
+import { renderRoleChange } from "../src/change-preview.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh } from "./repo-fixtures.js";

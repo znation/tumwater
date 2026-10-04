@@ -14,11 +14,11 @@ import { snapshot } from "./status-data.js";
 import { statusPayload } from "./ui/status-payload.js";
 import { renderStatus } from "./ui/status-render.js";
 import { backlogPayload } from "./backlog.js";
-import { renderBacklogMarkdown } from "./ui/backlog-report.js";
+import { renderBacklogMarkdown } from "./backlog-report.js";
 import { collectFleetChanges, collectRoleChange } from "./change-data.js";
-import { renderFleetChange, renderRoleChange } from "./ui/change-preview.js";
+import { renderFleetChange, renderRoleChange } from "./change-preview.js";
 import { rolePayload } from "./role-view.js";
-import { renderRoleMarkdown } from "./ui/role-report.js";
+import { renderRoleMarkdown } from "./role-report.js";
 import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
 
 /** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo

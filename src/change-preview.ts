@@ -3,8 +3,8 @@
  * pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 
-import { plural } from "../phrases.js";
-import type { FleetChangeView, RoleChangeView } from "../change-data.js";
+import { plural } from "./phrases.js";
+import type { FleetChangeView, RoleChangeView } from "./change-data.js";
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, M uncommitted file(s)` when the worktree is dirty (both halves through
