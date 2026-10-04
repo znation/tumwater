@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { eventResult, formatEvent, usageText } from "../src/event-format.js";
+import { formatTimestamp } from "../src/datetime.js";
 import { displayWidth } from "../src/text-width.js";
 
 test("formatEvent renders each type as one line", () => {
@@ -32,7 +33,7 @@ test("formatEvent keeps the loop column aligned when a loop name holds a wide ch
   const ascii = formatEvent({ ts, loop: "bugfix", type: "wake", reason: "main moved" } as never);
   const wide = formatEvent({ ts, loop: "翻译", type: "wake", reason: "main moved" } as never);
   // Both lines share the identical time prefix, so the loop column starts right after it.
-  const time = new Date(ts).toLocaleTimeString();
+  const time = formatTimestamp(ts);
   const messageColumn = (line: string) =>
     displayWidth(line.slice(time.length + 1).split("woke")[0]!);
   assert.equal(messageColumn(ascii), 10, `expected the 9-wide loop column plus a space: ${ascii}`);

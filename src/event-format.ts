@@ -3,6 +3,7 @@ import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "./phrases.js";
 import { compactTokens, shortSha, usd } from "./text.js";
 import { padToWidth } from "./text-width.js";
+import { formatTimestamp } from "./datetime.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -47,11 +48,14 @@ export function eventResult(e: HarnessEvent): string | undefined {
 }
 
 /** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
- * the local time, the loop padded to a column, then the event's message (eventMessage).
+ * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
+ * independent phrasing the history table and transcript run separators print, not
+ * toLocaleTimeString's locale-dependent "3:05:12 PM"), the loop padded to a column, then the
+ * event's message (eventMessage).
  * Presentation only: depends on the event shape (events.ts's HarnessEvent), not on its log
  * I/O — so display surfaces never import formatting from the logging module. */
 export function formatEvent(e: HarnessEvent): string {
-  const time = new Date(e.ts).toLocaleTimeString();
+  const time = formatTimestamp(e.ts);
   // Padded in terminal display columns (padToWidth), not String#padEnd's UTF-16 code units:
   // a custom loop name holding a wide character (CJK, emoji) counts one code unit but two
   // display columns, so a padEnd cell rendered wider than its column and the message column

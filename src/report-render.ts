@@ -8,8 +8,8 @@
 import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
 import { rankCountEntries } from "./rank.js";
 import { compactTokens, usd } from "./text.js";
-import { reportWindow } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";
+import { formatTimestamp, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
 import { SPARSE_WINDOW_NOTE } from "./event-window.js";
 
@@ -81,7 +81,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   const lines: string[] = [];
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(`window: last ${durationLabel(data.sinceMs)} (since ${new Date(data.fromIso).toLocaleString()})`);
+  lines.push(`window: last ${durationLabel(data.sinceMs)} (since ${formatTimestamp(new Date(data.fromIso).getTime())})`);
   lines.push("");
   const t = data.totals;
   // Same totals voice as the day report, minus the features/bugs cells: those tallies come
