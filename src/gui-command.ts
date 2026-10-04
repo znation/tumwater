@@ -3,7 +3,7 @@
  * line, not the socket. The LAN address filter and the --token wording live here because
  * only the CLI's banner and flag gate use them. */
 import os from "node:os";
-import { startGui } from "./ui/gui-server.js";
+import { startGui } from "./gui-server.js";
 import { errCode } from "./errno.js";
 import { fail, say } from "./cli-output.js";
 import { flagValue, parsePortFlag } from "./cli-args.js";

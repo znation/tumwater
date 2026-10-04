@@ -4,9 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleReport, handleFailures, handleTick } from "../src/ui/gui-endpoints.js";
+import { handleConfig, handleReport, handleFailures, handleTick } from "../src/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config-editable-keys.js";
-import { handleBudget, handleConfigSet, handleRestart } from "../src/ui/gui-endpoint-commands.js";
+import { handleBudget, handleConfigSet, handleRestart } from "../src/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator-requests.js";
@@ -20,7 +20,7 @@ import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { startLocalGui } from "./gui-fixtures.js";
 import { fakeRes, type Captured } from "./fake-res.js";
 
-// The GET data endpoints of the dashboard (src/ui/gui-endpoints.ts), exercised at the unit
+// The GET data endpoints of the dashboard (src/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
 // /api/prompt, /api/transcript, and /api/backlog through the live server but never these two.
 // Both handlers only read the parsed query (the server threads it down from the one

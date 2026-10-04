@@ -7,7 +7,7 @@ import {
   readJsonObject,
   MAX_BODY_BYTES,
   bufferedBodyBytes,
-} from "../src/ui/http-body.js";
+} from "../src/http-body.js";
 
 // http-body.ts is the dashboard's shared request/response plumbing: every /api endpoint
 // answers through sendJson and every /api POST handler reads its body through

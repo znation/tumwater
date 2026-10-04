@@ -5,10 +5,10 @@
  * which imports startGui from here, so the server and the command that boots it stay adjacent. */
 import crypto from "node:crypto";
 import http from "node:http";
-import { GUI_PAGE } from "./gui-page.js";
-import { statusPayload } from "./status-payload.js";
-import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "../self-reload.js";
-import { errorMessage } from "../text.js";
+import { GUI_PAGE } from "./ui/gui-page.js";
+import { statusPayload } from "./ui/status-payload.js";
+import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "./self-reload.js";
+import { errorMessage } from "./text.js";
 import {
   handleBacklog,
   handleConfig,

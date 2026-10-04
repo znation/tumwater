@@ -55,7 +55,7 @@ _None yet._
 - **Symptom:** on Firefox/Linux (any browser — it is not browser-specific) saving the Daily spend cap shows "error: message is not a function", yet a page reload shows the cap was set correctly. The pause popover (`gui-client-operator.ts` line ~197 `postAction("/api/pause", body, paused…)` string) fails the same way.
 - **Cause:** `GUI_CLIENT_JS` (src/ui/gui-client.ts:253) concatenates `GUI_CLIENT_OPERATOR_JS` before `GUI_CLIENT_FLEET_JS`, and both blocks declare `async function postAction` — operator's takes `(url, body, okMsg)` and calls `showFlash(okMsg)`, fleet's takes `(path, body, message)` and calls `showFlash(message(await postJson(...)))`. Duplicate function declarations in one script scope: the fleet declaration wins everywhere, so operator's calls pass a string where a function is expected, `message(...)` throws `TypeError: message is not a function` inside fleet's try, and the catch flashes "error: " + e.message — while the POST itself already succeeded, which is why the cap still lands. The fleet callers (wake, prompt-cancel, loops, restart) pass real functions and keep working, masking the conflict.
 - **Expected:** one `postAction` definition serves every caller — accept either a function (derive the message from the response) or a string (use it verbatim), declared in exactly one spliced block, with a regression test pinning gui-client.ts's assembled script for duplicate `postAction` (or equivalent) declarations and covering the budget-save path's success flash.
-- **Repro detail:** the error fires on every operator POST that passes a string; the value is already persisted server-side by `handleBudget` (src/ui/gui-endpoint-commands.ts) before the client's flash renders, hence the "works after reload" half of the report.
+- **Repro detail:** the error fires on every operator POST that passes a string; the value is already persisted server-side by `handleBudget` (src/gui-endpoint-commands.ts) before the client's flash renders, hence the "works after reload" half of the report.
 
 
 **Validation gap:** no-repro — the report came from a live dashboard run; the suite exercised the operator regions only in their own scope, so nothing assembled both spliced blocks and caught the duplicate declaration until the operator test scope was widened to include the fleet post-action region (the repro test failed with the exact reported flash before the fix).
@@ -1215,7 +1215,7 @@ Fix: `mainCheckForPoll` grows its tail (×4 from 200, capped at `MAIN_CHECK_SCAN
   settle window — and `globalThis.gc` is a no-op without `--expose-gc`, so the delta counted
   garbage and every unrelated allocation on the shared host too; it said nothing about the rejected
   body's own bytes, which is the invariant it claimed to pin.
-- **Fix:** made the invariant directly observable — `readBody` in src/ui/gui-endpoints.ts now
+- **Fix:** made the invariant directly observable — `readBody` in src/gui-endpoints.ts now
   tracks the wire bytes it holds (new exported `bufferedBodyBytes()`, zeroed at every settle;
   `MAX_BODY_BYTES` exported too), and the test asserts during the full 4MB upload that the
   counter never exceeds the cap plus one chunk and is 0 once the upload drains, instead of a

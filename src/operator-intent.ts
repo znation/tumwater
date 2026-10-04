@@ -11,7 +11,7 @@ import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that
  * writes one (the `cmd*` CLI commands in src/operator-commands.ts, the dashboard's POST
- * routes in ui/gui-endpoint-commands.ts, and the TUI's key bindings in ui/tui.tsx): each core returns
+ * routes in src/gui-endpoint-commands.ts, and the TUI's key bindings in ui/tui.tsx): each core returns
  * the confirmation its caller prints verbatim, so the surfaces cannot drift on marker
  * format, idempotence, or wording. The fleet-side consumer half is src/operator-requests.ts;
  * this module holds the producer half's shared core, split out of operator-commands.ts so

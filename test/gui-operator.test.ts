@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { MAX_BODY_BYTES } from "../src/ui/http-body.js";
+import { MAX_BODY_BYTES } from "../src/http-body.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";

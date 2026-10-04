@@ -6,14 +6,14 @@ import {
   windowDays,
   requirePromptText,
   requirePausedFlag,
-} from "../src/ui/gui-args.js";
+} from "../src/gui-args.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox-submit.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakeRes } from "./fake-res.js";
 
-// The dashboard's request-argument validators (src/ui/gui-args.ts), exercised at the unit
+// The dashboard's request-argument validators (src/gui-args.ts), exercised at the unit
 // level: they have no other direct coverage — the server-level tests (gui.test.ts,
 // gui-operator.test.ts) reach them only through happy paths over a live socket. These
 // handlers decide whether an API request is refused with the shared 400 wording, so the

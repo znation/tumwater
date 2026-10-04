@@ -563,7 +563,7 @@ terminal. A Settings view closes that gap for the operator who only has the brow
 **Approach.** Reuse the existing write path — src/config-write.ts's `setConfigKey` (unknown-key
 refusal, JSON-or-literal parsing, per-key validators, whole-candidate `validateConfig`, atomic
 write that live readers pick up) — so the GUI cannot drift from the CLI's rules.
-1. **src/ui/gui-endpoints.ts:** add `EDITABLE_CONFIG_KEYS` (a constant: `provider`, `model`,
+1. **src/gui-endpoints.ts:** add `EDITABLE_CONFIG_KEYS` (a constant: `provider`, `model`,
    `maxDailyCostUsd`, `quietHours`, `notify` — the top-level keys an operator edits often;
    `customLoops` and per-role maps stay CLI/director territory; later extracted to its own
    src/config-editable-keys.ts beside the other config-key vocabularies — organize, 2026-10-04) and two handlers modeled on
@@ -572,7 +572,7 @@ write that live readers pick up) — so the GUI cannot drift from the CLI's rule
    (POST `{key, value}` — 400 when the key is outside `EDITABLE_CONFIG_KEYS` or the value
    fails `setConfigKey`'s check, 200 `{ok, key, value, oldValue}` on success, reusing
    readPostBody's body discipline).
-2. **src/ui/gui-server.ts:** route `GET /api/config` and `POST /api/config-set` next to the
+2. **src/gui-server.ts:** route `GET /api/config` and `POST /api/config-set` next to the
    `/api/budget` dispatch.
 3. **src/ui/gui-page.ts + src/ui/gui-client.ts:** a fifth tab (`#settings`) listing the five
    keys as label + current-value + inline text field + Save button (values pre-rendered with

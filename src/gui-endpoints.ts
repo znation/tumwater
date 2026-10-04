@@ -1,5 +1,5 @@
 /**
- * The dashboard's GET data endpoint handlers (src/ui/gui-server.ts routes to them): transcript,
+ * The dashboard's GET data endpoint handlers (src/gui-server.ts routes to them): transcript,
  * backlog, report, failures, history, tick, config — the read-only surface. The POST
  * operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
  * wake, restart, abort, pause-role) and their body-discipline helpers live in
@@ -9,17 +9,17 @@
  * failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
  * adapts HTTP onto it.
  */
-import type { BacklogEntry } from "../backlog.js";
-import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
-import { loadConfigSafe } from "../config.js";
-import { EDITABLE_CONFIG_KEYS } from "../config-editable-keys.js";
-import { collectReport } from "../report-data.js";
-import { collectFailureReport } from "../failure-data.js";
-import { renderFailureMarkdown } from "../failure-report.js";
-import { readTranscript } from "./transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history-data.js";
-import { readTickDetail } from "../tick-detail-data.js";
-import { renderTickDetail, tickNotFoundMessage } from "../tick-detail.js";
+import type { BacklogEntry } from "./backlog.js";
+import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "./backlog.js";
+import { loadConfigSafe } from "./config.js";
+import { EDITABLE_CONFIG_KEYS } from "./config-editable-keys.js";
+import { collectReport } from "./report-data.js";
+import { collectFailureReport } from "./failure-data.js";
+import { renderFailureMarkdown } from "./failure-report.js";
+import { readTranscript } from "./ui/transcript.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "./history-data.js";
+import { readTickDetail } from "./tick-detail-data.js";
+import { renderTickDetail, tickNotFoundMessage } from "./tick-detail.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
 import { sendJson } from "./http-body.js";
 import type http from "node:http";
