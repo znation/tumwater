@@ -198,10 +198,14 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
  * the queue file's not-before marker — so the read-only and destructive modes refuse it
  * rather than silently ignore it. */
 export function parsePromptArgs(args: string[]): PromptArgs {
+  // Derive the accepted vocabulary from PROMPT_FLAG_SPECS, as parseInitArgs does — the
+  // unknown-flag gate and the duplicate-flag check both read the one list, so adding a flag
+  // to the specs admits it everywhere at once.
+  const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names);
   for (const arg of args) {
     // Same equals-form refusal parseInitArgs applies: `--role=qa` names a real flag.
     rejectEqualsForm(arg, PROMPT_FLAG_SPECS);
-    if (arg.startsWith("--") && arg !== "--list" && arg !== "--cancel" && arg !== "--role" && arg !== "--json" && arg !== "--file" && arg !== "--at") {
+    if (arg.startsWith("--") && !known.includes(arg)) {
       fail(`unknown argument: ${arg} (valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>, --at <duration>)`);
     }
   }
@@ -212,7 +216,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const cancelFlag = args.indexOf("--cancel");
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
-  rejectDuplicateFlags(args, ["--list", "--cancel", "--role", "--json", "--file", "--at"]);
+  rejectDuplicateFlags(args, known);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
 
   const roleFlag = args.indexOf("--role");
