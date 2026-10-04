@@ -8,7 +8,7 @@
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural } from "./phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "./phrases.js";
 import { shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
@@ -95,14 +95,17 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "role_resumed":
       text = `role ${field(ev.role ?? "?")} resumed — it ticks again`;
       break;
-    case "rate_limit_hold":
+    case "rate_limit_hold": {
       // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
-      // the 429 wording; a backend-failure kind names itself.
+      // the 429 wording; a backend-failure kind names itself. The role list caps at four and
+      // each role is byte-sliced through field() so the section's bound holds.
+      const roles = rolesPhrase(ev.roles, "?", 4, field);
       text =
         ev.kind && ev.kind !== "rate-limit"
-          ? `backend hold (${backendKindPhrase(ev.kind)}) ${holdPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`
-          : `429 hold ${holdPhrase(ev.holdMs, ev.escalation)} — ${Array.isArray(ev.roles) ? (ev.roles as unknown[]).slice(0, 4).map(field).join(", ") : "?"}`;
+          ? `backend hold (${backendKindPhrase(ev.kind)}) ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`
+          : `429 hold ${holdPhrase(ev.holdMs, ev.escalation)} — ${roles}`;
       break;
+    }
     case "rate_limit_resumed":
       // Same split as the hold line above (and the event feed's rendering): the resumed event
       // carries the ended hold's kind, so a backend hold's lift names itself.

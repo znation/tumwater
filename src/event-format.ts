@@ -1,6 +1,6 @@
 import { eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural, shortSpanPhrase } from "./phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "./phrases.js";
 import { compactTokens, shortSha, usd } from "./text.js";
 import { padToWidth } from "./text-width.js";
 
@@ -112,7 +112,8 @@ export function eventMessage(e: HarnessEvent): string {
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.
-      const scope = Array.isArray(e.roles) && e.roles.length > 0 ? ` for ${e.roles.join(", ")}` : "";
+      const roles = rolesPhrase(e.roles, "");
+      const scope = roles ? ` for ${roles}` : "";
       return `counters reset${scope} (ticks, commits, tokens, cost)`;
     }
     case "tick_aborted":
@@ -177,7 +178,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Which ticks were handed back: the roles still running on the fallback when the budget
       // reopened. Their ticks end `aborted` and resume promptly on the primary, so an operator
       // reading the feed can connect the aborted ticks to this one line.
-      const roles = Array.isArray(e.roles) ? (e.roles as string[]).join(", ") : "?";
+      const roles = rolesPhrase(e.roles, "?");
       return `budget reopened: handed ${roles} back to the primary`;
     }
     case "fleet_paused":
@@ -207,7 +208,7 @@ export function eventMessage(e: HarnessEvent): string {
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.
-      const roles = Array.isArray(e.roles) ? (e.roles as unknown[]).join(", ") : "several roles";
+      const roles = rolesPhrase(e.roles, "several roles");
       if (e.kind && e.kind !== "rate-limit")
         return `backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
       return `429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;

@@ -58,6 +58,25 @@ export function pauseReasonSuffix(reason: string | undefined): string {
   return reason ? ` — "${reason}"` : "";
 }
 
+/** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
+ * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
+ * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-
+ * change lines (failure-state-change.ts, whose hold lines cap the list and slice each role), so
+ * the two surfaces cannot disagree on how an absent or malformed roles field renders. A
+ * non-array falls back to `fallback`; with `max`, extra roles are dropped from the tail; with
+ * `format`, each role is rendered through it (the digest passes its byte-slicing field()). */
+export function rolesPhrase(
+  roles: unknown,
+  fallback: string,
+  max?: number,
+  format: (role: unknown) => string = String,
+): string {
+  if (!Array.isArray(roles)) return fallback;
+  const list = roles.map(format);
+  if (max !== undefined) list.length = Math.min(list.length, max);
+  return list.length > 0 ? list.join(", ") : fallback;
+}
+
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of
  * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet
  * state changes lines (failure-state-change.ts), so a budget transition reads the same on both
