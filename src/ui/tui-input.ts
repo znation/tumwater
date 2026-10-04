@@ -168,7 +168,7 @@ export function parseRolePromptInput(
  * when it fits, otherwise a non-empty window that keeps the cursor inside it (at or near
  * the right edge) so mid-text edits stay visible. Widths are measured in terminal display
  * columns (displayWidth), not UTF-16 code units: a CJK character is one code unit but two
- * columns, and a unit-budgeted line rendered wider than the terminal and wrapped. Both
+ * columns, and a line budgeted in units can render wider than the terminal and wrap. Both
  * window edges fall on character boundaries, so the displayed line never carries a lone
  * surrogate (terminals render it as garbage) — the display-side sibling of the edit-side
  * rule applyKey enforces. With the "> " prefix the rendered line never exceeds `width`
@@ -202,8 +202,8 @@ export function renderInputView(text: string, cursor: number, width: number): st
  * When the character under the cursor alone is wider than `room` (a wide character at room
  * 1), no fitting window exists — the smallest whole-character window around the cursor (the
  * character it sits on, or the one before it at end of text) is returned instead; it may
- * exceed `room` by one column, and renderInputView drops the ellipsis when it no longer
- * both fit. Pure, so it is unit-testable without a TTY. */
+ * exceed `room` by one column, and renderInputView drops the ellipsis when the two no
+ * longer both fit. Pure, so it is unit-testable without a TTY. */
 export function inputViewWindow(
   text: string,
   cursor: number,
