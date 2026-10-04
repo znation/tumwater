@@ -71,10 +71,11 @@ const INIT_BOOLEAN_FLAGS: readonly string[] = INIT_FLAG_SPECS.filter((s) => !s.v
 
 /** `tumwater init` argument handling. Every other command runs rejectUnknownArgs, but init's
  * positionals are free-form prompt text, so that helper (which rejects ANY unconsumed token)
- * can't be used wholesale. The rules instead: a double-dash token must be `--file`,
- * `--branch`, `--adopt` or `--dry-run`, each given at most once; with `--file` present nothing
- * but the other flags may accompany it; a `--branch <name>` pair and the two booleans are never
- * prompt content; single-dash positionals are prompt content, not flags. Without these checks a
+ * can't be used wholesale. The rules instead: a double-dash token must be a known flag from
+ * INIT_FLAG_SPECS (`--file`, `--branch`, `--template`, `--adopt`, `--dry-run` or
+ * `--list-templates`), each given at most once; with `--file` present nothing but the other
+ * flags may accompany it; a `--branch <name>` pair and the valueless flags are never prompt
+ * content; single-dash positionals are prompt content, not flags. Without these checks a
  * misspelled --file would be baked into the initial prompt — injected into every tick of every
  * loop until someone edits the project brief. */
 /** The two parsers' shared "each flag at most once" rule: refuse a repeated flag with the
