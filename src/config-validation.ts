@@ -64,20 +64,6 @@ const DURATION_OR_DISABLED: NumberRule = {
   what: `a number of 0 or more, at most ${MAX_DURATION_SECONDS} (0 disables)`,
 };
 
-/** Validate tumwater.json values, so a typo fails fast with an actionable message instead
- * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
- * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
- * unknown role id (a misspelled entry under `roles`) spawns a phantom loop that errors every
- * tick, and an unknown key is silently ignored so the intended setting never takes effect.
- * Collects every problem so one edit can fix them all; throws a single Error listing them.
- * `label` names the file in the thrown messages — validateConfig also gates the tracked
- * example template, whose problems must not be misreported as tumwater.json's.
- *
- * Called on two shapes: the raw file before defaults are filled in (load's first pass, the
- * example template — per-key rules there keep their precise messages, naming exactly what
- * the file holds), and the fully merged config (load's second pass, saveConfig,
- * applyConfigRequest) — the shape that actually runs, so cross-field rules that depend on
- * defaults are judged here, where both sides of the comparison are always present. */
 /** Validate one per-role map section (`maxDailyCostUsdPerRole`, `quietHoursPerRole`): the
  * value must be an object mapping role ids to entries, every key must name a known role
  * (checkKnownRoleId's guard — a typo'd id would silently no-op the section), and each entry
@@ -104,6 +90,21 @@ function checkPerRoleMap(
   }
 }
 
+/** Validate tumwater.json values, so a typo fails fast with an actionable message instead
+ * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
+ * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
+ * unknown role id (a misspelled entry under `roles`) spawns a phantom loop that errors every
+ * tick, and an unknown key is silently ignored so the intended setting never takes effect.
+ * Collects every problem so one edit can fix them all; throws a single Error listing them.
+ * `label` names the file in the thrown messages — validateConfig also gates the tracked
+ * example template, whose problems must not be misreported as tumwater.json's.
+ *
+ * Called on two shapes: the raw file before defaults are filled in (load's first pass, the
+ * example template — per-key rules there keep their precise messages, naming exactly what
+ * the file holds), and the fully merged config (load's second pass, saveConfig,
+ * applyConfigRequest) — the shape that actually runs, so cross-field rules that depend on
+ * defaults are judged here, where both sides of the comparison are always present.
+ */
 export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   if (!isJsonObject(raw)) {
     throw new Error(`${label} must be a JSON object (got ${typeName(raw)})`);
