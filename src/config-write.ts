@@ -11,7 +11,7 @@ import {
   type TumwaterConfig,
 } from "./config-schema.js";
 import { configPath, configRequestPath } from "./paths.js";
-import { errorMessage, suggestClosest, didYouMean } from "./text.js";
+import { errorMessage, typoSuffix } from "./text.js";
 import { writeJsonAtomic } from "./json-files.js";
 import { isJsonObject } from "./json-object.js";
 import { show } from "./config-field-checks.js";
@@ -141,8 +141,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
  * key, the typo reads the same. */
 export function unknownConfigKeyError(key: string): string | null {
   if ((TOP_LEVEL_KEYS as readonly string[]).includes(key)) return null;
-  const suggestion = suggestClosest(key, TOP_LEVEL_KEYS as readonly string[]);
-  return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${didYouMean(suggestion)}`;
+  return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${typoSuffix(key, TOP_LEVEL_KEYS as readonly string[])}`;
 }
 
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
@@ -185,10 +184,9 @@ export function setConfigKey(
       if (problem) return { ok: false, error: problem };
     }
     if (parsed.kind === "role" && !(ROLE_ENTRY_KEYS as readonly string[]).includes(parsed.field)) {
-      const suggestion = suggestClosest(parsed.field, ROLE_ENTRY_KEYS);
       return {
         ok: false,
-        error: `unknown role field "${parsed.field}" for roles.${parsed.id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${didYouMean(suggestion)}`,
+        error: `unknown role field "${parsed.field}" for roles.${parsed.id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${typoSuffix(parsed.field, ROLE_ENTRY_KEYS)}`,
       };
     }
     let oldValue: unknown;

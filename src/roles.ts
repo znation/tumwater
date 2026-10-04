@@ -6,7 +6,7 @@
  * lookup helpers the CLI, GUI, and tick prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
-import { suggestClosest, didYouMean } from "./text.js";
+import { typoSuffix } from "./text.js";
 
 export { ROLES };
 export type { Role };
@@ -111,10 +111,11 @@ export function roleById(id: string): Role | undefined {
  * the same treatment unknownConfigKeyError gives config keys, so a mistyped `--role feautre`
  * names its fix instead of only the valid list. parseRoleFlag, the operator commands, and
  * tick-prompt's defensive runner path share it so the wording cannot drift between the CLI,
- * the GUI, and a tick's internal error. */
+ * the CLI, the GUI, and a tick's internal error. The hint is text.ts's typoSuffix —
+ * suggestClosest plus didYouMean composed once, the pairing every other unknown-X error
+ * renders through. */
 export function unknownRoleMessage(role: string, validIds: readonly string[]): string {
-  const suggestion = suggestClosest(role, validIds);
-  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${didYouMean(suggestion)}`;
+  return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${typoSuffix(role, validIds)}`;
 }
 
 /** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the

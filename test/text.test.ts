@@ -6,6 +6,7 @@ import {
   parseNonNegativeInt,
   parsePositiveInt,
   suggestClosest,
+  typoSuffix,
   truncate,
 } from "../src/text.js";
 
@@ -183,4 +184,13 @@ test("suggestClosest names the closest candidate within two edits, case-insensit
   assert.equal(suggestClosest("modle", ["modeller", "model"]), "model");
   // An empty candidate list has nothing to suggest.
   assert.equal(suggestClosest("model", []), null);
+});
+
+// typoSuffix composes suggestClosest + didYouMean — the suffix every unknown-X error appends.
+// It renders the suggestion through didYouMean's pinned wording, and the empty string when
+// suggestClosest has nothing close enough (the same contract as its two halves).
+test("typoSuffix appends the did-you-mean wording for a close typo, nothing otherwise", () => {
+  assert.equal(typoSuffix("modle", ["model", "status"]), " — did you mean `model`?");
+  assert.equal(typoSuffix("frobnicate", ["model", "status"]), "");
+  assert.equal(typoSuffix("model", []), "");
 });

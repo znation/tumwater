@@ -65,6 +65,18 @@ export function didYouMean(suggestion: string | null): string {
   return suggestion ? ` — did you mean \`${suggestion}\`?` : "";
 }
 
+/** suggestClosest and didYouMean composed: the " — did you mean `x`?" suffix for a mistyped
+ * `input` against `candidates`, the empty string when nothing is close enough to suggest. The
+ * four unknown-X error sites (roles.ts's unknownRoleMessage, config-write.ts's
+ * unknownConfigKeyError and its role-field error, gui-args.ts's rejectBadRole) render the hint
+ * through this one composition so the two-step pairing cannot drift; callers still print the
+ * full valid list themselves — a suggestion only annotates it. (cli.ts's unknown-command and
+ * no-help-topic errors stay on the bare halves: their suggestion arrives from help.ts's
+ * suggestCommand, which derives the candidate list from the help text.) */
+export function typoSuffix(input: string, candidates: readonly string[]): string {
+  return didYouMean(suggestClosest(input, candidates));
+}
+
 /** The human-facing message of whatever was thrown: its `.message` when it is an Error,
  * `String(err)` otherwise (a thrown string or other value). Every catch site that surfaces a
  * failure as text renders unknown throws through this one coercion instead of repeating the
