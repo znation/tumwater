@@ -32,11 +32,17 @@ export interface BacklogEntry {
  * backtick — such a line is paragraph text that opens nothing), closes only at a bare fence
  * line of the same character at least as long, and an unclosed fence runs to EOF. Every reader
  * that classifies backlog lines as markdown structure (section boundaries, entry headings,
- * bullets) must consult this, so two readers can never disagree about what is body content. */
-export function fenceTracker(): { inside(line: string): boolean } {
+ * bullets) must consult this, so two readers can never disagree about what is body content.
+ * `open()` reports whether the tracker is inside a fence where the walk stopped — true when a
+ * fence ran unclosed to the walk's end, so a caller that walked a bounded region can tell its
+ * read is fence-degraded (the region's tail quoted real structure). */
+export function fenceTracker(): { inside(line: string): boolean; open(): boolean } {
   // The open fence's marker (null = none): only a matching bare fence line closes it.
   let fence: { char: string; length: number } | null = null;
   return {
+    open(): boolean {
+      return fence !== null;
+    },
     inside(line: string): boolean {
       const fenceLine = /^ {0,3}(`{3,}|~{3,})/.exec(line);
       if (fenceLine) {

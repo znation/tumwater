@@ -64,7 +64,7 @@ interface OpenEntryBlock {
 /** Locate QUESTIONS.md's `## Open` and `## Answered` section heading lines (fence-aware) and
  * every open entry's block between them. Returns null when the file has no `## Open` section
  * at all — then there is nothing to answer, whatever the position. */
-function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number; openEnd: number; blocks: OpenEntryBlock[] } | null {
+function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number; openEnd: number; fenceOpen: boolean; blocks: OpenEntryBlock[] } | null {
   const fenced = fenceTracker();
   let openIdx = -1;
   let answeredIdx = -1;
@@ -109,7 +109,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
       blocks.push(current);
     }
   }
-  return { openIdx, answeredIdx, openEnd, blocks };
+  return { openIdx, answeredIdx, openEnd, fenceOpen: fencedEntries.open(), blocks };
 }
 
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
@@ -132,7 +132,15 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   if (scan === null || n < 1 || n > scan.blocks.length) {
     fail(`no question at position ${n} (${openCount} open)`);
   }
-  const scanned = scan as { openIdx: number; answeredIdx: number; openEnd: number; blocks: OpenEntryBlock[] };
+  const scanned = scan as { openIdx: number; answeredIdx: number; openEnd: number; fenceOpen: boolean; blocks: OpenEntryBlock[] };
+  // A fence inside ## Open left unclosed runs to EOF (CommonMark), so the whole tail — the
+  // real ## Answered section included — reads as quoted body of the still-open entry. Acting
+  // on that degraded read moves Answered content inside the moved block's fence and grows a
+  // second ## Answered at the file's end, while the question still lists as open: refuse
+  // instead, and tell the operator the one local repair (close or remove the fence).
+  if (scanned.fenceOpen) {
+    fail("QUESTIONS.md's ## Open section holds an unclosed code fence — every reader quotes the rest of the file as that entry's body, so answering would corrupt the file; close or remove the fence and re-run");
+  }
   const block = scanned.blocks[n - 1] as OpenEntryBlock;
   const moved = lines!.slice(block.start, block.end);
   while (moved.length > 0 && (moved[moved.length - 1] ?? "").trim() === "") moved.pop();

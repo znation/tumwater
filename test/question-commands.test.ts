@@ -256,20 +256,47 @@ _None yet._
   assert.ok(answered.includes("### Which color?\nblue or red"), answered);
 });
 
-test("answering works when a fence inside ## Open runs unclosed to EOF", () => {
-  // The openEnd walk and the blocks walk must not share a tracker: an unclosed fence in Open
-  // runs the openEnd walk to EOF and leaves the tracker inside, so a shared blocks walk
-  // quoted every `### ` heading and answered a later entry — Question B — on a file `--list`
-  // had numbered as just Question A (whose body the fence swallows, per the list reader).
+test("answering refuses when a fence inside ## Open runs unclosed to EOF", () => {
+  // An unclosed fence in Open (CommonMark: runs to EOF) makes every reader quote the rest of
+  // the file as that entry's body — the real ## Answered heading reads as quoted content, so
+  // the answer move would corrupt the file. The chosen invariant: answer refuses on a
+  // fence-degraded Open read instead of moving anything (BUGS.md, found 2026-10-04).
   const root = tmpdir();
   seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody\n\n```\nunclosed fence\n\n## Answered\n\n### Question B\n');
+  // The list still numbers the entry the degraded read sees; answer is the surface that acts.
   assert.match(openQuestionList(root), /^1\. Question A/);
+  const err = attempt(() => answerQuestion(root, 1, "yes"));
+  assert.match(err.stderr, /unclosed code fence/, err.stderr);
+  // Nothing moved: the file is byte-identical to the seeded one.
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("```\nunclosed fence\n\n## Answered\n\n### Question B"), md);
+  assert.ok(!md.includes("**Answered"), md);
+});
+
+test("answering refuses when an entry-body fence is unclosed before a populated ## Answered", () => {
+  // The bug's own repro shape: the open entry's body ends with an unclosed fence, so the
+  // populated ## Answered section reads as quoted content of the still-open entry — the old
+  // answer moved the whole tail (original Answered content inside the fence) and grew a
+  // second ## Answered at the file's end, leaving the question listed as open.
+  const root = tmpdir();
+  seed(root, '# Questions\n\n## Open\n\n### Which renderer?\n\nfix in place\n\n```md\ntemplate never closed\n\n## Answered\n\n### Earlier decision\n\nuse sqlite\n');
+  assert.match(openQuestionList(root), /^1\. Which renderer?/);
+  const err = attempt(() => answerQuestion(root, 1, "done"));
+  assert.match(err.stderr, /unclosed code fence/, err.stderr);
+  const md = read(path.join(root, "QUESTIONS.md"));
+  assert.ok(md.includes("```md\ntemplate never closed"), md);
+  assert.ok(md.includes("use sqlite"), md);
+  assert.ok(!md.includes("**Answered"), md);
+});
+
+test("answering still works when a fence inside ## Open is closed before the section ends", () => {
+  // A well-formed quoted fence must not trip the refusal: the fence closes inside the entry,
+  // so the Open read is not degraded and the answer proceeds.
+  const root = tmpdir();
+  seed(root, '# Questions\n\n## Open\n\n### Question A\n\nbody:\n\n```\nquoted\n```\n\n## Answered\n\n_None yet._\n');
   const { title } = answerQuestion(root, 1, "yes");
-  // The answer names the entry the list numbered, not a fenced tail's heading.
   assert.equal(title, "Question A");
   const md = read(path.join(root, "QUESTIONS.md"));
-  assert.ok(md.includes("### Question A\n\nbody"), md);
-  assert.ok(md.includes("**Answered"), md);
   assert.ok(md.includes("## Open\n\n_None yet._"), md);
 });
 
