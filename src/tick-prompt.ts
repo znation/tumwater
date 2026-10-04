@@ -49,10 +49,13 @@ export function assembleTickPrompt(
   let prompt: string;
   let userPrompt: string | null = null;
   if (role === DIRECTOR_ROLE) {
+    // A deferred director prompt's `tumwater:not-before` marker line is plumbing (src/inbox.ts),
+    // not content — stripped here exactly like the per-role path below, so the director's tick
+    // prompt and the runner's re-queue both see the operator's text alone.
     const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
     if (!dequeued) return null;
-    userPrompt = dequeued;
-    prompt = buildDirectorPrompt(dequeued, initialPrompt, principles, check, brief);
+    userPrompt = stripNotBeforeMarker(dequeued);
+    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief);
   } else {
     // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
     // is its entire find-something-to-do text and the title identifies it in the prompt.

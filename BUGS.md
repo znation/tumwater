@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### A director-scoped deferred prompt (`tumwater prompt --at <duration>` with no `--role`) carried its `tumwater:not-before <iso>` marker line into the director's tick prompt: the 2026-10-04 marker-strip fix covered only the per-role dequeue path (src/tick-prompt.ts's role branch), but the director branch fed the raw dequeued text into buildDirectorPrompt and the runner's pending re-queue, so the director saw the plumbing line as part of the operator's request (repro: enqueueRolePrompt(dir, DIRECTOR_ROLE, text, pastTime); assembleTickPrompt for the director returned the marker line verbatim as userPrompt and rode it into the prompt — the same-day regression test in test/tick-prompt.test.ts failed on userPrompt before the fix) (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's marker-strip commit 47449b35, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** none — the per-role path's existing regression test reproduced the shape; adding the director twin (a past-time deferred director prompt assembled into a tick prompt) failed deterministically on the raw marker text before the fix and passed after.
+
 ### A delivered deferred prompt (`tumwater prompt --at <duration>`) carried its `tumwater:not-before <iso>` marker line into the loop's tick prompt: the marker is plumbing (src/inbox.ts) that every display surface strips, but tick-prompt.ts dequeued the raw queue-file text and rode it verbatim into the `<user-request>` block and the runner's userPrompt, so the loop saw the plumbing line as part of the operator's request and the unfulfilled re-queue machinery persisted it (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's prompt --at feature commit 654f15b3, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** none — a regression test (a past-time deferred prompt assembled into a tick prompt) reproduced it deterministically once written; the feature's own tests had pinned the raw dequeue text, so nothing was missing at the unit level this time.

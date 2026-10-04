@@ -381,6 +381,22 @@ test("a delivered deferred prompt rides without its not-before marker line", () 
   assert.ok(!result.prompt.includes("tumwater:not-before"), "the marker is plumbing, not content");
 });
 
+// The director's deferred prompt has the same contract: `tumwater prompt --at <duration>`
+// with no --role lands in the director's queue, and the marker is plumbing there too.
+test("a delivered deferred director prompt rides without its not-before marker line", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, DIRECTOR_ROLE, "re-check the release notes", Date.now() - 60_000);
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: DIRECTOR_ROLE,
+    state: state({ role: DIRECTOR_ROLE }),
+  });
+  assert.ok(result);
+  assert.equal(result.userPrompt, "re-check the release notes");
+  assert.ok(!result.prompt.includes("tumwater:not-before"), "the marker is plumbing, not content");
+});
+
 // The clean role's stranded-plan block (src/backlog-structure.ts, plans part 3/4): the repair
 // evidence rides in the tick prompt only when the primary checkout's PLANS.md is stranded.
 
