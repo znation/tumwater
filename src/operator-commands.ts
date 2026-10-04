@@ -78,10 +78,12 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
  * auto-resume takes — the wake applies at the deadline, not at submit. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
-  // `--in <duration>` (the scheduled wake): the gate in cli.ts has already restricted the
-  // flag to this command and validated its shape, so its value is parsed (and fails fast)
-  // here, beside the writer it feeds. The cap is pause --for's: a longer horizon is a
-  // queued prompt or a standing schedule's job, not a one-shot wake.
+  // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's
+  // rejectUnknownArgs, not cli.ts — the marker dispatch moved out from under main()'s switch)
+  // has already restricted the flag to this command and validated its value — shape and the
+  // 90-day cap both, via WAKE_IN_FLAG's validate — so its value is re-parsed here, beside the
+  // writer it feeds. The cap is pause --for's: a longer horizon is a queued prompt or a
+  // standing schedule's job, not a one-shot wake.
   const inRaw = flagValue(args, "--in");
   const inMs = inRaw !== null ? parseDurationFlag("--in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
@@ -116,9 +118,10 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
   // `--for <duration>` (the timed pause): the ms-epoch deadline pauseFleet/pauseRole write
-  // into the marker and every consumer honors — the gate in cli.ts has already restricted
-  // the flag to this command, so its value is parsed (and fails fast) here, beside the
-  // writers it feeds.
+  // into the marker and every consumer honors — the command's own gate (runMarkerCommand's
+  // rejectUnknownArgs) has already restricted the flag to this command and validated its
+  // value — shape and the 90-day cap both, via durationFlagSpec("pause --for")'s validate — so its value is
+  // re-parsed here, beside the writers it feeds.
   const forRaw = flagValue(args, "--for");
   const forMs = forRaw !== null ? parseDurationFlag("--for", forRaw) : undefined;
   // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted

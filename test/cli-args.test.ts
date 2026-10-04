@@ -9,7 +9,14 @@ import {
   parsePortFlag,
   parseRoleFlag,
 } from "../src/cli-args.js";
-import { rejectUnknownArgs, ROLE_VALUE_ERROR, RUN_FLAG_SPECS } from "../src/cli-flag-specs.js";
+import {
+  rejectUnknownArgs,
+  durationFlagSpec,
+  ROLE_FLAG,
+  ROLE_VALUE_ERROR,
+  RUN_FLAG_SPECS,
+  WAKE_IN_FLAG,
+} from "../src/cli-flag-specs.js";
 import { allRoleIds } from "../src/roles.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 
@@ -278,6 +285,29 @@ test("parseDurationFlag rejects malformed composites: gaps, out-of-order and rep
     assert.equal(r.code, 1, raw);
     assert.match(r.stderr, /--for needs a duration like 45s, 90m, 1h30m, or 2d/);
   }
+});
+
+// --- the gate-level 90-day cap (durationFlagSpec / WAKE_IN_FLAG validate) ---
+
+test("the gate fails an over-cap --for/--in before the ready-repo gate can mask it", () => {
+  // `pause --for 100d` outside an initialized repo must name the cap, not the
+  // not-initialized hint the ready-repo gate would otherwise print first.
+  const over = expectFail(() =>
+    rejectUnknownArgs("pause", ["--role", "feature", "--for", "100d"],
+      [ROLE_FLAG, durationFlagSpec("pause --for")]),
+  );
+  assert.match(over.stderr, /pause --for is capped at 90d \(got 100d\)/);
+  const wake = expectFail(() =>
+    rejectUnknownArgs("wake", ["--in", "91d"], [ROLE_FLAG, WAKE_IN_FLAG]),
+  );
+  assert.match(wake.stderr, /wake --in is capped at 90d \(got 91d\)/);
+  const run = expectFail(() => rejectUnknownArgs("run", ["--for", "100d"], RUN_FLAG_SPECS));
+  assert.match(run.stderr, /run --for is capped at 90d \(got 100d\)/);
+  // At or under the cap the gate accepts the value; the bodies' own checks never fire.
+  expectOk(() =>
+    rejectUnknownArgs("pause", ["--for", "90d", "--role", "feature"],
+      [ROLE_FLAG, durationFlagSpec("pause --for")]),
+  );
 });
 
 test("durationLabel phrases a parsed duration back in the parser's vocabulary", () => {

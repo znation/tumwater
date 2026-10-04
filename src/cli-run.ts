@@ -211,7 +211,7 @@ export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): vo
 /** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or
  * null when the flag is absent. The two body-level rules fail fast, before any repo gate or
  * boot: the value must parse as a duration (parseDurationFlag's own wording, the same messages
- * the dispatcher's DURATION_FLAG gate already ran), and `--for` and `--once` are rivals — a
+ * the dispatcher's durationFlagSpec("run --for") gate already ran), and `--for` and `--once` are rivals — a
  * one-round run and a windowed run cannot both apply. The 90-day ceiling is `pause --for`'s
  * (PAUSE_FOR_MAX_MS), the same cap every scheduled window in the harness honors. Exported for
  * tests, exactly as onceSummary below is. */

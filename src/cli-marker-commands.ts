@@ -1,5 +1,5 @@
 import {
-  DURATION_FLAG,
+  durationFlagSpec,
   REASON_FLAG,
   WAKE_IN_FLAG,
   rejectUnknownArgs,
@@ -38,7 +38,14 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
     "reset-counters": [ROLE_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG],
     abort: [ROLE_FLAG],
-    pause: [ROLE_FLAG, DURATION_FLAG, REASON_FLAG],
+    pause: [
+      ROLE_FLAG,
+      durationFlagSpec(
+        "pause --for",
+        "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)",
+      ),
+      REASON_FLAG,
+    ],
     resume: [ROLE_FLAG],
   };
   rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);

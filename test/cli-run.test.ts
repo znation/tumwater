@@ -22,7 +22,7 @@ function state(role: string, over: Partial<LoopState>): LoopState {
   return { ...freshLoopState(role), ...over };
 }
 
-// --- parseRunWindow: the run --for body rules (the dispatcher's DURATION_FLAG gate has
+// --- parseRunWindow: the run --for body rules (the dispatcher's durationFlagSpec("run --for") gate has
 // already named a malformed value with parseDurationFlag's wording by the time these run;
 // here the same parse is pinned through the helper cmdRun itself calls) ---
 

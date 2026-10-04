@@ -1,5 +1,5 @@
 /** The declarative flag-vocabulary layer shared by every command's argument gate: the
- * FlagSpec shape, the per-flag specs (ROLE_FLAG, DURATION_FLAG, REASON_FLAG, sinceFlagSpec,
+ * FlagSpec shape, the per-flag specs (ROLE_FLAG, durationFlagSpec, REASON_FLAG, sinceFlagSpec,
  * N_FLAG, JSON_FLAG, grepFlagSpec, RUN_FLAG_SPECS), and the unknown-argument gate
  * (rejectUnknownArgs, with rejectEqualsForm). Split from cli-args.ts, whose imperative
  * single-flag parsers (flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, ...)
@@ -9,7 +9,8 @@
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
-import { parseCountFlag, parseDurationFlag } from "./cli-args.js";
+import { failOverDurationCap, parseCountFlag, parseDurationFlag } from "./cli-args.js";
+import { PAUSE_FOR_MAX_MS } from "./operator-intent.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
@@ -117,38 +118,46 @@ export const ROLE_FLAG: FlagSpec = {
   missingValue: ROLE_VALUE_ERROR,
 };
 
-/** The `--for <duration>` flag spec, accepted by `pause` (the timed pause) and `run` (the
- * windowed run): one definition of the flag's spelling and value shape, beside ROLE_FLAG, so
- * the gate's accepted vocabulary and parseDurationFlag's error messages cannot drift apart.
- * validate re-runs the shape parser at the gate, so `pause --for xyz` and `run --for xyz`
- * name the typo before the ready-repo gate can mask it; the 90-day cap stays in cmdPause and
- * cmdRun beside the timers/writers they feed. */
-export const DURATION_FLAG: FlagSpec = {
-  names: ["--for"],
-  value: true,
-  valueName: "<duration>",
-  validate: (value) => {
-    parseDurationFlag("--for", value);
-  },
-};
+/** The `--for <duration>` flag spec factory, accepted by `pause` (the timed pause) and
+ * `run` (the windowed run): one definition of the flag's spelling and value shape, beside
+ * ROLE_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages cannot
+ * drift apart. `label` (e.g. "pause --for", "run --for") names the command in every message,
+ * the same command-named pattern sinceFlagSpec follows. validate re-runs the shape parser at
+ * the gate, so `pause --for xyz` and `run --for xyz` name the typo before the ready-repo gate
+ * can mask it, and fails an over-cap value there too, so `pause --for 100d` in an
+ * uninitialized directory names the cap instead of the not-initialized hint — the same
+ * precedence the shape error already follows. An optional `hint` rides into that gate-level
+ * cap message, exactly as the body's own check phrases it, so the wording cannot differ by
+ * which check fired. The bodies keep their own cap checks: the GUI's and TUI's pause paths
+ * reach the writers without this CLI gate and still need the bound beside them. */
+export function durationFlagSpec(label: string, hint?: string): FlagSpec {
+  return {
+    names: ["--for"],
+    value: true,
+    valueName: "<duration>",
+    validate: (value) => {
+      failOverDurationCap(label, parseDurationFlag(label, value), PAUSE_FOR_MAX_MS, hint);
+    },
+  };
+}
 
 /** The `--in <duration>` flag spec, accepted by `wake` alone (the scheduled wake): one
- * definition of the flag's spelling and value shape, beside DURATION_FLAG, so the gate's
+ * definition of the flag's spelling and value shape, beside durationFlagSpec, so the gate's
  * accepted vocabulary and parseDurationFlag's error messages cannot drift apart. validate
  * re-runs the shape parser at the gate, so `wake --in xyz` names the typo before the
- * ready-repo gate can mask it; the 90-day cap stays in cmdWake beside the writer it feeds
- * (the same ceiling `pause --for` honors). */
+ * ready-repo gate can mask it, and fails an over-cap value there too (the same ceiling
+ * `pause --for` honors, the same not-initialized-masking rationale durationFlagSpec records). */
 export const WAKE_IN_FLAG: FlagSpec = {
   names: ["--in"],
   value: true,
   valueName: "<duration>",
   validate: (value) => {
-    parseDurationFlag("--in", value);
+    failOverDurationCap("wake --in", parseDurationFlag("wake --in", value), PAUSE_FOR_MAX_MS);
   },
 };
 
 /** The `--reason <text>` flag spec, accepted by `pause` alone (the operator pause's why):
- * one definition of the flag's spelling and value shape, beside ROLE_FLAG and DURATION_FLAG,
+ * one definition of the flag's spelling and value shape, beside ROLE_FLAG and durationFlagSpec,
  * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value
  * wording names its only command (the GREP_VALUE_ERROR idiom — each command's parser names
  * itself); the 200-char cap stays in pauseFleet beside the marker it bounds, and per-role
@@ -166,7 +175,7 @@ export const REASON_FLAG: FlagSpec = {
 
 /** The `--since <duration>` flag spec shared by the three windowed read-only views (logs,
  * history, report): one definition of the flag's spelling and value shape, beside ROLE_FLAG
- * and DURATION_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages
+ * and durationFlagSpec, so the gate's accepted vocabulary and parseDurationFlag's error messages
  * cannot drift apart. The error wording differs per command — every failure names its own
  * command with the flag (`logs --since needs a value`, `logs --since needs a duration like
  * 45s, 90m, 1h30m, or 2d (got …)`), the same label the command body's parseSinceFlag rides into
@@ -234,8 +243,9 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--once"] },
   // `run --for <duration>` (the windowed run): the same spec `pause --for` passes, so the
   // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
-  // 90-day cap and the --once rival rule stay in cmdRun beside the timer they arm.
-  DURATION_FLAG,
+  // 90-day cap is the spec's own validate (shared with pause), and the --once rival rule
+  // stays in cmdRun beside the timer it arms.
+  durationFlagSpec("run --for"),
   ROLE_FLAG,
 ];
 
