@@ -9,7 +9,13 @@
 import { COMMIT_IDENT, deleteRef, gitLines, gitTry, headOf } from "./git.js";
 import { landingRefName } from "./paths.js";
 import { ensureDetachedWorktree } from "./worktree.js";
-import { exemptSkipBlockReason, ffStackToMain } from "./landing-merge.js";
+import { exemptSkipBlockReason, logNewQuestions } from "./landing-merge.js";
+import { openQuestions } from "./backlog.js";
+import { logEvent } from "./events.js";
+import { ffMainTo } from "./landing-git.js";
+import { syncRootInstall } from "./dep-install.js";
+import { withLock } from "./lock.js";
+import { mergeLockDir } from "./paths.js";
 import { type BuildCheckOutcome } from "./build-check.js";
 import { runScopedBuildCheck } from "./build-check-scoped.js";
 import type { BuildCheck } from "./build-check-detect.js";
@@ -205,4 +211,39 @@ export async function landStack(ctx: StackContext, wtPath: string, entries: read
     // failed. Re-stack on the tip that won.
   }
   return { kind: "blocked" };
+}
+
+/** Fast-forward main through a WHOLE batch of already-reviewed landings in one (merge queue
+ * 5/5): `landed` is the stack in queue order, each entry the change's captured post-pick sha
+ * plus its own role and summary. Under the merge lock: one `ffMainTo` to the stacked tip (the
+ * LAST entry's sha — a single ff through N stacked commits), one `merged` event PER entry so
+ * the report counts the batch as N commits, and the question_posted diff around that single ff
+ * (one-shot, as tryMerge's). No rebase and no in-lock re-check inside this helper — that is
+ * what makes the batch's one shared stack check sufficient (the design invariant): nothing
+ * rewrites between the lander's green check and this ff, so a successful ff makes main
+ * byte-identical to the checked tip (or, after a doc-only re-stack, to that tip plus the
+ * doc-only commits main gained). `noteGreenBaseline` stays out of it too — the lander
+ * seeds the stacked tip, because it alone knows whether its own check passed. A failed ff
+ * (main moved under the batch — diverged history) returns "merge_blocked" with NO events and
+ * no ref changes: the lander re-stacks onto the new tip and calls this again (bounded by
+ * BATCH_RESTACK_ATTEMPTS), and only a race lost on every attempt keeps every
+ * change's ref for one-at-a-time recovery, whose tryMerge carries the in-lock check. The
+ * single-change path is untouched. */
+export async function ffStackToMain(
+  root: string,
+  mainBranch: string,
+  landed: Array<{ role: string; sha: string; summary: string }>,
+): Promise<"changed" | "merge_blocked"> {
+  const tip = landed.at(-1);
+  if (!tip) return "changed"; // Empty stack: nothing to fast-forward (never called in production — the lander stacks at least one change).
+  return withLock(mergeLockDir(root), async () => {
+    const before = openQuestions(root);
+    if (!(await ffMainTo(root, tip.sha, mainBranch))) return "merge_blocked";
+    for (const entry of landed) {
+      logEvent(root, { loop: entry.role, type: "merged", commit: entry.sha, summary: entry.summary });
+    }
+    logNewQuestions(root, before, landed[0]!.role);
+    await syncRootInstall(root, tip.role); // As tryMerge: re-sync the root install under the lock.
+    return "changed";
+  });
 }

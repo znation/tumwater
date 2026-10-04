@@ -186,10 +186,10 @@ function subsetOf(small: string[], big: string[]): boolean {
 
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before` —
  * the capture-and-diff both merge paths record alongside their `merged` events (tryMerge and
- * ffStackToMain). The capture (`openQuestions(root)` under the merge lock, before the ff) stays
- * with the callers: the lock window is theirs to define, and the diff is only exact while the
- * capture and this call share it. */
-function logNewQuestions(root: string, before: string[], role: string): void {
+ * landing-stack.ts's ffStackToMain). The capture (`openQuestions(root)` under the merge lock,
+ * before the ff) stays with the callers: the lock window is theirs to define, and the diff is
+ * only exact while the capture and this call share it. */
+export function logNewQuestions(root: string, before: string[], role: string): void {
   for (const question of openQuestions(root)) {
     if (!before.includes(question)) {
       logEvent(root, { loop: role, type: "question_posted", question });
@@ -384,40 +384,5 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
     return false;
   }
   return true;
-}
-
-/** Fast-forward main through a WHOLE batch of already-reviewed landings in one (merge queue
- * 5/5): `landed` is the stack in queue order, each entry the change's captured post-pick sha
- * plus its own role and summary. Under the merge lock: one `ffMainTo` to the stacked tip (the
- * LAST entry's sha — a single ff through N stacked commits), one `merged` event PER entry so
- * the report counts the batch as N commits, and the question_posted diff around that single ff
- * (one-shot, as tryMerge's). No rebase and no in-lock re-check inside this helper — that is
- * what makes the batch's one shared stack check sufficient (the design invariant): nothing
- * rewrites between the lander's green check and this ff, so a successful ff makes main
- * byte-identical to the checked tip (or, after a doc-only re-stack, to that tip plus the
- * doc-only commits main gained). `noteGreenBaseline` stays out of it too — the lander
- * seeds the stacked tip, because it alone knows whether its own check passed. A failed ff
- * (main moved under the batch — diverged history) returns "merge_blocked" with NO events and
- * no ref changes: the lander re-stacks onto the new tip and calls this again (bounded by
- * landing-stack.ts's BATCH_RESTACK_ATTEMPTS), and only a race lost on every attempt keeps every
- * change's ref for one-at-a-time recovery, whose tryMerge carries the in-lock check. The
- * single-change path is untouched. */
-export async function ffStackToMain(
-  root: string,
-  mainBranch: string,
-  landed: Array<{ role: string; sha: string; summary: string }>,
-): Promise<"changed" | "merge_blocked"> {
-  const tip = landed.at(-1);
-  if (!tip) return "changed"; // Empty stack: nothing to fast-forward (never called in production — the lander stacks at least one change).
-  return withLock(mergeLockDir(root), async () => {
-    const before = openQuestions(root);
-    if (!(await ffMainTo(root, tip.sha, mainBranch))) return "merge_blocked";
-    for (const entry of landed) {
-      logEvent(root, { loop: entry.role, type: "merged", commit: entry.sha, summary: entry.summary });
-    }
-    logNewQuestions(root, before, landed[0]!.role);
-    await syncRootInstall(root, tip.role); // As tryMerge: re-sync the root install under the lock.
-    return "changed";
-  });
 }
 
