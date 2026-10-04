@@ -49,8 +49,8 @@ async function ciWait(runId) {
   const deadline = Date.now() + 30 * 60 * 1000; // observed CI wall time is ~3.5 minutes
   let state = null;
   while (Date.now() < deadline) {
-    const rows = gh(["run", "view", String(runId), "--json", "status,conclusion"]);
-    if (rows) state = rows;
+    const rows = gh(["run", "view", String(runId), "--json", "databaseId,status,conclusion"]);
+    if (rows) state = { ...rows, databaseId: runId };
     if (state?.status === "completed") return state;
     await sleep(30_000);
   }
