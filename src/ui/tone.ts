@@ -22,8 +22,9 @@ export function phaseTone(phase: string): Tone | undefined {
   return rank <= 1 ? "blue" : rank === 2 ? "red" : rank === 3 ? "yellow" : undefined;
 }
 
-/** A tick result's tone (tick-outcome.ts TickResult): landed green, queued to land cyan, the
- * failures red, the held-back outcomes (refused, rejected, interrupted, stalled) yellow. */
+/** A tick result's tone (tick-outcome.ts TickResult): a completed landing (changed) green,
+ * queued to land cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
+ * quiet_killed) yellow. */
 export function resultTone(result: string | undefined | null): Tone | undefined {
   switch (result) {
     case "changed":
