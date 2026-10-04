@@ -5,7 +5,63 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop)
+
+**Goal.** The fleet-wide `quietHours` window silences every role at once, but the operator's
+real schedule is per-role: run the cheap roles around the clock and hold the expensive ones
+during working hours (or let one noisy role sleep while the rest of the fleet works overnight).
+Add a top-level `quietHoursPerRole?: Record<string, string>` config key, keyed by role id,
+mirroring `maxDailyCostUsdPerRole`: a loop whose own window is active starts no new ticks until
+its window ends or a live edit removes it; in-flight ticks finish; the director is exempt, as
+under every autonomous gate; an absent key or an empty-string window means off for that role.
+The fleet-wide `quietHours` keeps working unchanged — a role is held when EITHER window covers
+`now`.
+
+**Approach.**
+- `src/quiet-hours.ts`: reuse the existing parser — `parseQuietHours` already validates one
+  `"HH:MM-HH:MM"` value (wrapping windows included) and `inQuietHours(window, date)` decides
+  membership. Add one small helper, `roleQuietHold(perRole: Record<string, string> | undefined,
+  role: string, now: Date): boolean`, that parses the role's value and returns membership
+  (an absent key, a non-string, or an unparseable value reads as off here; validation is
+  config-validation.ts's job, not this helper's).
+- `src/gate-polls.ts`: `pollAllGates` computes a stateless per-role hold set — for each runner
+  but the director, `roleQuietHold(liveConfig.quietHoursPerRole, role, new Date(now))` — and
+  returns it as `roleQuietHold: ReadonlySet<string>` beside `capPaused`. No new event type and
+  no state: unlike the fleet-wide gate (which logs exactly one
+  `quiet_hours_started`/`quiet_hours_ended` per crossing), a per-role hold is an anonymous,
+  stateless verdict recomputed per poll, exactly like `capPaused`'s set (the pause marker is
+  anonymous and must never masquerade as an operator's).
+- `src/orchestrator.ts`: where the scheduling pass folds `quietNow` into the no-new-tick hold
+  (the `(userPaused || quietNow || ...)` condition), add the role's membership in
+  `roleQuietHold` as a fourth disjunct, director-excluded by the same existing role check.
+- `src/config-schema.ts`: add `quietHoursPerRole?: Record<string, string>` to the config
+  interface (next to `maxDailyCostUsdPerRole`, with the same doc-comment shape) and to
+  `TOP_LEVEL_KEYS`.
+- `src/config-validation.ts`: beside the `maxDailyCostUsdPerRole` block, validate the map —
+  object of strings; every key passes the same `checkKnownRoleId` gate (a typo'd role id would
+  silently no-op the window); every value passes `checkQuietHours`'s parse (empty string
+  allowed = off).
+- `src/config-example.ts` / `src/help.ts` / README.md settings paragraph: name the new key one
+  line after its fleet-wide sibling, so `tumwater config` users can find it.
+- Status surface: follow status-data.ts's `roleCapPaused` pattern minimally — a loop held by
+  its own window shows the same quiet-hours hold wording the fleet-wide gate already uses; if
+  status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
+  Done entry rather than growing the change.
+
+**Files touched:** src/quiet-hours.ts, src/gate-polls.ts, src/orchestrator.ts,
+src/config-schema.ts, src/config-validation.ts, src/config-example.ts, src/help.ts,
+README.md, plus tests (quiet-hours and config-validation suites).
+
+**Acceptance criteria.**
+- A config with `quietHoursPerRole: { qa: "23:00-07:00" }` holds qa's new ticks inside the
+  window (wrapping included) while other roles tick normally; the director is never held by it.
+- A role held by its own window AND the fleet window is held once, not double-counted.
+- A live `config set quietHoursPerRole` edit applies on the next poll cycle, like the
+  fleet-wide window and the per-role caps.
+- Validation rejects: a non-object, an unknown role id, and a malformed window string, each
+  with a message naming the key and the offending id/value.
+- Tests cover the helper (in/out/absent-key/wrapping), the validation cases, and a gate-polls
+  test asserting the hold set. `npm run test` passes.
 
 _Further entries go above this line._
 
