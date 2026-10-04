@@ -298,7 +298,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // start gate and the landings' startHeld read the LATEST poll's verdict at permit
       // time from gateStates.fleetHold, so a waiter granted its permit after later polls
       // ran meets the hold as it stands then, not as this poll left it.
-      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, capPaused, quietNow } =
+      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, capPaused, roleQuietHeld, quietNow } =
         pollFleetGates(gateStates, {
         root,
         runners,
@@ -400,8 +400,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // the start gate must agree on exactly when a fleet gate holds, so the compound lives
       // here once. Quiet hours fold in beside the operator pause and the budget gate — the
       // schedule is not probe-worthy the way a paused budget is, so no probeDue exception.
+      // The per-role windows (quietHoursPerRole) fold in beside the fleet one as a fourth
+      // disjunct — a role held by either window (or both, held once) starts no new ticks;
+      // the director stays exempt by the same role check that covers the other disjuncts.
       const operatorPauseBlocks = (role: string): boolean =>
-        (userPaused || quietNow || (gate === "paused" && !probeDue)) && role !== DIRECTOR_ROLE;
+        (userPaused || quietNow || roleQuietHeld.has(role) || (gate === "paused" && !probeDue)) &&
+        role !== DIRECTOR_ROLE;
       for (const runner of runners) {
         // Once mode: a paused role runs no tick this round and must be reported as skipped,
         // so it settles here — before the gates that would otherwise skip it silently (a

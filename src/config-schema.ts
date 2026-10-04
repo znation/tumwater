@@ -204,6 +204,13 @@ export interface TumwaterConfig {
    * or an absent key means off. The director is exempt — a human steering outranks a
    * schedule, exactly as under the budget gate and the operator pause. */
   quietHours?: string;
+  /** Per-role quiet hours (PLANS.md): the scheduled sibling of `maxDailyCostUsdPerRole` —
+   * keyed by role id, each value the same "HH:MM-HH:MM" window the fleet-wide `quietHours`
+   * takes (wrapping included; an empty string or an absent key means off for that role). A
+   * loop whose own window covers the local wall clock starts no new ticks — in-flight ticks
+   * finish — while the fleet-wide window keeps working unchanged: a role is held when
+   * EITHER window covers now. The director is exempt, exactly as under the fleet window. */
+  quietHoursPerRole?: Record<string, string>;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
    * fleet or one of its changes is stopped and only a human can act; src/notify.ts owns the
@@ -270,6 +277,7 @@ export const TOP_LEVEL_KEYS = [
   "maxDailyCostUsd",
   "maxDailyCostUsdPerRole",
   "quietHours",
+  "quietHoursPerRole",
   "notify",
   "fallbackModel",
   "thrashTurns",

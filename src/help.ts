@@ -49,7 +49,8 @@ Usage:
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one
                                    top-level key — quietHours ("23:00-07:00" or ""),
-                                   maxDailyCostUsd, fallbackModel, among others
+                                   quietHoursPerRole (per-role windows), maxDailyCostUsd,
+                                   fallbackModel, among others
                                    (JSON-parsed when parseable, else a literal string) —
                                    and confirm it
   tumwater logs [-f] [-n N] [--since <duration>] [--grep <text>] [--json]

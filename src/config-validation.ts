@@ -353,6 +353,33 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     }
   }
 
+  // Per-role quiet hours (src/quiet-hours.ts): the same known-role gate as the caps — a
+  // typo'd role id would silently no-op the window. Each value must parse as a quiet-hours
+  // window (an empty string means off for that role, the same disablement the fleet-wide
+  // key takes), and the message names the key and the offending id/value verbatim.
+  if ("quietHoursPerRole" in r) {
+    const windows = r.quietHoursPerRole;
+    if (!isJsonObject(windows)) {
+      problems.push(
+        `quietHoursPerRole must be an object mapping role ids to "HH:MM-HH:MM" windows (got ${show(windows)})`,
+      );
+    } else {
+      for (const id of Object.keys(windows)) {
+        if (!checkKnownRoleId("quietHoursPerRole", id, customNames, problems)) continue;
+        const value = windows[id];
+        if (typeof value !== "string") {
+          problems.push(
+            `quietHoursPerRole.${id} must be a "HH:MM-HH:MM" string like "23:00-07:00" (an empty string means off) (got ${show(value)})`,
+          );
+          continue;
+        }
+        if (value.trim() === "") continue; // empty = off for that role
+        const parsed = parseQuietHours(value);
+        if (!parsed.ok) problems.push(`quietHoursPerRole.${id}: ${parsed.error}`);
+      }
+    }
+  }
+
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
   // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards

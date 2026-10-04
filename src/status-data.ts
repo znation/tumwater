@@ -6,7 +6,7 @@ import { fallbackPair } from "./config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptCount, queuedRolePromptEntries } from "./inbox.js";
-import { quietHoursStatus } from "./quiet-hours.js";
+import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import {
   orchestratorAlive,
@@ -105,6 +105,16 @@ export interface StatusSnapshot {
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
+  /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by role
+   * id to that role's window string as written (trimmed by quietHoursStatus's parser rule —
+   * the schedule as written, not a reformat). An idle loop in this map reads the fleet
+   * gate's own quiet wording, scoped to its window — `quiet until <end>`. Computed with
+   * roleQuietHold against the same last-known-good config as `capPaused` (a transiently
+   * broken tumwater.json degrades with the whole config), the director exempt exactly as
+   * the scheduler's gate exempts it. Empty when no per-role window holds anyone — the
+   * `capPaused` shape's keyed sibling. Fresh per poll, like `capPaused`: a live `config
+   * set quietHoursPerRole` edit shows on the next poll. */
+  roleQuietPaused: Record<string, string>;
   /** The fleet marker's standing deadline (ms epoch) while a timed pause
    * (`tumwater pause --for <duration>`) holds — undefined for an indefinite fleet pause, a
    * role-only pause, or an expired `until` (fleet-state's read side already treats expiry as
@@ -300,6 +310,16 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     capPaused: loops
       .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
       .map((l) => l.role),
+    // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
+    // window, so the dashboards can render the same `quiet until <end>` wording the fleet
+    // badge uses, scoped to the loop's own schedule. The window string comes back out of
+    // the same config the hold was decided from, so the label cannot name a window that is
+    // not holding (roleQuietHold true implies a parseable, non-empty string there).
+    roleQuietPaused: Object.fromEntries(
+      loops
+        .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, l.role, new Date()))
+        .map((l) => [l.role, cfg.quietHoursPerRole?.[l.role] ?? ""]),
+    ),
     pausedUntil: fleetPause?.until,
     pauseReason: fleetPause?.reason,
     quietHours: quiet.window ?? undefined,

@@ -63,7 +63,9 @@ Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spe
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
 cap starts no new ticks until the next local day or a live edit), a nightly `quietHours` window
 (e.g. `"23:00-07:00"` local time) during
-which role loops start no new ticks (the director is exempt), user-defined `customLoops`, and an
+which role loops start no new ticks (the director is exempt), with optional per-role windows
+`quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
+fleet-wide window covers now — user-defined `customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
 breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER_EVENT_TYPE`,

@@ -5,7 +5,14 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop)
+_None yet._
+
+_Further entries go above this line._
+
+## Done
+
+
+### Per-role quiet hours: `quietHoursPerRole`, the scheduled sibling of `maxDailyCostUsdPerRole` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** The fleet-wide `quietHours` window silences every role at once, but the operator's
 real schedule is per-role: run the cheap roles around the clock and hold the expensive ones
@@ -63,10 +70,7 @@ README.md, plus tests (quiet-hours and config-validation suites).
 - Tests cover the helper (in/out/absent-key/wrapping), the validation cases, and a gate-polls
   test asserting the hold set. `npm run test` passes.
 
-_Further entries go above this line._
-
-## Done
-
+_Note on the status surface: the plan's "same quiet-hours hold wording" is delivered — status-data.ts computes `roleQuietPaused` (role → window, director exempt) with the new roleQuietHold helper, and status-model.ts's loopPhase renders the fleet badge's own `quiet until <end>` wording scoped to the loop's window, carried to the GUI payload through status-payload.ts. `src/config-example.ts` holds no key catalog (it seeds from the tracked tumwater.example.json, which sets no quietHours), so it needed no change; help.ts and the README settings paragraph name the new key beside its fleet-wide sibling._
 
 ### `tumwater prompt --at <duration>` — queue a steering prompt that stays hidden until its time arrives (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

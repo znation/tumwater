@@ -13,6 +13,7 @@ import {
   parseQuietHours,
   pollQuietHoursGate,
   quietHoursStatus,
+  roleQuietHold,
 } from "../src/quiet-hours.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -174,4 +175,35 @@ test("pollQuietHoursGate: a live edit from a window to off logs the ended crossi
     "quiet_hours_ended",
     "quiet_hours_started",
   ]);
+});
+
+// Per-role quiet hours (PLANS.md, quietHoursPerRole): roleQuietHold reuses the fleet
+// window's parser and predicate, so a per-role value means exactly what the same string
+// means fleet-wide — wrapping included. Absent, off, and unparseable all read as off here;
+// validation is config-validation.ts's business.
+test("roleQuietHold: the per-role window holds the loop it names and no other", () => {
+  const perRole = { feature: "23:00-07:00" };
+  // Inside a wrapping window (23:00-07:00): 23:30 and 06:59 hold, 07:00 exits, 22:59 has
+  // not entered.
+  assert.equal(roleQuietHold(perRole, "feature", localDate(23, 30)), true);
+  assert.equal(roleQuietHold(perRole, "feature", localDate(6, 59)), true);
+  assert.equal(roleQuietHold(perRole, "feature", localDate(7, 0)), false);
+  assert.equal(roleQuietHold(perRole, "feature", localDate(22, 59)), false);
+  // A same-day window: the ordinary half-open range.
+  const day = { qa: "10:00-12:00" };
+  assert.equal(roleQuietHold(day, "qa", localDate(10, 0)), true);
+  assert.equal(roleQuietHold(day, "qa", localDate(11, 59)), true);
+  assert.equal(roleQuietHold(day, "qa", localDate(12, 0)), false);
+  // Other roles are untouched by a window that does not name them.
+  assert.equal(roleQuietHold(perRole, "docs", localDate(23, 30)), false);
+  // An absent key, an empty string (off), and a whitespace value are all off.
+  assert.equal(roleQuietHold(undefined, "feature", localDate(23, 30)), false);
+  assert.equal(roleQuietHold({ feature: "" }, "feature", localDate(23, 30)), false);
+  assert.equal(roleQuietHold({ feature: "  " }, "feature", localDate(23, 30)), false);
+  // An unparseable value reads as off — validation rejects it elsewhere; the helper must
+  // never hold a loop the operator did not schedule.
+  assert.equal(roleQuietHold({ feature: "25:00-07:00" }, "feature", localDate(23, 30)), false);
+  assert.equal(roleQuietHold({ feature: "nonsense" }, "feature", localDate(23, 30)), false);
+  // A non-string value is off, likewise.
+  assert.equal(roleQuietHold({ feature: 5 } as unknown as Record<string, string>, "feature", localDate(23, 30)), false);
 });

@@ -122,6 +122,25 @@ export function pollQuietHoursGate(
   return inNow;
 }
 
+/** Per-role quiet hours (PLANS.md, `quietHoursPerRole`): is `role`'s own window holding at
+ * `now`? The membership decision reuses the fleet window's own parser and predicate, so a
+ * per-role window means exactly what the same string means fleet-wide (wrapping included).
+ * An absent key, a non-string, or an unparseable value reads as off here — validation is
+ * config-validation.ts's job, not this helper's, and a malformed value must never hold a
+ * loop the operator did not schedule. Stateless: unlike the fleet-wide gate there is no
+ * edge-triggered event — a per-role hold is an anonymous verdict recomputed per poll,
+ * exactly like `capPaused`'s set (role-cap-gates.ts). */
+export function roleQuietHold(
+  perRole: Record<string, string> | undefined,
+  role: string,
+  now: Date,
+): boolean {
+  const value = perRole?.[role];
+  if (typeof value !== "string" || value.trim() === "") return false;
+  const parsed = parseQuietHours(value);
+  return parsed.ok && parsed.window !== null && inQuietHours(parsed.window, now);
+}
+
 /** The window's end time exactly as the operator wrote it — the text after the dash, trimmed —
  * for the surfaces that say "quiet until <end>" (badges.ts's quietBadge, fleet-alerts' quiet
  * alert). parseQuietHours enforces exactly one dash, so reading the end back out of the string

@@ -5,6 +5,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-apply.js";
 import { yieldMultiplier } from "../backoff.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
+import { quietWindowEnd } from "../quiet-hours.js";
 import { humanSeconds } from "../datetime.js";
 import { compactTokens } from "../text.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing-slot.js";
@@ -184,6 +185,7 @@ export function loopPhase(
   landing?: LandingCell | null,
   mainCheck?: StatusSnapshot["mainCheck"],
   capPaused = false,
+  quietHold?: string,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -225,6 +227,11 @@ export function loopPhase(
   // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
   // "user intent is more specific than spend state" argument extended one level down.
   if (capPaused) return "cap paused";
+  // The loop's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the fleet gate's own
+  // wording — `quiet until <end>` — scoped to the one loop the operator scheduled. Shown
+  // after the cap and before the fleet's budget pause: the loop's own schedule is more
+  // specific than either.
+  if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
   if (budgetPaused) return "budget paused";
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
@@ -316,6 +323,9 @@ export function loopRowCells(
     // The per-role cap's verdict, computed once per poll in the snapshot (status-data.ts
     // roleCapPaused): an idle loop over its own cap reads `cap paused` on every surface.
     snap.capPaused.includes(s.role),
+    // The per-role quiet window's verdict (status-data.ts roleQuietPaused): an idle loop
+    // inside its own window reads `quiet until <end>` — the fleet badge's wording, scoped.
+    snap.roleQuietPaused?.[s.role],
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }

@@ -197,3 +197,44 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_paused").length, 1);
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_resumed").length, 1);
 });
+
+// Per-role quiet hours (PLANS.md quietHoursPerRole): pollFleetGates folds the per-role
+// windows into a stateless hold set beside capPaused — no events, no bookkeeping.
+test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds; the director is exempt", () => {
+  const root = tmpdir("gate-polls-rolequiet-");
+  const config = defaultConfig();
+  config.quietHoursPerRole = { docs: "00:00-23:59", coverage: "", qa: "23:00-07:00" };
+  const runners = [
+    fakeRunner("docs", freshLoopState("docs"), null, []),
+    fakeRunner("coverage", freshLoopState("coverage"), null, []),
+    fakeRunner("qa", freshLoopState("qa"), null, []),
+    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+  ];
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", "qa", DIRECTOR_ROLE] },
+    infoFile: path.join(root, "orchestrator.json"),
+  };
+  // A mid-day poll (whenever this runs): docs' near-all-day window holds, coverage's empty
+  // window is off, qa's wrapping window only holds late night. Whichever side of 07:00 the
+  // test's clock lands on, docs and the director's verdicts are time-independent.
+  const poll = pollFleetGates(newFleetGateStates(config), ctx);
+  assert.ok(poll.roleQuietHeld.has("docs"), "docs' near-all-day window holds at any local time");
+  assert.ok(!poll.roleQuietHeld.has("coverage"), "an empty window is off for that role");
+  assert.ok(!poll.roleQuietHeld.has(DIRECTOR_ROLE), "the director is exempt");
+  assert.ok(!poll.pausedRoles.has("docs"), "no pause marker is written — stateless beside capPaused");
+
+  // A live edit removing the key lifts the verdict on the next poll, and no events were
+  // logged for any of it (stateless — the fleet window's edge events are the only quiet
+  // hours events there are).
+  const lifted = pollFleetGates(newFleetGateStates(config), {
+    ...ctx,
+    liveConfig: { ...config, quietHoursPerRole: undefined },
+  });
+  assert.equal(lifted.roleQuietHeld.size, 0);
+  assert.equal(readEvents(root, 100).length, 0);
+});

@@ -600,3 +600,33 @@ test("a parked waiter renders `awaiting slot` and stays out of the active set", 
   ]);
   assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
 });
+
+// Per-role quiet hours (PLANS.md quietHoursPerRole): an idle loop inside its own window
+// reads the fleet gate's own quiet wording, scoped to its window — `quiet until <end>`.
+test("loopPhase reads quiet until <end> for idle loops held by their own quietHoursPerRole window", () => {
+  const s = freshLoopState("feature");
+  // Not held: ordinary phase labels are untouched.
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "queued");
+  // Held by its own wrapping window: the fleet badge's wording with the loop's own end.
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
+    "quiet until 07:00",
+  );
+  // The loop's own schedule is more specific than the fleet's budget pause.
+  assert.equal(
+    loopPhase(s, true, undefined, true, null, false, undefined, undefined, false, "23:00-07:00"),
+    "quiet until 07:00",
+  );
+  // User intent still wins: an operator-paused loop reads `paused` even inside its window.
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, true, undefined, undefined, false, "23:00-07:00"),
+    "paused",
+  );
+  // In-flight ticks finish even while held — only NEW ticks are blocked.
+  const running = freshLoopState("feature");
+  running.running = true;
+  assert.equal(
+    loopPhase(running, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
+    "working",
+  );
+});

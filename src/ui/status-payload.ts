@@ -152,6 +152,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // loop in this set reads `cap paused` — the loopPhase ladder names it, and `status
     // --json` carries the raw set beside pausedRoles so scripts read the same verdict.
     capPaused: snap.capPaused,
+    // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
+    // window, machine-readable for `status --json` beside capPaused; the dashboards render
+    // the loop's own `quiet until <end>` from it through loopPhase.
+    roleQuietPaused: snap.roleQuietPaused,
     // The fleet marker's standing timed-pause deadline (ms epoch), absent when the fleet is
     // not timed-paused (undefined drops from the JSON). Raw data, like paused/pausedRoles —
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it

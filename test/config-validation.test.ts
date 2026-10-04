@@ -651,3 +651,43 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
   assert.equal(validateConfig({ ...defaultConfig(), tickTimeoutSeconds: MAX_DURATION_SECONDS }), undefined);
   assert.equal(validateConfig({ ...defaultConfig() }), undefined);
 });
+
+// Per-role quiet hours (PLANS.md quietHoursPerRole): the same known-role gate as the caps,
+// each value a quiet-hours window (empty string = off).
+test("validateConfig accepts a well-formed quietHoursPerRole map and rejects bad ones", () => {
+  // Absent key: the pre-feature shape, still valid.
+  assert.doesNotThrow(() => validateConfig(defaultConfig()));
+  // Built-in ids, a customLoops name, and the off value are all valid.
+  assert.doesNotThrow(() =>
+    validateConfig({
+      ...defaultConfig(),
+      quietHoursPerRole: { qa: "23:00-07:00", organize: "", coverage: "10:00-12:00" },
+      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+    }),
+  );
+  // A non-object names the key and shows the value.
+  assert.match(
+    validationError({ ...defaultConfig(), quietHoursPerRole: "23:00-07:00" }),
+    /quietHoursPerRole must be an object mapping role ids to "HH:MM-HH:MM" windows \(got "23:00-07:00"\)/,
+  );
+  // An unknown role id names the key and the offending id (a typo would silently no-op).
+  assert.match(
+    validationError({ ...defaultConfig(), quietHoursPerRole: { qa2: "23:00-07:00" } }),
+    /quietHoursPerRole\.qa2 is not a known role \(valid ids: /,
+  );
+  // A non-string value names the key, the id, and the value.
+  assert.match(
+    validationError({ ...defaultConfig(), quietHoursPerRole: { qa: 7 } }),
+    /quietHoursPerRole\.qa must be a "HH:MM-HH:MM" string like "23:00-07:00" \(an empty string means off\) \(got 7\)/,
+  );
+  // A malformed window passes the parser's message through, prefixed with key and id.
+  assert.match(
+    validationError({ ...defaultConfig(), quietHoursPerRole: { qa: "25:00-07:00" } }),
+    /quietHoursPerRole\.qa: quietHours times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59/,
+  );
+  // A zero-length window is malformed the same way.
+  assert.match(
+    validationError({ ...defaultConfig(), quietHoursPerRole: { qa: "23:00-23:00" } }),
+    /quietHoursPerRole\.qa: quietHours start and end must differ/,
+  );
+});

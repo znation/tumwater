@@ -18,6 +18,7 @@ import {
 import {
   newQuietHoursGateState,
   pollQuietHoursGate,
+  roleQuietHold,
   type QuietHoursGateState,
 } from "./quiet-hours.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold } from "./fleet-polls.js";
@@ -88,6 +89,10 @@ interface FleetGatePoll {
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
+  /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
+   * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
+   * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
+  roleQuietHeld: ReadonlySet<string>;
   quietNow: boolean;
 }
 
@@ -195,6 +200,18 @@ export function pollFleetGates(
   // local midnight lifts the verdict by itself.
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
+  // Per-role quiet hours (src/quiet-hours.ts): a role whose own quietHoursPerRole window
+  // covers `now` starts no new ticks — the fleet window's semantics scoped to one loop, the
+  // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
+  // capPaused: no crossing events, no state — a live config edit applies on the next poll
+  // by construction. A role held by BOTH windows is held once: the scheduling pass folds
+  // both verdicts into one hold condition, nothing counts a role twice.
+  const roleQuietHeld = new Set<string>();
+  for (const r of runners) {
+    if (r.role === DIRECTOR_ROLE) continue;
+    if (roleQuietHold(liveConfig.quietHoursPerRole, r.role, new Date(now))) roleQuietHeld.add(r.role);
+  }
+
   // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
   // which role loops start no new ticks — the operator pause's semantics on a schedule.
   // The config value is read fresh per cycle, so a live edit applies on the next poll;
@@ -241,5 +258,5 @@ export function pollFleetGates(
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, runners, now);
 
-  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, capPaused, quietNow };
+  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, capPaused, roleQuietHeld, quietNow };
 }
