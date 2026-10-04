@@ -62,6 +62,39 @@ test("a torn trailing write is ignored until its newline lands", () => {
   assert.deepEqual(collectReport(root, 2), complete);
 });
 
+test("a rotated log replaced by a fresh larger one refolds instead of folding the new log's bytes", () => {
+  const root = tmpdir();
+  fs.mkdirSync(path.dirname(logOf(root)), { recursive: true });
+  // Five 100-token ticks warm the memo; the cache's offset lands at this file's size.
+  fs.writeFileSync(
+    logOf(root),
+    Array.from({ length: 5 }, () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tokens: 100 })).join("\n") + "\n",
+  );
+  assert.equal(warmed(root, 2).totals.tokensOut, 500);
+  // Rotation: rename the whole log away and let a fresh log grow in its place — with ten
+  // 10-token ticks AND a size already past the cached offset. Size/mtime alone read as
+  // "grown", so the growth arm would fold the fresh log's bytes from the old offset into
+  // the folds that cover the retired log — double-counting whatever slice it reads and
+  // losing the rest; the inode pins the file the folds cover and forces the full refold.
+  fs.renameSync(logOf(root), logOf(root) + ".1");
+  // Ten 10-token fresh ticks, but split by a padding run of spaces so the fresh file's size
+  // exceeds the cached offset while the bytes past that offset hold only a strict SUFFIX of
+  // the fresh events — whatever the growth arm folds from the old offset is a partial fold,
+  // never the fresh log's full contribution.
+  const tick = () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tokens: 10 });
+  const oldSize = fs.statSync(logOf(root) + ".1").size;
+  const head = [tick(), tick(), tick()].join("\n") + "\n";
+  const tail = [tick(), tick(), tick(), tick(), tick(), tick(), tick()].join("\n") + "\n";
+  const padLen = Math.max(1, oldSize - head.length + 40);
+  fs.writeFileSync(logOf(root), head + " ".repeat(padLen) + "\n" + tail);
+  assert.ok(fs.statSync(logOf(root)).size > oldSize, "fresh log must exceed the cached offset");
+  // The window's history survives rotation via the archive (events.jsonl.1): the report
+  // folds the archived five 100-token ticks plus the fresh ten 10-token ticks.
+  const report = warmed(root, 2);
+  assert.equal(report.totals.tokensOut, 600);
+  assert.equal(report.totals.ticks, 15);
+});
+
 test("a shrunken log (rotation) refolds instead of misaligning the byte offset", () => {
   const root = tmpdir();
   fs.mkdirSync(path.dirname(logOf(root)), { recursive: true });

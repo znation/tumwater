@@ -93,6 +93,12 @@ interface ReportFoldEntry {
   fromKey: string;
   offset: number;
   mtimeMs: number;
+  // The log file's identity. Size/mtime alone cannot tell a replaced file from a grown one:
+  // rotation renames events.jsonl away and a fresh log grows in its place, and a fresh file
+  // whose size already exceeds the cached offset would be read from that offset and fold a
+  // different log's bytes into the old folds. The inode pins the file the folds cover.
+  dev: number;
+  ino: number;
   fileCovers: boolean;
   hadEvents: boolean;
   firstEventTs?: number;
@@ -154,13 +160,15 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
   const liveStat = statOrNull(eventsLogPath(root));
   const size = liveStat?.size ?? 0;
   const mtimeMs = liveStat?.mtimeMs ?? 0;
+  const dev = liveStat?.dev ?? 0;
+  const ino = liveStat?.ino ?? 0;
   const cached = reportFoldCache.get(key);
-  if (cached && size === cached.offset && mtimeMs === cached.mtimeMs) {
+  if (cached && size === cached.offset && mtimeMs === cached.mtimeMs && dev === cached.dev && ino === cached.ino) {
     reportFoldCache.delete(key); // Refresh LRU position.
     reportFoldCache.set(key, cached);
     return cached;
   }
-  if (cached && size > cached.offset) {
+  if (cached && size > cached.offset && dev === cached.dev && ino === cached.ino) {
     const { lines, end } = readCompleteLines(eventsLogPath(root), cached.offset, size);
     if (end > cached.offset) {
       for (const line of lines) foldLineInto(cached, line);
@@ -178,6 +186,8 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
     fromKey,
     offset: size,
     mtimeMs,
+    dev,
+    ino,
     fileCovers: raw.coversFullWindow,
     hadEvents: raw.events.length > 0,
     firstEventTs: typeof raw.events[0]?.ts === "number" ? raw.events[0].ts : undefined,
