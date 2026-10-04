@@ -363,6 +363,24 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
   assert.ok(!again.prompt.includes("<user-request>"));
 });
 
+// A deferred prompt (`tumwater prompt --at <duration>`) delivers once its not-before time has
+// passed; the marker line is plumbing (src/inbox.ts) and must never reach the loop — the same
+// strip every display surface applies (stripNotBeforeMarker).
+test("a delivered deferred prompt rides without its not-before marker line", () => {
+  const dir = root();
+  enqueueRolePrompt(dir, "coverage", "check the export flow", Date.now() - 60_000);
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(result);
+  assert.equal(result.userPrompt, "check the export flow");
+  assert.match(result.prompt, /<user-request>\ncheck the export flow\n<\/user-request>/);
+  assert.ok(!result.prompt.includes("tumwater:not-before"), "the marker is plumbing, not content");
+});
+
 // The clean role's stranded-plan block (src/backlog-structure.ts, plans part 3/4): the repair
 // evidence rides in the tick prompt only when the primary checkout's PLANS.md is stranded.
 
