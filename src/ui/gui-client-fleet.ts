@@ -5,23 +5,9 @@
  * feed (the loops table with its per-row actions lives in gui-client-loops.ts; the composer
  * rendered onto this view lives in gui-client-composer.ts). renderFleet repaints all of it
  * from each /api/status poll. Spliced into gui-client.ts's script, reaching its helpers (esc,
- * icon, getJson, postJson, plural, recall, fmtAgo, fmtTokens, fmtUsd, paintPanel, showFlash)
- * through that concatenation. */
+ * icon, getJson, postJson, postAction, plural, recall, fmtAgo, fmtTokens, fmtUsd,
+ * paintPanel, showFlash) through that concatenation. */
 export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet status, budget and pause controls ----
-  // post-action:start
-  // Fire one POST and report its outcome in the flash bar — the derived success message, or
-  // "error: <reason>" when the server refused — then refresh so the page reflects the new
-  // state. The shape every fleet action button shares; message() derives the wording from the
-  // endpoint's answer (which can be null when it sent no JSON).
-  async function postAction(path, body, message) {
-    try {
-      showFlash(message(await postJson(path, body)));
-    } catch (e) {
-      showFlash("error: " + e.message);
-    }
-    refresh();
-  }
-  // post-action:end
   // restart-button:start
   // The restart affordance's exact markup — one home shared by the sidebar's stale-build row
   // and alertParts()'s build alert, so styling and the global [data-act='restart'] handler

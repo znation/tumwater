@@ -15,7 +15,7 @@
  * earlier in the join), and the shared page state it reads and invalidates (lastStatus,
  * lastPaint). Its own two popovers share their scaffolding through openPopover (each
  * supplies the html plus an onClosed that resets its flag and re-renders the slot), and
- * its two POSTs share their send-toast-close-repaint tail through postAction. */
+ * its two POSTs share their send-toast-close-repaint tail through the core's postAction. */
 export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   // The scaffolding both sidebar popovers share (the cap editor, the pause menu): close
   // whatever is open, build the popover element into the slot's wrap, and register the
@@ -41,20 +41,10 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     };
     return pop;
   }
-  // The tail both operator POSTs share: send it; on failure toast the error and leave the
-  // control showing what the server last reported, on success toast the ok message, close
-  // any open popover, and repaint from the next status poll.
-  async function postAction(url, body, okMsg) {
-    try {
-      await postJson(url, body);
-    } catch (e) {
-      showFlash("error: " + e.message);
-      return;
-    }
-    showFlash(okMsg);
-    closeMenus();
-    refresh();
-  }
+  // The tail both operator POSTs share: postAction (the core's one POST-and-toast step —
+  // an error leaves the control showing what the server last reported, a success toasts the
+  // ok message, closes any open popover, and repaints from the next status poll) does that
+  // work; these handlers only build the body and message.
   // shared-operator:end
 
   // budget-edit:start

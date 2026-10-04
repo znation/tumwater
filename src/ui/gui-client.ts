@@ -80,6 +80,28 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
                                      body: JSON.stringify(payload) });
     try { return await r.json(); } catch { return null; }
   }
+  // post-action:start
+  // Fire one POST and report its outcome in the flash bar, then close any open popover and
+  // repaint: on success the message — a string, or the derived form the fleet callers build
+  // from the endpoint's answer (which can be null when it sent no JSON) — on failure
+  // "error: <reason>" with the popover left open and the standing 1s status poll repainting
+  // from the server's state. The one POST-and-toast step every fleet and operator control
+  // shares. Single-homed here, in the core before every splice: a second declaration in a
+  // later splice would shadow this one (function declarations hoist; the last in one scope
+  // wins), which is how the budget editor once called the fleet shape with a string message.
+  async function postAction(path, body, okMsg) {
+    let d;
+    try {
+      d = await postJson(path, body);
+    } catch (e) {
+      showFlash("error: " + e.message);
+      return;
+    }
+    showFlash(typeof okMsg === "function" ? okMsg(d) : okMsg);
+    closeMenus();
+    refresh();
+  }
+  // post-action:end
 `;
 
 /** Display formatters — the client copies of text.ts / status-model.ts / status-render.ts

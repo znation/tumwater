@@ -214,6 +214,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   };
   const scope = clientScope<{ rowAction(action: string, role: string): Promise<void>; abortConfirming(role: string): boolean }>(
     ["post-action", "row-actions"], ["rowAction", "abortConfirming"], {
+      closeMenus: () => {},
       postJson: async (path: string, body: unknown) => {
         posts.push({ path, body });
         if (path === "/api/abort" && (body as { role: string }).role === "offline") throw new Error("/api/abort failed: HTTP 409 — no harness is running");
@@ -294,7 +295,7 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setFleetPause(paused: boolean, forSeconds?: number): Promise<void>;
-  }>(["format", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "saveBudget", "pauseControlHtml", "setFleetPause"], {
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "saveBudget", "pauseControlHtml", "setFleetPause"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
