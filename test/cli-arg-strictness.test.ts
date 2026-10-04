@@ -259,14 +259,14 @@ test("a malformed flag value is named before the ready-repo gate", async () => {
   // shape parser at the gate, so the wording is the parser's, byte for byte, in both places.
   const empty = tmpdir();
   const cases: Array<[string[], RegExp]> = [
-    [["logs", "--since", "bogus"], /logs --since needs a duration like 45s, 90m, 2h, or 1d \(got "bogus"\)/],
-    [["history", "--since", "0s"], /history --since needs a duration like 45s, 90m, 2h, or 1d \(got "0s"\)/],
-    [["report", "--since", "45"], /report --since needs a duration like 45s, 90m, 2h, or 1d \(got "45"\)/],
+    [["logs", "--since", "bogus"], /logs --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "bogus"\)/],
+    [["history", "--since", "0s"], /history --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "0s"\)/],
+    [["report", "--since", "45"], /report --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "45"\)/],
     [["logs", "-n", "0"], /-n needs a positive integer \(got "0"\)/],
     [["history", "-n", "abc"], /-n needs a positive integer \(got "abc"\)/],
     [["report", "--days", "abc"], /--days needs a positive integer \(got "abc"\)/],
     [["gui", "--port", "abc"], /--port must be an integer between 1 and 65535 \(got "abc"\)/],
-    [["pause", "--for", "xyz"], /--for needs a duration like 45s, 90m, 2h, or 1d \(got "xyz"\)/],
+    [["pause", "--for", "xyz"], /--for needs a duration like 45s, 90m, 1h30m, or 2d \(got "xyz"\)/],
   ];
   for (const [args, pattern] of cases) {
     const r = await cli(empty, ...args);
@@ -280,7 +280,7 @@ test("a malformed flag value is named before the ready-repo gate", async () => {
   await initProject(repo, "cli malformed flag value");
   const ready = await cli(repo, "logs", "--since", "bogus");
   assert.equal(ready.code, 1);
-  assert.match(ready.stderr, /logs --since needs a duration like 45s, 90m, 2h, or 1d \(got "bogus"\)/);
+  assert.match(ready.stderr, /logs --since needs a duration like 45s, 90m, 1h30m, or 2d \(got "bogus"\)/);
 });
 
 test("a valued flag left without its value is named before the ready-repo gate", async () => {

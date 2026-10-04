@@ -94,30 +94,71 @@ export function parsePortFlag(raw: string | undefined): number {
 /** Milliseconds per unit, the multiplier parseDurationFlag's regex group is applied to. */
 const UNIT_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
 
-/** Parse a `--for <duration>` flag value: `<n>` followed by one unit `s`/`m`/`h`/`d`
- * (e.g. `45s`, `90m`, `2h`, `1d`), or fail with a clear message; returns the duration in
- * milliseconds. Zero and negative durations would write a pause marker that reads as already
- * expired — a pause that pauses nothing — so they fail like any other malformed value. No
- * absolute `--at` form: one way of saying "pause for a while".
+/** The position of each unit in the descending order a composite duration must follow
+ * (d → h → m → s), so `30m1h` and `1h30m1h` fail instead of parsing to a surprising total. */
+const UNIT_ORDER: Record<keyof typeof UNIT_MS, number> = { d: 0, h: 1, m: 2, s: 3 };
+
+/** Parse a composite duration spelling: one or more `<n><unit>` components in strictly
+ * descending unit order (e.g. `45s`, `90m`, `1h30m`, `1h30m15s`), each a plain-decimal
+ * count — no leading zero (`007s` fails, as parsePositiveInt's documented rule reads) and
+ * none zero (`0h30m` fails; write `30m`). A gap between components (whitespace, junk) and
+ * an out-of-order or repeated unit return null. Returns the total in milliseconds, or
+ * null. The one home for the duration grammar so parseDurationFlag's acceptance and
+ * durationLabel's echo cannot drift. */
+function parseDurationMs(raw: string): number | null {
+  const re = /([1-9]\d*)([smhd])/g;
+  let ms = 0;
+  let consumed = 0;
+  let prevOrder = -1;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    if (m.index !== consumed) return null; // a gap: whitespace or junk between components
+    const order = UNIT_ORDER[m[2] as keyof typeof UNIT_MS];
+    if (order <= prevOrder) return null; // repeated or out-of-order unit
+    prevOrder = order;
+    ms += Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS];
+    consumed = re.lastIndex;
+  }
+  return consumed === raw.length && consumed > 0 ? ms : null;
+}
+
+/** Parse a `--for <duration>` flag value: one or more `<n><unit>` components in strictly
+ * descending unit order (e.g. `45s`, `90m`, `1h30m`, `1d`), or fail with a clear message;
+ * returns the duration in milliseconds. Zero and negative durations would write a pause
+ * marker that reads as already expired — a pause that pauses nothing — so they fail like
+ * any other malformed value. No absolute `--at` form: one way of saying "pause for a while".
  * Exported for tests and for the pause confirmations' duration phrasing (durationLabel). */
 export function parseDurationFlag(flag: string, raw: string | undefined): number {
   if (raw === undefined) fail(`${flag} needs a value`);
-  const m = /^(\d+)([smhd])$/.exec(raw);
-  if (!m || Number(m[1]) === 0)
-    fail(`${flag} needs a duration like 45s, 90m, 2h, or 1d (got ${JSON.stringify(raw)})`);
-  return Number(m[1]) * UNIT_MS[m[2] as keyof typeof UNIT_MS];
+  const ms = parseDurationMs(raw);
+  if (ms === null)
+    fail(`${flag} needs a duration like 45s, 90m, 1h30m, or 2d (got ${JSON.stringify(raw)})`);
+  return ms;
 }
 
-/** The human phrase for a parseDurationFlag duration (`45000` → `45s`, `5400000` → `90m`):
- * the same `<n><unit>` vocabulary the parser accepts, so a pause confirmation echoes back a
- * form the operator could re-type. The largest unit the duration divides into evenly wins, so
- * a whole hour reads `1h`, not `60m`; sub-second remains are impossible (the parser's units
- * bottom out at seconds). Lives beside parseDurationFlag so phrase and parser cannot drift. */
+/** The human phrase for a parseDurationFlag duration (`45000` → `45s`, `5400000` → `90m`,
+ * `3600000` → `1h`): the same `<n><unit>` vocabulary the parser accepts, so a pause
+ * confirmation echoes back a form the operator could re-type. A duration that divides evenly
+ * into a day, hour, or minute reads that single unit (a whole hour reads `1h`, not `60m`, so
+ * ninety minutes reads `90m`); anything else decomposes greedily, largest unit first
+ * (`5403s` → `1h30m3s`, `90s` → `1m30s`, `45s` unchanged); a sub-second remainder
+ * (impossible from parseDurationFlag, but possible from computed deltas) keeps the
+ * raw-millisecond form. Lives beside parseDurationFlag so phrase and parser cannot drift. */
 export function durationLabel(ms: number): string {
-  for (const [unit, size] of Object.entries(UNIT_MS).reverse() as [keyof typeof UNIT_MS, number][]) {
-    if (ms % size === 0) return `${ms / size}${unit}`;
+  const units = Object.entries(UNIT_MS).reverse() as [keyof typeof UNIT_MS, number][];
+  if (ms === 0) return "0s";
+  for (const [unit, size] of units) {
+    if (size >= UNIT_MS.m && ms % size === 0) return `${ms / size}${unit}`;
   }
-  return `${ms}ms`; // Unreachable: every whole-second duration divides into the `s` unit.
+  let rest = ms;
+  const parts: string[] = [];
+  for (const [unit, size] of units) {
+    if (rest >= size) {
+      parts.push(`${Math.floor(rest / size)}${unit}`);
+      rest %= size;
+    }
+  }
+  return rest === 0 ? parts.join("") : `${ms}ms`;
 }
 
 /** The shared over-cap check for duration-valued flags: fail with the one message shape —

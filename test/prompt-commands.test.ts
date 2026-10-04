@@ -251,8 +251,8 @@ test("prompt --at is refused in the read-only and destructive modes", async () =
   assert.match(cancel.stderr, /--at only queues a prompt/);
   // A malformed duration fails with parseDurationFlag's message before anything is queued.
   const bad = await expectFail(() => cmdPrompt(root, ["--at", "nope", "hello"]));
-  assert.match(bad.stderr, /--at needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(bad.stderr, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
   const zero = await expectFail(() => cmdPrompt(root, ["--at", "0m", "hello"]));
-  assert.match(zero.stderr, /--at needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(zero.stderr, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
   assert.equal(inboxSize(root), 0, "nothing was queued by the refused shapes");
 });

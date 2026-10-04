@@ -431,7 +431,7 @@ test("history --since refuses the rival shape and validates through the shared d
 
   const malformed = await cli(repo, "history", "--since", "45x");
   assert.equal(malformed.code, 1);
-  assert.match(malformed.stderr, /history --since needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(malformed.stderr, /history --since needs a duration like 45s, 90m, 1h30m, or 2d/);
 
   const valueless = await cli(repo, "history", "--since");
   assert.equal(valueless.code, 1);

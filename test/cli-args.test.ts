@@ -258,10 +258,25 @@ test("parseDurationFlag accepts <n><s|m|h|d> and rejects zero, negative, unit-le
   assert.equal(missing.code, 1);
   assert.match(missing.stderr, /--for needs a value/);
 
-  for (const raw of ["0", "0m", "0s", "-5m", "30", "30x", "", "m", "1.5h", "1h30m"]) {
+  for (const raw of ["0", "0m", "0s", "-5m", "30", "30x", "", "m", "1.5h"]) {
     const r = expectFail(() => parseDurationFlag("--for", raw));
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /--for needs a duration like 45s, 90m, 2h, or 1d/);
+    assert.match(r.stderr, /--for needs a duration like 45s, 90m, 1h30m, or 2d/);
+  }
+});
+
+test("parseDurationFlag accepts composite durations in descending unit order", () => {
+  assert.equal(expectOk(() => parseDurationFlag("--for", "1h30m")), 90 * 60_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "1h30m15s")), 5_415_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "2d3h")), 2 * 86_400_000 + 3 * 3_600_000);
+  assert.equal(expectOk(() => parseDurationFlag("--for", "1h15m")), 75 * 60_000);
+});
+
+test("parseDurationFlag rejects malformed composites: gaps, out-of-order and repeated units, zero components, padded counts", () => {
+  for (const raw of ["1h 30m", "1h x30m", "30m1h", "1h30m1h", "1m60h", "0h30m", "1h0m", "01h30m", "007s", "1h30", "h30m"]) {
+    const r = expectFail(() => parseDurationFlag("--for", raw));
+    assert.equal(r.code, 1, raw);
+    assert.match(r.stderr, /--for needs a duration like 45s, 90m, 1h30m, or 2d/);
   }
 });
 
@@ -271,6 +286,13 @@ test("durationLabel phrases a parsed duration back in the parser's vocabulary", 
   }
   // A whole hour reads 1h, not 60m — the largest unit the duration divides into evenly wins.
   assert.equal(durationLabel(60 * 60_000), "1h");
+  // A composite that fits no single unit decomposes greedily, largest unit first, so the
+  // label names components the parser re-reads.
+  assert.equal(durationLabel(90 * 60_000 + 3_000), "1h30m3s");
+  assert.equal(durationLabel(2 * 86_400_000 + 3 * 3_600_000 + 5 * 60_000 + 7_000), "2d3h5m7s");
+  // A sub-second remainder keeps the raw-millisecond form (computed deltas can produce it;
+  // parseDurationFlag's units bottom out at seconds).
+  assert.equal(durationLabel(90 * 60_000 + 3_500), "5403500ms");
 });
 
 // --- the --flag=value spelling ---

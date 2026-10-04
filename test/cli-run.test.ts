@@ -33,7 +33,7 @@ test("parseRunWindow parses --for's duration and returns null without the flag",
 
 test("parseRunWindow fails a malformed --for with the duration wording", () => {
   const r = expectFail(() => parseRunWindow(["--for", "abc"], false));
-  assert.match(r.stderr, /--for needs a duration like 45s, 90m, 2h, or 1d \(got "abc"\)/);
+  assert.match(r.stderr, /--for needs a duration like 45s, 90m, 1h30m, or 2d \(got "abc"\)/);
   // A trailing bare --for fails the same way (the dispatcher's gate names it first in real use).
   const bare = expectFail(() => parseRunWindow(["--for"], false));
   assert.match(bare.stderr, /--for needs a value/);

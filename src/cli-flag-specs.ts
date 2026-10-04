@@ -166,7 +166,7 @@ export const REASON_FLAG: FlagSpec = {
  * and DURATION_FLAG, so the gate's accepted vocabulary and parseDurationFlag's error messages
  * cannot drift apart. The error wording differs per command — every failure names its own
  * command with the flag (`logs --since needs a value`, `logs --since needs a duration like
- * 45s, 90m, 2h, or 1d (got …)`), the same label the command body's parseSinceFlag rides into
+ * 45s, 90m, 1h30m, or 2d (got …)`), the same label the command body's parseSinceFlag rides into
  * its messages and the over-cap check already uses — so the spec is a factory taking it,
  * the same pattern grepFlagSpec arms its missing-value error with. validate re-runs the shape
  * parser at the gate; each window's 7-day cap and its rival-flag rules stay in the command

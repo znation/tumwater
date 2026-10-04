@@ -392,7 +392,7 @@ test("wake keeps the plain --role vocabulary and rejects --in everywhere else", 
   // A malformed --in names the flag and the shape it wants, before any marker work.
   let r = await cli(repo, "wake", "--in", "xyz");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--in needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(r.stderr, /--in needs a duration like 45s, 90m, 1h30m, or 2d/);
   r = await cli(repo, "wake", "--in");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--in needs a value/);

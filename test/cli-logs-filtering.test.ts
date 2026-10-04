@@ -94,7 +94,7 @@ test("logs --since validates its duration against the 7-day cap", async () => {
 
   r = await cli(repo, "logs", "--since", "45x");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /logs --since needs a duration like 45s, 90m, 2h, or 1d/);
+  assert.match(r.stderr, /logs --since needs a duration like 45s, 90m, 1h30m, or 2d/);
 
   r = await cli(repo, "logs", "--since", "0s");
   assert.equal(r.code, 1);

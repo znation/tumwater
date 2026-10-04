@@ -122,7 +122,7 @@ Usage:
                                    Queue a prompt for that loop's next tick (wakes it)
   tumwater prompt --at <duration> <text...>
                                    Queue a prompt that stays hidden until the duration has
-                                   passed (45s, 90m, 2h, 1d — listed and cancellable while
+                                   passed (45s, 90m, 1h30m, 1d — listed and cancellable while
                                    it waits, delivered to the tick only once due)
   tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop
                                    (--json prints the {prompts} array as
