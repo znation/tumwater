@@ -14,33 +14,12 @@ import {
   STALE_ESCALATE_AFTER_MS,
   STALE_ESCALATE_EVERY_MS,
 } from "./redeploy-policy.js";
+import { PrewarmProbes, track, type Tracked } from "./redeploy-probes.js";
 
 /** The self-redeploy STATE MACHINE (see redeploy-policy.ts for the policy it decides with and
  * the behavior contract both halves serve): one Redeployer per orchestrator process. The
  * production effects wiring is createRedeployer in redeploy.ts. */
 
-
-/** A background task the poll consults without awaiting: settled flag plus result. */
-interface Tracked<T> {
-  done: boolean;
-  result?: T;
-  error?: string;
-}
-
-function track<T>(promise: Promise<T>): Tracked<T> {
-  const t: Tracked<T> = { done: false };
-  promise.then(
-    (r) => {
-      t.result = r;
-      t.done = true;
-    },
-    (err: unknown) => {
-      t.error = errorMessage(err);
-      t.done = true;
-    },
-  );
-  return t;
-}
 
 /** Event input as the orchestrator logs it (logEvent stamps ts). */
 export type RedeployEvent = HarnessEventInput;
@@ -136,9 +115,8 @@ export class Redeployer {
    * build it already knows is stale. The check and compile are the same side-effect-free effects
    * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the
    * episode adopts is decided by the adopt helpers, not by the pre-warm. */
-  private prewarmHead: string | null = null;
-  private prewarmedGreen: Tracked<boolean> | null = null;
-  private prewarmedCompiled: Tracked<CompileResult> | null = null;
+  /** The cooldown's prewarm probes — owned in src/redeploy-probes.ts; see there. */
+  private readonly probes: PrewarmProbes;
   /** The head whose green check already warned that it could not run (a rejection, not a red
    * verdict) — one warning per episode. */
   private checkFailedHead: string | null = null;
@@ -168,6 +146,7 @@ export class Redeployer {
     private readonly restartRecord: AutoRestartRecord = { lastAt: null, record: () => {} },
   ) {
     this.lastAutoRestartAt = restartRecord.lastAt;
+    this.probes = new PrewarmProbes(deps);
   }
 
   /** What orchestrator.json publishes (see BuildStatus). `now` is the same clock poll was given
@@ -257,53 +236,6 @@ export class Redeployer {
     return { until: Math.min(until, (this.lastAutoRestartAt ?? 0) + RESTART_URGENT_COOLDOWN_MS), urgent: true };
   }
 
-  /** Run the deferred head's green check, then — only after a green verdict — its staged compile,
-   * once per SHA, while the cooldown defers the restart (BUGS.md 2026-09-30). These are the same
-   * effects the episode itself runs, so their cost lands inside the dead window instead of
-   * stretching it; the 12 h rate limit keeps protecting against churn, and this keeps it from
-   * also idling away verification work a known-stale build owes. A red verdict or a "could not
-   * run" shape prewarms nothing further — there is no point staging a compile for a tree the
-   * check condemned — and is simply not adopted (the episode re-runs it under its own rules).
-   * Skipped while an episode is pending: its own steps are the warm-up, and the mirror worktree
-   * both run in must not serve two checks at once. */
-  private prewarm(head: string): void {
-    if (this.pendingHead !== null) return;
-    if (this.prewarmHead !== head) {
-      this.prewarmHead = head;
-      this.prewarmedGreen = null;
-      this.prewarmedCompiled = null;
-    }
-    if (this.prewarmedGreen === null) {
-      this.prewarmedGreen = track(this.deps.mainGreen(head));
-      return;
-    }
-    if (!this.prewarmedGreen.done) return;
-    if (this.prewarmedGreen.error || this.prewarmedGreen.result !== true) return;
-    if (this.prewarmedCompiled === null) this.prewarmedCompiled = track(this.deps.compile(head));
-  }
-
-  /** The pre-warm's green check for `head`, when the episode can adopt it: still running (adopt
-   * and keep waiting — the lapse caught the check mid-flight) or finished with a real verdict
-   * (green or red). A check that finished WITHOUT a verdict — a rejection, "could not run" — is
-   * never adopted: the episode's rejection rules drop the pending head and re-run the check
-   * fresh, and adopting it would replay the same dead end on every retry (BUGS.md 2026-09-16). */
-  private adoptPrewarmedGreen(head: string): Tracked<boolean> {
-    const g = this.prewarmHead === head ? this.prewarmedGreen : null;
-    return g !== null && (!g.done || !g.error) ? g : track(this.deps.mainGreen(head));
-  }
-
-  /** The pre-warm's staged compile for `head`, when the episode can adopt it: still running (a
-   * compile in flight when the lapse lands — adopt and keep waiting, never start a second one
-   * against the same mirror and staging dir) or finished ok (its staged tree is exactly the
-   * artifact the swap consumes). A compile that finished without a usable verdict — a rejected
-   * spawn or a thrown promise — is never adopted, like the green check above. A finished FAILED
-   * compiler verdict is also not adopted: the episode recompiles, so every block decision rests
-   * on a verdict its own step produced, at the cost of one bounded recompile. */
-  private adoptPrewarmedCompile(head: string): Tracked<CompileResult> | null {
-    const c = this.prewarmHead === head ? this.prewarmedCompiled : null;
-    return c !== null && (!c.done || c.result?.ok === true) ? c : null;
-  }
-
   /** Decide this poll's action. `autoRestart` is the live config flag: off keeps the staleness
    * verdict (dashboards still show it) but never drains or restarts. */
   async poll(
@@ -382,7 +314,7 @@ export class Redeployer {
               : " (at most one completed restart per 12 h)"),
         );
       }
-      this.prewarm(mainHead);
+      this.probes.prewarm(mainHead, this.pendingHead !== null);
       return this.endDrain();
     }
     // The cooldown has lapsed (or never started): the next episode warns once more.
@@ -420,8 +352,8 @@ export class Redeployer {
       }
       // Adopt the cooldown's pre-warm (BUGS.md 2026-09-30): verdicts already in hand mean the
       // lapse reaches the swap directly instead of paying green-check + compile from zero.
-      this.green = this.adoptPrewarmedGreen(mainHead);
-      this.compiled = this.adoptPrewarmedCompile(mainHead);
+      this.green = this.probes.adoptGreen(mainHead);
+      this.compiled = this.probes.adoptCompile(mainHead);
       return "hold";
     }
     if (!this.green?.done) return "hold";
@@ -445,7 +377,7 @@ export class Redeployer {
       return this.endDrain();
     }
     if (!this.compiled) {
-      this.compiled = this.adoptPrewarmedCompile(mainHead) ?? track(this.deps.compile(mainHead));
+      this.compiled = this.probes.adoptCompile(mainHead) ?? track(this.deps.compile(mainHead));
       // Once per head, not once per episode: a rejected compile drops the episode and the next
       // poll starts a fresh one, and a state stream that re-enters "compiling" it never left
       // is noise on top of the missing terminal event (BUGS.md 2026-09-28).
