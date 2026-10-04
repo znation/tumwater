@@ -181,11 +181,9 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     maxFps: 0,
   });
 
-  // Ink owns the input stream: the useTuiKeys hook inside the tree set raw mode on mount
-  // (and restores it at unmount), and its `useInput` subscription dispatches every parsed
-  // keypress through the extracted handler below. Raw mode appears once ink's tree effects
-  // have mounted; production terminals type long after that, and the test harness waits a
-  // tick before pressing keys.
+  // The useTuiKeys hook inside the tree set raw mode on mount (and restores it at unmount).
+  // Raw mode appears once ink's tree effects have mounted; production terminals type long
+  // after that, and the test harness waits a tick before pressing keys.
   const timer = setInterval(render, 1000);
   render();
 
