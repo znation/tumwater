@@ -17,7 +17,8 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
  * model-based review. Its scoped orchestration — the permit, the build_check event, the
  * verdict-less retry, the merge-scope unverified remapping, and the skip warning — is a
  * separate concern and lives in build-check-scoped.ts. Reading the runner's summary counts — parseTestCounts/TestCounts — is
- * pure parsing with its own importers and lives in build-check-counts.ts.runScopedBuildCheck below is the shared detect → run → build_check
+ * pure parsing with its own importers and lives in build-check-counts.ts. runScopedBuildCheck
+ * (build-check-scoped.ts) is the shared detect → run → build_check
  * event → skip-warning sequence of the gate's pre-check (review.ts, via review-precheck.ts) and the landing path's
  * in-lock re-check (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same
  * detection and execution from main-baseline.ts to verify main itself once per SHA before an
