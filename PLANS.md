@@ -5,7 +5,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### `tumwater tick <role> --last` — the newest tick's trail without knowing its number (planned 2026-10-04 by plan loop)
+
+**Goal.** `tumwater tick <role> <n>` answers "what did tick #7 do?" — but the operator's actual question after an incident is "what did the latest tick do?", and getting there today means running `history --role <id>` first to learn the number, then `tick <role> <n>`. Add a `--last` form: `tumwater tick <role> --last` resolves the role's newest completed tick in the scanned window and prints its trail exactly as `tick <role> <n>` would, sharing every rendering path. `--last` and a numeric `<n>` are rivals: `tick <role> --last 3` and `tick <role> 3 --last` fail with the usage.
+
+**Approach.** Small wiring on top of existing machinery; no collector changes.
+
+- `src/cli-flag-specs.ts` — add `export const LAST_FLAG: FlagSpec = { names: ["--last"] }` beside `JSON_FLAG`.
+- `src/cli.ts` dispatcher `case "tick"` — admit `LAST_FLAG` in the `rejectUnknownArgs("tick", rest, [...])` call, and relax the pre-gate arity check from `positionals.length !== 2` to `positionals.length < 1 || positionals.length > 2` so the one-positional `--last` form reaches `cmdTick` (which already owns arity and keeps its own guard — the dispatcher comment says as much).
+- `src/tick-detail.ts` `cmdTick` — take the extra flag (extend the signature to `(root, positionals, json, last)`, passing `rest.includes("--last")` from cli.ts). Arity rules: `last` accepts exactly one positional (`<role>`); the numeric path keeps exactly two. With `last`, resolve the newest tick via `readTickRows(root, 1, role)` from `src/history-data.ts` — rows come newest-first, so the first row's `tick` is the number; an empty array takes the existing not-found path (`sayJson(null)` / `tickNotFoundMessage(role, 0)` is wrong under `--last`, so make the not-found wording for this form say `no completed tick for <role> in the scanned window…` — extend `tickNotFoundMessage` or add a sibling `tickNotFoundLastMessage` and keep both used by the GUI's 404 wording where applicable; pick one shape and use it consistently). The resolved number then flows through the unchanged `readTickDetail` → `renderTickDetail` / `sayJson(detail)` tail — no rendering changes at all.
+- `TICK_USAGE` becomes `"tumwater tick <role> [<n>] [--last] [--json]"` — it is the single string the dispatcher gate and `cmdTick`'s guards both fail with, so all three sites move together.
+- `src/help.ts` — update the `tick` stanza's usage line and add one sentence: `--last` shows the newest completed tick's trail instead of numbering it.
+- `README.md` — extend the per-tick-history row's `tumwater tick <role> <n>` mention with the `--last` spelling, phrased like the surrounding flags.
+
+**Files touched:** `src/cli-flag-specs.ts`, `src/cli.ts`, `src/tick-detail.ts`, `src/help.ts`, `README.md`, plus tests in `test/tick-detail.test.ts` (`--last` resolves the newest tick's trail identical to naming that number; `--last` on an empty log exits 0 with the parseable `null` under `--json` and the last-form not-found line otherwise; `tick <role> --last 3` fails with the usage; `--last` with an unknown role keeps the unknown-role wording) and `test/cli-arg-strictness.test.ts` (the dispatcher admits `--last` for `tick` and still rejects it elsewhere).
+
+**Acceptance criteria:**
+- After a tick has run, `tumwater tick <role> --last` prints the same trail `tumwater tick <role> <n>` prints for the newest tick number (the tests assert this equality on a fixture log).
+- On a log with no ticks for the role, both renderings exit 0 and `--json` prints `null` (the command's documented JSON-in-every-exit-0 contract).
+- `--last` combined with a numeric `<n>`, a missing role, or an unknown role fails with the usage or the unknown-role wording before any read.
+- Plain `tick <role> <n>` behavior is byte-unchanged, and `npm run test` passes.
+
 
 ## Done
 
