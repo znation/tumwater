@@ -30,6 +30,30 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
   if (extra !== undefined) fail(`unexpected argument ${JSON.stringify(extra)} — ${reason}`);
 }
 
+/** Read a `--file <path>` prompt file: fail naming the file when it cannot be read. A raw
+ * ENOENT/EISDIR names the path but not its role, so the message says this was the --file
+ * prompt. Shared by the init and prompt parsers' path branches; the prompt parser's stdin
+ * branch (`-`) reads fd 0 itself — its read must be cached and its read-error names stdin —
+ * and both parsers then check emptiness through failEmptyPromptFile. */
+function readPromptFile(file: string): string {
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (err) {
+    fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
+  }
+}
+
+/** Fail when a read `--file` prompt holds no text: an empty (or whitespace-only) file reads
+ * as an empty prompt, which the bare-init path would then treat as "re-seed from README.md"
+ * (the operator's --file argument silently ignored on an initialized repo), and a generic
+ * "an initial prompt is required" (which never names the file) on a fresh one; the prompt
+ * queue would enqueue nothing. Names the file, like every other bad --file shape. Shared by
+ * the init and prompt parsers, so the message cannot drift between them. */
+function failEmptyPromptFile(file: string, contents: string): void {
+  if (contents.trim() === "")
+    fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
+}
+
 /** init's flag vocabulary (plans/portability.md §7/7, correction 1): --file and --branch take
  * a value; --adopt and --dry-run are valueless and are never prompt content. One definition,
  * shared by the unknown-flag loop and the `--flag=value` refusal inside it. */
@@ -91,19 +115,8 @@ export function parseInitArgs(args: string[]): {
       if (args.includes(flag)) claimed.push(args.indexOf(flag));
     }
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
-    let contents: string;
-    try {
-      contents = fs.readFileSync(file, "utf8");
-    } catch (err) {
-      // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
-      fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
-    }
-    // An empty (or whitespace-only) file reads as an empty prompt, which the bare-init path
-    // then treats as "re-seed from README.md" — the operator's --file argument silently
-    // ignored on an initialized repo, and a generic "an initial prompt is required" (which
-    // never names the file) on a fresh one. Name the file, like every other bad --file shape.
-    if (contents.trim() === "")
-      fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
+    const contents = readPromptFile(file);
+    failEmptyPromptFile(file, contents);
     return { prompt: contents, branch, adopt, dryRun };
   }
   // Everything except the --branch pair and the booleans is prompt text; the join keeps
@@ -223,15 +236,9 @@ export function parsePromptArgs(args: string[]): PromptArgs {
       }
       contents = stdinPrompt;
     } else {
-      try {
-        contents = fs.readFileSync(file, "utf8");
-      } catch (err) {
-        // A raw ENOENT/EISDIR names the path but not its role; say this was the --file prompt.
-        fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
-      }
+      contents = readPromptFile(file);
     }
-    if (contents.trim() === "")
-      fail(`the prompt file ${JSON.stringify(file)} is empty — it carries no prompt text`);
+    failEmptyPromptFile(file, contents);
     return { mode: "enqueue", role, text: contents };
   }
 
