@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer` restored an Open placeholder the skeleton never wrote: answering the last open question rewrote `## Open`'s `_None yet._` (the placeholder `tumwater init`'s QUESTIONS_TEMPLATE carries) as `_None._`, so the answered file no longer matches the template it was init'd from and later answer cycles keep the divergent text (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-CLI commit 7cf0c37a, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** unclear-invariant — the existing tests asserted `_None._` because the test fixture's SKELETON itself carried the wrong placeholder, so the invariant (the placeholder is byte-identical to init.ts's `_None yet._`) had to be reconstructed before the regression test could assert the right text; it failed against the pre-fix code and passes after.
+
 ### `tumwater questions answer <n> <decision>` routed any dash-leading decision word through the flag gate, so a legitimate decision like `-50% spend cap` was refused as an unknown argument and could never be recorded (found by bugfix loop 2026-10-04 latent-bug hunt over the questions CLI commits 7cf0c37a/aef32f71, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** none — a scratch run of the built CLI reproduced it (`questions answer 1 "-50% spend cap"` exited 1 with `unknown argument: -50% spend cap`), and the added regression test (test/cli-arg-strictness.test.ts, `questions answer keeps single-dash decision words as prose`) failed against the pre-fix parse and passes after; the parse now follows parsePromptArgs' rule — only `--`-prefixed tokens are flags, every other token in order is prose.

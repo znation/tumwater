@@ -93,7 +93,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
  * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date. The
- * Open section that is left empty regains its `_None._` placeholder; a file with no
+ * Open section that is left empty regains its `_None yet._` placeholder; a file with no
  * `## Answered` section gains one. An out-of-range position fails with the
  * `prompt --cancel` wording and exits 1. Returns the answered question's title for the
  * confirmation line. */
@@ -112,7 +112,7 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
   while (moved.length > 0 && (moved[moved.length - 1] ?? "").trim() === "") moved.pop();
 
   // Cut the block out of ## Open: everything before it, everything from its end on. When the
-  // section is left with no content at all, restore the `_None._` placeholder the skeleton
+  // section is left with no content at all, restore the `_None yet._` placeholder the skeleton
   // carries, so an empty outbox still reads as an intentionally empty section.
   const openContent = lines!.slice(scanned.openIdx + 1, scanned.answeredIdx === -1 ? lines!.length : scanned.answeredIdx);
   const remaining = openContent.filter((_, i) => i < block.start - scanned.openIdx - 1 || i >= block.end - scanned.openIdx - 1);
@@ -122,9 +122,9 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
     rebuilt.push(
       ...lines!.slice(0, scanned.openIdx + 1),
       "",
-      "_None._",
+      "_None yet._",
       // Resume at the next section with the blank separator line the dropped Open content
-      // used to carry, so `_None._` never reads as a paragraph glued to a heading.
+      // used to carry, so `_None yet._` never reads as a paragraph glued to a heading.
       "",
       ...lines!.slice(scanned.answeredIdx === -1 ? lines!.length : scanned.answeredIdx),
     );

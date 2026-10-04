@@ -23,7 +23,7 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None._
+_None yet._
 
 ## Answered
 `;
@@ -111,13 +111,14 @@ test("answering question 1 moves only its block to ## Answered with the dated de
   assert.ok(!md.includes("_None._"));
 });
 
-test("answering the last question restores the Open section's _None._ placeholder", () => {
+test("answering the last question restores the skeleton's _None yet._ placeholder, not other text", () => {
   const root = tmpdir();
   seed(root, twoQuestionFile());
   answerQuestion(root, 1, "use ink");
   answerQuestion(root, 1, "any OpenAI-compatible one");
   const md = read(path.join(root, "QUESTIONS.md"));
-  assert.ok(md.includes("## Open\n\n_None._"));
+  assert.ok(md.includes("## Open\n\n_None yet._"));
+  assert.ok(!md.includes("_None._"));
   assert.deepEqual(openQuestionEntries(root), []);
 });
 
@@ -128,7 +129,7 @@ test("answering the last question keeps the blank line between the restored plac
   answerQuestion(root, 1, "any OpenAI-compatible one");
   const md = read(path.join(root, "QUESTIONS.md"));
   // The placeholder is its own paragraph: `## Answered` follows a blank line, not the text.
-  assert.ok(md.includes("_None._\n\n## Answered"), md);
+  assert.ok(md.includes("_None yet._\n\n## Answered"), md);
 });
 
 test("an out-of-range position fails with the prompt --cancel wording and exit 1", () => {
