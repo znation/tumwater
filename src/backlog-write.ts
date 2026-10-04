@@ -16,7 +16,6 @@ import { fail, say, sayJson } from "./cli-output.js";
 import { collapseWhitespace } from "./text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "./init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { peelPositionals } from "./cli-command-args.js";
 import { requireReadyRepo } from "./cli-query-commands.js";
 import { submitRolePromptAndWake } from "./operator-intent.js";
 import { promptLengthProblem } from "./inbox-submit.js";
@@ -142,10 +141,28 @@ export async function fileAndAnnounce(
   wakeText: (title: string) => string,
   titleOf: (positionals: string[]) => string,
 ): Promise<void> {
-  const { positionals, rest } = peelPositionals(args);
-  rejectUnknownArgs(command, rest, [JSON_FLAG]);
+  // peelPositionals cannot serve this command: bug/plan's text is operator prose, and a
+  // standalone --help/-h token inside it ("the TUI mishandles --help output") is content —
+  // the dispatcher's help interception stands down for text-carrying invocations (cli.ts),
+  // so a help token that reaches here is always prose. peelPositionals would flag-shape it
+  // into rest and rejectUnknownArgs would refuse the whole report; instead classify here,
+  // keeping token order: --json is the one flag, --help/-h ride into the text, and any
+  // other flag-shaped token is still named by the strictness gate.
+  const positionals: string[] = [];
+  let json = false;
+  for (const arg of args) {
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") {
+      positionals.push(arg);
+      continue;
+    }
+    if (arg.startsWith("-")) rejectUnknownArgs(command, [arg], [JSON_FLAG]);
+    else positionals.push(arg);
+  }
   await requireReadyRepo(root);
-  const json = rest.includes("--json"); // the one accepted flag: JSON_FLAG's spelling
   const wakeProblem = promptLengthProblem(wakeText(titleOf(positionals)), role);
   if (wakeProblem) fail(wakeProblem);
   const filed = file(positionals);

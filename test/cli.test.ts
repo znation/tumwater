@@ -177,6 +177,36 @@ test("--help does not rescue an unknown command", async () => {
   assert.match(r.stderr, /unknown command: frobnicate/);
 });
 
+test("a free-form text command carrying a --help token files the text, not the help topic", async () => {
+  // The <command> --help interception answers a flag-shaped help request, but the free-form
+  // position commands (init, prompt, bug, plan) read their positionals as operator text — a
+  // text containing a standalone --help/-h token (`tumwater bug the TUI mishandles --help
+  // output`) used to be swallowed whole: the topic printed, exit 0, the text gone with no
+  // trace. When such a command carries any non-flag token (real text), the interception must
+  // stand down and let the command read the text; with only flags present (`tumwater bug
+  // --help`, `prompt --role qa --help`) the topic still answers.
+  const dir = tmpdir();
+  await initProject(dir, "test fleet");
+  const filed = await cli(dir, "bug", "the", "TUI", "mishandles", "--help", "output");
+  assert.equal(filed.code, 0, `bug --help text: ${filed.stderr}`);
+  assert.doesNotMatch(filed.stdout, /Usage:/);
+  assert.match(fs.readFileSync(path.join(dir, "BUGS.md"), "utf8"), /the TUI mishandles --help output/);
+
+  const prompted = await cli(dir, "prompt", "fix", "the", "--help", "flag");
+  // prompt (and init) read flag values, so a help token beside text is ambiguous there —
+  // the parser's named error answers instead of either silently queuing or printing help.
+  assert.equal(prompted.code, 1);
+  assert.match(prompted.stderr, /unknown argument: --help/);
+  assert.doesNotMatch(prompted.stderr, /Usage:/);
+
+  // Flag-only invocations keep the topic answer.
+  for (const args of [["bug", "--help"], ["prompt", "--role", "qa", "--help"], ["init", "--help"]]) {
+    const r = await cli(dir, ...args);
+    assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
+    assert.match(r.stdout, new RegExp(`tumwater ${args[0]}`));
+  }
+});
+
 test("status refuses repos that are not ready", async () => {
   // Not a git repo.
   let r = await cli(tmpdir(), "status");

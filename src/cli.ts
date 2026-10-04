@@ -66,12 +66,42 @@ async function main(): Promise<void> {
   // (a `--help` topic lookup would only fail: the listing names no such command); a command
   // with no topic falls through to its ordinary dispatch, where an unknown argument is
   // still named.
-  if (
+  // Free-form text commands: their positionals are operator prose, so a standalone --help/-h
+  // token inside the text (`tumwater bug the TUI mishandles --help output`) is content, not a
+  // help request — the interception below must stand down when such a command carries any
+  // non-flag token, and the command reads the text; flag-only invocations still answer help.
+  // A valued flag's value token is plumbing, not text: `prompt --role qa --help` carries no
+  // prose, so it answers help like the flag-only shape it is. bug/plan admit no valued flags,
+  // so their check never skips a token (a flag-only `--json` rides alone).
+  const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
+    prompt: ["--role", "--file", "--at", "--cancel", "--edit"],
+    init: ["--branch", "--template", "--file"],
+    bug: [],
+    plan: [],
+  };
+  let freeformText = false;
+  if (command !== undefined && command in FREEFORM_VALUED_FLAGS) {
+    const valued = FREEFORM_VALUED_FLAGS[command] ?? [];
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i] ?? "";
+      if (a === "--help" || a === "-h") continue;
+      if (valued.includes(a)) {
+        i++; // the value token is plumbing, never prose
+        continue;
+      }
+      if (!a.startsWith("-")) {
+        freeformText = true;
+        break;
+      }
+    }
+  }
+  const helpWanted =
     command !== undefined &&
     command !== "--help" &&
     command !== "-h" &&
-    (args.includes("--help") || args.includes("-h"))
-  ) {
+    (args.includes("--help") || args.includes("-h")) &&
+    !freeformText;
+  if (helpWanted) {
     const topic = helpTopic(command);
     if (topic !== null) {
       say(topic);
