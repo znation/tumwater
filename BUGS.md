@@ -15,6 +15,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `scripts/release.mjs`'s header comment still promised a direct npm publish after 5a2733e5 switched the Release workflow to stage-only publishing: the comment said the workflow "publishes to npm with --provenance" and that "this script never publishes itself", so an operator reading the script's contract expected a live publish with no 2FA approval step, contradicting the workflow's actual `npm stage publish` plus maintainer approval that DEVELOPMENT.md documents (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's stage-publish commit 5a2733e5, which updated DEVELOPMENT.md and the workflow but missed this header; fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** no-observability — a stale comment leaves no trace in any check, so only a read of the changed region beside its docs surfaced it.
+
 ### `tumwater questions answer` left the `## Answered` skeleton placeholder `_None yet._` stranded above the entry it moved there: the insertion appended the answered block at the section's end without removing the placeholder, so a file whose Answered section held only `_None yet._` came out claiming to be empty while holding a real answered question — the same placeholder bookkeeping the Open section's restore already does, in the opposite direction (repro: seed `## Answered\n\n_None yet._`, answer the one open question; the section read `_None yet._\n\n### Which database?...`; expected: the placeholder gone, the entry in its place) (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-answer placeholder and fence commits ac184cbe–667d5f94, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** unclear-invariant — no test ever answered into an Answered section that held the skeleton placeholder (the closest one seeds it plus an unclosed fence and asserts only includes-fragments), so the invariant "a section holding an entry must not also hold the empty-marker" was reconstructed by hand before the hole was visible.

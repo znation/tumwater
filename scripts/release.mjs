@@ -1,7 +1,8 @@
 // Cut a release: bump (when asked), push main, wait for CI, then push the `v<version>`
 // tag — the `v*` trigger runs .github/workflows/release.yml, which re-runs the full
-// suite on the tag, publishes to npm with --provenance, and attaches the tarball to a
-// GitHub release. This script never publishes itself: npm auth lives only in the
+// suite on the tag, stages the package on npm with --provenance (a maintainer approves
+// the stage with 2FA before it goes live), and attaches the tarball to a GitHub
+// release. This script never publishes or stages itself: npm auth lives only in the
 // workflow's NPM_TOKEN secret, so a release is always exactly what CI just tested.
 //
 // Usage:
