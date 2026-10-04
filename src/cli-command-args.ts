@@ -52,13 +52,34 @@ function failStrayArg(args: string[], reason: string, ...claimed: number[]): voi
  * ENOENT/EISDIR names the path but not its role, so the message says this was the --file
  * prompt. Shared by the init and prompt parsers' path branches; the prompt parser's stdin
  * branch (`-`) reads fd 0 itself — its read must be cached and its read-error names stdin —
- * and both parsers then check emptiness through failEmptyPromptFile. */
+ * and both parsers check emptiness through failEmptyPromptFile (via readPromptFileChecked
+ * for real paths). */
 function readPromptFile(file: string): string {
   try {
     return fs.readFileSync(file, "utf8");
   } catch (err) {
     fail(`cannot read prompt file ${JSON.stringify(file)}: ${errorMessage(err)}`);
   }
+}
+
+/** A `--file <path>` value that must be present: the one home of the missing-value refusal
+ * shared by the init and prompt parsers (two call sites — parseInitArgs' and parsePromptArgs'
+ * --file branches), so the wording cannot drift between them. The flag token itself is
+ * claimed by each parser's stray-argument accounting; this helper only owns the value. */
+function promptFileValue(file: string | undefined): string {
+  if (!file) fail("--file needs a path");
+  return file;
+}
+
+/** The read+emptiness pair both parsers apply to a real `--file <path>`: read through
+ * readPromptFile (whose error names the file's role) and refuse an empty file through
+ * failEmptyPromptFile, in one place so the two parsers' path branches cannot drift apart.
+ * The prompt parser's stdin branch (`-`) keeps its own read — it must be cached and its
+ * read-error names stdin — and calls failEmptyPromptFile itself. */
+function readPromptFileChecked(file: string): string {
+  const contents = readPromptFile(file);
+  failEmptyPromptFile(file, contents);
+  return contents;
 }
 
 /** Fail when a read `--file` prompt holds no text: an empty (or whitespace-only) file reads
@@ -137,8 +158,7 @@ export function parseInitArgs(args: string[]): {
   }
   const fileFlag = args.indexOf("--file");
   if (fileFlag >= 0) {
-    const file = args[fileFlag + 1];
-    if (!file) fail("--file needs a path");
+    const file = promptFileValue(args[fileFlag + 1]);
     const claimed = [fileFlag, fileFlag + 1];
     const branchFlag = args.indexOf("--branch");
     if (branchFlag >= 0) claimed.push(branchFlag, branchFlag + 1);
@@ -147,8 +167,7 @@ export function parseInitArgs(args: string[]): {
       if (args.includes(flag)) claimed.push(args.indexOf(flag));
     }
     failStrayArg(args, "with --file the prompt comes from the file", ...claimed);
-    const contents = readPromptFile(file);
-    failEmptyPromptFile(file, contents);
+    const contents = readPromptFileChecked(file);
     if (listTemplates) {
       fail("--list-templates takes no prompt — run `tumwater init --list-templates` alone");
     }
@@ -273,8 +292,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // pre-parses prompt's args and cmdPrompt re-parses them, and a second readFileSync(0) on a
     // drained pipe would see an empty prompt (readFileSync(0) fails with EAGAIN on a TTY's
     // stdin; errorMessage names it, and the operator passes a real pipe instead).
-    const file = args[fileFlag + 1];
-    if (!file) fail("--file needs a path");
+    const file = promptFileValue(args[fileFlag + 1]);
     failStrayArg(args, "with --file the prompt comes from the file", fileFlag, fileFlag + 1, ...roleClaim, ...atClaim);
     let contents: string;
     if (file === "-") {
@@ -286,11 +304,12 @@ export function parsePromptArgs(args: string[]): PromptArgs {
           fail(`cannot read prompt file "-" (stdin): ${errorMessage(err)}`);
         }
       }
+      // Stdin skips readPromptFile, so its emptiness check stays beside the read.
       contents = stdinPrompt;
+      failEmptyPromptFile(file, contents);
     } else {
-      contents = readPromptFile(file);
+      contents = readPromptFileChecked(file);
     }
-    failEmptyPromptFile(file, contents);
     return { mode: "enqueue", role, text: contents, atDelayMs };
   }
 
