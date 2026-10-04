@@ -105,6 +105,17 @@ function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
   return tickSpanMs(ev, starts) ?? 0;
 }
 
+/** Add one tick to a {ticks, ms, costUsd} accumulator — the single home of the fold shared
+ * by the time-and-spend table's outcome cells (SpendCell) and the loss-cause drafts
+ * (LossDraft), so the two tallies cannot drift apart in what they count or price. The
+ * caller passes one event's already-computed durationMs and usage, so folding an event
+ * into both a cell and a draft parses the usage and pairs the span exactly once. */
+function tally(target: { ticks: number; ms: number; costUsd: number }, durationMs: number, usage: { costUsd: number }): void {
+  target.ticks++;
+  target.ms += durationMs;
+  target.costUsd += usage.costUsd;
+}
+
 /** Fold the window's tick_ends into the time-and-spend table and the loss ranking. Pairing
  * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
  * in the preceding day and ended in the current one still gets its span. The landing-outcome
@@ -160,12 +171,11 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       }
     }
     const role = eventRole(ev);
+    const usage = eventUsage(ev);
+    const durationMs = tickDurationMs(ev, starts);
     const row = byRole.get(role) ?? { landed: emptyCell(), no_change: emptyCell(), error: emptyCell() };
     byRole.set(role, row);
-    const cell = row[cls];
-    cell.ticks++;
-    cell.ms += tickDurationMs(ev, starts);
-    cell.costUsd += eventUsage(ev).costUsd;
+    tally(row[cls], durationMs, usage);
 
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and
     // a landing-gate rejection prices its authoring span under a per-role cause of its own —
@@ -210,10 +220,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       draft.example = example;
     }
     draft.roles.add(role);
-    draft.ticks++;
-    draft.ms += tickDurationMs(ev, starts);
-    draft.costUsd += eventUsage(ev).costUsd;
-    losses.set(key, draft);
+    tally(draft, durationMs, usage);
   }
   const timeSpend: TimeSpendRow[] = rankByCount(
     [...byRole.entries()].map(([role, classes]) => ({ role, classes })),
