@@ -9,7 +9,7 @@ import { loadConfig } from "../src/config.js";
 import { configRequestPath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
-import type { PiRunResult } from "../src/pi.js";
+import type { PiRunResult } from "../src/pi-run-result.js";
 import { piRunResult } from "./fake-pi.js";
 import { makeRepo } from "./repo-fixtures.js";
 

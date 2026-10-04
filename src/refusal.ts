@@ -4,7 +4,7 @@ import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "./commit-message.js";
 import { labeledLine } from "./reply-contract.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
-import type { PiRunResult } from "./pi.js";
+import type { PiRunResult } from "./pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 
 /** Handling a refused tick (plans/refusal-and-thrash.md): the run declined its work and ended

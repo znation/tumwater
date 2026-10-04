@@ -1,4 +1,5 @@
-import type { BackendFailureKind, PiRunResult } from "./pi.js";
+import type { BackendFailureKind} from "./pi.js";
+import type { PiRunResult } from "./pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { recordDailyCost } from "./budget.js";
 

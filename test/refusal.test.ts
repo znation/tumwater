@@ -7,7 +7,7 @@ import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { freshLoopState } from "../src/loop-state.js";
 import type { TickResult } from "../src/tick-outcome.js";
-import type { PiRunResult } from "../src/pi.js";
+import type { PiRunResult } from "../src/pi-run-result.js";
 import type { LoopState } from "../src/loop-state.js";
 import { assertClean, mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";

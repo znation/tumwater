@@ -31,7 +31,7 @@ import { enqueueLanding, headLanding, queueDepth } from "../src/landing-queue.js
 import { readEvents } from "../src/event-read.js";
 import { LoopRunner } from "../src/loop.js";
 import type { LandingEntry } from "../src/landing-queue.js";
-import type { PiRunResult } from "../src/pi.js";
+import type { PiRunResult } from "../src/pi-run-result.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
