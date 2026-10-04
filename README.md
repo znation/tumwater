@@ -24,7 +24,7 @@ instead: `npm install && npm run build && npm link`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1**: working harness. All 13 roles and the director are enabled by default.
+**v0.1.1**: working harness. All 13 roles and the director are enabled by default.
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
