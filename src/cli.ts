@@ -29,7 +29,7 @@ import {
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog-write.js";
-import { cmdInit, cmdRun } from "./cli-run.js";
+
 import { runMarkerCommand, type MarkerCommand } from "./cli-marker-commands.js";
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor.js";
@@ -37,7 +37,7 @@ import { renderDoctor } from "./doctor-render.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
 import { cmdTick, TICK_USAGE } from "./tick-detail.js";
 import { cmdReport } from "./report.js";
-import { cmdGui } from "./gui-command.js";
+
 import { didYouMean } from "./suggest.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
@@ -86,11 +86,15 @@ async function main(): Promise<void> {
   const root = (await repoToplevel(process.cwd())) ?? process.cwd();
   switch (command) {
     case "init":
-      await cmdInit(root, args);
+      // Imported lazily: cli-run pulls the whole fleet-booting subgraph (orchestrator,
+      // supervisor, redeploy, launch-services — the run path's machinery), and every other
+      // command's spawn pays module compilation for it unless the dispatch defers that load
+      // to the commands that actually boot or serve a fleet.
+      await (await import("./cli-run.js")).cmdInit(root, args);
       break;
     case "run":
       rejectUnknownArgs("run", args, RUN_FLAG_SPECS);
-      await cmdRun(root, args);
+      await (await import("./cli-run.js")).cmdRun(root, args);
       break;
     case "tui":
       rejectUnknownArgs("tui", args, []);
@@ -104,7 +108,7 @@ async function main(): Promise<void> {
     case "gui":
       rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
       await requireReadyRepo(root);
-      await cmdGui(root, args);
+      await (await import("./gui-command.js")).cmdGui(root, args);
       break;
     case "status":
       await cmdStatus(root, args);

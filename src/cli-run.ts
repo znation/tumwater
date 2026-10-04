@@ -21,14 +21,10 @@ import { runStartupCheck, runStartupProblem } from "./startup-gate.js";
 import { initProject } from "./init.js";
 import { templateCatalog } from "./init-templates.js";
 import { logEvent, subscribeEvents } from "./events.js";
-import { LaunchServicesWatch } from "./launch-services.js";
 import { formatEvent } from "./event-format.js";
-import { runOrchestrator } from "./orchestrator.js";
 import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
-import { createRedeployer } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
 import { plural } from "./phrases.js";
-import { fleetDownEvent, spawnRunChild, startParentDeathWatch, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
 import { shortSha } from "./format.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init.ts does the
@@ -104,6 +100,12 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const roleFilter = parseRoleFlag(args, enabledRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
   if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
+  // The fleet-booting machinery loads only once a run actually boots: the orchestrator's
+  // module graph (with its landing pipeline, review gate, and scheduler) is the CLI's heaviest
+  // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
+  // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
+  // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
+  const { SUPERVISED_ENV, startParentDeathWatch } = await import("./supervisor.js");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
@@ -141,11 +143,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // so the hand-off machinery (and its build stamp) stays daemon-only.
   const redeploy = once
     ? null
-    : await createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
+    : await (await import("./redeploy.js")).createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // A long-running fleet watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.
-  const launchServicesWatch = once ? null : new LaunchServicesWatch(root);
+  const launchServicesWatch = once ? null : new (await import("./launch-services.js")).LaunchServicesWatch(root);
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
@@ -163,7 +165,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
   let exit;
   try {
-    exit = await runOrchestrator({
+    exit = await (await import("./orchestrator.js")).runOrchestrator({
       root,
       config,
       mainBranch,
@@ -286,6 +288,9 @@ export function onceSummary(
  * operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
  * generation's stderr reached only this terminal, which nobody may be watching. */
 async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null): Promise<void> {
+  // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
+  // that never boots the fleet never compiles it.
+  const { fleetDownEvent, spawnRunChild, superviseRun } = await import("./supervisor.js");
   const controller = new AbortController();
   let stopping = false;
   process.on("SIGINT", () => {
