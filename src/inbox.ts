@@ -80,6 +80,21 @@ export function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
 
+/** Resolve the 1-based position `tumwater prompt --list`'s per-loop numbering shows into one
+ * queue file — the shared range-check-and-pick half of cancelRolePrompt (inbox-cancel.ts)
+ * and editRolePrompt (inbox-edit.ts), so the two cannot drift on the error or the numbering.
+ * Throws for out-of-range positions with no side effects; the pick's null check exists only
+ * to satisfy the array-index narrowing and is unreachable (the range check above). */
+export function queuedFileAtPosition(root: string, role: string, position: number): string {
+  const files = queuedFiles(root, role);
+  if (position < 1 || position > files.length) {
+    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
+  }
+  const file = files[position - 1];
+  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
+  return file;
+}
+
 /** Number of prompts currently queued for one loop and deliverable now — a directory listing
  * plus, per file, one stat-cached content read (the prompt cache below; an unchanged file
  * costs one stat). Defaults to the director's queue; a role argument counts that loop's own

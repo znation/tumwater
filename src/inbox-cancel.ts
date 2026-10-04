@@ -2,7 +2,7 @@ import path from "node:path";
 import { logEvent } from "./events.js";
 import { roleInboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { promptPreview, queuedFiles, takeQueuedFile } from "./inbox.js";
+import { promptPreview, queuedFileAtPosition, queuedFiles, takeQueuedFile } from "./inbox.js";
 
 /** The cancel half of the prompt queues: removing a queued prompt by per-loop position
  * (`tumwater prompt --cancel`), by list-wide position numbering, by queue-file basename
@@ -37,13 +37,7 @@ function takeCancelledPrompt(root: string, role: string, file: string): CancelOu
  * { status: "gone" } when the file disappears between listing and removal instead of throwing.
  * The race policy and event live in takeCancelledPrompt. */
 export function cancelRolePrompt(root: string, role: string, position: number): CancelOutcome {
-  const files = queuedFiles(root, role);
-  if (position < 1 || position > files.length) {
-    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
-  }
-  const file = files[position - 1];
-  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
-  return takeCancelledPrompt(root, role, file);
+  return takeCancelledPrompt(root, role, queuedFileAtPosition(root, role, position));
 }
 
 /** Outcome of cancelListedPrompt: a resolved cancel (naming the loop it landed in, since the

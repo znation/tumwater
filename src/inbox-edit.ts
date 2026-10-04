@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { writeTextAtomic } from "./files.js";
 import { logEvent } from "./events.js";
 import { errCode } from "./errno.js";
-import { promptPreview, queuedFiles } from "./inbox.js";
+import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
 import { resolveListedQueue } from "./inbox-cancel.js";
 
@@ -41,12 +41,7 @@ export type EditOutcome =
  * read-then-remove window, and the atomic rename means every observer sees either the whole
  * old file or the whole new one — never a half-written prompt. */
 export function editRolePrompt(root: string, role: string, position: number, newText: string): EditOutcome {
-  const files = queuedFiles(root, role);
-  if (position < 1 || position > files.length) {
-    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
-  }
-  const file = files[position - 1];
-  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
+  const file = queuedFileAtPosition(root, role, position);
   let oldFileText: string;
   try {
     oldFileText = fs.readFileSync(file, "utf8");
