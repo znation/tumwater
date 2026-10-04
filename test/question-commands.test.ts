@@ -111,6 +111,26 @@ test("answering question 1 moves only its block to ## Answered with the dated de
   assert.ok(!md.includes("_None._"));
 });
 
+test("a multi-line decision folds to one line, so no line of it can start a new section", () => {
+  const root = tmpdir();
+  const file = seed(root, twoQuestionFile());
+  const sectionsBefore = read(file).split("\n").filter((l) => l.startsWith("## ")).length;
+  answerQuestion(root, 1, "use ink\n## phantom section\n### decoy entry");
+  const md = read(file);
+  // The file's `## ` sections are exactly what went in — no phantom section grew out of the
+  // decision, and no `### ` line of the decision became an entry any reader would number.
+  const sectionsAfter = md.split("\n").filter((l) => l.startsWith("## ")).length;
+  assert.equal(sectionsAfter, sectionsBefore);
+  assert.ok(!md.split("\n").some((l) => l.startsWith("## phantom section")));
+  assert.ok(!md.split("\n").some((l) => l.startsWith("### decoy entry")));
+  // A plain multi-line decision cannot split the stamp paragraph across lines either.
+  answerQuestion(root, 1, "answer line one\nanswer line two");
+  const md2 = read(file);
+  const stamps = md2.split("\n").filter((l) => l.startsWith("**Answered "));
+  assert.equal(stamps.length, 2);
+  assert.ok(stamps[1]!.includes("answer line one") && stamps[1]!.includes("answer line two"));
+});
+
 test("answering the last question restores the skeleton's _None yet._ placeholder, not other text", () => {
   const root = tmpdir();
   seed(root, twoQuestionFile());

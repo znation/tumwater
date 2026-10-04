@@ -15,6 +15,13 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n> <decision>` wrote the operator's decision verbatim into QUESTIONS.md, so a multi-line decision could carry a line starting with `## ` or `### ` and grow a phantom section no reader wrote — the same free-text-corrupts-structure class the pause `--reason` fix folded to one line (found by bugfix loop 2026-10-04 latent-bug hunt over the questions-answer feature 7cf0c37a, fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** unclear-invariant — nothing stated that an operator decision must never alter QUESTIONS.md's section structure, and every existing answer test used single-line decisions, so the multi-line case (repro: `answerQuestion(root, 1, "use ink\\n## phantom\\n### decoy")` grew the file's `## ` count and added a decoy entry) sat untested until the invariant was reconstructed from the pause-reason precedent.
+
+- **Symptom:** the stamp paragraph interpolated `decision` verbatim, so `tumwater questions answer 1 $'yes\n## Notes'` split the paragraph across lines and, with any line starting `## `, added a phantom section that `--list`, `backlog`, and the GUI readers then numbered.
+- **Fix:** `answerQuestion` folds the decision with `collapseWhitespace` (the `normalizePauseReason` precedent), so the stamp is always one line and can never start a section; regression test in test/question-commands.test.ts failed before the fix (sections 3→2) and passes after.
+
 ### `tumwater questions answer <n>` shared one fence tracker between the openEnd walk and the blocks walk, so an unclosed fence inside `## Open` made it answer a later entry the `--list` numbering never showed — `--list` printed `1. Question A` while `answer 1` returned Question B and duplicated the `## Answered` heading (found by bugfix loop 2026-10-04 latent-bug hunt over the same day's questions-CLI commits 4a512c41/772b8f2c, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** no-fake — the existing suite's unclosed-fence fixture put the fence after `## Answered`, where the reuse is harmless; the bug needed a fixture with the fence inside `## Open`, which no test built until this one.

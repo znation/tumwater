@@ -8,6 +8,7 @@
 import path from "node:path";
 import { fail, say, sayJson } from "./cli-output.js";
 import { fenceTracker, openQuestionEntries } from "./backlog.js";
+import { collapseWhitespace } from "./text.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";
 
@@ -113,12 +114,16 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
 
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
- * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date. The
- * Open section that is left empty regains its `_None yet._` placeholder; a file with no
+ * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date — the
+ * decision is free-form operator prose, so it folds to one line (collapseWhitespace, the pause
+ * `--reason` precedent): verbatim multi-line text could carry a line that starts with `## ` or
+ * `### ` and grow a phantom section no reader wrote. The Open section that is left empty regains
+ * its `_None yet._` placeholder; a file with no
  * `## Answered` section gains one. An out-of-range position fails with the
  * `prompt --cancel` wording and exits 1. Returns the answered question's title for the
  * confirmation line. */
-export function answerQuestion(root: string, n: number, decision: string): { title: string } {
+export function answerQuestion(root: string, n: number, rawDecision: string): { title: string } {
+  const decision = collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");
   const md = readTextOrNull(file);
   const lines = md === null ? null : md.split("\n");
