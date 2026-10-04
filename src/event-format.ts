@@ -1,6 +1,6 @@
 import { eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, shortSpanPhrase } from "./phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural, shortSpanPhrase } from "./phrases.js";
 import { compactTokens, shortSha, usd } from "./text.js";
 import { padToWidth } from "./text-width.js";
 
@@ -237,7 +237,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "build_stale":
       // Self-hosting fleets only (src/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
-      return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${e.aheadCommits} commit(s) ahead in src/`;
+      return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(Number(e.aheadCommits ?? 0), "commit")} ahead in src/`;
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
     case "restart":

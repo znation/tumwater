@@ -8,7 +8,7 @@
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase } from "./phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural } from "./phrases.js";
 import { shortSha } from "./text.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
@@ -137,7 +137,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "build_stale":
-      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${field(ev.aheadCommits)} commit(s) ahead`;
+      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${plural(Number(ev.aheadCommits ?? 0), "commit")} ahead`;
       break;
     case "restart_pending":
       text = `restart pending — main ${shortSha(ev.head)} green; compiling`;

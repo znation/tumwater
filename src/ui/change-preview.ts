@@ -6,7 +6,7 @@
 import { plural } from "../phrases.js";
 import type { FleetChangeView, RoleChangeView } from "../change-data.js";
 
-/** The work-summary phrase both change views open their work lines with — `N commit(s) ahead
+/** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, M uncommitted file(s)` when the worktree is dirty (both halves through
  * plural, so the singular/plural wording the tests pin cannot drift between the fleet roster
  * and the per-role header). Exactly two call sites: renderFleetChange's per-role line and

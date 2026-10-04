@@ -161,7 +161,7 @@ test("live-edit events name the knob and both values", () => {
 test("build_stale and the restart quartet render shas and the refusal reason", () => {
   assert.equal(
     describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: 3 })),
-    "build abcdef12 stale — main 12345678 3 commit(s) ahead",
+    "build abcdef12 stale — main 12345678 3 commits ahead",
   );
   assert.equal(
     describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef" })),

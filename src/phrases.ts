@@ -15,7 +15,10 @@ import { shortSha, squash, usd } from "./text.js";
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (failure-report.ts), and the fleet
- * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces) all rendered
+ * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
+ * lines' "N commit(s) ahead" (event-format.ts, failure-state-change.ts — the singular/plural
+ * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit")
+ * all rendered
  * inline before. `many` accepts a whole replacement form (`plural(n, "loop is", "loops are")`)
  * so verb-agreement titles share the helper; the plural-by-`s` default covers regular nouns.
  * (The GUI keeps its own JS copy in gui-client.ts: a separate runtime that cannot import
