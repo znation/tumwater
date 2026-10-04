@@ -2,12 +2,12 @@
 // The day-window collector buckets tick_end/merged/landing events by LOCAL calendar day and
 // tallies the backlog trackers' completions; the trailing-window collector totals a --since
 // window with a coverage proof. The Markdown render of both lives one layer up in
-// src/ui/report.ts (test/report.test.ts); these tests pin the collectors' data contract.
+// src/ui/report-render.ts (test/report.test.ts); these tests pin the collectors' data contract.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince } from "../src/report-data.js";
-import { renderSinceReportMarkdown } from "../src/ui/report.js";
+import { renderSinceReportMarkdown } from "../src/ui/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/event-window.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";

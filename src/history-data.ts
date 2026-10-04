@@ -1,7 +1,7 @@
 /** Collection half of `tumwater history`: read the event log and distill the last N completed
  * ticks into TickRow — one row per tick, newest first, with the paired duration and the raw
  * usage numbers. The Markdown/table rendering of this data lives in ui/history.ts, a pure
- * function of it; the split mirrors the usage report's (report-data.ts / ui/report.ts) and
+ * function of it; the split mirrors the usage report's (report-data.ts / ui/report-render.ts) and
  * keeps "what happened" (tick pairing, role filtering, scan windows) apart from "how it
  * prints" (column widths, terminal display padding), which change for different reasons —
  * and keeps core data collection out of the presentation layer, so a core consumer (as the

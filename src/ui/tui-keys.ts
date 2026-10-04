@@ -1,5 +1,5 @@
 import { collectReport } from "../report-data.js";
-import { renderReportMarkdown } from "./report.js";
+import { renderReportMarkdown } from "./report-render.js";
 import { REPORT_DEFAULT_DAYS } from "../event-window.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-report.js";
