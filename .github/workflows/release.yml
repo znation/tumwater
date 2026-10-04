@@ -32,9 +32,7 @@ jobs:
             echo "tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}" >&2
             exit 1
           fi
-      - run: npm publish --access public
-        # add --provenance once the repo is public (it needs a public GitHub repo
-        # whose `repository` field matches, and this repo has no remote yet)
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Attach the packed tarball to a GitHub release

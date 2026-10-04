@@ -32,6 +32,21 @@ GitHub Actions runs the lint+build+unit gate on every push and pull request, a `
 job packs the npm tarball on main pushes and uploads it as a workflow artifact, and a tag
 push (`v*`) runs the release workflow, which attaches the packed tarball to a GitHub release.
 
+## Releases
+
+Cutting a release is one command; `scripts/release.mjs` does the bookkeeping and the
+`Release` workflow (.github/workflows/release.yml) does the publish:
+
+    node scripts/release.mjs patch   # or minor|major; omit to release the current version
+
+It refuses to run on a dirty tree or a non-main branch, bumps package.json + lockfile
+(when asked), commits as `tumwater(release): <version>`, pushes main, waits for CI to go
+green, then tags `v<version>` and pushes the tag — the tag push triggers Release, which
+re-runs the suite, publishes to npm (`--provenance`), and attaches the tarball to a GitHub
+release. `node scripts/release.mjs --status` reports version/tag/CI state without acting.
+Prerequisites (once): an npm automation-token granular-PAT stored as the repo secret
+`NPM_TOKEN`, and `gh` authenticated locally.
+
 ## Keeping the suite fast
 
 The suite is bound by process creation, not by its own code: a run starts ~12,000 git processes

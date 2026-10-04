@@ -4,6 +4,10 @@
   "description": "Opinionated autonomous development harness built on pi. You write the initial prompt; role-driven loops build the project.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/znation/tumwater.git"
+  },
   "keywords": [
     "agent",
     "ai",
