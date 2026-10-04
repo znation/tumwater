@@ -9,7 +9,7 @@
  * duplicated, missing or malformed value, equals-form spelling) fails fast with an
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
-import { failOverDurationCap, parseCountFlag, parseDurationFlag } from "./cli-args.js";
+import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "./operator-intent.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
@@ -252,6 +252,31 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
   // stays in cmdRun beside the timer it arms.
   durationFlagSpec("run --for"),
   ROLE_FLAG,
+];
+
+/** The one refusal for a trailing `gui --token` with no value, phrased for what the
+ * flag actually needs — the spec's missingValue (so the gate's early report says it)
+ * and cmdGui's own re-check share this one wording. */
+export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
+
+/** `tumwater gui`'s flag vocabulary: `--port <n>` (the dashboard port, shape-checked by
+ * parsePortFlag so `gui --port abc` is named before the ready-repo gate can mask it),
+ * `--all-interfaces`, and `--token <secret>` (the dashboard auth token). Exported so
+ * cli.ts's rejectUnknownArgs check and its tests share one definition of what `gui`
+ * accepts, like every other command's spec in this module; cmdGui re-runs parsePortFlag
+ * and the token emptiness check on the accepted args, so the gate and the body cannot
+ * drift apart. */
+export const GUI_FLAG_SPECS: FlagSpec[] = [
+  {
+    names: ["--port"],
+    value: true,
+    valueName: "<n>",
+    validate: (value) => {
+      parsePortFlag(value);
+    },
+  },
+  { names: ["--all-interfaces"] },
+  { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
 ];
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import {
   parseCountFlag,
-  parsePortFlag,
 } from "./cli-args.js";
 import {
   grepFlagSpec,
+  GUI_FLAG_SPECS,
   JSON_FLAG,
   LAST_FLAG,
   N_FLAG,
@@ -37,7 +37,7 @@ import { renderDoctor } from "./doctor-render.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
 import { cmdTick, TICK_USAGE } from "./tick-detail.js";
 import { cmdReport } from "./report.js";
-import { cmdGui, TOKEN_VALUE_ERROR } from "./gui-command.js";
+import { cmdGui } from "./gui-command.js";
 import { didYouMean } from "./suggest.js";
 import { errorMessage } from "./text.js";
 import { HELP, helpTopic, suggestCommand } from "./help.js";
@@ -102,21 +102,7 @@ async function main(): Promise<void> {
       await runTui(root);
       break;
     case "gui":
-      rejectUnknownArgs("gui", args, [
-        {
-          names: ["--port"],
-          value: true,
-          valueName: "<n>",
-          // gui is gui-command.ts's only flag, so the shape parser lives beside its one body; the
-          // gate's early report re-runs it so `gui --port abc` names the typo before the
-          // ready-repo gate can mask it.
-          validate: (value) => {
-            parsePortFlag(value);
-          },
-        },
-        { names: ["--all-interfaces"] },
-        { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
-      ]);
+      rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
       await requireReadyRepo(root);
       await cmdGui(root, args);
       break;

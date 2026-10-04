@@ -7,6 +7,7 @@ import { startGui } from "./gui-server.js";
 import { errCode } from "./errno.js";
 import { fail, say } from "./cli-output.js";
 import { flagValue, parsePortFlag } from "./cli-args.js";
+import { TOKEN_VALUE_ERROR } from "./cli-flag-specs.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
@@ -28,11 +29,6 @@ export function lanAddresses(
   }
   return out;
 }
-
-/** The empty-secret error cmdGui prints for a valueless `--token`, exported so cli.ts's
- * rejectUnknownArgs spec for --token can fail a trailing `gui --token` with the same wording
- * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
-export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
 /** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
