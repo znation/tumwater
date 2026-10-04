@@ -63,7 +63,7 @@ interface OpenEntryBlock {
 /** Locate QUESTIONS.md's `## Open` and `## Answered` section heading lines (fence-aware) and
  * every open entry's block between them. Returns null when the file has no `## Open` section
  * at all — then there is nothing to answer, whatever the position. */
-function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number; blocks: OpenEntryBlock[] } | null {
+function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number; openEnd: number; blocks: OpenEntryBlock[] } | null {
   const fenced = fenceTracker();
   let openIdx = -1;
   let answeredIdx = -1;
@@ -81,8 +81,19 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
   // after the Open section runs unclosed to EOF — and `answer` would refuse a question the
   // list just showed.
   const fencedBlocks = fenceTracker();
+  // The section's end is the next `## ` heading of ANY title, fence-aware — the same boundary
+  // rule sectionLines applies, so the entries `--list` numbers (sectionEntries →
+  // parseEntryDetails) and the blocks `answer` moves can never disagree about where Open
+  // stops. Ending at the first `## Answered` instead would run the walk through any
+  // intermediate section and let one answer move another section's entries.
+  let openEnd = lines.length;
+  for (let i = openIdx + 1; i < lines.length; i++) {
+    if (!fencedBlocks.inside(lines[i] ?? "") && (lines[i] ?? "").startsWith("## ")) {
+      openEnd = i;
+      break;
+    }
+  }
   const blocks: OpenEntryBlock[] = [];
-  const openEnd = answeredIdx === -1 ? lines.length : answeredIdx;
   let current: OpenEntryBlock | null = null;
   for (let i = openIdx + 1; i < openEnd; i++) {
     const line = lines[i] ?? "";
@@ -92,7 +103,7 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
       blocks.push(current);
     }
   }
-  return { openIdx, answeredIdx, blocks };
+  return { openIdx, answeredIdx, openEnd, blocks };
 }
 
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
@@ -111,7 +122,7 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
   if (scan === null || n < 1 || n > scan.blocks.length) {
     fail(`no question at position ${n} (${openCount} open)`);
   }
-  const scanned = scan as { openIdx: number; answeredIdx: number; blocks: OpenEntryBlock[] };
+  const scanned = scan as { openIdx: number; answeredIdx: number; openEnd: number; blocks: OpenEntryBlock[] };
   const block = scanned.blocks[n - 1] as OpenEntryBlock;
   const moved = lines!.slice(block.start, block.end);
   while (moved.length > 0 && (moved[moved.length - 1] ?? "").trim() === "") moved.pop();
@@ -119,7 +130,10 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
   // Cut the block out of ## Open: everything before it, everything from its end on. When the
   // section is left with no content at all, restore the `_None yet._` placeholder the skeleton
   // carries, so an empty outbox still reads as an intentionally empty section.
-  const openContent = lines!.slice(scanned.openIdx + 1, scanned.answeredIdx === -1 ? lines!.length : scanned.answeredIdx);
+  // Emptiness is judged against the Open section only (openIdx+1 .. openEnd): with an
+  // intermediate section between Open and Answered, judging against answeredIdx would keep
+  // the placeholder from returning and, worse, the empty rebuild would drop that section.
+  const openContent = lines!.slice(scanned.openIdx + 1, scanned.openEnd);
   const remaining = openContent.filter((_, i) => i < block.start - scanned.openIdx - 1 || i >= block.end - scanned.openIdx - 1);
   const openEmpty = remaining.every((l) => l.trim() === "");
   const rebuilt: string[] = [];
@@ -128,10 +142,11 @@ export function answerQuestion(root: string, n: number, decision: string): { tit
       ...lines!.slice(0, scanned.openIdx + 1),
       "",
       "_None yet._",
-      // Resume at the next section with the blank separator line the dropped Open content
-      // used to carry, so `_None yet._` never reads as a paragraph glued to a heading.
+      // Resume at the section that followed Open (openEnd, not answeredIdx — an intermediate
+      // section between the two must survive) with the blank separator line the dropped Open
+      // content used to carry, so `_None yet._` never reads as a paragraph glued to a heading.
       "",
-      ...lines!.slice(scanned.answeredIdx === -1 ? lines!.length : scanned.answeredIdx),
+      ...lines!.slice(scanned.openEnd),
     );
   } else {
     rebuilt.push(...lines!.slice(0, block.start), ...lines!.slice(block.end));

@@ -15,6 +15,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Fixed
 
+### `tumwater questions answer <n>` relocated any section sitting between `## Open` and `## Answered`, and moved that section's entries into the answer (fixed 2026-10-04 by bugfix loop)
+
+**Validation gap:** none — a scratch repro against dist showed the corruption immediately, but the two parsers had never been run against a file shape they disagree on, so the suite's skeleton-shaped fixtures could not see it until the shape was written.
+
+- **Symptom:** `--list` (via backlog's sectionLines) ends `## Open` at the next `## ` heading of any title, but scanQuestions (the `answer` path) ended it at the first `## Answered` — so with an intermediate section (e.g. `## Notes`) in between, `answer 1` moved the Notes heading, its body, and its `### ` entries into `## Answered` and deleted them from where they lived: one answer consumed and corrupted a whole unrelated section (repro: seed QUESTIONS.md with `## Open` / `### Which color?` / `## Notes` / `### decoy` / `## Answered`; `answer 1` relocated the Notes section and its decoy entry).
+- **Fix:** scanQuestions now derives the section end from the next non-fenced `## ` heading of any title (the sectionLines boundary rule, so the list reader and the answer surgery can never disagree), the emptiness check and the `_None yet._` rebuild use that same boundary (an intermediate section survives both), and a regression test answers against a file with an intermediate `## Notes` section.
+- **Found:** 2026-10-04 bugfix loop latent-bug hunt over the recent questions-outbox commits (772b8f2c..e742b191), by comparing the two QUESTIONS.md parsers' boundary rules.
+
 ### `tumwater questions answer` refuses a question `questions` itself lists when a fence after `## Answered` runs unclosed to EOF: scanQuestions walked the file twice with one fenceTracker, leaving it in end-of-file state for the block walk, so the tracker's inside-fence state at EOF quoted every Open heading and the answer path reported "no question at position 1 (0 open)" for an entry the list command had just numbered (repro: a QUESTIONS.md whose Answered section ends with an unclosed ``` fence — `openQuestionList` prints the question, `answerQuestion(root, 1, ...)` exits 1 with 0 open; a fresh tracker per walk gives the block scan the state the first loop saw at openIdx) (found by bugfix loop 2026-10-04 latent-bug hunt over the questions feature commits 7cf0c37a/aef32f71/e742b191/ac184cbe, fixed 2026-10-04 by bugfix loop)
 
 **Validation gap:** unclear-invariant — the existing question tests covered fences only inside Open bodies, and the bug turned on the tracker's state at the second walk's start, an invariant no test pinned until the unclosed-tail case was written.

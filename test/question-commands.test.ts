@@ -176,6 +176,45 @@ test("sayAnswered renders the prose confirmation or the answer-result JSON", asy
 
 // --- helpers -------------------------------------------------------------
 
+test("an intermediate ## section between Open and Answered survives an answer untouched", () => {
+  // sectionLines (the --list reader) ends ## Open at the next ## heading of any title;
+  // scanQuestions must use the same boundary, or one answer moves another section's
+  // entries (and its heading) into ## Answered and out of the file.
+  const root = tmpdir();
+  const file = seed(
+    root,
+    `# Questions
+
+## Open
+
+### Which color?
+blue or red
+
+## Notes
+
+internal notes live here
+
+### decoy heading in notes
+
+## Answered
+
+_None yet._
+`,
+  );
+  const { title } = answerQuestion(root, 1, "blue");
+  assert.equal(title, "Which color?");
+  const md = read(file);
+  // The Notes section keeps its heading, body, and decoy entry, exactly where they were.
+  assert.ok(md.includes("## Notes\n\ninternal notes live here\n\n### decoy heading in notes"), md);
+  assert.deepEqual(openQuestionEntries(root).map((q) => q.title), []);
+  // The emptied Open section regains its placeholder.
+  assert.ok(md.includes("## Open\n\n_None yet._\n\n## Notes"), md);
+  // The answered block carries only the question, not the Notes content.
+  const answered = md.slice(md.indexOf("## Answered"));
+  assert.ok(!answered.includes("decoy"), answered);
+  assert.ok(answered.includes("### Which color?\nblue or red"), answered);
+});
+
 function read(file: string): string {
   return fs.readFileSync(file, "utf8");
 }
