@@ -1,14 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  compactTokens,
-  collapseWhitespace,
-  parseNonNegativeInt,
-  parsePositiveInt,
-  suggestClosest,
-  typoSuffix,
-  truncate,
-} from "../src/text.js";
+import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, suggestClosest, typoSuffix, truncate } from "../src/text.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)
@@ -111,32 +103,6 @@ test("truncate with a non-positive max fits nothing and returns the empty string
   assert.equal(truncate("a much longer string than the budget", 0), "");
   assert.equal(truncate("abc", -1), "");
   assert.equal(truncate("", 0), "");
-});
-
-// compactTokens is the single home of the token display format shared by the status table's
-// gen/peak-ctx columns and the commit trailer's ctx field — pinning it here keeps those two
-// surfaces from drifting even though they live in different modules.
-test("compactTokens renders bare integers below 10,000", () => {
-  assert.equal(compactTokens(0), "0");
-  assert.equal(compactTokens(500), "500");
-  assert.equal(compactTokens(9_999), "9999"); // just under the threshold: no k
-});
-
-test("compactTokens renders one-decimal k at and above 10,000", () => {
-  assert.equal(compactTokens(10_000), "10.0k"); // boundary: compacted with a .0
-  assert.equal(compactTokens(12_345), "12.3k");
-});
-
-// Regression (2026-09-20): the millions branch was added to report.ts's private formatTokens
-// but not to this shared formatter or the GUI's browser-side copy, so a window total of
-// 13,820,300 rendered as "13820.3k". `compactTokens` and the page's fmtTokens must agree with
-// the report's rule (uppercase M) at and above one million.
-test("compactTokens renders one-decimal M at and above 1,000,000", () => {
-  assert.equal(compactTokens(1_000_000), "1.0M"); // boundary: swaps k for M
-  assert.equal(compactTokens(13_820_300), "13.8M");
-  // 999,999 still uses the k branch — and rounds up to "1000.0k", exactly as report.ts's
-  // formatTokens does, so the dashboards keep printing what the Markdown table prints.
-  assert.equal(compactTokens(999_999), "1000.0k");
 });
 
 // --- parsePositiveInt / parseNonNegativeInt (the shared numeric core) ---

@@ -17,11 +17,11 @@
  * pi; the default export is a thin adapter over pi's `tool_result` event and `ctx.getContextUsage()`
  * (pi docs, extensions.md "Context and session changes"). One note per threshold per process: a
  * resumed session (--continue) starts a fresh process and re-warns at most once, at the highest
- * threshold it has already passed. The token counts render through text.ts's compactTokens, the
+ * threshold it has already passed. The token counts render through format.ts's compactTokens, the
  * harness's one token format (text.ts imports nothing, so pi can load it beside this file).
  */
 
-import { compactTokens } from "../text.js";
+import { compactTokens } from "../format.js";
 
 /** Context-usage percentages at which the model is told where it stands. */
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];

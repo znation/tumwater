@@ -1,4 +1,5 @@
-import { compactTokens, truncate } from "./text.js";
+import { truncate } from "./text.js";
+import { compactTokens } from "./format.js";
 import { labeledLine } from "./reply-contract.js";
 
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the

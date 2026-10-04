@@ -29,7 +29,7 @@ import { createRedeployer } from "./redeploy.js";
 import { loadLoopState } from "./loop-state.js";
 import { plural } from "./phrases.js";
 import { fleetDownEvent, spawnRunChild, startParentDeathWatch, SUPERVISED_ENV, superviseRun } from "./supervisor.js";
-import { shortSha } from "./text.js";
+import { shortSha } from "./format.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init.ts does the
  * work; this prints the report). --dry-run prints the would-be actions without writing

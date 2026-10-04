@@ -1,7 +1,8 @@
 import type { BuildInfo, BuildStaleness, BuildStatus } from "./build-info.js";
 import type { CompileResult } from "./build-stage.js";
 import type { HarnessEventInput } from "./events.js";
-import { errorMessage, shortSha } from "./text.js";
+import { errorMessage } from "./text.js";
+import { shortSha } from "./format.js";
 import { mainRedPhrase } from "./phrases.js";
 import {
   type AutoRestartRecord,

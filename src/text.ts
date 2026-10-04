@@ -1,8 +1,8 @@
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
  * display labels (live progress, transcripts), tick commit subjects and body fields, and
- * build-check reason lines — plus number and token formats: whitespace collapsing, ellipsis
- * truncation, compact token counts, abbreviated commit hashes, money formats, and plain-decimal
- * integer parsing. (Local date/time formatting and calendar-day arithmetic live in
+ * build-check reason lines: whitespace collapsing, ellipsis truncation, and plain-decimal
+ * integer parsing. (Number, money, and hash formats — compactTokens, shortSha, usd, usdCap —
+ * live in format.ts; local date/time formatting and calendar-day arithmetic live in
  * datetime.ts; terminal-column geometry — the wcwidth table and the displayWidth/
  * padToWidth/clipToWidth clippers — lives in text-width.ts; the fleet's shared wording
  * fragments — the red-main phrase, the pause-reason suffix, the hold, budget, and backend
@@ -185,48 +185,6 @@ export function parsePositiveInt(raw: string): number | null {
  * which 0 is invalid. The plain-decimal rule is the same as parsePositiveInt's. */
 export function parseNonNegativeInt(raw: string): number | null {
   return parseDecimalInt(raw);
-}
-
-/** Compact token count for display: bare integer below 10,000, one-decimal `k` to
- * 999,999 (`12.3k`), one-decimal `M` at ≥1,000,000 (`13.8M`, uppercase `M`). The single home
- * of this format — the status table's gen/peak-ctx columns, the ctx chip, the commit trailer's
- * ctx field, and the usage report's totals/table cells all render through it, so they cannot
- * drift. (The GUI renders the same rule from its own JS copy in gui-client.ts: a separate
- * runtime that cannot import TypeScript.) */
-export function compactTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-}
-
-/** The abbreviated form of a commit hash for human-facing text — its first 8 characters.
- * The single home of this format: the event feed's merged/review lines and the review gate's
- * discard warning all render hashes through it, so the abbreviation length cannot drift per
- * consumer. Takes unknown because harness events carry their fields loosely typed (the
- * index signature), coercing exactly as the inline `String(…).slice(0, 8)` did before. */
-export function shortSha(sha: unknown): string {
-  return String(sha).slice(0, 8);
-}
-
-/** A USD amount with its dollar sign and exactly two decimals ($12.34) — the single home of
- * the cents-pinned money format shared by the event feed's budget/usage lines (event-format.ts)
- * the status table's cost/today cells plus totals row (status-render.ts), and the usage
- * report's totals line plus per-day cost column (report.ts), so the decimal width cannot
- * drift per consumer. The cap variant that drops whole-dollar `.00` is a different
- * format (`usdCap` below); the GUI's row cells still format money from their own inline JS (a
- * separate runtime that cannot import TypeScript), while header badges like `budgetBadge`
- * arrive preformatted. */
-export function usd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
-
-/** A USD cap for display: whole dollars stay bare ($50), fractional ones keep their cents
- * ($12.34) — the budget badge reads `· budget: $12.34/$50 today`, and the TUI's cap-edit
- * confirmation reads `budget set to $25`. The single home of the drop-`.00` rule, shared by
- * badges.ts's `budgetBadge` and the TUI's budget-edit flash so the two cannot drift (the
- * GUI renders the same rule from its own JS copy in gui-client.ts: a separate runtime that
- * cannot import TypeScript). */
-export function usdCap(n: number): string {
-  return `$${n.toFixed(2).replace(/\.00$/, "")}`;
 }
 
 /** The shared over-long-text message: `<subject> is <n> chars — shorten it to at most <max>`,

@@ -109,10 +109,10 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
 const FORMAT_JS = String.raw`  // format:start
   const fmtTokens = (n) => (n >= 1000000 ? (n / 1000000).toFixed(1) + "M" : n >= 10000 ? (n / 1000).toFixed(1) + "k" : String(n || 0));
   const fmtUsd = (n) => "$" + n.toFixed(2);
-  // An abbreviated commit hash: its first 8 characters — text.ts's shortSha, so the page's sha
+  // An abbreviated commit hash: its first 8 characters — format.ts's shortSha, so the page's sha
   // cells abbreviate exactly like the event feed's and the review gate's.
   const shortSha = (sha) => String(sha).slice(0, 8);
-  // A cap: whole dollars stay bare ($15), fractional ones keep their cents — text.ts's usdCap.
+  // A cap: whole dollars stay bare ($15), fractional ones keep their cents — format.ts's usdCap.
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   const plural = (n, one, many) => n + " " + (n === 1 ? one : many || one + "s");
   // human-seconds-fmt:start

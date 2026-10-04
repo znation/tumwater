@@ -3,7 +3,7 @@ import type { StatusSnapshot } from "../status-data.js";
 import { dailyCost } from "../budget.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
-import { compactTokens, usd } from "../text.js";
+import { compactTokens, usd } from "../format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2 } from "../datetime.js";
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";

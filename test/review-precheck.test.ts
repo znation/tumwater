@@ -17,7 +17,7 @@ import { defaultConfig } from "../src/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/event-read.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
-import { shortSha } from "../src/text.js";
+import { shortSha } from "../src/format.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";

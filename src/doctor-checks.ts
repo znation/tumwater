@@ -35,7 +35,8 @@ import {
 } from "./readiness.js";
 import { classifyLock, readLockPid } from "./lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
-import { errorMessage, shortSha } from "./text.js";
+import { errorMessage } from "./text.js";
+import { shortSha } from "./format.js";
 import { formatTime } from "./datetime.js";
 import type { FallbackDemotion } from "./fallback-breaker.js";
 import { briefFile } from "./readme.js";

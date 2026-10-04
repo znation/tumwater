@@ -7,7 +7,7 @@ import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "..
 import { refSha, setRef } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/event-read.js";
-import { shortSha } from "../src/text.js";
+import { shortSha } from "../src/format.js";
 import type { BuildCheck } from "../src/build-check-detect.js";
 import type { BuildCheckOutcome, BuildCheckRun } from "../src/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";

@@ -9,7 +9,7 @@
 import { truncateExample } from "./failure-cluster.js";
 import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "./phrases.js";
-import { shortSha } from "./text.js";
+import { shortSha } from "./format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/fleet gates and the fleet hold, live-config edits, self-hosted redeploys, need-based

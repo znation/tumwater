@@ -22,7 +22,7 @@ test("contextNote fires once per threshold and names the numbers", () => {
   const first = contextNote(52.3, 66_400, 126_928, 0);
   assert.ok(first);
   assert.equal(first.threshold, 50);
-  // Counts render through text.ts's compactTokens, the harness's one token format.
+  // Counts render through format.ts's compactTokens, the harness's one token format.
   assert.match(first.text, /your context window is 52% full \(66\.4k of 126\.9k tokens\)/);
   assert.match(first.text, /start no new exploration/);
   // Already warned at 50: nothing new until 70 is crossed.

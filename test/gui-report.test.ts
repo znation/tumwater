@@ -6,7 +6,7 @@ import { collectReport, type ReportData, type ReportDay } from "../src/report-da
 import { collectFailureReport } from "../src/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure-report.js";
 import { eventsLogPath } from "../src/paths.js";
-import { compactTokens } from "../src/text.js";
+import { compactTokens } from "../src/format.js";
 import { initProject } from "../src/init.js";
 import { atLocalTs as atNoon, dayKey } from "./oracles.js";
 import { withGui } from "./gui-fixtures.js";

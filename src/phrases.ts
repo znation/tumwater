@@ -1,6 +1,7 @@
 import path from "node:path";
 import { isJsonObject } from "./json-object.js";
-import { shortSha, squash, usd } from "./text.js";
+import { squash } from "./text.js";
+import { shortSha, usd } from "./format.js";
 
 /** The single home of each human-facing PHRASE the fleet renders — the wording fragments
  * (a pause reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget
@@ -8,9 +9,9 @@ import { shortSha, squash, usd } from "./text.js";
  * helper) shared by the event feed (event-format.ts), the failure digest (failure-report.ts
  * and failure-state-change.ts), the status surfaces (ui/), and the CLI messages
  * (operator-commands.ts, cli-run.ts), so their phrasing cannot drift per consumer. Pure
- * presentation: every phrase composes the shared formats text.ts pins (shortSha, usd, squash)
+ * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
  * into words. Pure value formats — the token a number or hash renders as (compactTokens,
- * shortSha, usd, usdCap) — stay in text.ts; this module is where those tokens become words. */
+ * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
 
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label

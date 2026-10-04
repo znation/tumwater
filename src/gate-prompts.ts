@@ -1,4 +1,4 @@
-import { shortSha } from "./text.js";
+import { shortSha } from "./format.js";
 import { dateLine } from "./prompt.js";
 import { formatTimestamp } from "./datetime.js";
 
