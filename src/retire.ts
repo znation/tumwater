@@ -8,7 +8,8 @@ import {
   isMergedInto,
   refSha,
   targetBranch,
-} from "./git.js";import { errorMessage } from "./text.js";
+} from "./git.js";
+import { errorMessage } from "./text.js";
 import { loadLoopState } from "./loop-state.js";
 import { branchName, landingRefName, worktreePath } from "./paths.js";
 import { isUsableWorktree, removeWorktree } from "./worktree.js";
@@ -117,15 +118,11 @@ export async function retireRole(root: string, role: string, { force }: { force?
   const skipped: string[] = [];
   const mark = (name: (typeof ARTIFACTS)[number], wasThere: boolean) =>
     (wasThere ? removed : skipped).push(name);
-  if (status.worktreePresent) {
-    await removeWorktree(root, status.role);
-    mark("worktree", true);
-  } else {
-    // Even without a directory, a stale registration may still hold the branch checked out —
-    // prune (removeWorktree's absent-dir path) before the branch deletion below.
-    await removeWorktree(root, status.role);
-    mark("worktree", false);
-  }
+  // Always prune first: even without a directory, a stale registration may still hold the
+  // branch checked out — removeWorktree's absent-dir path clears it before the branch
+  // deletion below.
+  await removeWorktree(root, status.role);
+  mark("worktree", status.worktreePresent);
   if (status.branchPresent) {
     await git(root, "branch", "-D", branchName(status.role));
     mark("branch", true);
