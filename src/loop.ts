@@ -78,6 +78,14 @@ export class LoopRunner {
    * tickModel() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30).
    * Transient — never persisted — and captured fresh at every tick start. */
   private tickPair?: { provider?: string; model?: string };
+  /** The loop-identity triple every tick-pipeline helper takes (root/role/mainBranch): the
+   * constructor's readonly fields restated once, so finalizeTick, mergeToMain,
+   * recoverLeftover, and resolveTickVerdict spread it instead of each retyping the pair of
+   * this. accessors — one home for what "this loop" means to the tick pipeline. */
+  private get loopCtx(): { root: string; role: string; mainBranch: string } {
+    return { root: this.root, role: this.role, mainBranch: this.mainBranch };
+  }
+
   /** The landing failure this tick's leftover recovery is retrying, if any (a retriable lander
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
@@ -245,9 +253,7 @@ export class LoopRunner {
   private async merge(wt: string, summary: string): Promise<TickResult> {
     return mergeToMain(
       {
-        root: this.root,
-        role: this.role,
-        mainBranch: this.mainBranch,
+        ...this.loopCtx,
         exemptPaths: this.config.review.exemptPaths,
         config: this.config,
         tick: this.state.ticks,
@@ -414,9 +420,7 @@ export class LoopRunner {
     // announced, not whatever resetCounters (a documented mid-tick operation) may have left
     // on the shared state by finalize time.
     const finalizeResult = await finalizeTick({
-      root: this.root,
-      role: this.role,
-      mainBranch: this.mainBranch,
+      ...this.loopCtx,
       config: cfg,
       state: s,
       outcome,
@@ -462,9 +466,7 @@ export class LoopRunner {
       // resolves. With nothing to salvage the branch holds nothing either, so the reset below
       // leaves pristine main for the red-main gate.
       const recovered = await recoverLeftover({
-        root: this.root,
-        role: this.role,
-        mainBranch: this.mainBranch,
+        ...this.loopCtx,
         tick: s.ticks,
         wt,
         mergeConflicts: s.mergeConflicts,
@@ -529,9 +531,7 @@ export class LoopRunner {
     // quiet kill, timeout, refusal, failure without changes, no change — lives in
     // resolveTickVerdict (src/tick-verdict.ts); null means the run IS fulfillable.
     const verdict = await resolveTickVerdict({
-      root: this.root,
-      role: this.role,
-      mainBranch: this.mainBranch,
+      ...this.loopCtx,
       state: this.state,
       pending: this.pending,
       turns: this.usage.turns,
