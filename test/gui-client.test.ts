@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { freshLoopState } from "../src/loop-state.js";
 import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./gui-client-scope.js";
+import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
 import { shortSha as tsShortSha } from "../src/text.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
@@ -310,6 +311,15 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   });
   return { scope, panels, posts, flashes, els };
 }
+
+test("the assembled script declares postAction exactly once — both operator and fleet callers go through it", () => {
+  // Two `async function postAction` declarations in one concatenated script scope: the later
+  // declaration wins everywhere, so the operator's string-typed calls went through the fleet
+  // variant that invokes its third argument as a function ("message is not a function") even
+  // though the POST itself succeeded.
+  const declarations = GUI_CLIENT_JS.match(/async function postAction/g) ?? [];
+  assert.equal(declarations.length, 1, "one postAction definition serves every caller");
+});
 
 test("the spend card is an editor button unless every model is free", () => {
   const { scope } = operatorScope();
