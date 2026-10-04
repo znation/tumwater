@@ -9,7 +9,8 @@ import {
   savePromptImages,
   stripVanishedImageReferences,
 } from "../src/inbox-attachments.js";
-import { cancelQueuedFile, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
+import { cancelQueuedFile } from "../src/inbox-cancel.js";
+import { dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import { submitRolePrompt } from "../src/inbox-submit.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
 import { roleInboxDir } from "../src/paths.js";

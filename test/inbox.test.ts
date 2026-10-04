@@ -2,8 +2,6 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";import {
-  cancelPrompt,
-  cancelRolePrompt,
   dequeuePrompt,
   dequeueRolePrompt,
   enqueuePrompt,
@@ -14,6 +12,7 @@ import path from "node:path";import {
   queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox.js";
+import { cancelPrompt, cancelRolePrompt } from "../src/inbox-cancel.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { queueFileStamp } from "../src/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox-submit.js";

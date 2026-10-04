@@ -9,7 +9,8 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet-state.ts, operator-intent.ts) — this module only adapts HTTP onto it.
  */
-import { cancelQueuedFile, promptPreview, queueFileNameProblem } from "../inbox.js";
+import { promptPreview } from "../inbox.js";
+import { cancelQueuedFile, queueFileNameProblem } from "../inbox-cancel.js";
 import { submitPrompt } from "../inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config-write.js";
@@ -114,7 +115,7 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
  * the dashboard's per-row cancel affordance, the file-addressed twin of the CLI's
  * position-addressed `prompt --cancel`. The role is optional (absent cancels from the
  * director's queue) and validates exactly like /api/transcript; a file name failing the
- * basename guard (inbox.ts's queueFileNameProblem) is a user-input error answered 400 with
+ * basename guard (inbox-cancel.ts's queueFileNameProblem) is a user-input error answered 400 with
  * nothing touched on disk. A vanished file answers 200 { status: "gone" } — the loop already
  * dequeued the prompt, which is data for the flash line, not a server fault. Same body
  * discipline as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */

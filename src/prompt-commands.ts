@@ -13,9 +13,8 @@ import {
   type ListedCancelOutcome,
   cancelListedPrompt,
   cancelRolePrompt,
-  promptPreview,
-  queuedRolePromptRecords,
-} from "./inbox.js";
+} from "./inbox-cancel.js";
+import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";

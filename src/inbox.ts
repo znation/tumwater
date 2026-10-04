@@ -3,7 +3,6 @@ import path from "node:path";
 import { ensureParentDir, writeTextAtomic } from "./files.js";
 import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "./file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { logEvent } from "./events.js";
 import { roleInboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { truncate } from "./text.js";
@@ -14,8 +13,9 @@ import { errCode } from "./errno.js";
  * root; every other loop has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
  * queues a request only that loop's next tick sees (PLANS.md "Per-role prompts 1/2").
  *
- * This module is the store: enqueueing, listing, peeking, dequeuing, cancelling, and their
- * race policy. The submission pipeline that validates and logs a user-submitted prompt lives
+ * This module is the store: enqueueing, listing, peeking, and dequeuing, plus the shared
+ * takeQueuedFile race policy. The cancel half — position-, list-, and file-addressed removal
+ * and its event pairing — lives in inbox-cancel.ts; the submission pipeline that validates and logs a user-submitted prompt lives
  * in inbox-submit.ts; the image side of a submission in inbox-attachments.ts. The not-before
  * marker vocabulary for deferred prompts lives in prompt-not-before.ts (compose, parse, strip,
  * and the deliverableNow predicate this module filters on). */
@@ -26,8 +26,9 @@ import { deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } fr
  * log line, the dashboard payload, or the CLI output. */
 const PROMPT_PREVIEW_MAX = 80;
 
-/** One-line preview of a queued prompt — the single width shared by the prompt_enqueued and
- * prompt_cancelled event previews (this module), the dashboards' inboxPrompts (status-data.ts), and
+/** One-line preview of a queued prompt — the single width shared by the prompt_enqueued
+ * event preview (this module) and the prompt_cancelled preview (inbox-cancel.ts),
+ * the dashboards' inboxPrompts (status-data.ts), and
  * the CLI's cancel output (cli.ts). Surrogate-safe via truncate: an over-long prompt is marked
  * with an ellipsis like every other label and never carries a lone surrogate at the cut point. */
 export function promptPreview(text: string): string {
@@ -72,7 +73,7 @@ export function enqueueRolePrompt(
   return file;
 }
 
-function queuedFiles(root: string, role: string): string[] {
+export function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
 
@@ -200,15 +201,12 @@ export function queuedRolePromptCount(root: string, role: string): number {
   }).length;
 }
 
-/** Outcome of cancelPrompt: the cancelled prompt's text, or "gone" when the director dequeued
- * it between listing and removal (a concurrent pop is a normal race, not an error). */
-export type CancelOutcome = { status: "cancelled"; text: string } | { status: "gone" };
-
 /** Read a queued prompt and remove its file, treating either half of the concurrent-cancel
  * race as "the prompt is gone": null when the file has already vanished before the read
  * (ENOENT — a cancel or a prior dequeue won) or when the removal itself finds it gone (a
  * concurrent cancel won after our read). Any other read error propagates — it is not a race.
- * Shared by cancelRolePrompt (position-addressed), dequeueRolePrompt (oldest-first pop), and
+ * Shared by inbox-cancel.ts's cancel paths (position- and file-addressed), dequeueRolePrompt
+ * (oldest-first pop), and
  * loop.ts's resume reclaim — which calls this for one exact queue file instead of popping
  * oldest-first, so the prompt recorded at requeue time is the one reclaimed, whatever else
  * was enqueued or cancelled meanwhile — so the race policy lives once. */
@@ -246,94 +244,6 @@ function removeSameStemSiblings(file: string): void {
     const next = entry.charAt(stem.length);
     if (next === "." || next === "-") removeQueueFile(path.join(dir, entry));
   }
-}
-
-
-/** Read one addressed queue file and turn it into a cancel outcome — the one home of the
- * race-policy-and-event pairing both cancel paths go through: { status: "gone" } when the
- * loop already dequeued or another cancel removed the file (takeQueuedFile's race policy,
- * a normal race, never an error), else one prompt_cancelled event under that loop (preview
- * via promptPreview, exactly like the prompt_enqueued sibling) logged only after a successful
- * removal — a prompt the loop just dequeued ran, it was not cancelled — and
- * { status: "cancelled", text }. Shared by cancelRolePrompt (position-addressed) and
- * cancelQueuedFile (file-addressed), so the two cannot drift on the event, its preview
- * width, or what counts as gone. */
-function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
-  const text = takeQueuedFile(file);
-  if (text === null) return { status: "gone" };
-  logEvent(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
-  return { status: "cancelled", text };
-}
-
-/** Remove the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
- * and log one prompt_cancelled event under that loop (preview via promptPreview, exactly like
- * its prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
- * { status: "gone" } when the file disappears between listing and removal instead of throwing.
- * The race policy and event live in takeCancelledPrompt. */
-export function cancelRolePrompt(root: string, role: string, position: number): CancelOutcome {
-  const files = queuedFiles(root, role);
-  if (position < 1 || position > files.length) {
-    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
-  }
-  const file = files[position - 1];
-  if (!file) throw new Error(`no prompt at position ${position} (${files.length} queued)`); // Unreachable: the range check above.
-  return takeCancelledPrompt(root, role, file);
-}
-
-/** Outcome of cancelListedPrompt: a resolved cancel (naming the loop it landed in, since the
- * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
-export type ListedCancelOutcome =
-  | { status: "cancelled"; role: string; outcome: CancelOutcome }
-  | { status: "ambiguous"; roles: string[] }
-  | { status: "missing"; queued: number };
-
-/** Cancel by the position numbering `tumwater prompt --list` prints with no --role: its per-loop
- * sections, each numbered from 1, in `scope` order (the director first, then the roles). Only
- * loops whose queue is long enough to hold the position are candidates — exactly one resolves to
- * a cancel in that loop's queue (cancelRolePrompt's race policy and event), several are an
- * ambiguity the caller reports with a --role escape hatch (the list itself shows two "N."
- * lines there, so no silent default), and none is a miss carrying the largest queue length for
- * the error's count. Sizes only — no queue content is read — so a cancel that resolves to
- * nothing touches no file. */
-export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
-  const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
-  if (candidates.length === 0) {
-    return { status: "missing", queued: Math.max(0, ...scope.map((role) => queuedFiles(root, role).length)) };
-  }
-  if (candidates.length > 1) return { status: "ambiguous", roles: candidates };
-  const role = candidates[0];
-  if (!role) return { status: "missing", queued: 0 }; // Unreachable: candidates.length is 1.
-  return { status: "cancelled", role, outcome: cancelRolePrompt(root, role, position) };
-}
-
-/** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
- * trusted only as a plain basename inside the loop's queue directory — anything containing a
- * path separator or equal to `..` could name a file elsewhere on disk, a NUL byte is not a
- * character any filename can hold (the fs layer throws on it rather than answering ENOENT,
- * so the endpoint's 400 contract needs it rejected before anything touches the disk), and a
- * non-`.md` name cannot be a queued prompt at all (enqueueRolePrompt writes nothing else).
- * Returns null when the name is safe to join onto roleInboxDir, else the reason the
- * /api/prompt-cancel endpoint sends as its 400. cancelQueuedFile re-checks it, so a caller
- * that skips the guard fails closed. */
-export function queueFileNameProblem(name: unknown): string | null {
-  if (typeof name !== "string" || name === "") return "file required";
-  if (name.includes("/") || name.includes("\\") || name.includes("\0") || name === "..") {
-    return "file must be a plain queue-file basename";
-  }
-  if (!name.endsWith(".md")) return "file must name a queued prompt's .md file";
-  return null;
-}
-
-/** Remove one queued prompt addressed by its queue-file basename — the file-addressed twin of
- * cancelRolePrompt, for the dashboard's per-row cancel affordance (PLANS.md 2026-09-29): the
- * address is the file itself, so a stale poll's snapshot can never cancel the wrong entry.
- * Same race policy and event as cancelRolePrompt, through the shared takeCancelledPrompt.
- * Throws for a name failing queueFileNameProblem — the GUI endpoint pre-checks the same
- * guard and answers 400 before anything is touched on disk. */
-export function cancelQueuedFile(root: string, role: string, name: string): CancelOutcome {
-  const problem = queueFileNameProblem(name);
-  if (problem) throw new Error(problem);
-  return takeCancelledPrompt(root, role, path.join(roleInboxDir(root, role), name));
 }
 
 /** Remove and return the oldest queued prompt, or null when empty — including when a
@@ -388,8 +298,4 @@ export function queuedPrompts(root: string): string[] {
   return queuedRolePrompts(root, DIRECTOR_ROLE);
 }
 
-/** Remove the Nth queued director prompt; see cancelRolePrompt. */
-export function cancelPrompt(root: string, position: number): CancelOutcome {
-  return cancelRolePrompt(root, DIRECTOR_ROLE, position);
-}
 
