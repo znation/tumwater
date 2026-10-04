@@ -18,15 +18,17 @@ import { usdCap } from "../format.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import {
   applyKey,
-  newPromptHistory,
   parseBudgetInput,
   parseRolePromptInput,
+} from "./tui-input.js";
+import {
+  newPromptHistory,
   type PromptHistory,
   pushPromptHistory,
   recallPromptHistory,
   resetPromptRecall,
   settlePromptRecall,
-} from "./tui-input.js";
+} from "./prompt-history.js";
 import { labeledBacklogEntries, moveEntrySelection, stepEntryScroll } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";
 
@@ -113,7 +115,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   let rolePromptFor: string | null = null;
   let roleSavedInput = "";
   let roleSavedCursor = 0;
-  // The prompt line's session history (tui-input.ts's rules): every successfully submitted
+  // The prompt line's session history (prompt-history.ts's rules): every successfully submitted
   // prompt — director and per-role alike — joins it, and Up/Down walk it the way readline
   // does. Not persisted: a TUI session starts blank, like a fresh shell.
   let promptHistory: PromptHistory = newPromptHistory();
@@ -377,7 +379,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (!budgetMode && arrow !== null) {
-      // Up/Down walk the submitted-prompt history the way readline does (tui-input.ts's
+      // Up/Down walk the submitted-prompt history the way readline does (prompt-history.ts's
       // recall rules). The backlog pane keeps the arrows for entry browsing (its branch
       // above already returned), and budget mode keeps them out — recalling a prompt into
       // the cap field would be a paste, not a recall. No history in this direction: fall
