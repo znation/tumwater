@@ -251,7 +251,10 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
     "a rules-list item of its own",
   );
   const flat = oneLine(rules);
-  assert.match(flat, /Copying the tree elsewhere to run it — rsync or cp into a temp directory, reinstalling dependencies there \(`npm ci`\) — counts as re-running it\./);
+  assert.match(
+    flat,
+    /reinstalling dependencies there \(for an npm project, `npm ci`; otherwise its equivalent\) — counts as re-running it\./,
+  );
   assert.match(flat, /Running one specific test file for a concrete reason you can name is fine\./);
   // It qualifies the scratch-copy allowance, so it follows it directly.
   assert.match(flat, /directory is fine when you need to run something\. - Do not re-run the check named above/);

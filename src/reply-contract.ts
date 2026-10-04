@@ -61,7 +61,7 @@ export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
 export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
-  VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "npm test; repro script showed X before, Y after" — write none when nothing was run>`;
+  VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "the project's check; repro script showed X before, Y after" — write none when nothing was run>`;
 
 /** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
  * exact SUMMARY/WHY/RISK/VERIFIED block commit-message.ts parses into the commit message as the

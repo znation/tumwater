@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt.js";
-import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/reply-contract.js";
 import { ROLES, roleById } from "../src/roles.js";
 import { NEEDS_REVIEW_NOTE } from "../src/role-guidance.js";
 import { oneLine } from "./oracles.js";
@@ -297,12 +297,34 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   const find = oneLine(roleById("coverage")!.find);
   assert.match(find, /Locate it from evidence rather than by reading every module/);
   assert.match(find, /compare the source module list against the test files/);
-  assert.match(find, /run `npm run test:coverage` \(piped through `tail`\)/);
+  assert.match(
+    find,
+    /run the\s+project's coverage command — for an npm project that is `npm run test:coverage`, piped\s+through `tail`/,
+  );
+  // Non-Node projects must not be handed npm commands: the prompt names npm only as the
+  // example inside a generic instruction (BUGS.md 2026-10-04).
   assert.match(find, /node's own table above it can flip between runs on the same tree/);
   assert.match(find, /then read only that file and its existing tests/i);
   // The fallback model's longest coverage tick (2026-10-01, 97 turns) wrote its own V8
   // instrumentation scripts instead of reading the project's coverage table.
   assert.match(find, /do not write your own coverage instrumentation/);
+});
+test("role prompts and the reply contract name npm only inside a generic instruction (non-Node projects get no npm commands)", () => {
+  // BUGS.md 2026-10-04: the coverage find prescribed `npm run test:coverage` and the
+  // SUMMARY_BLOCK's VERIFIED example said "npm test" verbatim, so a Rust/Python/Go project's
+  // loops were told to run npm. The npm names may appear only as the example inside a generic
+  // instruction ("for an npm project that is …"), never as the instruction itself.
+  for (const role of ROLES) {
+    const text = oneLine(`${role.find} ${role.title}`);
+    for (const m of text.matchAll(/\bnpm (?:run|ci|test)\b\S*/g)) {
+      assert.ok(
+        /for an npm project[^.]*$/.test(text.slice(0, m.index ?? 0).slice(-120)),
+        `role ${role.id} names ${m[0]} outside a generic "for an npm project" example`,
+      );
+    }
+  }
+  const block = oneLine(SUMMARY_BLOCK);
+  assert.doesNotMatch(block, /"npm test/);
 });
 test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
   const find = oneLine(roleById("feature")!.find);

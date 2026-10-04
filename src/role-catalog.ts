@@ -158,8 +158,9 @@ BUGS.md) — finds no stale reference.`,
     find: `Find ONE meaningful gap in unit test coverage — an untested module, branch, or edge case
 that could plausibly break — and close it with focused tests.
    1. Locate it from evidence rather than by reading every module: compare the source module list
-      against the test files (a module with no test is the first candidate), or run
-      \`npm run test:coverage\` (piped through \`tail\`) and pick the file with the most uncovered
+      against the test files (a module with no test is the first candidate), or run the
+      project's coverage command — for an npm project that is \`npm run test:coverage\`, piped
+      through \`tail\` — and pick the file with the most uncovered
       lines from the deterministic-coverage table at the end of its output — node's own table above
       it can flip between runs on the same tree, so quote the deterministic numbers.
    2. Then read only that file and its existing tests — every test that imports it, not just the

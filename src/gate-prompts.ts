@@ -102,7 +102,8 @@ never exercise, claims the diff does not back, work left half-done.`,
     ? `
 - Do not re-run the check named above or the project's full test suite: the harness's green run
   is the verified result. Copying the tree elsewhere to run it — rsync or cp into a temp
-  directory, reinstalling dependencies there (\`npm ci\`) — counts as re-running it. Running one
+  directory, reinstalling dependencies there (for an npm project, \`npm ci\`; otherwise its
+  equivalent) — counts as re-running it. Running one
   specific test file for a concrete reason you can name is fine.`
     : "";
   parts.push(
