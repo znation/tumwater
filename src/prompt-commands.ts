@@ -78,31 +78,21 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
   return ` (queued ${humanSeconds(ageSeconds)} ago)`;
 }
 
-/** The user-facing reply for one resolved cancel: a concurrent dequeue is a normal race, not an
- * error, so it is reported and exited clean; a real cancel previews the text it removed. When
- * `labelRole` the cancelled line names the loop — the no-`--role` cancel resolves across every
- * loop, so its output must say where the prompt went — while a `--role`-scoped cancel already
- * names it in the user's own command. Shared by both cancel paths so their wording cannot
- * drift. */
-function sayCancelOutcome(position: number, role: string, outcome: CancelOutcome, labelRole: boolean): void {
+/** The user-facing reply for one resolved cancel or edit — the four branches of cmdPrompt's
+ * cancel and edit modes (list-wide and `--role`-scoped each): a concurrent dequeue is a normal
+ * race, not an error, so it is reported and exited clean; a resolved one previews the text it
+ * removed (a cancel's `text`) or wrote (an edit's `newText`). When `labelRole` the line names
+ * the loop — the no-`--role` command resolves across every loop, so its output must say where
+ * the prompt went — while a `--role`-scoped command already names it in the user's own
+ * command. One helper so the cancel and edit wordings cannot drift. */
+function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
   if (outcome.status === "gone") {
     say(`prompt ${position} is no longer queued — ${role} already took it`);
     return;
   }
-  say(labelRole ? `cancelled (${role}): ${promptPreview(outcome.text)}` : `cancelled: ${promptPreview(outcome.text)}`);
-}
-
-/** The user-facing reply for one resolved edit: the mirror of sayCancelOutcome — a concurrent
- * dequeue is a normal race, not an error, so it is reported and exited clean; a real edit
- * previews the text it wrote. When `labelRole` the edited line names the loop — the
- * no-`--role` edit resolves across every loop, so its output must say where the edit landed —
- * while a `--role`-scoped edit already names it in the user's own command. */
-function sayEditOutcome(position: number, role: string, outcome: EditOutcome, labelRole: boolean): void {
-  if (outcome.status === "gone") {
-    say(`prompt ${position} is no longer queued — ${role} already took it`);
-    return;
-  }
-  say(labelRole ? `edited (${role}): ${promptPreview(outcome.newText)}` : `edited: ${promptPreview(outcome.newText)}`);
+  // A resolved cancel carries the removed text; a resolved edit carries what it wrote.
+  const text = outcome.status === "cancelled" ? outcome.text : outcome.newText;
+  say(labelRole ? `${outcome.status} (${role}): ${promptPreview(text)}` : `${outcome.status}: ${promptPreview(text)}`);
 }
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
@@ -183,7 +173,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       if (listed.status === "missing") {
         fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
       }
-      sayCancelOutcome(parsed.position, listed.role, listed.outcome, true);
+      sayPromptOutcome(parsed.position, listed.role, listed.outcome, true);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
@@ -193,7 +183,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     } catch (err) {
       fail(errorMessage(err));
     }
-    sayCancelOutcome(parsed.position, target, outcome, false);
+    sayPromptOutcome(parsed.position, target, outcome, false);
     return;
   }
   if (parsed.mode === "edit") {
@@ -209,7 +199,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       if (listed.status === "missing") {
         fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
       }
-      sayEditOutcome(parsed.position, listed.role, listed.outcome, true);
+      sayPromptOutcome(parsed.position, listed.role, listed.outcome, true);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
@@ -219,7 +209,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     } catch (err) {
       fail(errorMessage(err));
     }
-    sayEditOutcome(parsed.position, target, outcome, false);
+    sayPromptOutcome(parsed.position, target, outcome, false);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
