@@ -14,6 +14,12 @@ import {
   cancelListedPrompt,
   cancelRolePrompt,
 } from "./inbox-cancel.js";
+import {
+  type EditOutcome,
+  type ListedEditOutcome,
+  editListedPrompt,
+  editRolePrompt,
+} from "./inbox-edit.js";
 import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
@@ -84,6 +90,19 @@ function sayCancelOutcome(position: number, role: string, outcome: CancelOutcome
     return;
   }
   say(labelRole ? `cancelled (${role}): ${promptPreview(outcome.text)}` : `cancelled: ${promptPreview(outcome.text)}`);
+}
+
+/** The user-facing reply for one resolved edit: the mirror of sayCancelOutcome — a concurrent
+ * dequeue is a normal race, not an error, so it is reported and exited clean; a real edit
+ * previews the text it wrote. When `labelRole` the edited line names the loop — the
+ * no-`--role` edit resolves across every loop, so its output must say where the edit landed —
+ * while a `--role`-scoped edit already names it in the user's own command. */
+function sayEditOutcome(position: number, role: string, outcome: EditOutcome, labelRole: boolean): void {
+  if (outcome.status === "gone") {
+    say(`prompt ${position} is no longer queued — ${role} already took it`);
+    return;
+  }
+  say(labelRole ? `edited (${role}): ${promptPreview(outcome.newText)}` : `edited: ${promptPreview(outcome.newText)}`);
 }
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
@@ -175,6 +194,32 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       fail(errorMessage(err));
     }
     sayCancelOutcome(parsed.position, target, outcome, false);
+    return;
+  }
+  if (parsed.mode === "edit") {
+    // The same broken-config policy and list-wide resolution as cancel, one verb over: the
+    // file's new content rides the same queue file (position, enqueue stamp, and a pending
+    // --at deferral untouched), and a concurrent dequeue reports gone and exits clean.
+    if (role === null) {
+      const scope = [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
+      const listed: ListedEditOutcome = editListedPrompt(root, scope, parsed.position, parsed.text);
+      if (listed.status === "ambiguous") {
+        fail(`position ${parsed.position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
+      }
+      if (listed.status === "missing") {
+        fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
+      }
+      sayEditOutcome(parsed.position, listed.role, listed.outcome, true);
+      return;
+    }
+    const target = role ?? DIRECTOR_ROLE;
+    let outcome: EditOutcome;
+    try {
+      outcome = editRolePrompt(root, target, parsed.position, parsed.text);
+    } catch (err) {
+      fail(errorMessage(err));
+    }
+    sayEditOutcome(parsed.position, target, outcome, false);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;

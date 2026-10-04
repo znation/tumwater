@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize, dequeuePrompt } from "../src/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt, queuedRolePrompts } from "../src/inbox.js";
+import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { defaultConfig } from "../src/config.js";
@@ -255,4 +256,79 @@ test("prompt --at is refused in the read-only and destructive modes", async () =
   const zero = await expectFail(() => cmdPrompt(root, ["--at", "0m", "hello"]));
   assert.match(zero.stderr, /--at needs a duration like 45s, 90m, 1h30m, or 2d/);
   assert.equal(inboxSize(root), 0, "nothing was queued by the refused shapes");
+});
+
+test("prompt --edit --role rewrites the entry in place and keeps its list position and stamp", async () => {
+  const root = makeRoot();
+  const first = enqueueRolePrompt(root, "bugfix", "typo text");
+  enqueueRolePrompt(root, "bugfix", "second");
+
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "fixed text"]));
+  assert.match(stdout, /edited: fixed text/);
+
+  // The queue file is the same one: the next --list shows the new text at position 1 with
+  // the original queued <age> ago stamp, and the queue still holds exactly two entries.
+  assert.equal(fs.existsSync(first), true);
+  const list = await expectOk(() => cmdPrompt(root, ["--list", "--role", "bugfix"]));
+  assert.match(list.stdout, /^1\. fixed text \(queued \S+ ago\)$/m);
+  assert.match(list.stdout, /^2\. second \(queued \S+ ago\)$/m);
+
+  // One prompt_edited event under the target loop per successful edit.
+  const events = eventsOfType(root, "prompt_edited");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.loop, "bugfix");
+});
+
+test("prompt --edit keeps a pending --at deferral: same countdown, not doubled or dropped", async (t) => {
+  const root = makeRoot();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  enqueueRolePrompt(root, "bugfix", "stale instruction", Date.now() + 45 * 60_000);
+
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "corrected instruction"]));
+  assert.match(stdout, /edited: corrected instruction/);
+
+  // The listing still shows the countdown (the marker survived, undoubled), and --json
+  // carries the same not-before time.
+  const list = await expectOk(() => cmdPrompt(root, ["--list", "--role", "bugfix"]));
+  assert.match(list.stdout, /^1\. corrected instruction \(delivers in 45m\)$/m);
+  const json = await expectOk(() => cmdPrompt(root, ["--list", "--role", "bugfix", "--json"]));
+  const payload = JSON.parse(json.stdout) as { prompts: { notBeforeMs: number | null; text: string }[] };
+  assert.equal(payload.prompts[0]?.notBeforeMs, Date.now() + 45 * 60_000);
+  assert.equal(payload.prompts[0]?.text, "corrected instruction");
+  assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+});
+
+test("prompt --edit with no --role resolves by the --list numbering: ambiguity and miss", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, DIRECTOR_ROLE, "first");
+  enqueueRolePrompt(root, "clean", "also first");
+
+  // Two loops show "1." in --list: the ambiguity names them and the --role escape hatch.
+  const ambiguous = await expectFail(() => cmdPrompt(root, ["--edit", "1", "edited"]));
+  assert.match(ambiguous.stderr, /position 1 is queued for more than one loop \(director, clean\) — name one with --role <id>/);
+  assert.deepEqual(queuedRolePrompts(root, "clean"), ["also first"], "an ambiguity edits nothing");
+
+  const missing = await expectFail(() => cmdPrompt(root, ["--edit", "5", "edited"]));
+  assert.match(missing.stderr, /no prompt at position 5 \(1 queued across all loops\)/);
+
+  // Cancel clean's entry, so only the director holds position 1: the edit resolves there
+  // and its confirmation names the loop, since the caller scoped nothing.
+  await expectOk(() => cmdPrompt(root, ["--cancel", "1", "--role", "clean"]));
+  const { stdout } = await expectOk(() => cmdPrompt(root, ["--edit", "1", "edited"]));
+  assert.match(stdout, /edited \(director\): edited/);
+  assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["edited"]);
+  assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+});
+
+test("prompt --edit refuses the sibling modes and out-of-range positions exit non-zero", async () => {
+  const root = makeRoot();
+  enqueueRolePrompt(root, "bugfix", "queued");
+
+  assert.match((await expectFail(() => cmdPrompt(root, ["--list", "--edit", "1", "x"]))).stderr, /--list and --edit are mutually exclusive/);
+  assert.match((await expectFail(() => cmdPrompt(root, ["--edit", "1", "fix", "--file", "x.txt"]))).stderr, /--file only queues a prompt/);
+  assert.match((await expectFail(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))).stderr, /unexpected argument "old"/);
+
+  const outOfRange = await expectFail(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
+  assert.match(outOfRange.stderr, /no prompt at position 9 \(1 queued\)/);
+  assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });

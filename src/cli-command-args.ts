@@ -189,14 +189,16 @@ export function parseInitArgs(args: string[]): {
   return { prompt, branch, template, listTemplates, adopt, dryRun };
 }
 
-/** The three modes of `tumwater prompt`: enqueue free-form text (the default), list the
- * queue, or cancel one entry by its 1-based position. `role` is the raw `--role <id>` value
- * (null when absent) — cli.ts validates it against the live config, since this parser has no
- * config to read. `json` is list-only: the machine-readable render of the same listing. */
+/** The four modes of `tumwater prompt`: enqueue free-form text (the default), list the queue,
+ * cancel one entry by its 1-based position, or edit one entry's text in place by that same
+ * position. `role` is the raw `--role <id>` value (null when absent) — cli.ts validates it
+ * against the live config, since this parser has no config to read. `json` is list-only: the
+ * machine-readable render of the same listing. */
 type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null }
   | { mode: "list"; role: string | null; json: boolean }
-  | { mode: "cancel"; role: string | null; position: number };
+  | { mode: "cancel"; role: string | null; position: number }
+  | { mode: "edit"; role: string | null; position: number; text: string };
 
 /** The stdin prompt read once per process: cli.ts pre-parses prompt's args and cmdPrompt
  * re-parses them, and a second readFileSync(0) on a drained pipe would see an empty prompt. */
@@ -209,6 +211,7 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--list"] },
   JSON_FLAG,
   { names: ["--cancel"], value: true, valueName: "<n>" },
+  { names: ["--edit"], value: true, valueName: "<n>" },
   { names: ["--file"], value: true, valueName: "<path>" },
   { names: ["--at"], value: true, valueName: "<duration>" },
 ];
@@ -233,11 +236,14 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const jsonFlags = args.flatMap((a, i) => (a === "--json" ? [i] : []));
   const listFlag = args.indexOf("--list");
   const cancelFlag = args.indexOf("--cancel");
+  const editFlag = args.indexOf("--edit");
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
   const known = PROMPT_FLAG_SPECS.flatMap((s) => s.names);
   rejectDuplicateFlags(args, known);
   if (listFlag >= 0 && cancelFlag >= 0) fail("--list and --cancel are mutually exclusive");
+  if (listFlag >= 0 && editFlag >= 0) fail("--list and --edit are mutually exclusive");
+  if (cancelFlag >= 0 && editFlag >= 0) fail("--cancel and --edit are mutually exclusive");
 
   const roleFlag = args.indexOf("--role");
   const roleRaw = roleFlag >= 0 ? args[roleFlag + 1] : undefined;
@@ -252,12 +258,15 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
 
   // --file only queues a prompt: it is the file-shaped twin of free-form text, so the read-only
-  // and destructive modes must refuse it rather than silently ignore it.
-  if (fileFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0)) fail("--file only queues a prompt");
+  // and destructive modes must refuse it rather than silently ignore it (an edit's replacement
+  // text is typed, never read from a file).
+  if (fileFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail("--file only queues a prompt");
 
   // --at only queues a prompt, like --file: a delivery deferral has nothing to mean to a
   // listing or a cancel.
-  if (atFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0)) fail("--at only queues a prompt");
+  if (atFlag >= 0 && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail("--at only queues a prompt");
+  // An edit keeps the target prompt's existing deferral exactly as it was (the marker is
+  // plumbing the edit carries over), so a --at alongside it has nothing to mean.
   // The pair is claimed like --role's: the flag and its value are never prompt content.
   const atClaim = atFlag >= 0 ? [atFlag, atFlag + 1] : [];
   let atDelayMs: number | null = null;
@@ -283,6 +292,34 @@ export function parsePromptArgs(args: string[]): PromptArgs {
     // prompt text, and this mode has none.
     failStrayArg(args, "with --cancel there is no prompt text", cancelFlag, cancelFlag + 1, ...roleClaim);
     return { mode: "cancel", role, position: n };
+  }
+
+  if (editFlag >= 0) {
+    const raw = args[editFlag + 1];
+    // A missing value is its own error, carrying an example like --cancel's message; a
+    // flag-looking value falls through to parsePositiveInt and is named in the got-value
+    // message like every other count/duration flag.
+    if (raw === undefined) fail(`--edit needs a position number (e.g. \`--edit 2 "new text"\`)`);
+    const n = parsePositiveInt(raw);
+    if (n === null) fail(`--edit needs a positive integer (got ${JSON.stringify(raw)})`);
+    // The --edit pair and the --role pair are the only flags this mode claims. Tokens
+    // preceding --edit (other than a claimed flag) would be silently dropped — a mistyped
+    // command would edit prompt N with only the trailing fragment — so they are refused
+    // here by the same stray-argument wording the sibling modes use; tokens after the
+    // position are the replacement text.
+    for (let i = 0; i < editFlag; i++) {
+      if (roleClaim.includes(i)) continue;
+      fail(`unexpected argument ${JSON.stringify(args[i])} — with --edit the replacement text comes after the position`);
+    }
+    const textTokens: string[] = [];
+    for (let i = editFlag + 2; i < args.length; i++) {
+      if (roleClaim.includes(i)) continue;
+      textTokens.push(args[i] as string);
+    }
+    const text = textTokens.join(" ").trim();
+    if (!text)
+      fail('edit text required — usage: tumwater prompt --edit <n> "<new text>" (add --role <id> to aim it at one loop)');
+    return { mode: "edit", role, position: n, text };
   }
 
   if (fileFlag >= 0) {

@@ -53,15 +53,21 @@ export type ListedCancelOutcome =
   | { status: "ambiguous"; roles: string[] }
   | { status: "missing"; queued: number };
 
-/** Cancel by the position numbering `tumwater prompt --list` prints with no --role: its per-loop
- * sections, each numbered from 1, in `scope` order (the director first, then the roles). Only
- * loops whose queue is long enough to hold the position are candidates — exactly one resolves to
- * a cancel in that loop's queue (cancelRolePrompt's race policy and event), several are an
- * ambiguity the caller reports with a --role escape hatch (the list itself shows two "N."
- * lines there, so no silent default), and none is a miss carrying the largest queue length for
- * the error's count. Sizes only — no queue content is read — so a cancel that resolves to
- * nothing touches no file. */
-export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
+/** Resolve a list-wide position to the one loop whose queue holds it — the shared half of
+ * cancelListedPrompt and editListedPrompt (inbox-edit.ts), so the two cannot drift on how
+ * `--list`'s numbering resolves: its per-loop sections, each numbered from 1, in `scope`
+ * order (the director first, then the roles). Only loops whose queue is long enough to hold
+ * the position are candidates — exactly one resolves, several are an ambiguity the caller
+ * reports with a --role escape hatch (the list itself shows two "N." lines there, so no
+ * silent default), and none is a miss carrying the largest queue length for the error's
+ * count. Sizes only — no queue content is read — so a resolution that finds nothing touches
+ * no file. */
+type ListedQueueResolution =
+  | { status: "found"; role: string }
+  | { status: "ambiguous"; roles: string[] }
+  | { status: "missing"; queued: number };
+
+export function resolveListedQueue(root: string, scope: string[], position: number): ListedQueueResolution {
   const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
   if (candidates.length === 0) {
     return { status: "missing", queued: Math.max(0, ...scope.map((role) => queuedFiles(root, role).length)) };
@@ -69,7 +75,17 @@ export function cancelListedPrompt(root: string, scope: string[], position: numb
   if (candidates.length > 1) return { status: "ambiguous", roles: candidates };
   const role = candidates[0];
   if (!role) return { status: "missing", queued: 0 }; // Unreachable: candidates.length is 1.
-  return { status: "cancelled", role, outcome: cancelRolePrompt(root, role, position) };
+  return { status: "found", role };
+}
+
+/** Cancel by the position numbering `tumwater prompt --list` prints with no --role: the
+ * position resolves through the shared resolveListedQueue (above), then one loop's queue
+ * takes the cancel (cancelRolePrompt's race policy and event). */
+export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
+  const resolved = resolveListedQueue(root, scope, position);
+  if (resolved.status === "ambiguous") return { status: "ambiguous", roles: resolved.roles };
+  if (resolved.status === "missing") return { status: "missing", queued: resolved.queued };
+  return { status: "cancelled", role: resolved.role, outcome: cancelRolePrompt(root, resolved.role, position) };
 }
 
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is

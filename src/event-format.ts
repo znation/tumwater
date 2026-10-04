@@ -113,6 +113,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "prompt_cancelled":
       // Routine operation (the user removed a queued prompt), not a warning.
       return `user prompt cancelled: ${String(e.preview)}`;
+    case "prompt_edited":
+      // Routine operation (the user corrected a queued prompt), not a warning.
+      return `user prompt edited: ${String(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.

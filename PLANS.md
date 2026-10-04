@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater prompt --edit <n> <text...>` — correct a queued steering prompt in place, keeping its position and deferral (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater prompt --edit <n> <text...>` — correct a queued steering prompt in place, keeping its position and deferral (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** An operator who spots a typo or a stale instruction in a prompt they queued today has
 one blunt tool: `prompt --cancel <n>` and re-queue — which loses the entry's position behind
@@ -37,7 +41,9 @@ its not-before deferral exactly as it was.
   `missing` miss) — factored so the two cannot drift, e.g. a small shared
   `resolveListedQueue(root, scope, position)` helper both call.
 - CLI: `src/prompt-commands.ts` gains the `--edit <n> <text...>` mode (with the optional
-  `--role`), `src/cli-flag-specs.ts` admits the flag, and `src/help.ts` documents it next to
+  `--role`), `src/cli-command-args.ts`'s PROMPT_FLAG_SPECS admits the flag (prompt's flag
+  vocabulary lives there with its hand-rolled parser, not in cli-flag-specs.ts — corrected
+  2026-10-04 by feature when the anchor proved wrong), and `src/help.ts` documents it next to
   the `--cancel` line: "Replace the Nth queued prompt's text in place (position, enqueue age,
   and a pending `--at` deferral are kept; as shown by --list)". Same broken-config policy as
   cancel: a load failure reports and exits non-zero without touching the queue.
@@ -59,7 +65,6 @@ cases inside the existing file, following the file's local conventions).
 - One `prompt_edited` event appears in the event feed per successful edit, none on failures.
 - `tumwater help prompt` documents `--edit`; `npm run test` passes with the new cases green.
 
-## Done
 
 ### `tumwater retire --role <id>` — remove a disabled loop's worktree and branch (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

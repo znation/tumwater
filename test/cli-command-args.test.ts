@@ -211,7 +211,7 @@ test("parsePromptArgs rejects unknown double-dash flags instead of baking them i
   const r = expectFail(() => parsePromptArgs(["--foo", "text"]));
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --foo/);
-  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --file <path>/);
+  assert.match(r.stderr, /valid flags for tumwater prompt: --role <id>, --list, --json, --cancel <n>, --edit <n>, --file <path>/);
 });
 
 test("parsePromptArgs --list: exact mode, no text allowed", () => {
@@ -440,4 +440,75 @@ test("parseInitArgs --list-templates: alone with no prompt; refuses a prompt, --
   const file = path.join(dir, "prompt.md");
   fs.writeFileSync(file, "From a file.");
   assert.match(expectFail(() => parseInitArgs(["--list-templates", "--file", file])).stderr, /--list-templates takes no prompt/);
+});
+
+// --- parsePromptArgs --edit ---
+
+test("parsePromptArgs --edit: position plus replacement text, --role optional", () => {
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "2", "new text"])), {
+    mode: "edit",
+    role: null,
+    position: 2,
+    text: "new text",
+  });
+
+  // The --role pair is a scope wherever it sits, never replacement text.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "fix it", "--role", "bugfix"])), {
+    mode: "edit",
+    role: "bugfix",
+    position: 1,
+    text: "fix it",
+  });
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--role", "bugfix", "--edit", "1", "fix it"])), {
+    mode: "edit",
+    role: "bugfix",
+    position: 1,
+    text: "fix it",
+  });
+
+  // Multi-word text joins like the enqueue mode; single-dash tokens stay content.
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--edit", "1", "-x", "y"])), {
+    mode: "edit",
+    role: null,
+    position: 1,
+    text: "-x y",
+  });
+});
+
+test("parsePromptArgs --edit refuses --file: the replacement text is typed, never read", () => {
+  // --edit 1 fix --file x.txt would otherwise bake the file's tokens into the replacement
+  // text; the flag only queues a prompt, and an edit rewrites one.
+  const r = expectFail(() => parsePromptArgs(["--edit", "1", "fix", "--file", "x.txt"]));
+  assert.match(r.stderr, /--file only queues a prompt/);
+});
+
+test("parsePromptArgs --edit refuses tokens preceding the position instead of dropping them", () => {
+  // `old --edit 1 new` must fail loudly naming "old": a silent drop would edit prompt 1
+  // with only the trailing fragment.
+  const r = expectFail(() => parsePromptArgs(["old", "--edit", "1", "new"]));
+  assert.match(r.stderr, /unexpected argument "old" — with --edit the replacement text comes after the position/);
+
+  // A preceding --role pair is claimed and fine; a stray token beside it is not.
+  assert.match(
+    expectFail(() => parsePromptArgs(["--role", "bugfix", "old", "--edit", "1", "new"])).stderr,
+    /unexpected argument "old"/,
+  );
+});
+
+test("parsePromptArgs --edit: missing or non-numeric position, missing replacement text", () => {
+  const missing = expectFail(() => parsePromptArgs(["--edit"]));
+  assert.match(missing.stderr, /--edit needs a position number/);
+
+  const nonNumeric = expectFail(() => parsePromptArgs(["--edit", "x", "text"]));
+  assert.match(nonNumeric.stderr, /--edit needs a positive integer/);
+
+  const noText = expectFail(() => parsePromptArgs(["--edit", "1"]));
+  assert.match(noText.stderr, /edit text required — usage: tumwater prompt --edit/);
+});
+
+test("parsePromptArgs --edit refuses the sibling modes and --at", () => {
+  assert.match(expectFail(() => parsePromptArgs(["--list", "--edit", "1", "x"])).stderr, /--list and --edit are mutually exclusive/);
+  assert.match(expectFail(() => parsePromptArgs(["--cancel", "1", "--edit", "1", "x"])).stderr, /--cancel and --edit are mutually exclusive/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--at", "5m"])).stderr, /--at only queues a prompt/);
+  assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--json"])).stderr, /--json only applies to --list/);
 });

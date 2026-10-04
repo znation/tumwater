@@ -44,6 +44,7 @@ export interface HarnessEvent {
     | "orchestrator_stop"
     | "prompt_enqueued"
     | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
+    | "prompt_edited" // a queued prompt's text was rewritten in place (tumwater prompt --edit)
     | "counters_reset"
     | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume"
