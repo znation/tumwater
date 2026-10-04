@@ -5,7 +5,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater bug "<symptom>"` and `tumwater plan "<title>" [body...]` — operator-authored backlog entries from the CLI (planned 2026-10-04 by plan loop)
+_None yet._
+
+## Done
+
+### `tumwater bug "<symptom>"` and `tumwater plan "<title>" [body...]` — operator-authored backlog entries from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
 **Goal.** Today an operator who spots a bug or wants a feature planned must edit BUGS.md or PLANS.md
 by hand — `prompt` queues text and `questions` reads/answers its outbox, but neither writes the
@@ -54,7 +58,13 @@ command tests live (`test/cli.test.ts` — extend, don't duplicate).
 - The help topics pin (`tumwater help bug`, `tumwater help plan`) resolve to the new stanzas, and
   `npm run test` stays green.
 
-## Done
+**As landed (2026-10-04 by feature).** All of the above, with two wording details: the stamp is
+`reported by the operator <date>` (the heading parenthesizes it, matching the loops' `(planned …)`
+shape), and in `--json` mode stdout is the `{file, title, stamp}` payload alone while the wake
+still fires (the `prompt --json` precedent — no prose line rides the payload document). Tests live
+in `test/backlog-write.test.ts` (in-process placement/seed/fence tests plus spawned CLI smoke
+tests); `test/cli.test.ts` was left untouched.
+
 
 ### `tumwater tick <role> --last` — the newest tick's trail without knowing its number (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

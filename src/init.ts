@@ -26,6 +26,8 @@ import {
   unknownTemplateError,
 } from "./init-templates.js";
 
+export { PLANS_TEMPLATE, BUGS_TEMPLATE } from "./init-templates.js";
+
 /** Add both tumwater entries to .gitignore independently — the state dir and the config file —
  * so a .gitignore that already carries one still gains the other (plans/portability.md §4a/7;
  * the old single-entry early return left a pre-existing `.tumwater/` line hiding the config).

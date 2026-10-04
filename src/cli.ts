@@ -27,6 +27,8 @@ import {
   requireReadyRepo,
 } from "./cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
+import { fileBug, filePlan, sayFiled } from "./backlog-write.js";
+import { submitRolePromptAndWake } from "./operator-intent.js";
 import { cmdInit, cmdRun } from "./cli-run.js";
 import { runMarkerCommand } from "./cli-marker-commands.js";
 import type { MarkerCommand } from "./cli-marker-commands.js";
@@ -233,6 +235,43 @@ async function main(): Promise<void> {
     case "backlog":
       await cmdBacklog(root, args);
       break;
+    case "bug": {
+      // Operator-authored backlog writes (the questions command's prose-token pattern):
+      // the symptom is free-form, so positional-first peeling with --json as the one flag —
+      // the ready-repo gate the other backlog commands run, then the write, then the wake
+      // that brings the loop that should act in within one poll.
+      const { positionals, rest } = peelPositionals(args);
+      rejectUnknownArgs("bug", rest, [JSON_FLAG]);
+      await requireReadyRepo(root);
+      const BUG_USAGE = 'tumwater bug "<symptom>"';
+      const filed = fileBug(root, positionals.join(" "), BUG_USAGE);
+      // The wake always fires; its confirmation line rides the prose output only — in
+      // --json mode stdout is the payload document alone (the prompt --json precedent),
+      // so a script can parse it.
+      const wake = submitRolePromptAndWake(
+        root,
+        "bugfix",
+        `Operator filed a new bug with \`tumwater bug\`: "${filed.title}" — it is under BUGS.md ## Open; fix it.`,
+      );
+      sayFiled("bug", filed, rest.includes("--json"));
+      if (!rest.includes("--json")) say(wake);
+      break;
+    }
+    case "plan": {
+      const { positionals, rest } = peelPositionals(args);
+      rejectUnknownArgs("plan", rest, [JSON_FLAG]);
+      await requireReadyRepo(root);
+      const PLAN_USAGE = 'tumwater plan "<title>" [body...]';
+      const filed = filePlan(root, positionals[0] ?? "", positionals.slice(1).join(" "), PLAN_USAGE);
+      const wake = submitRolePromptAndWake(
+        root,
+        "feature",
+        `Operator requested a plan with \`tumwater plan\`: "${filed.title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`,
+      );
+      sayFiled("plan", filed, rest.includes("--json"));
+      if (!rest.includes("--json")) say(wake);
+      break;
+    }
     case "questions":
       await cmdQuestions(root, args);
       break;

@@ -102,6 +102,15 @@ Usage:
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
                                    same data the Markdown view renders
+  tumwater bug "<symptom>" [--json]
+                                   File a bug into BUGS.md ## Open as the operator (stamped
+                                   with today's date) and wake the bugfix loop; --json prints
+                                   the {file, title, stamp} payload as data
+  tumwater plan "<title>" [body...] [--json]
+                                   File a plan request into PLANS.md ## Planned as the operator
+                                   (stamped with today's date; the feature loop fleshes the stub
+                                   out on pickup) and wake the feature loop; --json prints the
+                                   {file, title, stamp} payload as data
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
