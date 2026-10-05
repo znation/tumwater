@@ -18,9 +18,9 @@ import {
   parseTopPorts,
   systemProcessProbe,
 } from "../src/process-table.js";
-import { makeRunMarker } from "../src/run-marker.js";
+import { makeRunMarker, runMarkerEnv } from "../src/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
-import { armVictimKill } from "./victim-fixture.js";
+import { armVictimKill, spawnMarkedVictim } from "./victim-fixture.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
@@ -130,22 +130,25 @@ test("parseLsofCwds maps each pid to its cwd and leaves out a process lsof could
   ]);
 });
 
-test("systemProcessProbe.runMarkers reads a live child's mark and skips vanished pids", async () => {
+test("systemProcessProbe.runMarkers reads a live child's mark and skips vanished pids", async (t) => {
   assert.deepEqual(await systemProcessProbe.runMarkers([]), new Map());
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
-    env: { ...process.env, TUMWATER_RUN: "999999123-cafe" },
-    stdio: "ignore",
-  });
-  try {
-    let marks = new Map<number, string[]>();
-    for (let i = 0; i < 50 && marks.size === 0; i++) {
-      marks = await systemProcessProbe.runMarkers([child.pid as number, 2_000_000_000]);
-      if (marks.size === 0) await sleep(100);
-    }
-    assert.deepEqual([...marks], [[child.pid as number, ["999999123-cafe"]]]);
-  } finally {
-    child.kill("SIGKILL");
+  // Through the victim fixture, so the child can never outlive this process (BUGS.md
+  // 2026-10-05). The fixture appends the mark to any inherited one — a suite run inside a pi
+  // run carries that run's — so the probe must report the whole list, ours last.
+  const marker = "999999123-cafe";
+  const child = spawnMarkedVictim(
+    t,
+    marker,
+    path.join(tmpdir(), "marked.pid"),
+    "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)",
+  );
+  const expected = (runMarkerEnv(process.env, marker).TUMWATER_RUN ?? "").split(",");
+  let marks = new Map<number, string[]>();
+  for (let i = 0; i < 50 && marks.size === 0; i++) {
+    marks = await systemProcessProbe.runMarkers([child.pid as number, 2_000_000_000]);
+    if (marks.size === 0) await sleep(100);
   }
+  assert.deepEqual([...marks], [[child.pid as number, expected]]);
 });
 
 test("systemProcessProbe lists this process with its parent and reads its cwd past a vanished pid", async () => {
