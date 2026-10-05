@@ -123,6 +123,20 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
   assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["clean"]);
 });
 
+// The "wakes in" phrase once came from the deadline minus a second clock read: cmdWake read
+// the clock for the deadline, requestWake read it again on entry, and a millisecond tick
+// between the two printed "wakes in 2699999ms" for `--in 45m`. A clock that advances on every
+// read makes that tick certain instead of a rare flake.
+test("cmdWake --in echoes the operator's duration even when the clock ticks between reads", async (t) => {
+  const root = tmpdir();
+  let clock = Date.now();
+  t.mock.method(Date, "now", () => clock++);
+  const { stdout } = await expectOk(() => cmdWake(root, ["--role", "clean", "--in", "45m"]));
+  assert.match(stdout, /wake scheduled for clean — wakes in 45m — /);
+  const marker = readJson<{ at: number; notBeforeMs: number }>(wakeRequestPath(root));
+  assert.equal(marker.notBeforeMs - marker.at, 45 * 60_000, "the deadline is one clock read plus the duration");
+});
+
 // A malformed tumwater.json must not block an operator marker aimed at a built-in role:
 // the fleet itself keeps running on its last-known-good config (the live reload), so wake,
 // reset-counters, and abort --role <builtin> resolve the id from the static catalog instead

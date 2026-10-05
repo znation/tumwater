@@ -88,9 +88,10 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   const inRaw = flagValue(args, "--in");
   const inMs = inRaw !== null ? parseDurationFlag("--in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
-  // requestWake takes the absolute ms-epoch deadline; the deferral starts when the operator
-  // typed the command (the same decision prompt --at's deferral records).
-  say(requestWake(root, targetRoles(root, args), inMs !== undefined ? Date.now() + inMs : undefined));
+  // requestWake takes the duration, not a deadline: it reads the clock once for both the
+  // marker's deadline and its "wakes in" phrase, so no tick between two reads can reword
+  // "45m" as "2699999ms".
+  say(requestWake(root, targetRoles(root, args), inMs));
 }
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
