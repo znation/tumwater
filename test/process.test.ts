@@ -20,7 +20,7 @@ import {
 } from "../src/process-table.js";
 import { makeRunMarker, runMarkerEnv } from "../src/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
-import { armVictimKill, spawnMarkedVictim } from "./victim-fixture.js";
+import { spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
@@ -444,15 +444,15 @@ test("terminateChild escalates to SIGKILL when the group survives the SIGTERM le
   // with logical time — the timer is mocked and ticked past it, and the real SIGKILL lands on
   // a real process that provably survived the first leg.
   const readyFile = path.join(tmpdir(), "ready");
-  const child = spawn(
-    process.execPath,
-    ["-e", "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)", readyFile],
-    { detached: true, stdio: "ignore" },
+  // Through the victim fixture: its kill is armed at spawn, before the readiness wait below,
+  // so a failed readiness assertion cannot strand it (the 2026-09-30 orphan leak), and it
+  // exits with this process, so a killed worker cannot either (BUGS.md 2026-10-05). It
+  // traps SIGTERM, so without either only a SIGKILL would ever remove it.
+  const child = spawnVictim(
+    t,
+    readyFile,
+    "process.on('SIGTERM', () => {}); require('node:fs').writeFileSync(process.argv[1], 'ready'); setInterval(() => {}, 1 << 30)",
   );
-  child.unref();
-  // Armed before the readiness wait below, so a failed readiness assertion cannot strand
-  // the victim (the 2026-09-30 orphan leak).
-  armVictimKill(t, child);
   const upDeadline = Date.now() + 10_000;
   while (!fs.existsSync(readyFile) && Date.now() < upDeadline) await sleep(25);
   assert.ok(fs.existsSync(readyFile), "the victim installed its SIGTERM handler before the terminate");

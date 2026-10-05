@@ -10,9 +10,9 @@ import { runMarkerEnv } from "../src/run-marker.js";
 
 /** Arm `child`'s kill on `t`: registered synchronously, with no await between spawn and
  * arming, so the caller cannot throw first. The sole home of the SIGKILL try/catch hook —
- * spawnVictim arms it at spawn, and callers that spawn their own shaped victim
- * (process.test.ts's terminateChild escalation, run-marker.test.ts's escalation closure
- * and its regression safety net) arm it right after. */
+ * spawnVictim arms it at spawn, and callers that spawn their own shaped child
+ * (run-marker.test.ts's stand-in test process and its regression safety net) arm it right
+ * after. */
 export function armVictimKill(t: TestContext, child: ChildProcess): void {
   t.after(() => {
     try {
