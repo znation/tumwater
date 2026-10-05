@@ -6,7 +6,271 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Model tiers, part 1/8: `provider/id[:thinking]` selector strings for `model`, and `fallback` as the new name of `fallbackModel` (planned 2026-10-05 by operator)
+
+Design: plans/model-tiers.md ("Config", "Selectors", "Backward compatibility"). Config only — no
+seam changes model, and every existing config produces the same pi argv.
+
+**Goal.** A single-model setup is one key:
+`"model": "huggingface/zai-org/GLM-5.3-Flash:together:low"` carries provider, id, and thinking,
+and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the same way. `roles.<id>.model` and `review.model` accept the same strings.
+
+**Approach.**
+1. **src/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
+   `{ provider?, model, thinking? }`; `formatModelSelector(triple)` is its inverse. Rules: a
+   trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config-schema.ts), so
+   `…:together` survives; with `legacyProvider` the rest is a bare id under that provider;
+   otherwise the text before the first `/` is the provider and the rest is the id; a string
+   with no `/` is a bare pattern with no provider.
+2. **src/config-schema.ts:** `fallback?: string` on `TumwaterConfig`, `"fallback"` in
+   `TOP_LEVEL_KEYS`. (The map forms arrive in part 3/8.)
+3. **src/config-views.ts:** `withModelOverrides`, `configForRole`, `reviewConfig`, and
+   `fallbackPair` parse selectors into the provider/model/thinking triple `piArgs`
+   (src/pi/pi-args.ts) already consumes. A legacy `provider` in scope (the section's own, else
+   the top level's) is passed as `legacyProvider`; an explicit `thinking` key wins over a
+   suffix; `fallback` and the legacy `fallbackModel` object both feed `fallbackPair`.
+4. **Validation** (src/config-validation.ts, src/config-field-checks.ts): `fallback` is a
+   non-empty string, and `fallback` together with `fallbackModel` is an error naming both keys.
+
+**Files touched.** src/model-selector.ts (new), src/config-schema.ts, src/config-views.ts,
+src/config-validation.ts, src/config-field-checks.ts, and tests (a new
+test/model-selector.test.ts plus the config-views and pi-args suites).
+
+**Acceptance criteria.**
+- `parseModelSelector("huggingface/zai-org/GLM-5.3-Flash:together:low")` → provider
+  `huggingface`, model `zai-org/GLM-5.3-Flash:together`, thinking `low`; without `:low` the
+  `:together` suffix stays on the id; `"GLM-5.3-Flash"` → model only.
+- With a legacy `"provider": "huggingface"`, `"model": "zai-org/GLM-5.3-Flash:together"` still
+  resolves to provider `huggingface`, not `zai-org`.
+- `{ "model": "<provider>/<id>" }` alone yields pi argv `--provider <provider> --model <id>`
+  (fake pi shim).
+- A `fallback` string engages exactly like the equivalent `fallbackModel` object: the existing
+  fallback tests pass against both forms.
+- Every existing config fixture produces identical pi argv; `npm run test` passes.
+
+### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed)
+
+Design: plans/model-tiers.md ("Observability").
+
+**Goal.** No model choice can be evaluated from `.tumwater/log/events.jsonl` today:
+`tick_start` carries only `tick` and `review_start` only `head`. Record the selector each run
+starts on, so outcomes, review verdicts, and spend can be compared per model.
+
+**Approach.**
+1. **src/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
+   that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
+   on the budget fallback it names the fallback).
+2. **src/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
+3. **src/events.ts / src/event-format.ts:** optional `model?: string` on both event types,
+   rendered after the existing text. Omitted when no model is configured (pi's own default),
+   and old logs without the field still read and render.
+
+**Files touched.** src/loop.ts, src/review.ts, src/events.ts, src/event-format.ts, and their tests.
+
+**Acceptance criteria.**
+- A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its
+  resolved triple; under the budget fallback it names the fallback.
+- `review_start` carries the reviewer's model.
+- With no model configured, neither event gains the field; old event logs render unchanged.
+
+### Model tiers, part 3/8: `small` / `default` / `strong` tier maps and the built-in tier of each role and the reviewer (planned 2026-10-05 by operator; requires part 1/8 landed)
+
+Design: plans/model-tiers.md ("Config", "Which tier each seam uses").
+
+**Goal.** `model` may be a map by tier, catalog roles and the reviewer carry a built-in tier,
+and `roles.<id>.model` / `review.model` may name a tier. With only `default` declared, every
+seam resolves exactly as today. (`fallback` maps are parsed here but consulted per tier only
+in part 5/8; until then a map `fallback` uses its `default` entry.)
+
+**Approach.**
+1. **src/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
+   `fallback` become `string | Partial<Record<ModelTier, string>>`, where a string means
+   `{ default: <string> }`. `fallback` map values may also be `"pause"` (consulted in part 5/8).
+2. **src/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
+   `small`, every other catalog role (director included) → `default`; user-defined loops
+   (src/roles.ts) → `default`.
+3. **src/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
+   `default`'s, else none (pi's own default). `configForRole` resolves `roles.<id>.model` (a
+   tier name → that tier, a selector → itself), else the role's catalog tier. `reviewConfig`
+   resolves `review.model` the same way, else `strong`.
+4. **Validation:** map keys are exactly the three tiers; a map-form `model` with a legacy
+   top-level `provider` is an error; tier names are valid only as `roles.<id>.model` /
+   `review.model` values.
+5. **src/pi/pi-models.ts `fleetModelsFree`:** its loop over `configForRole` / `reviewConfig` now
+   sees tier models; also include `tierModel(config, "strong")` whenever any role is enabled
+   (the conflict resolver's, part 4/8), so the budget never reads n/a while a priced strong
+   model can spend.
+
+**Files touched.** src/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config-views.ts,
+src/config-validation.ts, src/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
+
+**Acceptance criteria.**
+- With `{ "model": { "default": A, "strong": B } }`, plan and reviewer runs carry B, feature
+  and readme carry A; adding `"small": C` moves readme to C.
+- `roles.feature.model: "strong"` → B; `review.model: "default"` → A;
+  `roles.feature.model: "<provider>/<id>"` → that selector.
+- A string `model` and the equivalent `{ "default": … }` map produce identical argv for every
+  seam, and with only `default` declared the existing tests pass unchanged.
+- `fleetModelsFree` is false when any tier a seam resolves to is priced.
+
+### Model tiers, part 4/8: the conflict resolver runs on the strong tier (planned 2026-10-05 by operator; requires part 3/8 landed and running)
+
+Design: plans/model-tiers.md ("Which tier each seam uses"). It changes how landings behave, so it
+is its own sub-plan and lands only once part 3/8 is the running build.
+
+**Goal.** `resolveConflict` (src/landing/landing-merge.ts) runs pi through the authoring loop's
+own config, so a conflict is resolved by whichever model wrote the change. Run it on the strong
+tier instead: resolution is rare, tolerant of latency, and edits code inside landing (BUGS.md,
+"A conflict resolution that changes the approved change's scope lands unreviewed").
+
+**Approach.**
+1. **src/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
+   `config`. Because it reads whatever config the landing is handed, it follows the budget
+   fallback's config once part 5/8 lands.
+2. **`RunsPi.runPi`** (src/loop-pi.ts) takes an optional fourth `config` argument. The loop's
+   wiring (src/loop.ts, `runPi: (w, prompt, sessionName) => this.pi.runRolePi(...)`) passes it
+   to `LoopPi.runRolePi`, where it replaces `configForRole(...)` in `loopPiOpts` for that run.
+   `resolveConflict` passes `resolverConfig(...)`; the session dir, raw log, transient retry,
+   and usage folding (charged to the authoring role) are unchanged.
+
+**Files touched.** src/config-views.ts, src/loop-pi.ts, src/loop.ts,
+src/landing/landing-merge.ts, and the landing-merge and loop-pi tests.
+
+**Acceptance criteria.**
+- With `strong` declared, a conflict-resolution run carries the strong model's argv while the
+  authoring run carries `default`'s.
+- With only `default` declared, the resolver's argv is unchanged from today.
+- The resolver's spend still folds into the authoring role's usage.
+
+### Model tiers, part 5/8: the budget fallback switches each tier to its own free model (planned 2026-10-05 by operator; requires part 3/8 landed)
+
+Design: plans/model-tiers.md ("Budget fallback by tier").
+
+**Goal.** At the daily cap each seam runs on its own tier's free model, borrowing another
+tier's when its own is missing, instead of every seam collapsing onto one pair. A single
+`fallback` (or legacy `fallbackModel`) behaves exactly as today.
+
+**Approach.**
+1. **src/config-views.ts:** `resolveTierFallbacks(config, usable)` returns, per tier, the pair
+   it runs on plus the tier it was borrowed `from`, or `"pause"`. A tier uses its own fallback
+   when `usable(pair)`; otherwise it borrows another tier's own fallback (never a borrowed one)
+   in the order small → default → strong, default → strong → small, and
+   strong → default → pause, never small. An explicit `"pause"` value opts a tier out.
+   `applyFallbackModel(config, resolved)` rewrites the `model` map to those pairs, so each seam
+   keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
+   the `FALLBACK_REVIEW_TIMEOUT_S` floor.
+2. **src/fallback-breaker.ts / src/budget-gates.ts:** `BudgetGateState.breaker` becomes a map
+   keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
+   `pairFree(...)` and `fallbackServing(...)`.
+3. **src/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
+   on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
+   resolved to pause (strong-tier roles with review off) is blocked beside the poll's
+   per-role `capPaused` set (src/gate-polls.ts, filled by src/role-cap-gates.ts), and its row
+   reads `budget paused`.
+4. **Budget handback** (src/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
+   matched against every resolved fallback pair, not only one.
+
+**Files touched.** src/config-views.ts, src/fallback-breaker.ts, src/budget-gates.ts,
+src/budget.ts, src/gate-polls.ts, src/loop.ts, and their tests.
+
+**Acceptance criteria.**
+- `{ "fallback": F }` with any `model` map puts every seam on F at the cap, matching today's
+  argv and events.
+- With `fallback: { default: D, strong: S }`, reviewer, plan, and resolver runs carry S and
+  authors carry D; without `S`, strong-tier seams carry D; without `D` but with `small: M`,
+  authors carry M and strong-tier seams pause.
+- With review on and strong unresolvable, the gate is `budget_paused`; with review off, only
+  the plan role is held.
+- A breaker-demoted pair re-resolves only the tiers using it.
+- The director still keeps its paid model.
+
+### Model tiers, part 6/8: the fleet-wide backend hold keys storms by provider (planned 2026-10-05 by operator; requires part 3/8 landed)
+
+Design: plans/model-tiers.md ("Fleet hold per provider").
+
+**Goal.** `fleetHold` (src/fleet-hold.ts) trips one fleet-wide hold when `HOLD_STORM_ROLES`
+roles fail the same way within `HOLD_STORM_WINDOW_MS`; it assumes a single backend. Once seams
+run on different providers, a 429 storm at the reviewer's provider would stop authors on a
+healthy one. Hold only what the failing provider serves.
+
+**Approach.**
+1. `HoldObservation` gains `provider` (from the run's resolved config); observations count
+   toward one storm only when both provider and kind match.
+2. `FleetHold` holds per provider. `pollFleetHold` (src/fleet-polls.ts) keeps one hold per
+   provider in `states.fleetHold` (src/gate-polls.ts), and the start pass
+   (src/orchestrator-scheduling.ts) blocks a role only when its tick model's provider is held.
+   A hold on the strong tier's provider while review is on still blocks every role, because
+   nothing could land.
+3. The `rate_limit_hold` / `rate_limit_resumed` events carry the provider.
+
+**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gate-polls.ts,
+src/orchestrator-scheduling.ts, src/events.ts, src/event-format.ts, and their tests.
+
+**Acceptance criteria.**
+- Two roles failing with 429 on provider P within the window hold roles on P only; roles on Q
+  keep ticking.
+- With every seam on one provider, behavior is identical to today (existing fleet-hold tests
+  pass unchanged).
+- A storm on the reviewer's provider with review on holds the fleet.
+
+### Model tiers, part 7/8: operator visibility — role rows, the fallback badge, and doctor checks (planned 2026-10-05 by operator; requires parts 3/8 and 5/8 landed)
+
+Design: plans/model-tiers.md ("Observability", "Doctor").
+
+**Goal.** An operator can see each role's tier and model, which free model each tier fell back
+to, and whether every declared model can run, before the fleet finds out the hard way.
+
+**Approach.**
+1. **Role rows:** `rolePayload` (src/role-view.ts) and src/status-data.ts expose `tier` beside
+   the resolved model, and both dashboards show it.
+2. **`budget_fallback`** gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its
+   existing `provider` / `model` (the default tier's). The header badge keeps today's
+   single-name text when every tier shares one pair, and lists the tiers otherwise.
+3. **Doctor** (src/doctor-checks.ts): `checkFallbackModel` covers each tier's fallback. A new
+   check verifies that every declared tier model resolves in pi's catalog and that its provider
+   reports `ready` from `pi auth check --provider <p> --json`. When `PI_SMOL_MODEL`,
+   `PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it notes that tumwater does not read them —
+   they are oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the
+   inherited environment — and points at `model.small` / `model.strong`.
+
+**Files touched.** src/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
+src/budget-gates.ts (event payload), src/event-format.ts, src/doctor-checks.ts, and their tests.
+
+**Acceptance criteria.**
+- Role rows show `strong` and its model for plan with a strong tier declared.
+- A `budget_fallback` with two distinct tier pairs lists both, with `(from default)` on a
+  borrowed one; with a single fallback the badge text is byte-identical to today's.
+- `tumwater doctor` fails a tier model pi cannot resolve, warns on a provider that is not
+  `ready`, and prints the `PI_*_MODEL` note only when one is set.
+
+### Model tiers, part 8/8: writers emit the new form, and the docs describe tiers (planned 2026-10-05 by operator; requires parts 1/8–7/8 landed)
+
+Design: plans/model-tiers.md ("Backward compatibility", "Notes for local fallbacks").
+
+**Goal.** Everything tumwater writes uses the new keys, and the docs teach the one-line
+single-model form first, then tiers.
+
+**Approach.**
+1. **`setConfigKey` / `parseConfigKey`** (src/config-write.ts) — the one writer behind both
+   `tumwater config set` (src/config-commands.ts) and the GUI's config edits
+   (src/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config-editable-keys.ts):
+   `model` takes a selector, a dotted `model.strong` merges one map entry (the way
+   `roles.qa.model` already merges a role entry), and `fallback` is editable. `provider` stays
+   accepted for legacy configs and is never written into a config that lacks it.
+2. **Docs:** README.md (the "Backends" line), docs/backends.md (config examples, the
+   local-fallback memory and `compat.thinkingTokenBudgetField` notes), docs/how-it-works.md
+   (seams and tiers), docs/feature-model-fallback.md and docs/implementation-model-fallback.md
+   (per-tier fallback and the borrow order).
+
+**Files touched.** src/config-write.ts, src/config-editable-keys.ts, README.md, the four docs/
+files above, and the config-write tests.
+
+**Acceptance criteria.**
+- `tumwater config set model huggingface/zai-org/GLM-5.3-Flash:together:low` writes one key;
+  `tumwater config set model.strong <selector>` turns a string `model` into
+  `{ default: <old>, strong: <selector> }`.
+- No writer adds `provider` or `fallbackModel` to a config that does not already have them.
+- The docs show the single-model form before any tier example.
 
 ## Done
 
