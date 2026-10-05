@@ -55,6 +55,21 @@ export const CONTEXT_BUDGET_RULE = `- Your context window is finite: everything 
   and where the full output lives — follow the pointer (re-read with \`offset\`/\`limit\`, or open
   the full-output file path) instead of retrying the same read.`;
 
+/** The test-runner rule every run that may run tests carries: the tick and director rules, the
+ * conflict resolver, and the reviewer. Project-neutral on purpose — a fleet works on any codebase
+ * (npm, cargo, pytest, a configured check.command), so the rule names no ecosystem's runner as THE
+ * right one: it points at the declared check or the framework already in use, and its one example
+ * is labelled as a mismatch. A run that does not know the suite's runner guesses one: in the week
+ * to 2026-10-05 the fleet's agents ran `npx vitest` 19 times in tumwater, a node:test repo, and
+ * vitest killed the compiled tests mid-run, so no cleanup hook ran (BUGS.md 2026-10-05: ~725 temp
+ * run roots abandoned and test children orphaned by one conflict resolver's five runs). Even where
+ * a guess cannot do that damage, it wastes turns on a runner that finds no tests. tumwater's own
+ * root vitest.config.mjs refuses vitest in this repo; this rule is the half that reaches every
+ * project. Stated once so the three prompt families cannot drift. */
+export const TEST_RUNNER_RULE = `- Run tests only through the project's declared check or the test framework it already uses —
+  never a runner you guessed (say, \`npx vitest\` in a suite written for node:test): a mismatched
+  runner finds no tests at best, and can kill them mid-run, leaking processes and temp files.`;
+
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
@@ -131,6 +146,7 @@ Where you work:
   anything reading stdin), servers, or watch modes. To test such a program, background it with
   a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
 - Leave the project working: ${verify} Pipe its output through \`tail\` — only the failures matter.
+${TEST_RUNNER_RULE}
 
 Boundaries:
 - Never create, amend, or revert git commits, branches, or merges — the harness handles all git

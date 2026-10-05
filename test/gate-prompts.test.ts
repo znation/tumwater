@@ -13,6 +13,7 @@ import {
 } from "../src/gate-prompts.js";
 import { parseVerdict } from "../src/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { TEST_RUNNER_RULE } from "../src/prompt.js";
 import { oneLine } from "./oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
@@ -69,6 +70,23 @@ test("buildConflictPrompt forbids state-changing git commands (harness concludes
   assert.match(p, /the harness concludes the rebase for you/i);
   // Reading git state stays allowed — resolving well may need it.
   assert.match(p, /Reading git state is fine/i);
+});
+
+// BUGS.md 2026-10-05: told only to keep the tests passing, a resolver guessed `npx vitest run` in
+// a node:test repo and killed the suite's tests mid-run. The prompt names the project's own check
+// the way the tick rules do, and carries the shared test-runner rule either way.
+test("buildConflictPrompt names the project's declared check and forbids a guessed test runner", () => {
+  const npm = oneLine(buildConflictPrompt("organize", ["a.ts"], { kind: "npm", rootDir: ".", script: "test" }));
+  assert.match(npm, /Keep the project building and its tests passing — verify with `npm run test` \(the project's declared check\)\./);
+  const configured = oneLine(
+    buildConflictPrompt("organize", ["a.ts"], { kind: "command", command: "pytest -q", cwd: "/tmp/r", timeoutMs: 1000 }),
+  );
+  assert.match(configured, /verify with `pytest -q` \(the project's declared check\)\./);
+  // No check: the generic sentence, with no command to name.
+  const none = buildConflictPrompt("organize", ["a.ts"]);
+  assert.match(none, /Keep the project building and its tests passing\.\n/);
+  assert.doesNotMatch(none, /verify with/);
+  for (const p of [npm, configured, oneLine(none)]) assert.ok(p.includes(oneLine(TEST_RUNNER_RULE)), "the test-runner rule");
 });
 
 test("buildConflictPrompt keeps the project building and ends by stopping", () => {
@@ -266,7 +284,7 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
 
   const without = oneLine(buildReviewPrompt("diff"));
   assert.doesNotMatch(without, /Do not re-run|re-running it/, "no verified result, no rule");
-  assert.match(without, /directory is fine when you need to run something\. - Weigh the change/);
+  assert.match(without, /directory is fine when you need to run something\. - Run tests only through the project's declared check/);
   assert.equal([...without.matchAll(/VERDICT:/g)].length, 2);
 });
 

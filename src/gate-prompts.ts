@@ -1,5 +1,7 @@
 import { shortSha } from "./format.js";
-import { dateLine } from "./prompt.js";
+import { TEST_RUNNER_RULE, dateLine } from "./prompt.js";
+import { describeCheck } from "./build-check-report.js";
+import type { BuildCheck } from "./build-check-detect.js";
 import { formatTimestamp } from "./datetime.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
@@ -9,9 +11,13 @@ import { formatTimestamp } from "./datetime.js";
  * machine-detectable half of the gate's reply contract — verdict constants and detection for
  * parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
-/** The prompt for resolving merge conflicts left in a loop's worktree. `today` pins the date
- * line (prompt.ts's dateLine) for tests; omitted, it is the local day. */
-export function buildConflictPrompt(roleId: string, files: string[], today?: string): string {
+/** The prompt for resolving merge conflicts left in a loop's worktree. `check` — the project's
+ * resolved check, as the tick prompt threads it — names the command that keeps the tests passing:
+ * told only to keep them passing, the 2026-10-04 resolver guessed `npx vitest run` in a node:test
+ * repo (BUGS.md 2026-10-05). Undefined keeps the generic sentence. `today` pins the date line
+ * (prompt.ts's dateLine) for tests; omitted, it is the local day. */
+export function buildConflictPrompt(roleId: string, files: string[], check?: BuildCheck, today?: string): string {
+  const verify = check ? ` — verify with ${describeCheck(check)} (the project's declared check)` : "";
   return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of
 your work branch onto main stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
@@ -23,7 +29,7 @@ ${files.map((f) => `- ${f}`).join("\n")}
 
 Resolve every conflict marker (<<<<<<<, =======, >>>>>>>) by combining the intent of BOTH sides:
 "ours" is this branch's change, "theirs" is the latest main. Do not simply pick one side unless
-the two changes are genuinely alternatives. Keep the project building and its tests passing.
+the two changes are genuinely alternatives. Keep the project building and its tests passing${verify}.
 
 Rules for this run:
 - Edit files only. Never run any git command that changes state (no add, commit, merge, rebase,
@@ -35,6 +41,7 @@ Rules for this run:
   change is re-derived on top of current main by its author if it still matters. Never merge
   the branch's version back in over main's deliberate removal.
 - Never touch the .tumwater directory or tumwater.json.
+${TEST_RUNNER_RULE}
 - When a conflicted file is a markdown backlog file (PLANS.md, BUGS.md, QUESTIONS.md), its
   \`## \` section headings are structure, not text: the result keeps exactly one of each
   \`## \` heading, and every \`### \` entry sits under the section its own side put it in —
@@ -148,6 +155,7 @@ Rules for this run:
   add/commit/merge/rebase/reset, no writes in the worktree) — your only output channel is the
   verdict below. Reading files and git history is fine; a scratch copy under the system temp
   directory is fine when you need to run something.${noRerunRule}
+${TEST_RUNNER_RULE}
 - Weigh the change against its stated purpose; do not approve work you did not actually check.
 - End your reply with exactly one line in this form:
   VERDICT: approve   or   VERDICT: reject

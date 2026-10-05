@@ -14,7 +14,7 @@ import {
 import { abortSync } from "../worktree.js";
 import { type BuildCheckOutcome } from "../build-check.js";
 import { runScopedBuildCheck } from "../build-check-scoped.js";
-import { type BuildCheck, gateCommandOf } from "../build-check-detect.js";
+import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build-check-detect.js";
 import { noteGreenBaseline } from "../main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";
@@ -306,9 +306,12 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
   if (state === "clean") return true;
   if (state === "failed") return false;
   const files = await conflictedFiles(wt);
+  // The prompt names the project's own check, detected the way the in-lock re-check detects it,
+  // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
+  const check = detectBuildCheck(wt, ctx.config) ?? undefined;
   const pi = await ctx.runPi(
     wt,
-    buildConflictPrompt(ctx.role, files),
+    buildConflictPrompt(ctx.role, files, check),
     `tumwater-${ctx.role}-${ctx.tick}-conflict`,
   );
   if (!pi.ok || hasConflictMarkers(wt, files)) {

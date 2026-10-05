@@ -16,7 +16,8 @@ supervisor's marker), so a suite a fleet starts sees the same fakes as one run b
 new variable the harness honors there too. The e2e tier stays out of the gating suite because its
 wall-clock waits are not load-proof. Coverage runs go through the runner too (`npm run
 test:coverage`), never raw `node --test` or a tree compiled elsewhere — the fakes resolve their
-shim relative to `dist/` inside the checkout. Non-npm projects can replace the gate's check with
+shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a config: it makes `npx vitest`
+refuse to start here (BUGS.md 2026-10-05). Non-npm projects can replace the gate's check with
 `check.command` in tumwater.json (`command`, optional `cwd` and `timeoutSeconds`).
 
 Both suite scripts start with `scripts/live-checkout-guard.mjs`, which refuses to run in a

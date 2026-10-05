@@ -8,6 +8,7 @@ import {
 } from "../src/reply-contract.js";
 import {
   ROOT_FROM_WORKTREE,
+  TEST_RUNNER_RULE,
   buildDirectorPrompt,
   buildTickPrompt,
 } from "../src/prompt.js";
@@ -377,7 +378,7 @@ test("every tick, director, conflict, and review prompt states the given date ex
     buildDirectorPrompt("the tui flickers", "Make a CLI.", undefined, undefined, undefined, today),
   ];
   const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
-  const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], today), review];
+  const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, today), review];
   for (const p of [...loopPrompts, ...gatePrompts]) {
     assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);
     assert.equal(p.split("Today's date is").length - 1, 1, "the date is stated once, in one place");
@@ -392,6 +393,29 @@ test("every tick, director, conflict, and review prompt states the given date ex
   }
   // The verdict contract survives the extra line: still exactly the two advertised forms.
   assert.equal([...review.matchAll(/VERDICT:/g)].length, 2);
+});
+
+// BUGS.md 2026-10-05: agents guessed `npx vitest` 19 times in a week in this node:test repo, and
+// vitest killed the compiled tests mid-run. Every prompt whose run may run tests says not to: the
+// tick and director rules (right after the verify bullet), the conflict resolver, and the
+// reviewer, with or without a verified pre-check — one shared bullet, stated once in each.
+test("every tick, director, conflict, and review prompt carries the test-runner rule exactly once", () => {
+  const prompts = [
+    ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "" })),
+    buildDirectorPrompt("add x", "a project"),
+    buildConflictPrompt("feature", ["a.txt"]),
+    buildReviewPrompt("diff body"),
+    buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, "`npm run test` passed"),
+  ];
+  for (const p of prompts) {
+    assert.equal(p.split(TEST_RUNNER_RULE).length - 1, 1, `the rule once, verbatim: ${p.slice(0, 60)}…`);
+  }
+  // Project-neutral: it defers to the declared check or the framework in use, whatever the
+  // ecosystem, and its one runner example is framed as a mismatch, not a recommendation.
+  assert.match(oneLine(TEST_RUNNER_RULE), /only through the project's declared check or the test framework it already uses/);
+  assert.match(oneLine(TEST_RUNNER_RULE), /never a runner you guessed \(say, `npx vitest` in a suite written for node:test\)/);
+  const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
+  assert.match(tick, /only the failures matter\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
 });
 
 test("an omitted date defaults to todayStamp's local day — the daily budget window's own day", () => {
