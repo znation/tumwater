@@ -305,6 +305,25 @@ test("startParentDeathWatch fires exactly once when the parent pid changes", asy
   }
 });
 
+test("startParentDeathWatch with an expected parent fires on a parent that was gone before the watch started", async () => {
+  // The spawner handed its pid down, but died before the child's first read: that read is
+  // already launchd's 1, and only the expectation can tell the parent is gone.
+  let gone = 0;
+  const timer = startParentDeathWatch(() => {
+    gone += 1;
+  }, { ppid: () => 1, intervalMs: 10, expectedPpid: 4242 });
+  const alive = startParentDeathWatch(() => {
+    gone += 100;
+  }, { ppid: () => 4242, intervalMs: 10, expectedPpid: 4242 });
+  try {
+    await sleep(60);
+    assert.equal(gone, 1, "the reparented child fires; the one still under its parent does not");
+  } finally {
+    clearInterval(timer);
+    clearInterval(alive);
+  }
+});
+
 test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it", async () => {
   const dir = tmpdir();
   let supervisor: ReturnType<typeof spawn> | undefined;

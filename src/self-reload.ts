@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { type BuildInfo, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
+import { startParentDeathWatch } from "./supervisor.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
  *
@@ -47,8 +48,43 @@ export type ReloadSpawn = (
 
 /** Marks a dashboard process as the reload supervisor's child: on its own reload trigger it
  * exits RESTART_EXIT_CODE instead of spawning a grandchild, so the supervisor can respawn a
- * sibling and the chain stays two deep however many redeploys land (BUGS.md 2026-09-30). */
+ * sibling and the chain stays two deep however many redeploys land (BUGS.md 2026-09-30). The
+ * value is the supervisor's pid, for the child's watchReloadSupervisor; a supervisor from
+ * before that (an older build still supervising a reloaded child) sets "1". */
 export const DASHBOARD_CHILD_ENV = "TUMWATER_DASHBOARD_CHILD";
+
+/** How often a supervised dashboard child checks that its reload supervisor still lives (ms):
+ * the reload watch's own cadence, so a TUI orphaned on the operator's terminal hands it back
+ * within a second, and a GUI frees its port as fast. */
+const SUPERVISOR_POLL_MS = 1000;
+
+/** watchReloadSupervisor's injectable seams: the environment carrying the child mark, the
+ * parent-pid source and the poll interval, so tests drive the watch without reparenting a real
+ * process. */
+export interface SupervisorWatchSeams {
+  env?: NodeJS.ProcessEnv;
+  ppid?: () => number;
+  intervalMs?: number;
+}
+
+/** For a dashboard running as reexecSelf's child, run `onGone` once its reload supervisor is
+ * gone — the dashboard twin of the run generation's startParentDeathWatch. The supervisor
+ * forwards nothing when it dies outright (SIGKILL, a crash), so without this the child serves
+ * its port, or draws on a terminal the shell has taken back, for good. The mark names the
+ * supervisor's pid, so one that died before this watch started still counts as gone. Returns
+ * the stop; a no-op for a dashboard that is not a supervised child. */
+export function watchReloadSupervisor(onGone: () => void, seams: SupervisorWatchSeams = {}): () => void {
+  const mark = (seams.env ?? process.env)[DASHBOARD_CHILD_ENV];
+  if (mark === undefined) return () => {};
+  const supervisor = Number(mark);
+  const timer = startParentDeathWatch(onGone, {
+    ...(seams.ppid ? { ppid: seams.ppid } : {}),
+    intervalMs: seams.intervalMs ?? SUPERVISOR_POLL_MS,
+    // An older supervisor's "1" names no pid (1 is launchd/init): the watch's first read stands.
+    ...(Number.isInteger(supervisor) && supervisor > 1 ? { expectedPpid: supervisor } : {}),
+  });
+  return () => clearInterval(timer);
+}
 
 /** Hand this process's dashboard duty to a fresh copy of itself (`process.argv.slice(1)` re-runs
  * the same CLI entry point, e.g. `dist/src/cli.js tui`) and stay alive as its thin supervisor,
@@ -63,7 +99,7 @@ export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
   if (process.env[DASHBOARD_CHILD_ENV] !== undefined) process.exit(RESTART_EXIT_CODE);
   const options = {
     stdio: "inherit" as const,
-    env: { ...process.env, [DASHBOARD_CHILD_ENV]: "1" },
+    env: { ...process.env, [DASHBOARD_CHILD_ENV]: String(process.pid) },
   };
   const startChild = (): ReloadChild => spawnImpl(process.execPath, process.argv.slice(1), options);
   const supervise = (): void => {

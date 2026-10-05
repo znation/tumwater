@@ -7,7 +7,14 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { GUI_PAGE } from "./ui/gui-page.js";
 import { statusPayload } from "./ui/status-payload.js";
-import { captureStartupBuild, createReloadWatch, reexecSelf, type ReloadWatchSeams } from "./self-reload.js";
+import {
+  captureStartupBuild,
+  createReloadWatch,
+  reexecSelf,
+  type ReloadWatchSeams,
+  type SupervisorWatchSeams,
+  watchReloadSupervisor,
+} from "./self-reload.js";
 import { errorMessage } from "./text.js";
 import {
   handleBacklog,
@@ -87,15 +94,21 @@ function crossOriginRequest(req: http.IncomingMessage): boolean {
  * check — byte-for-byte the open server. Resolves once it is listening.
  *
  * `watch` overrides the self-reload watch's seams (self-reload.ts's injectables) plus the
- * re-exec itself; production callers omit it and get the real disk-stamp poll and the real
- * reexecSelf — tests inject fakes so the wiring (close, then re-exec, at most once) is
- * assertable without launching a process or touching this dist's own stamp. */
+ * re-exec itself, and the supervised child's supervisor watch plus its exit; production
+ * callers omit it and get the real disk-stamp poll, reexecSelf and process.exit — tests
+ * inject fakes so the wiring (close, then re-exec, at most once; close, then exit, once the
+ * reload supervisor is gone) is assertable without launching a process or touching this
+ * dist's own stamp. */
 export function startGui(
   root: string,
   port: number,
   allInterfaces = false,
   token = "",
-  watch: ReloadWatchSeams & { reexec?: () => void } = {},
+  watch: ReloadWatchSeams & {
+    reexec?: () => void;
+    supervisor?: SupervisorWatchSeams;
+    exit?: (code: number) => void;
+  } = {},
 ): Promise<http.Server> {
   // The serving process's own startup stamp: added to every /api/status payload so the page can
   // notice a newer server (a redeploy or manual build re-execs this process) and reload itself.
@@ -192,6 +205,14 @@ export function startGui(
     },
   });
   void reloadWatch.start();
+  // A reloaded child whose reload supervisor died outright: nothing will respawn or stop it,
+  // so it frees the port and exits instead of serving on at PPID 1.
+  const stopSupervisorWatch = watchReloadSupervisor(() => {
+    reloadWatch.stop();
+    server.close();
+    (watch.exit ?? process.exit)(0);
+  }, watch.supervisor);
+  server.once("close", stopSupervisorWatch);
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     if (allInterfaces) server.listen(port, () => resolve(server));

@@ -9,6 +9,8 @@ import {
   createReloadWatch,
   reexecSelf,
   type ReloadWatchSeams,
+  type SupervisorWatchSeams,
+  watchReloadSupervisor,
 } from "../self-reload.js";
 import {
   renderInputView,
@@ -54,14 +56,17 @@ export interface TuiStdout {
   off?(event: string, listener: () => void): unknown;
 }
 /** Injectable seams for runTui: a terminal stand-in plus the self-reload watch's seams
- * (self-reload.ts's injectables) and the re-exec itself — the same treatment startGui got.
- * Production callers omit it and get the real terminal, the real disk-stamp poll, and the
- * real reexecSelf; tests inject fakes so the reload wiring (trigger → wake the loop →
- * teardown → re-exec at most once) is assertable without a terminal. */
+ * (self-reload.ts's injectables) and the re-exec itself — the same treatment startGui got —
+ * and the supervised child's supervisor watch. Production callers omit it and get the real
+ * terminal, the real disk-stamp poll, the real reexecSelf and the real parent pid; tests
+ * inject fakes so the reload wiring (trigger → wake the loop → teardown → re-exec at most
+ * once) and the orphan wiring (supervisor gone → the same teardown, no re-exec) are
+ * assertable without a terminal. */
 export interface TuiSeams {
   stdin?: TuiStdin;
   stdout?: TuiStdout;
   watch?: ReloadWatchSeams & { reexec?: () => void };
+  supervisor?: SupervisorWatchSeams;
 }
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
@@ -91,6 +96,14 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     },
   });
   void reloadWatch.start();
+  // A reloaded child whose reload supervisor died outright no longer owns the terminal the
+  // shell has taken back: it takes the quit teardown (restoring the cursor and raw mode) and
+  // ends, with no re-exec. `supervisorGone` closes the same race `reloadRequested` does.
+  let supervisorGone = false;
+  const stopSupervisorWatch = watchReloadSupervisor(() => {
+    supervisorGone = true;
+    resolveMain?.();
+  }, seams.supervisor);
 
   // The framework-free keypress handler (src/ui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
@@ -189,14 +202,16 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   await new Promise<void>((resolve) => {
     resolveMain = resolve;
-    // The reload trigger may have fired between `start()` and this await; the executor
-    // resolves immediately in that case so both orderings reach the same teardown.
-    if (reloadRequested) resolve();
+    // The reload trigger (or the supervisor watch) may have fired between `start()` and this
+    // await; the executor resolves immediately in that case so both orderings reach the same
+    // teardown.
+    if (reloadRequested || supervisorGone) resolve();
   });
 
   clearInterval(timer);
   inkApp.unmount(); // restore the cursor and raw mode; the newline below closes it
   stdout.write("\n");
   reloadWatch.stop();
-  if (reloadRequested) (seams.watch?.reexec ?? reexecSelf)();
+  stopSupervisorWatch();
+  if (reloadRequested && !supervisorGone) (seams.watch?.reexec ?? reexecSelf)();
 }

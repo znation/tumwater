@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
+import { pidAlive } from "../src/process.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui-command.js";
 import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
@@ -302,7 +303,7 @@ test("gui --all-interfaces --token prints the protected warning and token-bearin
   }
 });
 
-test("the gui reloads onto a newer build: closes, re-execs, and re-binds the same port", async () => {
+test("the gui reloads onto a newer build: closes, re-execs, re-binds the same port, and the reloaded server dies with its wrapper", async () => {
   // startGui's reload glue (`server.close(); reexecSelf();`) is the one part of the
   // self-reload story with no injected seam: self-reload.test.ts pins the watch and the
   // re-exec against fakes, but nothing proves the dashboard actually survives a redeploy —
@@ -375,6 +376,19 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
       /<title>tumwater<\/title>/,
       "the reloaded server still serves the dashboard",
     );
+
+    // The wrapper — the process the operator started, now the reloaded server's supervisor —
+    // dies outright, forwarding nothing: the server it supervised must free the port and exit
+    // (watchReloadSupervisor) rather than serve on at PPID 1.
+    const reloadedPid = Number(
+      execFileSync("pgrep", ["-P", String(child.pid)], { encoding: "utf8" }).trim().split("\n")[0],
+    );
+    assert.ok(reloadedPid > 0, "the wrapper supervises the reloaded server");
+    process.kill(child.pid as number, "SIGKILL");
+    const goneDeadline = Date.now() + 15_000;
+    while (pidAlive(reloadedPid) && Date.now() < goneDeadline) await sleep(100);
+    assert.equal(pidAlive(reloadedPid), false, "the reloaded server exited with its supervisor");
+    await assert.rejects(fetch(`http://127.0.0.1:${port}/api/status`), "nothing serves the port any more");
   } finally {
     try {
       if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");

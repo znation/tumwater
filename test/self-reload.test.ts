@@ -9,6 +9,7 @@ import {
   shouldReload,
   type ReloadChild,
   type ReloadSpawn,
+  watchReloadSupervisor,
 } from "../src/self-reload.js";
 import { readBuildInfo } from "../src/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
@@ -88,8 +89,44 @@ test("reexecSelf spawns this exact command with inherited stdio and the child ma
   assert.deepEqual(calls, [[
     process.execPath,
     process.argv.slice(1),
-    { stdio: "inherit", env: { ...process.env, [DASHBOARD_CHILD_ENV]: "1" } },
+    { stdio: "inherit", env: { ...process.env, [DASHBOARD_CHILD_ENV]: String(process.pid) } },
   ]]);
+});
+
+test("watchReloadSupervisor fires once the supervisor the mark names is gone, and never for an unsupervised dashboard", async () => {
+  let ppid = 4242;
+  const fired: string[] = [];
+  const env = { [DASHBOARD_CHILD_ENV]: "4242" };
+  const stopChild = watchReloadSupervisor(() => fired.push("child"), { env, ppid: () => ppid, intervalMs: 5 });
+  // Started after its supervisor already died: the mark's pid, not the first read, decides.
+  const stopLate = watchReloadSupervisor(() => fired.push("late"), { env, ppid: () => 1, intervalMs: 5 });
+  // An older supervisor's "1" names no pid: the first read stands, and an unchanged parent never fires.
+  const stopLegacy = watchReloadSupervisor(() => fired.push("legacy"), {
+    env: { [DASHBOARD_CHILD_ENV]: "1" },
+    ppid: () => 500,
+    intervalMs: 5,
+  });
+  // Not a supervised child at all: a changed parent means nothing to a hand-launched dashboard.
+  const stopPlain = watchReloadSupervisor(() => fired.push("plain"), { env: {}, ppid: () => ppid, intervalMs: 5 });
+  try {
+    await sleep(40);
+    assert.deepEqual(fired, ["late"], "only the child whose supervisor was already gone fired");
+    ppid = 1; // the supervisor was SIGKILLed and the child reparented
+    await sleep(40);
+    assert.deepEqual(fired.sort(), ["child", "late"], "the reparented child fires, exactly once each");
+  } finally {
+    stopChild();
+    stopLate();
+    stopLegacy();
+    stopPlain();
+  }
+  const stopped: string[] = [];
+  let parent = 4242;
+  const stop = watchReloadSupervisor(() => stopped.push("x"), { env, ppid: () => parent, intervalMs: 5 });
+  stop();
+  parent = 1;
+  await sleep(40);
+  assert.deepEqual(stopped, [], "a stopped watch never fires");
 });
 
 test("reexecSelf exits with the child's code; a null code or spawn error becomes 1", () => {

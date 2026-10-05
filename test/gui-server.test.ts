@@ -15,6 +15,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/gui-server.js";
+import { DASHBOARD_CHILD_ENV } from "../src/self-reload.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo, runningAsRoot } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
@@ -668,6 +669,33 @@ test("gui /api/history serves an empty row set when the event log is missing, an
     const page = await (await fetch(base + "/")).text();
     assert.match(page, /href="#history" id="tab-history"/);
     assert.match(page, /<section id="history" class="view"[^>]*hidden>/);
+  } finally {
+    server.close();
+  }
+});
+
+test("a reloaded gui whose reload supervisor dies closes its server and exits", async () => {
+  // The orphan wiring: a supervised child (the mark names its supervisor) whose supervisor was
+  // SIGKILLed frees its port and exits instead of serving on at PPID 1. The supervisor watch's
+  // parent pid and the exit are injected, so nothing is reparented or really exited.
+  const repo = makeRepo();
+  await initProject(repo, "gui supervisor-death teardown");
+  let ppid = 4242;
+  const exits: number[] = [];
+  const server = await startGui(repo, 0, false, "", {
+    isSelfHostedImpl: async () => false,
+    supervisor: { env: { [DASHBOARD_CHILD_ENV]: "4242" }, ppid: () => ppid, intervalMs: 5 },
+    exit: (code) => {
+      exits.push(code);
+    },
+  });
+  try {
+    await sleep(40);
+    assert.equal(server.listening, true, "under a live supervisor the gui keeps serving");
+    ppid = 1; // the supervisor died outright and the child reparented
+    await waitFor(() => exits.length > 0, "the supervisor watch fires", 5000);
+    assert.deepEqual(exits, [0], "the orphaned child exits, once");
+    assert.equal(server.listening, false, "the server closed before the exit");
   } finally {
     server.close();
   }

@@ -9,6 +9,13 @@ _None yet._
 
 ## Fixed
 
+### A reloaded dashboard child outlived its reload supervisor: `tumwater gui`/`tui` hand a redeploy to a child via reexecSelf and stay on as its supervisor, but the child had no parent-death watch, so a supervisor that died outright (SIGKILL, a crash: nothing forwarded) left the GUI serving its port, or the TUI drawing on a terminal the shell had taken back, at PPID 1 for good (found by human-directed investigation 2026-10-05 during the test-orphan sweep, fixed 2026-10-05)
+
+- **Cause:** the run supervisor's generation arms startParentDeathWatch (src/cli-run.ts); reexecSelf's dashboard child had no equivalent.
+- **Fix:** self-reload.ts's `watchReloadSupervisor` is the dashboard twin. It polls every 1 s, and the child mark (`TUMWATER_DASHBOARD_CHILD`) now carries the supervisor's pid (startParentDeathWatch's new `expectedPpid`), so a supervisor that died before the child's first read still counts as gone. An older supervisor's "1" falls back to the first read. On firing, startGui stops its reload watch, closes the server and exits 0; runTui takes the quit teardown (raw mode and cursor restored) and returns without re-exec.
+- **Tests:** the watch's unit test (live, already-gone, legacy-mark and unsupervised cases), injected-seam tests for startGui and runTui, and cli-gui's real re-exec test, which now SIGKILLs the wrapper and requires the reloaded server to exit and free the port. Each fails with the watch disabled.
+- **Validation gap:** no-fake — startGui and runTui had no seam for the parent pid or the child mark, so confirming the orphan path in-process needed new injectables; the real-process check reused cli-gui's existing re-exec fixture.
+
 ### `tumwater wake --in 45m` sometimes confirmed "wakes in 2699999ms" instead of "wakes in 45m": the phrase was the deadline minus a second clock read, and a millisecond tick between the two reads left a remainder durationLabel can only print raw (found by human-directed investigation 2026-10-05, fixed 2026-10-05)
 
 - **Symptom:** on 2026-10-05 one full-suite run failed test/cli-operators.test.ts's "wake --in schedules the marker; without --in the immediate shape is unchanged": stdout read "wake scheduled for qa — wakes in 2699999ms — …" against `/wakes in 45m/`. The re-run passed. An operator gets the same wording whenever the tick lands; the marker's deadline was fine.

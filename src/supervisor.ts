@@ -24,6 +24,10 @@ interface ParentDeathWatchOptions {
   ppid?: () => number;
   /** The poll interval; defaults to PARENT_POLL_MS. */
   intervalMs?: number;
+  /** The parent pid to expect, when the spawner handed it down: compared against instead of
+   * the watch's own first read, so a parent that died before the watch started still counts
+   * as gone. Defaults to the first `ppid()` read. */
+  expectedPpid?: number;
 }
 
 /** Parent-death watch for the supervised generation. The supervisor forwards only SIGTERM —
@@ -36,7 +40,7 @@ interface ParentDeathWatchOptions {
  * never holds the generation's event loop open past its real work. */
 export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): NodeJS.Timeout {
   const ppid = opts.ppid ?? (() => process.ppid);
-  const original = ppid();
+  const original = opts.expectedPpid ?? ppid();
   const timer = setInterval(() => {
     if (ppid() !== original) {
       clearInterval(timer);

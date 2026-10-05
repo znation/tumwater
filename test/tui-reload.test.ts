@@ -1,9 +1,10 @@
-import { sleep } from "./wait.js";
+import { sleep, waitFor } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
+import { DASHBOARD_CHILD_ENV } from "../src/self-reload.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { initProject } from "../src/init.js";
 
@@ -125,6 +126,42 @@ test("Ctrl+D ends the TUI cleanly and never re-execs while the dist stamp is unc
   assert.equal(reexecs.n, 0, "a Ctrl+D teardown never re-execs");
   assert.deepEqual(term.rawModes, [true, false]);
   assert.equal(term.writes.at(-1), "\n");
+});
+
+test("a reloaded TUI whose reload supervisor dies hands the terminal back and ends without re-exec", async () => {
+  // The orphan wiring: a supervised child (the mark names its supervisor) whose supervisor
+  // was SIGKILLed takes the quit teardown — raw mode restored, newline written — and returns,
+  // never re-exec'ing: there is no supervisor left to respawn it.
+  const repo = makeRepo();
+  await initProject(repo, "tui supervisor-death teardown");
+
+  const startup = readBuildInfo();
+  assert.ok(startup, "the suite runs from a stamped dist");
+  const reexecs = { n: 0 };
+  let ppid = 4242;
+  const term = new FakeTerminal();
+  const done = runTui(repo, {
+    ...term.asSeams,
+    watch: reloadWatchSeams(() => startup, reexecs),
+    supervisor: { env: { [DASHBOARD_CHILD_ENV]: "4242" }, ppid: () => ppid, intervalMs: 5 },
+  });
+  try {
+    await sleep(60);
+    assert.deepEqual(term.rawModes, [true], "under a live supervisor the TUI keeps running");
+    ppid = 1; // the supervisor died outright and the child reparented
+    // Bounded, not a bare await: a TUI that ignored its supervisor's death would wait for
+    // keys forever, and this file with it — the finally's Ctrl+D ends it after the failure.
+    let ended = false;
+    void done.then(() => (ended = true));
+    await waitFor(() => ended, "the TUI to end once its supervisor is gone", 10_000);
+    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+    assert.deepEqual(term.rawModes, [true, false], "raw mode was restored");
+    assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
+    assert.equal(reexecs.n, 0, "an orphaned child never re-execs");
+  } finally {
+    term.keypress({ ctrl: true, name: "d" });
+    await done;
+  }
 });
 
 test("runTui without a terminal still refuses before any seam or watch is armed", async () => {
