@@ -13,6 +13,7 @@ import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 import { cli, spawnCli } from "./cli-harness.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 // `tumwater gui` through the real CLI entry point: argument validation, the serve loop
 // (banner, --token gate, --all-interfaces LAN URLs), and the failure paths (port in use,
@@ -334,7 +335,7 @@ test("the gui reloads onto a newer build: closes, re-execs, and re-binds the sam
   delete env[SUPERVISED_ENV];
   const child = spawn(process.execPath, [path.join(dist, "src", "cli.js"), "gui", "--port", String(port)], {
     cwd: root,
-    env,
+    env: exitWithOwnerEnv(env), // the re-exec'd server inherits the owner watch too
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });

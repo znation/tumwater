@@ -11,6 +11,7 @@ import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { runPiFixture } from "./pi-run-harness.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 
 // The process-tree-hygiene regressions: a run — killed or exited normally — must take its
 // tool-call children, grandchildren, and backgrounded cross-group orphans with it, and
@@ -38,10 +39,11 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
   config.quietTimeoutSeconds = 60;
   const pidFile = path.join(dir, "grandchild.pid");
   // The spinner redirects its stdio so it does not hold pi's pipes open — exactly the shape
-  // of a real tool call, and what lets runPi settle while the leak lives on.
+  // of a real tool call, and what lets runPi settle while the leak lives on. It spins only
+  // while this process lives: a test process killed mid-test must not leave a core burning.
   const restore = fakePi(
     [
-      `sh -c 'echo $$ > ${pidFile}; while :; do :; done' >/dev/null 2>&1 &`,
+      `sh -c 'echo $$ > ${pidFile}; while ${ownerAliveSh()}; do :; done' >/dev/null 2>&1 &`,
       `until [ -f ${pidFile} ]; do sleep 0.05; done`,
       `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolName: "bash" })}'`,
       `exec sleep 30`,
@@ -100,7 +102,9 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
   const subshellPidFile = path.join(dir, "subshell.pid");
   const listPidFile = path.join(dir, "list.pid");
   const pidFiles = [subshellPidFile, listPidFile];
-  const sleeper = (pidFile: string) => `sh -c 'echo $$ > ${pidFile}; exec sleep 3600'`;
+  // Two minutes, not an hour: far past the run's 30 s backstop, and short enough that a test
+  // process killed mid-test strands them only briefly (sh cannot load the owner watch).
+  const sleeper = (pidFile: string) => `sh -c 'echo $$ > ${pidFile}; exec sleep 120'`;
   // A backstop, far beyond the test's span: were an orphan ever to hold 'close' open, the run
   // fails on the tick timeout instead of hanging the file.
   const config = defaultConfig();

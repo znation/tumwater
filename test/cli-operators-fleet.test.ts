@@ -12,6 +12,7 @@ import { seedCounters } from "./loop-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 // The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split
 // from cli-operators.test.ts so node --test runs them in parallel processes — each test
@@ -239,7 +240,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   // assertion that left it alive kept this file's process up forever (its event loop held by
   // the child), hanging the whole suite until the runner's ceiling (2026-10-01, a feature
   // tick's broken dist failed `stop` here and wedged `npm run test` for 15 min).
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore", env: exitWithOwnerEnv() });
   try {
     writeOrchestratorMarker(repo, [], { pid: child.pid });
 
@@ -274,7 +275,7 @@ test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error"
 
   // The delivered case: a live child takes the SIGTERM and dies from it — reaped in the
   // finally like the stop test's stand-in above, so a failure cannot hang the file.
-  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
+  const live = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore", env: exitWithOwnerEnv() });
   try {
     const exited = new Promise((resolve) => live.once("exit", (_c, signal) => resolve(signal)));
     assert.equal(signalOrchestrator(live.pid as number), "signalled");

@@ -2,11 +2,37 @@
 // whose SIGKILL is armed with the test runner the moment the victim exists, so a failed
 // readiness assertion can never strand it at PPID 1 (the 2026-09-30 orphan leak) — and which
 // exits by itself once the test process is gone, for the deaths no in-process hook survives
-// (the 2026-10-04 leak).
+// (the 2026-10-04 leak). exitWithOwnerEnv and ownerAliveSh give any other child a test starts
+// that same second half.
 import { type ChildProcess, spawn } from "node:child_process";
 import type { TestContext } from "node:test";
 
 import { runMarkerEnv } from "../src/run-marker.js";
+import { OWNER_PID_ENV } from "./exit-with-owner.js";
+
+/** The owner-watch preload (exit-with-owner.ts), as the NODE_OPTIONS flag that loads it. */
+const OWNER_PRELOAD = `--import=${new URL("./exit-with-owner.js", import.meta.url).href}`;
+
+/** `base` for a child that must not outlive `owner` (this test process unless given): every
+ * node process started under it — the child and, since NODE_OPTIONS and the pid variable ride
+ * along, everything node it starts in turn — exits once the owner is gone, however the owner
+ * died. A finally or t.after hook still does the normal reaping; this covers the deaths that
+ * run neither (a foreign runner's worker teardown, a SIGKILL). The preload is appended once,
+ * after whatever NODE_OPTIONS already carries; the owner is always this call's, so a stand-in
+ * test process that spawns its own children through here becomes their owner. */
+export function exitWithOwnerEnv(base: NodeJS.ProcessEnv = process.env, owner = process.pid): NodeJS.ProcessEnv {
+  const opts = base.NODE_OPTIONS ?? "";
+  const nodeOptions = opts.split(/\s+/).includes(OWNER_PRELOAD) ? opts : `${opts} ${OWNER_PRELOAD}`.trim();
+  return { ...base, [OWNER_PID_ENV]: String(owner), NODE_OPTIONS: nodeOptions };
+}
+
+/** The shell half of exitWithOwnerEnv, for the fake scripts a test writes (sh never loads the
+ * node preload): a condition that holds while `owner` lives. A wait loop that would otherwise
+ * spin until the test creates a file (`while [ ! -f go ]`) ANDs it in, so a test process
+ * killed mid-wait does not leave the loop forking `sleep` forever. */
+export function ownerAliveSh(owner = process.pid): string {
+  return `kill -0 ${owner} 2>/dev/null`;
+}
 
 /** Arm `child`'s kill on `t`: registered synchronously, with no await between spawn and
  * arming, so the caller cannot throw first. The sole home of the SIGKILL try/catch hook —
@@ -23,31 +49,19 @@ export function armVictimKill(t: TestContext, child: ChildProcess): void {
   });
 }
 
-/** The victim's own half of the cleanup, appended to every spawnVictim script: exit once the
- * process that spawned it is gone. armVictimKill's hook and any finally die with the test
- * process when something outside kills it mid-test, and that is not hypothetical: on
- * 2026-10-04 a conflict resolver ran `npx vitest run` in a landing worktree, vitest imported
- * the node:test files into workers (node:test runs a file's tests on import), counted 0
- * tests per file and tore each worker down mid-test, and run-marker.test.ts's detached
- * victim was left at PPID 1 four times. Reparenting is the one signal that survives every
- * such death, SIGKILL included. The spawner's pid rides in as argv[2] rather than being read
- * at startup, so a spawner that dies before the victim's first line still counts as gone. */
-export const EXIT_WITH_SPAWNER = "setInterval(() => { if (process.ppid !== Number(process.argv[2])) process.exit(); }, 250);";
-
 /** A detached `node -e` victim that writes its pid (or a readiness line) into `file` and
- * idles until killed: the kill armed at spawn (armVictimKill), the script followed by
- * EXIT_WITH_SPAWNER, and `env` (this process's environment unless given) as its launch
- * environment. */
+ * idles until killed: the kill armed at spawn (armVictimKill), and `env` (this process's
+ * environment unless given) as its launch environment, under exitWithOwnerEnv. */
 export function spawnVictim(
   t: TestContext,
   file: string,
   script: string,
   env: NodeJS.ProcessEnv = process.env,
 ): ChildProcess {
-  const child = spawn(process.execPath, ["-e", `${script}\n${EXIT_WITH_SPAWNER}`, file, String(process.pid)], {
+  const child = spawn(process.execPath, ["-e", script, file], {
     detached: true,
     stdio: "ignore",
-    env,
+    env: exitWithOwnerEnv(env),
   });
   child.unref();
   armVictimKill(t, child);

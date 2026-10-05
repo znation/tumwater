@@ -35,6 +35,7 @@ import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 /** Producer-side tests for the operator-intent protocol (src/operator-intent.ts, with the
  * CLI command layer in src/operator-commands.ts). Its
@@ -462,7 +463,7 @@ test("cmdStop fails closed with no info file, and with a torn one naming a dead 
 test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", async () => {
   const root = tmpdir();
   // A real sleeper plays the orchestrator: alive for the liveness check, gone after the stop.
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", env: exitWithOwnerEnv() });
   const deadline = Date.now() + 5_000;
   while (child.pid === undefined || !pidAlive(child.pid)) {
     if (Date.now() > deadline) throw new Error("the stand-in orchestrator never became visible");

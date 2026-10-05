@@ -6,6 +6,7 @@
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is
 // tested as a child process: the built dist/src/cli.js with cwd set to a temp repo.
@@ -67,7 +68,9 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
   // detached so the child leads its own process group: kill()'s fallback can then signal the
   // whole tree, including the stdio-inherited orchestrator generation a `run` starts below the
   // supervisor (BUGS.md 2026-09-30).
-  const child = spawn(process.execPath, [CLI, ...args], { cwd, env, detached: true });
+  // Owned (exitWithOwnerEnv): gui, logs -f and run idle until kill() reaps them, so a test
+  // process killed before its finally would otherwise leave the whole tree at PPID 1.
+  const child = spawn(process.execPath, [CLI, ...args], { cwd, env: exitWithOwnerEnv(env), detached: true });
   let buffer = "";
   child.stdout?.on("data", (d) => (buffer += d));
   return {

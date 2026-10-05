@@ -18,6 +18,7 @@ import { initializedRepo, mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 
 // Quiet watchdog: the run is killed when pi stops making *progress* (message/turn/tool
 // boundary events — streaming deltas never count), not merely when it stops running fast.
@@ -113,7 +114,10 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
   const gaps = 6;
   const go = (k: number) => path.join(dir, `go-${k}`);
   const turnStart = `printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`;
-  const chatter = Array.from({ length: gaps }, (_, k) => `while [ ! -f '${go(k)}' ]; do sleep 0.02; done\n${turnStart}`);
+  const chatter = Array.from(
+    { length: gaps },
+    (_, k) => `while [ ! -f '${go(k)}' ] && ${ownerAliveSh()}; do sleep 0.02; done\n${turnStart}`,
+  );
   const restore = fakePi([turnStart, ...chatter, `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"));
   try {
     const config = defaultConfig();
@@ -143,7 +147,7 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
   const restore = fakePi(
     [
       `printf '%s\n' '${JSON.stringify({ type: "turn_start" })}'`,
-      `while [ ! -f '${go}' ]; do sleep 0.02; done`,
+      `while [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.02; done`,
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );

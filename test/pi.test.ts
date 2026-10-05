@@ -18,6 +18,7 @@ import { pathReplace } from "./fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { runPiFixture, runFakePi, runPiVerified } from "./pi-run-harness.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 
 // The quiet watchdog's kill is reported as quietKilled, not timedOut: a hung tool call leaves
 // its session and worktree edits intact, so the loop resumes them instead of discarding hours
@@ -75,7 +76,7 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
   const clock = watchdogClock(t);
   const restore = fakePi(
     [
-      `while [ ! -f '${go}' ]; do sleep 0.02; done`, // byte-silent until the test says go
+      `while [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.02; done`, // byte-silent until the test says go
       `printf '%s\n' '${assistantLine("done\nSUMMARY: spoke late")}'`,
     ].join("\n"),
   );

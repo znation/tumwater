@@ -9,6 +9,7 @@ import { buildCheckFixture } from "./loop-fixtures.js";
 import { projManifest } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 
 // The build check's process-tree teardown hygiene, split out of build-check.test.ts beside its
 // local helpers (groupAlive, checkClock, readPid): what a timed-out check owes its process tree
@@ -61,6 +62,10 @@ test("a timed-out build check takes its process tree with it (regression)", asyn
     [
       'import fs from "node:fs";',
       'import { spawn } from "node:child_process";',
+      // npm starts the runner with the check's environment, not an owned one: it idles until
+      // the check kills it, so it watches this process itself.
+      `import { exitWithOwner } from ${JSON.stringify(new URL("./exit-with-owner.js", import.meta.url).href)};`,
+      `exitWithOwner(${process.pid});`,
       `const pidFile = ${JSON.stringify(pidFile)};`,
       `const script = "process.on('SIGTERM', () => {}); " +`,
       `  "require('fs').writeFileSync('${pidFile}', String(process.pid)); " +`,
@@ -119,7 +124,10 @@ test("a healthy check that outlasts the SIGKILL grace is not mistaken for a time
   const { root, wt } = buildCheckFixture();
   const started = path.join(wt, "started");
   const go = path.join(wt, "go");
-  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ test: `touch '${started}'; while [ ! -f '${go}' ]; do sleep 0.02; done` }));
+  fs.writeFileSync(
+    path.join(wt, "package.json"),
+    projManifest({ test: `touch '${started}'; while [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.02; done` }),
+  );
   // On logical time (checkClock): the run lasts four graces, far short of its 30 s deadline,
   // and finishes on its own once the test says go.
   const advance = checkClock(t);

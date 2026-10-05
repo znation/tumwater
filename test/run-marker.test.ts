@@ -24,7 +24,7 @@ import { errnoError } from "./fs-faults.js";
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
 // stay pinned in process.test.ts; here the marker plumbing itself is under test, and the
 // probe only observes the victim fixture's marks.
-import { armVictimKill, EXIT_WITH_SPAWNER, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
+import { armVictimKill, exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
 
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
@@ -140,12 +140,12 @@ test("a fixture victim keeps the enclosing run's mark and exits by itself once i
     `const { spawnMarkedVictim } = await import(${JSON.stringify(fixture)});`,
     `spawnMarkedVictim({ after() {} }, ${JSON.stringify(own)}, process.argv[1],`,
     `  "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)");`,
-    // The host leaves with its own spawner the same way, so a failure here cannot strand it.
-    EXIT_WITH_SPAWNER,
+    "setInterval(() => {}, 1 << 30);",
   ].join("\n");
-  const host = spawn(process.execPath, ["--input-type=module", "-e", hostScript, pidFile, String(process.pid)], {
+  // The host leaves with this process the same way, so a failure here cannot strand it.
+  const host = spawn(process.execPath, ["--input-type=module", "-e", hostScript, pidFile], {
     stdio: "ignore",
-    env: runMarkerEnv(process.env, outer),
+    env: exitWithOwnerEnv(runMarkerEnv(process.env, outer)),
   });
   armVictimKill(t, host);
   const upDeadline = Date.now() + 10_000;

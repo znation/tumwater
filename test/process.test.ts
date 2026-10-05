@@ -20,7 +20,7 @@ import {
 } from "../src/process-table.js";
 import { makeRunMarker, runMarkerEnv } from "../src/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
-import { spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
+import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
 import { pathReplace } from "./fake-commands.js";
 import { errnoError } from "./fs-faults.js";
 
@@ -292,7 +292,7 @@ test("withoutLaunchServicesCheckIn appends the preload to NODE_OPTIONS once on m
  * idles until killed; resolves with the child and that line once the assignment has run. */
 async function titledChild(env: NodeJS.ProcessEnv): Promise<{ child: ChildProcess; line: string }> {
   const code = 'process.title="tumwater-title-probe";console.log(process.title);setInterval(()=>{},1000)';
-  const child = spawn(process.execPath, ["-e", code], { env, stdio: ["ignore", "pipe", "inherit"] });
+  const child = spawn(process.execPath, ["-e", code], { env: exitWithOwnerEnv(env), stdio: ["ignore", "pipe", "inherit"] });
   const line = await new Promise<string>((resolve, reject) => {
     let out = "";
     child.stdout?.on("data", (chunk: Buffer) => {

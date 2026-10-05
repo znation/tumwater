@@ -44,6 +44,7 @@ import { assistantLine } from "./pi-events.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { waitFor } from "./wait.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 
 /** The session name (pi's `-n` value) of a run block recorded by logPromptsTo: the line after
  * the `-n` flag. Empty when the block records no session. */
@@ -91,7 +92,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
     `for a in "$@"; do if [ "$prev" = "-n" ]; then n="$a"; fi; prev="$a"; done`,
     `case "$n" in`,
     `  tumwater-director-*)`,
-    `    while [ ! -f "$d/role.lock" ]; do sleep 0.05; done`,
+    `    while [ ! -f "$d/role.lock" ] && ${ownerAliveSh()}; do sleep 0.05; done`,
     `    touch "$d/dir.lock"`,
     `    c=0; for x in "$d"/*.lock; do c=$((c+1)); done`,
     `    echo "director:$c" >> "$d/samples.log"`,

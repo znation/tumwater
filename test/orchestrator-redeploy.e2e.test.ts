@@ -23,6 +23,7 @@ import { readOrchestratorInfo } from "../src/fleet-state.js";
 import { worktreePath } from "../src/paths.js";
 import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "./orchestrator-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
+import { ownerAliveSh } from "./victim-fixture.js";
 import { landWork, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
@@ -155,7 +156,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
   // strictly INSIDE the hold — no timing race on how long the holder runs.
   const go = path.join(tmpdir(), "go");
   const restore = fakePi(
-    `touch started.txt\nwhile [ ! -f '${go}' ]; do sleep 0.05; done\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    `touch started.txt\nwhile [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.05; done\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   );
   const holderEnded = () => readEvents(repo).some((e) => e.type === "tick_end");
   const { redeployer, swaps } = scriptedRedeployer(repo, {

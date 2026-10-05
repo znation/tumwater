@@ -22,6 +22,7 @@ import {
   timedOutFailure,
 } from "./test-runner.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
 function fakeDistDir(...files: string[]): string {
@@ -205,7 +206,7 @@ test("buildNodeTestArgs adds the coverage flags only under coverage, and keeps t
 test("timedOutFailure reads a real spawnSync timeout kill as the ceiling message and every other outcome as null", () => {
   assert.ok(SUITE_TIMEOUT_MS >= 20 * 60_000, "the ceiling must stay far above any healthy full-suite run");
   // A genuinely hung child, killed by spawnSync's own timeout — the exact shape main() gets back.
-  const hung = spawnSync(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { timeout: 100 });
+  const hung = spawnSync(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { timeout: 100, env: exitWithOwnerEnv() });
   const message = timedOutFailure(hung);
   assert.match(message ?? "", /exceeded its 30-minute ceiling and was killed/);
   assert.match(message ?? "", /bisect with npm test '<file filter>'/);
