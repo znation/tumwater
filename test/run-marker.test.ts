@@ -6,6 +6,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 
 import { pidAlive } from "../src/process.js";
+import { systemProcessProbe } from "../src/process-table.js";
 import {
   makeRunMarker,
   pidsMarkedInPs,
@@ -21,8 +22,9 @@ import { errnoError } from "./fs-faults.js";
 // The TUMWATER_RUN markers runPi stamps on its process tree (src/run-marker.ts): the
 // parsers over environment-entry lists and ps -E output, and the sweep that reaps this
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
-// stay pinned in process.test.ts; here the marker plumbing itself is under test.
-import { armVictimKill, spawnMarkedVictim } from "./victim-fixture.js";
+// stay pinned in process.test.ts; here the marker plumbing itself is under test, and the
+// probe only observes the victim fixture's marks.
+import { armVictimKill, EXIT_WITH_SPAWNER, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";
 
 test("runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values, skipping the reader's own pid", () => {
   assert.deepEqual(runMarkersInEnviron(["PATH=/bin", "TUMWATER_RUN=100-aa,222-bb", ""]), ["100-aa", "222-bb"]);
@@ -85,24 +87,17 @@ test("procEnvironCarriesMarker reads NUL-separated environ entries", () => {
   );
 });
 
-test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour", async () => {
+test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour", async (t) => {
   // Real spawns: the sweep's victim-finding is a live process-table scan, so the unit keeps
   // to the real shape — a detached node orphan carrying the mark in its environment, and an
   // unmarked sibling beside it. Node, not sleep: macOS ps -E hides platform binaries'
   // environments, the one blind spot the sweep accepts (BUGS.md 2026-09-30). The full
   // run-shaped sweep — mark minted inside runPi, sweep at exit — is the regression test in
-  // pi.test.ts; here the mark is an argument, so the test mints its own.
+  // pi.test.ts; here the mark is an argument, so the test mints its own. Both victims come
+  // from the shared fixture, which arms their kills by spawn handle — the pid files are only
+  // the readiness signal, so a victim that never writes one is still reaped.
   const dir = tmpdir();
   const writePid = "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)";
-  const spawnOrphan = (file: string, env?: NodeJS.ProcessEnv) => {
-    const child = spawn(process.execPath, ["-e", writePid, path.join(dir, file)], {
-      detached: true,
-      stdio: "ignore",
-      ...(env ? { env } : {}),
-    });
-    child.unref();
-    return child;
-  };
   const readPid = (file: string) => {
     try {
       return Number(fs.readFileSync(path.join(dir, file), "utf8").trim()) || 0;
@@ -111,32 +106,73 @@ test("sweepRunMarker signals the marked orphan and spares the unmarked neighbour
     }
   };
   const own = makeRunMarker();
-  spawnOrphan("ours.pid", { ...process.env, TUMWATER_RUN: own });
-  spawnOrphan("plain.pid");
+  const ours = spawnMarkedVictim(t, own, path.join(dir, "ours.pid"), writePid);
+  const plain = spawnVictim(t, path.join(dir, "plain.pid"), writePid);
   const recordDeadline = Date.now() + 10_000;
   while ((!readPid("ours.pid") || !readPid("plain.pid")) && Date.now() < recordDeadline)
     await sleep(25);
-  const oursPid = readPid("ours.pid");
-  const plainPid = readPid("plain.pid");
-  try {
-    assert.ok(oursPid > 0 && plainPid > 0, "both orphans recorded their pids");
-    const signaled = await sweepRunMarker(own);
-    assert.ok(signaled >= 1, "the sweep found the marked victim");
-    const goneDeadline = Date.now() + 10_000;
-    while (pidAlive(oursPid) && Date.now() < goneDeadline) await sleep(50);
-    assert.equal(pidAlive(oursPid), false, "the marked victim is gone");
-    assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
-  } finally {
-    for (const pid of [oursPid, plainPid]) {
-      if (pid > 0) {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // Already gone.
-        }
-      }
+  assert.ok(readPid("ours.pid") > 0 && readPid("plain.pid") > 0, "both orphans recorded their pids");
+  const oursPid = ours.pid as number;
+  const plainPid = plain.pid as number;
+  const signaled = await sweepRunMarker(own);
+  assert.ok(signaled >= 1, "the sweep found the marked victim");
+  const goneDeadline = Date.now() + 10_000;
+  while (pidAlive(oursPid) && Date.now() < goneDeadline) await sleep(50);
+  assert.equal(pidAlive(oursPid), false, "the marked victim is gone");
+  assert.equal(pidAlive(plainPid), true, "the unmarked neighbour survives the sweep");
+});
+
+test("a fixture victim keeps the enclosing run's mark and exits by itself once its test process dies outright", async (t) => {
+  // Regression (2026-10-04): a test process killed mid-test runs no t.after hook and no
+  // finally — vitest's worker teardown, a SIGKILL — and the sweep test above leaked its marked
+  // victim at PPID 1 four times that way. The unmarked neighbour did not leak: it inherited
+  // the enclosing pi run's mark, and that run's exit sweep reaped it, while the marked victim's
+  // mark had REPLACED the inherited one. A stand-in test process (the host, carrying an
+  // enclosing run's mark) spawns a victim through the real fixture, with a context whose
+  // hooks never run, and is then SIGKILLed: the victim must carry both marks, and must leave
+  // by itself.
+  const dir = tmpdir();
+  const pidFile = path.join(dir, "victim.pid");
+  const outer = makeRunMarker();
+  const own = makeRunMarker();
+  const fixture = new URL("./victim-fixture.js", import.meta.url).href;
+  const hostScript = [
+    `const { spawnMarkedVictim } = await import(${JSON.stringify(fixture)});`,
+    `spawnMarkedVictim({ after() {} }, ${JSON.stringify(own)}, process.argv[1],`,
+    `  "require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => {}, 1 << 30)");`,
+    // The host leaves with its own spawner the same way, so a failure here cannot strand it.
+    EXIT_WITH_SPAWNER,
+  ].join("\n");
+  const host = spawn(process.execPath, ["--input-type=module", "-e", hostScript, pidFile, String(process.pid)], {
+    stdio: "ignore",
+    env: runMarkerEnv(process.env, outer),
+  });
+  armVictimKill(t, host);
+  const upDeadline = Date.now() + 10_000;
+  let victimPid = 0;
+  while (victimPid <= 0 && Date.now() < upDeadline) {
+    await sleep(25);
+    try {
+      victimPid = Number(fs.readFileSync(pidFile, "utf8").trim()) || 0;
+    } catch {
+      victimPid = 0;
     }
   }
+  assert.ok(victimPid > 0, "the host's victim recorded its pid");
+  t.after(() => {
+    try {
+      process.kill(victimPid, "SIGKILL");
+    } catch {
+      // Already gone — the expected outcome.
+    }
+  });
+  const marks = (await systemProcessProbe.runMarkers([victimPid])).get(victimPid) ?? [];
+  assert.ok(marks.includes(outer), "the victim kept the enclosing run's mark, for that run's sweep");
+  assert.ok(marks.includes(own), "the victim carries its own mark");
+  process.kill(host.pid as number, "SIGKILL");
+  const goneDeadline = Date.now() + 10_000;
+  while (pidAlive(victimPid) && Date.now() < goneDeadline) await sleep(50);
+  assert.equal(pidAlive(victimPid), false, "the victim followed its killed test process out");
 });
 
 test("sweepRunMarker on Linux walks /proc environ and signals only the marked pid", async (t) => {
