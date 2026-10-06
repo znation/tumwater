@@ -160,6 +160,43 @@ Suggested fix: two project-neutral steps before rejecting on a repeated failure.
 
 ## Fixed
 
+### The orientation rule maps BUGS.md with `grep -n '^##'`, which also matches every `###` entry title, so about a third of ticks pull BUGS.md's closed history (108 KB today; 204 of its 207 titles are Fixed or Verified) and re-send it on every remaining turn: 4.4% of all fleet prompt tokens (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
+Symptom: the pi sessions of Oct 2–6 hold 421 `grep -n '^##' … BUGS.md` calls in 215 ticks
+(of 684), averaging 8.9k chars of output each. Every later turn of the tick re-sends that
+output, which adds up to 19.9M of 452M prompt tokens (input + cache read + cache write), or
+4.4%. That is about 7× what pruning superseded file reads would save (0.6%, measured on the
+same sessions). Today the command prints 108,348 chars: 207 `###` titles, of which 204 sit
+under ## Fixed or ## Verified, many over 500 chars each. bounded-output cuts this to a 16k
+head+tail. The head holds the 3 Open entries and the first Fixed titles, and the tail holds
+the oldest Verified ones, so almost none of what the model sees is actionable.
+Reproduce: in the repo, `grep -n '^##' BUGS.md | wc -c` prints ~108k, and
+`grep -n '^##' BUGS.md | grep -c ':### '` prints 207. Any role's tick prompt (`tumwater role
+bugfix`) carries the Orientation bullet that asks for exactly this command.
+Cause: src/prompt/prompt.ts `commonRules`, Orientation section: "map the headings with
+`grep -n '^##' FILE`". The pattern `^##` also matches `###`. Closed entries stay in BUGS.md
+under ## Fixed and ## Verified, each with a one-line title that carries the whole finding.
+PLANS.md's map is still small (2.7k chars) only because the steward compresses ## Done, and
+BUGS.md's closed sections are not compressed the same way.
+Suggested fix: have the harness render the actionable index, instead of asking the model to
+build it each tick.
+- Add a pure renderer next to `renderBacklogStructureBlock` (src/backlog/backlog-structure.ts),
+  reusing `parseEntryDetails`/`fenceAwareHeadingLines` (src/backlog/backlog-md.ts).
+- It lists the entries under PLANS.md ## Planned, BUGS.md ## Open and QUESTIONS.md ## Open.
+  Each line gives the title, with its stamp suffix stripped via `ENTRY_STAMP_META_RE` and
+  clipped to ~160 chars, plus the entry's 1-based line range (heading to the line before the
+  next heading).
+- Inject it into every tick and director prompt as a `<backlog-index>` block
+  (src/tick/tick-prompt.ts → `buildTickPrompt`/`buildDirectorPrompt`). The prompt is
+  assembled from main, and the worktree starts at main, so the ranges hold at tick start.
+- Rewrite the Orientation bullet: read the needed entries by those ranges (grep for a
+  title if it has moved), and never map the files' headings with grep. The steward keeps
+  whole-file access.
+
+Expected state: no tick or director prompt contains `grep -n '^##'`; the index for today's
+files is under ~3 KB; and no `###` title from ## Fixed, ## Done or ## Verified appears in it.
+
+**Validation gap:** real-run-needed (closest tag — the reproduction itself was offline) — the pathological grep output is reproducible offline, but confirming that it reached every tick prompt and cost 4.4% of fleet prompt tokens required the real session logs; no offline check measured prompt composition before this run's regression test.
+
 ### The gate's flake re-run verified a tree on a host-sensitive live GUI test: `gui binds localhost by default and all interfaces on request` in test/gui.test.ts git-inits a repo, starts two real HTTP servers, and fetches over loopback, so a load- or network-induced failure and its passing re-run say nothing about the change, and the flake is recorded only as a one-off warning (found by telemetry loop 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the 2026-10-06 failure digest's warning section carries `gate check failed then passed on retry — flaky: ✖ gui binds localhost by default and all interfaces on request` (feature). The gate's one immediate re-run passed, and `review-precheck.ts`'s flake branch promotes that pass as the tree's verdict (`outcome = retry.outcome`), so the change was verified on the strength of a case that is a live host operation. The flake is named in a bare `warnEvent` with no state, streak, or escalation, so the next occurrence reads identically and costs another full check re-run.
 Cause: the case (test/gui.test.ts:80) calls `initProject(makeRepo(), …)` (real `git` subprocesses), `startGui(repo, 0)` then `startGui(repo, 0, true)` (two real socket binds), asserts a raw `server.address()` string (`127.0.0.1`, then `"::"`/`"0.0.0.0"`), and finishes with an unbounded `fetch("http://127.0.0.1:<port>/")` — every assertion depends on host scheduling, the loopback route, or git, not on tumwater's code alone. `review-precheck.ts`'s failed-then-passed branch exists for exactly this shape (`the suite has load-sensitive assertions`), warns `gate check failed then passed on retry — flaky: <headline>`, and proceeds; nothing carries the flake forward once the warning scrolls away.
