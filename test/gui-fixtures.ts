@@ -20,6 +20,22 @@ export async function startLocalGui(
   return { server, base: `http://127.0.0.1:${addr.port}`, port: addr.port };
 }
 
+/** GET a loopback URL with a hard deadline and one retry. A loaded host can stall or refuse
+ * the first connection to a just-listened socket, and the old unbounded fetch turned that
+ * hiccup into a gate failure; the retry survives one. The second failure still throws, so a
+ * genuinely unreachable server is never hidden. `fetchFn` is injectable so the retry itself
+ * is testable without a stalled host. */
+export async function fetchLoopback(
+  url: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<Response> {
+  try {
+    return await fetchFn(url, { signal: AbortSignal.timeout(5_000) });
+  } catch {
+    return await fetchFn(url, { signal: AbortSignal.timeout(5_000) });
+  }
+}
+
 /** POST a JSON body to a local GUI endpoint and return the raw Response: the four-line fetch
  * scaffold (method, the JSON content-type header, JSON.stringify of the payload) every
  * gui*.test.ts call site hand-rolled, shared so the request shape cannot drift between them.

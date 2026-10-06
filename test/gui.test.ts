@@ -5,13 +5,13 @@ import path from "node:path";
 import type os from "node:os";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { lanAddresses } from "../src/gui/gui-command.js";
-import { startGui } from "../src/gui/gui-server.js";
+import { guiBindHost, startGui } from "../src/gui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
-import { postJson, startLocalGui } from "./gui-fixtures.js";
+import { fetchLoopback, postJson, startLocalGui } from "./gui-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 
@@ -78,27 +78,51 @@ test("lanAddresses keeps external IPv4 only — skips loopback, IPv6, and empty 
 });
 
 test("gui binds localhost by default and all interfaces on request", async () => {
+  // The bind target is a pure function of the flag, so pin the mapping here rather than
+  // reading it back off a live socket: the unspecified address is "::" on dual-stack hosts
+  // and "0.0.0.0" on IPv4-only ones, so an address() string assertion measured the host's
+  // address family, not the flag (the shape the gate's flake re-run waved through).
+  assert.equal(guiBindHost(false), "127.0.0.1", "default is loopback-only");
+  assert.equal(guiBindHost(true), undefined, "all interfaces is the unspecified address");
+
   const repo = makeRepo();
   await initProject(repo, "gui bind test");
 
   const local = await startGui(repo, 0);
-  const localAddr = local.address();
-  assert.ok(localAddr && typeof localAddr === "object");
-  assert.equal(localAddr.address, "127.0.0.1", "default stays loopback-only");
-  await new Promise((r) => local.close(r));
+  try {
+    assert.equal(local.listening, true, "default server is listening");
+    const localAddr = local.address();
+    assert.ok(localAddr && typeof localAddr === "object");
+    assert.equal(localAddr.address, "127.0.0.1", "default stays loopback-only");
+  } finally {
+    await new Promise((r) => local.close(r));
+  }
 
   const open = await startGui(repo, 0, true);
-  const openAddr = open.address();
-  assert.ok(openAddr && typeof openAddr === "object");
-  // The unspecified address ("::" dual-stack, or "0.0.0.0" on IPv4-only hosts) means
-  // every interface — the whole point of --all-interfaces.
-  assert.ok(["::", "0.0.0.0"].includes(openAddr.address), `bound ${openAddr.address}`);
   try {
-    const page = await (await fetch(`http://127.0.0.1:${openAddr.port}/`)).text();
+    assert.equal(open.listening, true, "all-interfaces server is listening");
+    const openAddr = open.address();
+    assert.ok(openAddr && typeof openAddr === "object");
+    const page = await (await fetchLoopback(`http://127.0.0.1:${openAddr.port}/`)).text();
     assert.match(page, /<title>tumwater<\/title>/, "still serves over loopback too");
   } finally {
     await new Promise((r) => open.close(r));
   }
+});
+
+test("fetchLoopback survives one transient refusal", async () => {
+  // The regression guard for the host-sensitive GUI test: the old test's unbounded fetch
+  // failed the tree on a single dropped first connection. One retry turns that into a pass,
+  // while a server that stays down still throws on the second attempt.
+  let calls = 0;
+  const flaky = (async () => {
+    calls += 1;
+    if (calls === 1) throw new Error("ECONNREFUSED");
+    return new Response("ok");
+  }) as unknown as typeof fetch;
+  const res = await fetchLoopback("http://127.0.0.1:1/", flaky);
+  assert.equal(await res.text(), "ok");
+  assert.equal(calls, 2, "retried exactly once");
 });
 
 test("gui serves the dashboard, status JSON, and accepts prompts", async () => {

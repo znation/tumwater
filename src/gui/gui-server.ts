@@ -85,6 +85,14 @@ function crossOriginRequest(req: http.IncomingMessage): boolean {
   }
 }
 
+/** The address `startGui` binds for a given `allInterfaces` choice: loopback-only by default,
+ * the unspecified address (`undefined` — every interface, IPv4 and IPv6) on request. Pure and
+ * host-independent, so the mapping is testable without a live socket or this host's address
+ * family. */
+export function guiBindHost(allInterfaces: boolean): string | undefined {
+  return allInterfaces ? undefined : "127.0.0.1";
+}
+
 /** Start the dashboard server. Binds to 127.0.0.1 by default; with `allInterfaces` it
  * binds the unspecified address (every interface, IPv4 and IPv6), making the dashboard —
  * including the director prompt box, which anyone reaching it can use to steer the fleet —
@@ -218,7 +226,8 @@ export function startGui(
   server.once("close", stopSupervisorWatch);
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    if (allInterfaces) server.listen(port, () => resolve(server));
-    else server.listen(port, "127.0.0.1", () => resolve(server));
+    const host = guiBindHost(allInterfaces);
+    if (host === undefined) server.listen(port, () => resolve(server));
+    else server.listen(port, host, () => resolve(server));
   });
 }
