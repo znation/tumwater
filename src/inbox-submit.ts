@@ -1,6 +1,5 @@
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
-import fs from "node:fs";
-import { errCode } from "./errno.js";
+import { unlinkAllMissingTolerant } from "./files.js";
 import {
   imageReferenceLines,
   promptImagesProblem,
@@ -104,13 +103,7 @@ function submitPromptWithImages(root: string, role: string, text: string, images
       return final;
     });
   } catch (err) {
-    for (const imageFile of savedImagePaths) {
-      try {
-        fs.unlinkSync(imageFile);
-      } catch (unlinkErr) {
-        if (errCode(unlinkErr) !== "ENOENT") throw unlinkErr;
-      }
-    }
+    unlinkAllMissingTolerant(savedImagePaths);
     throw err;
   }
   logEvent(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });

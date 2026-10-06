@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errCode } from "./errno.js";
+import { unlinkAllMissingTolerant } from "./files.js";
 import { roleInboxDir } from "./paths.js";
 import { agree } from "./phrases.js";
 
@@ -101,13 +101,7 @@ export function savePromptImages(
     // ENOSPC, …) must not strand those earlier images in the inbox dir: nothing here is
     // ever referenced by a queue file yet, so an unwound partial save removes its own
     // writes and leaves the directory exactly as it found it.
-    for (const written of paths) {
-      try {
-        fs.unlinkSync(written);
-      } catch (unlinkErr) {
-        if (errCode(unlinkErr) !== "ENOENT") throw unlinkErr;
-      }
-    }
+    unlinkAllMissingTolerant(paths);
     throw err;
   }
   return { paths };

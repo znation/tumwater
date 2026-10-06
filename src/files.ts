@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { errCode } from "./errno.js";
 
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
@@ -45,6 +46,20 @@ export function readTextOrNull(file: string): string | null {
     return fs.readFileSync(file, "utf8");
   } catch {
     return null; // Missing or unreadable — no data.
+  }
+}
+
+/** Unlink each file, tolerating only "already absent" (ENOENT) and rethrowing any other
+ * error — the unwind policy shared by the inbox paths that roll back saved images after a
+ * failed submit or a failed multi-image save: a file vanished mid-roll-back needs no action,
+ * but a real removal failure (EACCES, EISDIR) must surface rather than be swallowed. */
+export function unlinkAllMissingTolerant(files: readonly string[]): void {
+  for (const file of files) {
+    try {
+      fs.unlinkSync(file);
+    } catch (err) {
+      if (errCode(err) !== "ENOENT") throw err;
+    }
   }
 }
 
