@@ -234,12 +234,14 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
   // The breaker already tripped: three consecutive failures on the engaged pair, a probe
   // allowed from now on. Keyed to the same pair and cap the poll re-keys against, so the
   // judgment survives the rekey.
-  state.breaker = {
-    ...IDLE_FALLBACK_BREAKER,
-    pair: "free/qwen-free",
-    capUsd: 10,
-    failures: 3,
-    probeAt: 0, // demoted; the probe is already due
+  state.breakers = {
+    "free/qwen-free": {
+      ...IDLE_FALLBACK_BREAKER,
+      pair: "free/qwen-free",
+      capUsd: 10,
+      failures: 3,
+      probeAt: 0, // demoted; the probe is already due
+    },
   };
 
   const p = poll(root, state, cfg, models, [spent(10)]);
@@ -252,4 +254,22 @@ test("a demoted fallback keeps the gate paused and the role view: demotion never
   assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
   assert.equal(events[0]!.fallbackDemoted, "free/qwen-free");
   assert.equal(events[0]!.failures, 3);
+});
+
+test("the breaker map is keyed per resolved pair: tiers sharing a fallback share one entry", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  // Per-tier fallbacks: small and default declare the same free pair (they share one
+  // breaker), strong declares a priced one it must never use.
+  cfg.fallback = { default: "free/qwen-free", small: "free/qwen-free", strong: "paid/gpt-x" };
+  cfg.fallbackModel = undefined;
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback");
+  // The priced pair is not resolvable, so the map holds only the free pair the tiers
+  // actually resolve to — small's own, default's own, and strong's borrowed default.
+  assert.deepEqual(Object.keys(state.breakers), ["free/qwen-free"]);
+  assert.equal(state.engaged, "free/qwen-free");
 });

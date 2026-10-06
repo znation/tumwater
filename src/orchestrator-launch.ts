@@ -11,9 +11,9 @@
  * permit holders, duration samples, gateStates) is passed in and mutated in place, exactly
  * as the inline version did: the drain's `finally` and the redeployer read it between polls. */
 import {
-  abandonFallbackProbe,
-  recordFallbackTick,
-  startFallbackProbe,
+  abandonFallbackProbeAt,
+  recordFallbackTickAt,
+  startFallbackProbeAt,
   type FallbackBreakerPolicy,
 } from "./fallback-breaker.js";
 import type { FleetGateStates } from "./gates/gate-polls.js";
@@ -41,13 +41,14 @@ interface LaunchContext {
   /** The role tick signal (the full shutdown signal plus the role-only stop): a restart
    * cuts off permit holders through it. */
   signal: AbortSignal;
-  /** The fleet gates' shared memory: the fallback breaker's probe and evidence bookkeeping
-   * is reassigned onto gateStates.budget.breaker in place. */
+  /** The fleet gates' shared memory: the fallback breakers' probe and evidence bookkeeping
+   * is reassigned onto gateStates.budget.breakers in place. */
   gateStates: FleetGateStates;
   /** The breaker's policy knobs (drain window and probe timing), fixed at startup. */
   breakerPolicy: FallbackBreakerPolicy;
-  /** Whether this poll admits a fallback probe (the decision pass computed it). */
-  probeDue: boolean;
+  /** The pair whose demoted fallback this poll admits a probe tick for, or null when none
+   * (the decision pass computed it from the breaker map). */
+  probePair: string | null;
   /** The fleet's tick semaphore; the director never queues behind it. */
   semaphore: Semaphore;
   /** Role ticks actually holding a permit — the redeployer's in-flight count and the
@@ -74,7 +75,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     signal,
     gateStates,
     breakerPolicy,
-    probeDue,
+    probePair,
     semaphore,
     rolePermitHolders,
     roleInFlight,
@@ -85,11 +86,13 @@ export function launchDueTicks(ctx: LaunchContext): void {
   for (const runner of fairOrder([...reasons.keys()])) {
     if (signal.aborted) continue;
     // The probe goes to the first role fairOrder admits; every other due role waits for its
-    // verdict (startFallbackProbe marks it in flight, so the rest of this pass skips).
+    // verdict (startFallbackProbeAt marks the pair's entry in flight, so the rest of this pass
+    // skips).
     let probe = false;
-    if (probeDue && runner.role !== DIRECTOR_ROLE) {
-      if (gateStates.budget.breaker.probing) continue;
-      gateStates.budget.breaker = startFallbackProbe(gateStates.budget.breaker);
+    if (probePair !== null && runner.role !== DIRECTOR_ROLE) {
+      const b = gateStates.budget.breakers[probePair];
+      if (b === undefined || b.probing) continue;
+      gateStates.budget.breakers = startFallbackProbeAt(gateStates.budget.breakers, probePair);
       probe = true;
     }
     const reason = reasons.get(runner);
@@ -136,17 +139,20 @@ export function launchDueTicks(ctx: LaunchContext): void {
         async () => {
           started = true;
           // A role tick that starts while a fallback is engaged runs on it (the config and
-          // the breaker are updated in the same synchronous poll step), so its outcome is
-          // the breaker's evidence. Read at tick start, not at admission: a tick parked in
-          // the semaphore starts on whatever the gate says by then. A tick that ended on
-          // leftover recovery ran no model, so it folds as `skipped` — no evidence either way.
-          const ranOn = runner.role === DIRECTOR_ROLE ? null : gateStates.budget.breaker;
+          // the breakers are updated in the same synchronous poll step), so its outcome is
+          // the breaker's evidence for the engaged pair. Read at tick start, not at admission:
+          // a tick parked in the semaphore starts on whatever the gate says by then. A tick
+          // that ended on leftover recovery ran no model, so it folds as `skipped` — no
+          // evidence either way.
+          const ranPair = runner.role === DIRECTOR_ROLE ? null : gateStates.budget.engaged;
+          const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
           const outcome = await runner.tick();
-          if (ranOn?.pair) {
+          if (ranPair !== null && ranOn !== undefined) {
             const at = Date.now();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
-            gateStates.budget.breaker = recordFallbackTick(
-              gateStates.budget.breaker,
+            gateStates.budget.breakers = recordFallbackTickAt(
+              gateStates.budget.breakers,
+              ranPair,
               ranOn,
               evidence,
               probe,
@@ -169,8 +175,9 @@ export function launchDueTicks(ctx: LaunchContext): void {
       // tick left it, and the next generation schedules the role from that.
       if (!started) runner.state.running = false;
       // A probe turned away the same way answered nothing: hand its claim back (see
-      // abandonFallbackProbe) so the next poll can admit a probe that actually runs.
-      if (!started && probe) gateStates.budget.breaker = abandonFallbackProbe(gateStates.budget.breaker);
+      // abandonFallbackProbeAt) so the next poll can admit a probe that actually runs.
+      if (!started && probe && probePair !== null)
+        gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
     })();
     const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
     bucket.add(task);

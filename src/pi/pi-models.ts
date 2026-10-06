@@ -51,8 +51,11 @@ function costIsFree(cost: unknown): boolean {
 const providersCache = new Map<string, StatKeyedValue<Map<string, PiModelDef[]>>>();
 
 /** The parsed provider→models map from pi's definitions, or null when the file is missing,
- * unreadable, malformed, or not shaped like what pi writes (served stat-keyed — see above). */
-function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
+ * unreadable, malformed, or not shaped like what pi writes (served stat-keyed — see above).
+ * Exported for budget-gates.ts's per-tier resolution, which prices several candidate pairs
+ * against the same snapshot instead of re-entering this cache per pair.
+ */
+export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
   return cachedByStat(
     providersCache,
     modelsPath, // Keyed by path so distinct roots and test files never collide.
@@ -86,8 +89,10 @@ function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
  * default), a missing or malformed definitions file, an unknown provider, or a model id the
  * file does not list. An unverified model may well be paid, and no caller here may treat
  * "I could not check" as "it is free" — the badge would lie, and the fallback would defeat
- * the very cap it exists to survive. */
-function pairFree(
+ * the very cap it exists to survive. Exported for budget-gates.ts's per-tier fallback
+ * resolution (part 5b/8), which composes it with the fallback breaker's serving verdict.
+ */
+export function pairFree(
   providers: Map<string, PiModelDef[]> | null,
   provider: string | undefined,
   model: string | undefined,

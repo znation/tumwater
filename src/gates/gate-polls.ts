@@ -136,7 +136,8 @@ export function pollFleetGates(
   // which every persisted-file reader lags by the in-flight runs' charges. Both rewritten
   // only when they change, like the build status; the exit removes the whole file, so no
   // stale pair survives a stop.
-  const demotion = fallbackDemotion(states.budget.breaker);
+  const engagedBreaker = states.budget.engaged !== null ? states.budget.breakers[states.budget.engaged] : undefined;
+  const demotion = engagedBreaker ? fallbackDemotion(engagedBreaker) : undefined;
   const budget = { spentUsd, capUsd };
   const demotionChanged = JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted);
   const budgetChanged = JSON.stringify(budget) !== JSON.stringify(info.budget);

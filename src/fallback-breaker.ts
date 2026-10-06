@@ -187,3 +187,74 @@ export function fallbackDemotion(b: FallbackBreaker): FallbackDemotion | undefin
     ? { pair: b.pair, failures: b.failures, probeAt: b.probeAt }
     : undefined;
 }
+
+/** The breaker state the budget gate holds (part 5b/8): one FallbackBreaker per pair name the
+ * tiers resolve to, keyed by that pair name. Tiers sharing a fallback pair share one entry —
+ * and therefore one judgment — and each entry is re-keyed per pair by every poll, so a
+ * demotion sticks to its pair while the pair stays engaged and clears when the pair, its cap,
+ * or the resolution changes. Until the gate wiring lands (part 5c/8) at most one pair is
+ * engaged, so the map holds one live entry in production; the map shape is what lets the
+ * per-tier gates share it without a second breaker. */
+export type FallbackBreakerMap = Record<string, FallbackBreaker>;
+
+/** Re-key the whole map per pair: every pair in `pairs` keeps its running judgment while its
+ * subject (the pair name plus the cap it engaged under) is unchanged and gains a fresh trusted
+ * entry otherwise; entries whose pair left the resolution are dropped, exactly as re-keying the
+ * single breaker to null cleared it — a pair that returns later starts trusted. */
+export function rekeyFallbackBreakers(
+  map: FallbackBreakerMap,
+  pairs: readonly string[],
+  capUsd: number,
+): FallbackBreakerMap {
+  const next: FallbackBreakerMap = {};
+  for (const pair of pairs) {
+    next[pair] = rekeyFallbackBreaker(map[pair] ?? { ...IDLE_FALLBACK_BREAKER, pair, capUsd }, pair, capUsd);
+  }
+  return next;
+}
+
+/** Whether the pair named `pair` is serving: it must have an entry (a pair the resolution
+ * dropped has no judgment to consult) and that entry must hold no demotion. */
+export function fallbackServingPair(map: FallbackBreakerMap, pair: string | null): boolean {
+  const b = pair !== null ? map[pair] : undefined;
+  return b !== undefined && fallbackServing(b);
+}
+
+/** The pair whose half-open window is due, or null when none is. Map order decides ties, and
+ * with one engaged pair in production there is at most one demotion to find. */
+export function fallbackProbeDuePair(map: FallbackBreakerMap, now: number): string | null {
+  for (const [pair, b] of Object.entries(map)) {
+    if (fallbackProbeDue(b, now)) return pair;
+  }
+  return null;
+}
+
+/** Admit the half-open probe on the pair named `pair`: marks its entry probing until the
+ * evidence fold hears back. An absent entry is left alone (nothing to probe). */
+export function startFallbackProbeAt(map: FallbackBreakerMap, pair: string): FallbackBreakerMap {
+  const b = map[pair];
+  return b === undefined ? map : { ...map, [pair]: startFallbackProbe(b) };
+}
+
+/** Hand an admitted probe's claim back on the pair named `pair` — it never ran (see
+ * abandonFallbackProbe). An absent entry is left alone. */
+export function abandonFallbackProbeAt(map: FallbackBreakerMap, pair: string): FallbackBreakerMap {
+  const b = map[pair];
+  return b === undefined ? map : { ...map, [pair]: abandonFallbackProbe(b) };
+}
+
+/** Fold one finished role tick into the pair named `pair`'s entry (recordFallbackTick's
+ * semantics, scoped to the map): an absent entry has no judgment to fold into and is left
+ * alone. */
+export function recordFallbackTickAt(
+  map: FallbackBreakerMap,
+  pair: string,
+  ranOn: FallbackBreaker,
+  result: TickResult,
+  probe: boolean,
+  now: number,
+  policy: FallbackBreakerPolicy = FALLBACK_BREAKER_POLICY,
+): FallbackBreakerMap {
+  const b = map[pair];
+  return b === undefined ? map : { ...map, [pair]: recordFallbackTick(b, ranOn, result, probe, now, policy) };
+}

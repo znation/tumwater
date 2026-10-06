@@ -5,7 +5,7 @@ import { newLiveConfigReload } from "./config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
-  fallbackProbeDue,
+  fallbackProbeDuePair,
 } from "./fallback-breaker.js";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
@@ -404,7 +404,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // A demoted fallback's half-open window: its role ticks may pass the `paused` budget gate
       // here, and the start pass below admits exactly one of them as the probe. Never past an
       // operator pause — human intent outranks the breaker's curiosity.
-      const probeDue = fallbackProbeDue(gateStates.budget.breaker, now);
+      const probePair = fallbackProbeDuePair(gateStates.budget.breakers, now);
+      const probeDue = probePair !== null;
       const reasons = await pollRunnerReasons({
         root,
         runners,
@@ -436,7 +437,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         signal: roleSignal,
         gateStates,
         breakerPolicy,
-        probeDue,
+        probePair,
         semaphore,
         rolePermitHolders,
         roleInFlight,

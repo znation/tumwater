@@ -8,30 +8,35 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "../budget.js";
 import {
-  type FallbackBreaker,
-  fallbackServing,
-  IDLE_FALLBACK_BREAKER,
-  rekeyFallbackBreaker,
+  type FallbackBreakerMap,
+  fallbackServingPair,
+  rekeyFallbackBreakers,
 } from "../fallback-breaker.js";
-import { applyFallbackModel, fallbackPair } from "../config/config-views.js";
+import { applyFallbackModel, fallbackPair, resolveTierFallbacks } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import type { FallbackModelConfig } from "../config/config-schema.js";
+import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
+import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEvent } from "../events/events.js";
-import { fallbackModelFree } from "../pi/pi-models.js";
+import { pairFree, readPiProviders } from "../pi/pi-models.js";
 import type { LoopState } from "../loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
  * the fallback breaker, and the fallback view last derived from a live config. In memory
- * only — a restart re-trusts the fallback and re-trips it within failureLimit ticks. */
+ * only — a restart re-trusts the fallbacks and re-trips them within failureLimit ticks. */
 export interface BudgetGateState {
   /** The previous poll's gate, for one-shot transition events. Three-valued since
    * plans/fallback-model.md: open → fallback → paused are distinct states, and every crossing
    * between two of them is worth exactly one event. */
   prevGate: BudgetGate;
-  /** Whether the engaged fallback's backend is serving (fallback-breaker.ts's FallbackBreaker,
-   * BUGS.md 2026-09-20): folded from the outcomes of role ticks that ran on it, re-keyed by
-   * every poll (and folded further by the orchestrator's tick bookkeeping). */
-  breaker: FallbackBreaker;
+  /** The fallback breakers, one per pair name (fallback-breaker.ts's FallbackBreakerMap,
+   * part 5b/8): folded from the outcomes of role ticks that ran on each pair, re-keyed per
+   * pair by every poll (and folded further by the orchestrator's tick bookkeeping). Tiers
+   * sharing a fallback pair share one entry and one judgment. */
+  breakers: FallbackBreakerMap;
+  /** The pair name this poll's gate engaged (`"provider/model"`), or null when none — the
+   * key the orchestrator's probe admission and tick evidence fold read and write under, and
+   * the pair whose demotion the observers publish. */
+  engaged: string | null;
   /** The live config the fallback view was last derived from; null until a fallback first
    * engages, so an unchanged config object is not re-derived every poll. */
   from: TumwaterConfig | null;
@@ -45,12 +50,13 @@ export interface BudgetGateState {
   warned: boolean;
 }
 
-/** A fresh budget-gate poll state: gate open, fallback breaker idle, no fallback view cached
+/** A fresh budget-gate poll state: gate open, no fallback breakers yet, no fallback view cached
  * yet (so the first poll of an unchanged config logs nothing). */
 export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
   return {
     prevGate: "open",
-    breaker: IDLE_FALLBACK_BREAKER,
+    breakers: {},
+    engaged: null,
     from: null,
     fallbackConfig: config,
     warned: false,
@@ -136,18 +142,39 @@ export function pollBudgetGate(
   const reached = budgetReached({ spentUsd, capUsd });
   // Whether the fallback is usable is a live question too: models.json is stat-cached
   // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
-  // who fixes a mistyped model id sees the fleet switch over within a cycle.
-  const fallbackReady = fallbackModelFree(liveConfig, modelsPath);
+  // who fixes a mistyped model id sees the fleet switch over within a cycle. One snapshot
+  // serves both the engaged pair's check and the per-tier resolution below.
+  const providers = readPiProviders(modelsPath);
+  // The usable predicate's two halves (part 5b/8): pi prices the pair at zero, and its
+  // breaker entry holds no demotion — tiers sharing a pair share the verdict. The
+  // resolution below deliberately prices alone (the map's keys are the pairs that would
+  // run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the full
+  // predicate into the resolution so a demoted pair re-resolves only the tiers using it.
+  const pairFreeAt = (p: FallbackModelConfig) => pairFree(providers, p.provider, p.model);
   const pair = fallbackPair(liveConfig);
-  const pairName = `${pair?.provider ?? "?"}/${pair?.model ?? "?"}`;
+  const pairNameOf = (p: FallbackModelConfig | null) => `${p?.provider ?? "?"}/${p?.model ?? "?"}`;
+  const fallbackReady = pair !== null && pairFreeAt(pair);
+  const pairName = pairNameOf(pair);
+  // The breaker map is keyed by every pair the tiers would run on absent a demotion
+  // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
+  // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
+  // leaving the resolution, or no fallback at all re-trusts or drops it (part 5b/8). The
+  // engaged pair is always among the keys, so the gate's serving verdict has an entry.
+  const resolved = resolveTierFallbacks(liveConfig, pairFreeAt);
+  const pairNames: string[] = [];
+  for (const tier of MODEL_TIERS) {
+    const p = resolved[tier as ModelTier].pair;
+    if (p) {
+      const n = pairNameOf(p);
+      if (!pairNames.includes(n)) pairNames.push(n);
+    }
+  }
+  if (fallbackReady && pair !== null && !pairNames.includes(pairName)) pairNames.push(pairName);
+  state.breakers = rekeyFallbackBreakers(state.breakers, pairNames, liveConfig.maxDailyCostUsd);
+  state.engaged = reached && fallbackReady ? pairName : null;
   // Free is not enough: the breaker demotes a fallback whose ticks keep failing, and a
   // demoted gate is `paused`, exactly as with no fallback at all.
-  state.breaker = rekeyFallbackBreaker(
-    state.breaker,
-    reached && fallbackReady ? pairName : null,
-    liveConfig.maxDailyCostUsd,
-  );
-  const gate = budgetGate(reached, fallbackReady, fallbackServing(state.breaker));
+  const gate = budgetGate(reached, fallbackReady, fallbackServingPair(state.breakers, state.engaged));
   // Read before prevGate is advanced below: true on exactly the reopening transition.
   const resumed = gate === "open" && (state.prevGate === "fallback" || state.prevGate === "paused");
   // The 80% early warning (PLANS.md 2026-09-30), edge-triggered with reset-on-below — the
@@ -176,7 +203,7 @@ export function pollBudgetGate(
       ...(gate === "fallback" ? { provider: pair?.provider, model: pair?.model } : {}),
       ...(gate === "paused" && pair
         ? fallbackReady
-          ? { fallbackDemoted: pairName, failures: state.breaker.failures }
+          ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
           : { fallbackRejected: pairName }
         : {}),
     });

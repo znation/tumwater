@@ -177,3 +177,67 @@ test("fallbackDemotion publishes a demotion and nothing while trusted or unengag
   assert.equal(fallbackDemotion(closed()), undefined);
   assert.deepEqual(fallbackDemotion(demoted(20_000, 100, 3)), { pair: "free/qwen", failures: 3, probeAt: 20_000 });
 });
+
+// --- the breaker map (part 5b/8): one judgment per pair, shared by the tiers on it ---
+
+import {
+  abandonFallbackProbeAt,
+  fallbackProbeDuePair,
+  fallbackServingPair,
+  recordFallbackTickAt,
+  rekeyFallbackBreakers,
+  startFallbackProbeAt,
+  type FallbackBreakerMap,
+} from "../src/fallback-breaker.js";
+
+test("rekeyFallbackBreakers re-keys per pair, adds fresh entries, and drops pairs that left", () => {
+  const held = { ...demoted(), pair: "free/qwen", capUsd: 5 };
+  const other = { ...closed("other/mini", 5), failures: 1 };
+  const map: FallbackBreakerMap = { "free/qwen": held, "other/mini": other };
+  // Same pairs, same cap: both judgments survive, re-keyed per pair.
+  const kept = rekeyFallbackBreakers(map, ["free/qwen", "other/mini"], 5);
+  assert.equal(kept["free/qwen"], held);
+  assert.equal(kept["other/mini"], other);
+  // A raised cap is a new subject for every pair: fresh and trusted.
+  const raised = rekeyFallbackBreakers(map, ["free/qwen", "other/mini"], 10);
+  assert.deepEqual(raised["free/qwen"], { pair: "free/qwen", capUsd: 10, failures: 0, probeAt: null, cooldownMs: 0, probing: false });
+  // A pair that left the resolution loses its entry; a new one starts trusted.
+  const moved = rekeyFallbackBreakers(map, ["other/mini", "third/mini"], 5);
+  assert.equal(moved["free/qwen"], undefined);
+  assert.equal(moved["other/mini"], other);
+  assert.deepEqual(moved["third/mini"], { pair: "third/mini", capUsd: 5, failures: 0, probeAt: null, cooldownMs: 0, probing: false });
+  // No pairs at all: the empty map.
+  assert.deepEqual(rekeyFallbackBreakers(map, [], 5), {});
+});
+
+test("fallbackServingPair reads only the named pair's entry, so tiers sharing a pair share the verdict", () => {
+  const map: FallbackBreakerMap = { "free/qwen": demoted(), "other/mini": closed("other/mini") };
+  assert.equal(fallbackServingPair(map, "free/qwen"), false, "the demoted pair is not serving");
+  assert.equal(fallbackServingPair(map, "other/mini"), true, "the trusted pair keeps serving");
+  assert.equal(fallbackServingPair(map, null), false, "no pair engaged, no verdict");
+  assert.equal(fallbackServingPair(map, "gone/pair"), false, "a pair the resolution dropped has no verdict");
+});
+
+test("the probe admission and evidence fold run on the named pair's entry", () => {
+  const map: FallbackBreakerMap = { "free/qwen": demoted(0, 100, 3), "other/mini": closed("other/mini") };
+  assert.equal(fallbackProbeDuePair(map, 1_000), "free/qwen", "the due pair is found");
+  assert.equal(fallbackProbeDuePair({ "other/mini": closed("other/mini") }, 1_000), null, "a trusted map has no probe due");
+  const probing = startFallbackProbeAt(map, "free/qwen");
+  assert.equal(probing["free/qwen"]?.probing, true);
+  assert.equal(probing["other/mini"], map["other/mini"], "the other pair's entry is untouched");
+  // A probe whose tick never ran has its claim handed back, on its pair only.
+  const abandoned = abandonFallbackProbeAt(probing, "free/qwen");
+  assert.equal(abandoned["free/qwen"]?.probing, false);
+  assert.equal(abandoned["other/mini"], map["other/mini"]);
+  // The probe served: the entry closes; the other pair's breaker keeps its state.
+  const served = recordFallbackTickAt(probing, "free/qwen", map["free/qwen"]!, "changed", true, 1_001, policy);
+  assert.deepEqual(served["free/qwen"], { pair: "free/qwen", capUsd: 5, failures: 0, probeAt: null, cooldownMs: 0, probing: false });
+  assert.equal(served["other/mini"], map["other/mini"]);
+  // A failed probe doubles only its own pair's cool-down.
+  const failed = recordFallbackTickAt(probing, "free/qwen", map["free/qwen"]!, "error", true, 1_001, policy);
+  assert.equal(failed["free/qwen"]?.probeAt, 1_201);
+  assert.equal(failed["other/mini"]?.probeAt, null);
+  // An entry the rekey dropped mid-flight: nothing to fold into, the map stands.
+  const dropped = recordFallbackTickAt({}, "free/qwen", demoted(), "error", true, 1_001, policy);
+  assert.deepEqual(dropped, {});
+});

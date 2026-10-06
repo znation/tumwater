@@ -6,15 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 5b/8: the fallback breaker becomes a map keyed by pair (planned 2026-10-06 by feature, split from part 5/8; requires part 5a/8 landed)
-
-**Approach.** **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`
-becomes a map keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
-`pairFree(...)` and `fallbackServing(...)`. Tiers sharing a fallback pair share a breaker, and a
-demoted pair re-resolves only the tiers that use it.
-
-**Files touched.** src/fallback-breaker.ts, src/gates/budget-gates.ts, and their tests.
-
 ### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed)
 
 **Approach.**
@@ -98,6 +89,14 @@ files above, and the config-write tests.
 ---
 
 ## Done
+### Model tiers, part 5b/8: the fallback breaker becomes a map keyed by pair (planned 2026-10-06 by feature, split from part 5/8; requires part 5a/8 landed, done 2026-10-06 by feature)
+
+**Approach.** **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`
+becomes a map keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
+`pairFree(...)` and `fallbackServing(...)`. Tiers sharing a fallback pair share a breaker, and a
+demoted pair re-resolves only the tiers that use it.
+
+**What changed.** The map landed as `BudgetGateState.breakers` plus a new `engaged` pair name (fallback-breaker.ts's `FallbackBreakerMap` and per-pair helpers; orchestrator.ts, orchestrator-launch.ts, and gate-polls.ts index by pair). The poll re-keys the map per pair over the pairs the tiers resolve to absent a demotion; the `usable` predicate is the price check composed with `fallbackServingPair` for the engaged pair, and feeding the full predicate into `resolveTierFallbacks` (so a demoted pair re-resolves only the tiers using it) lands with the gate wiring in part 5c/8.
 ### Model tiers, part 5a/8: the per-tier budget-fallback resolution engine (planned 2026-10-05 by operator; split 2026-10-06 by feature from the original part 5/8 — too large for one run — into the resolution engine, the breaker map, and the gate wiring, done 2026-10-06 by feature)
 
 Design: plans/model-tiers.md ("Budget fallback by tier").

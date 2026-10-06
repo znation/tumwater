@@ -38,7 +38,8 @@ function fakeRunner(role: string, tick: () => Promise<TickOutcome> = async () =>
 }
 
 function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): FleetGateStates {
-  return { budget: { breaker } } as unknown as FleetGateStates;
+  const breakers = breaker.pair !== null ? { [breaker.pair]: breaker } : {};
+  return { budget: { breakers, engaged: breaker.pair } } as unknown as FleetGateStates;
 }
 
 function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
@@ -48,7 +49,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     signal: new AbortController().signal,
     gateStates: emptyGateStates(),
     breakerPolicy: FALLBACK_BREAKER_POLICY,
-    probeDue: false,
+    probePair: null,
     semaphore: new Semaphore(4),
     rolePermitHolders: new Set<LoopRunner>(),
     roleInFlight: new Set<Promise<void>>(),
@@ -118,11 +119,11 @@ test("probeDue admits exactly one probe tick and skips the other due roles", asy
   const first = fakeRunner("clean");
   const second = fakeRunner("organize");
   const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
-  const c = ctx({ reasons: new Map([[first, "scheduled"], [second, "scheduled"]]), probeDue: true, gateStates: emptyGateStates(breaker) });
+  const c = ctx({ reasons: new Map([[first, "scheduled"], [second, "scheduled"]]), probePair: "free/qwen", gateStates: emptyGateStates(breaker) });
   launchDueTicks(c);
   await settle(c);
-  assert.ok(c.gateStates.budget.breaker.probing === false, "the probe's evidence closed the probing flag");
-  assert.equal(c.gateStates.budget.breaker.failures, 0, "a served probe is not a failure");
+  assert.ok(c.gateStates.budget.breakers["free/qwen"]?.probing === false, "the probe's evidence closed the probing flag");
+  assert.equal(c.gateStates.budget.breakers["free/qwen"]?.failures, 0, "a served probe is not a failure");
   assert.equal(second.state.running ?? false, false, "the second due role was never reserved");
   assert.equal(c.roleTickDurationsMs.length, 1, "only the probe ran");
   assert.equal(c.rolePermitHolders.size, 0);
@@ -133,13 +134,13 @@ test("a probe turned away by the held start gate has its claim handed back", asy
   const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
   const c = ctx({
     reasons: new Map([[runner, "scheduled"]]),
-    probeDue: true,
+    probePair: "free/qwen",
     gateStates: emptyGateStates(breaker),
     startHeld: () => true,
   });
   launchDueTicks(c);
   await settle(c);
-  assert.equal(c.gateStates.budget.breaker.probing, false, "the probe claim was abandoned, not left hanging");
+  assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "the probe claim was abandoned, not left hanging");
   assert.equal(runner.state.running, false, "the probe tick never started, so no reservation remains");
 });
 
