@@ -533,3 +533,57 @@ test("usageText renders cost-only usage without a dangling separator", () => {
   const noUsage = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 6, result: "changed" } as never);
   assert.doesNotMatch(noUsage, / · /, `a usage-free tick_end must carry no usage clause: ${noUsage}`);
 });
+
+// The director inbox's prompt_edited event (inbox-edit.ts): the third queued-prompt lifecycle
+// line, beside the prompt_enqueued and prompt_cancelled siblings — routine operation, not a
+// warning, with the same preview rendering.
+test("formatEvent renders prompt_edited plainly with the preview", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "director",
+    type: "prompt_edited",
+    preview: "add dark mode, then verify",
+  } as never);
+  assert.match(line, /director\s+user prompt edited: add dark mode, then verify/, `the edited text must show: ${line}`);
+  assert.ok(!line.includes("warning"), `an edited prompt is routine, not a warning: ${line}`);
+
+  // A torn or hand-edited event line could carry no preview; the fallback must still render.
+  const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_edited" } as never);
+  assert.match(bare, /user prompt edited:/);
+});
+
+// The root install's dep_install event (build/dep-install.ts syncRootInstall): the operator's
+// line for the checkout catching up with main's lockfile — routine when it passed, with the
+// failed packages and reason carried when it did not. Both shapes belong in the feed's tests
+// because the error clause is conditional: an absent detail must leave no dangling separator.
+test("formatEvent renders dep_install with packages, status, duration, and an optional error", () => {
+  const passed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "dep_install",
+    packages: ["pi", "ink"],
+    status: "passed",
+    durationMs: 4_200,
+  } as never);
+  assert.match(
+    passed,
+    /harness\s+root install \(pi, ink\) passed \(in 4s\)$/,
+    `a passed install must name the packages, status, and duration with no error clause: ${passed}`,
+  );
+  assert.ok(!passed.includes("warning"), `a passed install is routine, not a warning: ${passed}`);
+
+  const failed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "dep_install",
+    packages: ["ink"],
+    status: "failed",
+    durationMs: 0,
+    error: "npm install exited 1",
+  } as never);
+  assert.match(
+    failed,
+    /harness\s+root install \(ink\) failed — npm install exited 1 \(in 0s\)$/,
+    `a failed install must carry the reason after the status: ${failed}`,
+  );
+});
