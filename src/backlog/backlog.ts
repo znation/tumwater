@@ -44,14 +44,16 @@ function sectionEntries(root: string, fileName: string, sectionTitle: string): B
   );
 }
 
+/** Stat-keyed cache of the completion-date reads, keyed by file + section + date regex (each
+ * completion section's verbs differ) and bounded inside cachedByStat like sectionCache. */
+const dateCache = new Map<string, StatKeyedValue<string[]>>();
+
 /** Completion dates of an entry section (PLANS.md `## Done`, BUGS.md `## Fixed`), stat-cached
  * like sectionEntries above. The usage report scans these sections on every /api/report fetch,
  * but the files change only when a loop lands an edit — serving an unchanged file from the
  * cache makes that cost one stat instead of a full read plus an O(size) markdown walk of
  * append-only documents that grow without bound. The date regex is part of the cache key
  * (each section's completion verbs differ); a missing or unreadable file yields []. */
-const dateCache = new Map<string, StatKeyedValue<string[]>>();
-
 export function sectionCompletionDates(
   root: string,
   fileName: string,
