@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { dequeuePrompt, inboxSize } from "../src/inbox.js";
+import { dequeuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { seedCounters } from "./loop-fixtures.js";

@@ -1,7 +1,7 @@
 import path from "node:path";
-import { logEvent } from "./events.js";
-import { roleInboxDir } from "./paths.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { logEvent } from "../events.js";
+import { roleInboxDir } from "../paths.js";
+import { DIRECTOR_ROLE } from "../roles.js";
 import { promptPreview, queuedFileAtPosition, queuedFiles, takeQueuedFile } from "./inbox.js";
 
 /** The cancel half of the prompt queues: removing a queued prompt by per-loop position

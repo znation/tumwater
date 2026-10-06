@@ -3,7 +3,7 @@ import { renderReportMarkdown } from "../report-render.js";
 import { REPORT_DEFAULT_DAYS } from "../event-window.js";
 import { collectFailureReport } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
-import { submitPrompt } from "../inbox-submit.js";
+import { submitPrompt } from "../inbox/inbox-submit.js";
 import { setDailyBudgetUsd } from "../config/config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";
 import {

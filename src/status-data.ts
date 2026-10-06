@@ -5,7 +5,7 @@ import { enabledRoleIds, isCustomRole } from "./config/config.js";
 import { fallbackPair } from "./config/config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
-import { queuedRolePromptEntries } from "./inbox.js";
+import { queuedRolePromptEntries } from "./inbox/inbox.js";
 import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import {

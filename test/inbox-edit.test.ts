@@ -2,9 +2,9 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { editListedPrompt, editRolePrompt } from "../src/inbox-edit.js";
-import { enqueuePrompt, enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox.js";
-import { cancelListedPrompt } from "../src/inbox-cancel.js";
+import { editListedPrompt, editRolePrompt } from "../src/inbox/inbox-edit.js";
+import { enqueuePrompt, enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { cancelListedPrompt } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { queueFileStamp } from "../src/file-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
@@ -12,7 +12,7 @@ import { tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 
-/** src/inbox-edit.ts's own tests: the edit half of the prompt queues — rewriting one queued
+/** src/inbox/inbox-edit.ts's own tests: the edit half of the prompt queues — rewriting one queued
  * prompt's text in place, by per-loop position or by list-wide numbering — mirrors
  * inbox.test.ts's cancel coverage: position addressing, the race policy, the deferral
  * carry-over, and the prompt_edited event. */

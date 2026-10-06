@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/event-read.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { setConfigKey } from "../src/config/config-write.js";

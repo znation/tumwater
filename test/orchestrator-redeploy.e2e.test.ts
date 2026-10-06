@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/event-read.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";

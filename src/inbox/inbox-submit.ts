@@ -1,18 +1,18 @@
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
-import { unlinkAllMissingTolerant } from "./files.js";
+import { unlinkAllMissingTolerant } from "../files.js";
 import {
   imageReferenceLines,
   promptImagesProblem,
   savePromptImages,
   type PromptImageInput,
 } from "./inbox-attachments.js";
-import { logEvent } from "./events.js";
-import { INITIAL_PROMPT_MAX_CHARS } from "./readme.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import { tooLongMessage } from "./text.js";
+import { logEvent } from "../events.js";
+import { INITIAL_PROMPT_MAX_CHARS } from "../readme.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import { tooLongMessage } from "../text.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
- * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox.ts,
+ * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox/inbox.ts,
  * and the image side of a submission in src/inbox-attachments.ts): the shared length cap,
  * the validation, and the submit wrappers the TUI, GUI, and CLI all go through. */
 

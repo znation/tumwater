@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { logEvent } from "../src/events.js";
-import { submitPrompt } from "../src/inbox-submit.js";
+import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { initProject } from "../src/init.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { runTui } from "../src/ui/tui.js";

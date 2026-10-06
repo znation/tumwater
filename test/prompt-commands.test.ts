@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { cmdPrompt } from "../src/prompt-commands.js";
-import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
+import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";

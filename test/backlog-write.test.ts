@@ -4,9 +4,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
 import { fileBug, filePlan } from "../src/backlog/backlog-write.js";
-import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox-submit.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
-import { queuedRolePrompts } from "../src/inbox.js";
+import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 

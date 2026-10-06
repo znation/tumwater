@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, writeTextAtomic } from "./files.js";
-import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "./file-queue.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { roleInboxDir } from "./paths.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import { truncate } from "./text.js";
-import { errCode } from "./errno.js";
+import { ensureParentDir, writeTextAtomic } from "../files.js";
+import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../file-queue.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { roleInboxDir } from "../paths.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import { truncate } from "../text.js";
+import { errCode } from "../errno.js";
 import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
@@ -24,7 +24,7 @@ import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
  * marker vocabulary for deferred prompts lives in prompt-not-before.ts (compose, parse, strip,
  * and the deliverableNow predicate this module filters on). */
 
-import { deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "./prompt-not-before.js";
+import { deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "../prompt-not-before.js";
 
 /** Cap on a queued prompt's one-line preview, so an over-long prompt cannot bloat an event
  * log line, the dashboard payload, or the CLI output. */

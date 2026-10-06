@@ -3,7 +3,7 @@
  * numbering, or `--cancel <n>` a queued prompt by position. Split out of operator-commands.ts
  * because this command is not a fleet-control marker: its sibling commands there ride the
  * operator-intent marker protocol, while every mode here reads or writes the durable per-loop
- * queues (src/inbox.ts) directly, each with its own broken-config policy — so the command
+ * queues (src/inbox/inbox.ts) directly, each with its own broken-config policy — so the command
  * lives beside the queue module it drives. The fleet-side half (the dequeues a loop performs)
  * is inbox.ts and pending-prompt.ts. */
 import { fail, say, sayJson } from "./cli/cli-output.js";
@@ -15,20 +15,20 @@ import {
   type ListedCancelOutcome,
   cancelListedPrompt,
   cancelRolePrompt,
-} from "./inbox-cancel.js";
+} from "./inbox/inbox-cancel.js";
 import {
   type EditOutcome,
   type ListedEditOutcome,
   editListedPrompt,
   editRolePrompt,
-} from "./inbox-edit.js";
-import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
+} from "./inbox/inbox-edit.js";
+import { promptPreview, queuedRolePromptRecords } from "./inbox/inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
 import { durationLabel } from "./cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config/config.js";
 import { errorMessage } from "./text.js";
-import { promptImagesProblem, type PromptImageInput } from "./inbox-attachments.js";
+import { promptImagesProblem, type PromptImageInput } from "./inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
 import { submitRolePromptAndWake } from "./operator-intent.js";
 

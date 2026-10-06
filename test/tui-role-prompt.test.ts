@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readJson } from "./json-read.js";
-import { queuedRolePrompts } from "../src/inbox.js";
-import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox-submit.js";
+import { queuedRolePrompts } from "../src/inbox/inbox.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { wakeRequestPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./tui-fixtures.js";
 

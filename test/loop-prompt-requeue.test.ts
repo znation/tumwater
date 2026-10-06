@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
+import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { initializedRepo, makeMainRed, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";

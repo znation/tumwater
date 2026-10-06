@@ -8,8 +8,8 @@
  * actions call draftForDirector and focusComposer. Spliced into gui-client.ts's script right
  * after the fleet view, reaching its helpers ($, esc, postJson, plural, showFlash, refresh)
  * and the fleet view's activeView/drawer state through that concatenation. */
-import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox-submit.js";
-import { PROMPT_IMAGES_MAX_COUNT } from "../inbox-attachments.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../inbox/inbox-submit.js";
+import { PROMPT_IMAGES_MAX_COUNT } from "../inbox/inbox-attachments.js";
 export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
   const PROMPT_MAX = ${DIRECTOR_PROMPT_MAX_CHARS};
   const promptInput = $("prompt");

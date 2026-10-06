@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { unlinkAllMissingTolerant } from "./files.js";
-import { roleInboxDir } from "./paths.js";
-import { isNonBlankString } from "./text.js";
-import { agree } from "./phrases.js";
+import { unlinkAllMissingTolerant } from "../files.js";
+import { roleInboxDir } from "../paths.js";
+import { isNonBlankString } from "../text.js";
+import { agree } from "../phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
  * beside the prompt's queue file (same stem, an image extension — the `.md` filter in
@@ -13,7 +13,7 @@ import { agree } from "./phrases.js";
  * the requeue policy through stripVanishedImageReferences) shares it. */
 
 /** The image extensions pi's read tool renders — exactly what an attachment may carry.
- * Exported for src/inbox.ts's same-stem sibling cleanup, which must recognize the exact
+ * Exported for src/inbox/inbox.ts's same-stem sibling cleanup, which must recognize the exact
  * `<stem>-<n>.<ext>` shape savePromptImages writes and nothing else. */
 export const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
 

@@ -320,7 +320,7 @@ test/model-selector.test.ts plus the config-views and pi-args suites).
 
 ### `tumwater prompt --attach <path>` — attach an image to a queued prompt from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
-**Goal.** The GUI composer accepts image attachments (drop/paste — `src/inbox-attachments.ts` saves them beside the queue file and appends `[image attached: <absolute path>]` lines the loop's pi agent reads), but the terminal's `tumwater prompt` cannot attach anything, so a CLI operator who wants the feature or bugfix loop to see a screenshot must run the dashboard. Close the gap: one `--attach <path>` flag, repeatable up to the existing per-prompt image cap, on the enqueue form of `tumwater prompt` only.
+**Goal.** The GUI composer accepts image attachments (drop/paste — `src/inbox/inbox-attachments.ts` saves them beside the queue file and appends `[image attached: <absolute path>]` lines the loop's pi agent reads), but the terminal's `tumwater prompt` cannot attach anything, so a CLI operator who wants the feature or bugfix loop to see a screenshot must run the dashboard. Close the gap: one `--attach <path>` flag, repeatable up to the existing per-prompt image cap, on the enqueue form of `tumwater prompt` only.
 
 **Approach.**
 - `src/cli/cli-command-args.ts`, `parsePromptArgs`: scan for `--attach` occurrences (repeatable, each claiming itself and its value token like `--role`'s claim — a helper `attachClaims: number[]` beside `roleClaim`/`atClaim`); exclude claimed pairs from prompt text exactly as `roleClaim` and `atClaim` already are. Add `attachPaths: string[]` to the `enqueue` mode of the `PromptArgs` union. Mode guards mirror the existing `--at` guard verbatim: `--attach` only queues a prompt, so with `--list`, `--cancel`, or `--edit` it fails ("--attach only queues a prompt"); a missing value names the flag like `--cancel`'s does; a stray argument with `--list`/`--cancel` uses `failStrayArg` as those modes do.
@@ -329,7 +329,7 @@ test/model-selector.test.ts plus the config-views and pi-args suites).
 - `src/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
 - Tests in `test/` beside the existing prompt-args and prompt-command suites: `parsePromptArgs` keeps `--attach` pairs out of the text (positional before, between, and after flags), refuses it in list/cancel/edit modes, and names a missing value; `cmdPrompt` enqueue writes the image beside the queue file with the queue file's stem, the queued text ends with the `[image attached: <absolute path>]` line, and the confirmation names the count; error cases — a nonexistent path, a non-image extension, a fifth image — all exit nonzero with `promptImagesProblem`'s or the read-error message and queue nothing.
 
-**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to `src/inbox*.ts`, `src/ui/*`, or `src/operator-intent.ts`.
+**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator-intent.ts`.
 
 **Acceptance criteria.**
 - `tumwater prompt "fix the layout" --role feature --attach shot.png` queues the prompt whose text ends with the image-reference line, saves `shot.png` beside the queue file, and prints the confirmation with the attachment count; the receiving role's next tick prompt carries the reference.
@@ -348,7 +348,7 @@ text in place, keeping its queue position, its enqueue stamp (the filename is un
 its not-before deferral exactly as it was.
 
 **Approach.**
-- New module `src/inbox-edit.ts`, mirroring `src/inbox-cancel.ts`: `editRolePrompt(root, role,
+- New module `src/inbox/inbox-edit.ts`, mirroring `src/inbox/inbox-cancel.ts`: `editRolePrompt(root, role,
   position, newText)` resolves the address through `queuedRolePromptRecords` (the same listing
   `--list` prints), then writes the new content to the same queue-file path with the same
   atomic write `enqueueRolePrompt` uses (temp file + rename), so a concurrent dequeue or
@@ -376,7 +376,7 @@ its not-before deferral exactly as it was.
   and a pending `--at` deferral are kept; as shown by --list)". Same broken-config policy as
   cancel: a load failure reports and exits non-zero without touching the queue.
 
-**Files touched.** New `src/inbox-edit.ts`; `src/prompt-commands.ts`, `src/cli/cli-flag-specs.ts`,
+**Files touched.** New `src/inbox/inbox-edit.ts`; `src/prompt-commands.ts`, `src/cli/cli-flag-specs.ts`,
 `src/help.ts`; new tests beside `test/inbox.test.ts` (a `test/inbox-edit.test.ts` or its
 cases inside the existing file, following the file's local conventions).
 

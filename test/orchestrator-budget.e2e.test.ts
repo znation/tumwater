@@ -13,7 +13,7 @@ import path from "node:path";
 import { saveConfig } from "../src/config/config.js";
 import { snapshot } from "../src/status-data.js";
 import { initProject } from "../src/init.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet-state.js";

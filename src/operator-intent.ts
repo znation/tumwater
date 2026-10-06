@@ -1,8 +1,8 @@
 import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "./fleet-state.js";
 import { durationLabel } from "./cli/cli-args.js";
 import { formatDate, formatTime } from "./datetime.js";
-import { submitRolePrompt } from "./inbox-submit.js";
-import type { PromptImageInput } from "./inbox-attachments.js";
+import { submitRolePrompt } from "./inbox/inbox-submit.js";
+import type { PromptImageInput } from "./inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { clearBackoff } from "./backoff.js";

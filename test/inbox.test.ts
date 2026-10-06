@@ -11,11 +11,11 @@ import path from "node:path";import {
   queuedPrompts,
   queuedRolePromptEntries,
   queuedRolePrompts,
-} from "../src/inbox.js";
-import { cancelPrompt, cancelRolePrompt } from "../src/inbox-cancel.js";
+} from "../src/inbox/inbox.js";
+import { cancelPrompt, cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { queueFileStamp } from "../src/file-queue.js";
-import { submitPrompt, submitRolePrompt } from "../src/inbox-submit.js";
+import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { errCode } from "../src/errno.js";

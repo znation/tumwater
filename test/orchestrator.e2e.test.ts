@@ -16,8 +16,8 @@ import { runTimedRoleTick, sleepInterruptible } from "../src/tick/tick-timing.js
 import { DEFER_MAX_MS } from "../src/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
-import { enqueuePrompt } from "../src/inbox.js";
-import { submitRolePrompt } from "../src/inbox-submit.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
+import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/event-read.js";
 import {
   freshLoopState,

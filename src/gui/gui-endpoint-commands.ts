@@ -9,10 +9,10 @@
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
  * fleet-state.ts, operator-intent.ts) — this module only adapts HTTP onto it.
  */
-import { promptPreview } from "../inbox.js";
-import { cancelQueuedFile, queueFileNameProblem } from "../inbox-cancel.js";
-import { submitPrompt } from "../inbox-submit.js";
-import { promptImagesProblem, type PromptImageInput } from "../inbox-attachments.js";
+import { promptPreview } from "../inbox/inbox.js";
+import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js";
+import { submitPrompt } from "../inbox/inbox-submit.js";
+import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator-intent.js";

@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import { writeTextAtomic } from "./files.js";
-import { logEvent } from "./events.js";
-import { errCode } from "./errno.js";
+import { writeTextAtomic } from "../files.js";
+import { logEvent } from "../events.js";
+import { errCode } from "../errno.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
-import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not-before.js";
+import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "../prompt-not-before.js";
 
 /** The edit half of the prompt queues: rewriting one queued prompt's text in place
  * (`tumwater prompt --edit`), by per-loop position or by list-wide position numbering.

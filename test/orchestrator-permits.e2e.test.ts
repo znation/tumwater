@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../src/config/config.js";
-import { enqueuePrompt } from "../src/inbox.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/event-read.js";
 import { awaitSettledTick, FAST_POLL_MS, fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./orchestrator-fixtures.js";

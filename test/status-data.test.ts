@@ -28,8 +28,8 @@ import { projectCapHit, recordDailyCost } from "../src/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";
-import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
-import { submitPrompt } from "../src/inbox-submit.js";
+import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding, queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet-state.js";
 

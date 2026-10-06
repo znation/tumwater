@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { rolePayload } from "../src/role-view.js";
 import { renderRoleMarkdown } from "../src/role-render.js";
-import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox.js";
+import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath } from "../src/paths.js";
 import { readmeTemplate } from "../src/readme.js";
 import { writeConfig, tmpdir } from "./repo-fixtures.js";

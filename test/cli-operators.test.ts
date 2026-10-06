@@ -13,7 +13,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { abortRequestPath, orchestratorStatePath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { queuedRolePromptCount } from "../src/inbox.js";
+import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli } from "./cli-harness.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 
