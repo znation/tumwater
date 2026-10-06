@@ -6,7 +6,7 @@ import { ffMainTo } from "../src/landing/landing-git.js";
 import { diffLineMultiset } from "../src/landing/landing-diff.js";
 import { mergeToMain, type MergeContext } from "../src/landing/landing-merge.js";
 import { defaultConfig } from "../src/config/config.js";
-import { checkMainBaseline } from "../src/main-baseline.js";
+import { checkMainBaseline } from "../src/baseline/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";

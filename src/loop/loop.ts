@@ -21,7 +21,7 @@ import { clearBackoff } from "../backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "../leftover.js";
-import { bugfixMainRedNote, mainRedGate } from "../main-red.js";
+import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
 import { extractFlow, type FlowResult } from "../reply-contract.js";
@@ -491,7 +491,7 @@ export class LoopRunner {
         prompt += `\n\n${buildConflictDiscardNote(recovered.summary, recovered.attempts)}`;
       } else if (recovered) return this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
       await resetWorktreeToMain(wt, this.mainBranch);
-      // Red-main baseline gate (src/main-red.ts): the worktree is pristine main right now —
+      // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right now —
       // verify main's own suite before spending an authoring run on top of it. Only roles whose
       // diff can carry code changes are blocked; resume ticks skip this by construction (their
       // worktree is not pristine main). The `bugfix` healer is exempt because its fix is the

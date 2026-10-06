@@ -17,7 +17,7 @@ import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../phrases.js";
 import { shortSha } from "../format.js";
 import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
-import { mainTipVerdict } from "../main-red.js";
+import { mainTipVerdict } from "../baseline/main-red.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
  * (`resolved` — a deterministic rejection, failure, or unverified tree) or the tree passed

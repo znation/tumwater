@@ -2,7 +2,7 @@ import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } 
 import { buildCheckEvent } from "../build/build-check-events.js";
 import { type BuildCheckOutcome } from "../build/build-check.js";
 import { liveConfig } from "../config/config.js";
-import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../main-baseline.js";
+import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../baseline/main-baseline.js";
 import { compileStaged, swapDist } from "../build/build-stage.js";
 import { readJsonFile, writeJsonFile } from "../json-files.js";
 import { finiteNumber } from "../json-object.js";

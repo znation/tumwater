@@ -16,7 +16,7 @@ import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { noteGreenBaseline } from "../src/main-baseline.js";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { shortSha } from "../src/format.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";

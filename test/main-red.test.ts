@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/main-red.js";
+import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/main-red.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/format.js";
@@ -12,7 +12,7 @@ import { pathReplace } from "./fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
 
-// Unit coverage for the red-main baseline gate (src/main-red.ts): the policy layer on top of
+// Unit coverage for the red-main baseline gate (src/baseline/main-red.ts): the policy layer on top of
 // checkMainBaseline — which roles it blocks, what it logs (one build_check per actual run,
 // under the role that paid for it; one harness-level warning per newly-discovered red SHA),
 // and its warn-and-proceed semantics for environmental skips. The underlying detection,
@@ -287,7 +287,7 @@ test("mainRedGate proceeds silently when no build check is declared", async () =
   assert.deepEqual(readEvents(root), [], "no events when there is no declared check");
 });
 
-// The gate's never-throws contract (src/main-red.ts): an unreadable main must read as
+// The gate's never-throws contract (src/baseline/main-red.ts): an unreadable main must read as
 // `unavailable` with a why, never reject the vet pipeline with an exception — a corrupt or
 // dangling ref is a broken repo, and the failure belongs in the rejection's reasons.
 test("mainTipVerdict reports unavailable, without throwing, when main's ref dangles", async () => {

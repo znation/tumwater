@@ -48,7 +48,7 @@ export interface TickOutcome {
   recoveryFailure?: string;
   /** The outcome's own cause, written deliberately for this result — never a leftover landing
    * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
-   * red-main baseline gate (src/main-red.ts) so the tick's `tick_end` names what broke: the
+   * red-main baseline gate (src/baseline/main-red.ts) so the tick's `tick_end` names what broke: the
    * failure digest's error clusters include main_red ticks, and without a cause on the event
    * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
   error?: string;

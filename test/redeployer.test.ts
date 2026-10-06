@@ -3,7 +3,7 @@ import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mainIsGreen } from "../src/main-baseline.js";
+import { mainIsGreen } from "../src/baseline/main-baseline.js";
 import { autoRestartRecord } from "../src/redeploy/redeploy.js";
 import {
   type AutoRestartRecord,

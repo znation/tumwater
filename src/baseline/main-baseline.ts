@@ -3,13 +3,13 @@ import {
   type BuildCheckRun,
   type BuildSkipReason,
   runBuildCheck,
-} from "./build/build-check.js";
-import { SLEEP_SPAN_TOLERANCE_MS } from "./build/build-check-events.js";
-import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
-import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
-import { detectBuildCheck } from "./build/build-check-detect.js";
-import { refSha } from "./git/git.js";
-import type { CheckConfigSlice } from "./config/config-schema.js";
+} from "../build/build-check.js";
+import { SLEEP_SPAN_TOLERANCE_MS } from "../build/build-check-events.js";
+import { sampleSleepClock, type SleepSampler } from "../host-sleep.js";
+import { CHECK_TIER, withCheckPermit } from "../check-permit.js";
+import { detectBuildCheck } from "../build/build-check-detect.js";
+import { refSha } from "../git/git.js";
+import type { CheckConfigSlice } from "../config/config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and classifying

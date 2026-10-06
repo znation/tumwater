@@ -10,7 +10,7 @@ import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
-import { noteGreenBaseline } from "../src/main-baseline.js";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { assertClean, mainSha, sh, tmpdir } from "./repo-fixtures.js";

@@ -240,7 +240,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // Only ticks that ENDED as errors carry a tick error: `state.lastError` is shared state the
   // lander also writes, so a successful tick's `tick_end` can carry a leftover landing failure's
   // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that
-  // result — the baseline gate's own text (src/main-red.ts), never a leftover — so the section
+  // result — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the section
   // itemizes the outcome that blocks every merge instead of leaving it a bare count (BUGS.md
   // 2026-09-28). The total therefore equals the Outcome table's error column PLUS its main_red
   // cells; the render's section title says so, and landing failures still surface below.

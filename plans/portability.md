@@ -1024,7 +1024,7 @@ Sizing unchanged.
 **Goal.** Stop assuming the target project is an npm project. `detectBuildCheck`/`runBuildCheck`
 walk up for a directory holding both `package.json` and `node_modules`, then run
 `npm run test|typecheck|build`. Against a Python, Rust, or Go repo the walk finds nothing, so the
-review gate's deterministic pre-check, the red-main baseline gate (src/main-red.ts), and
+review gate's deterministic pre-check, the red-main baseline gate (src/baseline/main-red.ts), and
 redeploy's `mainGreen` all degrade to "no check" — an entire safety layer silently off.
 
 **Design (decided, with rationale).**
@@ -1080,7 +1080,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   `detectBuildCheck(wt)` itself (:366) and serves the `gate` (src/review/review.ts:216 and the post-fix
   recheck :267), `landing` (src/merge.ts:155) and `batch` (src/landing-batch.ts:229) scopes;
   `checkMainBaseline`
-  (src/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
+  (src/baseline/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
   reverifyRed?)`, config required in the 2nd position: detection needs it, and an optional
   trailing parameter would let future callers skip it) calls `detectBuildCheck(wt)` +
   `runBuildCheck` at :146/:149; and `checkBuildCheck` (src/doctor/doctor.ts:274) calls it at :275. Add the
@@ -1088,11 +1088,11 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop.ts:271;
   review.ts's GateContext (:90) and landing-batch.ts's BatchContext (:23) already hold it).
   `checkMainBaseline`'s three callers
-  thread it too: src/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
+  thread it too: src/baseline/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
   :89 call, `bugfixMainRedNote` (:68) gains the same `loadConfigCached(root).config ??
   defaultConfig()` load for its :69 call, and src/redeploy/redeploy.ts's `mainIsGreen(mirrorWt, config,
   onRun?)` (:431) takes config, with the production wiring at createRedeployer (:456) reading the
-  live config per call — so src/main-red.ts and src/redeploy/redeploy.ts join this entry's files.
+  live config per call — so src/baseline/main-red.ts and src/redeploy/redeploy.ts join this entry's files.
 - src/doctor/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
 - Tests: test/build-check.test.ts (a configured command passing, failing with its tail as reasons,
@@ -1107,7 +1107,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check/build-check-detect.ts,
 src/build-check/build-check.ts, src/prompt/prompt.ts,
-src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy/redeploy.ts,
+src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/baseline/main-baseline.ts, src/baseline/main-red.ts, src/redeploy/redeploy.ts,
 src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
@@ -1130,7 +1130,7 @@ test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 `2ab6f0d`). The last audit was the 2026-09-15
 series write against `1384eeb`, and three landings since moved the threading surface this entry
 describes: `8a3e6a1` (merge queue 5/5: the new `batch` scope), `0394c6d` (the baseline split into
-src/main-baseline.ts), and `5b125c4` (the `MERGE_SCOPES` timeout rejection). (`ecad7e2`'s
+src/baseline/main-baseline.ts), and `5b125c4` (the `MERGE_SCOPES` timeout rejection). (`ecad7e2`'s
 `runScopedBuildCheck` predates the audit and is already reflected in the write.) Every anchor
 re-verified; the "two-site change"
 claim is now wrong in three ways, and one acceptance criterion contradicts existing merge-scope
@@ -1147,19 +1147,19 @@ rejects unknown keys. Capability absence re-confirmed: `grep -rn '"check"\|check
 src/config-validation.ts` finds nothing, and no prompt or template mentions a configured check.
 
 Corrections (pinned; the three stale spots are already corrected in place):
-1. **`checkMainBaseline` is in src/main-baseline.ts, not build-check/build-check.ts — and main-red.ts needs
-   no change.** `checkMainBaseline` (src/main-baseline.ts:137) calls `detectBuildCheck(wt)` +
+1. **`checkMainBaseline` is in src/baseline/main-baseline.ts, not build-check/build-check.ts — and main-red.ts needs
+   no change.** `checkMainBaseline` (src/baseline/main-baseline.ts:137) calls `detectBuildCheck(wt)` +
    `runBuildCheck(wt, check)` itself (line 159), so it is a third `detectBuildCheck` site the plan
-   must thread; src/main-red.ts imports only `checkMainBaseline` from it (now line 5; `failureHeadline` comes from
+   must thread; src/baseline/main-red.ts imports only `checkMainBaseline` from it (now line 5; `failureHeadline` comes from
    build-check/build-check.ts) and
    passes an `onRun` hook, and src/redeploy/redeploy.ts:469 calls it too. The files bullet now names
-   `src/main-baseline.ts` in place of `src/main-red.ts` and `test/main-baseline.test.ts` in place of
+   `src/baseline/main-baseline.ts` in place of `src/baseline/main-red.ts` and `test/main-baseline.test.ts` in place of
    `test/main-red.test.ts`.
 2. **The threading surface is three `detectBuildCheck` sites plus a new `batch` scope, not
    "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build-check/build-check.ts:302) now
    serves `gate` (src/review/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
    `BuildCheckScope`/`MERGE_SCOPES` (lines 269/281) postdate the last audit. Config must reach
-   `detectBuildCheck` at src/build-check/build-check.ts:309, src/main-baseline.ts:159, and src/doctor/doctor.ts:145.
+   `detectBuildCheck` at src/build-check/build-check.ts:309, src/baseline/main-baseline.ts:159, and src/doctor/doctor.ts:145.
    Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (review.ts and
    lander.ts already hold it; `MergeContext` does not — add `config: TumwaterConfig` to
    src/merge.ts:42 and set it beside `exemptPaths` at its construction site, src/loop.ts:230) and
@@ -1232,10 +1232,10 @@ Corrections (pinned in place):
 1. **checkMainBaseline's callers must thread config — the 09-18 note's "redeploy needs no
    change beyond what it already hands down" claim is false under the explicit-parameter design.**
    `checkMainBaseline` gained a third parameter, `reverifyRed` (landed by 0394c6d, before that
-   audit, but never pinned), and its three production callers are src/main-red.ts:69
+   audit, but never pinned), and its three production callers are src/baseline/main-red.ts:69
    (`bugfixMainRedNote`, which loads no config today — it gains the two-line
    `loadConfigCached(root).config ?? defaultConfig()` idiom mainRedGate already uses at :87),
-   src/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy/redeploy.ts:438 inside
+   src/baseline/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy/redeploy.ts:438 inside
    `mainIsGreen` (:432), whose only production wiring is createRedeployer's `mainGreen` dep
    (:458 — `root` is in closure scope; read the live config per call so a mid-run
    `check.command` edit applies). Pin the new signatures: `checkMainBaseline(wt, config, onRun?,
@@ -1310,11 +1310,11 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
   literal inside `LoopRunner.merge` (src/loop.ts:269, `exemptPaths` at :275; was :257–264/:261 —
   c351ae6 moved LoopRunner's pi-run plumbing into src/loop-pi.ts, but `merge` stayed).
   review.ts holds config (GateContext :88, destructured :158); lander.ts and merge.ts unchanged.
-- src/main-red.ts: `bugfixMainRedNote` :68 with its `checkMainBaseline` call :69,
+- src/baseline/main-red.ts: `bugfixMainRedNote` :68 with its `checkMainBaseline` call :69,
   `mainRedGate` :81 with `loadConfigCached(root).config ?? defaultConfig()` at :87 and its call
   :89 — all as pinned. src/redeploy/redeploy.ts: `mainIsGreen` :431 (was :432), its
   `checkMainBaseline(mirrorWt, onRun, true)` :437 (was :438), `createRedeployer` :443 with the
-  `mainGreen` dep :456 (was :458). `checkMainBaseline` (src/main-baseline.ts:123) is still
+  `mainGreen` dep :456 (was :458). `checkMainBaseline` (src/baseline/main-baseline.ts:123) is still
   `(wt, onRun?, reverifyRed = false)` with detect :145 / run :148 — unchanged.
 - maxLevels-as-second-positional test call sites are now test/build-check.test.ts:360/:371/:372
   (the maxLevels test moved wholesale to :353; was :274/:285/:286) and test/review.test.ts:515
@@ -1392,8 +1392,8 @@ Re-pinned anchors (09-24 note's terms → today):
   :234). Tests: test/prompt.test.ts:316 (`buildBuildFixPrompt names the role, the failing
   script…`, pins `/`npm run test`/` at :322) and :331 (the forbid-weakening test) — both update
   mechanically.
-- **Unchanged from the 09-24 pins:** src/main-red.ts (`bugfixMainRedNote` :68/:69 with its
-  internal load :87 in mainRedGate :81/:89 — verified verbatim), src/main-baseline.ts
+- **Unchanged from the 09-24 pins:** src/baseline/main-red.ts (`bugfixMainRedNote` :68/:69 with its
+  internal load :87 in mainRedGate :81/:89 — verified verbatim), src/baseline/main-baseline.ts
   (`checkMainBaseline(wt, onRun?, reverifyRed = false)` :123, detect :146, run :149),
   src/redeploy/redeploy.ts (`mainIsGreen(mirrorWt, onRun?)` :431, its `checkMainBaseline(mirrorWt, onRun,
   true)` :437, `createRedeployer` :443, mainGreen dep :456). The 09-24 note's correction-2

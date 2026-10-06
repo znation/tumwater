@@ -48,7 +48,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // below names it — even though runTick cleared `lastError` so it never latched onto
   // `tick_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
-  // A main_red tick's cause is written for that result (src/main-red.ts), not a leftover
+  // A main_red tick's cause is written for that result (src/baseline/main-red.ts), not a leftover
   // landing failure: fold it onto the state here so `tick_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean
   // (BUGS.md 2026-09-28). runTick cleared `lastError` at its start, so nothing foreign

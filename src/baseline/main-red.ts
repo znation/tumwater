@@ -1,19 +1,19 @@
-import { BASELINE_BLOCKED_ROLES } from "./roles/roles.js";
-import { isCustomRole, liveConfig } from "./config/config.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "./build/build-check-detect.js";
-import { failureHeadline } from "./build/build-check-report.js";
-import type { BuildCheckOutcome } from "./build/build-check.js";
-import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build/build-check-events.js";
+import { BASELINE_BLOCKED_ROLES } from "../roles/roles.js";
+import { isCustomRole, liveConfig } from "../config/config.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
+import { failureHeadline } from "../build/build-check-report.js";
+import type { BuildCheckOutcome } from "../build/build-check.js";
+import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
-import { buildMainRedNote } from "./gates/gate-prompts.js";
-import { logEvent, warnEvent } from "./events/events.js";
-import type { TickOutcome } from "./tick/tick-outcome.js";
-import type { TumwaterConfig } from "./config/config-schema.js";
-import { errorMessage } from "./text.js";
-import { mainRedPhrase } from "./phrases.js";
-import { gitTry } from "./git/git-run.js";
-import { gateMainWorktreePath } from "./paths.js";
-import { ensureDetachedWorktree } from "./worktree.js";
+import { buildMainRedNote } from "../gates/gate-prompts.js";
+import { logEvent, warnEvent } from "../events/events.js";
+import type { TickOutcome } from "../tick/tick-outcome.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { errorMessage } from "../text.js";
+import { mainRedPhrase } from "../phrases.js";
+import { gitTry } from "../git/git-run.js";
+import { gateMainWorktreePath } from "../paths.js";
+import { ensureDetachedWorktree } from "../worktree.js";
 
 /** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"):
  * before an authoring run is spent on top of pristine main, verify that MAIN ITSELF is green —
