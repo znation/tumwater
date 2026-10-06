@@ -144,6 +144,26 @@ test("a probe turned away by the held start gate has its claim handed back", asy
   assert.equal(runner.state.running, false, "the probe tick never started, so no reservation remains");
 });
 
+test("a probe whose tick starts after the gate reopened has its claim handed back", async () => {
+  // The probe is admitted for the demoted pair (the launch pass reads only the breaker
+  // entry), but while it waits for its permit the budget gate reopens (the cap is raised
+  // or midnight resets spend), so the tick starts with `engaged` null and no evidence is
+  // folded into the pair — the claim must still be handed back, or the entry stays probing
+  // and no later probe can ever run (the fallback stays demoted past its due probe).
+  const runner = fakeRunner("clean");
+  const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
+  const gateStates = emptyGateStates(breaker);
+  gateStates.budget.engaged = null; // the reopen landed between admission and tick start
+  const c = ctx({
+    reasons: new Map([[runner, "scheduled"]]),
+    probePair: "free/qwen",
+    gateStates,
+  });
+  launchDueTicks(c);
+  await settle(c);
+  assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "the probe claim was abandoned when no evidence was folded");
+});
+
 test("a due reason other than scheduled/startup logs a wake event", async () => {
   const runner = fakeRunner("organize");
   const c = ctx({ reasons: new Map([[runner, "operator"]]) });

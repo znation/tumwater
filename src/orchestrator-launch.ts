@@ -159,6 +159,15 @@ export function launchDueTicks(ctx: LaunchContext): void {
               at,
               breakerPolicy,
             );
+          } else if (probe && probePair !== null) {
+            // A probe whose tick started on no engaged pair — the budget gate reopened
+            // between admission and start (the cap raised, or midnight reset spend) — folds
+            // no evidence, so its claim would hang on the pair's entry forever: probing
+            // blocks both fallbackProbeDuePair and startFallbackProbeAt, and nothing but a
+            // rekey clears it, so the demoted fallback could never earn another probe. Hand
+            // the claim back exactly as the !started path below does for a tick turned away
+            // at its permit.
+            gateStates.budget.breakers = abandonFallbackProbeAt(gateStates.budget.breakers, probePair);
           }
           return outcome;
         },
