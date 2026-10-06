@@ -11,7 +11,10 @@ const PAID_MODEL = { id: "gpt-x", cost: { input: 1, output: 2, cacheRead: 0.1, c
 export const MODELS_JSON = JSON.stringify({
   providers: {
     free: {
-      models: [{ id: "qwen-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      models: [
+        { id: "qwen-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+        { id: "llama-free", cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+      ],
     },
     paid: { models: [PAID_MODEL] },
   },

@@ -264,6 +264,11 @@ export interface OrchestratorInfo {
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.
    * Written by the orchestrator whenever the demotion changes; absent otherwise. */
   fallbackDemoted?: FallbackDemotion;
+  /** Every fallback pair's standing demotion, keyed by pair name (part 5c/8): a per-tier
+   * fallback can demote a pair the legacy single `fallback` never engages, and the dashboards
+   * must show the tier's roles held exactly while the scheduler holds them. Written whenever
+   * any breaker's demotion changes; absent when none stands. */
+  fallbackDemotions?: Record<string, FallbackDemotion>;
   /** The daily cost budget gate's own figures from the most recent poll (src/gates/budget-gates.ts):
    * today's spend summed over the runners' LIVE in-memory states — charged run-by-run as each
    * pi run folds, not only at the tick-end save — against the cap it was evaluated under.

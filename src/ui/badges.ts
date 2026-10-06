@@ -85,14 +85,12 @@ export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
   return ` · main ${sha}${verdict}${counts}`;
 }
 
-/** The fleet's current budget-gate state, derived from a snapshot's budget block — the one
- * home for the budgetReached + fallback-readiness wiring both observer surfaces share: the
- * TUI/status table needs the `paused` verdict for loopPhase, the JSON/GUI payload ships the
- * same one, and budgetBadge needs `fallback` — so the three-valued display rule cannot
- * drift between the surfaces. loopPhase (via loopRowCells, in status-model.ts) and budgetBadge
- * are the only readers. */
-export function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
-  return budgetGate(budgetReached(budget), budget.fallback !== null);
+/** The fleet's current budget-gate state, derived from a snapshot's budget block — the header
+ * badge's default-tier story (part 5c/8): the badge names the fleet's bulk fallback, so it
+ * reads the `default` tier's verdict alone (the per-tier pause lives on the loop rows, via
+ * status-data.ts's budgetPausedRoles). */
+function fleetBudgetGate(budget: StatusSnapshot["budget"]): BudgetGate {
+  return budgetGate(budgetReached(budget), { default: budget.fallback !== null, strong: budget.fallback !== null }, false);
 }
 
 /** The header's daily-cost-budget fragment, standing in every cap state (the badge is also

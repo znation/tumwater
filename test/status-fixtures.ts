@@ -53,6 +53,9 @@ export function snapshotWith(
   // The per-role cap's held roles default to none — existing tables stay byte-identical; a
   // test passes roles to exercise the `cap paused` cell (status-model/render tests).
   capPaused: string[] = [],
+  // The per-tier budget pause's held roles default to none — existing tables stay
+  // unchanged; a test passes roles to exercise the `budget paused` cell (part 5c/8).
+  budgetPausedRoles: string[] = [],
   // The per-role quiet windows' held roles default to none — existing tables stay
   // unchanged; a test passes role → window pairs to exercise the `quiet until` cell.
   roleQuietPaused: Record<string, string> = {},
@@ -77,6 +80,7 @@ export function snapshotWith(
     paused,
     pausedRoles,
     capPaused,
+    budgetPausedRoles,
     roleQuietPaused,
     // Quiet hours default to off — no window, not inside one — so existing header
     // assertions stay byte-identical; a test sets quietHours/inQuietHours to exercise the

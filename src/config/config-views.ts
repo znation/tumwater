@@ -77,7 +77,12 @@ function withModelOverrides(
 /** The effective tier of one role's pi runs: a tier name in `roles.<id>.model` names it
  * explicitly, else the role's catalog tier (user-defined loops and the director, which is
  * not in ROLES, run `default`). */
-function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
+/** The tier a role's model resolves at: a tier-name `roles.<id>.model` names it directly, and
+ * every other role rides the model catalog's assignment. Exported for the per-tier budget gate's
+ * pause set (src/gates/gate-polls.ts, part 5c/8) and the dashboards' per-role budget pause
+ * (src/status/status-data.ts), which must resolve the SAME tier the seams resolve — the hold an
+ * operator sees is the hold the scheduler enforces. */
+export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
   const m = config.roles[role]?.model;
   if (isTierName(m)) return m;
   return roleById(role)?.tier ?? "default";

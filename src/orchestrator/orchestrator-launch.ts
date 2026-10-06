@@ -20,6 +20,8 @@ import type { FleetGateStates } from "../gates/gate-polls.js";
 import { logEvent } from "../events/events.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
+import { modelPairName } from "../budget/budget.js";
+import { configForRole } from "../config/config-views.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleTick } from "../tick/tick-timing.js";
@@ -49,6 +51,16 @@ interface LaunchContext {
   /** The pair whose demoted fallback this poll admits a probe tick for, or null when none
    * (the decision pass computed it from the breaker map). */
   probePair: string | null;
+  /** The roles whose model tier resolves to the probed pair (part 5c/8): the ONLY runners
+   * this pass may admit as the probe, one per poll. Continuing only these runners — never
+   * the rest of the fleet — when none of them can carry the claim is what keeps a probe
+   * whose tier has no due runner from deadlocking the pass (an objection to an earlier
+   * draft, which continued every non-director runner). */
+  probeRoles: ReadonlySet<string>;
+  /** Whether the cap is reached this poll (gate-polls.ts's budgetActive): only a budget
+   * hold puts role ticks on fallback pairs, so only then does a tick's outcome fold as
+   * evidence into the breakers. */
+  budgetActive: boolean;
   /** The fleet's tick semaphore; the director never queues behind it. */
   semaphore: Semaphore;
   /** Role ticks actually holding a permit — the redeployer's in-flight count and the
@@ -76,6 +88,8 @@ export function launchDueTicks(ctx: LaunchContext): void {
     gateStates,
     breakerPolicy,
     probePair,
+    probeRoles,
+    budgetActive,
     semaphore,
     rolePermitHolders,
     roleInFlight,
@@ -83,17 +97,19 @@ export function launchDueTicks(ctx: LaunchContext): void {
     roleTickDurationsMs,
     startHeld,
   } = ctx;
+  let admittedProbe = false;
   for (const runner of fairOrder([...reasons.keys()])) {
-    if (signal.aborted) continue;
-    // The probe goes to the first role fairOrder admits; every other due role waits for its
-    // verdict (startFallbackProbeAt marks the pair's entry in flight, so the rest of this pass
-    // skips).
+    if (signal.aborted) continue;    // The probe goes to the first runner whose tier resolves to the probed pair (part 5c/8);
+    // every other runner launches normally, and only a further eligible runner waits — the
+    // probe claim is one per poll, so the rest of this pass skips just them.
     let probe = false;
-    if (probePair !== null && runner.role !== DIRECTOR_ROLE) {
+    if (probePair !== null && probeRoles.has(runner.role)) {
+      if (admittedProbe) continue; // this poll's claim is taken: the next eligible runner waits
       const b = gateStates.budget.breakers[probePair];
-      if (b === undefined || b.probing) continue;
+      if (b === undefined || b.probing) continue; // no entry, or a claim already in flight: waits
       gateStates.budget.breakers = startFallbackProbeAt(gateStates.budget.breakers, probePair);
       probe = true;
+      admittedProbe = true;
     }
     const reason = reasons.get(runner);
     if (reason && reason !== "scheduled" && reason !== "startup") {
@@ -138,13 +154,17 @@ export function launchDueTicks(ctx: LaunchContext): void {
           : () => {},
         async () => {
           started = true;
-          // A role tick that starts while a fallback is engaged runs on it (the config and
-          // the breakers are updated in the same synchronous poll step), so its outcome is
-          // the breaker's evidence for the engaged pair. Read at tick start, not at admission:
-          // a tick parked in the semaphore starts on whatever the gate says by then. A tick
-          // that ended on leftover recovery ran no model, so it folds as `skipped` — no
-          // evidence either way.
-          const ranPair = runner.role === DIRECTOR_ROLE ? null : gateStates.budget.engaged;
+          // A role tick that starts while the budget holds runs on the fallback pair its tier
+          // resolved to (the gate's per-tier view was installed in its config), so its outcome
+          // is the evidence for THAT pair's breaker (part 5c/8: per-pair evidence, not the
+          // engaged pair's — a per-tier fallback puts different roles on different pairs). The
+          // pair is read from the config the tick will resolve (configForRole, exactly what
+          // loop.ts's tick() captures as tickPair), not from a fleet-wide engaged pair.
+          const cfg = runner.role === DIRECTOR_ROLE ? null : configForRole(runner.config, runner.role);
+          const ranPair =
+            budgetActive && cfg !== null && cfg.model !== undefined
+              ? modelPairName({ provider: cfg.provider, model: cfg.model })
+              : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
           const outcome = await runner.tick();
           if (ranPair !== null && ranOn !== undefined) {

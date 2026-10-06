@@ -111,21 +111,20 @@ test("budgetGate: reached with a free, serving fallback keeps loops running; oth
   // The three facts the gate is made of (plans/fallback-model.md, BUGS.md 2026-09-20). Under
   // the cap nothing else matters — a configured fallback does not take over while there is
   // budget left, serving or not.
-  assert.equal(budgetGate(false, false), "open");
-  assert.equal(budgetGate(false, true), "open");
-  assert.equal(budgetGate(false, true, false), "open");
-  // At the cap the fallback decides whether the fleet degrades or stops. Only "paused" blocks
-  // a tick, which is why this had to stop being a boolean.
-  assert.equal(budgetGate(true, true, true), "fallback");
-  assert.equal(budgetGate(true, false), "paused");
-  // Free is not usable on its own: this pin used to read budgetGate(true, true) === "fallback"
-  // with no way to say "free, but its backend cannot serve" — the 2026-09-19 hour of 33/33
-  // failed ticks. A free fallback the breaker demoted pauses the fleet like no fallback at all.
-  assert.equal(budgetGate(true, true, false), "paused");
-  assert.equal(budgetGate(true, false, false), "paused");
-  // Observers (status/status-data.ts) fold the demotion into their fallbackReady input and pass no third
-  // argument; it defaults to serving so their two-input reading is unchanged.
-  assert.equal(budgetGate(true, true), "fallback");
+  assert.equal(budgetGate(false, { default: false, strong: false }, true), "open");
+  assert.equal(budgetGate(false, { default: true, strong: true }, true), "open");
+  assert.equal(budgetGate(false, { default: true, strong: false }, true), "open");
+  // At the cap the tiers' resolutions decide whether the fleet degrades or stops. Only
+  // "paused" blocks a tick, which is why this had to stop being a boolean.
+  assert.equal(budgetGate(true, { default: true, strong: true }, true), "fallback");
+  assert.equal(budgetGate(true, { default: false, strong: false }, true), "paused");
+  // Free is not usable on its own: this pin used to read a demoted default tier as
+  // "fallback" with no way to say "free, but its backend cannot serve" — the 2026-09-19
+  // hour of 33/33 failed ticks. A tier whose resolution pauses holds its own roles; with
+  // review on, an unresolvable strong tier pauses the whole fleet (nothing could land).
+  assert.equal(budgetGate(true, { default: true, strong: false }, true), "paused");
+  assert.equal(budgetGate(true, { default: true, strong: false }, false), "fallback");
+  assert.equal(budgetGate(true, { default: false, strong: true }, true), "paused");
 });
 
 const T0 = 1_000_000;
@@ -168,7 +167,8 @@ test("the fallback breaker replays the 2026-09-19 hour: three failures demote th
   // The incident: the cap reached, oMLX priced at zero, and every fallback tick an HTTP 400.
   // Before the breaker the gate read `fallback` for all 33 of them.
   let b = engaged();
-  const gate = (x: FallbackBreaker) => budgetGate(true, true, fallbackServing(x));
+  const gate = (x: FallbackBreaker) =>
+    budgetGate(true, { default: fallbackServing(x), strong: fallbackServing(x) }, false);
   assert.equal(gate(b), "fallback", "a freshly engaged fallback is trusted");
   b = fold(b, ["error", "error"]);
   assert.equal(gate(b), "fallback", "two failures are not yet a dead backend");
@@ -230,7 +230,7 @@ test("the demoted fallback lets exactly one probe tick through after its cool-do
   assert.equal(healed.failures, 0);
   assert.equal(healed.probing, false);
   assert.equal(fallbackDemotion(healed), undefined);
-  assert.equal(budgetGate(true, true, fallbackServing(healed)), "fallback");
+  assert.equal(budgetGate(true, { default: fallbackServing(healed), strong: fallbackServing(healed) }, false), "fallback");
 });
 
 test("each failed probe doubles the cool-down up to its cap; a probe with no evidence frees the slot", () => {

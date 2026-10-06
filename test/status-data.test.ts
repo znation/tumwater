@@ -20,6 +20,7 @@ import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
+import { MODELS_JSON } from "./models-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { withCountedReads } from "./fs-faults.js";
@@ -306,6 +307,54 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   saveConfig(repo, cfg);
   snap = snapshot(repo);
   assert.deepEqual(snap.capPaused, []);
+});
+
+// The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free
+// pair while the cap is reached reads `budget paused`, per role — computed over the same
+// resolution the scheduler's gate folds, demotions published by the running orchestrator
+// included.
+test("snapshot lists the roles whose budget tier resolved to pause in budgetPausedRoles", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "budget paused snapshot test");
+  const cfg = loadConfig(repo);
+  cfg.maxDailyCostUsd = 1;
+  cfg.provider = "paid";
+  cfg.model = "gpt-x";
+  // Only the small tier declares a fallback: default borrows it, strong (never borrows
+  // small) pauses — with review off only the strong-tier plan role is held.
+  cfg.fallback = { small: "free/qwen-free" };
+  delete (cfg as { fallbackModel?: unknown }).fallbackModel;
+  cfg.review = { ...cfg.review, enabled: false };
+  saveConfig(repo, cfg);
+
+  const clean = freshLoopState("clean");
+  recordDailyCost(clean, 1);
+  saveLoopState(repo, clean);
+  const plan = freshLoopState("plan");
+  recordDailyCost(plan, 0.2);
+  saveLoopState(repo, plan);
+
+  const models = path.join(tmpdir("budget-paused-models-"), "models.json");
+  fs.mkdirSync(path.dirname(models), { recursive: true });
+  fs.writeFileSync(models, MODELS_JSON);
+
+  const snap = snapshot(repo, models);
+  assert.ok(snap.budgetPausedRoles.includes("plan"), "the strong-tier role is held");
+  assert.ok(!snap.budgetPausedRoles.includes("clean"), "the default-tier role borrows small's pair");
+  assert.ok(!snap.budgetPausedRoles.includes("director"), "the director is exempt");
+
+  // Under the cap nobody is held: the hold never stands under an open gate.
+  cfg.maxDailyCostUsd = 100;
+  saveConfig(repo, cfg);
+  assert.deepEqual(snapshot(repo, models).budgetPausedRoles, []);
+
+  // No fallback configured at all with the cap reached: every role's tier resolves to pause.
+  cfg.maxDailyCostUsd = 1;
+  delete (cfg as { fallback?: unknown }).fallback;
+  saveConfig(repo, cfg);
+  const snap2 = snapshot(repo, models);
+  assert.ok(snap2.budgetPausedRoles.includes("plan"));
+  assert.ok(snap2.budgetPausedRoles.includes("clean"));
 });
 
 test("snapshot marks the budget free when every fleet model is unpriced", async () => {

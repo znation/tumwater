@@ -76,7 +76,9 @@ export class LoopRunner {
   private handedBack = false;
   /** The provider/model pair this tick's config resolved to at tick start (configForRole):
    * what the in-flight tick is running on. The orchestrator's budget-gate poll reads it via
-   * tickModel() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30).
+   * tickModel() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30); with
+   * per-tier fallbacks (part 5c/8) the handback matches this pair against EVERY pair the tiers
+   * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every tick start. */
   private tickPair?: { provider?: string; model?: string };
   /** The loop-identity triple every tick-pipeline helper takes (root/role/mainBranch): the

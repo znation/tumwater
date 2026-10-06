@@ -2,8 +2,8 @@ import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
-import { fallbackPair } from "../config/config-views.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi/pi-models.js";
+import { fallbackPair, resolveTierFallbacks, roleSeamTier } from "../config/config-views.js";
+import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
@@ -15,7 +15,7 @@ import {
   standingFleetPause,
 } from "../fleet/fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
-import { fleetDailyCost, projectCapHit } from "../budget/budget.js";
+import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapPaused } from "../gates/role-cap-gates.js";
 import { queuedLandings } from "../landing/landing-queue.js";
 
@@ -105,6 +105,17 @@ export interface StatusSnapshot {
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
+  /** The roles whose budget tier resolved to pause while the cap is reached (part 5c/8): a
+   * loop whose `model` tier (roleSeamTier) has no usable free pair — none configured, one
+   * priced above zero, or its fallback breaker demoted — reads `budget paused`, the same cell
+   * the fleet gate's old fleet-wide verdict filled. Computed with resolveTierFallbacks over
+   * the SAME usable predicate the scheduler's gate folds (price at zero, and not among the
+   * running orchestrator's published demotions), against the same last-known-good config as
+   * `capPaused`, so the verdict an operator sees is the scheduler's — the per-tier pause set
+   * (gate-polls.ts's budgetPausedRoles). The director is exempt, exactly as the gate exempts
+   * it. Always present, empty when none — the `capPaused` shape. Fresh per poll, like
+   * `capPaused`. */
+  budgetPausedRoles: string[];
   /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by role
    * id to that role's window string as written (trimmed by quietHoursStatus's parser rule —
    * the schedule as written, not a reformat). An idle loop in this map reads the fleet
@@ -280,6 +291,23 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // read fresh from the same cached config load the budget block uses, so a live edit shows
   // on the next poll exactly when the gate applies it.
   const quiet = quietHoursStatus(cfg.quietHours, new Date());
+  // The per-tier budget pause set (part 5c/8): the same resolution the scheduler's gate folds,
+  // over the SAME usable predicate an observer can re-derive — the price check, and the pair
+  // not among the running orchestrator's published per-pair demotions (a demotion lives in
+  // the orchestrator's memory, so it publishes them; the legacy single-pair field
+  // `fallbackDemoted` is the engaged pair's entry of the same map). Computed only while the
+  // cap is reached — the hold never stands under an open gate — and the director exempt.
+  const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
+  const providers = readPiProviders(modelsPath);
+  const publishedDemotions = info?.fallbackDemotions ?? {};
+  const usable = (p: { provider?: string; model?: string }) =>
+    pairFree(providers, p.provider, p.model) && !(modelPairName(p) in publishedDemotions);
+  const servingResolved = resolveTierFallbacks(cfg, usable);
+  const budgetPausedRoles = budgetReachedNow
+    ? roles.filter(
+        (r) => r !== DIRECTOR_ROLE && servingResolved[roleSeamTier(cfg, r)].pair === null,
+      )
+    : [];
   return {
     running,
     pid: info?.pid,
@@ -318,6 +346,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     capPaused: loops
       .filter((l) => l.role !== DIRECTOR_ROLE && roleCapPaused(l, cfg.maxDailyCostUsdPerRole?.[l.role]))
       .map((l) => l.role),
+    budgetPausedRoles,
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
     // window, so the dashboards can render the same `quiet until <end>` wording the fleet
     // badge uses, scoped to the loop's own schedule. The window string comes back out of

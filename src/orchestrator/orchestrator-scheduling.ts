@@ -8,7 +8,6 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../work-landed-cache.js";
-import type { BudgetGate } from "../budget/budget.js";
 import { deferTick, isEligible } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { inboxSize } from "../inbox/inbox.js";
@@ -29,10 +28,21 @@ interface SchedulingPassCtx {
   capPaused: ReadonlySet<string>;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now. */
   roleQuietHeld: ReadonlySet<string>;
-  gate: BudgetGate;
-  /** A demoted fallback's half-open window: the pass may admit one role tick past the
-   * `paused` budget gate as the breaker's probe. */
-  probeDue: boolean;
+  /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
+   * reached (part 5c/8, gate-polls.ts's budgetPausedRoles): a role in this set starts no new
+   * tick beside the per-role cap set — unless its tier is the one a due probe tests
+   * (probeRoles), which pierces the hold for exactly the probed pair's own tier. */
+  budgetPausedRoles: ReadonlySet<string>;
+  /** The roles whose model tier resolves to the probed pair (part 5c/8): the ONLY roles the
+   * budget hold exempts this poll, and the only runners the launch pass may admit as the
+   * probe. A probe blind to the pair's tier lifted the pause for every role (an objection to
+   * an earlier draft of this pass). */
+  probeRoles: ReadonlySet<string>;
+  /** With the review gate on, an unresolvable strong tier means nothing could land, so every
+   * role is held (the director exempt) — not only the strong ones. budgetGate's second pause
+   * cause, split from the per-tier set so the dashboards can name the tiers' own holds
+   * separately from this fleet-wide one. */
+  reviewStrongPaused: boolean;
   /** The providers whose fleet-wide failure hold stands (fleet/fleet-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * tick while ITS provider is held (the director exempt). */
@@ -69,9 +79,10 @@ export async function pollRunnerReasons(
     quietNow,
     pausedRoles: pausedRolesSet,
     capPaused,
+    budgetPausedRoles,
+    probeRoles,
+    reviewStrongPaused,
     roleQuietHeld,
-    gate,
-    probeDue,
     heldProviders,
     reviewHeld,
     roleProviders,
@@ -97,8 +108,16 @@ export async function pollRunnerReasons(
   // The per-role windows (quietHoursPerRole) fold in beside the fleet one as a fourth
   // disjunct — a role held by either window (or both, held once) starts no new ticks;
   // the director stays exempt by the same role check that covers the other disjuncts.
+  // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own roles,
+  // and — with review on — an unresolvable strong tier holds every role (nothing could land).
+  // The probe of a demoted pair pierces the hold for EXACTLY the probed pair's tier's roles:
+  // the earlier draft's pair-blind pierce lifted the pause fleet-wide on any due probe.
+  // Quiet hours fold in beside the operator pause — the schedule is not probe-worthy the way a
+  // paused budget is.
+  const budgetHolds = (role: string): boolean =>
+    (reviewStrongPaused || budgetPausedRoles.has(role)) && !probeRoles.has(role);
   const operatorPauseBlocks = (role: string): boolean =>
-    (userPaused || quietNow || roleQuietHeld.has(role) || (gate === "paused" && !probeDue)) &&
+    (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
   for (const runner of runners) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,

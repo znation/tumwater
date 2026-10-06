@@ -3,7 +3,6 @@ import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
-import { fleetBudgetGate } from "./badges.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import {
@@ -228,7 +227,11 @@ export function loopRowCells(
     s,
     snap.running,
     root,
-    fleetBudgetGate(snap.budget) === "paused",
+    // The per-tier budget pause (part 5c/8): a loop whose model tier resolved to no usable
+    // free pair reads `budget paused` — per role, not the fleet-wide verdict, so a demoted
+    // strong pair no longer paints the whole fleet paused while small and default keep
+    // ticking on their own pairs.
+    snap.budgetPausedRoles.includes(s.role),
     live,
     // The per-role pause reads the same `paused` cell as the fleet pause: one flag to
     // loopPhase covers both gates (status-model has no per-role branch of its own).

@@ -8,6 +8,8 @@ import {
   fallbackProbeDuePair,
 } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { modelPairName } from "../budget/budget.js";
+import { roleSeamTier } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "../backlog/backlog.js";
@@ -299,8 +301,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // start gate and the landings' startHeld read the LATEST poll's verdict at permit
       // time from gateStates.fleetHold, so a waiter granted its permit after later polls
       // ran meets the hold as it stands then, not as this poll left it.
-      const { gate, roleConfig, userPaused, pausedRoles: pausedRolesSet, capPaused, roleQuietHeld, quietNow } =
-        pollFleetGates(gateStates, {
+      const {
+        roleConfig,
+        userPaused,
+        pausedRoles: pausedRolesSet,
+        capPaused,
+        budgetPausedRoles,
+        servingResolved,
+        priceResolved,
+        budgetActive,
+        roleQuietHeld,
+        quietNow,
+      } = pollFleetGates(gateStates, {
         root,
         runners,
         liveConfig,
@@ -401,11 +413,29 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const openBugsNow = openBugs(root).length > 0;
       const workBacklogOpen = plannedPlans(root).length > 0 || openBugsNow;
 
-      // A demoted fallback's half-open window: its role ticks may pass the `paused` budget gate
-      // here, and the start pass below admits exactly one of them as the probe. Never past an
-      // operator pause — human intent outranks the breaker's curiosity.
+      // A demoted fallback's half-open window (part 5c/8): the pair whose probe is due, and
+      // the roles whose model tier WOULD run on that pair absent the demotion (the price-based
+      // resolution — the serving resolution has already dropped the pair, which is exactly
+      // why it is being probed). Only those roles pierce the budget hold, and the launch pass
+      // admits exactly one of them as the probe — a probe blind to the pair's tier would lift
+      // the pause for every role (objection to an earlier draft), and a probe with no
+      // eligible runner must not hijack the poll's other launches (the launch pass continues
+      // only the eligible runners it cannot admit, never the rest of the fleet).
       const probePair = fallbackProbeDuePair(gateStates.budget.breakers, now);
-      const probeDue = probePair !== null;
+      const probeRoles = new Set<string>();
+      if (probePair !== null) {
+        for (const r of runners) {
+          if (r.role === DIRECTOR_ROLE) continue;
+          const p = priceResolved[roleSeamTier(liveConfig, r.role)].pair;
+          if (p !== null && modelPairName(p) === probePair) probeRoles.add(r.role);
+        }
+      }
+      // The review-on strong pause (budgetGate): with the review gate on, an unresolvable
+      // strong tier means nothing could land, so EVERY role is held — the per-tier pause set
+      // alone would let small/default roles author changes no reviewer could judge. The probe
+      // of the strong pair pierces this hold for exactly the probed tier's roles too.
+      const reviewStrongPaused =
+        budgetActive && liveConfig.review.enabled && servingResolved.strong.pair === null;
       const reasons = await pollRunnerReasons({
         root,
         runners,
@@ -416,9 +446,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         quietNow,
         pausedRoles: pausedRolesSet,
         capPaused,
+        budgetPausedRoles,
+        probeRoles,
+        reviewStrongPaused,
         roleQuietHeld,
-        gate,
-        probeDue,
         holdForRestart,
         heldProviders: fleetHeldProviders,
         reviewHeld,
@@ -438,6 +469,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         gateStates,
         breakerPolicy,
         probePair,
+        probeRoles,
+        budgetActive,
         semaphore,
         rolePermitHolders,
         roleInFlight,

@@ -6,27 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed)
-
-**Approach.**
-1. **src/budget/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
-   on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
-   resolved to pause (strong-tier roles with review off) is blocked beside the poll's
-   per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
-   reads `budget paused`.
-2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop/loop.ts) is
-   matched against every resolved fallback pair, not only one.
-
-**Files touched.** src/budget/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop/loop.ts,
-and their tests.
-
-**Acceptance criteria.**
-- With review on and strong unresolvable, the gate is `budget_paused`; with review off, only
-  the plan role is held.
-- A breaker-demoted pair re-resolves only the tiers using it.
-- The director still keeps its paid model.
-
-
 ### Model tiers, part 7/8: operator visibility — role rows, the fallback badge, and doctor checks (planned 2026-10-05 by operator; requires parts 3/8 and 5/8 landed)
 
 Design: plans/model-tiers.md ("Observability", "Doctor").
@@ -89,6 +68,49 @@ files above, and the config-write tests.
 ---
 
 ## Done
+### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed, done 2026-10-06 by feature; an earlier draft was rejected in review — pair-blind probe piercing, a probe that deadlocked the launch pass, and an observer pause set fed by one pair's breaker only — all three reworked in this landing)
+
+**Approach.**
+1. **src/budget/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
+   on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
+   resolved to pause (strong-tier roles with review off) is blocked beside the poll's
+   per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
+   reads `budget paused`.
+2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop/loop.ts) is
+   matched against every resolved fallback pair, not only one.
+
+**What changed.** `budgetGate` (budget.ts) now takes the tiers' resolutions and the review flag; a new
+`modelPairName` helper single-homes the pair-name keying. `pollBudgetGate` (budget-gates.ts) resolves
+twice: price-based (`priceResolved` — the breaker map's keys, the per-tier fallback view via
+`applyFallbackModel(liveConfig, priceResolved)`, the handback pair list) and demotion-aware
+(`servingResolved` — the gate's value and the per-role pause set), so a demoted pair re-resolves only
+the tiers using it. `gate-polls.ts` computes `budgetPausedRoles` (roles whose `roleSeamTier` tier
+resolved to pause while the cap is reached), publishes every pair's demotion
+(`info.fallbackDemotions`, with the engaged pair's entry also in the legacy `fallbackDemoted` field),
+and runs the handback over every resolved pair. The orchestrator computes `probeRoles` from the
+PRICE-based resolution (the probed pair is by definition absent from the serving one) and passes the
+per-tier pause set, the probe roles, and the review-on strong pause to `pollRunnerReasons`
+(orchestrator-scheduling.ts), which pierces the budget hold only for the probed pair's own tier;
+`launchDueTicks` (orchestrator-launch.ts) admits the probe only among `probeRoles`, one per poll, and
+continues only further eligible runners — never the rest of the fleet — while tick evidence folds
+into the breaker of the pair the runner's own config view names. Observers: status-data.ts computes
+`budgetPausedRoles` from the same resolution over the published demotions, status-model.ts reads the
+per-role set for the `budget paused` cell, and badges.ts's header badge keeps the default-tier story.
+`roleSeamTier` is exported from config-views.ts for both readers. Files touched beyond the entry's
+original list, which its anchors no longer named: src/gates/budget-gates.ts, src/config/config-views.ts,
+src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-scheduling.ts,
+src/orchestrator/orchestrator-launch.ts, src/status/status-data.ts, src/ui/status-model.ts,
+src/ui/badges.ts, src/fleet/fleet-state.ts.
+
+**Files touched.** src/budget/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop/loop.ts,
+and their tests.
+
+**Acceptance criteria.**
+- With review on and strong unresolvable, the gate is `budget_paused`; with review off, only
+  the plan role is held.
+- A breaker-demoted pair re-resolves only the tiers using it.
+- The director still keeps its paid model.
+
 ### Model tiers, part 5b/8: the fallback breaker becomes a map keyed by pair (planned 2026-10-06 by feature, split from part 5/8; requires part 5a/8 landed, done 2026-10-06 by feature)
 
 **Approach.** **src/budget/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`

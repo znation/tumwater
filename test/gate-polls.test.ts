@@ -18,6 +18,8 @@ import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { MODELS_JSON } from "./models-fixtures.js";
+import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
+import type { OrchestratorInfo } from "../src/fleet/fleet-state.js";
 
 test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplicate role_paused on the next poll", () => {
   const root = tmpdir("gate-polls-");
@@ -129,9 +131,10 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   // disturbed while the gate holds.
   const engaged = pollFleetGates(states, ctx);
   assert.equal(engaged.gate, "fallback");
-  const modelOf = (i: number) => (runners[i] as unknown as { config: { model?: string } }).config.model;
-  assert.equal(modelOf(0), "qwen-free", "role loops run the fallback view");
-  assert.equal(modelOf(1), "qwen-free");
+  const modelOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config.model;
+  const tierView = { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" };
+  assert.deepEqual(modelOf(0), tierView, "role loops run the per-tier fallback view (part 5c/8)");
+  assert.deepEqual(modelOf(1), tierView);
   assert.equal(modelOf(2), "gpt-x", "the director keeps its budgeted model");
   assert.deepEqual(handbacks, []);
 
@@ -196,6 +199,75 @@ test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key y
   assert.equal(bare.capPaused.size, 0);
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_paused").length, 1);
   assert.equal(readEvents(root, 100).filter((e) => e.type === "role_cap_resumed").length, 1);
+});
+
+// The per-tier budget pause (part 5c/8): the gate returns the roles whose tier resolved to
+// pause while the cap is reached, and publishes every demoted pair for the dashboards — not
+// only the engaged pair's, so a per-tier demotion cannot hide from the operator.
+test("pollFleetGates: budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published", () => {
+  const root = tmpdir("gate-polls-tier-budget-");
+  fs.mkdirSync(root, { recursive: true });
+  const modelsPath = path.join(root, "models.json");
+  fs.writeFileSync(modelsPath, MODELS_JSON);
+
+  const config = defaultConfig();
+  config.provider = "paid";
+  config.model = "gpt-x";
+  config.maxDailyCostUsd = 10;
+  config.fallback = { small: "free/qwen-free" }; // strong never borrows small: it pauses
+  config.fallbackModel = undefined;
+  config.review = { ...config.review, enabled: false }; // isolate the per-tier set
+  const atCap = freshLoopState("docs");
+  recordDailyCost(atCap, 10);
+  const planState = freshLoopState("plan");
+  recordDailyCost(planState, 1);
+  const runners = [
+    fakeRunner("docs", atCap, null, []), // small tier: borrows small's pair
+    fakeRunner("plan", planState, null, []), // strong tier: resolves to pause
+    fakeRunner(DIRECTOR_ROLE, freshLoopState(DIRECTOR_ROLE), null, []),
+  ];
+
+  const states = newFleetGateStates(config);
+  const info: OrchestratorInfo = { pid: process.pid, startedAt: 0, roles: ["docs", "plan", DIRECTOR_ROLE] };
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now: Date.now(),
+    info,
+    infoFile: path.join(root, "orchestrator.json"),
+  };
+
+  const first = pollFleetGates(states, ctx);
+  assert.equal(first.gate, "fallback", "review off: the strong pause holds only its own roles");
+  assert.ok(first.budgetPausedRoles.has("plan"), "the strong-tier role is held");
+  assert.ok(!first.budgetPausedRoles.has("docs"), "the small-tier role borrows and keeps ticking");
+  assert.ok(!first.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
+
+  // Under the cap: nobody is held.
+  const under = freshLoopState("docs");
+  recordDailyCost(under, 1);
+  const underCtx = { ...ctx, runners: [fakeRunner("docs", under, null, []), runners[1]!, runners[2]!] };
+  const second = pollFleetGates(newFleetGateStates(config), underCtx);
+  assert.equal(second.budgetPausedRoles.size, 0);
+
+  // A demotion is published per pair, and the engaged pair's entry also fills the legacy
+  // single-pair field the doctor and the failure digest read (the engaged pair is the legacy
+  // fallbackModel story, so the publish phase polls a legacy config).
+  states.budget.breakers = {
+    "free/qwen-free": {
+      ...IDLE_FALLBACK_BREAKER,
+      pair: "free/qwen-free",
+      capUsd: 10,
+      failures: 3,
+      probeAt: 0,
+    },
+  };
+  const legacy = { ...config, fallback: undefined, fallbackModel: { provider: "free", model: "qwen-free" } };
+  pollFleetGates(states, { ...ctx, liveConfig: legacy });
+  assert.ok(info.fallbackDemotions?.["free/qwen-free"], "the pair's demotion is published");
+  assert.equal(info.fallbackDemoted?.pair, "free/qwen-free", "the engaged pair's entry fills the legacy field");
 });
 
 // Per-role quiet hours (PLANS.md quietHoursPerRole): pollFleetGates folds the per-role

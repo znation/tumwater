@@ -7,7 +7,7 @@ import {
   tickOnPair,
   type BudgetGateState,
 } from "./budget-gates.js";
-import { fallbackDemotion } from "../budget/fallback-breaker.js";
+import { fallbackDemotion, type FallbackDemotion } from "../budget/fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
@@ -30,7 +30,8 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../files/json-files.js";
 import type { OrchestratorInfo } from "../fleet/fleet-state.js";
-import { configForRole } from "../config/config-views.js";
+import { configForRole, roleSeamTier } from "../config/config-views.js";
+import type { TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
@@ -92,6 +93,24 @@ interface FleetGatePoll {
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
+  /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
+   * reached (part 5c/8): a role whose own `model` tier (roleSeamTier) has no usable free pair
+   * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
+   * beside `capPaused` (the scheduling pass folds the sets the same way). Roles on tiers that
+   * DID resolve keep ticking under the same poll, so a demoted strong pair no longer pauses
+   * the whole fleet. The probe of a demoted pair pierces this set for exactly the pair's own
+   * tier's roles (orchestrator-scheduling.ts's probeRoles). */
+  budgetPausedRoles: ReadonlySet<string>;
+  /** The demotion-aware per-tier resolution behind `budgetPausedRoles`, handed to the poll
+   * loop so the probe's eligible roles (the tiers that resolve to the probed pair) are
+   * computed from the SAME resolution the pause set came from. */
+  servingResolved: TierFallbackMap;
+  /** The price-based resolution (budget-gates.ts's priceResolved): the pairs the tiers would
+   * run absent a demotion — the probe's eligibility reads THIS, since the probed pair is by
+   * definition not usable in the serving resolution. */
+  priceResolved: TierFallbackMap;
+  /** Whether the cap is reached this poll: the budget hold only holds while it is. */
+  budgetActive: boolean;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
    * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
    * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
@@ -123,26 +142,45 @@ export function pollFleetGates(
   // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
   // owns only the wiring — the demotion publish below and the per-runner assignment at
   // the bottom of this block.
-  const { gate, roleConfig, spentUsd, capUsd, resumed: gateResumed, fallbackPair: leftPair } =
-    pollBudgetGate(states.budget, {
-      root,
-      states: runners.map((r) => r.state),
-      liveConfig,
-      modelsPath,
-    });
-  // Publish what observers cannot derive themselves: the demotion (the dashboards' gate
-  // and `tumwater doctor` would otherwise read the price alone and advertise a dead
-  // fallback) and the gate's own spend/cap pair — summed over the runners' live states,
-  // which every persisted-file reader lags by the in-flight runs' charges. Both rewritten
-  // only when they change, like the build status; the exit removes the whole file, so no
-  // stale pair survives a stop.
-  const engagedBreaker = states.budget.engaged !== null ? states.budget.breakers[states.budget.engaged] : undefined;
-  const demotion = engagedBreaker ? fallbackDemotion(engagedBreaker) : undefined;
+  const {
+    gate,
+    roleConfig,
+    spentUsd,
+    capUsd,
+    resumed: gateResumed,
+    pairs: fallbackPairs,
+    priceResolved,
+    servingResolved,
+    budgetActive,
+  } = pollBudgetGate(states.budget, {
+    root,
+    states: runners.map((r) => r.state),
+    liveConfig,
+    modelsPath,
+  });
+  // Publish what observers cannot derive themselves: every pair's demotion — a per-tier
+  // fallback can demote a pair the legacy single `fallback` never names, and a dashboard that
+  // only sees the engaged pair's verdict would show a tier's roles ticking while the
+  // scheduler holds them (part 5c/8) — plus the engaged pair's own (the legacy
+  // `fallbackDemoted` field, what `tumwater doctor` and the failure digest read) and the
+  // gate's own spend/cap pair — summed over the runners' live states, which every
+  // persisted-file reader lags by the in-flight runs' charges. Both rewritten only when they
+  // change, like the build status; the exit removes the whole file, so no stale pair survives
+  // a stop.
+  const demotions: Record<string, FallbackDemotion> = {};
+  for (const [name, b] of Object.entries(states.budget.breakers)) {
+    const d = fallbackDemotion(b);
+    if (d) demotions[name] = d;
+  }
+  const engagedDemotion =
+    states.budget.engaged !== null ? demotions[states.budget.engaged] : undefined;
   const budget = { spentUsd, capUsd };
-  const demotionChanged = JSON.stringify(demotion) !== JSON.stringify(info.fallbackDemoted);
+  const demotionsChanged = JSON.stringify(demotions) !== JSON.stringify(info.fallbackDemotions);
+  const engagedChanged = JSON.stringify(engagedDemotion) !== JSON.stringify(info.fallbackDemoted);
   const budgetChanged = JSON.stringify(budget) !== JSON.stringify(info.budget);
-  if (demotionChanged || budgetChanged) {
-    if (demotionChanged) info.fallbackDemoted = demotion;
+  if (demotionsChanged || engagedChanged || budgetChanged) {
+    if (demotionsChanged) info.fallbackDemotions = demotions;
+    if (engagedChanged) info.fallbackDemoted = engagedDemotion;
     if (budgetChanged) info.budget = budget;
     writeJsonFile(infoFile, info);
   }
@@ -152,26 +190,30 @@ export function pollFleetGates(
   // the reload, can never tick on the wrong model.
   for (const r of runners) r.config = gateRoleConfig(r.role, liveConfig, roleConfig);
 
-  // The budget reopened: a tick that started on the fallback keeps it until it ends, so
+  // The budget reopened: a tick that started on a fallback pair keeps it until it ends, so
   // hand those ticks back — abort them resumably (session and worktree edits kept) and
   // let their next tick continue the same session on the primary, whose config the
-  // assignment above already installed (PLANS.md 2026-09-30). A tick started on the
-  // primary keeps running, the director is exempt, and the landings (the slot's own runs)
-  // are untouched. One event names who was handed back, so the resulting aborted ticks
-  // read as the budget reopening, not as unexplained failures.
-  if (gateResumed && leftPair) {
-    const matching = runners.filter(
-      (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
-    );
-    if (matching.length > 0) {
-      logEvent(root, {
-        loop: "harness",
-        type: "budget_handback",
-        roles: matching.map((r) => r.role),
-        provider: leftPair.provider,
-        model: leftPair.model,
-      });
-      for (const r of matching) r.handBackTick();
+  // assignment above already installed (PLANS.md 2026-09-30). Per-tier fallbacks put
+  // different roles on different pairs (part 5c/8), so the match runs over EVERY pair the
+  // price-based resolution hands out, not only one. A tick started on the primary keeps
+  // running, the director is exempt, and the landings (the slot's own runs) are untouched.
+  // One event per pair names who was handed back, so the resulting aborted ticks read as
+  // the budget reopening, not as unexplained failures.
+  if (gateResumed && fallbackPairs.length > 0) {
+    for (const leftPair of fallbackPairs) {
+      const matching = runners.filter(
+        (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
+      );
+      if (matching.length > 0) {
+        logEvent(root, {
+          loop: "harness",
+          type: "budget_handback",
+          roles: matching.map((r) => r.role),
+          provider: leftPair.provider,
+          model: leftPair.model,
+        });
+        for (const r of matching) r.handBackTick();
+      }
     }
   }
 
@@ -195,6 +237,20 @@ export function pollFleetGates(
   for (const role of streakPaused) states.pause.prevPausedRoles.add(role);
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
+
+  // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free
+  // pair while the cap is reached starts no new ticks — the stateless verdict recomputed every
+  // poll from the SAME resolution the gate's value came from, beside `capPaused` (the
+  // scheduling pass folds the sets; the director is exempt, as under every autonomous gate).
+  // The demoted pair's probe pierces the set for its own tier's roles only — probeRoles in the
+  // orchestrator's scheduling pass.
+  const budgetPausedRoles = new Set<string>();
+  if (budgetActive) {
+    for (const r of runners) {
+      if (r.role === DIRECTOR_ROLE) continue;
+      if (servingResolved[roleSeamTier(liveConfig, r.role)].pair === null) budgetPausedRoles.add(r.role);
+    }
+  }
 
   // The per-role daily cost cap (src/gates/role-cap-gates.ts): a loop whose local-day spend has
   // reached its own maxDailyCostUsdPerRole entry starts no new ticks — the stateless verdict
@@ -278,5 +334,17 @@ export function pollFleetGates(
   // Observational only, like the error storm: it gates nothing.
   states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(liveConfig, runners), now);
 
-  return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, capPaused, roleQuietHeld, quietNow };
+  return {
+    gate,
+    roleConfig,
+    userPaused,
+    pausedRoles: pausedRolesNow,
+    capPaused,
+    budgetPausedRoles,
+    servingResolved,
+    priceResolved,
+    budgetActive,
+    roleQuietHeld,
+    quietNow,
+  };
 }

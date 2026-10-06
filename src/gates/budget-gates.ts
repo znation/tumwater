@@ -6,13 +6,25 @@
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "../budget/budget.js";
+import {
+  budgetGate,
+  budgetReached,
+  budgetSpend,
+  budgetWarning,
+  modelPairName,
+  type BudgetGate,
+} from "../budget/budget.js";
 import {
   type FallbackBreakerMap,
   fallbackServingPair,
   rekeyFallbackBreakers,
 } from "../budget/fallback-breaker.js";
-import { applyFallbackModel, fallbackPair, resolveTierFallbacks } from "../config/config-views.js";
+import {
+  applyFallbackModel,
+  fallbackPair,
+  resolveTierFallbacks,
+  type TierFallbackMap,
+} from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
@@ -82,9 +94,23 @@ interface BudgetGatePoll {
    * budget waiting on the slow local model. The fallback pair the gate just left (below)
    * identifies those ticks. */
   resumed: boolean;
-  /** The live config's fallback pair (fallbackPair), for matching the in-flight ticks the
-   * reopen should hand back: a tick whose captured model is this pair runs on the fallback. */
-  fallbackPair: FallbackModelConfig | null;
+  /** The live config's fallback pairs (part 5c/8): every non-null pair the price-based
+   * resolution hands a tier, so the reopen hands back the in-flight ticks running on ANY of
+   * them — a per-tier fallback put different roles on different pairs, and one leftPair only
+   * matched one of them. */
+  pairs: FallbackModelConfig[];
+  /** The price-based per-tier resolution (resolveTierFallbacks over the price check alone):
+   * the pairs each tier WOULD run absent a demotion — what the probe's eligible roles are
+   * computed from, since the probed pair is by definition not usable in the serving
+   * resolution (part 5c/8). */
+  priceResolved: TierFallbackMap;
+  /** The demotion-aware per-tier resolution (resolveTierFallbacks over price AND breaker
+   * serving): the per-tier pause sets the orchestrator's scheduling pass and the dashboards
+   * read. A tier resolved to `pair: null` pauses its roles beside the per-role cap set. */
+  servingResolved: TierFallbackMap;
+  /** Whether the cap is reached this poll — the budget hold only ever holds while it is;
+   * the per-role sets are empty when it is not. */
+  budgetActive: boolean;
 }
 
 /** Does an in-flight tick's captured model pair (LoopRunner.tickModel()) match the fallback
@@ -140,6 +166,7 @@ export function pollBudgetGate(
   // states are not mutated between, so all three are the same number by construction.
   const { spentUsd, capUsd } = budgetSpend(states, liveConfig, now);
   const reached = budgetReached({ spentUsd, capUsd });
+  const reviewOn = liveConfig.review.enabled;
   // Whether the fallback is usable is a live question too: models.json is stat-cached
   // inside pi-models.ts, so an unchanged catalog costs one stat per poll, and an operator
   // who fixes a mistyped model id sees the fleet switch over within a cycle. One snapshot
@@ -152,29 +179,45 @@ export function pollBudgetGate(
   // predicate into the resolution so a demoted pair re-resolves only the tiers using it.
   const pairFreeAt = (p: FallbackModelConfig) => pairFree(providers, p.provider, p.model);
   const pair = fallbackPair(liveConfig);
-  const pairNameOf = (p: FallbackModelConfig | null) => `${p?.provider ?? "?"}/${p?.model ?? "?"}`;
   const fallbackReady = pair !== null && pairFreeAt(pair);
-  const pairName = pairNameOf(pair);
+  const pairName = modelPairName(pair);
   // The breaker map is keyed by every pair the tiers would run on absent a demotion
   // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
   // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
   // leaving the resolution, or no fallback at all re-trusts or drops it (part 5b/8). The
-  // engaged pair is always among the keys, so the gate's serving verdict has an entry.
-  const resolved = resolveTierFallbacks(liveConfig, pairFreeAt);
+  // engaged pair is always among the keys, so the gate's serving verdict has an entry. This
+  // price-based resolution also drives the fallback view (below) and the handback pairs: the
+  // view must keep the free pairs installed even while one of them is demoted — its probe tick
+  // runs on it — and the paused tiers the demotion produces are held by the scheduler's
+  // per-role set, so nobody but the probe ever reaches the demoted pair.
+  const priceResolved = resolveTierFallbacks(liveConfig, pairFreeAt);
   const pairNames: string[] = [];
   for (const tier of MODEL_TIERS) {
-    const p = resolved[tier as ModelTier].pair;
+    const p = priceResolved[tier as ModelTier].pair;
     if (p) {
-      const n = pairNameOf(p);
+      const n = modelPairName(p);
       if (!pairNames.includes(n)) pairNames.push(n);
     }
   }
   if (fallbackReady && pair !== null && !pairNames.includes(pairName)) pairNames.push(pairName);
   state.breakers = rekeyFallbackBreakers(state.breakers, pairNames, liveConfig.maxDailyCostUsd);
   state.engaged = reached && fallbackReady ? pairName : null;
-  // Free is not enough: the breaker demotes a fallback whose ticks keep failing, and a
-  // demoted gate is `paused`, exactly as with no fallback at all.
-  const gate = budgetGate(reached, fallbackReady, fallbackServingPair(state.breakers, state.engaged));
+  // The demotion-aware resolution (part 5c/8): the same engine over the FULL usable predicate —
+  // priced at zero AND its breaker entry serving — so a demoted pair re-resolves only the tiers
+  // that use it: a demoted strong pair holds the strong roles beside the per-role cap set while
+  // small and default keep their own pairs, instead of the fleet-wide pause the single-pair
+  // gate produced.
+  const usable = (p: FallbackModelConfig) =>
+    pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p));
+  const servingResolved = resolveTierFallbacks(liveConfig, usable);
+  // Free is not enough: the breaker demotes a fallback whose ticks keep failing, and a gate
+  // whose `default` (or, with review on, `strong`) tier resolves to pause is `paused`, exactly
+  // as with no fallback at all (budgetGate, part 5c/8).
+  const gate = budgetGate(
+    reached,
+    { default: servingResolved.default.pair !== null, strong: servingResolved.strong.pair !== null },
+    reviewOn,
+  );
   // Read before prevGate is advanced below: true on exactly the reopening transition.
   const resumed = gate === "open" && (state.prevGate === "fallback" || state.prevGate === "paused");
   // The 80% early warning (PLANS.md 2026-09-30), edge-triggered with reset-on-below — the
@@ -201,11 +244,20 @@ export function pollBudgetGate(
       // refused because pi's definitions do not price it at zero, or which free pair the
       // breaker demoted after its ticks kept failing (and after how many).
       ...(gate === "fallback" ? { provider: pair?.provider, model: pair?.model } : {}),
-      ...(gate === "paused" && pair
-        ? fallbackReady
+      // The pause's cause, named by the pair story that produced it: the default tier's own
+      // pair demoted or refused (the legacy single-pair story), or — with review on — the
+      // strong tier's price-resolved pair demoted (nothing could land), which is its own
+      // demotion and must not masquerade as the default pair's.
+      ...(gate === "paused" && pair && !fallbackReady
+        ? { fallbackRejected: pairName }
+        : gate === "paused" && pair
           ? { fallbackDemoted: pairName, failures: state.breakers[pairName]?.failures ?? 0 }
-          : { fallbackRejected: pairName }
-        : {}),
+          : gate === "paused" && priceResolved.strong.pair !== null
+            ? {
+                fallbackDemoted: modelPairName(priceResolved.strong.pair),
+                failures: state.breakers[modelPairName(priceResolved.strong.pair)]?.failures ?? 0,
+              }
+            : {}),
     });
     state.prevGate = gate;
   }
@@ -215,10 +267,10 @@ export function pollBudgetGate(
   // `paused`, but a tick parked in the semaphore when it tripped, the half-open probe, and
   // the landings must still run on the free pair — a demotion must never promote them to
   // the priced model the cap already spent.
-  const onFallback = reached && fallbackReady;
+  const onFallback = reached && pairNames.length > 0;
   if (onFallback && state.from !== liveConfig) {
     state.from = liveConfig;
-    state.fallbackConfig = applyFallbackModel(liveConfig);
+    state.fallbackConfig = applyFallbackModel(liveConfig, priceResolved);
   }
   return {
     gate,
@@ -227,6 +279,21 @@ export function pollBudgetGate(
     spentUsd,
     capUsd,
     resumed,
-    fallbackPair: pair,
+    pairs: distinctPairs(priceResolved),
+    priceResolved,
+    servingResolved,
+    budgetActive: reached,
   };
+}
+
+/** The distinct non-null fallback pairs a resolution hands out (tier order, first occurrence
+ * first) — the handback match list: a reopen hands back every in-flight tick running on any of
+ * them (part 5c/8's per-tier handback). */
+function distinctPairs(resolved: TierFallbackMap): FallbackModelConfig[] {
+  const out: FallbackModelConfig[] = [];
+  for (const tier of MODEL_TIERS) {
+    const p = resolved[tier].pair;
+    if (p !== null && !out.some((q) => modelPairName(q) === modelPairName(p))) out.push(p);
+  }
+  return out;
 }

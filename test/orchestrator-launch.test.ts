@@ -28,11 +28,17 @@ import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
-/** A stand-in runner: only what launchDueTicks reads. */
-function fakeRunner(role: string, tick: () => Promise<TickOutcome> = async () => ({ result: "changed" })) {
+/** A stand-in runner: only what launchDueTicks reads. `config` is what the evidence fold
+ * reads (part 5c/8: the tick's pair comes from the runner's own config view). */
+function fakeRunner(
+  role: string,
+  tick: () => Promise<TickOutcome> = async () => ({ result: "changed" }),
+  config: unknown = { roles: {} },
+) {
   return {
     role,
     state: {} as LoopState,
+    config,
     tick,
   } as unknown as LoopRunner;
 }
@@ -50,6 +56,8 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     gateStates: emptyGateStates(),
     breakerPolicy: FALLBACK_BREAKER_POLICY,
     probePair: null,
+    probeRoles: new Set<string>(),
+    budgetActive: false,
     semaphore: new Semaphore(4),
     rolePermitHolders: new Set<LoopRunner>(),
     roleInFlight: new Set<Promise<void>>(),
@@ -115,18 +123,43 @@ test("a start gate held at permit time hands the reservation back with nothing s
   assert.equal(c.rolePermitHolders.size, 0, "the permit was released");
 });
 
-test("probeDue admits exactly one probe tick and skips the other due roles", async () => {
-  const first = fakeRunner("clean");
-  const second = fakeRunner("organize");
+test("the probe goes to a runner whose tier resolves to the probed pair, one per poll", async () => {
+  const cfg = { roles: {}, provider: "free", model: "qwen" };
+  const first = fakeRunner("clean", undefined, cfg);
+  const second = fakeRunner("organize", undefined, cfg);
   const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
-  const c = ctx({ reasons: new Map([[first, "scheduled"], [second, "scheduled"]]), probePair: "free/qwen", gateStates: emptyGateStates(breaker) });
+  const c = ctx({
+    reasons: new Map([[first, "scheduled"], [second, "scheduled"]]),
+    probePair: "free/qwen",
+    probeRoles: new Set(["clean", "organize"]),
+    budgetActive: true,
+    gateStates: emptyGateStates(breaker),
+  });
   launchDueTicks(c);
   await settle(c);
   assert.ok(c.gateStates.budget.breakers["free/qwen"]?.probing === false, "the probe's evidence closed the probing flag");
   assert.equal(c.gateStates.budget.breakers["free/qwen"]?.failures, 0, "a served probe is not a failure");
-  assert.equal(second.state.running ?? false, false, "the second due role was never reserved");
+  assert.equal(second.state.running ?? false, false, "the second eligible role was never reserved: one claim per poll");
   assert.equal(c.roleTickDurationsMs.length, 1, "only the probe ran");
   assert.equal(c.rolePermitHolders.size, 0);
+});
+
+test("a probe with no eligible runner leaves the other due launches alone (part 5c/8)", async () => {
+  // The earlier draft continued every non-director runner when the probe's pair could not
+  // admit one: a due pair whose tier has no due runner deadlocked the whole pass. Only the
+  // pair's own tier's runners wait; everyone else launches normally.
+  const other = fakeRunner("organize");
+  const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
+  const c = ctx({
+    reasons: new Map([[other, "scheduled"]]),
+    probePair: "free/qwen",
+    probeRoles: new Set(["clean"]),
+    gateStates: emptyGateStates(breaker),
+  });
+  launchDueTicks(c);
+  await settle(c);
+  assert.equal(c.gateStates.budget.breakers["free/qwen"]?.probing, false, "no claim was taken");
+  assert.equal(c.roleTickDurationsMs.length, 1, "the non-probe role launched normally");
 });
 
 test("a probe turned away by the held start gate has its claim handed back", async () => {
@@ -135,6 +168,7 @@ test("a probe turned away by the held start gate has its claim handed back", asy
   const c = ctx({
     reasons: new Map([[runner, "scheduled"]]),
     probePair: "free/qwen",
+    probeRoles: new Set(["clean"]),
     gateStates: emptyGateStates(breaker),
     startHeld: () => true,
   });
@@ -144,19 +178,20 @@ test("a probe turned away by the held start gate has its claim handed back", asy
   assert.equal(runner.state.running, false, "the probe tick never started, so no reservation remains");
 });
 
-test("a probe whose tick starts after the gate reopened has its claim handed back", async () => {
+test("a probe whose tick starts after the budget reopened has its claim handed back", async () => {
   // The probe is admitted for the demoted pair (the launch pass reads only the breaker
   // entry), but while it waits for its permit the budget gate reopens (the cap is raised
-  // or midnight resets spend), so the tick starts with `engaged` null and no evidence is
-  // folded into the pair — the claim must still be handed back, or the entry stays probing
-  // and no later probe can ever run (the fallback stays demoted past its due probe).
+  // or midnight resets spend), so the tick starts with the budget inactive and no evidence
+  // is folded into the pair — the claim must still be handed back, or the entry stays
+  // probing and no later probe can ever run (the fallback stays demoted past its due probe).
   const runner = fakeRunner("clean");
   const breaker = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
   const gateStates = emptyGateStates(breaker);
-  gateStates.budget.engaged = null; // the reopen landed between admission and tick start
   const c = ctx({
     reasons: new Map([[runner, "scheduled"]]),
     probePair: "free/qwen",
+    probeRoles: new Set(["clean"]),
+    budgetActive: false, // the reopen landed between admission and tick start
     gateStates,
   });
   launchDueTicks(c);

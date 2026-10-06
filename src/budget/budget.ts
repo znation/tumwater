@@ -129,20 +129,30 @@ export function projectCapHit(
  * and "the loops are stopped" stopped being the same fact: only `paused` blocks a tick. */
 export type BudgetGate = "open" | "fallback" | "paused";
 
-/** The budget gate from its three inputs: whether spend has reached the cap (budgetReached for
- * observers, budgetPaused for the scheduler), whether a cost-free fallback model is configured
- * to take over (src/pi/pi-models.ts's fallbackModelFree — kept as a parameter so this module
- * stays free of pi's model catalog, the same one-way dependency rule that put budgetPaused
- * here), and whether that fallback's backend is serving (fallbackServing over
- * fallback-breaker.ts's breaker). A free pair that cannot serve is not a usable fallback: the
- * 2026-09-19 fleet ran an
- * hour of 33/33 failed ticks on one instead of the pause this gate already had for "nothing
- * usable to fall back to" (BUGS.md 2026-09-20). The single definition of the gate: the
- * orchestrator enforces it and both dashboards display it, so what an operator sees is what the
- * scheduler is doing. Observers pass no third argument — status/status-data.ts folds the running
- * orchestrator's published demotion into the snapshot's `fallback` field (null while demoted),
- * which is their second input. */
-export function budgetGate(reached: boolean, fallbackReady: boolean, fallbackServing = true): BudgetGate {
+/** The name of a model pair as the fallback breaker map and the demotion publish key it
+ * ("provider/model", "?" for an absent side) — the same string budget-gates.ts's rekey and
+ * every per-pair lookup key on. Single-homed so a resolution's pair and a breaker entry can
+ * never disagree about their name. */
+export function modelPairName(p: { provider?: string; model?: string } | null): string {
+  return `${p?.provider ?? "?"}/${p?.model ?? "?"}`;
+}
+
+/** The budget gate from the tiers' resolutions (part 5c/8): whether spend has reached the cap
+ * (budgetReached for observers, budgetPaused for the scheduler), and whether the `default` and
+ * `strong` tiers resolved to a usable free pair (resolveTierFallbacks over the full usable
+ * predicate — price AND breaker serving) — plus whether the review gate is on. The gate is
+ * `paused` when `default` resolves to pause (nothing for the fleet's bulk to run on), or when
+ * review is on and `strong` does (nothing could land, so every authoring tick is wasted work);
+ * `fallback` otherwise, with the tiers that did resolve running their pairs and the rest held
+ * per role. The single definition of the gate: the orchestrator enforces it and both dashboards
+ * display it, so what an operator sees is what the scheduler is doing. */
+export function budgetGate(
+  reached: boolean,
+  tiers: { default: boolean; strong: boolean },
+  reviewOn: boolean,
+): BudgetGate {
   if (!reached) return "open";
-  return fallbackReady && fallbackServing ? "fallback" : "paused";
+  if (!tiers.default) return "paused";
+  if (reviewOn && !tiers.strong) return "paused";
+  return "fallback";
 }

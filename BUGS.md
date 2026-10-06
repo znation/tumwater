@@ -5,7 +5,14 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### A corrupt wake marker is never consumed: the poll loop wedges before reading it (found by feature loop 2026-10-06)
+Symptom: the test `a corrupt wake marker wakes every runner and is still consumed`
+(test/orchestrator-2.e2e.test.ts) times out waiting for the marker file to disappear.
+Reproduce: on unmodified main (commit 8391e528, before the per-tier budget-gate work),
+`node dist/test/test-runner.js orchestrator-2` — the same timeout, so the failure predates
+that change. Suspected cause: unknown — `consumeWakeRequest` runs unconditionally every poll
+(src/orchestrator/orchestrator.ts), so something earlier in the poll wedges or kills the loop
+only in this test's setup.
 
 ## Fixed
 
