@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { recordDailyCost } from "../src/budget.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";

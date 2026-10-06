@@ -2,8 +2,8 @@ import {
   MODEL_TRIPLE_KEYS,
   THINKING_LEVELS,
 } from "./config-schema.js";
-import { allRoleIds } from "./roles.js";
-import { truncate, isNonBlankString } from "./text.js";
+import { allRoleIds } from "../roles.js";
+import { truncate, isNonBlankString } from "../text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
  * message rendering (show, typeName), the unknown-key and known-role guards, the NumberRule

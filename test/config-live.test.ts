@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { defaultConfig } from "../src/config.js";
-import { newLiveConfigReload } from "../src/config-live.js";
+import { defaultConfig } from "../src/config/config.js";
+import { newLiveConfigReload } from "../src/config/config-live.js";
 import { readEvents } from "../src/event-read.js";
-import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/semaphore.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

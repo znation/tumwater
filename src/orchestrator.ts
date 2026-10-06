@@ -1,7 +1,7 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
-import { enabledRoleIds } from "./config.js";
-import { newLiveConfigReload } from "./config-live.js";
+import { enabledRoleIds } from "./config/config.js";
+import { newLiveConfigReload } from "./config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
@@ -201,7 +201,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the latest poll's hold verdict rather than the poll that created them.
   const gateStates: FleetGateStates = newFleetGateStates(config);
   // The live config the last successful reload produced (last-known-good while the file is
-  // broken or missing). The reload bookkeeping itself lives in src/config-live.ts.
+  // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
   // The pause gates (src/pause-gates.ts owns the concern): the operator pause's and the
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
@@ -239,7 +239,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   try {
     while (!signal.aborted) {
-      // Live-reload tumwater.json — the single reload point shared by all loops (src/config-live.ts
+      // Live-reload tumwater.json — the single reload point shared by all loops (src/config/config-live.ts
       // owns the last-known-good retention and the edge-triggered warnings/events around it).
       const liveConfig = liveReload.poll();
       // The notify command rides the same last-known-good reload (src/notify.ts): a live

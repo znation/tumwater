@@ -14,7 +14,7 @@ import {
   signalOrchestrator,
 } from "../src/operator-commands.js";
 import { pidAlive } from "../src/process.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { configPath } from "../src/paths.js";

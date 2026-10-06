@@ -15,7 +15,7 @@ import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
 import { readEvents } from "../src/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { writeJsonFile } from "../src/json-files.js";
 import {

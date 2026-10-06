@@ -13,7 +13,7 @@ import path from "node:path";
 import { reviewAheadOfMain } from "../src/review.js";
 import { aheadOfMain, headOf } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/event-read.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";

@@ -1,8 +1,8 @@
 import type { TestCounts } from "./build-check-counts.js";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { LandingInFlight } from "./landing/landing-slot.js";
 import type { LoopState } from "./loop-state.js";
-import { defaultConfig, loadConfigCached } from "./config.js";
+import { defaultConfig, loadConfigCached } from "./config/config.js";
 import { readEvents } from "./event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "./git.js";
 import { freshLoopState, loadLoopState } from "./loop-state.js";

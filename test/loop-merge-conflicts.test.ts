@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

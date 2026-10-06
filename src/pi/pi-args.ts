@@ -5,7 +5,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { TumwaterConfig } from "../config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 
 /** Paths to the bundled pi extensions, in load order, resolved from this module's own
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps

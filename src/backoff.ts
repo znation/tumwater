@@ -1,4 +1,4 @@
-import type { BackoffConfig } from "./config-schema.js";
+import type { BackoffConfig } from "./config/config-schema.js";
 import type { LoopState } from "./loop-state.js";
 import type { TickResult } from "./tick-outcome.js";
 

@@ -6,7 +6,7 @@
  * log, stdout only. */
 import { fail, say, sayJson } from "./cli-output.js";
 import { parseCountFlag } from "./cli-args.js";
-import { knownRoleIdsCached } from "./config.js";
+import { knownRoleIdsCached } from "./config/config.js";
 import { readTickRows } from "./history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
 import { formatEvent } from "./event-format.js";

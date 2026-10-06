@@ -14,7 +14,7 @@ import path from "node:path";
 import { backdate } from "./backdate.js";
 import { runTimedRoleTick, sleepInterruptible } from "../src/tick-timing.js";
 import { DEFER_MAX_MS } from "../src/scheduling.js";
-import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { enqueuePrompt } from "../src/inbox.js";
 import { submitRolePrompt } from "../src/inbox-submit.js";

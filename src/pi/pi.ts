@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
-import type { TumwaterConfig } from "../config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "../process.js";

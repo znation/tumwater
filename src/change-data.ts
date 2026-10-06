@@ -7,7 +7,7 @@
  * (report-data.ts, history-data.ts, status-data.ts); the terminal rendering of these views is
  * change-render.ts's half. */
 
-import { knownRoleIdsCached, loadConfigSafe } from "./config.js";
+import { knownRoleIdsCached, loadConfigSafe } from "./config/config.js";
 import { aheadOfMain, branchExists, currentBranch, targetBranch } from "./git.js";
 import { gitTry } from "./git-run.js";
 import { aheadOfMainDiff, changedFiles } from "./git-diff.js";

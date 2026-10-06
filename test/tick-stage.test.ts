@@ -5,13 +5,13 @@ import path from "node:path";
 import { stageTickLanding } from "../src/tick-stage.js";
 import { initializedWorktree, sh } from "./repo-fixtures.js";
 import { freshLoopState } from "../src/loop-state.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing/landing-queue.js";
 import type { TickOutcome } from "../src/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop-state.js";
-import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { piRunResult } from "./fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the

@@ -1,5 +1,5 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles.js";
-import { isCustomRole, liveConfig } from "./config.js";
+import { isCustomRole, liveConfig } from "./config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check-detect.js";
 import { failureHeadline } from "./build-check-report.js";
 import type { BuildCheckOutcome } from "./build-check.js";
@@ -8,7 +8,7 @@ import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
 import type { TickOutcome } from "./tick-outcome.js";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import { errorMessage } from "./text.js";
 import { mainRedPhrase } from "./phrases.js";
 import { gitTry } from "./git-run.js";

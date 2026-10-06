@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init.js";
-import { defaultConfig, customLoopNames, loadConfig } from "../src/config.js";
+import { defaultConfig, customLoopNames, loadConfig } from "../src/config/config.js";
 import { enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";

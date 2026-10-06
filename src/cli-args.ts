@@ -1,6 +1,6 @@
 import { fail } from "./cli-output.js";
 import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
-import { knownRoleIdsCached } from "./config.js";
+import { knownRoleIdsCached } from "./config/config.js";
 import { allRoleIds, unknownRoleMessage } from "./roles.js";
 import { gotSuffix, parsePositiveInt } from "./text.js";
 

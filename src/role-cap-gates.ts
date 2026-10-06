@@ -15,7 +15,7 @@
  *   pause or orphan it. The scheduler blocks the role through the poll's separate `capPaused`
  *   set instead, and `resume --role` has no marker to touch (none is needed: the lift is a
  *   config edit or midnight).
- * - An unknown role id in the caps map is a config-validation error (src/config-validation.ts,
+ * - An unknown role id in the caps map is a config-validation error (src/config/config-validation.ts,
  *   the `roles.<id>` idiom): explicit misconfiguration never silently no-ops a cap.
  *
  * Shape, like every gate in the family (src/gate-polls.ts): the pure verdict and the

@@ -9,7 +9,7 @@ import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render
 import { loopPhase } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick-apply.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";

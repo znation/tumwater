@@ -7,7 +7,7 @@ import { parseVerdict } from "../src/review-verdict.js";
 import { buildRejectedReviewNote } from "../src/gate-prompts.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/event-read.js";
 import { piLogPath } from "../src/paths.js";

@@ -18,22 +18,22 @@ and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the 
 **Approach.**
 1. **src/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
    `{ provider?, model, thinking? }`; `formatModelSelector(triple)` is its inverse. Rules: a
-   trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config-schema.ts), so
+   trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config/config-schema.ts), so
    `…:together` survives; with `legacyProvider` the rest is a bare id under that provider;
    otherwise the text before the first `/` is the provider and the rest is the id; a string
    with no `/` is a bare pattern with no provider.
-2. **src/config-schema.ts:** `fallback?: string` on `TumwaterConfig`, `"fallback"` in
+2. **src/config/config-schema.ts:** `fallback?: string` on `TumwaterConfig`, `"fallback"` in
    `TOP_LEVEL_KEYS`. (The map forms arrive in part 3/8.)
-3. **src/config-views.ts:** `withModelOverrides`, `configForRole`, `reviewConfig`, and
+3. **src/config/config-views.ts:** `withModelOverrides`, `configForRole`, `reviewConfig`, and
    `fallbackPair` parse selectors into the provider/model/thinking triple `piArgs`
    (src/pi/pi-args.ts) already consumes. A legacy `provider` in scope (the section's own, else
    the top level's) is passed as `legacyProvider`; an explicit `thinking` key wins over a
    suffix; `fallback` and the legacy `fallbackModel` object both feed `fallbackPair`.
-4. **Validation** (src/config-validation.ts, src/config-field-checks.ts): `fallback` is a
+4. **Validation** (src/config/config-validation.ts, src/config/config-field-checks.ts): `fallback` is a
    non-empty string, and `fallback` together with `fallbackModel` is an error naming both keys.
 
-**Files touched.** src/model-selector.ts (new), src/config-schema.ts, src/config-views.ts,
-src/config-validation.ts, src/config-field-checks.ts, and tests (a new
+**Files touched.** src/model-selector.ts (new), src/config/config-schema.ts, src/config/config-views.ts,
+src/config/config-validation.ts, src/config/config-field-checks.ts, and tests (a new
 test/model-selector.test.ts plus the config-views and pi-args suites).
 
 **Acceptance criteria.**
@@ -83,13 +83,13 @@ seam resolves exactly as today. (`fallback` maps are parsed here but consulted p
 in part 5/8; until then a map `fallback` uses its `default` entry.)
 
 **Approach.**
-1. **src/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
+1. **src/config/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
    `fallback` become `string | Partial<Record<ModelTier, string>>`, where a string means
    `{ default: <string> }`. `fallback` map values may also be `"pause"` (consulted in part 5/8).
 2. **src/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
    `small`, every other catalog role (director included) → `default`; user-defined loops
    (src/roles.ts) → `default`.
-3. **src/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
+3. **src/config/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
    `default`'s, else none (pi's own default). `configForRole` resolves `roles.<id>.model` (a
    tier name → that tier, a selector → itself), else the role's catalog tier. `reviewConfig`
    resolves `review.model` the same way, else `strong`.
@@ -101,8 +101,8 @@ in part 5/8; until then a map `fallback` uses its `default` entry.)
    (the conflict resolver's, part 4/8), so the budget never reads n/a while a priced strong
    model can spend.
 
-**Files touched.** src/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config-views.ts,
-src/config-validation.ts, src/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
+**Files touched.** src/config/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config/config-views.ts,
+src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
 
 **Acceptance criteria.**
 - With `{ "model": { "default": A, "strong": B } }`, plan and reviewer runs carry B, feature
@@ -124,7 +124,7 @@ tier instead: resolution is rare, tolerant of latency, and edits code inside lan
 "A conflict resolution that changes the approved change's scope lands unreviewed").
 
 **Approach.**
-1. **src/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
+1. **src/config/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
    `config`. Because it reads whatever config the landing is handed, it follows the budget
    fallback's config once part 5/8 lands.
 2. **`RunsPi.runPi`** (src/loop-pi.ts) takes an optional fourth `config` argument. The loop's
@@ -133,7 +133,7 @@ tier instead: resolution is rare, tolerant of latency, and edits code inside lan
    `resolveConflict` passes `resolverConfig(...)`; the session dir, raw log, transient retry,
    and usage folding (charged to the authoring role) are unchanged.
 
-**Files touched.** src/config-views.ts, src/loop-pi.ts, src/loop.ts,
+**Files touched.** src/config/config-views.ts, src/loop-pi.ts, src/loop.ts,
 src/landing/landing-merge.ts, and the landing-merge and loop-pi tests.
 
 **Acceptance criteria.**
@@ -151,7 +151,7 @@ tier's when its own is missing, instead of every seam collapsing onto one pair. 
 `fallback` (or legacy `fallbackModel`) behaves exactly as today.
 
 **Approach.**
-1. **src/config-views.ts:** `resolveTierFallbacks(config, usable)` returns, per tier, the pair
+1. **src/config/config-views.ts:** `resolveTierFallbacks(config, usable)` returns, per tier, the pair
    it runs on plus the tier it was borrowed `from`, or `"pause"`. A tier uses its own fallback
    when `usable(pair)`; otherwise it borrows another tier's own fallback (never a borrowed one)
    in the order small → default → strong, default → strong → small, and
@@ -170,7 +170,7 @@ tier's when its own is missing, instead of every seam collapsing onto one pair. 
 4. **Budget handback** (src/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
    matched against every resolved fallback pair, not only one.
 
-**Files touched.** src/config-views.ts, src/fallback-breaker.ts, src/budget-gates.ts,
+**Files touched.** src/config/config-views.ts, src/fallback-breaker.ts, src/budget-gates.ts,
 src/budget.ts, src/gate-polls.ts, src/loop.ts, and their tests.
 
 **Acceptance criteria.**
@@ -251,9 +251,9 @@ Design: plans/model-tiers.md ("Backward compatibility", "Notes for local fallbac
 single-model form first, then tiers.
 
 **Approach.**
-1. **`setConfigKey` / `parseConfigKey`** (src/config-write.ts) — the one writer behind both
+1. **`setConfigKey` / `parseConfigKey`** (src/config/config-write.ts) — the one writer behind both
    `tumwater config set` (src/config-commands.ts) and the GUI's config edits
-   (src/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config-editable-keys.ts):
+   (src/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts):
    `model` takes a selector, a dotted `model.strong` merges one map entry (the way
    `roles.qa.model` already merges a role entry), and `fallback` is editable. `provider` stays
    accepted for legacy configs and is never written into a config that lacks it.
@@ -262,7 +262,7 @@ single-model form first, then tiers.
    (seams and tiers), docs/feature-model-fallback.md and docs/implementation-model-fallback.md
    (per-tier fallback and the borrow order).
 
-**Files touched.** src/config-write.ts, src/config-editable-keys.ts, README.md, the four docs/
+**Files touched.** src/config/config-write.ts, src/config/config-editable-keys.ts, README.md, the four docs/
 files above, and the config-write tests.
 
 **Acceptance criteria.**
@@ -554,7 +554,7 @@ tests); `test/cli.test.ts` was left untouched.
 
 ### Dotted per-role config keys: `config get/set maxDailyCostUsdPerRole.<role>` and `roles.<id>.<field>` (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 
-**Goal.** `tumwater config set` writes whole top-level keys only (src/config-write.ts
+**Goal.** `tumwater config set` writes whole top-level keys only (src/config/config-write.ts
 `setConfigKey`): the per-role maps (`maxDailyCostUsdPerRole`, `quietHoursPerRole`) and the
 `roles` section must be replaced wholesale, so `config set maxDailyCostUsdPerRole
 '{"feature":1.5}'` silently drops every other role's entry and `roles.<id>` edits require
@@ -565,7 +565,7 @@ for role entries, each MERGING one entry into the existing map/section; bare key
 today's whole-key behavior.
 
 **Approach.**
-- `src/config-write.ts`: a `DOTTED_MAP_KEYS` table `{ maxDailyCostUsdPerRole: number,
+- `src/config/config-write.ts`: a `DOTTED_MAP_KEYS` table `{ maxDailyCostUsdPerRole: number,
   quietHoursPerRole: string }` and a dotted-key parser `parseConfigKey(key)` →
   `{ kind: "map", map, role } | { kind: "role", id, field } | { kind: "top", key } | { error }`.
   - Map write: fresh load → spread the existing map (or `{}`) with the new entry →
@@ -586,7 +586,7 @@ today's whole-key behavior.
   keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry; bare
   keys replace the whole value".
 
-**Files touched:** src/config-write.ts, src/config-commands.ts, src/help.ts, README.md,
+**Files touched:** src/config/config-write.ts, src/config-commands.ts, src/help.ts, README.md,
 plus tests.
 
 **Acceptance criteria.**
@@ -695,14 +695,14 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
 - `src/orchestrator.ts`: where the scheduling pass folds `quietNow` into the no-new-tick hold
   (the `(userPaused || quietNow || ...)` condition), add the role's membership in
   `roleQuietHold` as a fourth disjunct, director-excluded by the same existing role check.
-- `src/config-schema.ts`: add `quietHoursPerRole?: Record<string, string>` to the config
+- `src/config/config-schema.ts`: add `quietHoursPerRole?: Record<string, string>` to the config
   interface (next to `maxDailyCostUsdPerRole`, with the same doc-comment shape) and to
   `TOP_LEVEL_KEYS`.
-- `src/config-validation.ts`: beside the `maxDailyCostUsdPerRole` block, validate the map —
+- `src/config/config-validation.ts`: beside the `maxDailyCostUsdPerRole` block, validate the map —
   object of strings; every key passes the same `checkKnownRoleId` gate (a typo'd role id would
   silently no-op the window); every value passes `checkQuietHours`'s parse (empty string
   allowed = off).
-- `src/config-example.ts` / `src/help.ts` / README.md settings paragraph: name the new key one
+- `src/config/config-example.ts` / `src/help.ts` / README.md settings paragraph: name the new key one
   line after its fleet-wide sibling, so `tumwater config` users can find it.
 - Status surface: follow status-data.ts's `roleCapPaused` pattern minimally — a loop held by
   its own window shows the same quiet-hours hold wording the fleet-wide gate already uses; if
@@ -710,7 +710,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   Done entry rather than growing the change.
 
 **Files touched:** src/quiet-hours.ts, src/gate-polls.ts, src/orchestrator.ts,
-src/config-schema.ts, src/config-validation.ts, src/config-example.ts, src/help.ts,
+src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/help.ts,
 README.md, plus tests (quiet-hours and config-validation suites).
 
 **Acceptance criteria.**
@@ -724,7 +724,7 @@ README.md, plus tests (quiet-hours and config-validation suites).
 - Tests cover the helper (in/out/absent-key/wrapping), the validation cases, and a gate-polls
   test asserting the hold set. `npm run test` passes.
 
-_Note on the status surface: the plan's "same quiet-hours hold wording" is delivered — status-data.ts computes `roleQuietPaused` (role → window, director exempt) with the new roleQuietHold helper, and status-model.ts's loopPhase renders the fleet badge's own `quiet until <end>` wording scoped to the loop's window, carried to the GUI payload through status-payload.ts. `src/config-example.ts` holds no key catalog (it seeds from the tracked tumwater.example.json, which sets no quietHours), so it needed no change; help.ts and the README settings paragraph name the new key beside its fleet-wide sibling._
+_Note on the status surface: the plan's "same quiet-hours hold wording" is delivered — status-data.ts computes `roleQuietPaused` (role → window, director exempt) with the new roleQuietHold helper, and status-model.ts's loopPhase renders the fleet badge's own `quiet until <end>` wording scoped to the loop's window, carried to the GUI payload through status-payload.ts. `src/config/config-example.ts` holds no key catalog (it seeds from the tracked tumwater.example.json, which sets no quietHours), so it needed no change; help.ts and the README settings paragraph name the new key beside its fleet-wide sibling._
 
 - `tumwater prompt --at <duration>` — queue a steering prompt that stays hidden until its time arrives (planned 2026-10-04, done 2026-10-04; commit 654f15b3)
 - `tumwater questions` — read and answer the open-question outbox from the CLI (planned 2026-10-04, done 2026-10-04; commit 7cf0c37a)

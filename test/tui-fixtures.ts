@@ -7,7 +7,7 @@
  * instead of carrying its own copy. */
 import { EventEmitter } from "node:events";
 import { initProject } from "../src/init.js";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { runTui, type TuiStdin } from "../src/ui/tui.js";
 import { makeRepo } from "./repo-fixtures.js";
 

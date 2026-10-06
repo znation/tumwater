@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { strict as assert } from "node:assert";
-import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { runOrchestrator } from "../src/orchestrator.js";
@@ -18,7 +18,7 @@ import { Redeployer } from "../src/redeployer.js";
 import { LoopRunner } from "../src/loop.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
-import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { TickResult } from "../src/tick-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running

@@ -13,11 +13,11 @@ import {
   loadConfigCached,
   loadConfigSafe,
   saveConfig,
-} from "../src/config.js";
-import { exampleConfigProblem, exampleDrift, seedConfig } from "../src/config-example.js";
-import { configForRole } from "../src/config-views.js";
+} from "../src/config/config.js";
+import { exampleConfigProblem, exampleDrift, seedConfig } from "../src/config/config-example.js";
+import { configForRole } from "../src/config/config-views.js";
 import { exampleConfigPath } from "../src/paths.js";
-import { validateConfig } from "../src/config-validation.js";
+import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles.js";
 import { errorMessage } from "../src/text.js";
 import { backdate } from "./backdate.js";

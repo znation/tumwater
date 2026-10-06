@@ -1,8 +1,8 @@
 import type { LoopState } from "./loop-state.js";
 import type { BuildStatus } from "./build-info.js";
 import { openQuestions } from "./backlog.js";
-import { enabledRoleIds, isCustomRole } from "./config.js";
-import { fallbackPair } from "./config-views.js";
+import { enabledRoleIds, isCustomRole } from "./config/config.js";
+import { fallbackPair } from "./config/config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "./inbox.js";

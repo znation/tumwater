@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../src/scheduling.js";
-import { configForRole } from "../src/config-views.js";
+import { configForRole } from "../src/config/config-views.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { clearBackoff } from "../src/backoff.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

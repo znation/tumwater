@@ -31,7 +31,7 @@ export class OnceRound {
 
   /** The runner's pre-round tick baseline. Snapshotted at construction for the startup
    * runners — and at FIRST SIGHT for a runner appended later: the live config reload
-   * (src/config-live.ts) creates a runner for a role enabled mid-round and pushes it onto
+   * (src/config/config-live.ts) creates a runner for a role enabled mid-round and pushes it onto
    * the same array this round watches, carrying persisted ticks from earlier rounds. The
    * first isSettled call happens in that same poll's runner pass, before the runner can
    * start a tick, so first sight is a pre-round baseline. Without it the missing entry read

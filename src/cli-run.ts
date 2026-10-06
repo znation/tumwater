@@ -3,7 +3,7 @@
  * command it dispatches already delegates to a module (operator-commands.ts, prompt-commands.ts,
  * config-commands.ts, log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
-import { enabledRoleIds } from "./config.js";
+import { enabledRoleIds } from "./config/config.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,

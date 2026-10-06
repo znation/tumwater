@@ -5,7 +5,7 @@ import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
 import { handleConfig, handleReport, handleFailures, handleTick } from "../src/gui-endpoints.js";
-import { EDITABLE_CONFIG_KEYS } from "../src/config-editable-keys.js";
+import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleRestart } from "../src/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick-detail-data.js";

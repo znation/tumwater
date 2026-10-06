@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bundledExtensionPaths, piArgs } from "../src/pi/pi-args.js";
-import { defaultConfig, loadConfig } from "../src/config.js";
-import { configForRole } from "../src/config-views.js";
+import { defaultConfig, loadConfig } from "../src/config/config.js";
+import { configForRole } from "../src/config/config-views.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The pi argv builder's tests, split out of pi.test.ts: how config (provider, model,

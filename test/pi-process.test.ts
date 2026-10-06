@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runPi } from "../src/pi/pi.js";
 import { pidAlive, signalTree } from "../src/process.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";

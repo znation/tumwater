@@ -3,7 +3,7 @@ import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/http-body.js";
 import { initProject } from "../src/init.js";

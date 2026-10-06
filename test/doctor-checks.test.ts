@@ -17,9 +17,9 @@ import {
 } from "../src/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git-run.js";
 import { initProject } from "../src/init.js";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles.js";
-import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 import { backdate } from "./backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";

@@ -10,7 +10,7 @@
 
 import type { LoopRunner } from "./loop.js";
 import type { LoopState } from "./loop-state.js";
-import { configForRole } from "./config-views.js";
+import { configForRole } from "./config/config-views.js";
 import {
   BUGFIX_ROLE,
   DEFERRABLE_ROLES,

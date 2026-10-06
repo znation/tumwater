@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { initProject } from "../src/init.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cliWithEnv } from "./cli-harness.js";
 

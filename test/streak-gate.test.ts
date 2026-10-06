@@ -13,7 +13,7 @@ import {
   ERROR_STREAK_BREAKER,
 } from "../src/tick-apply.js";
 import { freshLoopState } from "../src/loop-state.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/fleet-state.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";

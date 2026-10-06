@@ -92,6 +92,11 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   (admitting due runners to their ticks).
 - `src/pi/pi.ts`: the pi subprocess integration, beside its plumbing (`pi-args.ts`,
   `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`, `pi-watchdogs.ts`).
+- `src/config/config.ts`: the config core (load, defaults, per-role views) beside its
+  plumbing (`config-schema.ts`, `config-validation.ts`, `config-write.ts`, `config-live.ts`,
+  `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`).
+  The `config` CLI command body (`config-commands.ts`) stays in `src/` with the other command
+  bodies.
 - `src/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
 - `src/git.ts`, `src/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.

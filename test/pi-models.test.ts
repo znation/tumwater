@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi/pi-models.js";
-import type { TumwaterConfig } from "../src/config-schema.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 
 /** A models.json shaped like the one on a local-model machine: an unpriced model (no cost

@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox.js";
 import { refSha } from "../src/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";

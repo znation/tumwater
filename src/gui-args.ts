@@ -7,7 +7,7 @@
  * HTTP-argument adaptation — each helper either returns the parsed value or sends the 400
  * itself and returns null/false, so a handler is one guard line per argument.
  */
-import { knownRoleIdsCached } from "./config.js";
+import { knownRoleIdsCached } from "./config/config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./event-window.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 import { DIRECTOR_ROLE } from "./roles.js";

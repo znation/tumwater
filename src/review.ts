@@ -1,6 +1,6 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { LoopState } from "./loop-state.js";
-import { reviewRunConfig } from "./config-views.js";
+import { reviewRunConfig } from "./config/config-views.js";
 import { logEvent, warnEvent } from "./events.js";
 import { git } from "./git-run.js";
 import { headOf, patchId } from "./git.js";

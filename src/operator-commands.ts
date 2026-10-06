@@ -1,4 +1,4 @@
-import { knownRoleIds, loadConfig } from "./config.js";
+import { knownRoleIds, loadConfig } from "./config/config.js";
 import { fail, say, sayJson } from "./cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "./cli-args.js";
 import { errorMessage } from "./text.js";

@@ -8,7 +8,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./repo-fixtures.js";

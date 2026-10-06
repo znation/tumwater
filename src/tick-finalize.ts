@@ -1,4 +1,4 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import { saveLoopState, type LoopState } from "./loop-state.js";
 import { branchHead } from "./git.js";
 import { logEvent, warnEvent } from "./events.js";
@@ -13,7 +13,7 @@ interface FinalizeTickDeps {
   root: string;
   role: string;
   mainBranch: string;
-  /** The role-resolved config view (src/config-views.ts's configForRole result) this tick
+  /** The role-resolved config view (src/config/config-views.ts's configForRole result) this tick
    * already computed — applyTickOutcome schedules the next run from its interval overrides. */
   config: TumwaterConfig;
   state: LoopState;

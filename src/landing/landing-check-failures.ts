@@ -9,7 +9,7 @@ import { logEvent } from "../events.js";
 import { mainRedPhrase } from "../phrases.js";
 import type { BuildCheckOutcome } from "../build-check.js";
 import type { BuildCheck } from "../build-check-detect.js";
-import type { TumwaterConfig } from "../config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick-outcome.js";
 import type { LoopState } from "../loop-state.js";
 import type { LanderContext } from "./landing-core.js";

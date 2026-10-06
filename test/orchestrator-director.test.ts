@@ -25,7 +25,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { pauseFleet } from "../src/fleet-state.js";

@@ -5,7 +5,7 @@ import { resolveTickVerdict } from "../src/tick-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fake-pi.js";

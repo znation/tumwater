@@ -1,9 +1,9 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, enabledRoleIds, loadConfigCached } from "./config.js";
-import { logEvent, warnEvent } from "./events.js";
-import { LoopRunner } from "./loop.js";
-import { configPath } from "./paths.js";
-import type { Semaphore } from "./semaphore.js";
+import { logEvent, warnEvent } from "../events.js";
+import { LoopRunner } from "../loop.js";
+import { configPath } from "../paths.js";
+import type { Semaphore } from "../semaphore.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all loops,
  * polled once per poll (src/orchestrator.ts). A broken file keeps the last-known-good config and

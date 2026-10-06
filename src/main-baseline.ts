@@ -9,7 +9,7 @@ import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
 import { detectBuildCheck } from "./build-check-detect.js";
 import { refSha } from "./git.js";
-import type { CheckConfigSlice } from "./config-schema.js";
+import type { CheckConfigSlice } from "./config/config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build-check.ts — which keeps running and classifying

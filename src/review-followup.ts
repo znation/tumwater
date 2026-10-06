@@ -5,7 +5,7 @@
  * spend; null means there was no session to continue. */
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import { hasResumableSession } from "./pi/pi.js";
-import { reviewRunConfig } from "./config-views.js";
+import { reviewRunConfig } from "./config/config-views.js";
 import { warnEvent } from "./events.js";
 import { piLogPath, reviewSessionDir } from "./paths.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "./gate-prompts.js";

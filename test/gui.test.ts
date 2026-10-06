@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type os from "node:os";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { lanAddresses } from "../src/gui-command.js";
 import { startGui } from "../src/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";

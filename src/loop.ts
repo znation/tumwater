@@ -1,4 +1,4 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "./pi/pi.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
@@ -11,7 +11,7 @@ import { assembleTickPrompt } from "./tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole } from "./config-views.js";
+import { configForRole } from "./config/config-views.js";
 import { planTickStart } from "./tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick-stage.js";

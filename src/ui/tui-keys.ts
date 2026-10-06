@@ -4,7 +4,7 @@ import { REPORT_DEFAULT_DAYS } from "../event-window.js";
 import { collectFailureReport } from "../failure-data.js";
 import { renderFailureMarkdown } from "../failure-render.js";
 import { submitPrompt } from "../inbox-submit.js";
-import { setDailyBudgetUsd } from "../config-write.js";
+import { setDailyBudgetUsd } from "../config/config-write.js";
 import { pausedRoles, pauseRole, resumeRole } from "../fleet-state.js";
 import {
   requestAbort,

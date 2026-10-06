@@ -24,7 +24,7 @@ import type { BuildCheck } from "../build-check-detect.js";
 import { noteGreenBaseline } from "../main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
-import type { TumwaterConfig } from "../config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 
 /** What landStack needs from its caller (landing-batch.ts's BatchContext): the repo, main,
  * the live config, and the task's abort signal — deliberately thinner than BatchContext. */

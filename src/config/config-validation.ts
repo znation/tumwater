@@ -11,10 +11,10 @@ import {
   TOP_LEVEL_KEYS,
   ROLE_INSTRUCTIONS_MAX_CHARS,
 } from "./config-schema.js";
-import { allRoleIds } from "./roles.js";
-import { isJsonObject } from "./json-object.js";
-import { tooLongMessage } from "./text.js";
-import { parseQuietHours } from "./quiet-hours.js";
+import { allRoleIds } from "../roles.js";
+import { isJsonObject } from "../json-object.js";
+import { tooLongMessage } from "../text.js";
+import { parseQuietHours } from "../quiet-hours.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,

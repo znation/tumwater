@@ -10,15 +10,15 @@ import {
   TOP_LEVEL_KEYS,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { configPath, configRequestPath } from "./paths.js";
-import { errorMessage } from "./text.js";
-import { typoSuffix } from "./suggest.js";
-import { writeJsonAtomic } from "./json-files.js";
-import { isJsonObject } from "./json-object.js";
+import { configPath, configRequestPath } from "../paths.js";
+import { errorMessage } from "../text.js";
+import { typoSuffix } from "../suggest.js";
+import { writeJsonAtomic } from "../json-files.js";
+import { isJsonObject } from "../json-object.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
-import { parseQuietHours } from "./quiet-hours.js";
+import { parseQuietHours } from "../quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an

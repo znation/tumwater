@@ -26,7 +26,7 @@ import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import { syncRootInstall } from "../dep-install.js";
-import type { TumwaterConfig } from "../config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick-outcome.js";
 import type { RunsPi } from "../loop-pi.js";
 

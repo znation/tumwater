@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import { findOnPath } from "./files.js";
 
 /** The pre-flight messages behind the readiness gate. startup-gate.ts answers with the first

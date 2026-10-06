@@ -1,7 +1,7 @@
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "./build-info.js";
 import { buildCheckEvent } from "./build-check-events.js";
 import { type BuildCheckOutcome } from "./build-check.js";
-import { liveConfig } from "./config.js";
+import { liveConfig } from "./config/config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";

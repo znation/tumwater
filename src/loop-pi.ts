@@ -1,9 +1,9 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi/pi.js";
 import { HOLD_BASE_MS } from "./fleet-hold.js";
 import { backendKindPhrase } from "./phrases.js";
-import { configForRole } from "./config-views.js";
+import { configForRole } from "./config/config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt-followup.js";
 import { piLogPath, sessionDir } from "./paths.js";
 import { cappedRequestTimeouts } from "./request-timeouts.js";

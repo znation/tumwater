@@ -26,7 +26,7 @@ import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
 import { durationLabel } from "./cli-args.js";
-import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config.js";
+import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config/config.js";
 import { errorMessage } from "./text.js";
 import { promptImagesProblem, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";

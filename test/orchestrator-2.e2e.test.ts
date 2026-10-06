@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig, loadConfig, saveConfig } from "../src/config.js";
+import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { submitRolePrompt } from "../src/inbox-submit.js";
 import { readEvents } from "../src/event-read.js";

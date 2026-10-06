@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { finalizeTick } from "../src/tick-finalize.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop-state.js";
 import { TickUsage } from "../src/tick-usage.js";
 import type { TickOutcome } from "../src/tick-outcome.js";

@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/event-read.js";
 import { refSha } from "../src/git.js";
 import { queueDepth } from "../src/landing/landing-queue.js";

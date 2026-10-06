@@ -8,7 +8,7 @@
  * without importing either — the one-way rule that previously kept these functions in
  * loop-state.ts. */
 
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { LoopState } from "./loop-state.js";
 import { dayAt, dayKey } from "./datetime.js";
 

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { attributeRedCheck } from "../src/landing/landing-check-failures.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop-state.js";
 import { refSha, setRef } from "../src/git.js";
 import { landingRefName } from "../src/paths.js";

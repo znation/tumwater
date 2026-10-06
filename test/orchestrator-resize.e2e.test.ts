@@ -7,7 +7,7 @@
  * `npm run test:e2e`, not in the gating `npm test`. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { saveConfig } from "../src/config.js";
+import { saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";

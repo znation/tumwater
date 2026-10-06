@@ -7,7 +7,7 @@ import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedR
 import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";

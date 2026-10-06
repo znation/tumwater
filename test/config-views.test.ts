@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import {
   applyFallbackModel,
   configForRole,
@@ -9,7 +9,7 @@ import {
   reviewConfig,
   reviewRunConfig,
   REVIEW_TIMEOUT_S,
-} from "../src/config-views.js";
+} from "../src/config/config-views.js";
 
 // config-views.ts's derived views over a loaded config: how the role, review, and fallback
 // overlays resolve on top of the top-level pi settings. The load/save/validation side of the

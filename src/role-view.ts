@@ -9,14 +9,14 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * fleet stopped and never throws on a torn repo. */
 
-import type { FallbackModelConfig } from "./config-schema.js";
-import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "./config.js";
+import type { FallbackModelConfig } from "./config/config-schema.js";
+import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "./config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "./inbox.js";
 import { pausedRoles } from "./fleet-state.js";
 import { loadLoopState } from "./loop-state.js";
 import { assembleTickPrompt } from "./tick-prompt.js";
-import { configForRole, fallbackPair } from "./config-views.js";
+import { configForRole, fallbackPair } from "./config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "./pi/pi-models.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`

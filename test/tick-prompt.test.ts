@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { assembleTickPrompt } from "../src/tick-prompt.js";
-import { defaultConfig } from "../src/config.js";
+import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox.js";

@@ -3,7 +3,7 @@ import path from "node:path";
 import { isJsonObject } from "./json-object.js";
 import { readJsonFile } from "./json-files.js";
 import { isNonBlankString } from "./text.js";
-import type { CheckConfigSlice } from "./config-schema.js";
+import type { CheckConfigSlice } from "./config/config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the
  * installed root a walk-up from a bare worktree finds) and which npm script it names. Split
@@ -115,7 +115,7 @@ function walkUp<T>(startDir: string, maxLevels: number, visit: (dir: string) => 
  * (plans/portability.md §6/7) wins first: the right way to verify a repo is a property of
  * the repo, and the walk cannot know it — a Python, Rust, or Go repo has no npm install for
  * the walk to find, which silently turned every safety gate off there. `config`'s `check`
- * shape is the validated CheckConfig (src/config-schema.ts) read structurally so detection needs no
+ * shape is the validated CheckConfig (src/config/config-schema.ts) read structurally so detection needs no
  * import of the config machinery; a blank command (validation rejects one, but a degraded
  * default config could still carry it) falls through to the walk-up.
  * The walk is required: tumwater worktrees live under `<repo>/.tumwater/worktrees/<role>`

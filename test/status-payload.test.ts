@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfig, saveConfig } from "../src/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init.js";
 import { dequeuePrompt } from "../src/inbox.js";

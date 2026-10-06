@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { enabledRoleIds, loadConfigSafe } from "./config.js";
+import { enabledRoleIds, loadConfigSafe } from "./config/config.js";
 import {
   branchExists,
   currentBranch,

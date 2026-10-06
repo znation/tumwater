@@ -1,4 +1,4 @@
-import type { TumwaterConfig } from "./config-schema.js";
+import type { TumwaterConfig } from "./config/config-schema.js";
 import type { BudgetGate } from "./budget.js";
 import {
   gateRoleConfig,
