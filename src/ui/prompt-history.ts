@@ -1,7 +1,3 @@
-/** The prompt line's session history: the submitted-prompt recall state machine,
- * split out of tui-input.ts (which keeps the line editor, its display window, and the
- * input parsers) so the readline-style rules live in one module beside their tests.
- *
 /** The prompt line's session history: every successfully submitted prompt (director and
  * per-role alike — one list, like a shell's), recallable with Up/Down the way readline does
  * it. Pure state, so the recall rules are unit-testable without a TTY; tui.tsx owns pushing
