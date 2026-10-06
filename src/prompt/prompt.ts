@@ -151,7 +151,10 @@ Where you work:
 - Never run a command that can wait forever — interactive programs (TUIs, REPLs, editors,
   anything reading stdin), servers, or watch modes. To test such a program, background it with
   a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
-- Leave the project working: ${verify} Pipe its output through \`tail\` — only the failures matter.
+- Leave the project working: ${verify} One run answers every question about the check: write
+  its full output to a file in a scratch dir once (\`<check> > <scratch-dir>/check.log 2>&1\`),
+  then pipe that file through \`tail\` — only the failures matter. To see any other part of the
+  output, grep or read the same file; re-run the check only after an edit changes the tree.
 ${TEST_RUNNER_RULE}
 
 Boundaries:

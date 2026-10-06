@@ -365,7 +365,8 @@ test("every role prompt skips the baseline suite run and verifies after the chan
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /do not run the build or test suite just to establish a baseline/);
   assert.match(prompt, /run it after your change and fix what you broke/);
-  assert.match(prompt, /Pipe its output through `tail`/);
+  assert.match(prompt, /check.log 2>&1/);
+  assert.match(prompt, /re-run the check only after an edit changes the tree/);
 });
 
 test("every role prompt ends with the reply contract: plain text last, no announced next step, no repeated reads", () => {
@@ -442,7 +443,7 @@ test("every tick, director, conflict, and review prompt carries the test-runner 
   assert.match(oneLine(TEST_RUNNER_RULE), /only through the project's declared check or the test framework it already uses/);
   assert.match(oneLine(TEST_RUNNER_RULE), /never a runner you guessed \(say, `npx vitest` in a suite written for node:test\)/);
   const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
-  assert.match(tick, /only the failures matter\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
+  assert.match(tick, /re-run the check only after an edit changes the tree\.\n- Run tests only through the project's declared check/, "it follows the verify bullet");
 });
 
 test("an omitted date defaults to todayStamp's local day — the daily budget window's own day", () => {

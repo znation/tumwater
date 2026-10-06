@@ -5,34 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Agents spend 43% of their tool-call time on test runs, and about a fifth of their full-suite runs re-run an unchanged tree only to see a different slice of the output (found by human log analysis 2026-10-06)
-Symptom: over 4.3 h of pi logs (2026-10-05 22:33 to 2026-10-06 02:52 PDT, all roles), test
-commands took 2.04 h of the 4.74 h agents spent between an assistant turn starting and its first
-tool result arriving. Search/read commands took 1.86 h, edits 0.34 h, git 0.26 h. Agents ran the
-full suite 136 times, on top of the harness's 133 gate, landing, and baseline checks. 30 of
-those 136 ran the suite again on a tree no edit, write, or file-mutating command had touched
-since the previous full run. The usual shape is `npm run test 2>&1 | tail -15` followed by
-`npm run test 2>&1 | grep -E '^✖|ℹ fail'` or `| grep -B2 -A12 "<test name>"` to see the part
-`tail` cut off. Four commands ran it twice in one line
-(`npm run test 2>&1 | tail -3; echo ===; npm run test 2>&1 | grep -E "^not ok" | head`). A run
-takes about 38 s alone and 54–63 s while other suites overlap it (the host load average hit 41
-on 18 cores at 02:52), so the 30 re-runs cost roughly 25 min of tick time plus the load they add
-to every concurrent check.
-Reproduce: parse `message_end` assistant tool calls in `.tumwater/log/*.pi.jsonl*` in order,
-dedupe by call id, and count full-suite bash commands with no edit/write call or mutating bash
-command (sed -i, mv, cp, rm, a build) since the previous full run in the same session.
-Cause: commonRules (src/prompt/prompt.ts) tells every run to "Pipe its output through `tail` —
-only the failures matter", so the first run keeps only the tail. When the failure detail is
-above it, nothing tells the agent the output can be kept, so it re-runs the suite with a
-different filter. The rule is right about context cost but leaves no cheap way back to the
-discarded output.
-Suggested fix (project-neutral, since the rule ships to every project): change the verification
-rule to send the check's full output to a file in a scratch dir once (`<check> > <scratch>/check.log 2>&1; tail -n 30 <scratch>/check.log`)
-and to grep that file for anything else, re-running only after a change. A complementary
-harness-side signal: suite-rerun.ts already detects full-suite commands for the reviewer, so a
-warning event when an authoring run repeats one on an unchanged tree would make this measurable
-in the failure digest.
-
 ### A hung piped command goes unreported until the quiet watchdog kills the tick: the stall warning skips every command whose stdout is piped or redirected, so a 19-min hang of `npm run test 2>&1 | tail -15` raised no warning and held up a self-redeploy until a manual `tumwater abort` (found by human log analysis 2026-10-06)
 Symptom: on 2026-10-05 at 22:41 PDT the coverage loop's tick 544 resumed after the 22:33 restart
 and called `npm run test 2>&1 | tail -15` (bash tool timeout 1800 s). The call never returned: the
@@ -60,6 +32,37 @@ letting a pending restart's drain abort a tick whose only open call has passed t
 rather than waiting out the drain window.
 
 ## Fixed
+
+### Agents spend 43% of their tool-call time on test runs, and about a fifth of their full-suite runs re-run an unchanged tree only to see a different slice of the output (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
+Symptom: over 4.3 h of pi logs (2026-10-05 22:33 to 2026-10-06 02:52 PDT, all roles), test
+commands took 2.04 h of the 4.74 h agents spent between an assistant turn starting and its first
+tool result arriving. Search/read commands took 1.86 h, edits 0.34 h, git 0.26 h. Agents ran the
+full suite 136 times, on top of the harness's 133 gate, landing, and baseline checks. 30 of
+those 136 ran the suite again on a tree no edit, write, or file-mutating command had touched
+since the previous full run. The usual shape is `npm run test 2>&1 | tail -15` followed by
+`npm run test 2>&1 | grep -E '^✖|ℹ fail'` or `| grep -B2 -A12 "<test name>"` to see the part
+`tail` cut off. Four commands ran it twice in one line
+(`npm run test 2>&1 | tail -3; echo ===; npm run test 2>&1 | grep -E "^not ok" | head`). A run
+takes about 38 s alone and 54–63 s while other suites overlap it (the host load average hit 41
+on 18 cores at 02:52), so the 30 re-runs cost roughly 25 min of tick time plus the load they add
+to every concurrent check.
+Reproduce: parse `message_end` assistant tool calls in `.tumwater/log/*.pi.jsonl*` in order,
+dedupe by call id, and count full-suite bash commands with no edit/write call or mutating bash
+command (sed -i, mv, cp, rm, a build) since the previous full run in the same session.
+Cause: commonRules (src/prompt/prompt.ts) tells every run to "Pipe its output through `tail` —
+only the failures matter", so the first run keeps only the tail. When the failure detail is
+above it, nothing tells the agent the output can be kept, so it re-runs the suite with a
+different filter. The rule is right about context cost but leaves no cheap way back to the
+discarded output.
+Suggested fix (project-neutral, since the rule ships to every project): change the verification
+rule to send the check's full output to a file in a scratch dir once (`<check> > <scratch>/check.log 2>&1; tail -n 30 <scratch>/check.log`)
+and to grep that file for anything else, re-running only after a change. A complementary
+harness-side signal: suite-rerun.ts already detects full-suite commands for the reviewer, so a
+warning event when an authoring run repeats one on an unchanged tree would make this measurable
+in the failure digest.
+
+**Validation gap:** none — the fix is a prompt-rule change; the existing prompt tests reproduced the gap (a test asserting the old pipe-through-tail wording failed before the fix and passed after).
+
 
 ### Two test files leak a temp dir per test into the system temp dir: test/tui-keys.test.ts and test/review-followup.test.ts create their roots with a raw `fs.mkdtempSync(path.join(os.tmpdir(), …))`, outside the suite's run root, and nothing removes them (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 - **Validation gap:** unclear-invariant — every suite run was green on the leak, so the invariant "a test temp dir must live under the per-run root the exit hook reaps" had to be reconstructed first; the fix adds the guard test that pins it.
