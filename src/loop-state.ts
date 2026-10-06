@@ -114,7 +114,7 @@ export interface LoopState {
   /** Branch HEAD that passed review most recently. Leftover commits at exactly this HEAD
    * merge without re-review (a merge_blocked retry must not burn another review run). */
   lastApprovedHead?: string;
-  /** git.ts patchId of the change at lastApprovedHead against main — the diff the reviewer
+  /** git/git.ts patchId of the change at lastApprovedHead against main — the diff the reviewer
    * judged. A different head carrying the same patch (a clean rebase onto a moved main) reuses
    * the approval: no second model review, though the gate's build pre-check still runs. */
   lastApprovedPatchId?: string;
@@ -131,7 +131,7 @@ export interface LoopState {
    * prompts until its next change is queued — the author's only memory that the work is gone
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
-  /** Consecutive landings of one patch (git.ts patchId, stable across a clean rebase) whose
+  /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At landing-check-failures.ts's LANDING_CHECK_FAILURE_LIMIT the
    * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */
   landingCheckFailures?: { patchId: string; count: number };

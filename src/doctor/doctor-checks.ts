@@ -13,7 +13,7 @@ import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.j
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build-info.js";
 import { findOnPath } from "../files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
-import { GIT_MISSING_MESSAGE } from "../git-run.js";
+import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import {
   branchExists,
   currentBranch,
@@ -22,7 +22,7 @@ import {
   isGitRepo,
   refSha,
   repoToplevel,
-} from "../git.js";
+} from "../git/git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -105,7 +105,7 @@ export function checkGitBinary(pathEnv: string = process.env.PATH ?? ""): CheckO
   return { level: "ok", detail: found };
 }
 
-/** Repo ready — the git.ts predicates in requireReadyRepo's order, so doctor and the
+/** Repo ready — the git/git.ts predicates in requireReadyRepo's order, so doctor and the
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
  * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the
  * fleet would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
@@ -361,7 +361,7 @@ export async function checkBuild(
 }
 
 /** The primary checkout's HEAD sha, or null when it cannot be resolved (no repo) —
- * git.ts's refSha, the one home of the rev-parse probe. */
+ * git/git.ts's refSha, the one home of the rev-parse probe. */
 function currentHead(root: string): Promise<string | null> {
   return refSha(root, "HEAD");
 }

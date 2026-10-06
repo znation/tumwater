@@ -4,7 +4,7 @@ import type { BackendFailureKind, PiRunOptions } from "./pi/pi.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
-import { setRef } from "./git.js";
+import { setRef } from "./git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events/events.js";
 import { assembleTickPrompt } from "./tick/tick-prompt.js";

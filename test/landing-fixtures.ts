@@ -12,7 +12,7 @@ import {
 import { LoopRunner } from "../src/loop.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
-import { setRef } from "../src/git.js";
+import { setRef } from "../src/git/git.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";

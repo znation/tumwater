@@ -1,15 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { COMMIT_IDENT, git, gitTry, runGit } from "../git-run.js";
-import { currentBranch, gitLines, headOf } from "../git.js";
-import { unquotePorcelainPath } from "../git-diff.js";
+import { COMMIT_IDENT, git, gitTry, runGit } from "../git/git-run.js";
+import { currentBranch, gitLines, headOf } from "../git/git.js";
+import { unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 
 /** Git plumbing for the landing flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no landing
  * policy of their own. Landing policy (lock → rebase → verify → ff, conflict resolution, batch
  * ff) lives in landing-merge.ts on top of these. Moved here from landing-merge.ts: the cluster started as
- * landing-merge.ts-only helpers (organize tick 78, moving them out of git.ts), but the lander and the
+ * landing-merge.ts-only helpers (organize tick 78, moving them out of git/git.ts), but the lander and the
  * batch lander grew to call them directly, leaving landing-merge.ts exporting generic rebase/ff
  * plumbing that had nothing to do with merging. */
 

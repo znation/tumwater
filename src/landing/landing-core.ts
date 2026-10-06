@@ -1,4 +1,4 @@
-import { deleteRef, headOf, removeLandWorktree, setRef } from "../git.js";
+import { deleteRef, headOf, removeLandWorktree, setRef } from "../git/git.js";
 import { landWorktreePath, landingRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../worktree.js";
 import { mergeToMain } from "./landing-merge.js";

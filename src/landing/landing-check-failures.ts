@@ -1,4 +1,4 @@
-import { deleteRef, headOf, patchId, removeLandWorktree } from "../git.js";
+import { deleteRef, headOf, patchId, removeLandWorktree } from "../git/git.js";
 import { landingRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState } from "../loop-state.js";

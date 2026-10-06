@@ -7,7 +7,7 @@ import { findOnPath } from "./files.js";
  * unmet precondition (cmdRun and requireReadyRepo fail on it, the self-redeploy refuses a swap
  * on it) and doctor.ts reports each one individually, but every surface describes the same
  * problems — so the wording lives here once and cannot drift.
- * `GIT_MISSING_MESSAGE` (git-run.ts) is the sibling for a machine with no git binary. */
+ * `GIT_MISSING_MESSAGE` (git/git-run.ts) is the sibling for a machine with no git binary. */
 export const NOT_A_REPO_MESSAGE = "not a git repository (run `git init` first)";
 export const NO_COMMITS_MESSAGE =
   "the repo has no commits yet; `tumwater init` creates the first one";

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readTextOrNull } from "../files.js";
 import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
-import { changeBaseRev, fileContentAt } from "../git.js";
+import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —

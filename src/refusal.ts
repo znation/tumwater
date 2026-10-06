@@ -1,5 +1,5 @@
-import { commitPathsAndDiscardRest } from "./git.js";
-import { changedFiles } from "./git-diff.js";
+import { commitPathsAndDiscardRest } from "./git/git.js";
+import { changedFiles } from "./git/git-diff.js";
 import { resetWorktreeToMain } from "./worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "./commit-message.js";
 import { labeledLine } from "./reply-contract.js";

@@ -446,7 +446,7 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   (worktree present? branch present? `aheadOfMain` count, dirty flag, enabled-in-config flag)
   and `retireRole(root, role, { force })` performing the removal. Reuse the existing pieces:
   `worktreePath`/`branchName` from `src/paths.ts`, `aheadOfMain`/`isDirty`/`deleteRef` from
-  `src/git.ts`, and a new `removeWorktree(root, role)` in `src/worktree.ts` that unlocks the
+  `src/git/git.ts`, and a new `removeWorktree(root, role)` in `src/worktree.ts` that unlocks the
   worktree's `locked` file (see `ensureWorktree`'s comment on the `locked` race) before
   `git worktree remove --force`, falling back to `git worktree prune` for a dead registration —
   the same recovery `isUsableWorktree` already classifies.

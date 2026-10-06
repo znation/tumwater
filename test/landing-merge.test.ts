@@ -8,7 +8,7 @@ import { mergeToMain, type MergeContext } from "../src/landing/landing-merge.js"
 import { defaultConfig } from "../src/config/config.js";
 import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
-import { aheadOfMain } from "../src/git.js";
+import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";

@@ -15,7 +15,7 @@ import {
   checkRepo,
   checkStateDir,
 } from "../src/doctor/doctor-checks.js";
-import { GIT_MISSING_MESSAGE } from "../src/git-run.js";
+import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";

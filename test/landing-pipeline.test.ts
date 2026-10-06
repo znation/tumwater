@@ -12,7 +12,7 @@ import { vetLimit } from "../src/landing/landing-vetting.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
-import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";
+import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config/config.js";

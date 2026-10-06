@@ -97,8 +97,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`).
   The `config` CLI command body (`config-commands.ts`) stays in `src/` with the other command
   bodies.
-- `src/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
-- `src/git.ts`, `src/git-diff.ts`: git queries over that layer and git-output parsing.
+- `src/git/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
+- `src/git/git.ts`, `src/git/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/worktree.ts`: the persistent worktree lifecycle.
 - `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
   the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection, fast-forward).

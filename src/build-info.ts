@@ -1,9 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitTry } from "./git-run.js";
+import { gitTry } from "./git/git-run.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
 import { finiteNumber } from "./json-object.js";
-import { refSha } from "./git.js";
+import { refSha } from "./git/git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
  * by `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the

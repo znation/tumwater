@@ -7,8 +7,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, unquotePorcelainPath } from "../src/git-diff.js";
-import { commitAll } from "../src/git.js";
+import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, unquotePorcelainPath } from "../src/git/git-diff.js";
+import { commitAll } from "../src/git/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { loggingGit, makeRepo, seedCommit, sh, tmpdir } from "./repo-fixtures.js";
 

@@ -12,7 +12,7 @@ import {
   sourceHaystack,
   unbackedSymbols,
 } from "../src/fix-claim.js";
-import { aheadOfMain } from "../src/git.js";
+import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";

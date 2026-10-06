@@ -27,7 +27,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseEntryDetails } from "./backlog/backlog-md.js";
-import { changeBaseRev, fileContentAt } from "./git.js";
+import { changeBaseRev, fileContentAt } from "./git/git.js";
 import { collapseWhitespace } from "./text.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends

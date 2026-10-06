@@ -7,7 +7,7 @@
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
 import { ensureDetachedWorktree } from "../worktree.js";
-import { removeLandWorktree } from "../git.js";
+import { removeLandWorktree } from "../git/git.js";
 import { landWorktreePath } from "../paths.js";
 import {
   landApprovedChange,

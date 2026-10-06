@@ -3,8 +3,8 @@ import path from "node:path";
 import { loadConfigSafe } from "../config/config.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { findOnPath } from "../files.js";
-import { GIT_MISSING_MESSAGE } from "../git-run.js";
-import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "../git.js";
+import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
+import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "../git/git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,

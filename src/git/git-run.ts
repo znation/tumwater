@@ -6,8 +6,8 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { findOnPath } from "./files.js";
-import { execFileAsync } from "./process/process.js";
+import { findOnPath } from "../files.js";
+import { execFileAsync } from "../process/process.js";
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
 export const COMMIT_IDENT = [

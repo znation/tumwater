@@ -14,7 +14,7 @@ import { collectRetire, retireRole, type RetireResult, type RetireStatus } from 
 import { landingRefExists } from "./orchestrator-fixtures.js";
 import { initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
-import { setRef } from "../src/git.js";
+import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { writeJsonAtomic } from "../src/json-files.js";
 import { helpTopic } from "../src/help.js";
@@ -43,7 +43,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
   );
   assert.equal(await landingRefExists(root, "improve"), false, "landing ref deleted");
   // Branch gone: rev-parse fails.
-  const branchGone = await import("../src/git.js").then((m) => m.branchHead(root, branchName("improve")));
+  const branchGone = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.equal(branchGone, null, "branch deleted");
 });
 

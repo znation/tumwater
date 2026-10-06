@@ -2,8 +2,8 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop-state.js";
-import { commitAll } from "../git.js";
-import { changedFiles } from "../git-diff.js";
+import { commitAll } from "../git/git.js";
+import { changedFiles } from "../git/git-diff.js";
 import {
   buildCommitMessage,
   commitTrailer,

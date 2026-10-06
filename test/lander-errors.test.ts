@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { landVetted, vetRequest, type BatchRoleWiring } from "../src/landing/landing-batch.js";
-import { refSha } from "../src/git.js";
+import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { mainSha } from "./repo-fixtures.js";
 import { withApprovePi } from "./fake-pi.js";

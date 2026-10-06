@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { refSha } from "../src/git.js";
+import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";

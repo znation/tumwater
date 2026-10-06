@@ -23,7 +23,7 @@ import {
   worktreePath,
 } from "../src/paths.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { setRef } from "../src/git.js";
+import { setRef } from "../src/git/git.js";
 import {
   fastConfig,
   landHead,

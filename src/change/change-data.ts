@@ -8,9 +8,9 @@
  * change-render.ts's half. */
 
 import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
-import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git.js";
-import { gitTry } from "../git-run.js";
-import { aheadOfMainDiff, changedFiles } from "../git-diff.js";
+import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git/git.js";
+import { gitTry } from "../git/git-run.js";
+import { aheadOfMainDiff, changedFiles } from "../git/git-diff.js";
 import { branchName, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "../worktree.js";
 

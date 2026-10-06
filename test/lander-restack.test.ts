@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { BATCH_RESTACK_ATTEMPTS } from "../src/landing/landing-stack.js";
-import { refSha } from "../src/git.js";
+import { refSha } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";

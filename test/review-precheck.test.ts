@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { reviewAheadOfMain } from "../src/review/review.js";
-import { aheadOfMain, headOf } from "../src/git.js";
+import { aheadOfMain, headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";

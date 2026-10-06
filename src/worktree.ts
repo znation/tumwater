@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { git, gitTry } from "./git-run.js";
-import { branchExists, resolveGitDir } from "./git.js";
+import { git, gitTry } from "./git/git-run.js";
+import { branchExists, resolveGitDir } from "./git/git.js";
 import { pruneOldDirectory, removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
  * on every fresh tick) and the detached mirror worktree redeploy.ts verifies and compiles.
- * The generic git plumbing these build on lives in git.ts; this module owns creating,
+ * The generic git plumbing these build on lives in git/git.ts; this module owns creating,
  * self-healing, resetting, and abort-syncing those worktrees. */
 
 /** True when `dir` exists and is still a usable git worktree — its .git pointer file present

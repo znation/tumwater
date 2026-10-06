@@ -4,7 +4,7 @@ import type { LandingInFlight } from "../landing/landing-slot.js";
 import type { LoopState } from "../loop-state.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { readEvents } from "../events/event-read.js";
-import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git.js";
+import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
 import { freshLoopState, loadLoopState } from "../loop-state.js";
 import { statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";

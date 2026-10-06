@@ -4,7 +4,7 @@ import path from "node:path";
 import { attributeRedCheck } from "../src/landing/landing-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop-state.js";
-import { refSha, setRef } from "../src/git.js";
+import { refSha, setRef } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/format.js";

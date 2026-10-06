@@ -1,7 +1,7 @@
 import type { LoopRunner } from "../loop.js";
 import type { Semaphore } from "../semaphore.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { deleteRef, removeLandWorktree } from "../git.js";
+import { deleteRef, removeLandWorktree } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
 import { landingRefName, landWorktreePath } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";

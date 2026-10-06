@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LandRequest, LanderContext } from "../src/landing/landing-core.js";
 import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../src/landing/landing-batch.js";
-import { setRef } from "../src/git.js";
+import { setRef } from "../src/git/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { eventsLogPath, landingRefName } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";

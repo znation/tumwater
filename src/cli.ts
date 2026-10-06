@@ -31,7 +31,7 @@ import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
-import { repoToplevel } from "./git.js";
+import { repoToplevel } from "./git/git.js";
 import { runDoctor } from "./doctor/doctor.js";
 import { renderDoctor } from "./doctor/doctor-render.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history/history.js";

@@ -23,7 +23,7 @@ import {
   writeLandingOutcome,
 } from "../src/landing/landing-slot.js";
 import { landingRefName, landingStatePath } from "../src/paths.js";
-import { refSha, setRef } from "../src/git.js";
+import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";

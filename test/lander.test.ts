@@ -6,7 +6,7 @@ import path from "node:path";
 import { LANDING_CHECK_FAILURE_LIMIT } from "../src/landing/landing-check-failures.js";
 import { landApprovedChange, reviewPinnedChange } from "../src/landing/landing-core.js";
 import type { BatchRoleWiring } from "../src/landing/landing-batch.js";
-import { aheadOfMain, refSha, setRef } from "../src/git.js";
+import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";

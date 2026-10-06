@@ -5,7 +5,7 @@ import path from "node:path";
 import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
-import { aheadOfMain } from "../src/git.js";
+import { aheadOfMain } from "../src/git/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileAsync } from "./process/process.js";
+import { execFileAsync } from "../process/process.js";
 import { COMMIT_IDENT, git, gitTry, resolvedGitBin } from "./git-run.js";
 
 /** A valid object id (SHA-1 or SHA-256). */

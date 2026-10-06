@@ -13,7 +13,7 @@
  * very commit that should wake it). Both caches are bounded, so a long-running fleet cannot
  * grow them unbounded. */
 
-import { subjectsBetween } from "./git.js";
+import { subjectsBetween } from "./git/git.js";
 import { workLanded } from "./scheduling.js";
 
 export class WorkLandedCache {

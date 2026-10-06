@@ -12,7 +12,7 @@ import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "./backlog/backlog.js";
 import { LoopRunner } from "./loop.js";
-import { branchHead, currentBranch } from "./git.js";
+import { branchHead, currentBranch } from "./git/git.js";
 import { queuedLandingFiles } from "./landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "./landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "./landing/landing-pipeline.js";
