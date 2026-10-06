@@ -408,7 +408,7 @@ const readme = roleById("readme");
 // PLANS.md — and its coverage rejections were "untested" claims about modules other test files
 // already imported. Each role names the grep that proves its change complete.
 test("organize, dry, and clean each end with a whole-tree sweep for what they changed", () => {
-  assert.match(oneLine(roleById("organize")!.find), /A move is complete only when a grep for the old path and every moved name — over the source, the tests, and the markdown docs .* finds no stale reference/);
+  assert.match(oneLine(roleById("organize")!.find), /A change is complete only when a grep for every old path and every moved or renamed name — over the source, the tests, and the markdown docs .* finds no stale reference/);
   assert.match(oneLine(roleById("dry")!.find), /grep for the original expression once more across the source and the tests: every remaining copy is either converted or named in your WHY/);
   assert.match(oneLine(roleById("clean")!.find), /A rename or deletion is complete only when a grep for the old name over the source, the tests, and the markdown docs finds nothing stale/);
 });

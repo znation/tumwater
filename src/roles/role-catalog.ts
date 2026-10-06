@@ -33,6 +33,10 @@ export interface Role {
    * most and runs are rare or gate everything (plan steers many ticks), `small` where the
    * work is bounded and low-stakes (readme), `default` everywhere else. */
   tier: ModelTier;
+  /** The run's Scope rules in place of the shared small-and-self-contained ones
+   * (src/prompt/prompt.ts's DEFAULT_SCOPE). Set only where the role's work is a different
+   * size by nature: organize, whose restructures land whole instead of one module per tick. */
+  scope?: string;
 }
 
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
@@ -153,15 +157,46 @@ edit the initial prompt between the tumwater:prompt markers.`,
     id: "organize",
     tier: "default",
     title: "code organizer",
-    find: `Find ONE way the code could be better organized — a file that has grown too many
-responsibilities, a module in the wrong directory, a missing separation between layers, or
-inconsistent file naming — and restructure that one thing.
+    // Written against the 2026-10-05/06 churn: with minor fixes exhausted and the shared
+    // small-and-self-contained scope rule in force, organize reorganized the whole tree one
+    // directory per tick (45 of 86 landings in four hours) with no target structure ever
+    // stated. Major refactors stay welcome; they must be considered whole and land whole.
+    find: `Find ONE way the code could be better organized, and restructure it.
+   1. First look for a minor improvement to the existing structure: a file that has grown too
+      many responsibilities, a module in the wrong directory, a missing separation between
+      layers, or inconsistent file naming.
+   2. When the minor improvements are exhausted, a major refactor — new directories, a
+      regrouping across many modules, a changed layering — is welcome, but only a
+      well-considered one (below). Never drift into one by repeating step 1 one module or one
+      directory at a time.
 ${searchGuidance("organize")}
-A move must remove a real confusion — never reshuffle for its own sake — and the diff stays the
-move plus the import and reference updates it forces. Update all imports/references so the
-project still builds and tests still pass. A move is complete only when a grep for the old path
-and every moved name — over the source, the tests, and the markdown docs (doc comments, PLANS.md,
-BUGS.md) — finds no stale reference.`,
+A change must remove a real, concrete confusion. Never reshuffle for its own sake, and never
+re-shuffle a structure a recent organize commit established unless it is demonstrably wrong.
+A major refactor is well considered only when, before you change any file, you can state:
+   - the concrete cost of today's structure, with evidence from the code or git history;
+   - the whole target structure, designed up front rather than discovered one move at a time,
+     and why it fits PRINCIPLES.md;
+   - how it relates to your recent organize commits: if they moved one group at a time, judge
+     the end state of the whole series, not just this next step.
+Put those three statements in your WHY. Land a refactor whole: the run takes the tree from the
+old structure to the new one and never leaves it half-moved between two layouts. When it is too
+large to finish in one run, do not start it: write it as a plan in PLANS.md under ## Planned
+(goal, the target structure, the cost it removes, files touched, acceptance criteria) and land
+only that plan.
+The diff may carry the refactoring the restructure needs — moving helpers with the code they
+serve, adjusting the interface between the modules you separate — but never a behavior change:
+organize changes where code lives and how it is divided, not what it does. Update all
+imports/references so the project still builds and tests still pass. A change is complete only
+when a grep for every old path and every moved or renamed name — over the source, the tests,
+and the markdown docs (doc comments, PLANS.md, BUGS.md) — finds no stale reference.`,
+    scope: `- Do exactly ONE task, then stop — but unlike the other loops' tasks, yours need not be
+  small or self-contained: a restructure worth doing often takes real refactoring across many
+  files, and one coherent change landed whole beats the same change spread over many runs.
+  Where PRINCIPLES.md asks for one focused change per tick, for this loop that means one
+  coherent restructure. Complete and correct still beats big and half-done.
+- Choose the task within your first ~15 tool calls, in a handful of turns. A restructure that
+  would need more than roughly 150 tool calls, or that you could not finish with the project
+  building and its tests passing, is too big for one run — plan it instead (see your task).`,
   },
   {
     id: "coverage",

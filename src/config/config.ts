@@ -26,7 +26,7 @@ export function parseJsonConfig(
 }
 
 /** Build the default TumwaterConfig: every role enabled (steward on its slow ~6 h tick, qa and
- * telemetry on ~2 h, readme on 30 min, plan on 1 h), with defaults for concurrency, timeouts, log size,
+ * telemetry on ~2 h, readme on 30 min, plan and organize on 1 h), with defaults for concurrency, timeouts, log size,
  * retention, thrash detection, idle backoff, self-redeploy, and review settings. */
 /** The return type is the resolved view (config-views.ts): a freshly defaulted config has
  * no model map to resolve — only a loaded file can carry one — so every call site that
@@ -51,6 +51,11 @@ export function defaultConfig(): ResolvedModelConfig {
   // the clock only bounds how often.
   roles.readme = { enabled: true, minTickIntervalSeconds: 1800 };
   roles.plan = { enabled: true, minTickIntervalSeconds: 3600 };
+  // Organize on a 1 h clock: at the global 20 s clock it landed 45 of 86 commits in four hours
+  // (2026-10-05/06), a whole-tree reorg one directory at a time, each move conflicting with
+  // every in-flight branch. Restructuring pays off at a slower rate than code changes, and
+  // fewer, better-considered runs suit its larger changes (its scope is not the others').
+  roles.organize = { enabled: true, minTickIntervalSeconds: 3600 };
   return {
     piArgs: [],
     maxConcurrent: 6,

@@ -7,6 +7,7 @@ import {
   CLAIMS_RULE,
 } from "../src/verdict/reply-contract.js";
 import {
+  DEFAULT_SCOPE,
   ROOT_FROM_WORKTREE,
   TEST_RUNNER_RULE,
   buildDirectorPrompt,
@@ -330,6 +331,32 @@ test("every role prompt sets a decision deadline and a task-size ceiling", () =>
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /Choose the task within your first ~15 tool calls/);
   assert.match(prompt, /more than roughly 60 tool calls, or most of the codebase in view, is too big for one run/);
+});
+
+test("organize states its own scope in place of the shared small-task rules; every other role keeps them", () => {
+  const organize = roleById("organize");
+  assert.ok(organize?.scope, "organize carries a scope override");
+  const prompt = oneLine(buildTickPrompt({ role: organize, initialPrompt: "" }));
+  assert.match(prompt, /yours need not be small or self-contained/);
+  assert.match(prompt, /more than roughly 150 tool calls/);
+  // Its own Scope section replaces the shared one rather than sitting beside it: the two
+  // would contradict each other.
+  assert.doesNotMatch(prompt, /Small, complete, and correct beats big and half-done/);
+  assert.doesNotMatch(prompt, /more than roughly 60 tool calls/);
+  // The decision deadline is not size policy — organize keeps it.
+  assert.match(prompt, /Choose the task within your first ~15 tool calls/);
+  // A major refactor is allowed but must be argued whole, in the WHY the reviewer checks.
+  assert.match(prompt, /a major refactor .* is welcome, but only a well-considered one/);
+  assert.match(prompt, /Put those three statements in your WHY/);
+  assert.match(prompt, /write it as a plan in PLANS\.md under ## Planned/);
+
+  for (const role of ROLES) {
+    if (role.id === "organize") continue;
+    assert.equal(role.scope, undefined, `${role.id} uses the shared scope`);
+    const p = buildTickPrompt({ role, initialPrompt: "" });
+    assert.ok(p.includes(DEFAULT_SCOPE), `${role.id} carries DEFAULT_SCOPE verbatim`);
+  }
+  assert.ok(buildDirectorPrompt("Do a thing.", "").includes(DEFAULT_SCOPE), "the director keeps the shared scope");
 });
 
 test("every role prompt skips the baseline suite run and verifies after the change", () => {

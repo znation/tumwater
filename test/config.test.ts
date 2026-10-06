@@ -60,8 +60,12 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
   assert.equal(configForRole(config, "readme").minTickIntervalSeconds, 1800);
   assert.equal(configForRole(config, "plan").minTickIntervalSeconds, 3600);
+  // Organize restructures at most hourly — at the global clock it reorganized the whole tree
+  // one directory per tick.
+  assert.equal(configForRole(config, "organize").minTickIntervalSeconds, 3600);
+  const slow = new Set(["steward", "qa", "telemetry", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
-    if (id === "steward" || id === "qa" || id === "telemetry" || id === "readme" || id === "plan") continue;
+    if (slow.has(id)) continue;
     // Every other role falls back to the global interval.
     assert.equal(
       configForRole(config, id).minTickIntervalSeconds,

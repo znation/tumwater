@@ -90,14 +90,23 @@ export function dateLine(today: string = todayStamp()): string {
  * checkout's absolute path and ran the suite in the live fleet's own checkout (BUGS.md). */
 export const ROOT_FROM_WORKTREE = path.relative(worktreePath("/", "role"), "/");
 
+/** The Scope rules every run carries unless its role states its own (Role.scope): one small,
+ * self-contained task, chosen fast, with a numeric size ceiling. The director always carries
+ * these; a role overrides them only when its work is a different size by nature. */
+export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
+- Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
+  need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
+  run — take a smaller one.`;
+
 /** The rules every loop prompt carries — tick and director alike, so the two cannot drift.
  * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
  * verification command in the Leave-the-project-working rule instead of asserting npm, and
  * only an npm check keeps the node_modules borrowing sentence: false and actively misleading
  * in a repo with no node_modules anywhere (a Python, Rust, or Go repo, or one with no check
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
- * be configured. */
-function commonRules(check?: BuildCheck, briefFile: string = "README.md"): string {
+ * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the tick's role
+ * states its own (Role.scope). */
+function commonRules(check?: BuildCheck, briefFile: string = "README.md", scope: string = DEFAULT_SCOPE): string {
   const verify = check
     ? `verify with ${describeCheck(check)} (the project's declared check) — run it after your
   change and fix what you broke.`
@@ -125,10 +134,7 @@ Orientation — read this much before choosing your task, and no more:
   change, or when the task itself needs its output (reproducing a failure, counting the suite).
 
 Scope:
-- Do exactly ONE focused task, then stop. Small, complete, and correct beats big and half-done.
-- Choose the task within your first ~15 tool calls, in a handful of turns. A task that would
-  need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
-  run — take a smaller one.
+${scope}
 
 Reading budget:
 ${CONTEXT_BUDGET_RULE}
@@ -261,7 +267,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (backlogStructure) parts.push(backlogStructure);
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(commonRules(check, briefFile).trim());
+  parts.push(commonRules(check, briefFile, role.scope).trim());
   return parts.join("\n\n");
 }
 
