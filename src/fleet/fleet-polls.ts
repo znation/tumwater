@@ -5,6 +5,7 @@ import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "../failure/failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
 import type { BackendFailureKind } from "../pi/pi.js";
+import { groupBy } from "../collections.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
  * alarms (src/fleet/fleet-hold.ts, src/failure/error-storm.ts, src/failure/failure-spread.ts): each poll gathers
@@ -61,12 +62,7 @@ export function pollFleetHold(
   now: number,
 ): Map<string | undefined, FleetHold> {
   const observations = holdObservations(runners);
-  const byProvider = new Map<string | undefined, HoldObservation[]>();
-  for (const o of observations) {
-    const group = byProvider.get(o.provider) ?? [];
-    if (group.length === 0) byProvider.set(o.provider, group);
-    group.push(o);
-  }
+  const byProvider = groupBy(observations, (o) => o.provider);
   const next = new Map<string | undefined, FleetHold>();
   // Every provider the map already knows, plus every provider this poll observed: a hold
   // standing with no fresh observations still re-opens at its own deadline (its event),

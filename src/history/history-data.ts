@@ -12,6 +12,7 @@ import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { squash } from "../text/text.js";
 import { usageText } from "../events/event-format.js";
+import { groupBy } from "../collections.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
  * fleet; the ceiling bounds how much log one ask re-reads — more rows only re-read more log
@@ -116,17 +117,14 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
   landQueuedByLoop: Map<string, HarnessEvent[]>;
   outcomeByLoop: Map<string, HarnessEvent[]>;
 } {
-  const landQueuedByLoop = new Map<string, HarnessEvent[]>();
-  const outcomeByLoop = new Map<string, HarnessEvent[]>();
-  const push = (map: Map<string, HarnessEvent[]>, e: HarnessEvent): void => {
-    const list = map.get(e.loop) ?? [];
-    list.push(e);
-    map.set(e.loop, list);
-  };
-  for (const e of events) {
-    if (e.type === "land_queued") push(landQueuedByLoop, e);
-    else if (e.type === "landed" || e.type === "land_failed") push(outcomeByLoop, e);
-  }
+  const landQueuedByLoop = groupBy(
+    events.filter((e) => e.type === "land_queued"),
+    (e) => e.loop,
+  );
+  const outcomeByLoop = groupBy(
+    events.filter((e) => e.type === "landed" || e.type === "land_failed"),
+    (e) => e.loop,
+  );
   return { landQueuedByLoop, outcomeByLoop };
 }
 

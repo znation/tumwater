@@ -11,6 +11,7 @@ import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } fro
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
 import { stringList } from "../files/json-object.js";
+import { groupBy } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
@@ -137,18 +138,13 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"landed" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
-  const perLoop = (map: Map<string, HarnessEvent[]>, e: HarnessEvent): void => {
-    const list = map.get(e.loop) ?? [];
-    list.push(e);
-    map.set(e.loop, list);
-  };
   // The landing evidence rides history-data.ts's bucketLandingEvents — the same buckets
   // history's rows read — so the digest's join cannot drift from the rows' join.
   const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(allEvents);
-  const rejectedByLoop = new Map<string, HarnessEvent[]>();
-  for (const e of allEvents) {
-    if (e.type === "review_rejected") perLoop(rejectedByLoop, e);
-  }
+  const rejectedByLoop = groupBy(
+    allEvents.filter((e) => e.type === "review_rejected"),
+    (e) => e.loop,
+  );
   // Queued tick_ends resolve newest-first so each claims the newest pin at or before its end
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
