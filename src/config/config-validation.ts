@@ -13,6 +13,7 @@ import {
 } from "./config-schema.js";
 import { allRoleIds } from "../roles.js";
 import { isJsonObject } from "../json-object.js";
+import { isNonBlankString } from "../text.js";
 import { tooLongMessage } from "../text.js";
 import { parseQuietHours } from "../quiet-hours.js";
 import { parseModelSelector } from "../model-selector.js";
@@ -243,7 +244,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
       // shape instead of its emptiness. Each message names the position so one edit fixes it.
       if (Array.isArray(o.exemptPaths)) {
         (o.exemptPaths as unknown[]).forEach((p, i) => {
-          if (typeof p !== "string" || p.trim() === "") return; // Already reported by checkStringArray.
+          if (!isNonBlankString(p)) return; // Already reported by checkStringArray.
           const fix =
             p.startsWith("/") || p.startsWith("./")
               ? 'must be repo-relative — drop the leading "/" or "./"'
@@ -275,11 +276,11 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     if (isJsonObject(f)) {
       checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
       for (const [tier, v] of Object.entries(f))
-        if (typeof v !== "string" || v.trim() === "")
+        if (!isNonBlankString(v))
           problems.push(
             `fallback.${tier} must be a non-empty selector string or "pause" (got ${show(v)})`,
           );
-    } else if (typeof f !== "string" || f.trim() === "") {
+    } else if (!isNonBlankString(f)) {
       problems.push(`fallback must be a selector string or a map by tier (got ${show(f)})`);
     } else if (f === "pause") {
       problems.push(
@@ -319,9 +320,8 @@ function checkSelectorHalves(
   problems: string[],
 ): void {
   const v = obj[key];
-  if (typeof v !== "string" || v.trim() === "") return;
-  const legacy =
-    typeof legacyProvider === "string" && legacyProvider.trim() !== "" ? legacyProvider : undefined;
+  if (!isNonBlankString(v)) return;
+  const legacy = isNonBlankString(legacyProvider) ? legacyProvider : undefined;
   const sel = parseModelSelector(v, legacy);
   if (sel.provider !== undefined && sel.provider.trim() === "")
     problems.push(
@@ -372,7 +372,7 @@ function checkSelectorHalves(
         // this loop's tick prefills as blank text, so the loop has nothing to do and ticks
         // no_change forever. Reject both shapes with the same message; the model-triple
         // checkString rule uses the same trim-based emptiness test.
-        if (typeof task !== "string" || task.trim() === "") {
+        if (!isNonBlankString(task)) {
           problems.push(`${where}.task must be a non-empty string (got ${show(task)})`);
         } else if (task.length > CUSTOM_TASK_MAX_CHARS) {
           problems.push(

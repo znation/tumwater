@@ -9,7 +9,7 @@
  * inside the window simply starts at window end. */
 
 import { logEvent } from "./events.js";
-import { gotSuffix } from "./text.js";
+import { gotSuffix, isNonBlankString } from "./text.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
  * window that wraps midnight (23:00-07:00 spans 23:00 → 00:00 → 07:00). */
@@ -137,7 +137,7 @@ export function roleQuietHold(
   now: Date,
 ): boolean {
   const value = perRole?.[role];
-  if (typeof value !== "string" || value.trim() === "") return false;
+  if (!isNonBlankString(value)) return false;
   const parsed = parseQuietHours(value);
   return parsed.ok && parsed.window !== null && inQuietHours(parsed.window, now);
 }

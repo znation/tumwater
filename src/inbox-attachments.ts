@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { unlinkAllMissingTolerant } from "./files.js";
 import { roleInboxDir } from "./paths.js";
+import { isNonBlankString } from "./text.js";
 import { agree } from "./phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
@@ -46,7 +47,7 @@ export function promptImagesProblem(images: unknown): string | null {
       return "each image must be { name, dataBase64 }";
     }
     const { name, dataBase64 } = image as Record<string, unknown>;
-    if (typeof name !== "string" || name.trim() === "") return "each image needs a file name";
+    if (!isNonBlankString(name)) return "each image needs a file name";
     const ext = path.extname(name).toLowerCase();
     if (!PROMPT_IMAGE_EXTENSIONS.includes(ext)) {
       return `unsupported image type ${JSON.stringify(ext === "" ? name : `*${ext}`)} — expected one of ${PROMPT_IMAGE_EXTENSIONS.join(" ")}`;

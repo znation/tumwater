@@ -155,7 +155,7 @@ export function checkModelTripleField(
         `${prefix}model as a map by tier cannot coexist with ${prefix ? `${prefix}` : "the legacy top-level "}provider — move the provider into each tier's selector (got provider ${show(obj.provider)})`,
       );
     for (const [tier, v] of Object.entries(m))
-      if (typeof v !== "string" || v.trim() === "")
+      if (!isNonBlankString(v))
         problems.push(
           `${prefix}model.${tier} must be a non-empty selector string (got ${show(v)})`,
         );
