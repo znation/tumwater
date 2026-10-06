@@ -1,7 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { yieldScaledRole } from "../roles/roles.js";
 import { yieldMultiplier } from "../backoff.js";
-import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
+import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 
 /** The in-flight tick's PROGRESS display model (split from status-model.ts, which keeps the

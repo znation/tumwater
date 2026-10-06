@@ -1,7 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget/budget.js";
-import type { LiveProgress } from "../progress-data.js";
+import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
