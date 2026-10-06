@@ -189,6 +189,20 @@ function standingRolesUntil(path: string): number | undefined {
   return typeof until === "number" && until > Date.now() ? until : undefined;
 }
 
+/** Write the paused-roles marker body — the roles set plus the optional shared `until` — the
+ * one shape all three rewrite paths emit: a fresh join, a `--for` overwrite on an already-
+ * paused role, and resumeRole's survivor rewrite. Each rebuilds the body from scratch, so
+ * pinning the shape here keeps the `until`-carrying rule (the standing shared deadline a
+ * fresh join and the survivors must keep — BUGS.md 2026-09-30) from being dropped in one
+ * branch while another preserves it. Callers keep the last-removal delete: resumeRole's
+ * empty set removes the file, not an empty marker. */
+function writePausedRoles(path: string, roles: string[], until: number | undefined): void {
+  writeJsonAtomic(
+    path,
+    until === undefined ? { roles, at: Date.now() } : { roles, at: Date.now(), until },
+  );
+}
+
 /** Pause one role by adding it to the paused-roles marker; returns whether this call changed
  * state (false when the role was already paused — idempotent like pauseFleet, so the CLI and
  * a dashboard toggle can report "already paused"). Custom-loop ids are stored verbatim: the
@@ -205,7 +219,7 @@ export function pauseRole(root: string, role: string, untilMs?: number): boolean
       if (untilMs === undefined) return false;
       // The deadline is the marker's one shared field: a fresh `--for` overwrites it —
       // extend or shorten — rather than no-oping behind "already paused".
-      writeJsonAtomic(path, { roles: current, at: Date.now(), until: untilMs });
+      writePausedRoles(path, current, untilMs);
       return true;
     }
     // A standing join keeps the set's standing shared deadline: this write rebuilds the
@@ -213,12 +227,7 @@ export function pauseRole(root: string, role: string, untilMs?: number): boolean
     // roles' timed pause into a standing one (BUGS.md 2026-09-30). A `--for` on this call
     // overwrites, the same last-write-wins rule as the branch above.
     const joinUntil = untilMs ?? standingRolesUntil(path);
-    writeJsonAtomic(
-      path,
-      joinUntil === undefined
-        ? { roles: [...current, role], at: Date.now() }
-        : { roles: [...current, role], at: Date.now(), until: joinUntil },
-    );
+    writePausedRoles(path, [...current, role], joinUntil);
     return true;
   });
 }
@@ -238,10 +247,7 @@ export function resumeRole(root: string, role: string): boolean {
       // roles' timed pause up past the deadline their operator set. Only the last removal
       // drops the field, with the marker itself.
       const until = standingRolesUntil(pausedRolesPath(root));
-      writeJsonAtomic(
-        pausedRolesPath(root),
-        until === undefined ? { roles: remaining, at: Date.now() } : { roles: remaining, at: Date.now(), until },
-      );
+      writePausedRoles(pausedRolesPath(root), remaining, until);
     }
     return true;
   });
