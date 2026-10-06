@@ -200,7 +200,7 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 
 ### Fleet hold per provider
 
-src/fleet-hold.ts trips one fleet-wide hold when two roles fail the same way within two minutes;
+src/fleet/fleet-hold.ts trips one fleet-wide hold when two roles fail the same way within two minutes;
 it assumes a single backend. With seams on different providers, a 429 storm at the reviewer's
 provider would stop authors on a healthy one. Key storms by provider as well as kind, and hold
 only the roles whose tick model is on the failing provider. A hold on the strong tier's provider
@@ -238,8 +238,8 @@ src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, 
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
 src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
-src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet-hold.ts,
-src/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
+src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
+src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.

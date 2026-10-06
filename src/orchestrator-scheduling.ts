@@ -33,7 +33,7 @@ interface SchedulingPassCtx {
   /** A demoted fallback's half-open window: the pass may admit one role tick past the
    * `paused` budget gate as the breaker's probe. */
   probeDue: boolean;
-  /** The providers whose fleet-wide failure hold stands (fleet-hold.ts heldProviders —
+  /** The providers whose fleet-wide failure hold stands (fleet/fleet-hold.ts heldProviders —
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * tick while ITS provider is held (the director exempt). */
   heldProviders: ReadonlySet<string | undefined>;

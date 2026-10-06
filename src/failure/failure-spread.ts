@@ -3,18 +3,18 @@
  * failure kind, no existing bar trips — the per-role streak alarm needs one role DEEP
  * (ERROR_STREAK_WARN consecutive, src/tick/tick-apply.ts), the error-storm warning needs several
  * roles deep at once (src/error-storm.ts), and the fleet hold needs failures COALESCED within
- * a two-minute window (src/fleet-hold.ts). A degraded backend that fails the fleet widely and
+ * a two-minute window (src/fleet/fleet-hold.ts). A degraded backend that fails the fleet widely and
  * shallowly — six ticks across as many roles, each failure minutes apart — rides all three
  * gaps in silence. This alarm counts raw failures of one kind across roles in a rolling
  * window, independent of any role's streak depth: the fourth bar, shaped for the spread the
  * other three cannot see. POLICY, on the shape of its siblings (src/error-storm.ts,
- * src/fleet-hold.ts): a pure reducer over the observations the orchestrator collects each
+ * src/fleet/fleet-hold.ts): a pure reducer over the observations the orchestrator collects each
  * poll and the previous state, so the rule is unit-testable without a fleet and the
  * orchestrator owns only the wiring (the warning event). Like both siblings it has memory —
  * which failures still sit inside the window is a fact about the past no single poll's inputs
  * carry — so it is a reducer rather than a stateless predicate. */
 
-import { type HoldKind, type HoldObservation } from "../fleet-hold.js";
+import { type HoldKind, type HoldObservation } from "../fleet/fleet-hold.js";
 import { rankCountEntries } from "../rank.js";
 
 /** Failures of one kind within the window that trip the alarm. Six in thirty minutes: the

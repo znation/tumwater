@@ -1,13 +1,13 @@
-import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
-import { logEvent } from "./events/events.js";
+import { errorStorm, errorStormKnob, type ErrorStorm } from "../error-storm.js";
+import { logEvent } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
-import { sortedRoles } from "./failure/failure-cluster.js";
-import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure/failure-spread.js";
-import type { LoopState } from "./loop-state.js";
-import type { BackendFailureKind } from "./pi/pi.js";
+import { sortedRoles } from "../failure/failure-cluster.js";
+import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "../failure/failure-spread.js";
+import type { LoopState } from "../loop-state.js";
+import type { BackendFailureKind } from "../pi/pi.js";
 
 /** The orchestrator's three fleet-health polls — the wiring half of the fleet-wide failure
- * alarms (src/fleet-hold.ts, src/error-storm.ts, src/failure/failure-spread.ts): each poll gathers
+ * alarms (src/fleet/fleet-hold.ts, src/error-storm.ts, src/failure/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a fleet and these
  * own the only event emission. Split out of tick-timing.ts — which had grown from the
@@ -48,7 +48,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * 429 storm at the reviewer's provider holds the roles on that provider while roles on a
  * healthy one keep ticking (PLANS.md 2026-10-05). A provider whose hold re-opened STAYS in
  * the map — its kind, provider, relapse count, and re-open time are the memory the next
- * storm's relapse test needs — so "held" is always read through fleet-hold.ts's
+ * storm's relapse test needs — so "held" is always read through fleet/fleet-hold.ts's
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).

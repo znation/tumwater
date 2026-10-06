@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "./config/config-schema.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi/pi.js";
-import { HOLD_BASE_MS } from "./fleet-hold.js";
+import { HOLD_BASE_MS } from "./fleet/fleet-hold.js";
 import { backendKindPhrase } from "./phrases.js";
 import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt/prompt-followup.js";
@@ -16,7 +16,7 @@ import { cappedRequestTimeouts } from "./request-timeouts.js";
 const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 
 /** What a hint-less 429 waits before its one retry. With no Retry-After from the provider, the
- * fleet's own constants state the refill physics: fleet-hold.ts's base hold is one minute,
+ * fleet's own constants state the refill physics: fleet/fleet-hold.ts's base hold is one minute,
  * "the shortest pause that lets the bucket refill". Retrying sooner re-enters the same exhausted
  * per-minute bucket the first request just emptied and burns the tick's only retry on a
  * near-certain second 429. A present hint always wins instead; the cap above still bounds
@@ -206,7 +206,7 @@ export class LoopPi {
     // does not cover (connection down, 5xx, model load) still warns — parity with the 429
     // branch above, so any episode is visible from the feed alone instead of living only in
     // per-tick error events an operator must aggregate by hand. The fleet-wide hold
-    // (src/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
+    // (src/fleet/fleet-hold.ts) and the storm alarms judge the spread; this line is the per-run
     // floor under them, not a retry: a dead backend is not something an immediate re-run beats.
     if (
       !pi.ok &&

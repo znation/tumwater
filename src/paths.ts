@@ -64,7 +64,7 @@ export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
-/** The orchestrator's own info file (its pid, for liveness checks — fleet-state.ts). */
+/** The orchestrator's own info file (its pid, for liveness checks — fleet/fleet-state.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
@@ -139,7 +139,7 @@ export function pausedRolesPath(root: string): string {
 }
 
 /** The cross-process lock serializing read-modify-write updates of the paused-roles marker
- * (pauseRole/resumeRole in fleet-state.ts): the CLI and the GUI server are separate processes
+ * (pauseRole/resumeRole in fleet/fleet-state.ts): the CLI and the GUI server are separate processes
  * that can toggle different roles in the same instant, and without serialization the last
  * writer's whole-set overwrite silently drops the other's pause. A lock directory owned by the
  * shared mkdir-and-pid mutex (withSyncLock, src/lock.ts), which creates and removes it; lives

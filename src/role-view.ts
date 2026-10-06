@@ -13,7 +13,7 @@ import type { FallbackModelConfig } from "./config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "./config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "./inbox/inbox.js";
-import { pausedRoles } from "./fleet-state.js";
+import { pausedRoles } from "./fleet/fleet-state.js";
 import { loadLoopState } from "./loop-state.js";
 import { assembleTickPrompt } from "./tick/tick-prompt.js";
 import { configForRole, fallbackPair } from "./config/config-views.js";

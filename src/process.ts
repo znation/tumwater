@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 /** Child-process plumbing: the harness's one execFile helper (execFileAsync), the pid-liveness
  * probe every place that decides whether a recorded pid still belongs to a live process shares
  * (the merge lock's stale-holder check in lock.ts, the orchestrator-alive status in
- * fleet-state.ts), the group-signal helpers behind every teardown, and the child environment
+ * fleet/fleet-state.ts), the group-signal helpers behind every teardown, and the child environment
  * that keeps the harness's Node processes out of LaunchServices on macOS. Reading the host's
  * process table and the per-run TUMWATER_RUN marks and sweep built on it live in
  * process-table.ts, on top of the exec helper here. */

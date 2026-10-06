@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pauseFleet, pausedRoles } from "../src/fleet-state.js";
+import { pauseFleet, pausedRoles } from "../src/fleet/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";

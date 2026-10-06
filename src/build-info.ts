@@ -78,7 +78,7 @@ export async function isSelfHosted(root: string, info: BuildInfo): Promise<boole
 /** What orchestrator.json publishes about the running build (OrchestratorInfo.build), for the
  * dashboards and `doctor`: the stamp plus, once main has been observed, whether the build inputs
  * have moved past it (redeploy.ts computes it; orchestrator.ts publishes it via
- * fleet-state.ts's OrchestratorInfo). */
+ * fleet/fleet-state.ts's OrchestratorInfo). */
 export interface BuildStatus {
   sha: string;
   builtAt: number;

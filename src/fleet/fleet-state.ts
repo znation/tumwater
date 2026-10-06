@@ -1,11 +1,11 @@
 import fs from "node:fs";
-import type { BuildStatus } from "./build-info.js";
-import type { FallbackDemotion } from "./fallback-breaker.js";
-import { readJsonFile, writeJsonAtomic } from "./json-files.js";
-import { ensureParentDir, removeQuiet } from "./files.js";
-import { pidAlive } from "./process.js";
-import { withSyncLock } from "./lock.js";
-import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "./paths.js";
+import type { BuildStatus } from "../build-info.js";
+import type { FallbackDemotion } from "../fallback-breaker.js";
+import { readJsonFile, writeJsonAtomic } from "../json-files.js";
+import { ensureParentDir, removeQuiet } from "../files.js";
+import { pidAlive } from "../process.js";
+import { withSyncLock } from "../lock.js";
+import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 
 /** The fleet pause marker read once as the standing pause it represents: non-null while the
  * operator's pause stands, null when absent/unreadable/expired. Snapshot-style callers that

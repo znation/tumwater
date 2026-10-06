@@ -6,7 +6,7 @@ import { recordDailyCost } from "../budget.js";
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
  * commit trailer reads turns, the tick_end event reads costUsd, and the orchestrator's fleet-wide
- * hold reads lastRateLimit and lastBackendFailure (src/fleet-hold.ts, src/fleet-polls.ts).
+ * hold reads lastRateLimit and lastBackendFailure (src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts).
  *
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
  * retry, conflict resolution, landing runs via foldLandingUsage — lands here exactly once, so
@@ -26,7 +26,7 @@ export class TickUsage {
   /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
    * reviewer or landing run alike, since every one folds through fold — with the provider's
    * Retry-After hint when it sent one. The orchestrator reads it every poll as this role's
-   * rate-limit input to the fleet-wide hold (src/fleet-hold.ts): the per-run retry has no
+   * rate-limit input to the fleet-wide hold (src/fleet/fleet-hold.ts): the per-run retry has no
    * cross-role view, and a field on the runner the orchestrator already holds carries the
    * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
    * restart forgetting it costs nothing. Undefined until the first such run. */
@@ -35,7 +35,7 @@ export class TickUsage {
    * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
    * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
    * the same rule and for the same consumer as lastRateLimit above: the fleet-wide hold
-   * (src/fleet-hold.ts) reads it every poll. In memory only, like lastRateLimit.
+   * (src/fleet/fleet-hold.ts) reads it every poll. In memory only, like lastRateLimit.
    * Undefined until the first such run. */
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 

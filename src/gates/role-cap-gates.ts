@@ -9,7 +9,7 @@
  *
  * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in the plan
  * so no implementer re-litigates them:
- * - This gate writes NOTHING to the shared per-role pause marker (src/fleet-state.ts's
+ * - This gate writes NOTHING to the shared per-role pause marker (src/fleet/fleet-state.ts's
  *   pauseRole). The marker is anonymous — after a restart across midnight the harness could
  *   not tell a cap pause from an operator's, and would either refuse to lift the operator's
  *   pause or orphan it. The scheduler blocks the role through the poll's separate `capPaused`

@@ -9,7 +9,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 
 // describeStateChange is the wording half of the failure digest's Fleet state changes section:
 // one bounded line per harness self-decision event. Fixtures here carry only the payload fields
-// the real emit sites write (orchestrator.ts, redeploy.ts, fleet-hold.ts, the pause
+// the real emit sites write (orchestrator.ts, redeploy.ts, fleet/fleet-hold.ts, the pause
 // commands), so the pins track what observers actually see in events.jsonl.
 
 /** An event as logEvent would write it — ts and loop are always present, payload after. */

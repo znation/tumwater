@@ -4,7 +4,7 @@
  * the role keeps ticking on the error ladder's 600 s max backoff forever, burning a model
  * slot and spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed
  * ticks this gate pauses the role through the same per-role pause marker the operator's
- * `tumwater pause --role <id>` writes (src/fleet-state.ts's pauseRole — the marker, lock, and
+ * `tumwater pause --role <id>` writes (src/fleet/fleet-state.ts's pauseRole — the marker, lock, and
  * idempotence come free), so the scheduler's existing pausedRolesSet skip blocks new ticks
  * with zero scheduler changes. The director is NOT exempt: a failing director cannot process
  * prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or
@@ -34,11 +34,11 @@
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
 import type { LoopState } from "../loop-state.js";
-import { pauseRole } from "../fleet-state.js";
+import { pauseRole } from "../fleet/fleet-state.js";
 import { logEvent } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
- * (src/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */
+ * (src/fleet/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */
 type StreakObservation = {
   role: string;
   state: Pick<LoopState, "consecutiveErrors" | "lastError">;

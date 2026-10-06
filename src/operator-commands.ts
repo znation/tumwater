@@ -15,7 +15,7 @@ import {
   readOrchestratorInfo,
   resumeFleet,
   resumeRole,
-} from "./fleet-state.js";
+} from "./fleet/fleet-state.js";
 import { pidAlive } from "./process.js";
 import {
   markerApplyNote,
@@ -161,7 +161,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
       fail(
         "pause --reason states why the whole fleet is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
       );
-    // Per-role branch: pauseRole in src/fleet-state.ts is the single writer of the role
+    // Per-role branch: pauseRole in src/fleet/fleet-state.ts is the single writer of the role
     // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
     // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
     // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
@@ -169,7 +169,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
     say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
     return;
   }
-  // pauseFleet in src/fleet-state.ts is the single writer of the pause marker — the GUI's
+  // pauseFleet in src/fleet/fleet-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there (a `--for` never
   // no-ops: it overwrites the standing deadline instead).
@@ -240,13 +240,13 @@ export async function cmdStop(root: string): Promise<void> {
 export async function cmdResume(root: string, args: string[] = []): Promise<void> {
   const role = namedRole(root, args);
   if (role) {
-    // resumeRole (src/fleet-state.ts) is the single remover of the per-role marker; a false
+    // resumeRole (src/fleet/fleet-state.ts) is the single remover of the per-role marker; a false
     // return means the role was never paused — the changed-state contract roleResumeMessage
     // words ("is already paused" vs "was not paused").
     say(roleResumeMessage(root, role, resumeRole(root, role)));
     return;
   }
-  // resumeFleet (src/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
+  // resumeFleet (src/fleet/fleet-state.ts) is the single remover, shared with the GUI toggle; a false
   // return means there was no marker to lift.
   if (!resumeFleet(root)) {
     say("not paused");

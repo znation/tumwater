@@ -122,7 +122,7 @@ files above, and the config-write tests.
 
 Design: plans/model-tiers.md ("Fleet hold per provider").
 
-**Goal.** `fleetHold` (src/fleet-hold.ts) trips one fleet-wide hold when `HOLD_STORM_ROLES`
+**Goal.** `fleetHold` (src/fleet/fleet-hold.ts) trips one fleet-wide hold when `HOLD_STORM_ROLES`
 roles fail the same way within `HOLD_STORM_WINDOW_MS`; it assumes a single backend. Once seams
 run on different providers, a 429 storm at the reviewer's provider would stop authors on a
 healthy one. Hold only what the failing provider serves.
@@ -132,10 +132,10 @@ healthy one. Hold only what the failing provider serves.
    runner's HoldInputs provider via `configForRole`; undefined when pi's default is in charge);
    observations count toward one storm only when both provider and kind match.
 2. `FleetHold` holds per provider: `FleetHold` itself gained the `provider` it is about, and
-   `pollFleetHold` (src/fleet-polls.ts) keeps one hold PER PROVIDER in `states.fleetHold` (a
+   `pollFleetHold` (src/fleet/fleet-polls.ts) keeps one hold PER PROVIDER in `states.fleetHold` (a
    `Map<string | undefined, FleetHold>`, src/gates/gate-polls.ts). A provider whose hold re-opened
    STAYS keyed in the map — its kind, provider, relapse count, and re-open time are the
-   relapse memory — so "held" is read only through fleet-hold.ts's new `heldProviders()`
+   relapse memory — so "held" is read only through fleet/fleet-hold.ts's new `heldProviders()`
    (until non-null), never bare key presence: a lifted hold never keeps blocking. The
    scheduling pass (src/orchestrator-scheduling.ts) blocks a role when its tick model's
    provider (a per-poll `roleProviders` map) is held, or when `reviewHeld` stands; the
@@ -148,7 +148,7 @@ healthy one. Hold only what the failing provider serves.
    before); event-format names the provider and scopes "role loops on that provider / every
    provider".
 
-**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gates/gate-polls.ts,
+**Files touched.** src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts, src/gates/gate-polls.ts,
 src/orchestrator-scheduling.ts, src/orchestrator.ts, src/events/events.ts, src/events/event-format.ts,
 test/fleet-polls.test.ts, test/orchestrator-seams.test.ts, test/event-format-fleet.test.ts,
 and the new test/orchestrator-scheduling.test.ts.

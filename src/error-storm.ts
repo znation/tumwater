@@ -3,7 +3,7 @@
  * failures" warning fires — nothing fleet-wide names the shared cause. The 2026-09-22
  * meltdown (all 14 roles timing out at the 1800 s default for 8 hours) surfaced as 14
  * independent streak warnings; an operator scanning the feed saw a quiet fleet. POLICY, on
- * the shape of the fleet-wide hold (src/fleet-hold.ts): a pure reducer over the
+ * the shape of the fleet-wide hold (src/fleet/fleet-hold.ts): a pure reducer over the
  * observations the orchestrator collects each poll and the previous storm, so the rule is
  * unit-testable without a fleet and the orchestrator owns only the wiring (the warning
  * event). Like the hold it has memory — which storm is active is a fact about the past

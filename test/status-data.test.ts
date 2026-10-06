@@ -31,7 +31,7 @@ import { writeJsonFile } from "../src/json-files.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding, queuedLandingFiles } from "../src/landing/landing-queue.js";
-import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet-state.js";
+import { pauseFleet, pauseRole, resumeFleet } from "../src/fleet/fleet-state.js";
 
 // Quiet hours 2/2 (plans: "Quiet hours … part 2/2, observability"): the snapshot carries the
 // configured window and the in-window flag — present only while the value parses to a real

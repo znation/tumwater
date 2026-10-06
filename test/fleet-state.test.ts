@@ -19,7 +19,7 @@ import {
   readOrchestratorInfo,
   orchestratorAlive,
   type OrchestratorInfo,
-} from "../src/fleet-state.js";
+} from "../src/fleet/fleet-state.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -153,7 +153,7 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
  * Resolves with the child's exit status; the exit listener attaches at spawn time, so a child
  * that fails fast rejects this promise instead of leaving it pending forever. */
 function pauseOnceProcess(root: string, role: string, startFile: string): Promise<void> {
-  const module = fileURLToPath(new URL("../src/fleet-state.js", import.meta.url));
+  const module = fileURLToPath(new URL("../src/fleet/fleet-state.js", import.meta.url));
   const script = `const fs = require("node:fs");
     import(${JSON.stringify(module)}).then((m) => {
       while (!fs.existsSync(${JSON.stringify(startFile)})) {}

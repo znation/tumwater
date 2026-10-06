@@ -164,7 +164,7 @@ The changes are ranked by how much they would have recovered in the last 7 days.
    `tick_start`/`tick_end` by hand, and telemetry would have seen the 09-22 episode as 97
    identical errors instead of 55 lost hours.
 8. **Hold the fleet on shared backend failures, not only 429s.** The 429 storm hold
-   (src/rate-limit-hold.ts — shipped 2026-09-29 as the generalized src/fleet-hold.ts) is the
+   (src/rate-limit-hold.ts — shipped 2026-09-29 as the generalized src/fleet/fleet-hold.ts) is the
    only cross-role failure response. "Connection error.", 5xx,
    "Request timed out", and model-load failures each fail every role separately. This mattered
    most in the local-model era (~100 such ticks all time, 7 in the last week), so it ranks last.

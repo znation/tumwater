@@ -7,7 +7,7 @@ import {
   failureSpread,
   type FailureSpread,
 } from "../src/failure/failure-spread.js";
-import { pollFailureSpread, type HoldInputs } from "../src/fleet-polls.js";
+import { pollFailureSpread, type HoldInputs } from "../src/fleet/fleet-polls.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 

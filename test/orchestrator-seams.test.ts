@@ -7,13 +7,13 @@ import {
   runTimedRoleTick,
   sleepInterruptible,
 } from "../src/tick/tick-timing.js";
-import { pollFleetHold, type HoldInputs } from "../src/fleet-polls.js";
+import { pollFleetHold, type HoldInputs } from "../src/fleet/fleet-polls.js";
 import { Semaphore } from "../src/semaphore.js";
 import { readEvents } from "../src/events/event-read.js";
-import { FLEET_OPEN, HOLD_BASE_MS, type FleetHold } from "../src/fleet-hold.js";
+import { FLEET_OPEN, HOLD_BASE_MS, type FleetHold } from "../src/fleet/fleet-hold.js";
 
 /** Step the fleet-hold poll from a single-provider prev and read the default provider's
- * hold back out of the per-provider map it returns (src/fleet-polls.ts). */
+ * hold back out of the per-provider map it returns (src/fleet/fleet-polls.ts). */
 function stepHolds(
   root: string,
   prev: FleetHold | ReadonlyMap<string | undefined, FleetHold>,
@@ -340,7 +340,7 @@ test("pollFleetHold trips on two roles' same-kind backend failures and names the
   const now = 1_000_000_000;
   const holdEvents = () =>
     readEvents(root).filter((e) => e.type === "rate_limit_hold" || e.type === "rate_limit_resumed");
-  // The poll's structural runner shape (src/fleet-polls.ts HoldInputs), mutable so the test
+  // The poll's structural runner shape (src/fleet/fleet-polls.ts HoldInputs), mutable so the test
   // moves the observations as the fleet's runs would (the runner's own getters are readonly).
   const runners: HoldInputs[] = [
     { role: "bugfix", lastRateLimit: undefined, lastBackendFailure: { at: now - 3_000, kind: "connection" } },

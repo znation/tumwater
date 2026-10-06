@@ -7,14 +7,14 @@
  * stay in gui/gui-endpoints.ts; each handler answers its request and touches no socket beyond its
  * own `res`,
  * and the domain work lives one layer down (inbox.ts, inbox-submit.ts, config-write.ts,
- * fleet-state.ts, operator-intent.ts) — this module only adapts HTTP onto it.
+ * fleet/fleet-state.ts, operator-intent.ts) — this module only adapts HTTP onto it.
  */
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile, queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config/config-write.js";
-import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet-state.js";
+import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
@@ -201,7 +201,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
 }
 
 /** Handle POST /api/pause: the dashboard's pause control — the same operator gate
- * `tumwater pause [--for <duration>]` and `resume` write, via fleet-state.ts's shared writers
+ * `tumwater pause [--for <duration>]` and `resume` write, via fleet/fleet-state.ts's shared writers
  * (pauseFleet/resumeFleet) so the CLI and the GUI cannot drift on the marker's format or
  * idempotence. Same body discipline as /api/prompt and /api/budget (readJsonObject → 400
  * malformed/non-object, 413 oversized); the target state is explicit (`paused: true|false`)

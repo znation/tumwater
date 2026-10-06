@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
-import { pauseFleet } from "../src/fleet-state.js";
+import { pauseFleet } from "../src/fleet/fleet-state.js";
 import type { LoopState } from "../src/loop-state.js";
 import { makeRepo } from "./repo-fixtures.js";
 

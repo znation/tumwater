@@ -13,7 +13,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
-import { pauseRole } from "../src/fleet-state.js";
+import { pauseRole } from "../src/fleet/fleet-state.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { makeFastRepo, onceRound } from "./orchestrator-fixtures.js";

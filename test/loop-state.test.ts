@@ -16,7 +16,7 @@ import {
   pauseFleet,
   readOrchestratorInfo,
   resumeFleet,
-} from "../src/fleet-state.js";
+} from "../src/fleet/fleet-state.js";
 import { dailyCost, todayStamp } from "../src/budget.js";
 import type { LoopState } from "../src/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
@@ -26,7 +26,7 @@ import { ensureParentDir } from "../src/files.js";
 
 /** The persisted-state file's own tests (src/loop-state.ts): fresh defaults, the tolerant load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
- * fleet-state.ts but whose shape is pinned beside the state convention it mirrors. The
+ * fleet/fleet-state.ts but whose shape is pinned beside the state convention it mirrors. The
  * tick-apply.ts scheduling policy's tests live in tick-apply.test.ts. */
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */

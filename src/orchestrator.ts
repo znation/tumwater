@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "./config/config-schema.js";
-import type { OrchestratorInfo } from "./fleet-state.js";
+import type { OrchestratorInfo } from "./fleet/fleet-state.js";
 import { enabledRoleIds } from "./config/config.js";
 import { newLiveConfigReload } from "./config/config-live.js";
 import {
@@ -41,7 +41,7 @@ import {
   sleepInterruptible,
 } from "./tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gates/gate-polls.js";
-import { heldProviders } from "./fleet-hold.js";
+import { heldProviders } from "./fleet/fleet-hold.js";
 import { configForRole, reviewRunConfig } from "./config/config-views.js";
 
 const POLL_MS = 2000;

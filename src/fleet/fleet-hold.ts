@@ -27,8 +27,8 @@
  * perf 18 s apart on 09-22 05:50) had two roles in the window as often as three, while the six
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */
-import { sortedRoles } from "./failure/failure-cluster.js";
-import type { BackendFailureKind } from "./pi/pi-stream.js";
+import { sortedRoles } from "../failure/failure-cluster.js";
+import type { BackendFailureKind } from "../pi/pi-stream.js";
 
 const HOLD_STORM_ROLES = 2;
 

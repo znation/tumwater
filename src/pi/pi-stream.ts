@@ -87,7 +87,7 @@ const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
 
 /** The kinds of provider-wide failure that are NOT rate limiting: the backend itself is down,
  * refusing connections, or cannot serve the model at all. The fleet-wide hold (src/
- * fleet-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
+ * fleet/fleet-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
  * two hitting different kinds is not — so the observation carries the kind instead of
  * re-matching the text later. Defined beside the classifier that produces it. */
 export type BackendFailureKind =
@@ -178,7 +178,7 @@ export class PiStreamParser {
   /** True when any event reports a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND above). Transient in
    * the same sense: the session is healthy and a later attempt succeeds. The fleet-wide hold
-   * (src/fleet-hold.ts) consumes it beside the 429 flag, grouped by backendFailureKind. */
+   * (src/fleet/fleet-hold.ts) consumes it beside the 429 flag, grouped by backendFailureKind. */
   transientBackend = false;
   /** Which kind of backend failure the run saw (backendKind's classification of the same
    * text that set transientBackend) — carried so the hold's storm test can group by kind

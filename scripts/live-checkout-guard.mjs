@@ -10,7 +10,7 @@
 //
 // Plain Node with no imports from dist/: this runs before the compile, possibly in a checkout
 // that has no dist/ yet. The marker path and liveness rule are src/paths.ts's
-// orchestratorStatePath and src/fleet-state.ts's orchestratorAlive; the guard's tests write
+// orchestratorStatePath and src/fleet/fleet-state.ts's orchestratorAlive; the guard's tests write
 // the marker through those, so the two cannot drift apart unnoticed.
 import fs from "node:fs";
 import path from "node:path";

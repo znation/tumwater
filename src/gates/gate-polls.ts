@@ -21,25 +21,25 @@ import {
   roleQuietHold,
   type QuietHoursGateState,
 } from "../quiet-hours.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet-polls.js";
-import { type FleetHold } from "../fleet-hold.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
+import { type FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
 import type { LoopRunner } from "../loop.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../json-files.js";
-import type { OrchestratorInfo } from "../fleet-state.js";
+import type { OrchestratorInfo } from "../fleet/fleet-state.js";
 import { configForRole } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
  * hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
  * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts, src/gates/pause-gates.ts,
- * src/quiet-hours.ts, and the fleet-health trio in src/fleet-polls.ts); this owns the wiring
+ * src/quiet-hours.ts, and the fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring
  * half — one poll advances every gate's state in place. Split out of orchestrator.ts so the
  * poll loop reads as phases (reload → requests → gates → redeploy → landings → schedule →
- * start) and the gate family's wiring sits in one place, the same split fleet-polls.ts made
+ * start) and the gate family's wiring sits in one place, the same split fleet/fleet-polls.ts made
  * for the fleet-health trio. Dependency direction: orchestrator → gate-polls → the gate
  * modules. */
 
@@ -51,7 +51,7 @@ import { configForRole } from "../config/config-views.js";
  * the holds' LATEST verdicts, read at permit time by the start pass's closures — read it
  * from `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's
  * docs below). Key presence is not "held": providers whose hold re-opened stay in the map
- * for their relapse memory, so every consumer goes through fleet-hold.ts's heldProviders(). */
+ * for their relapse memory, so every consumer goes through fleet/fleet-hold.ts's heldProviders(). */
 export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
@@ -239,7 +239,7 @@ export function pollFleetGates(
       ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
     }));
 
-  // Fleet-wide failure hold, per provider (src/fleet-hold.ts, PLANS.md 2026-10-05): once two
+  // Fleet-wide failure hold, per provider (src/fleet/fleet-hold.ts, PLANS.md 2026-10-05): once two
   // roles' runs have ended on the SAME provider AND failure kind within a short window —
   // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
   // provider start no new ticks, and the land queue starts no new vet, whose reviewer run

@@ -13,7 +13,7 @@ import { errorMessage } from "./text.js";
 import { loadLoopState } from "./loop-state.js";
 import { branchName, landingRefName, worktreePath } from "./paths.js";
 import { isUsableWorktree, removeWorktree } from "./worktree.js";
-import { resumeRole } from "./fleet-state.js";
+import { resumeRole } from "./fleet/fleet-state.js";
 import { git } from "./git-run.js";
 
 /** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus
