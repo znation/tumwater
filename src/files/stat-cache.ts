@@ -25,7 +25,7 @@ const MAX_STAT_CACHED = 64;
 /** Serve `file`'s derived value from a stat-keyed cache: fresh when the file's identity or
  * mtime/size changed since this process last read it, cached otherwise — one stat syscall per
  * file per poll instead of re-reading and re-parsing data that grows without bound. Any write
- * invalidates via dev/ino/mtime/size (the same freshness check as tail.ts's incremental log
+ * invalidates via dev/ino/mtime/size (the same freshness check as files/tail.ts's incremental log
  * readers). `load` runs only on a miss (first observation or change) — never on a hit, so a
  * steady-state poll does no read I/O at all; it returns null when the file cannot be read. A
  * missing file yields null without attempting a doomed read, and any stale entry is dropped in

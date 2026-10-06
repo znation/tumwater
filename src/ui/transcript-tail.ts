@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { openForRead, statOrNull } from "../files/files.js";
 import { formatTranscript, type TranscriptEntry } from "./transcript.js";
-import { readCompleteLines } from "../tail.js";
+import { readCompleteLines } from "../files/tail.js";
 
 /** Rendered tail of a raw pi log for one-shot display (`tumwater logs --role <id>`): the last
  * `limit` transcript entries without reading (or parsing) the whole file, which grows to

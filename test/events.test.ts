@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { EVENTS_MAX_BYTES, eventsRotationLabel, logEvent, subscribeEvents } from "../src/events/events.js";
 import { parseEventLine, readEvents, readEventsTailWithEnd } from "../src/events/event-read.js";
-import { followFile } from "../src/tail.js";
+import { followFile } from "../src/files/tail.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 

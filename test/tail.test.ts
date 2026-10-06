@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/tail.js";
+import { followFile, forEachTailChunk, readCompleteLines, withTail, type TailState } from "../src/files/tail.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { vanishOnOpen, vanishOnReadFile } from "./fs-faults.js";
 import { sleep, waitFor } from "./wait.js";

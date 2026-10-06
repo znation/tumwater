@@ -10,7 +10,7 @@ import path from "node:path";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
-import { readCompleteLines } from "../tail.js";
+import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { entryDates } from "../backlog/backlog-md.js";

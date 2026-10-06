@@ -8,7 +8,7 @@ import {
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
-import { followFile } from "../tail.js";
+import { followFile } from "../files/tail.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";

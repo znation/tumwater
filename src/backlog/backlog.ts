@@ -12,7 +12,7 @@ export type { BacklogEntry } from "./backlog-md.js";
  * serves an unchanged file from a stat-keyed cache: one syscall per file per poll instead of
  * re-reading and re-parsing markdown that grows without bound over the project's lifetime
  * (PLANS/BUGS are append-only durable memory). Any write invalidates it via dev/ino/mtime/size
- * (stat-cache.cachedByStat, same freshness check as tail.ts's incremental log readers). The pure
+ * (stat-cache.cachedByStat, same freshness check as files/tail.ts's incremental log readers). The pure
  * markdown parsing underneath lives in src/backlog/backlog-md.ts — this module owns only reading and
  * caching. Each dashboard formats this data for its own surface (the TUI's lines live in
  * tui.tsx; the GUI renders HTML in gui-page.ts). The open-question count shown in the status

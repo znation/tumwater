@@ -185,7 +185,7 @@ export function loadConfigSafe(
 // this stat-keyed cache: one stat syscall per root per poll instead of re-reading, re-parsing,
 // and re-validating on every poll (validation cost grows with config size, so the saving
 // widens as role instructions grow). Any write invalidates via dev/ino/mtime/size — the same
-// freshness check as tail.ts's incremental log readers. Keyed by root so distinct projects in
+// freshness check as files/tail.ts's incremental log readers. Keyed by root so distinct projects in
 // one process never collide; capped inside cachedByStat so many short-lived roots in tests
 // cannot grow it unbounded.
 const configCache = new Map<string, StatKeyedValue<TumwaterConfig>>();

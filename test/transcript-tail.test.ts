@@ -5,7 +5,7 @@ import { readTranscriptTail } from "../src/ui/transcript-tail.js";
 // Oracle: the tail reader must match a full re-read rendered by transcript.ts.
 import { formatTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
-import { readCompleteLines } from "../src/tail.js";
+import { readCompleteLines } from "../src/files/tail.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";

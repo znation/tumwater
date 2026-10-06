@@ -1,6 +1,6 @@
 import fs from "node:fs";
-import { openForRead, statOrNull } from "./files/files.js";
-import { piLogPath } from "./paths.js";
+import { openForRead, statOrNull } from "./files.js";
+import { piLogPath } from "./../paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
  * complete-line window reads, the bounded backwards chunk scan (forEachTailChunk and the

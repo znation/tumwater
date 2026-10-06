@@ -10,7 +10,7 @@ import { errCode } from "../errno.js";
  * state-file convention (tolerant reads of possibly-torn writes, pretty-printed overwrites)
  * lives in src/files/json-files.ts; stat-keyed caching of polled values in src/files/stat-cache.ts; incremental
  * consumption of the append-only logs (complete-line tail reading, the backwards chunk scan
- * readTailText behind it, tail-state folding, byte-offset following) in tail.ts. */
+ * readTailText behind it, tail-state folding, byte-offset following) in files/tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the

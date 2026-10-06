@@ -2,7 +2,7 @@ import { dayKey } from "../text/datetime.js";
 import { finiteNumber, parseJsonObject } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { readTailTextWithEnd } from "../tail.js";
+import { readTailTextWithEnd } from "../files/tail.js";
 import type { HarnessEvent } from "./events.js";
 
 /** The READ side of the event feed: everything that consumes events.jsonl after the fact —
