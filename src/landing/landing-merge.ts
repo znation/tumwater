@@ -27,6 +27,7 @@ import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import { syncRootInstall } from "../dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { RunsPi } from "../loop-pi.js";
 
@@ -313,6 +314,10 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
     wt,
     buildConflictPrompt(ctx.role, files, check),
     `tumwater-${ctx.role}-${ctx.tick}-conflict`,
+    // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
+    // tolerant of latency, and edits code inside landing. Its spend still folds into the
+    // authoring role's usage — the fold belongs to the loop's wiring, not to the config.
+    resolverConfig(ctx.config),
   );
   if (!pi.ok || hasConflictMarkers(wt, files)) {
     await abortSync(wt);

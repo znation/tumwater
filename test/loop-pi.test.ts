@@ -5,10 +5,12 @@ import path from "node:path";
 import { LoopPi } from "../src/loop-pi.js";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
+import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { assistantLine, errorLine } from "./pi-events.js";
+import { resolverConfig } from "../src/config/config-views.js";
 
 // LoopPi (src/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared
 // per-loop wiring, the landing slot's shutdown-only signal, and the SUMMARY follow-up.
@@ -31,8 +33,8 @@ interface Recording {
 
 function makeHost(
   root: string,
-  config = defaultConfig(),
-): Recording & { loopPi: LoopPi; config: typeof config } {
+  config: TumwaterConfig = defaultConfig(),
+): Recording & { loopPi: LoopPi; config: TumwaterConfig } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
   const foldTimes: number[] = [];
@@ -114,6 +116,60 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted tick res
     const line = runArgs(args)[0]!;
     assert.ok(line.includes("--continue"), "resume continues the role's session");
     assert.ok(!/-n /.test(line), "no -n when resuming");
+  } finally {
+    restore();
+  }
+});
+
+// The conflict resolver rides the strong tier (plans/model-tiers.md part 4/8): runRolePi's
+// explicit config replaces the role's own for that one run, and the argv shows it. With only
+// `default` declared the resolver's argv is unchanged from the un-tiered wiring.
+test("runRolePi's explicit config replaces the role's config in that run's argv", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args);
+  try {
+    const { loopPi } = makeHost(root, {
+      ...defaultConfig(),
+      model: { default: "prov/default", strong: "prov/strong" },
+    });
+    await loopPi.runRolePi(root, "author the change", "tumwater-feature-3-author");
+    await loopPi.runRolePi(
+      root,
+      "resolve the conflict",
+      "tumwater-feature-3-conflict",
+      false,
+      resolverConfig({ ...defaultConfig(), model: { default: "prov/default", strong: "prov/strong" } }),
+    );
+    const lines = runArgs(args);
+    assert.match(lines[0]!, /--provider prov --model default/, "the authoring run carries default's model");
+    assert.match(lines[1]!, /--provider prov --model strong/, "the resolver run carries the strong model's argv");
+  } finally {
+    restore();
+  }
+});
+
+test("with only default declared, the resolver's config argv is unchanged from the role's own", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args);
+  try {
+    const { loopPi } = makeHost(root, { ...defaultConfig(), model: "prov/only" });
+    await loopPi.runRolePi(root, "author the change", "tumwater-feature-4-author");
+    await loopPi.runRolePi(
+      root,
+      "resolve the conflict",
+      "tumwater-feature-4-conflict",
+      false,
+      resolverConfig({ ...defaultConfig(), model: "prov/only" }),
+    );
+    const lines = runArgs(args);
+    const selector = (line: string) => line.match(/--provider \S+ --model \S+/)?.[0];
+    assert.equal(
+      selector(lines[1]!),
+      selector(lines[0]!),
+      "same provider and model argv — only default's model is declared",
+    );
   } finally {
     restore();
   }

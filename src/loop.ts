@@ -258,7 +258,7 @@ export class LoopRunner {
         exemptPaths: this.config.review.exemptPaths,
         config: this.config,
         tick: this.state.ticks,
-        runPi: (w, prompt, sessionName) => this.pi.runRolePi(w, prompt, sessionName),
+        runPi: (w, prompt, sessionName, config) => this.pi.runRolePi(w, prompt, sessionName, false, config),
       },
       wt,
       summary,

@@ -127,6 +127,16 @@ export function reviewConfig(config: TumwaterConfig): ResolvedModelConfig {
   );
 }
 
+/** The config the landing conflict resolver runs on (plans/model-tiers.md, part 4/8): the
+ * strong tier's model installed over the config the landing was handed — resolution is rare,
+ * tolerant of latency, and edits code inside landing, so it rides the seam where model quality
+ * matters most. It reads whatever config the landing carries, so it follows the budget
+ * fallback's config once part 5/8 lands. No other overrides: the session dir, raw log,
+ * transient retry, and usage folding stay the authoring run's. */
+export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
+  return withModelOverrides(config, "strong", {});
+}
+
 /** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
  * the landing slot the whole queue waits on, and its only other limits were the tick's budget
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and

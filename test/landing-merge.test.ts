@@ -12,6 +12,7 @@ import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
 import { readEvents } from "../src/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
+import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fake-commands.js";
 import { assertClean, commitIn, gitOnlyBinDir, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./repo-fixtures.js";
@@ -26,6 +27,9 @@ interface PiCall {
   wt: string;
   prompt: string;
   session: string;
+  /** The config the run was handed (the conflict resolver's strong-tier one, plans/
+   * model-tiers.md part 4/8) — undefined when the caller passed none. */
+  config?: ResolvedModelConfig;
 }
 
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
@@ -45,8 +49,8 @@ function makeCtx(
       exemptPaths: ["*.md", "docs/**"],
       config: defaultConfig(),
       tick: 7,
-      runPi: async (wt, prompt, session) => {
-        calls.push({ wt, prompt, session });
+      runPi: async (wt, prompt, session, config) => {
+        calls.push({ wt, prompt, session, config });
         return resolve ? await resolve(wt, prompt, session) : piResult();
       },
     },
@@ -133,7 +137,34 @@ test("a rebase conflict is resolved by one pi run and lands with linear history"
   assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
   assert.equal(calls[0]!.session, "tumwater-improve-7-conflict", "named after the role and tick");
   assert.match(calls[0]!.prompt, /seed\.txt/, "the prompt names the conflicted file");
+  assert.equal(
+    calls[0]!.config?.model,
+    undefined,
+    "with only default declared the resolver's config names no other model than the role's own",
+  );
   assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "", "history stays linear");
+});
+
+test("the conflict resolver runs on the strong tier over the config the landing was handed", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  fs.writeFileSync(path.join(root, "seed.txt"), "main\n");
+  commitIn(root, "main edit");
+  const { ctx, calls } = makeCtx(root, async (w) => {
+    fs.writeFileSync(path.join(w, "seed.txt"), "combined\n");
+    return piResult();
+  });
+  ctx.config = {
+    ...defaultConfig(),
+    model: { default: "prov/default", strong: "prov/strong" },
+  }
+
+  const result = await mergeToMain(ctx, wt, "branch edit");
+
+  assert.equal(result, "changed");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.config?.model, "strong", "the resolver run was handed the strong tier's selector");
 });
 
 test("a conflict resolution that adds lines the reviewed change never added is re-reviewed before landing", async () => {

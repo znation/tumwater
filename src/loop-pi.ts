@@ -3,7 +3,7 @@ import type { PiRunResult } from "./pi/pi-run-result.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "./pi/pi.js";
 import { HOLD_BASE_MS } from "./fleet-hold.js";
 import { backendKindPhrase } from "./phrases.js";
-import { configForRole } from "./config/config-views.js";
+import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";
 import { buildSummaryRequestPrompt } from "./prompt-followup.js";
 import { piLogPath, sessionDir } from "./paths.js";
 import { cappedRequestTimeouts } from "./request-timeouts.js";
@@ -63,11 +63,20 @@ export class LoopPi {
    * One place for those derivations — a new PiRunOptions field touches only here instead of
    * drifting between the author run and the SUMMARY follow-up. Callers override what differs
    * (the follow-up's capped timeouts, the landing's shutdown-only signal). */
-  private loopPiOpts(wt: string, prompt: string, sessionName: string, resume = false): PiRunOptions {
+  private loopPiOpts(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    resume = false,
+    config?: ResolvedModelConfig,
+  ): PiRunOptions {
     return {
       cwd: wt,
       prompt,
-      config: configForRole(this.host.config(), this.host.role),
+      // A caller-supplied config (the landing conflict resolver's strong-tier one,
+      // plans/model-tiers.md part 4/8) replaces the role's own for that one run; the role's
+      // config is the default for every other caller.
+      config: config ?? configForRole(this.host.config(), this.host.role),
       sessionDir: sessionDir(this.host.root, this.host.role),
       sessionName,
       continueSession: resume,
@@ -221,8 +230,9 @@ export class LoopPi {
     prompt: string,
     sessionName: string,
     resume = false,
+    config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
-    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume));
+    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume, config));
   }
 
   /** Hard caps on the SUMMARY follow-up turn: it should take one short reply on a warm session,
@@ -265,9 +275,14 @@ export class LoopPi {
  * conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
  * LanderContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
- * the resolver's runner (its runPi folds usage internally), and VettedLanding only the fold. */
+ * the resolver's runner (its runPi folds usage internally), and VettedLanding only the fold.
+ *
+ * `runPi`'s optional fourth argument is the config that ONE run executes on (plans/
+ * model-tiers.md part 4/8): the conflict resolver passes the strong tier's config there while
+ * the authoring runs keep the role's own. The loop's wiring forwards it to runRolePi; a run
+ * without it rides the role's config unchanged. */
 export interface RunsPi {
-  runPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult>;
+  runPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult>;
 }
 
 /** The landing gate's reviewer runs through the loop's shared transient-retry wiring

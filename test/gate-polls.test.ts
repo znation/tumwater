@@ -219,10 +219,15 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", "qa", DIRECTOR_ROLE] },
     infoFile: path.join(root, "orchestrator.json"),
   };
-  // A mid-day poll (whenever this runs): docs' near-all-day window holds, coverage's empty
-  // window is off, qa's wrapping window only holds late night. Whichever side of 07:00 the
-  // test's clock lands on, docs and the director's verdicts are time-independent.
-  const poll = pollFleetGates(newFleetGateStates(config), ctx);
+  // A mid-day poll: docs' near-all-day window holds, coverage's empty window is off, qa's
+  // wrapping window only holds late night. `now` is pinned to a fixed local mid-day instead
+  // of Date.now() — a real 23:59:xx run fell outside "00:00-23:59" (the end minute is
+  // exclusive, inQuietHours) and flaked the suite. Whichever side of 07:00 a caller's clock
+  // sits on, docs' and the director's verdicts are time-independent by construction.
+  const poll = pollFleetGates(newFleetGateStates(config), {
+    ...ctx,
+    now: new Date(2026, 9, 6, 12, 0, 0).getTime(),
+  });
   assert.ok(poll.roleQuietHeld.has("docs"), "docs' near-all-day window holds at any local time");
   assert.ok(!poll.roleQuietHeld.has("coverage"), "an empty window is off for that role");
   assert.ok(!poll.roleQuietHeld.has(DIRECTOR_ROLE), "the director is exempt");

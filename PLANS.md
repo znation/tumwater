@@ -6,35 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 4/8: the conflict resolver runs on the strong tier (planned 2026-10-05 by operator; requires part 3/8 landed and running)
-
-Design: plans/model-tiers.md ("Which tier each seam uses"). It changes how landings behave, so it
-is its own sub-plan and lands only once part 3/8 is the running build.
-
-**Goal.** `resolveConflict` (src/landing/landing-merge.ts) runs pi through the authoring loop's
-own config, so a conflict is resolved by whichever model wrote the change. Run it on the strong
-tier instead: resolution is rare, tolerant of latency, and edits code inside landing (BUGS.md,
-"A conflict resolution that changes the approved change's scope lands unreviewed").
-
-**Approach.**
-1. **src/config/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
-   `config`. Because it reads whatever config the landing is handed, it follows the budget
-   fallback's config once part 5/8 lands.
-2. **`RunsPi.runPi`** (src/loop-pi.ts) takes an optional fourth `config` argument. The loop's
-   wiring (src/loop.ts, `runPi: (w, prompt, sessionName) => this.pi.runRolePi(...)`) passes it
-   to `LoopPi.runRolePi`, where it replaces `configForRole(...)` in `loopPiOpts` for that run.
-   `resolveConflict` passes `resolverConfig(...)`; the session dir, raw log, transient retry,
-   and usage folding (charged to the authoring role) are unchanged.
-
-**Files touched.** src/config/config-views.ts, src/loop-pi.ts, src/loop.ts,
-src/landing/landing-merge.ts, and the landing-merge and loop-pi tests.
-
-**Acceptance criteria.**
-- With `strong` declared, a conflict-resolution run carries the strong model's argv while the
-  authoring run carries `default`'s.
-- With only `default` declared, the resolver's argv is unchanged from today.
-- The resolver's spend still folds into the authoring role's usage.
-
 ### Model tiers, part 5/8: the budget fallback switches each tier to its own free model (planned 2026-10-05 by operator; requires part 3/8 landed)
 
 Design: plans/model-tiers.md ("Budget fallback by tier").
@@ -168,6 +139,47 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 4/8: the conflict resolver runs on the strong tier (planned 2026-10-05 by operator; requires part 3/8 landed and running, done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Which tier each seam uses"). It changes how landings behave, so it
+is its own sub-plan and lands only once part 3/8 is the running build.
+
+**Goal.** `resolveConflict` (src/landing/landing-merge.ts) runs pi through the authoring loop's
+own config, so a conflict is resolved by whichever model wrote the change. Run it on the strong
+tier instead: resolution is rare, tolerant of latency, and edits code inside landing (BUGS.md,
+"A conflict resolution that changes the approved change's scope lands unreviewed").
+
+**Approach.**
+1. **src/config/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
+   `config`. Because it reads whatever config the landing is handed, it follows the budget
+   fallback's config once part 5/8 lands.
+2. **`RunsPi.runPi`** (src/loop-pi.ts) takes an optional fourth `config` argument. The loop's
+   wiring (src/loop.ts, `runPi: (w, prompt, sessionName) => this.pi.runRolePi(...)`) passes it
+   to `LoopPi.runRolePi`, where it replaces `configForRole(...)` in `loopPiOpts` for that run.
+   `resolveConflict` passes `resolverConfig(...)`; the session dir, raw log, transient retry,
+   and usage folding (charged to the authoring role) are unchanged.
+
+**Files touched.** src/config/config-views.ts, src/loop-pi.ts, src/loop.ts,
+src/landing/landing-merge.ts, and the landing-merge and loop-pi tests.
+
+**Landed 2026-10-06 by feature.** As planned: `resolverConfig(config)` = `withModelOverrides(config, "strong", {})`
+in src/config/config-views.ts (one definition over the tier map, so it follows the budget
+fallback's config once part 5/8 lands); `RunsPi.runPi` gained the optional fourth `config`
+argument, forwarded by loop.ts's wiring to `LoopPi.runRolePi` and replacing `configForRole(...)`
+in `loopPiOpts` for that run; `resolveConflict` passes `resolverConfig(ctx.config)`. Session
+dir, raw log, transient retry, and the authoring-role usage fold are unchanged. Tests: the
+loop-pi suite pins the authoring run's argv to default's and the resolver run's to the strong
+model's (and argv-identical with only `default` declared); the landing-merge suite pins the
+config the resolver run is handed. Same run also pinned test/gate-polls.test.ts's
+roleQuietHeld test to a fixed local mid-day clock: a real 23:59:xx run fell outside the
+`00:00-23:59` window (the end minute is exclusive) and flaked the suite.
+
+**Acceptance criteria.**
+- With `strong` declared, a conflict-resolution run carries the strong model's argv while the
+  authoring run carries `default`'s.
+- With only `default` declared, the resolver's argv is unchanged from today.
+- The resolver's spend still folds into the authoring role's usage.
 
 ### Model tiers, part 3/8: `small` / `default` / `strong` tier maps and the built-in tier of each role and the reviewer (planned 2026-10-05 by operator; requires part 1/8 landed, done 2026-10-05 by feature)
 
