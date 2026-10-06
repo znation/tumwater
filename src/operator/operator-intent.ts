@@ -102,6 +102,10 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
 
+/** The structured outcome of a boolean-claiming marker request (requestRestart/requestAbort):
+ * a refusal carries the reason a surface renders, success the human-readable confirmation. */
+export type RequestResult = { ok: true; message: string } | { ok: false; error: string };
+
 /** The marker-writing core of the forced restart, shared with the GUI's POST /api/restart:
  * drop the marker a running fleet consumes within one poll, telling the redeployer to waive
  * its post-restart cooldown. Forcing never bypasses a refusal — a red main, a failed compile,
@@ -110,7 +114,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
  * and the reply says so. With no fleet running the marker is written harmlessly (the next `run`
  * consumes it on its first poll) and the reply carries the same liveness contract as `wake`.
  * Returns the structured confirmation the CLI prints verbatim and the GUI flashes. */
-export function requestRestart(root: string): { ok: true; message: string } | { ok: false; error: string } {
+export function requestRestart(root: string): RequestResult {
   const info = readOrchestratorInfo(root);
   if (info?.build && info.build.stale !== true) {
     return { ok: false, error: "no restart is pending — the running build is current with main" };
@@ -144,7 +148,7 @@ export function submitRolePromptAndWake(root: string, role: string, text: string
  * per-role marker a running fleet consumes within one poll cycle. Reports the liveness gate
  * and the director's discarded-prompt note structurally ({ok, message|error}) so the CLI can
  * fail() and the GUI can shape its 409/200 — neither re-derives the wording. */
-export function requestAbort(root: string, role: string): { ok: true; message: string } | { ok: false; error: string } {
+export function requestAbort(root: string, role: string): RequestResult {
   if (!orchestratorAlive(root)) {
     return { ok: false, error: NO_HARNESS_ERROR };
   }

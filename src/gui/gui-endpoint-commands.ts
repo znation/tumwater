@@ -15,7 +15,7 @@ import { submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
-import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
+import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "./http-body.js";
@@ -248,6 +248,17 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
   });
 }
 
+/** Reply for a boolean-claiming marker request (RequestResult): success maps to 200 with its
+ * message, refusal to 409 — the request is valid but nothing can act on it, the same conflict
+ * reading requestAbort's not-live error uses. /api/restart and /api/abort share it. */
+function sendRequestResult(res: http.ServerResponse, result: RequestResult): void {
+  if (!result.ok) {
+    sendJson(res, 409, { error: result.error });
+    return;
+  }
+  sendJson(res, 200, { ok: true, message: result.message });
+}
+
 /** Handle POST /api/restart: the dashboard's build-stale alert's refresh button — the same
  * marker-writing core a CLI surface would call (requestRestart), so the wording and the
  * not-pending refusal cannot drift. The not-pending error comes back 409 like /api/abort's
@@ -257,12 +268,7 @@ export async function handleWake(req: http.IncomingMessage, res: http.ServerResp
 export async function handleRestart(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, "{}");
   if (!body) return;
-  const result = requestRestart(root);
-  if (!result.ok) {
-    sendJson(res, 409, { error: result.error });
-    return;
-  }
-  sendJson(res, 200, { ok: true, message: result.message });
+  sendRequestResult(res, requestRestart(root));
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing
@@ -273,12 +279,7 @@ export async function handleRestart(req: http.IncomingMessage, res: http.ServerR
 export async function handleAbort(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature"}', root);
   if (!body) return;
-  const result = requestAbort(root, body.role as string);
-  if (!result.ok) {
-    sendJson(res, 409, { error: result.error });
-    return;
-  }
-  sendJson(res, 200, { ok: true, message: result.message });
+  sendRequestResult(res, requestAbort(root, body.role as string));
 }
 
 /** Handle POST /api/pause-role: the dashboard's per-row pause/resume control — the same
