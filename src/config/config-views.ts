@@ -190,6 +190,21 @@ export function resolvedModelFields(
   return fields;
 }
 
+/** The `model` selector a run actually starts on, as an event/payload field: the resolved
+ * provider/model/thinking triple formatted as one selector string, or an empty object when
+ * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
+ * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
+ * that assembly and guard, shared by the two run-start event writers (loop.ts's tick_start,
+ * review.ts's review_start) and the per-loop status snapshot (status-data.ts) so the three
+ * observability surfaces cannot disagree about which model a run starts on. */
+export function modelSelectorField(
+  cfg: Pick<ResolvedModelConfig, "provider" | "model" | "thinking">,
+): { model?: string } {
+  return cfg.model
+    ? { model: formatModelSelector({ provider: cfg.provider, model: cfg.model, thinking: cfg.thinking }) }
+    : {};
+}
+
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
  * fallback is configured. The selector-string `fallback` (plans/model-tiers.md) and the

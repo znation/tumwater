@@ -11,8 +11,7 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
-import { formatModelSelector } from "../model-selector.js";
+import { configForRole, modelSelectorField, type ResolvedModelConfig } from "../config/config-views.js";
 import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
@@ -407,9 +406,7 @@ export class LoopRunner {
       loop: this.role,
       type: "tick_start",
       tick,
-      ...(cfg.model !== undefined
-        ? { model: formatModelSelector({ provider: cfg.provider, model: cfg.model, thinking: cfg.thinking }) }
-        : {}),
+      ...modelSelectorField(cfg),
     });
 
     let outcome: TickOutcome;

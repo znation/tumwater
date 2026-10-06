@@ -4,6 +4,7 @@ import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
 import {
   fallbackPair,
+  modelSelectorField,
   resolveTierFallbacks,
   roleSeamTier,
   configForRole,
@@ -258,9 +259,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // selector override both resolve through configForRole — the same view the seam consumes.
     if (isJsonObject(cfg.model)) {
       const eff = configForRole(cfg, r);
-      const pair = [eff.provider, eff.model].filter(Boolean).join("/");
-      const selector = pair ? `${pair}${eff.thinking ? ":" + eff.thinking : ""}` : undefined;
-      return { ...base, modelTier: roleSeamTier(cfg, r), ...(selector ? { model: selector } : {}) };
+      return { ...base, modelTier: roleSeamTier(cfg, r), ...modelSelectorField(eff) };
     }
     return base;
   });

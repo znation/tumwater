@@ -1,7 +1,6 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
-import { reviewRunConfig } from "../config/config-views.js";
-import { formatModelSelector } from "../model-selector.js";
+import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { headOf, patchId } from "../git/git.js";
@@ -230,9 +229,7 @@ export async function reviewAheadOfMain(
     loop: role,
     type: "review_start",
     head,
-    ...(reviewCfg.model !== undefined
-      ? { model: formatModelSelector({ provider: reviewCfg.provider, model: reviewCfg.model, thinking: reviewCfg.thinking }) }
-      : {}),
+    ...modelSelectorField(reviewCfg),
   });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
