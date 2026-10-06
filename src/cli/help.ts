@@ -132,8 +132,9 @@ Usage:
                                    Queue a prompt for that loop's next tick (wakes it)
   tumwater prompt --at <duration> <text...>
                                    Queue a prompt that stays hidden until the duration has
-                                   passed (45s, 90m, 1h30m, 1d — listed and cancellable while
-                                   it waits, delivered to the tick only once due)
+                                   passed (45s, 90m, 1h30m, 1d; capped at 90d — listed and
+                                   cancellable while it waits, delivered to the tick only
+                                   once due)
   tumwater prompt --attach <path> <text...>
                                    Queue a prompt with an image attached (repeat up to 4
                                    images: png, jpg, jpeg, gif, webp, bmp; each at most 5

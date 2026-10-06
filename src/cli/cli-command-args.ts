@@ -9,7 +9,8 @@
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
-import { parseBranchFlag, parseDurationFlag } from "./cli-args.js";
+import { failOverDurationCap, parseBranchFlag, parseDurationFlag } from "./cli-args.js";
+import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import {
   type FlagSpec,
   JSON_FLAG,
@@ -287,6 +288,10 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   let atDelayMs: number | null = null;
   if (atFlag >= 0) {
     atDelayMs = parseDurationFlag("--at", args[atFlag + 1]);
+    // The same 90-day cap every other forward-dated window honors (pause --for, wake --in,
+    // run --for): an unbounded deferral is never intended, and a value past Date's range
+    // (about 106751991d from now) made notBeforeMarker's toISOString throw a raw RangeError.
+    failOverDurationCap("--at", atDelayMs, PAUSE_FOR_MAX_MS);
   }
 
   if (listFlag >= 0) {

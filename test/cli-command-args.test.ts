@@ -541,6 +541,25 @@ test("parsePromptArgs --edit refuses the sibling modes and --at", () => {
   assert.match(expectFail(() => parsePromptArgs(["--edit", "1", "x", "--json"])).stderr, /--json only applies to --list/);
 });
 
+// --- parsePromptArgs --at ---
+
+test("parsePromptArgs --at: parses a composite deferral and caps it at the 90-day window", () => {
+  assert.deepEqual(expectOk(() => parsePromptArgs(["--at", "1h30m", "later"])), {
+    mode: "enqueue",
+    role: null,
+    text: "later",
+    atDelayMs: 90 * 60_000,
+    attachPaths: [],
+  });
+  // Over the cap the flag names both bounds, matching pause --for and wake --in; before the
+  // cap was enforced a value past Date's range made notBeforeMarker's toISOString throw a raw
+  // RangeError, so this also pins that the CLI rejects it instead of crashing.
+  const over = expectFail(() => parsePromptArgs(["--at", "91d", "later"]));
+  assert.match(over.stderr, /--at is capped at 90d \(got 91d\)/);
+  // A malformed value still gets the parser's own wording — the cap never masks it.
+  assert.match(expectFail(() => parsePromptArgs(["--at", "soon", "later"])).stderr, /--at needs a duration like/);
+});
+
 // --- parsePromptArgs --attach ---
 
 test("parsePromptArgs --attach: repeatable pairs ride out of the prompt text in every position", () => {
