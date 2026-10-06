@@ -12,6 +12,7 @@ import { durationLabel } from "../cli/cli-args.js";
 import { formatTimestamp, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { markdownTable } from "../text/markdown.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -113,15 +114,19 @@ export function renderReportMarkdown(data: ReportData): string {
   // (the shared zero-means-absent rule lives on landingShareLine).
   if (t.landingRuns > 0) lines.push(landingShareLine(t));
   lines.push("");
-  lines.push("| day | tokens out | ticks | commits | cost |");
-  lines.push("| --- | ---: | ---: | ---: | ---: |");
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);
-  for (const d of data.series) {
-    const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
-    const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
-    const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
-    lines.push(`| ${d.date.slice(5)} | ${compactTokens(d.tokensOut)}${bar} | ${ticks} | ${d.commits} | ${usd(d.costUsd)} |`);
-  }
+  lines.push(
+    ...markdownTable(
+      ["day", "tokens out", "ticks", "commits", "cost"],
+      data.series.map((d) => {
+        const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
+        const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
+        const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
+        return [d.date.slice(5), `${compactTokens(d.tokensOut)}${bar}`, String(ticks), String(d.commits), usd(d.costUsd)];
+      }),
+      ["left", "right", "right", "right", "right"],
+    ),
+  );
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleTotals(data.series, (d) => d.ticksByRole), String));
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend

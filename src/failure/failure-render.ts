@@ -10,6 +10,7 @@ import { plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
+import { markdownTable } from "../text/markdown.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;
@@ -132,17 +133,19 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   if (data.outcomes.length === 0) {
     lines.push("_no tick_end events in the window_");
   } else {
-    // The separator is joined exactly like the header: a Markdown table renders only when the
-    // two rows hold the same number of cells, and a delimiter-less join collapses every `---:`
-    // into one cell — invisible as plain text, where the digest is mostly read (BUGS.md
-    // 2026-09-21). `---:` right-aligns the counts.
-    lines.push(`| role | ${cols.join(" | ")} |`);
-    lines.push(`| --- | ${cols.map(() => "---:").join(" | ")} |`);
-    for (const row of data.outcomes) {
-      lines.push(
-        `| ${roleCell(row.role)} | ${cols.map((c) => row.counts[c] ?? 0).join(" | ")} |`,
-      );
-    }
+    // markdownTable derives the separator from the header, so the two rows cannot disagree on
+    // their cell count (the BUGS.md 2026-09-21 plain-text collapse). `---:` right-aligns the
+    // counts.
+    lines.push(
+      ...markdownTable(
+        ["role", ...cols],
+        data.outcomes.map((row) => [
+          roleCell(row.role),
+          ...cols.map((c) => String(row.counts[c] ?? 0)),
+        ]),
+        ["left", ...cols.map((): "right" => "right")],
+      ),
+    );
   }
 
   // The same ticks priced by what they cost, so a 30-minute timeout outranks ten 200-ms
@@ -155,13 +158,17 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   if (data.timeSpend.length === 0) {
     lines.push("_no tick_end events in the window_");
   } else {
-    lines.push("| role | landed | no_change | error-class |");
-    lines.push("| --- | --- | --- | --- |");
-    for (const row of data.timeSpend) {
-      lines.push(
-        `| ${roleCell(row.role)} | ${spendCell(row.classes.landed)} | ${spendCell(row.classes.no_change)} | ${spendCell(row.classes.error)} |`,
-      );
-    }
+    lines.push(
+      ...markdownTable(
+        ["role", "landed", "no_change", "error-class"],
+        data.timeSpend.map((row) => [
+          roleCell(row.role),
+          spendCell(row.classes.landed),
+          spendCell(row.classes.no_change),
+          spendCell(row.classes.error),
+        ]),
+      ),
+    );
     lines.push("");
     lines.push("**Top loss causes by time:**");
     if (data.lossCauses.length === 0) {
@@ -205,13 +212,18 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   if (data.deltas.length === 0) {
     lines.push("_no ticks in either window_");
   } else {
-    lines.push("| role | ticks | error rate | quiet kills | rejections |");
-    lines.push("| --- | --- | --- | --- | --- |");
-    for (const d of data.deltas) {
-      lines.push(
-        `| ${roleCell(d.role)} | ${deltaCell(d.prevTicks, d.prevTicks, d.ticks, d.ticks)} | ${deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks))} | ${deltaCell(d.prevTicks, d.prevQuietKills, d.ticks, d.quietKills)} | ${rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections)} |`,
-      );
-    }
+    lines.push(
+      ...markdownTable(
+        ["role", "ticks", "error rate", "quiet kills", "rejections"],
+        data.deltas.map((d) => [
+          roleCell(d.role),
+          deltaCell(d.prevTicks, d.prevTicks, d.ticks, d.ticks),
+          deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks)),
+          deltaCell(d.prevTicks, d.prevQuietKills, d.ticks, d.quietKills),
+          rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections),
+        ]),
+      ),
+    );
   }
 
   // The title restates the section's contract: its total now covers the Outcome table's error
