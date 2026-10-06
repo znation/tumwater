@@ -9,13 +9,13 @@ import {
   type LandingPipeline,
   type LandingPipelineContext,
 } from "../src/landing/landing-pipeline.js";
-import { LoopRunner } from "../src/loop.js";
+import { LoopRunner } from "../src/loop/loop.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { snapshot } from "../src/status/status-data.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";

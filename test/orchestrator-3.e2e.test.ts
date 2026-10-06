@@ -13,7 +13,7 @@ import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-sl
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState, saveLoopState } from "../src/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import {
   abortRequestPath,
   branchName,

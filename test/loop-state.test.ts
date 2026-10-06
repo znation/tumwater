@@ -9,7 +9,7 @@ import {
   loadLoopState,
   saveLoopState,
   zeroCounters,
-} from "../src/loop-state.js";
+} from "../src/loop/loop-state.js";
 import {
   isFleetPaused,
   orchestratorAlive,
@@ -18,13 +18,13 @@ import {
   resumeFleet,
 } from "../src/fleet/fleet-state.js";
 import { dailyCost, todayStamp } from "../src/budget.js";
-import type { LoopState } from "../src/loop-state.js";
+import type { LoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
-/** The persisted-state file's own tests (src/loop-state.ts): fresh defaults, the tolerant load,
+/** The persisted-state file's own tests (src/loop/loop-state.ts): fresh defaults, the tolerant load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
  * fleet/fleet-state.ts but whose shape is pinned beside the state convention it mirrors. The
  * tick-apply.ts scheduling policy's tests live in tick-apply.test.ts. */
@@ -88,7 +88,7 @@ test("saveLoopState from two concurrent processes never tears the file or loses 
   const dir = tmpdir();
   // The child imports the BUILT module, like every other spawned-child test in this suite.
   // Resolved against this test's own file:// URL, so the child can import it from any cwd.
-  const stateUrl = new URL("../src/loop-state.js", import.meta.url).href;
+  const stateUrl = new URL("../src/loop/loop-state.js", import.meta.url).href;
   // --input-type=module: top-level import in -e code needs explicit module syntax on Node
   // < 22.7 (engines declares >= 20); detection is not a portable default.
   const script = `

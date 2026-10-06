@@ -22,7 +22,7 @@ import {
   freshLoopState,
   loadLoopState,
   saveLoopState,
-} from "../src/loop-state.js";
+} from "../src/loop/loop-state.js";
 import {
   abortRequestPath,
   pausedPath,

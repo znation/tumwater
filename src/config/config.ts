@@ -78,7 +78,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // generous for a normal day of autonomous work on mid-tier API models and low enough to
     // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
-    // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop.ts): the
+    // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop/loop.ts): the
     // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
     // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over
     // half an hour or more still is (BUGS.md 2026-09-19). Tuned for the ~27B local model at

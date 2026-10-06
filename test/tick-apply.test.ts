@@ -14,7 +14,7 @@ import {
   YIELD_RING,
   yieldMultiplier,
 } from "../src/backoff.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";

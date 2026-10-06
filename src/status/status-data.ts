@@ -1,4 +1,4 @@
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";

@@ -13,7 +13,7 @@ import { parseProgress, stalledToolLabel } from "../src/progress-data.js";
 import { loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./status-fixtures.js";

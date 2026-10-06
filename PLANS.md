@@ -14,10 +14,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
    resolved to pause (strong-tier roles with review off) is blocked beside the poll's
    per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
    reads `budget paused`.
-2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
+2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop/loop.ts) is
    matched against every resolved fallback pair, not only one.
 
-**Files touched.** src/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop.ts,
+**Files touched.** src/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop/loop.ts,
 and their tests.
 
 **Acceptance criteria.**
@@ -116,7 +116,7 @@ it was borrowed from, and rewrite a config's model map to those pairs. A single 
    keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
    the `FALLBACK_REVIEW_TIMEOUT_S` floor.
 2. **src/fallback-breaker.ts / src/gates/budget-gates.ts (part 5b/8), src/budget.ts,
-   src/gates/gate-polls.ts, src/loop.ts (part 5c/8):** later ticks wire the engine into the
+   src/gates/gate-polls.ts, src/loop/loop.ts (part 5c/8):** later ticks wire the engine into the
    gates.
 
 **Files touched.** src/config/config-views.ts and its tests.
@@ -193,13 +193,13 @@ tier instead: resolution is rare, tolerant of latency, and edits code inside lan
 1. **src/config/config-views.ts:** `resolverConfig(config)` installs `tierModel(config, "strong")` over
    `config`. Because it reads whatever config the landing is handed, it follows the budget
    fallback's config once part 5/8 lands.
-2. **`RunsPi.runPi`** (src/loop-pi.ts) takes an optional fourth `config` argument. The loop's
-   wiring (src/loop.ts, `runPi: (w, prompt, sessionName) => this.pi.runRolePi(...)`) passes it
+2. **`RunsPi.runPi`** (src/loop/loop-pi.ts) takes an optional fourth `config` argument. The loop's
+   wiring (src/loop/loop.ts, `runPi: (w, prompt, sessionName) => this.pi.runRolePi(...)`) passes it
    to `LoopPi.runRolePi`, where it replaces `configForRole(...)` in `loopPiOpts` for that run.
    `resolveConflict` passes `resolverConfig(...)`; the session dir, raw log, transient retry,
    and usage folding (charged to the authoring role) are unchanged.
 
-**Files touched.** src/config/config-views.ts, src/loop-pi.ts, src/loop.ts,
+**Files touched.** src/config/config-views.ts, src/loop/loop-pi.ts, src/loop/loop.ts,
 src/landing/landing-merge.ts, and the landing-merge and loop-pi tests.
 
 **Landed 2026-10-06 by feature.** As planned: `resolverConfig(config)` = `withModelOverrides(config, "strong", {})`
@@ -267,7 +267,7 @@ src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-mo
 `[key: string]: unknown` payload convention, so `model` is documented on the two entries' line
 comments rather than declared as a per-type optional field — a top-level `model?: string` on
 `HarnessEvent` would have claimed the field on every event type. Implemented by
-src/loop.ts (`tick_start` gains `model: formatModelSelector(...)` of the `configForRole`
+src/loop/loop.ts (`tick_start` gains `model: formatModelSelector(...)` of the `configForRole`
 triple the tick resolved, omitted when `cfg.model` is unset — the budget-fallback path swaps
 the runner's config to the fallback pair before `tick()` reads it, so the logged string names
 the fallback), src/review/review.ts (`review_start` gains `model` from `reviewRunConfig(config)`,
@@ -284,7 +284,7 @@ Design: plans/model-tiers.md ("Observability").
 starts on, so outcomes, review verdicts, and spend can be compared per model.
 
 **Approach.**
-1. **src/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
+1. **src/loop/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
    that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
    on the budget fallback it names the fallback).
 2. **src/review/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
@@ -292,7 +292,7 @@ starts on, so outcomes, review verdicts, and spend can be compared per model.
    rendered after the existing text. Omitted when no model is configured (pi's own default),
    and old logs without the field still read and render.
 
-**Files touched.** src/loop.ts, src/review/review.ts, src/events/events.ts, src/events/event-format.ts, and their tests.
+**Files touched.** src/loop/loop.ts, src/review/review.ts, src/events/events.ts, src/events/event-format.ts, and their tests.
 
 **Acceptance criteria.**
 - A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its

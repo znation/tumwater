@@ -5,7 +5,7 @@
  * Split out of runOrchestrator's poll body so the WHY-due policy reads on its own screen;
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
  * landing drain) and the launch call itself. */
-import type { LoopRunner } from "./loop.js";
+import type { LoopRunner } from "./loop/loop.js";
 import type { OnceRound } from "./once-round.js";
 import type { WorkLandedCache } from "./work-landed-cache.js";
 import type { BudgetGate } from "./budget.js";

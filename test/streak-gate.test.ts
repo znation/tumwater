@@ -12,7 +12,7 @@ import {
   applyTickOutcome,
   ERROR_STREAK_BREAKER,
 } from "../src/tick/tick-apply.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/fleet/fleet-state.js";
 import { readEvents } from "../src/events/event-read.js";

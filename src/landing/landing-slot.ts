@@ -1,15 +1,15 @@
 import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
-import { saveLoopState } from "../loop-state.js";
+import { saveLoopState } from "../loop/loop-state.js";
 import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { dropLanding } from "./landing-queue.js";
 import { readJsonFile, writeJsonAtomic } from "../json-files.js";
 import { removeQuiet } from "../files.js";
 import { landingStatePath } from "../paths.js";
-import type { LoopRunner } from "../loop.js";
+import type { LoopRunner } from "../loop/loop.js";
 import type { PermitWaitHooks } from "../check-permit.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain

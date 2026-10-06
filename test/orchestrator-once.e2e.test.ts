@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { pauseFleet, resumeFleet } from "../src/fleet/fleet-state.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init.js";
 import { readEvents } from "../src/events/event-read.js";

@@ -5,7 +5,7 @@ import { pollRunnerReasons } from "../src/orchestrator-scheduling.js";
 import { OnceRound } from "../src/once-round.js";
 import { pollFleetHold } from "../src/fleet/fleet-polls.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
-import type { LoopRunner } from "../src/loop.js";
+import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/work-landed-cache.js";
 import { tmpdir } from "./repo-fixtures.js";

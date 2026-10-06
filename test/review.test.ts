@@ -8,7 +8,7 @@ import { buildRejectedReviewNote } from "../src/gates/gate-prompts.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";

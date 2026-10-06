@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pauseFleet, pausedRoles } from "../src/fleet/fleet-state.js";
 import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeTuiRepo, withTui } from "./tui-fixtures.js";

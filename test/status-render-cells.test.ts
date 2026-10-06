@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fleetDailyCost, todayStamp } from "../src/budget.js";

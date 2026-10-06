@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState } from "../src/loop-state.js";
+import { loadLoopState } from "../src/loop/loop-state.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { eventsOfType } from "./log-fixtures.js";

@@ -25,7 +25,7 @@ import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } fro
 import { type FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
-import type { LoopRunner } from "../loop.js";
+import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../json-files.js";

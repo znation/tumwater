@@ -1,7 +1,7 @@
 import { deleteRef, headOf, patchId, removeLandWorktree } from "../git/git.js";
 import { landingRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
-import { saveLoopState } from "../loop-state.js";
+import { saveLoopState } from "../loop/loop-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../main-red.js";
@@ -11,7 +11,7 @@ import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import type { LanderContext } from "./landing-core.js";
 
 /** Consecutive red in-lock landing checks of one patch (LoopState.landingCheckFailures) before

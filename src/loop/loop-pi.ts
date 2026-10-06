@@ -1,12 +1,12 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { PiRunResult } from "./pi/pi-run-result.js";
-import { hasResumableSession, runPi, type PiRunOptions } from "./pi/pi.js";
-import { HOLD_BASE_MS } from "./fleet/fleet-hold.js";
-import { backendKindPhrase } from "./phrases.js";
-import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";
-import { buildSummaryRequestPrompt } from "./prompt/prompt-followup.js";
-import { piLogPath, sessionDir } from "./paths.js";
-import { cappedRequestTimeouts } from "./request-timeouts.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
+import { hasResumableSession, runPi, type PiRunOptions } from "../pi/pi.js";
+import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
+import { backendKindPhrase } from "../phrases.js";
+import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
+import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
+import { piLogPath, sessionDir } from "../paths.js";
+import { cappedRequestTimeouts } from "../request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
  * before re-attempting a rate-limited run. Honouring the hint is the point; capping it is
@@ -49,7 +49,7 @@ interface LoopPiHost {
   sleep?(ms: number): Promise<void>;
 }
 
-/** The pi-invocation plumbing of one role loop, extracted from LoopRunner (src/loop.ts):
+/** The pi-invocation plumbing of one role loop, extracted from LoopRunner (src/loop/loop.ts):
  * the shared per-loop wiring for every run (role config, session dir, raw log, abort
  * signal), the one bounded transient-failure retry all runs share, the landing slot's
  * run (which watches only the shutdown signal), and the tick's SUMMARY follow-up turn.
@@ -275,7 +275,7 @@ export class LoopPi {
 
 /** The loop's shared pi wiring as landing code reaches it, split into the two halves the
  * landing contexts need. `RunsPi` is one pi run in `wt` through the loop's shared wiring
- * (role config, session dir, raw log, transient-failure retry — src/loop-pi.ts); `FoldsUsage`
+ * (role config, session dir, raw log, transient-failure retry — src/loop/loop-pi.ts); `FoldsUsage`
  * adds one run's spend to the owning loop's counters exactly once (the reviewer and
  * conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
@@ -291,7 +291,7 @@ export interface RunsPi {
 }
 
 /** The landing gate's reviewer runs through the loop's shared transient-retry wiring
- * (src/loop-pi.ts's runGatePi). Separate from RunsPi because the conflict resolver never
+ * (src/loop/loop-pi.ts's runGatePi). Separate from RunsPi because the conflict resolver never
  * needs it and the gate never needs the three-arg resolver shape. */
 export interface GateRunsPi {
   runGatePi(opts: PiRunOptions): Promise<PiRunResult>;
@@ -299,7 +299,7 @@ export interface GateRunsPi {
 
 /** One run's spend folded into the owning loop's usage counters exactly once — the
  * reviewer's and conflict-resolution's runs charge to the authoring role, so the folding
- * belongs to the loop, not to the run itself (src/loop.ts's runPi). */
+ * belongs to the loop, not to the run itself (src/loop/loop.ts's runPi). */
 export interface FoldsUsage {
   foldUsage(run: PiRunResult): void;
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";
-import { LoopRunner } from "../loop.js";
+import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { dropLanding, queuedLandingFiles, staleHeadFile } from "./landing-queue.js";

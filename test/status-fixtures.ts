@@ -4,7 +4,7 @@
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
 import type { StatusSnapshot } from "../src/status/status-data.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { landWorktreePath, piLogPath } from "../src/paths.js";

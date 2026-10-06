@@ -6,7 +6,7 @@
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
 import type { ReviewContext, GateResult } from "./review.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { warnEvent } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";

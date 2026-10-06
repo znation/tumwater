@@ -8,8 +8,8 @@
  * re-deriving them inside the loop. Dependency direction: orchestrator → scheduling; this
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
-import type { LoopRunner } from "./loop.js";
-import type { LoopState } from "./loop-state.js";
+import type { LoopRunner } from "./loop/loop.js";
+import type { LoopState } from "./loop/loop-state.js";
 import { configForRole } from "./config/config-views.js";
 import {
   BUGFIX_ROLE,

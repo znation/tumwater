@@ -8,10 +8,10 @@ import { landApprovedChange, reviewPinnedChange } from "../src/landing/landing-c
 import type { BatchRoleWiring } from "../src/landing/landing-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { landingRefName, landWorktreePath, statePath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/main-baseline.js";
-import type { LoopState } from "../src/loop-state.js";
+import type { LoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { assertClean, mainSha, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi, piRanMarker, withApprovePi } from "./fake-pi.js";

@@ -14,7 +14,7 @@ import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSa
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
-import { loadLoopState } from "../loop-state.js";
+import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, fallbackPair } from "../config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";

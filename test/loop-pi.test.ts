@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LoopPi } from "../src/loop-pi.js";
+import { LoopPi } from "../src/loop/loop-pi.js";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -12,7 +12,7 @@ import { fakePi } from "./fake-pi.js";
 import { assistantLine, errorLine } from "./pi-events.js";
 import { resolverConfig } from "../src/config/config-views.js";
 
-// LoopPi (src/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared
+// LoopPi (src/loop/loop-pi.ts) is the pi-invocation plumbing of one role loop: the shared
 // per-loop wiring, the landing slot's shutdown-only signal, and the SUMMARY follow-up.
 // (The shared transient-failure retry's policy is pinned end to end in loop-2.test.ts
 // through the whole tick; these tests cover the surface that file cannot reach and the

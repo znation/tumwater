@@ -4,7 +4,7 @@ import { formatDate, formatTime } from "../datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../loop-state.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../backoff.js";
 import { writeJsonFile } from "../json-files.js";
 import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";

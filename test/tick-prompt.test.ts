@@ -9,7 +9,7 @@ import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, read
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
 import { qaCoveragePath } from "../src/paths.js";
-import { freshLoopState, type LoopState } from "../src/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs

@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/http-body.js";
 import { initProject } from "../src/init.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePrompts, takeQueuedFile } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
-import type { LoopState } from "../src/loop-state.js";
+import type { LoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // pending-prompt.ts holds the requeue policy for every tick outcome that leaves a user

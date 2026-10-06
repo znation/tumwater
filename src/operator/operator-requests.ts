@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LoopRunner } from "../loop.js";
+import type { LoopRunner } from "../loop/loop.js";
 import { logEvent } from "../events/events.js";
 import { removeQuiet } from "../files.js";
 import { readJsonFile } from "../json-files.js";

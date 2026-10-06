@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { saveLoopState, type LoopState } from "../loop-state.js";
+import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { branchHead } from "../git/git.js";
 import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
@@ -34,7 +34,7 @@ interface FinalizeTickDeps {
 }
 
 /** Fold a finished tick's outcome into the loop's state and the event feed — everything that
- * happens AFTER the pi run, extracted from LoopRunner.tick (src/loop.ts) so the runner keeps
+ * happens AFTER the pi run, extracted from LoopRunner.tick (src/loop/loop.ts) so the runner keeps
  * only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
  * outcome's folds land on state before applyTickOutcome schedules the next run, the main-head

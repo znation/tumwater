@@ -15,7 +15,7 @@ import {
   wakeRequestPath,
   STATE_DIR,
 } from "../src/paths.js";
-import type { LoopRunner } from "../src/loop.js";
+import type { LoopRunner } from "../src/loop/loop.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 

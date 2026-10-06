@@ -33,7 +33,7 @@
  * why. */
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { pauseRole } from "../fleet/fleet-state.js";
 import { logEvent } from "../events/events.js";
 

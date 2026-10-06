@@ -23,7 +23,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readBranchHead } from "../src/git/git.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";

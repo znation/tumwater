@@ -3,7 +3,7 @@
  * PLANS.md): when several roles see the provider fail them the same way within a short window
  * — a 429 storm, or the connection down, a 5xx spell, or the model failing to load — role
  * loops start no new ticks until the hold re-opens. The per-run transient retry
- * (src/loop-pi.ts) already gives each transient failure one wait-and-retry, but it has no
+ * (src/loop/loop-pi.ts) already gives each transient failure one wait-and-retry, but it has no
  * cross-role view — with maxConcurrent loops issuing requests against one backend, each burns
  * its retry straight into a storm the fleet is collectively sustaining. POLICY only, on the
  * shape of the budget gate (src/budget.ts): pure functions of the observations the

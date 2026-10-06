@@ -6,7 +6,7 @@ import { eventKind } from "../src/ui/tone.js";
 import type { FleetAlert } from "../src/ui/fleet-alerts.js";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init.js";
-import { freshLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import {
   alertLines,
   eventTone,

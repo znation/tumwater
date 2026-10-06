@@ -10,7 +10,7 @@ import {
   targetBranch,
 } from "./git/git.js";
 import { errorMessage } from "./text.js";
-import { loadLoopState } from "./loop-state.js";
+import { loadLoopState } from "./loop/loop-state.js";
 import { branchName, landingRefName, worktreePath } from "./paths.js";
 import { isUsableWorktree, removeWorktree } from "./worktree.js";
 import { resumeRole } from "./fleet/fleet-state.js";

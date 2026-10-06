@@ -14,7 +14,7 @@ import {
   submitRolePromptAndWake,
   timedPauseBits,
 } from "../src/operator/operator-intent.js";
-import { loadLoopState, saveLoopState } from "../src/loop-state.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, STATE_DIR } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/json-files.js";

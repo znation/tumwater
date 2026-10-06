@@ -29,7 +29,7 @@ import { syncRootInstall } from "../dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { RunsPi } from "../loop-pi.js";
+import type { RunsPi } from "../loop/loop-pi.js";
 
 /** Landing a change on main: rebase onto main (keeping history linear), re-verify the rebased
  * tree with the project's declared check when main moved under it, fast-forward, and —

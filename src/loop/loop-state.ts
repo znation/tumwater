@@ -1,6 +1,6 @@
-import type { TickResult } from "./tick/tick-outcome.js";
-import { readJsonFile, writeJsonAtomic } from "./json-files.js";
-import { statePath } from "./paths.js";
+import type { TickResult } from "../tick/tick-outcome.js";
+import { readJsonFile, writeJsonAtomic } from "../json-files.js";
+import { statePath } from "../paths.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic

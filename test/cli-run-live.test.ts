@@ -12,7 +12,7 @@ import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathReplace, writeScript } from "./fake-commands.js";
 import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";
-import { loadLoopState } from "../src/loop-state.js";
+import { loadLoopState } from "../src/loop/loop-state.js";
 import { fastConfig } from "./orchestrator-fixtures.js";
 import { cli, exitCode, spawnCli } from "./cli-harness.js";
 import { sleep, waitForFile } from "./wait.js";

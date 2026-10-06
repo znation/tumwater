@@ -17,7 +17,7 @@ import {
   scheduleAtMinInterval,
   ERROR_BACKOFF,
 } from "../src/backoff.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 
 function ladder(initialSeconds = 30, factor = 2, maxSeconds = 600) {
   return { initialSeconds, factor, maxSeconds };

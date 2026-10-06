@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/loop-state.js";
+import { freshLoopState } from "../src/loop/loop-state.js";
 import { reviewAheadOfMain } from "../src/review/review.js";
 import { runPi } from "../src/pi/pi.js";
 import { headOf } from "../src/git/git.js";

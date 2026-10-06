@@ -2,7 +2,7 @@ import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text.js";
-import { saveLoopState } from "../loop-state.js";
+import { saveLoopState } from "../loop/loop-state.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,

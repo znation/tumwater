@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 
 import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
 import { expectFail, expectOk } from "./exit-capture.js";
-import { freshLoopState, saveLoopState } from "../src/loop-state.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
-import type { LoopState } from "../src/loop-state.js";
+import type { LoopState } from "../src/loop/loop-state.js";
 import { makeRepo } from "./repo-fixtures.js";
 
 // Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron

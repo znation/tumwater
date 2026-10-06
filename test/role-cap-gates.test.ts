@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { dailyCost, recordDailyCost } from "../src/budget.js";
-import { freshLoopState, type LoopState } from "../src/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import {
   newRoleCapGateState,

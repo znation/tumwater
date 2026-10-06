@@ -25,7 +25,7 @@
  * re-logs one `role_cap_paused` on the first poll (the durable-cause honest report the
  * streak-gate doc accepts). */
 
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { dailyCost } from "../budget.js";
 import { logEvent } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

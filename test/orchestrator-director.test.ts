@@ -26,7 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { loadLoopState } from "../src/loop-state.js";
+import { loadLoopState } from "../src/loop/loop-state.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";

@@ -5,7 +5,7 @@ import path from "node:path";
 import { planTickStart } from "../src/tick/tick-resume.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import type { LoopState } from "../src/loop-state.js";
+import type { LoopState } from "../src/loop/loop-state.js";
 import { sessionDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 

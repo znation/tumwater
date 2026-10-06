@@ -23,7 +23,7 @@ import { templateCatalog } from "../init-templates.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
-import { loadLoopState, stateSkipReason } from "../loop-state.js";
+import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../phrases.js";
 import { shortSha } from "../format.js";
 

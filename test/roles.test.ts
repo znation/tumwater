@@ -44,7 +44,7 @@ test("catalog order is scheduling priority: shipping work outranks hygiene", () 
 });
 
 test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () => {
-  // Red-main policy (src/loop.ts): while main's own suite is red, only roles whose diff can
+  // Red-main policy (src/loop/loop.ts): while main's own suite is red, only roles whose diff can
   // carry non-exempt (code) changes are blocked from starting an authoring run. Exempt:
   // bugfix — the designated healer; blocking it would leave only humans able to unblock a
   // red main — and the markdown-only charter roles plan/readme/steward/qa/telemetry, whose

@@ -1,33 +1,33 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { TickOutcome, TickResult } from "./tick/tick-outcome.js";
-import type { BackendFailureKind, PiRunOptions } from "./pi/pi.js";
-import type { PiRunResult } from "./pi/pi-run-result.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
+import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
-import { DIRECTOR_ROLE } from "./roles/roles.js";
-import { setRef } from "./git/git.js";
-import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
-import { logEvent, warnEvent } from "./events/events.js";
-import { assembleTickPrompt } from "./tick/tick-prompt.js";
-import { buildConflictDiscardNote } from "./gates/gate-prompts.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { setRef } from "../git/git.js";
+import { abortSync, ensureWorktree, resetWorktreeToMain } from "../worktree.js";
+import { logEvent, warnEvent } from "../events/events.js";
+import { assembleTickPrompt } from "../tick/tick-prompt.js";
+import { buildConflictDiscardNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";
-import { formatModelSelector } from "./model-selector.js";
-import { planTickStart } from "./tick/tick-resume.js";
-import { PendingPrompt } from "./pending-prompt.js";
-import { stageTickLanding } from "./tick/tick-stage.js";
+import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
+import { formatModelSelector } from "../model-selector.js";
+import { planTickStart } from "../tick/tick-resume.js";
+import { PendingPrompt } from "../pending-prompt.js";
+import { stageTickLanding } from "../tick/tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "./backoff.js";
-import { finalizeTick } from "./tick/tick-finalize.js";
-import { TickUsage } from "./tick/tick-usage.js";
-import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
-import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
-import { mergeToMain } from "./landing/landing-merge.js";
-import { resolveTickVerdict } from "./tick/tick-verdict.js";
-import { extractFlow, type FlowResult } from "./reply-contract.js";
-import { landingRefName } from "./paths.js";
-import { errorMessage } from "./text.js";
-import { shortSha } from "./format.js";
+import { clearBackoff } from "../backoff.js";
+import { finalizeTick } from "../tick/tick-finalize.js";
+import { TickUsage } from "../tick/tick-usage.js";
+import { recoverLeftover, type LeftoverRecovery } from "../leftover.js";
+import { bugfixMainRedNote, mainRedGate } from "../main-red.js";
+import { mergeToMain } from "../landing/landing-merge.js";
+import { resolveTickVerdict } from "../tick/tick-verdict.js";
+import { extractFlow, type FlowResult } from "../reply-contract.js";
+import { landingRefName } from "../paths.js";
+import { errorMessage } from "../text.js";
+import { shortSha } from "../format.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {
@@ -92,7 +92,7 @@ export class LoopRunner {
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
    * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
   private recoveryFailure?: string;
-  /** This loop's pi-run plumbing (src/loop-pi.ts): shared per-run wiring, the transient
+  /** This loop's pi-run plumbing (src/loop/loop-pi.ts): shared per-run wiring, the transient
    * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
    * the orchestrator's config live-reload and the tick lifecycle need no notification path. */
   private readonly pi: LoopPi;
@@ -337,7 +337,7 @@ export class LoopRunner {
    * controller) must never reach it, and the stale per-tick controller of a finished tick must
    * not abort it either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
-   * The plumbing itself lives in src/loop-pi.ts; this is the landing slot's public face. */
+   * The plumbing itself lives in src/loop/loop-pi.ts; this is the landing slot's public face. */
   async runLandingPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
     return this.pi.runLandingPi(wt, prompt, sessionName, config);
   }
@@ -347,7 +347,7 @@ export class LoopRunner {
    * in the gate is waited out and retried once instead of failing the review on first contact
    * (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time (the fleet-wide
    * rate-limit hold's input); the FINAL run's usage is folded by the gate's caller, exactly as
-   * before — the plumbing lives in src/loop-pi.ts; this is the landing wiring's public face. */
+   * before — the plumbing lives in src/loop/loop-pi.ts; this is the landing wiring's public face. */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
     return this.pi.runGatePi(opts);
   }

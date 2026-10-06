@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { commitAll } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import {
@@ -24,7 +24,7 @@ interface TickFlow {
   result: "passed" | "bug";
 }
 
-/** The shared loop wiring a changed worktree's staging needs (src/loop.ts): the per-tick
+/** The shared loop wiring a changed worktree's staging needs (src/loop/loop.ts): the per-tick
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
  * the summary follow-up run, the landing-ref pin, and the abort finalizer. Mirrors the
  * context-object shapes of leftover.ts, refusal.ts, and landing-core.ts. */

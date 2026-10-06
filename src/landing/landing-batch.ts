@@ -22,8 +22,8 @@ import { type LandingChangeStatus } from "./landing-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./landing-stack.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
-import type { GateRunsPi, PiRunWiring } from "../loop-pi.js";
-import type { LoopState } from "../loop-state.js";
+import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
+import type { LoopState } from "../loop/loop-state.js";
 
 /** The identity a vet or a merge needs from the harness: root, main branch, live config, and
  * the task's abort signal. Deliberately thinner than LanderContext — no single `state` and no

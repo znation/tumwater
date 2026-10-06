@@ -5,7 +5,7 @@
  * run IS fulfillable, which loop.ts answers with stageTickLanding. Split out of loop.ts so the
  * runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { FlowResult } from "../reply-contract.js";

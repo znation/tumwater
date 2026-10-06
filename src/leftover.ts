@@ -5,7 +5,7 @@ import { enqueueLanding, queuedLandings } from "./landing/landing-queue.js";
 import { landingRefName } from "./paths.js";
 import { shortSha } from "./format.js";
 import type { LandingEntry } from "./landing/landing-queue.js";
-import type { LoopState } from "./loop-state.js";
+import type { LoopState } from "./loop/loop-state.js";
 
 /** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery
  * discards the pin instead of re-queuing it (LoopState.mergeConflicts). Each attempt costs a

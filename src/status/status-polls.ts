@@ -1,11 +1,11 @@
 import type { TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingInFlight } from "../landing/landing-slot.js";
-import type { LoopState } from "../loop-state.js";
+import type { LoopState } from "../loop/loop-state.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { readEvents } from "../events/event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
-import { freshLoopState, loadLoopState } from "../loop-state.js";
+import { freshLoopState, loadLoopState } from "../loop/loop-state.js";
 import { statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 

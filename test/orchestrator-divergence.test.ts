@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { loadLoopState } from "../src/loop-state.js";
+import { loadLoopState } from "../src/loop/loop-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";

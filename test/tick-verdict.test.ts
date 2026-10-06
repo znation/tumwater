@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
-import { freshLoopState, type LoopState } from "../src/loop-state.js";
+import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
