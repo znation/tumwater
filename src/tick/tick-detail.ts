@@ -7,7 +7,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { readTickRows } from "../history-data.js";
+import { readTickRows } from "../history/history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
 import { unknownRoleMessage } from "../roles/roles.js";

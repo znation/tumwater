@@ -108,7 +108,7 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/pi-extension/`: the bundled bounded-output pi extension.
 - `src/ui/`: TUI, GUI, status table, backlog report, and transcript rendering. Imported only by
   each other and the CLI command layer that drives it (`cli.ts` and the `src/` command bodies).
-- `src/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
+- `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
   `src/report/report-data.ts`) whose payloads they print, `src/log-commands.ts` (the `logs` command body),
   and `src/cli/cli-query-commands.ts` (the other

@@ -6,7 +6,7 @@
  * Every datum rides the events the harness already writes, so this is a distillation of the
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
  * CLI command — lives in tick-detail.ts. */
-import { HISTORY_SCAN_MAX_EVENTS } from "../history-data.js";
+import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { usageText } from "../events/event-format.js";
 import type { HarnessEvent } from "../events/events.js";

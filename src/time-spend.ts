@@ -9,7 +9,7 @@ import type { HarnessEvent } from "./events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./events/event-read.js";
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure/failure-cluster.js";
 import { rankByCount } from "./rank.js";
-import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";
+import { resolveQueuedResult, bucketLandingEvents } from "./history/history-data.js";
 import { stringList } from "./json-object.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):

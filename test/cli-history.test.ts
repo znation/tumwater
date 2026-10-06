@@ -5,7 +5,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 // (test/fakes/log.ts, PLANS.md 2026-10-04); aliased here so the call sites read as before.
 import { tickEnd as endEvent, tickStart as startEvent } from "./fakes/log.js";
 import { initProject } from "../src/init.js";
-import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history-data.js";
+import { tickRows, readTickRows, HISTORY_MAX_TICKS } from "../src/history/history-data.js";
 import { displayWidth } from "../src/text-width.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";

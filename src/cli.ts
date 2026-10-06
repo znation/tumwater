@@ -34,7 +34,7 @@ import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor/doctor.js";
 import { renderDoctor } from "./doctor/doctor-render.js";
-import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
+import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history/history.js";
 import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report/report.js";
 
