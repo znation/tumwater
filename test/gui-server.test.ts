@@ -12,7 +12,7 @@ import { dequeuePrompt, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/http-body.js";
+import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { startGui } from "../src/gui/gui-server.js";
 import { DASHBOARD_CHILD_ENV } from "../src/self-reload.js";

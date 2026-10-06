@@ -21,7 +21,7 @@ import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../histo
 import { readTickDetail } from "../tick/tick-detail-data.js";
 import { renderTickDetail, tickNotFoundMessage } from "../tick/tick-detail.js";
 import { intQuery, rejectBadRole, windowDays } from "./gui-args.js";
-import { sendJson } from "../http-body.js";
+import { sendJson } from "./http-body.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.

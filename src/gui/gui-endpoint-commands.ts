@@ -18,7 +18,7 @@ import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-s
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
-import { readJsonObject, sendJson } from "../http-body.js";
+import { readJsonObject, sendJson } from "./http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { gotSuffix } from "../text/text.js";
 import type http from "node:http";

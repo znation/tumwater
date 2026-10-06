@@ -8,8 +8,8 @@
  * static page, and the token gate stay in gui/gui-server.ts.
  */
 import type http from "node:http";
-import { parseJsonObject } from "./files/json-object.js";
-import { errorMessage } from "./text/text.js";
+import { parseJsonObject } from "../files/json-object.js";
+import { errorMessage } from "../text/text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
  * this way (errors included), so the content-type header lives in exactly one place. */

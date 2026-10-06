@@ -13,7 +13,7 @@ import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { sendJson } from "../http-body.js";
+import { sendJson } from "./http-body.js";
 import type http from "node:http";
 
 /** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
