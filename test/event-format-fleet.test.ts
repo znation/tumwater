@@ -1,7 +1,8 @@
 /** The fleet-control family of formatEvent tests (src/event-format.ts): the events the harness
- * emits as it manages the fleet — the daily-cost budget's transitions, the live config changes
- * (maxConcurrent, sessionRetentionDays, edited keys), the operator and breaker pause/resume
- * events, and the fleet-wide 429/backend holds with their kinds. They share one rendering
+ * emits as it manages the fleet — the daily-cost budget's transitions (and its per-role cap
+ * siblings), the live config changes (maxConcurrent, sessionRetentionDays, edited keys), the
+ * operator and breaker pause/resume events, and the fleet-wide 429/backend holds with their
+ * kinds. These tests live only here — event-format.test.ts holds no copies of them. They share one rendering
  * contract — a routine state change renders plainly, never with the warning prefix — so they
  * are tested together, apart from the tick/merge/review event lines in event-format.test.ts. */
 import test from "node:test";
@@ -41,6 +42,29 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     capUsd: 50,
   } as never);
   assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
+
+  // The per-role cap transitions (src/role-cap-gates.ts) name the role, its spend vs its
+  // cap, and the two lift paths; the resume states the loop ticks again. Fleet-rendering
+  // siblings of the budget pause/resume above, so they live here too.
+  const rolePaused = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_cap_paused",
+    role: "docs",
+    spentUsd: 0.5,
+    capUsd: 0.5,
+  } as never);
+  assert.match(rolePaused, /harness\s+role docs paused — \$0\.50 of \$0\.50 of its daily cap spent/);
+  assert.match(rolePaused, /raised or removed in tumwater\.json or the local day rolls over/);
+  assert.ok(!rolePaused.includes("warning"), "a routine state change is not a warning");
+
+  const roleResumed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "role_cap_resumed",
+    role: "docs",
+  } as never);
+  assert.match(roleResumed, /harness\s+role docs resumed — it is under its daily cap again and ticks again/);
 
   // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback ticks were
   // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
