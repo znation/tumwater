@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backendKindPhrase, describeToolCall } from "../src/phrases.js";
+import { backendKindPhrase, describeToolCall } from "../src/text/phrases.js";
 
-// phrases.ts is the single home of the fleet's shared wording fragments (the tool-call label,
+// text/phrases.ts is the single home of the fleet's shared wording fragments (the tool-call label,
 // the backend-hold kind phrasing, and their siblings). These tests pin the documented contracts
 // of the two phrases whose arms the renderer tests' chosen kinds and shapes never exercise.
 

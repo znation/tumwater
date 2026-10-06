@@ -2,7 +2,7 @@
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
  * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
- * as input but does not share helpers with beyond badges.ts's pauseCountdown and phrases.ts's
+ * as input but does not share helpers with beyond badges.ts's pauseCountdown and text/phrases.ts's
  * pauseReasonSuffix; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
@@ -12,7 +12,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
-import { agree, pauseReasonSuffix, plural } from "../phrases.js";
+import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";
 import { usd, usdCap } from "../text/format.js";
 import { formatTimestamp } from "../text/datetime.js";

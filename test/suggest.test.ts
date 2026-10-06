@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { didYouMean, suggestClosest, typoSuffix } from "../src/suggest.js";
+import { didYouMean, suggestClosest, typoSuffix } from "../src/text/suggest.js";
 
-// suggest.ts is the single home of the did-you-mean layer every unknown-X error surface
+// text/suggest.ts is the single home of the did-you-mean layer every unknown-X error surface
 // (unknown command, unknown config key, unknown role, unknown help topic) renders through.
 
 // suggestClosest is the shared did-you-mean behind the unknown-command and unknown-config-key

@@ -11,7 +11,7 @@ import { readTickRows } from "../history/history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
 import { unknownRoleMessage } from "../roles/roles.js";
-import { shortSpanPhrase } from "../phrases.js";
+import { shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own

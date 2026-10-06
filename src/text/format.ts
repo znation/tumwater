@@ -1,7 +1,7 @@
 /** Shared number, money, and hash FORMATS for human-facing text — the display layer's token
  * counts (compactTokens), abbreviated commit hashes (shortSha), and money strings (usd,
  * usdCap). Split from text.ts beside the other single-format homes it already names:
- * datetime.ts (dates and durations), text-width.ts (terminal-column geometry), and phrases.ts
+ * datetime.ts (dates and durations), text-width.ts (terminal-column geometry), and text/phrases.ts
  * (wording fragments). Presentation only: depends on node built-ins alone, so any layer
  * (harness or observer) can import it — and each format lives in exactly one place so the
  * abbreviation length, decimal width, and compaction thresholds cannot drift per consumer. */

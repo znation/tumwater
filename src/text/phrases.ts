@@ -1,7 +1,7 @@
 import path from "node:path";
-import { isJsonObject } from "./files/json-object.js";
-import { squash } from "./text/text.js";
-import { shortSha, usd } from "./text/format.js";
+import { isJsonObject } from "../files/json-object.js";
+import { squash } from "./text.js";
+import { shortSha, usd } from "./format.js";
 
 /** The single home of each human-facing PHRASE the fleet renders — the wording fragments
  * (a pause reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget

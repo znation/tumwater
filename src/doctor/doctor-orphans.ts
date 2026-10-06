@@ -4,7 +4,7 @@ import { worktreesDir } from "../paths.js";
 import { pidAlive } from "../process/process.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../process/process-table.js";
 import { errorMessage, truncate } from "../text/text.js";
-import { plural } from "../phrases.js";
+import { plural } from "../text/phrases.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
 /** The orphan-process check of `tumwater doctor`, split out of doctor.ts: it is the one

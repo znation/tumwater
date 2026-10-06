@@ -3,7 +3,7 @@
  * full text is one template literal, and helpStanzas/helpTopic derive `tumwater help
  * <command>` from it by splitting the usage block on its `  tumwater <command>` lines, so a
  * topic can never drift out of sync with the full listing. */
-import { suggestClosest } from "../suggest.js";
+import { suggestClosest } from "../text/suggest.js";
 
 export const HELP = `tumwater — autonomous development harness built on pi
 
@@ -180,7 +180,7 @@ off while the project is quiet and wake when main moves. Everything is local: no
  * at two edits — a typo's distance, not a different word's — so only a near miss gets a hint
  * and the suggestion can never fire as an auto-correction. Deriving the candidates from the
  * help text (not a hand-kept list) means a new command is suggestible the tick it gains a
- * stanza; the distance mechanics are suggest.ts's suggestClosest, shared with the config-key
+ * stanza; the distance mechanics are text/suggest.ts's suggestClosest, shared with the config-key
  * suggestion. */
 export function suggestCommand(input: string, help: string = HELP): string | null {
   return suggestClosest(input, [...new Set(helpStanzas(help).map((s) => s.command))]);

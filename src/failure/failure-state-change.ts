@@ -9,7 +9,7 @@
 import { truncateExample } from "./failure-cluster.js";
 import { stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the

@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { hasResumableSession, runPi, type PiRunOptions } from "../pi/pi.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
-import { backendKindPhrase } from "../phrases.js";
+import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { piLogPath, sessionDir } from "../paths.js";

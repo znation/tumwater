@@ -38,7 +38,7 @@ import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history/history.js";
 import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report/report.js";
 
-import { didYouMean } from "./suggest.js";
+import { didYouMean } from "./text/suggest.js";
 import { errorMessage } from "./text/text.js";
 import { HELP, helpTopic, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";

@@ -7,7 +7,7 @@
  * arithmetic (dayAt's midnight truncation, month/year edges) is a different concern from
  * string cutting, with its own tests. Presentation only: depends on node built-ins alone. */
 
-import { plural } from "../phrases.js";
+import { plural } from "../text/phrases.js";
 import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
@@ -108,7 +108,7 @@ export function humanSeconds(s: number): string {
 }
 
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window
- * reads the same on either surface. Rendered through phrases.ts's plural, like every other
+ * reads the same on either surface. Rendered through text/phrases.ts's plural, like every other
  * count-plus-noun phrase in the harness. */
 export function dayLabel(days: number): string {
   return plural(days, "day");

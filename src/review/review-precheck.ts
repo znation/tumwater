@@ -14,7 +14,7 @@ import { checkFailureReasons, describeCheck, failureHeadline } from "../build/bu
 import { sleptPhrase, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../scheduling/host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
-import { mainRedNotMine } from "../phrases.js";
+import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";

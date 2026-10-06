@@ -3,7 +3,7 @@ import path from "node:path";
 import { unlinkAllMissingTolerant } from "../files/files.js";
 import { roleInboxDir } from "../paths.js";
 import { isNonBlankString } from "../text/text.js";
-import { agree } from "../phrases.js";
+import { agree } from "../text/phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
  * beside the prompt's queue file (same stem, an image extension — the `.md` filter in

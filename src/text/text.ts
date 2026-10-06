@@ -6,8 +6,8 @@
  * datetime.ts; terminal-column geometry — the wcwidth table and the displayWidth/
  * padToWidth/clipToWidth clippers — lives in text-width.ts; the fleet's shared wording
  * fragments — the red-main phrase, the pause-reason suffix, the hold, budget, and backend
- * phrasings, tool-call labels — live in phrases.ts; the did-you-mean suggestion layer —
- * suggestClosest, didYouMean, typoSuffix — lives in suggest.ts.) Presentation only:
+ * phrasings, tool-call labels — live in text/phrases.ts; the did-you-mean suggestion layer —
+ * suggestClosest, didYouMean, typoSuffix — lives in text/suggest.ts.) Presentation only:
  * depends on node built-ins alone, so any layer (harness or observer) can import it without
  * reaching into another module's internals — and the collapse/truncation/compaction/
  * abbreviation semantics live in exactly one place instead of drifting per consumer. */

@@ -6,7 +6,7 @@ import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { logEvent } from "../events/events.js";
-import { mainRedNotMine } from "../phrases.js";
+import { mainRedNotMine } from "../text/phrases.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

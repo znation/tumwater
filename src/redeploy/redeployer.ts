@@ -3,7 +3,7 @@ import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
-import { mainRedPhrase } from "../phrases.js";
+import { mainRedPhrase } from "../text/phrases.js";
 import {
   type AutoRestartRecord,
   type InFlightCounts,

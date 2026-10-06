@@ -24,7 +24,7 @@ import { logEvent, subscribeEvents } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
-import { plural } from "../phrases.js";
+import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the

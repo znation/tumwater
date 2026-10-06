@@ -4,7 +4,7 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "../retire.js";
-import { agree, pauseReasonSuffix } from "../phrases.js";
+import { agree, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { allRoleIds } from "../roles/roles.js";
 import {

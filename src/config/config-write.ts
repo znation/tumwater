@@ -12,7 +12,7 @@ import {
 } from "./config-schema.js";
 import { configPath, configRequestPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
-import { typoSuffix } from "../suggest.js";
+import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { show } from "./config-field-checks.js";
@@ -156,7 +156,7 @@ export function unknownConfigKeyError(key: string): string | null {
  * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`, `roles.<id>.<field>` —
  * parseConfigKey) merges ONE entry into the existing map/section, so an operator steers one
  * role at a time without re-typing the others. A dotted role field must be a member of
- * ROLE_ENTRY_KEYS (a did-you-mean suggestion otherwise, via suggest.ts's suggestClosest); a typo'd role
+ * ROLE_ENTRY_KEYS (a did-you-mean suggestion otherwise, via text/suggest.ts's suggestClosest); a typo'd role
  * id and a type-invalid value are left for validateConfig to reject with its own actionable
  * message. Returns the parsed value and the previous one so the caller can confirm the
  * change; on any failure the file is untouched (see writeConfigMutation). */

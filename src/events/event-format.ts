@@ -1,6 +1,6 @@
 import { eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../phrases.js";
+import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { formatTimestamp } from "../text/datetime.js";

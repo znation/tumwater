@@ -3,7 +3,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget/budget.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
-import { pauseReasonSuffix } from "../phrases.js";
+import { pauseReasonSuffix } from "../text/phrases.js";
 import { shortSha, usd, usdCap } from "../text/format.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
