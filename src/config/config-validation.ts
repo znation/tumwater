@@ -15,6 +15,7 @@ import { allRoleIds } from "../roles.js";
 import { isJsonObject } from "../json-object.js";
 import { tooLongMessage } from "../text.js";
 import { parseQuietHours } from "../quiet-hours.js";
+import { parseModelSelector } from "../model-selector.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,
@@ -135,6 +136,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   const r = raw; // Narrowed to an object by isJsonObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, label, problems);
   checkModelTriple(r, "");
+  checkSelectorHalves(r, "", "model", r.provider, problems);
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
   checkString(r, "", "baseBranch", false);
@@ -247,6 +249,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         });
       }
       checkModelTriple(o, "review.");
+      checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
       checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
     }
   }
@@ -259,6 +262,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // string; setting both forms is an error naming both keys, since which one wins is not a
   // question the file should ever pose.
   checkString(r, "", "fallback", false);
+  checkSelectorHalves(r, "", "fallback", undefined, problems);
   if ("fallback" in r && "fallbackModel" in r)
     problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
   if ("fallbackModel" in r) {
@@ -272,6 +276,35 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
         problems.push(`fallbackModel must name a provider or a model (got ${show(fb)})`);
     }
   }
+
+  /** A selector string that parses to an empty provider or model half (`"/id"`, `"p/"`) passes
+ * the non-empty-string rule but never reaches pi: piArgs skips an empty value when it builds
+ * its flags (config-field-checks' model-triple note), and fallbackPair drops an empty half, so
+ * the fleet silently runs pi's default model — the same silent-ignore class the empty-string
+ * rules exist to prevent. Checked only when no legacy provider is in scope: under one, the
+ * whole string is the id (config-views' parse), so a `/` in it is ordinary text and the parse
+ * cannot produce an empty half. */
+function checkSelectorHalves(
+  obj: Record<string, unknown>,
+  prefix: string,
+  key: string,
+  legacyProvider: unknown,
+  problems: string[],
+): void {
+  const v = obj[key];
+  if (typeof v !== "string" || v.trim() === "") return;
+  const legacy =
+    typeof legacyProvider === "string" && legacyProvider.trim() !== "" ? legacyProvider : undefined;
+  const sel = parseModelSelector(v, legacy);
+  if (sel.provider !== undefined && sel.provider.trim() === "")
+    problems.push(
+      `${prefix}${key} ${show(v)} parses to an empty provider half — pi would silently run its default model`,
+    );
+  if (sel.model.trim() === "")
+    problems.push(
+      `${prefix}${key} ${show(v)} parses to an empty model half — pi would silently run its default model`,
+    );
+}
 
   // Custom loops (plans/user-defined-loops.md): names become worktree dirs and git refs, so
   // they are validated strictly — a colliding name would silently shadow a built-in's prompt
@@ -357,6 +390,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
             ),
           );
         checkModelTriple(o, `roles.${id}.`);
+        checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
       }

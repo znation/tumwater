@@ -83,6 +83,33 @@ test("validateConfig accepts a valid quietHours window and rejects a malformed o
   );
 });
 
+test("selector strings that parse to an empty provider or model half are rejected", () => {
+  // piArgs skips an empty value when it builds its flags, and fallbackPair drops an empty
+  // half, so a selector like "/id" or "p/" passes the non-empty-string rule yet never
+  // reaches pi — the fleet silently runs pi's default model. Reject the shape instead. Under
+  // a legacy provider in scope a "/" is ordinary id text, so the parse there cannot produce
+  // an empty half and those selectors stay valid.
+  assert.match(validationError({ model: "/id" }), /model "\/id" parses to an empty provider half/);
+  assert.match(validationError({ model: "p/" }), /model "p\/" parses to an empty model half/);
+  assert.match(validationError({ fallback: "/id" }), /fallback "\/id" parses to an empty provider half/);
+  assert.match(validationError({ fallback: "p/" }), /fallback "p\/" parses to an empty model half/);
+  assert.match(
+    validationError({ roles: { feature: { model: "p/" } } }),
+    /roles\.feature\.model "p\/" parses to an empty model half/,
+  );
+  assert.match(
+    validationError({ review: { model: "/id" } }),
+    /review\.model "\/id" parses to an empty provider half/,
+  );
+  // With a provider in scope the whole string is the id: a slash in it is ordinary text.
+  assert.doesNotThrow(() => validateConfig({ provider: "huggingface", model: "a/b" }));
+  assert.doesNotThrow(() =>
+    validateConfig({ provider: "huggingface", roles: { feature: { model: "a/b" } } }),
+  );
+  // A thinking suffix does not hide an empty half.
+  assert.match(validationError({ model: "p/:low" }), /model "p\/:low" parses to an empty model half/);
+});
+
 test("model-triple fields reject empty strings but instructions may be empty", () => {
   // pi.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
   // is silently ignored and the fleet quietly uses pi's default — reject it instead. This
