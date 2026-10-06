@@ -24,6 +24,16 @@ export interface PiRunResult {
   verdictText?: string;
   /** Tokens the model generated in this run (usage.output summed across turns). */
   outputTokens: number;
+  /** Prompt tokens this run sent (usage.input + cacheRead + cacheWrite summed across turns). */
+  promptTokens: number;
+  /** The cache-read share of promptTokens (usage.cacheRead summed across turns). */
+  cacheReadTokens: number;
+  /** Prompt tokens sent up to and including the first assistant turn carrying an edit or
+   * write tool call; equals promptTokens for a run that never edited. */
+  preEditPromptTokens: number;
+  /** 1-based index of the first assistant turn carrying an edit or write tool call;
+   * undefined when the run never edited. */
+  firstEditTurn?: number;
   /** Largest single-request context of the run. */
   peakContextTokens: number;
   /** Assistant turns completed in this run (message_end events) — feeds the commit trailer

@@ -118,6 +118,7 @@ export class LoopRunner {
       runSignal: () => this.runSignal(),
       warn: (message) => this.warn(message),
       foldUsage: (run) => this.foldUsage(run),
+      foldLandingUsage: (run) => this.foldLandingUsage(run),
       tickNumber: () => this.state.ticks,
       sleep: this.sleep,
     });
@@ -358,7 +359,9 @@ export class LoopRunner {
    * cost and the per-role usage windows attribute that spend to the role that authored the
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
   foldLandingUsage(run: PiRunResult): void {
-    this.foldUsage(run);
+    // authoring=false: a landing/review run's usage counts toward cost and prompt tokens, but
+    // never toward the tick's pre-edit counter (src/tick/tick-usage.ts fold).
+    this.usage.fold(this.state, run, false);
   }
 
   /** Run one full tick of this role loop: build (or resume) the prompt, run pi in the

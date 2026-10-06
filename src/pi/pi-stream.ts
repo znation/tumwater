@@ -17,11 +17,18 @@ import { parseJsonObject } from "../files/json-object.js";
 
 interface PiMessage {
   role: string;
-  content?: Array<{ type: string; text?: string }>;
+  content?: Array<{ type: string; text?: string; name?: string }>;
   // Usage fields are `unknown`, not `number`: they cross the provider boundary unvalidated,
   // and some OpenAI-compatible servers serialize usage numbers as JSON strings. The fold
   // below runs every value through usageNumber before trusting it.
-  usage?: { totalTokens?: unknown; output?: unknown; cost?: { total?: unknown } };
+  usage?: {
+    totalTokens?: unknown;
+    input?: unknown;
+    output?: unknown;
+    cacheRead?: unknown;
+    cacheWrite?: unknown;
+    cost?: { total?: unknown };
+  };
   stopReason?: string;
   errorMessage?: string;
 }
@@ -155,6 +162,20 @@ export class PiStreamParser {
   turns = 0;
   /** Tokens the model actually generated (usage.output summed across turns). */
   outputTokens = 0;
+  /** Prompt tokens this run sent, summed across assistant turns (usage.input + cacheRead +
+   * cacheWrite). The counterpart to outputTokens: an operator compares the two to see how
+   * much of a tick's spend is re-sent context versus generation. */
+  promptTokens = 0;
+  /** The cache-read share of promptTokens (usage.cacheRead summed across turns) — the part
+   * the provider served from its prompt cache, billed at the cache-read rate. */
+  cacheReadTokens = 0;
+  /** Prompt tokens sent up to AND INCLUDING the first assistant turn that carried an edit or
+   * write tool call. Before any such turn every turn accumulates; once one is seen the
+   * counter freezes, so it measures the context a tick burns before its first change. */
+  preEditPromptTokens = 0;
+  /** 1-based index of the first assistant turn carrying an edit or write tool call;
+   * undefined when the run never edited. */
+  firstEditTurn: number | undefined;
   /** Largest single-request context seen (usage.totalTokens is the request's whole
    * context, so summing it across turns hugely overstates real consumption). */
   peakContextTokens = 0;
@@ -343,6 +364,17 @@ export class PiStreamParser {
     if (hasVerdictLine(text)) this.verdictText = text;
     this.turns += 1;
     this.outputTokens += usageNumber(msg.usage?.output);
+    const promptTokens = usageNumber(msg.usage?.input) + usageNumber(msg.usage?.cacheRead) + usageNumber(msg.usage?.cacheWrite);
+    this.promptTokens += promptTokens;
+    this.cacheReadTokens += usageNumber(msg.usage?.cacheRead);
+    // The pre-edit prefix: accumulate every turn until one carries an edit/write tool call,
+    // including that turn's own prompt (it was sent before the edit happened). Once seen,
+    // firstEditTurn pins the count and later turns stop adding.
+    if (this.firstEditTurn === undefined) {
+      this.preEditPromptTokens += promptTokens;
+      if ((msg.content ?? []).some((c) => c.type === "toolCall" && (c.name === "edit" || c.name === "write")))
+        this.firstEditTurn = this.turns;
+    }
     this.peakContextTokens = Math.max(this.peakContextTokens, usageNumber(msg.usage?.totalTokens));
     this.costUsd += usageNumber(msg.usage?.cost?.total);
     this.stopReason = msg.stopReason;

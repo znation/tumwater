@@ -46,6 +46,17 @@ export interface OutcomeRow {
   counts: Partial<Record<TickResult, number>>;
 }
 
+/** One role's prompt-token telemetry over the window (PLANS.md, per-tick prompt-token plan):
+ * the median prompt tokens a tick sent, and the share of those sent before the tick's first
+ * edit. Built only from tick_end events that carry `promptTokens`; a log written before the
+ * field existed yields no rows, so old digests render unchanged. */
+interface PromptStatRow {
+  role: string;
+  ticks: number; // tick_end events with a promptTokens reading
+  medianPromptTokens: number;
+  preEditShare: number; // sum(preEditPromptTokens) / sum(promptTokens), in [0, 1]
+}
+
 /** One role's current-vs-preceding-window metrics. A zero side means the role had no ticks
  * there ("new" for a role absent from the preceding window). */
 interface DeltaRow {
@@ -91,6 +102,7 @@ export interface FailureReportData {
   timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
   lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change and review-rejected roles
   lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
+  promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no tick_end carries them
   errors: ClusterSection;
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
@@ -209,6 +221,11 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, events);
+
+  // Prompt-token telemetry: per role, the median prompt tokens a tick sent and how much of
+  // the prompt budget went out before the first edit. Only ticks carrying the field count, so
+  // a pre-feature log leaves the section off entirely.
+  const promptStats = promptStatsFor(tickEvents);
 
   // Deltas: current vs preceding window, per role.
   const curStats = roleStats(current);
@@ -340,6 +357,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     timeSpend,
     lossCauses,
     lossCausesHidden,
+    promptStats,
     errors,
     warnings,
     reviewFailures,
@@ -349,6 +367,50 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     stateChanges,
     stateChangesTotal: allStateChanges.length,
   };
+}
+
+/** Median of a non-empty numeric list (the mean of the two middles for an even count). */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
+}
+
+/** Per-role prompt-token stats from the window's tick_end events. Ticks without a
+ * `promptTokens` reading contribute nothing (and skip a role entirely), so the section only
+ * appears once some tick ran on a build that records the field. */
+function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
+  interface Acc {
+    prompts: number[];
+    promptSum: number;
+    preEditSum: number;
+  }
+  const byRole = new Map<string, Acc>();
+  for (const ev of ticks) {
+    const prompt = typeof ev.promptTokens === "number" && ev.promptTokens > 0 ? ev.promptTokens : 0;
+    const preEdit =
+      typeof ev.preEditPromptTokens === "number" && ev.preEditPromptTokens > 0
+        ? ev.preEditPromptTokens
+        : 0;
+    if (prompt === 0 && preEdit === 0) continue;
+    const role = eventRole(ev);
+    const acc = byRole.get(role) ?? { prompts: [], promptSum: 0, preEditSum: 0 };
+    if (prompt > 0) {
+      acc.prompts.push(prompt);
+      acc.promptSum += prompt;
+    }
+    acc.preEditSum += preEdit;
+    byRole.set(role, acc);
+  }
+  return [...byRole.entries()]
+    .filter(([, acc]) => acc.promptSum > 0)
+    .map(([role, acc]) => ({
+      role,
+      ticks: acc.prompts.length,
+      medianPromptTokens: median(acc.prompts),
+      preEditShare: acc.preEditSum / acc.promptSum,
+    }))
+    .sort((a, b) => a.role.localeCompare(b.role));
 }
 
 function total(counts: Partial<Record<TickResult, number>>): number {

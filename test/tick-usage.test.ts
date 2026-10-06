@@ -32,6 +32,48 @@ test("fold accumulates lifetime totals and per-tick counters across runs", () =>
   assert.equal(s.peakContextTokens, 9_000);
 });
 
+test("fold sums prompt tokens every run and freezes the pre-edit prefix at the first edit", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  // Two authoring runs before any edit: both pre-edit prefixes count.
+  u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100 }));
+  // The run that edits: its own (larger) prefix counts, then the counter freezes.
+  u.fold(s, run({ promptTokens: 200, cacheReadTokens: 150, preEditPromptTokens: 200, firstEditTurn: 2 }));
+  // A resumed run after the edit adds prompt tokens but no pre-edit tokens.
+  u.fold(s, run({ promptTokens: 300, cacheReadTokens: 250, preEditPromptTokens: 300, firstEditTurn: 1 }));
+
+  assert.equal(u.promptTokens, 600);
+  assert.equal(u.cacheReadTokens, 480);
+  assert.equal(u.preEditPromptTokens, 300, "frozen at the editing run's prefix");
+});
+
+test("fold's authoring=false (a landing/review run) never advances the pre-edit prefix", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100 }), false);
+
+  assert.equal(u.promptTokens, 100, "prompt tokens count for every run");
+  assert.equal(u.cacheReadTokens, 80);
+  assert.equal(u.preEditPromptTokens, 0, "a review run's context is not the authoring pre-edit prefix");
+});
+
+test("reset clears the prompt-token windows too", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+  u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100, firstEditTurn: 1 }));
+
+  u.reset();
+
+  assert.equal(u.promptTokens, 0);
+  assert.equal(u.cacheReadTokens, 0);
+  assert.equal(u.preEditPromptTokens, 0);
+  // A later run in the next tick is pre-edit again — the freeze does not survive a reset.
+  u.fold(s, run({ promptTokens: 10, preEditPromptTokens: 10 }));
+  assert.equal(u.preEditPromptTokens, 10);
+});
+
 test("fold feeds the daily cost budget: dayStamp is set and dayCostUsd accumulates", () => {
   const s: LoopState = freshLoopState("coverage");
   const u = new TickUsage();

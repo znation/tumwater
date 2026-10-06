@@ -22,6 +22,9 @@ import { resolverConfig } from "../src/config/config-views.js";
 interface Recording {
   warns: string[];
   usage: PiRunResult[];
+  /** Runs folded through foldLandingUsage (landing/review/conflict) — kept apart so a test
+   * can prove those never charge the tick's pre-edit prefix. */
+  landingUsage: PiRunResult[];
   /** Wall-clock ms of each foldUsage call, parallel to `usage`. */
   foldTimes: number[];
   /** ms passed to the retry's injected sleep, in call order. */
@@ -37,6 +40,7 @@ function makeHost(
 ): Recording & { loopPi: LoopPi; config: TumwaterConfig } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
+  const landingUsage: PiRunResult[] = [];
   const foldTimes: number[] = [];
   const sleeps: number[] = [];
   const sleepAts: number[] = [];
@@ -52,6 +56,9 @@ function makeHost(
       usage.push(run);
       foldTimes.push(Date.now());
     },
+    foldLandingUsage: (run: PiRunResult) => {
+      landingUsage.push(run);
+    },
     tickNumber: () => 1,
     // The retry's wait, recorded instead of lived through: a hint-less 429 now defaults to
     // a real minute (BUGS.md 2026-09-25), and no rate-limit test may spend wall clock on it.
@@ -62,7 +69,7 @@ function makeHost(
     abortRunSignal: () => ctl.abort(),
   };
   const loopPi = new LoopPi(host as unknown as ConstructorParameters<typeof LoopPi>[0]);
-  return { loopPi, warns, usage, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
+  return { loopPi, warns, usage, landingUsage, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
 }
 
 /** A fake pi that records each invocation's argv. `firstRun` runs only on the first
@@ -303,7 +310,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage, sleeps } = makeHost(root);
+    const { loopPi, warns, usage, landingUsage, sleeps } = makeHost(root);
     const result = await loopPi.runGatePi({
       cwd: root,
       prompt: "review the change",
@@ -314,7 +321,8 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
       label: "review",
     });
     assert.equal(result.ok, true, "the retry succeeds");
-    assert.equal(usage.length, 1, "the failed attempt is folded; the final run is the caller's");
+    assert.equal(usage.length, 0, "a reviewer run never folds through the tick's authoring fold");
+    assert.equal(landingUsage.length, 1, "the failed attempt folds through foldLandingUsage; the final run is the caller's");
     assert.match(warns[0]!, /rate-limited the request \(429, retry after 3s\)/);
     assert.deepEqual(sleeps, [3000], "the hint is waited out before the retry");
     const [firstArgs, retryArgs] = runArgs(args);
@@ -432,11 +440,12 @@ test("runLandingPi ignores the tick's per-tick runSignal — an aborted tick mus
   const args = path.join(root, "args");
   const restore = recordingFakePi(args);
   try {
-    const { loopPi, usage, abortRunSignal } = makeHost(root);
+    const { loopPi, usage, landingUsage, abortRunSignal } = makeHost(root);
     abortRunSignal(); // the stale per-tick controller of a finished (or aborted) tick
     const result = await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-review");
     assert.equal(result.ok, true, "the landing runs to completion");
-    assert.equal(usage.length, 1);
+    assert.equal(usage.length, 0, "a landing run never folds through the tick's authoring fold");
+    assert.equal(landingUsage.length, 1, "it folds through foldLandingUsage instead");
     assert.match(runArgs(args)[0]!, /resolve the conflict/);
   } finally {
     restore();
@@ -457,6 +466,7 @@ test("runLandingPi still honors the harness shutdown signal", async () => {
       runSignal: () => new AbortController().signal,
       warn: () => {},
       foldUsage: () => {},
+      foldLandingUsage: () => {},
       tickNumber: () => 1,
     } as unknown as ConstructorParameters<typeof LoopPi>[0]);
     const pending = loopPi.runLandingPi(root, "land", "t");

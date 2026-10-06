@@ -638,3 +638,34 @@ test("the loss-cause ranking's top-5 cut discloses its remainder, like every oth
   const md = renderFailureMarkdown(data);
   assert.match(md, /_\+2 more loss causes by time not listed_/, "the render marks the cut");
 });
+
+test("the digest reports per-role prompt-token medians and the pre-edit share", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 },
+    // A tick without the prompt-token fields contributes nothing and does not zero the median.
+    { ts: at(0), loop: "feature", type: "tick_end", result: "queued" },
+    { ts: at(0), loop: "bugfix", type: "tick_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const feature = data.promptStats.find((r) => r.role === "feature");
+  assert.deepEqual(feature, { role: "feature", ticks: 2, medianPromptTokens: 200, preEditShare: 0.15 });
+  const bugfix = data.promptStats.find((r) => r.role === "bugfix");
+  assert.deepEqual(bugfix, { role: "bugfix", ticks: 1, medianPromptTokens: 50, preEditShare: 1 });
+
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /^## Prompt tokens by role$/m);
+  assert.match(md, /feature: median 200 prompt tokens\/tick · 15% before first edit/);
+  assert.match(md, /bugfix: median 50 prompt tokens\/tick · 100% before first edit/);
+});
+
+test("a log without prompt-token fields renders no prompt section", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed", tokens: 500 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.deepEqual(data.promptStats, []);
+  assert.doesNotMatch(renderFailureMarkdown(data), /Prompt tokens by role/);
+});

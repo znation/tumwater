@@ -42,6 +42,10 @@ interface LoopPiHost {
   runSignal(): AbortSignal;
   warn(message: string): void;
   foldUsage(run: PiRunResult): void;
+  /** Fold a landing/review run's usage into the authoring role's counters WITHOUT touching
+   * the tick's pre-edit prefix (TickUsage.fold's authoring=false): the reviewer's and conflict
+   * resolver's context is not the authoring tick's pre-edit search. */
+  foldLandingUsage(run: PiRunResult): void;
   tickNumber(): number;
   /** The transient retry's pause before re-running, injectable so tests record the wait
    * instead of living through it (a hint-less 429 waits a real minute). Unset means the
@@ -54,7 +58,8 @@ interface LoopPiHost {
  * signal), the one bounded transient-failure retry all runs share, the landing slot's
  * run (which watches only the shutdown signal), and the tick's SUMMARY follow-up turn.
  * It owns HOW a loop talks to pi; the LoopRunner tick state machine owns WHAT runs happen
- * and folds every run's spend back through the host's foldUsage. */
+ * and folds every run's spend back through the host's foldUsage (authoring) or
+ * foldLandingUsage (landing/review). */
 export class LoopPi {
   constructor(private readonly host: LoopPiHost) {}
 
@@ -105,10 +110,13 @@ export class LoopPi {
     sessionName: string,
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult> {
-    return this.runWithTransientRetry({
-      ...this.loopPiOpts(wt, prompt, sessionName, false, config),
-      signal: this.host.signal,
-    });
+    return this.runWithTransientRetry(
+      {
+        ...this.loopPiOpts(wt, prompt, sessionName, false, config),
+        signal: this.host.signal,
+      },
+      { authoring: false },
+    );
   }
 
   /** The landing gate's reviewer runs (review.ts's review run and verdict follow-up): the
@@ -122,7 +130,7 @@ export class LoopPi {
    * they charge (config, session dir and name, label, tool-call callbacks, signal).
    */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
-    return this.runWithTransientRetry(opts, { foldFinal: false });
+    return this.runWithTransientRetry(opts, { foldFinal: false, authoring: false });
   }
 
   /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
@@ -147,8 +155,13 @@ export class LoopPi {
      * retried first attempt still folds — its spend and its rate-limit hold stamp must not
      * vanish just because the gate routes its own folding. Default folds everything, the
      * authoring and landing behavior. */
-    { foldFinal = true }: { foldFinal?: boolean } = {},
+    { foldFinal = true, authoring = true }: { foldFinal?: boolean; authoring?: boolean } = {},
   ): Promise<PiRunResult> {
+    // The fold every attempt takes: an authoring run charges the loop's tick counters
+    // (foldUsage); a landing, reviewer, or conflict-resolution run charges the same cost and
+    // prompt-token totals but never the tick's pre-edit prefix (foldLandingUsage).
+    const fold = (run: PiRunResult): void =>
+      authoring ? this.host.foldUsage(run) : this.host.foldLandingUsage(run);
     const pi = await runPi(opts);
     if (
       !pi.aborted &&
@@ -175,7 +188,7 @@ export class LoopPi {
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
-      this.host.foldUsage(pi);
+      fold(pi);
       // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
       // pi crash is a failure of the local path, retried at once, while a 429 must wait its
       // per-minute bucket out. A hint-less 429 defaults to that minute-scale refill pause
@@ -199,7 +212,7 @@ export class LoopPi {
       // Within-run continuity only: resume the session the first attempt created, so its
       // partial progress is not re-done. The next tick still starts fresh.
       const retry = await runPi({ ...opts, continueSession: true });
-      if (foldFinal) this.host.foldUsage(retry);
+      if (foldFinal) fold(retry);
       return retry;
     }
     // The backend-kind floor (BUGS.md 2026-09-29): a failed run of a backend kind the retry
@@ -219,7 +232,7 @@ export class LoopPi {
         `provider backend failure (${backendKindPhrase(pi.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
       );
     }
-    if (foldFinal) this.host.foldUsage(pi);
+    if (foldFinal) fold(pi);
     return pi;
   }
 

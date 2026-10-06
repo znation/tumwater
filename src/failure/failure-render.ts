@@ -185,6 +185,21 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     }
   }
 
+  // Prompt-token telemetry (PLANS.md, per-tick prompt-token plan): the per-role median prompt
+  // send and how much of the prompt budget goes out before a tick's first edit. Omitted
+  // entirely when no tick_end in the window carries the fields, so old logs and their golden
+  // digests render unchanged.
+  if (data.promptStats.length > 0) {
+    lines.push("");
+    lines.push("## Prompt tokens by role");
+    for (const row of data.promptStats) {
+      const share = Math.round(row.preEditShare * 100);
+      lines.push(
+        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/tick · ${share}% before first edit`,
+      );
+    }
+  }
+
   lines.push("");
   lines.push(`## Deltas vs the preceding ${dayLabel(data.days)}`);
   if (data.deltas.length === 0) {

@@ -23,6 +23,20 @@ export class TickUsage {
    * dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
    * the next tick resets it (plans: per-tick usage in the event feed). */
   costUsd = 0;
+  /** Prompt tokens folded into THIS tick so far (non-persisted, reset at tick start). Every
+   * pi run of the tick contributes — the authoring run, its transient retry, the SUMMARY
+   * follow-up, and (through foldLandingUsage) review and conflict-resolution runs — because
+   * all of them re-send context the operator paid for. */
+  promptTokens = 0;
+  /** The cache-read share of promptTokens folded so far. */
+  cacheReadTokens = 0;
+  /** Prompt tokens folded before the tick's first edit: authoring runs only, frozen once an
+   * authoring run reports an edit (plans/per-tick-prompt-telemetry). Landing, review and
+   * conflict-resolution runs are excluded — their context is the gate's, not the authoring
+   * tick's pre-edit search. */
+  preEditPromptTokens = 0;
+  /** True once an authoring run has reported a first edit; the pre-edit counter freezes. */
+  private editSeen = false;
   /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
    * reviewer or landing run alike, since every one folds through fold — with the provider's
    * Retry-After hint when it sent one. The orchestrator reads it every poll as this role's
@@ -39,21 +53,36 @@ export class TickUsage {
    * Undefined until the first such run. */
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 
-  /** Clear the per-tick windows (turns, costUsd) at tick start. lastRateLimit and
-   * lastBackendFailure are NOT cleared: they are episodic observations the orchestrator's
-   * hold consumes, not per-tick windows. */
+  /** Clear the per-tick windows (turns, costUsd, the prompt-token counters) at tick start.
+   * lastRateLimit and lastBackendFailure are NOT cleared: they are episodic observations the
+   * orchestrator's hold consumes, not per-tick windows. */
   reset(): void {
     this.turns = 0;
     this.costUsd = 0;
+    this.promptTokens = 0;
+    this.cacheReadTokens = 0;
+    this.preEditPromptTokens = 0;
+    this.editSeen = false;
   }
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns) and
-   * the loop's lifetime totals on `s`. */
-  fold(s: LoopState, run: PiRunResult): void {
+   * the loop's lifetime totals on `s`. `authoring` is false for a landing/review run folded
+   * through foldLandingUsage: those never advance the tick's pre-edit counter, which measures
+   * the authoring search. */
+  fold(s: LoopState, run: PiRunResult, authoring = true): void {
     s.generatedTokens += run.outputTokens;
     s.peakContextTokens = Math.max(s.peakContextTokens, run.peakContextTokens);
     s.totalCostUsd += run.costUsd;
     this.costUsd += run.costUsd;
+    this.promptTokens += run.promptTokens;
+    this.cacheReadTokens += run.cacheReadTokens;
+    // The pre-edit prefix freezes at the tick's first edit: every authoring run while no edit
+    // has been seen adds its pre-edit count (including the run that edits), and once one
+    // reports an edit later runs add nothing. A review/landing run is skipped entirely.
+    if (authoring) {
+      if (!this.editSeen) this.preEditPromptTokens += run.preEditPromptTokens;
+      if (run.firstEditTurn !== undefined) this.editSeen = true;
+    }
     // The daily cost budget window (plans/daily-cost-budget.md): every pi run of a tick folds
     // here exactly once, so the fleet's spend for the local day is complete at each tick end.
     recordDailyCost(s, run.costUsd);

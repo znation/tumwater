@@ -93,6 +93,20 @@ test("finalizeTick rides nonzero per-tick usage on tick_end", async () => {
   assert.equal(end.costUsd, 0.0125);
 });
 
+test("finalizeTick rides per-tick prompt-token telemetry on tick_end", async () => {
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  const usage = new TickUsage();
+  usage.promptTokens = 1000;
+  usage.cacheReadTokens = 800;
+  usage.preEditPromptTokens = 250;
+  await run(root, "organize", s, { result: "no_change" }, { usage });
+  const end = eventsOfType(root, "tick_end")[0]!;
+  assert.equal(end.promptTokens, 1000);
+  assert.equal(end.cacheReadTokens, 800);
+  assert.equal(end.preEditPromptTokens, 250);
+});
+
 test("finalizeTick warns once at the error-streak crossing and re-arms after a healthy tick", async () => {
   const root = await initializedRepo();
   const s = freshLoopState("organize");

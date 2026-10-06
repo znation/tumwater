@@ -125,6 +125,13 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     error: s.lastError,
     durationMs: tickDurationMs,
     ...usageFragment(s.generatedTokens, usage.costUsd),
+    // Per-tick prompt-token telemetry (PLANS.md, per-tick-prompt-token plan): how many prompt
+    // tokens the tick sent, how many were cache reads, and how many went out before its first
+    // edit. Omitted when zero like usageFragment's fields, so a tick that sent no prompt — and
+    // every tick_end written by an older build — renders byte-identically.
+    ...(usage.promptTokens > 0 ? { promptTokens: usage.promptTokens } : {}),
+    ...(usage.cacheReadTokens > 0 ? { cacheReadTokens: usage.cacheReadTokens } : {}),
+    ...(usage.preEditPromptTokens > 0 ? { preEditPromptTokens: usage.preEditPromptTokens } : {}),
   });
   return outcome;
 }

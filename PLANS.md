@@ -186,60 +186,6 @@ plans/fallback-model.md, and their tests.
 - The docs state the shipped trigger (3 consecutive provider-class failures), the tier-resolved
   pair, the probe tick, and the return policy; no doc still calls failure fallback out of scope.
 
-### Per-tick prompt-token telemetry: record prompt, cache-read, and pre-first-edit tokens on tick_end (planned 2026-10-06 by operator)
-
-Context: a 2026-10-06 analysis of 684 ticks (Oct 2–6) had to rebuild these numbers from pi
-session files, because tick_end carries only output tokens (`tokens`) and `costUsd`.
-- 92% of prompt tokens are cache re-sends.
-- About half of all prompt tokens are spent before a tick's first edit. Ticks that never edit
-  account for 18%, and ticks that do edit spend 42% of theirs before the first edit.
-
-Without these numbers on the event feed, nobody can tell whether a prompt or context change
-made ticks leaner. That includes the BUGS.md backlog-index fix filed the same day and the role
-notebook planned below.
-
-**Goal.** Every tick_end reports three numbers: the prompt tokens the tick sent, how many of
-them were cache reads, and how many were sent before the tick's first edit. A prompt or
-context change can then be measured from events.jsonl alone.
-
-**Approach.**
-1. **`src/pi/pi-stream.ts`** — in the `message_end` assistant branch, accumulate
-   `promptTokens += input + cacheRead + cacheWrite` (via `usageNumber`) and
-   `cacheReadTokens += cacheRead`. Until the first assistant message whose content holds a
-   `toolCall` named `edit` or `write`, also accumulate `preEditPromptTokens`, including that
-   message's own prompt. Record `firstEditTurn` (1-based; undefined when the run never edits).
-2. **`src/pi/pi-run-result.ts`** — carry the four fields on `PiRunResult`.
-3. **`src/tick/tick-usage.ts`**
-   - `TickUsage` gains per-tick `promptTokens`, `cacheReadTokens`, `preEditPromptTokens` and
-     an `editSeen` flag, all cleared in `reset()`.
-   - `fold()` adds `promptTokens` and `cacheReadTokens` for every run, like `costUsd`.
-   - `fold()` adds a run's `preEditPromptTokens` only for authoring runs and only while
-     `editSeen` is false, then sets `editSeen` once a run reports `firstEditTurn`. Landing,
-     review and conflict-resolution runs (`foldLandingUsage`) never touch the pre-edit
-     counter.
-4. **`src/tick/tick-finalize.ts`** — tick_end carries `promptTokens`, `cacheReadTokens` and
-   `preEditPromptTokens`, omitted when zero, the same way `usageFragment` treats its fields.
-5. **Telemetry digest** (`src/tick/telemetry-digest.ts` / `src/failure/failure-render.ts`) —
-   one per-role line over the digest window: median `promptTokens` per tick, and the pre-edit
-   share (sum of `preEditPromptTokens` over sum of `promptTokens`). The telemetry role then
-   sees where its fleet's prompt budget goes.
-
-**Files touched.** src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/tick/tick-usage.ts,
-src/tick/tick-finalize.ts, src/tick/telemetry-digest.ts, src/failure/failure-render.ts, and their
-tests (test/pi-stream.test.ts, test/tick-usage.test.ts, test/failure-render.test.ts).
-
-**Acceptance criteria.**
-- A stream of three assistant messages with set `usage.input`/`usage.cacheRead`, where the
-  second holds an `edit` toolCall, yields `promptTokens` and `cacheReadTokens` equal to the
-  sums, `preEditPromptTokens` equal to the first two messages' prompts, and `firstEditTurn` 2.
-- A run with no edit or write has `preEditPromptTokens == promptTokens`.
-- A tick whose resumed second run follows an edit in its first run adds nothing to the
-  pre-edit counter. A landing run's usage reaches `promptTokens` but not
-  `preEditPromptTokens`.
-- tick_end lines in events.jsonl carry the three fields, and a tick with no usage omits them.
-  Existing report and digest output is unchanged apart from the new digest line.
-- `npm run test` green.
-
 ### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first)
 
 Context: the 2026-10-06 analysis recorded a decision to keep a fresh pi session per tick, for
@@ -685,6 +631,71 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Per-tick prompt-token telemetry: record prompt, cache-read, and pre-first-edit tokens on tick_end (planned 2026-10-06 by operator; done 2026-10-06 by feature)
+
+Context: a 2026-10-06 analysis of 684 ticks (Oct 2–6) had to rebuild these numbers from pi
+session files, because tick_end carries only output tokens (`tokens`) and `costUsd`.
+- 92% of prompt tokens are cache re-sends.
+- About half of all prompt tokens are spent before a tick's first edit. Ticks that never edit
+  account for 18%, and ticks that do edit spend 42% of theirs before the first edit.
+
+Without these numbers on the event feed, nobody can tell whether a prompt or context change
+made ticks leaner. That includes the BUGS.md backlog-index fix filed the same day and the role
+notebook planned below.
+
+**Goal.** Every tick_end reports three numbers: the prompt tokens the tick sent, how many of
+them were cache reads, and how many were sent before the tick's first edit. A prompt or
+context change can then be measured from events.jsonl alone.
+
+**Approach.**
+1. **`src/pi/pi-stream.ts`** — in the `message_end` assistant branch, accumulate
+   `promptTokens += input + cacheRead + cacheWrite` (via `usageNumber`) and
+   `cacheReadTokens += cacheRead`. Until the first assistant message whose content holds a
+   `toolCall` named `edit` or `write`, also accumulate `preEditPromptTokens`, including that
+   message's own prompt. Record `firstEditTurn` (1-based; undefined when the run never edits).
+2. **`src/pi/pi-run-result.ts`** — carry the four fields on `PiRunResult` (built in
+   `src/pi/pi.ts`).
+3. **`src/tick/tick-usage.ts`**
+   - `TickUsage` gains per-tick `promptTokens`, `cacheReadTokens`, `preEditPromptTokens` and
+     an `editSeen` flag, all cleared in `reset()`.
+   - `fold()` adds `promptTokens` and `cacheReadTokens` for every run, like `costUsd`.
+   - `fold()` adds a run's `preEditPromptTokens` only for authoring runs and only while
+     `editSeen` is false, then sets `editSeen` once a run reports `firstEditTurn`. Landing,
+     review and conflict-resolution runs fold with `authoring=false`: `src/loop/loop.ts`'s
+     `foldLandingUsage` and the `LoopPi` host's `foldLandingUsage` face (src/loop/loop-pi.ts)
+     route every landing/review/conflict run there — including a retried gate attempt and the
+     conflict resolver — so none of them touch the pre-edit counter.
+4. **`src/tick/tick-finalize.ts`** — tick_end carries `promptTokens`, `cacheReadTokens` and
+   `preEditPromptTokens`, omitted when zero, the same way `usageFragment` treats its fields.
+5. **Telemetry digest** (`src/failure/failure-data.ts` / `src/failure/failure-render.ts`) —
+   the collector folds each tick_end's `promptTokens`/`preEditPromptTokens` into a per-role
+   `promptStats` row (median `promptTokens` per tick, and the pre-edit share: sum of
+   `preEditPromptTokens` over sum of `promptTokens`), and the render adds a
+   `## Prompt tokens by role` section. A log whose tick_ends predate the fields yields no rows,
+   so old digests render byte-identically. `src/tick/telemetry-digest.ts` needed no change: it
+   is a thin wrapper over `renderFailureMarkdown`, so the section flows through it automatically.
+
+**Files touched.** src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/pi/pi.ts,
+src/tick/tick-usage.ts, src/tick/tick-finalize.ts, src/loop/loop.ts, src/loop/loop-pi.ts,
+src/failure/failure-data.ts, src/failure/failure-render.ts, test/pi-parser.test.ts,
+test/tick-usage.test.ts, test/tick-finalize.test.ts, test/failure-render.test.ts,
+test/loop-pi.test.ts, test/fake-pi.ts. (The plan named `test/pi-stream.test.ts`; the parser's
+single unit-test home is test/pi-parser.test.ts, where its existing usage tests live.)
+
+**Acceptance criteria.**
+- A stream of three assistant messages with set `usage.input`/`usage.cacheRead`, where the
+  second holds an `edit` toolCall, yields `promptTokens` and `cacheReadTokens` equal to the
+  sums, `preEditPromptTokens` equal to the first two messages' prompts, and `firstEditTurn` 2.
+- A run with no edit or write has `preEditPromptTokens == promptTokens`.
+- A tick whose resumed second run follows an edit in its first run adds nothing to the
+  pre-edit counter. A landing run's usage reaches `promptTokens` but not
+  `preEditPromptTokens` — `runLandingPi` and `runGatePi` fold through `foldLandingUsage`
+  (pinned in test/loop-pi.test.ts), and `TickUsage.fold(..., false)` never advances the prefix
+  (test/tick-usage.test.ts).
+- tick_end lines in events.jsonl carry the three fields, and a tick with no usage omits them.
+  Existing report and digest output is unchanged apart from the new digest line.
+- `npm run test` green.
 
 ### GUI Pending view: show each loop's unlanded change in the dashboard (planned 2026-10-06 by plan loop; done 2026-10-06 by feature)
 

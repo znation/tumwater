@@ -28,6 +28,46 @@ test("parser keeps the last non-empty assistant text and sums usage", () => {
   assert.equal(parser.turns, 2, "one turn per assistant message_end");
 });
 
+test("parser sums prompt tokens and freezes the pre-edit prefix at the first edit turn", () => {
+  // PLANS.md, per-tick prompt-token telemetry: prompt = input + cacheRead + cacheWrite, and
+  // the pre-edit prefix includes every turn up to and including the one carrying edit/write.
+  const parser = new PiStreamParser();
+  const turn = (
+    usage: Record<string, unknown>,
+    content: Array<{ type: string; text?: string; name?: string }>,
+  ): string =>
+    JSON.stringify({ type: "message_end", message: { role: "assistant", content, usage, stopReason: "stop" } });
+
+  parser.feed(turn({ input: 100, output: 10, cacheRead: 900, cacheWrite: 50, totalTokens: 1000, cost: { total: 0 } }, [{ type: "text", text: "thinking" }]) + "\n");
+  // The second turn carries the edit tool call — its own prompt is still pre-edit.
+  parser.feed(turn({ input: 200, output: 20, cacheRead: 1800, cacheWrite: 0, totalTokens: 2000, cost: { total: 0 } }, [{ type: "toolCall", name: "edit" }]) + "\n");
+  parser.feed(turn({ input: 300, output: 30, cacheRead: 2700, cacheWrite: 0, totalTokens: 3000, cost: { total: 0 } }, [{ type: "text", text: "done" }]) + "\n");
+
+  assert.equal(parser.promptTokens, 100 + 900 + 50 + 200 + 1800 + 300 + 2700);
+  assert.equal(parser.cacheReadTokens, 900 + 1800 + 2700);
+  assert.equal(parser.preEditPromptTokens, 100 + 900 + 50 + 200 + 1800);
+  assert.equal(parser.firstEditTurn, 2);
+});
+
+test("a run with no edit or write has preEditPromptTokens equal to promptTokens", () => {
+  const parser = new PiStreamParser();
+  const turn = (input: number, cacheRead: number): string =>
+    JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "x" }],
+        usage: { input, cacheRead, cacheWrite: 0, totalTokens: input, output: 0, cost: { total: 0 } },
+        stopReason: "stop",
+      },
+    });
+  parser.feed(turn(100, 50) + "\n");
+  parser.feed(turn(200, 25) + "\n");
+  assert.equal(parser.firstEditTurn, undefined);
+  assert.equal(parser.preEditPromptTokens, parser.promptTokens);
+  assert.equal(parser.promptTokens, 100 + 50 + 200 + 25);
+});
+
 test("parser ignores a model server's string-valued usage numbers instead of poisoning the totals", () => {
   // Some OpenAI-compatible servers serialize usage numbers as JSON strings; `?? 0` would let
   // one through, turning costUsd into a string and then NaN — a cap that never trips and a
