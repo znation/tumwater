@@ -86,7 +86,7 @@ export function defaultConfig(): ResolvedModelConfig {
     thrashTurns: 40,
     thrashMinutes: 30,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
-    // A self-hosting fleet redeploys itself onto a green main (src/redeploy.ts): the alternative
+    // A self-hosting fleet redeploys itself onto a green main (src/redeploy/redeploy.ts): the alternative
     // — a process that never reloads its own code — ran ten days stale in dogfood.
     autoRestart: true,
     // Config changes no longer ride the commit path (plans/portability.md §3/7): the director

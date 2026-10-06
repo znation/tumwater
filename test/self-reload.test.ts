@@ -12,7 +12,7 @@ import {
   watchReloadSupervisor,
 } from "../src/self-reload.js";
 import { readBuildInfo } from "../src/build-info.js";
-import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
+import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
 import fs from "node:fs";
 import path from "node:path";

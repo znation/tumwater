@@ -73,7 +73,7 @@ export interface HarnessEvent {
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
-    | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy.ts)
+    | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
     | "restart_refused" // a new generation would fail `tumwater run`'s startup gate here (reason); the running build stays and the gate is re-asked every poll

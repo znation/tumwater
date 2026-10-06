@@ -1,13 +1,13 @@
-import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "./build-info.js";
-import { buildCheckEvent } from "./build-check/build-check-events.js";
-import { type BuildCheckOutcome } from "./build-check/build-check.js";
-import { liveConfig } from "./config/config.js";
-import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
-import { compileStaged, swapDist } from "./build-stage.js";
-import { readJsonFile, writeJsonFile } from "./json-files.js";
-import { finiteNumber } from "./json-object.js";
-import { ensureDetachedWorktree } from "./worktree.js";
-import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "./paths.js";
+import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build-info.js";
+import { buildCheckEvent } from "../build-check/build-check-events.js";
+import { type BuildCheckOutcome } from "../build-check/build-check.js";
+import { liveConfig } from "../config/config.js";
+import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../main-baseline.js";
+import { compileStaged, swapDist } from "../build-stage.js";
+import { readJsonFile, writeJsonFile } from "../json-files.js";
+import { finiteNumber } from "../json-object.js";
+import { ensureDetachedWorktree } from "../worktree.js";
+import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../paths.js";
 import { type AutoRestartRecord, type RedeployDeps, RESTART_DRAIN_MAX_MS } from "./redeploy-policy.js";
 import { type RedeployEvent, Redeployer } from "./redeployer.js";
 

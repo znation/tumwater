@@ -1,5 +1,5 @@
-import type { BuildStaleness } from "./build-info.js";
-import type { CompileResult } from "./build-stage.js";
+import type { BuildStaleness } from "../build-info.js";
+import type { CompileResult } from "../build-stage.js";
 
 /** Self-redeploy for a self-hosting fleet (see build-info.ts for why): when main's build inputs
  * have moved past the running build, verify that main is green, compile it into a staging dir,

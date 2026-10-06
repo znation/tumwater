@@ -22,7 +22,7 @@ import { initProject } from "../init.js";
 import { templateCatalog } from "../init-templates.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
-import { RESTART_EXIT_CODE } from "../redeploy-policy.js";
+import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { loadLoopState, stateSkipReason } from "../loop-state.js";
 import { plural } from "../phrases.js";
 import { shortSha } from "../format.js";
@@ -143,7 +143,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // so the hand-off machinery (and its build stamp) stays daemon-only.
   const redeploy = once
     ? null
-    : await (await import("../redeploy.js")).createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
+    : await (await import("../redeploy/redeploy.js")).createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // A long-running fleet watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.

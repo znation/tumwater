@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import type { HarnessEventInput } from "../src/events/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
 import { defaultConfig } from "../src/config/config.js";
-import { type AutoRestartRecord, type RedeployDeps } from "../src/redeploy-policy.js";
-import { Redeployer } from "../src/redeployer.js";
+import { type AutoRestartRecord, type RedeployDeps } from "../src/redeploy/redeploy-policy.js";
+import { Redeployer } from "../src/redeploy/redeployer.js";
 
 /** Shared scripted-effect fixtures for the self-redeploy tests: drive the state machine with
  * controllable deps so every decision branch is pinned without git, tsc, or a fleet. The

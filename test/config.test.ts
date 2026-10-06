@@ -312,7 +312,7 @@ test("a tumwater.json deleted between the cache's stat and its read is an error,
 });
 
 test("autoRestart defaults on and is validated as a boolean", () => {
-  // Self-redeploy (src/redeploy.ts) is the opinionated default for a self-hosting fleet: the
+  // Self-redeploy (src/redeploy/redeploy.ts) is the opinionated default for a self-hosting fleet: the
   // alternative — a process that never reloads its own code — ran ten days stale in dogfood.
   assert.equal(defaultConfig().autoRestart, true);
   assert.throws(

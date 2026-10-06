@@ -1,9 +1,9 @@
-import type { BuildInfo, BuildStaleness, BuildStatus } from "./build-info.js";
-import type { CompileResult } from "./build-stage.js";
-import type { HarnessEventInput } from "./events/events.js";
-import { errorMessage } from "./text.js";
-import { shortSha } from "./format.js";
-import { mainRedPhrase } from "./phrases.js";
+import type { BuildInfo, BuildStaleness, BuildStatus } from "../build-info.js";
+import type { CompileResult } from "../build-stage.js";
+import type { HarnessEventInput } from "../events/events.js";
+import { errorMessage } from "../text.js";
+import { shortSha } from "../format.js";
+import { mainRedPhrase } from "../phrases.js";
 import {
   type AutoRestartRecord,
   type InFlightCounts,
@@ -117,7 +117,7 @@ export class Redeployer {
    * build it already knows is stale. The check and compile are the same side-effect-free effects
    * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the
    * episode adopts is decided by the adopt helpers, not by the pre-warm. */
-  /** The cooldown's prewarm probes — owned in src/redeploy-probes.ts; see there. */
+  /** The cooldown's prewarm probes — owned in src/redeploy/redeploy-probes.ts; see there. */
   private readonly probes: PrewarmProbes;
   /** The head whose green check already warned that it could not run (a rejection, not a red
    * verdict) — one warning per episode. */

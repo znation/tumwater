@@ -259,7 +259,7 @@ export interface TumwaterConfig {
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
   thrashMinutes: number;
   idleBackoff: BackoffConfig;
-  /** Self-redeploy for a self-hosting fleet (src/redeploy.ts): when main's build inputs move past
+  /** Self-redeploy for a self-hosting fleet (src/redeploy/redeploy.ts): when main's build inputs move past
    * the running build and main is green, rebuild, drain, and restart onto the new code (default
    * true). Off, the dashboards still flag the build as stale but nothing restarts. */
   autoRestart: boolean;

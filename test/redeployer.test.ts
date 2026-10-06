@@ -4,13 +4,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { mainIsGreen } from "../src/main-baseline.js";
-import { autoRestartRecord } from "../src/redeploy.js";
+import { autoRestartRecord } from "../src/redeploy/redeploy.js";
 import {
   type AutoRestartRecord,
   RESTART_COOLDOWN_MS,
   RESTART_URGENT_COOLDOWN_MS,
   RESTART_EXIT_CODE,
-} from "../src/redeploy-policy.js";
+} from "../src/redeploy/redeploy-policy.js";
 import {
   BUILD,
   CFG,

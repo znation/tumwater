@@ -250,7 +250,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `config changed${keys ? `: ${keys}` : ""}`;
     }
     case "build_stale":
-      // Self-hosting fleets only (src/redeploy.ts): the code main describes is not the code
+      // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
       return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(Number(e.aheadCommits ?? 0), "commit")} ahead in src/`;
     case "restart_pending":

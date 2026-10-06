@@ -90,7 +90,7 @@ export interface BuildStatus {
   /** The main head the staleness verdict was computed for. */
   checkedHead?: string;
   /** True while a self-redeploy onto `checkedHead` is under way — verifying main, compiling, or
-   * draining in-flight ticks (redeployer.ts). The stale build is about to be replaced. */
+   * draining in-flight ticks (src/redeploy/redeployer.ts). The stale build is about to be replaced. */
   restartPending?: boolean;
   /** Why the self-redeploy onto `checkedHead` was REFUSED — a red main, a failed compile, a
    * failed swap. Set instead of `restartPending`, and the important half: the fleet then keeps

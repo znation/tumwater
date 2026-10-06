@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { RESTART_EXIT_CODE } from "../src/redeploy-policy.js";
+import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import {
   type ChildExit,
   type FleetDown,

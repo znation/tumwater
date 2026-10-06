@@ -1,8 +1,8 @@
-import type { CompileResult } from "./build-stage.js";
+import type { CompileResult } from "../build-stage.js";
 import type { RedeployDeps } from "./redeploy-policy.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "../text.js";
 
-/** Background-task tracking shared by the self-redeploy layer (src/redeployer.ts, this module):
+/** Background-task tracking shared by the self-redeploy layer (src/redeploy/redeployer.ts, this module):
  * a probe the poll consults without awaiting — settled flag plus result or error. */
 
 export interface Tracked<T> {
@@ -26,7 +26,7 @@ export function track<T>(promise: Promise<T>): Tracked<T> {
   return t;
 }
 
-/** The cooldown's pre-warm probes (src/redeployer.ts's poll runs them while the restart is
+/** The cooldown's pre-warm probes (src/redeploy/redeployer.ts's poll runs them while the restart is
  * deferred — BUGS.md 2026-09-30): the deferred head's green check and, only after a green
  * verdict, its staged compile, once per SHA, owned here so the state machine's episode can
  * adopt whatever verdict is already in hand at the lapse. A red verdict or a "could not run"

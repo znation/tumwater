@@ -1090,9 +1090,9 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   `checkMainBaseline`'s three callers
   thread it too: src/main-red.ts's `mainRedGate` passes the `cfg` it already loads (:87) at its
   :89 call, `bugfixMainRedNote` (:68) gains the same `loadConfigCached(root).config ??
-  defaultConfig()` load for its :69 call, and src/redeploy.ts's `mainIsGreen(mirrorWt, config,
+  defaultConfig()` load for its :69 call, and src/redeploy/redeploy.ts's `mainIsGreen(mirrorWt, config,
   onRun?)` (:431) takes config, with the production wiring at createRedeployer (:456) reading the
-  live config per call — so src/main-red.ts and src/redeploy.ts join this entry's files.
+  live config per call — so src/main-red.ts and src/redeploy/redeploy.ts join this entry's files.
 - src/doctor/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
 - Tests: test/build-check.test.ts (a configured command passing, failing with its tail as reasons,
@@ -1107,7 +1107,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check/build-check-detect.ts,
 src/build-check/build-check.ts, src/prompt/prompt.ts,
-src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
+src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy/redeploy.ts,
 src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
@@ -1152,7 +1152,7 @@ Corrections (pinned; the three stale spots are already corrected in place):
    `runBuildCheck(wt, check)` itself (line 159), so it is a third `detectBuildCheck` site the plan
    must thread; src/main-red.ts imports only `checkMainBaseline` from it (now line 5; `failureHeadline` comes from
    build-check/build-check.ts) and
-   passes an `onRun` hook, and src/redeploy.ts:469 calls it too. The files bullet now names
+   passes an `onRun` hook, and src/redeploy/redeploy.ts:469 calls it too. The files bullet now names
    `src/main-baseline.ts` in place of `src/main-red.ts` and `test/main-baseline.test.ts` in place of
    `test/main-red.test.ts`.
 2. **The threading surface is three `detectBuildCheck` sites plus a new `batch` scope, not
@@ -1235,7 +1235,7 @@ Corrections (pinned in place):
    audit, but never pinned), and its three production callers are src/main-red.ts:69
    (`bugfixMainRedNote`, which loads no config today — it gains the two-line
    `loadConfigCached(root).config ?? defaultConfig()` idiom mainRedGate already uses at :87),
-   src/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy.ts:438 inside
+   src/main-red.ts:89 (`mainRedGate`, passing its existing `cfg`), and src/redeploy/redeploy.ts:438 inside
    `mainIsGreen` (:432), whose only production wiring is createRedeployer's `mainGreen` dep
    (:458 — `root` is in closure scope; read the live config per call so a mid-run
    `check.command` edit applies). Pin the new signatures: `checkMainBaseline(wt, config, onRun?,
@@ -1312,7 +1312,7 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
   review.ts holds config (GateContext :88, destructured :158); lander.ts and merge.ts unchanged.
 - src/main-red.ts: `bugfixMainRedNote` :68 with its `checkMainBaseline` call :69,
   `mainRedGate` :81 with `loadConfigCached(root).config ?? defaultConfig()` at :87 and its call
-  :89 — all as pinned. src/redeploy.ts: `mainIsGreen` :431 (was :432), its
+  :89 — all as pinned. src/redeploy/redeploy.ts: `mainIsGreen` :431 (was :432), its
   `checkMainBaseline(mirrorWt, onRun, true)` :437 (was :438), `createRedeployer` :443 with the
   `mainGreen` dep :456 (was :458). `checkMainBaseline` (src/main-baseline.ts:123) is still
   `(wt, onRun?, reverifyRed = false)` with detect :145 / run :148 — unchanged.
@@ -1395,7 +1395,7 @@ Re-pinned anchors (09-24 note's terms → today):
 - **Unchanged from the 09-24 pins:** src/main-red.ts (`bugfixMainRedNote` :68/:69 with its
   internal load :87 in mainRedGate :81/:89 — verified verbatim), src/main-baseline.ts
   (`checkMainBaseline(wt, onRun?, reverifyRed = false)` :123, detect :146, run :149),
-  src/redeploy.ts (`mainIsGreen(mirrorWt, onRun?)` :431, its `checkMainBaseline(mirrorWt, onRun,
+  src/redeploy/redeploy.ts (`mainIsGreen(mirrorWt, onRun?)` :431, its `checkMainBaseline(mirrorWt, onRun,
   true)` :437, `createRedeployer` :443, mainGreen dep :456). The 09-24 note's correction-2
   (doctor's no-check branch flips to `warn`) lands against :277 with its comment at :272–273.
 - **Test maxLevels call sites:** test/build-check.test.ts:364 (`detectBuildCheck(deep, 10)`),
