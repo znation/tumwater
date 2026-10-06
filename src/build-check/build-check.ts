@@ -1,6 +1,6 @@
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck } from "./build-check-detect.js";
-import { EXEC_MAX_BUFFER, execFileAsync } from "../process.js";
-import { KILL_GRACE_MS, runScriptGroup } from "../process-group.js";
+import { EXEC_MAX_BUFFER, execFileAsync } from "../process/process.js";
+import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
 import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "../host-sleep.js";

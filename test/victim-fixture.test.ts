@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { pidAlive } from "../src/process.js";
+import { pidAlive } from "../src/process/process.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { armVictimKill, exitWithOwnerEnv, ownerAliveSh } from "./victim-fixture.js";
 

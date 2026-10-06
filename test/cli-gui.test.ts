@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build-info.js";
 import { initProject } from "../src/init.js";
-import { pidAlive } from "../src/process.js";
+import { pidAlive } from "../src/process/process.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
 import { makeRepo, runningAsRoot, sh, tmpdir } from "./repo-fixtures.js";

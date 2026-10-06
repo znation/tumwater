@@ -16,7 +16,7 @@ import {
   resumeFleet,
   resumeRole,
 } from "../fleet/fleet-state.js";
-import { pidAlive } from "../process.js";
+import { pidAlive } from "../process/process.js";
 import {
   markerApplyNote,
   NO_HARNESS_ERROR,

@@ -6,7 +6,7 @@
  * table (BUGS.md "The doctor CLI tests in test/doctor.test.ts assert exit 0 against the
  * host's REAL process table"). No real process is spawned. Node built-ins only.
  */
-import type { ProcessProbe, ProcessRow } from "../../src/process-table.js";
+import type { ProcessProbe, ProcessRow } from "../../src/process/process-table.js";
 
 /** An empty process table and a healthy launchservicesd: the inert host the check tests pin
  * every other check with while driving one check's own tests with `fakeProbe`. */

@@ -5,7 +5,7 @@ import { clipBuildTail } from "./build-check/build-check-report.js";
 import { resolveFromNodeModules } from "./build-check/build-check-detect.js";
 import { ensureDir, removeTree } from "./files.js";
 import { stagingDir, stagingRootDir } from "./paths.js";
-import { execFileAsync } from "./process.js";
+import { execFileAsync } from "./process/process.js";
 import { errorMessage } from "./text.js";
 import { shortSha } from "./format.js";
 

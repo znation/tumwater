@@ -10,7 +10,7 @@ import {
   launchServicesWarning,
   nextLaunchServicesWarning,
 } from "../src/launch-services.js";
-import type { ProcessProbe } from "../src/process-table.js";
+import type { ProcessProbe } from "../src/process/process-table.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { harnessWarnings } from "./log-fixtures.js";

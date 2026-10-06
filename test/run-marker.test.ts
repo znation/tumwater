@@ -5,8 +5,8 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 
-import { pidAlive } from "../src/process.js";
-import { systemProcessProbe } from "../src/process-table.js";
+import { pidAlive } from "../src/process/process.js";
+import { systemProcessProbe } from "../src/process/process-table.js";
 import {
   makeRunMarker,
   pidsMarkedInPs,

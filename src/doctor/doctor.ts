@@ -1,6 +1,6 @@
 import { loadConfigSafe } from "../config/config.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/fleet-state.js";
-import { type ProcessProbe, systemProcessProbe } from "../process-table.js";
+import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "../launch-services.js";
 import { plural } from "../phrases.js";

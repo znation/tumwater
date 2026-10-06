@@ -4,7 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../readiness.js";
-import { terminateChild, withoutLaunchServicesCheckIn } from "../process.js";
+import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../run-marker.js";
 import { piArgs } from "./pi-args.js";
 import { PiStreamParser, STREAM_SEVERED } from "./pi-stream.js";

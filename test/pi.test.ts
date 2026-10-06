@@ -7,7 +7,7 @@ import {
   TRANSIENT_PI_CRASH,
   runPi,
 } from "../src/pi/pi.js";
-import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process.js";
+import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
 import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { defaultConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";

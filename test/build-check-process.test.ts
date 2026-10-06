@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runBuildCheck } from "../src/build-check/build-check.js";
 import { errCode } from "../src/errno.js";
-import { pidAlive } from "../src/process.js";
+import { pidAlive } from "../src/process/process.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { projManifest } from "./fake-commands.js";
 import { tmpdir } from "./repo-fixtures.js";
@@ -28,7 +28,7 @@ function groupAlive(pgid: number): boolean {
   }
 }
 
-/** Put a check's deadline, SIGKILL grace and group poll (runScriptGroup in src/process-group.ts)
+/** Put a check's deadline, SIGKILL grace and group poll (runScriptGroup in src/process/process-group.ts)
  * on logical time for the rest of `t`: Date, setTimeout and setInterval become node:test mock
  * timers, while the check's processes, pipes and exits stay real. The returned `advance(ms)`
  * fires what falls due in 50 ms steps (the group poll's period), so each timer reads its own

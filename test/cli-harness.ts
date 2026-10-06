@@ -59,7 +59,7 @@ interface SpawnedCli {
  * and the early SIGKILL killed the supervisor mid-shutdown, turning its clean exit 0 into a
  * signal death the teardown test reads as exit code null (BUGS.md 2026-09-30) — and short
  * enough that a wedged stop cannot hang a test file. Matches the SIGTERM → SIGKILL escalation
- * grace the product itself uses (KILL_GRACE_MS in src/process-group.ts). */
+ * grace the product itself uses (KILL_GRACE_MS in src/process/process-group.ts). */
 const KILL_GRACE_MS = 10_000;
 
 export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } & SpawnedCli {

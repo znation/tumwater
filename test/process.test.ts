@@ -10,14 +10,14 @@ import {
   signalTree,
   terminateChild,
   withoutLaunchServicesCheckIn,
-} from "../src/process.js";
+} from "../src/process/process.js";
 import {
   parseLsofCwds,
   readLaunchServicesPorts,
   parsePsOutput,
   parseTopPorts,
   systemProcessProbe,
-} from "../src/process-table.js";
+} from "../src/process/process-table.js";
 import { makeRunMarker, runMarkerEnv } from "../src/run-marker.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { exitWithOwnerEnv, spawnMarkedVictim, spawnVictim } from "./victim-fixture.js";

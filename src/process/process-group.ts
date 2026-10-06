@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 // Type-only back-reference, the same shape build-check/build-check-events.ts uses: runScriptGroup's
 // result carries the caller's run record (BuildCheckRun), and no runtime cycle is created —
 // build-check/build-check.ts imports this module's runtime values, this file imports only the type.
-import type { BuildCheckRun } from "./build-check/build-check.js";
+import type { BuildCheckRun } from "../build-check/build-check.js";
 import { signalTree, withoutLaunchServicesCheckIn } from "./process.js";
-import { errCode } from "./errno.js";
+import { errCode } from "../errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
  * group — exactly like pi — and settles exactly once, bounding a timed-out tree at its

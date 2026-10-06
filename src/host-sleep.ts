@@ -21,7 +21,7 @@
  * instead of suspending the host. */
 
 import fs from "node:fs";
-import { execFileAsync } from "./process.js";
+import { execFileAsync } from "./process/process.js";
 
 /** One reading of whatever sleep clocks the platform exposes. Every field is optional:
  * a platform with no readable clock, or one that failed to read, yields an empty sample —

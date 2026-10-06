@@ -3,7 +3,7 @@ import type { BuildStatus } from "../build-info.js";
 import type { FallbackDemotion } from "../fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../json-files.js";
 import { ensureParentDir, removeQuiet } from "../files.js";
-import { pidAlive } from "../process.js";
+import { pidAlive } from "../process/process.js";
 import { withSyncLock } from "../lock.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 

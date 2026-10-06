@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { runPi } from "../src/pi/pi.js";
-import { pidAlive, signalTree } from "../src/process.js";
+import { pidAlive, signalTree } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
@@ -15,7 +15,7 @@ import { ownerAliveSh } from "./victim-fixture.js";
 
 // The process-tree-hygiene regressions: a run — killed or exited normally — must take its
 // tool-call children, grandchildren, and backgrounded cross-group orphans with it, and
-// signalTree must tolerate the groups those exits leave behind (src/process.ts's sweep, as
+// signalTree must tolerate the groups those exits leave behind (src/process/process.ts's sweep, as
 // runPi arms it). The quiet-watchdog and stall-warning tests stay in pi.test.ts; the shared
 // runPi fixture lives in pi-run-harness.ts.
 

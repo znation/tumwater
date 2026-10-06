@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LaunchServicesWatch, launchServicesWarning } from "../src/launch-services.js";
-import { systemProcessProbe, type ProcessProbe } from "../src/process-table.js";
+import { systemProcessProbe, type ProcessProbe } from "../src/process/process-table.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
