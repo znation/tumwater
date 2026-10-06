@@ -6,6 +6,96 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Show each loop's active model on `tumwater status`, the TUI, and the GUI (planned 2026-10-06 by director)
+
+**Goal.** An operator can see, on both observer surfaces, which model every loop runs on — not
+only when a tier map is declared. Today the per-row model selector is attached only when the
+top-level `model` is a tier-map object (`src/status/status-data.ts`'s `snapshot`, the
+`isJsonObject(cfg.model)` gate), so the common single-string model (`model: "provider/id"`)
+is invisible: the GUI sub line and the TUI name suffix stay bare. (`src/ui/gui-client-loops.ts`'s
+`loopCells` already renders `l.model` when present, and `src/ui/status-payload.ts` already
+forwards `s.model`, so only the snapshot gate and the TUI suffix need to change.)
+
+**Approach.**
+1. **`src/status/status-data.ts`** (`snapshot`, the `loops` map): always compute
+   `configForRole(cfg, r)` and spread `...modelSelectorField(eff)` into every row. Keep
+   `modelTier: roleSeamTier(cfg, r)` gated on `isJsonObject(cfg.model)` exactly as today (the
+   tier tag stays a tier-map-only affordance). Update the `StatusSnapshot.loops` field comment:
+   `model` is now present whenever a model resolves, `modelTier` only under a tier map.
+2. **`src/ui/status-render.ts`** (the row's `name` cell): replace the
+   `s.modelTier ? \` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})\` : ""` suffix with one
+   that also renders a lone model: with `s.modelTier` keep today's ` (tier · selector)` text
+   byte-for-byte; otherwise with `s.model` append ` (${s.model})`; with neither append nothing.
+3. **`src/ui/gui-client-loops.ts` and `src/ui/status-payload.ts` need no change** — verify this
+   rather than edit them.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-render.ts, test/status-data.test.ts,
+test/status-render.test.ts.
+
+**Acceptance criteria.**
+- With `model: "prov-a/model-a"` and no map, every `snapshot(repo).loops` row carries
+  `model: "prov-a/model-a"` and no `modelTier`; `statusPayload(repo).loops` forwards the same
+  `model`; `renderStatus` shows an isolated row supplied `{ role: "clean", model:
+  "prov-a/model-a" }` as `clean (prov-a/model-a)`.
+- With the tier map `{ default: "prov-a/model-a", strong: "prov-s/model-s:high" }`, every row
+  carries `modelTier` and `model` exactly as today and `renderStatus` keeps the byte-identical
+  ` (strong · prov-s/model-s:high)` suffix (the existing status-render tier test stays green).
+- The existing test "snapshot loop rows carry their seam tier and selector only when a tier map
+  is declared" is renamed and updated: the no-map branch asserts `model` is present (it
+  currently asserts `undefined`) and `modelTier` stays undefined; a new status-render case pins
+  the lone-model suffix.
+- `npm run test` green.
+
+### Log one `model_changed` event when a live config edit changes the fleet's model wiring (planned 2026-10-06 by director; independent of the display plan above)
+
+**Goal.** A live `tumwater.json` edit that changes which model a seam runs on leaves one
+human-readable events.jsonl line naming the new selector, instead of only the key list the
+existing `config_changed` event carries. It fires only on an actual model-wiring change — never
+per tick; the per-tick `tick_start.model` field stays for the history/report trail. Budget
+fallback transitions already log their model on `budget_fallback`/`budget_handback`, so this
+event covers the config-edit path only.
+
+**Approach.**
+1. **`src/config/config-views.ts`** — export `fleetModelLabel(config: TumwaterConfig): string |
+   null`: for each tier in `MODEL_TIERS`, format that tier's effective selector via
+   `tierModel(config, tier)` and `formatModelSelector`; return null when every tier is unset
+   (pi's own default), the single selector when all set tiers agree, and the
+   `small=…, default=…, strong=…` list when they differ. Using all tiers makes an edit to any
+   tier's entry change the label.
+2. **`src/events/events.ts`** — add `"model_changed"` to the `HarnessEvent["type"]` union with
+   a doc comment: "a live tumwater.json edit changed the fleet's model wiring; carries
+   `from`/`to` (`fleetModelLabel` of the previous/next config) and `roles` (the per-role
+   selector diffs) when a `roles.<id>` model override changed".
+3. **`src/config/config-live.ts`** (`poll`, beside the existing `config_changed` block) — after
+   logging `config_changed`, compute the model change: `topChanged = fleetModelLabel(prevLive)
+   !== fleetModelLabel(reloaded.config)`; and from `changedKeys`' `roles.<id>` entries, keep a
+   `{ role, from, to }` for each id whose `modelSelectorField(configForRole(...)).model` differs
+   between `prevLive` and `reloaded.config` (imports `configForRole`, `fleetModelLabel`,
+   `modelSelectorField` from config-views). When `topChanged || roleDiffs.length > 0`,
+   `logEvent(root, { loop: "harness", type: "model_changed", from: fleetModelLabel(prevLive),
+   to: fleetModelLabel(reloaded.config), ...(roleDiffs.length ? { roles: roleDiffs } : {}) })`.
+   An edit touching no model key (e.g. `roles.<id>.instructions` or `minTickIntervalSeconds`)
+   emits nothing.
+4. **`src/events/event-format.ts`** — a `case "model_changed"` rendering `model changed — now
+   ${e.to ?? "pi's default"}` (one feed line; the per-role diffs stay structured on the event).
+
+**Files touched.** src/config/config-views.ts, src/config/config-live.ts, src/events/events.ts,
+src/events/event-format.ts, test/config-live.test.ts, test/config-views.test.ts,
+test/event-format.test.ts.
+
+**Acceptance criteria.**
+- `fleetModelLabel` returns null for an unset model, `prov-a/model-a` for the string
+  `model: "prov-a/model-a"`, and a differing-tier list for `{ default: "prov-a/model-a",
+  strong: "prov-s/model-s:high" }`.
+- A reload whose only change is the top-level `model` logs exactly one `config_changed`
+  (unchanged) followed by one `model_changed` whose `to` is the new label; an unchanged poll
+  after it logs nothing more (edge-triggered like `config_changed`).
+- A `roles.qa.model` edit logs a `model_changed` whose `roles` holds `{ role: "qa", from, to }`;
+  a `roles.qa.instructions` edit logs `config_changed` and no `model_changed`; a
+  `minTickIntervalSeconds`-only edit logs no model event.
+- `event-format` renders `model changed — now prov-a/model-a`.
+- `npm run test` green.
+
 ### Model failure fallback, part 1/2: run a failing role's ticks on its tier fallback (planned 2026-10-06 by plan loop)
 
 Design: plans/fallback-model.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md.
