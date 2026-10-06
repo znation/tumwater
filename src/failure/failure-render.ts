@@ -6,6 +6,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";
+import type { ColumnAlign } from "../text/markdown.js";
 import { plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "../text/datetime.js";
@@ -143,7 +144,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
           roleCell(row.role),
           ...cols.map((c) => String(row.counts[c] ?? 0)),
         ]),
-        ["left", ...cols.map((): "right" => "right")],
+        ["left", ...cols.map((): ColumnAlign => "right")],
       ),
     );
   }
