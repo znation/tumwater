@@ -129,3 +129,54 @@ test("applyFallbackModel raises the reviewer's time budget to the fallback floor
   config.tickTimeoutSeconds = 600;
   assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, 600);
 });
+
+test("selector strings for model parse into the provider/model/thinking triple", () => {
+  const config = defaultConfig();
+  config.model = "huggingface/zai-org/GLM-5.3-Flash:together:low";
+  assert.deepEqual(
+    { provider: configForRole(config, "feature").provider, model: configForRole(config, "feature").model, thinking: configForRole(config, "feature").thinking },
+    { provider: "huggingface", model: "zai-org/GLM-5.3-Flash:together", thinking: "low" },
+  );
+  // A legacy provider in scope keeps a string model a bare id under it — the old configs'
+  // meaning, so their argv is unchanged.
+  config.model = "zai-org/GLM-5.3-Flash:together";
+  config.provider = "huggingface";
+  assert.deepEqual(
+    { provider: configForRole(config, "feature").provider, model: configForRole(config, "feature").model },
+    { provider: "huggingface", model: "zai-org/GLM-5.3-Flash:together" },
+  );
+  // An explicit thinking key wins over a selector's suffix; a suffix beats the ambient
+  // top-level thinking.
+  config.roles.feature = { enabled: true, model: "org/m:low", thinking: "high" };
+  assert.equal(configForRole(config, "feature").thinking, "high");
+  const ambient = defaultConfig();
+  ambient.thinking = "high";
+  ambient.model = "org/m:low";
+  assert.equal(configForRole(ambient, "feature").thinking, "low");
+  assert.equal(reviewConfig(ambient).thinking, "low");
+});
+
+test("a selector-string fallback engages like the equivalent fallbackModel object", () => {
+  const config = defaultConfig();
+  config.provider = "hf";
+  config.model = "big-paid";
+  config.thinking = "high";
+  // No suffix borrows the ambient thinking, exactly as the object form does.
+  config.fallback = "omlx/local-free";
+  assert.deepEqual(fallbackPair(config), { provider: "omlx", model: "local-free", thinking: "high" });
+  // The suffix wins over the ambient thinking.
+  config.fallback = "omlx/local-free:off";
+  assert.deepEqual(fallbackPair(config), { provider: "omlx", model: "local-free", thinking: "off" });
+  config.fallback = "omlx/local-free";
+  assert.deepEqual(fallbackPair(config), { provider: "omlx", model: "local-free", thinking: "high" });
+  // Without a legacy provider, a slash-less string is a bare pattern with no provider.
+  const bare = defaultConfig();
+  bare.fallback = "local-free";
+  assert.deepEqual(fallbackPair(bare), { model: "local-free" });
+  // The fallback config drives every seam: applyFallbackModel lands on the parsed pair.
+  const fb = applyFallbackModel({ ...config, roles: { feature: { enabled: true, model: "paid" } } });
+  assert.deepEqual(
+    { provider: configForRole(fb, "feature").provider, model: configForRole(fb, "feature").model },
+    { provider: "omlx", model: "local-free" },
+  );
+});

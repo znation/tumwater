@@ -6,48 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 1/8: `provider/id[:thinking]` selector strings for `model`, and `fallback` as the new name of `fallbackModel` (planned 2026-10-05 by operator)
-
-Design: plans/model-tiers.md ("Config", "Selectors", "Backward compatibility"). Config only — no
-seam changes model, and every existing config produces the same pi argv.
-
-**Goal.** A single-model setup is one key:
-`"model": "huggingface/zai-org/GLM-5.3-Flash:together:low"` carries provider, id, and thinking,
-and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the same way. `roles.<id>.model` and `review.model` accept the same strings.
-
-**Approach.**
-1. **src/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
-   `{ provider?, model, thinking? }`; `formatModelSelector(triple)` is its inverse. Rules: a
-   trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config/config-schema.ts), so
-   `…:together` survives; with `legacyProvider` the rest is a bare id under that provider;
-   otherwise the text before the first `/` is the provider and the rest is the id; a string
-   with no `/` is a bare pattern with no provider.
-2. **src/config/config-schema.ts:** `fallback?: string` on `TumwaterConfig`, `"fallback"` in
-   `TOP_LEVEL_KEYS`. (The map forms arrive in part 3/8.)
-3. **src/config/config-views.ts:** `withModelOverrides`, `configForRole`, `reviewConfig`, and
-   `fallbackPair` parse selectors into the provider/model/thinking triple `piArgs`
-   (src/pi/pi-args.ts) already consumes. A legacy `provider` in scope (the section's own, else
-   the top level's) is passed as `legacyProvider`; an explicit `thinking` key wins over a
-   suffix; `fallback` and the legacy `fallbackModel` object both feed `fallbackPair`.
-4. **Validation** (src/config/config-validation.ts, src/config/config-field-checks.ts): `fallback` is a
-   non-empty string, and `fallback` together with `fallbackModel` is an error naming both keys.
-
-**Files touched.** src/model-selector.ts (new), src/config/config-schema.ts, src/config/config-views.ts,
-src/config/config-validation.ts, src/config/config-field-checks.ts, and tests (a new
-test/model-selector.test.ts plus the config-views and pi-args suites).
-
-**Acceptance criteria.**
-- `parseModelSelector("huggingface/zai-org/GLM-5.3-Flash:together:low")` → provider
-  `huggingface`, model `zai-org/GLM-5.3-Flash:together`, thinking `low`; without `:low` the
-  `:together` suffix stays on the id; `"GLM-5.3-Flash"` → model only.
-- With a legacy `"provider": "huggingface"`, `"model": "zai-org/GLM-5.3-Flash:together"` still
-  resolves to provider `huggingface`, not `zai-org`.
-- `{ "model": "<provider>/<id>" }` alone yields pi argv `--provider <provider> --model <id>`
-  (fake pi shim).
-- A `fallback` string engages exactly like the equivalent `fallbackModel` object: the existing
-  fallback tests pass against both forms.
-- Every existing config fixture produces identical pi argv; `npm run test` passes.
-
 ### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed)
 
 Design: plans/model-tiers.md ("Observability").
@@ -273,6 +231,61 @@ files above, and the config-write tests.
 - The docs show the single-model form before any tier example.
 
 ## Done
+
+### Model tiers, part 1/8: `provider/id[:thinking]` selector strings for `model`, and `fallback` as the new name of `fallbackModel` (planned 2026-10-05 by operator, done 2026-10-05 by feature)
+
+Design: plans/model-tiers.md ("Config", "Selectors", "Backward compatibility"). Config only — no
+seam changes model, and every existing config produces the same pi argv.
+
+**Done 2026-10-05 by feature.** One deliberate deviation from the approach text: `fallbackPair`
+parses the `fallback` string as a pure selector, without the top-level `provider` as legacy
+provider — the acceptance criterion that a `fallback` string engages exactly like the equivalent
+`fallbackModel` object requires it (with a legacy provider in scope, `"fallback":
+"omlx/local-free"` would otherwise resolve to a bare id under the budgeted provider). A string
+`model` still obeys the legacy rule everywhere it appears. Implemented by
+src/model-selector.ts (`parseModelSelector`, `formatModelSelector`, both omitting unset fields),
+selector parsing in src/config-views.ts (`withModelOverrides` now parses the top-level model
+string too, under the top level's own legacy provider), `fallback` on TumwaterConfig and in
+`TOP_LEVEL_KEYS`, and the two validation checks; test/model-selector.test.ts is new, and
+config-views/pi-args/config-validation suites grew the selector and fallback-string cases.
+`npm run test` green.
+
+**Goal.** A single-model setup is one key:
+`"model": "huggingface/zai-org/GLM-5.3-Flash:together:low"` carries provider, id, and thinking,
+and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the same way. `roles.<id>.model` and `review.model` accept the same strings.
+
+**Approach.**
+1. **src/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
+   `{ provider?, model, thinking? }`; `formatModelSelector(triple)` is its inverse. Rules: a
+   trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config-schema.ts), so
+   `…:together` survives; with `legacyProvider` the rest is a bare id under that provider;
+   otherwise the text before the first `/` is the provider and the rest is the id; a string
+   with no `/` is a bare pattern with no provider.
+2. **src/config-schema.ts:** `fallback?: string` on `TumwaterConfig`, `"fallback"` in
+   `TOP_LEVEL_KEYS`. (The map forms arrive in part 3/8.)
+3. **src/config-views.ts:** `withModelOverrides`, `configForRole`, `reviewConfig`, and
+   `fallbackPair` parse selectors into the provider/model/thinking triple `piArgs`
+   (src/pi/pi-args.ts) already consumes. A legacy `provider` in scope (the section's own, else
+   the top level's) is passed as `legacyProvider`; an explicit `thinking` key wins over a
+   suffix; `fallback` and the legacy `fallbackModel` object both feed `fallbackPair`.
+4. **Validation** (src/config-validation.ts, src/config-field-checks.ts): `fallback` is a
+   non-empty string, and `fallback` together with `fallbackModel` is an error naming both keys.
+
+**Files touched.** src/model-selector.ts (new), src/config-schema.ts, src/config-views.ts,
+src/config-validation.ts, src/config-field-checks.ts, and tests (a new
+test/model-selector.test.ts plus the config-views and pi-args suites).
+
+**Acceptance criteria.**
+- `parseModelSelector("huggingface/zai-org/GLM-5.3-Flash:together:low")` → provider
+  `huggingface`, model `zai-org/GLM-5.3-Flash:together`, thinking `low`; without `:low` the
+  `:together` suffix stays on the id; `"GLM-5.3-Flash"` → model only.
+- With a legacy `"provider": "huggingface"`, `"model": "zai-org/GLM-5.3-Flash:together"` still
+  resolves to provider `huggingface`, not `zai-org`.
+- `{ "model": "<provider>/<id>" }` alone yields pi argv `--provider <provider> --model <id>`
+  (fake pi shim).
+- A `fallback` string engages exactly like the equivalent `fallbackModel` object: the existing
+  fallback tests pass against both forms.
+- Every existing config fixture produces identical pi argv; `npm run test` passes.
 
 ### `tumwater prompt --attach <path>` — attach an image to a queued prompt from the CLI (planned 2026-10-04 by plan loop, done 2026-10-04 by feature)
 

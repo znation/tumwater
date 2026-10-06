@@ -225,6 +225,10 @@ export interface TumwaterConfig {
    * default) — or present but not verifiably free — the gate pauses role loops exactly as
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
+  /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
+   * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"`.
+   * Setting both keys is a validation error; the map form arrives in part 3/8. */
+  fallback?: string;
   fallbackModel?: FallbackModelConfig;
   /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
    * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on
@@ -279,6 +283,7 @@ export const TOP_LEVEL_KEYS = [
   "quietHours",
   "quietHoursPerRole",
   "notify",
+  "fallback",
   "fallbackModel",
   "thrashTurns",
   "thrashMinutes",

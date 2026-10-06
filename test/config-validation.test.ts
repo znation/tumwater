@@ -691,3 +691,17 @@ test("validateConfig accepts a well-formed quietHoursPerRole map and rejects bad
     /quietHoursPerRole\.qa: quietHours start and end must differ/,
   );
 });
+
+test("the fallback selector string is validated like its fallbackModel object form", () => {
+  // A non-empty string: empty would silently never engage, the same silent-ignore class
+  // fallbackModel's object form already rejects.
+  assert.match(validationError({ fallback: "" }), /fallback must not be empty \(got ""\)/);
+  assert.match(validationError({ fallback: 3 }), /fallback must be a string \(got 3\)/);
+  assert.doesNotThrow(() => validateConfig({ fallback: "omlx/local-free" }));
+  assert.doesNotThrow(() => validateConfig({ fallback: "omlx/local-free:low" }));
+  // Setting both forms is an error naming both keys — which one wins is not a question the
+  // file should ever pose.
+  const both = validationError({ fallback: "omlx/local-free", fallbackModel: { model: "m" } });
+  assert.match(both, /fallback and fallbackModel both name the budget fallback/);
+  assert.match(both, /fallbackModel/);
+});

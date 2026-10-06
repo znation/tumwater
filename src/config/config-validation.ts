@@ -255,6 +255,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // actually cost-free is a question about pi's models.json, not about this file, so it is
   // answered at run time (src/pi/pi-models.ts) rather than failing a load here. An empty object is
   // rejected: it names nothing, so it would silently never engage.
+  // The selector-string shorthand `fallback` (plans/model-tiers.md) validates as one non-empty
+  // string; setting both forms is an error naming both keys, since which one wins is not a
+  // question the file should ever pose.
+  checkString(r, "", "fallback", false);
+  if ("fallback" in r && "fallbackModel" in r)
+    problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
   if ("fallbackModel" in r) {
     const fb = r.fallbackModel;
     if (!isJsonObject(fb)) {

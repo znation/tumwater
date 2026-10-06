@@ -89,3 +89,19 @@ test("piArgs starts fresh sessions with a name and resumes with --continue", () 
   assert.ok(resumed.includes("--continue"), "the within-tick retry resumes the session");
   assert.ok(!resumed.includes("-n"), "resumed runs keep their existing name");
 });
+
+test("a selector-string model alone yields --provider <provider> --model <id>", () => {
+  // The new one-key form (plans/model-tiers.md): the selector parses apart and piArgs keeps
+  // passing provider/model/thinking separately.
+  // Through the resolver: a config carrying only the selector string, as a tumwater.json
+  // would, resolves to the triple piArgs passes separately.
+  const config = configForRole({ ...defaultConfig(), model: "huggingface/zai-org/GLM-5.3-Flash:together:low" }, "feature");
+  const args = piArgs({ config, sessionDir: "/tmp/s", sessionName: "n" });
+  const providerAt = args.indexOf("--provider");
+  const modelAt = args.indexOf("--model");
+  const thinkingAt = args.indexOf("--thinking");
+  assert.ok(providerAt !== -1 && modelAt !== -1 && thinkingAt !== -1);
+  assert.equal(args[providerAt + 1], "huggingface");
+  assert.equal(args[modelAt + 1], "zai-org/GLM-5.3-Flash:together");
+  assert.equal(args[thinkingAt + 1], "low");
+});

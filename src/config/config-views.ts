@@ -4,19 +4,32 @@
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
 import type { FallbackModelConfig, TumwaterConfig } from "./config-schema.js";
+import { parseModelSelector } from "../model-selector.js";
+import type { ModelSelector } from "../model-selector.js";
 
 /** Apply a sub-config's optional provider/model/thinking overrides over the top-level
  * values — the one place that fallback lives, so adding an override field touches only
- * this. */
+ * this. Every string `model` — the top level's and a section's — is a selector
+ * (`provider/id[:thinking]`, plans/model-tiers.md): parsed into the triple piArgs consumes,
+ * with a legacy provider in scope (the section's own, else the top level's) making the whole
+ * string a bare id under it — the old configs' meaning. An explicit `thinking` key wins over a selector's `:level` suffix, and a
+ * suffix beats the ambient top-level thinking, as the key it overrides would. */
 function withModelOverrides(
   config: TumwaterConfig,
   o: { provider?: string; model?: string; thinking?: string },
 ): TumwaterConfig {
+  // The top-level model string is itself a selector; it parses under the top level's own
+  // legacy provider. A section's own model parses under the section's provider, else the
+  // top level's — the old configs' meaning.
+  const topSel =
+    config.model !== undefined ? parseModelSelector(config.model, config.provider) : undefined;
+  const ownSel =
+    o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
   return {
     ...config,
-    provider: o.provider ?? config.provider,
-    model: o.model ?? config.model,
-    thinking: o.thinking ?? config.thinking,
+    provider: ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider),
+    model: ownSel ? ownSel.model : (topSel?.model ?? config.model),
+    thinking: o.thinking ?? ownSel?.thinking ?? topSel?.thinking ?? config.thinking,
   };
 }
 
@@ -71,15 +84,33 @@ export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
 
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
- * fallback is configured. One definition so the freeness check (src/pi/pi-models.ts), the
+ * fallback is configured. The selector-string `fallback` (plans/model-tiers.md) and the
+ * legacy `fallbackModel` object both feed it, `fallback` first; validation rejects a file
+ * carrying both, so the order only breaks ties for hand-built configs. A selector string
+ * parses as a pure selector — `fallback` is a new key, so no legacy `provider` in scope
+ * bends its meaning; the acceptance rule is that a `fallback` string engages exactly like the
+ * equivalent `fallbackModel` object. One definition so the freeness check (src/pi/pi-models.ts), the
  * dashboards' badge, and applyFallbackModel below cannot disagree about WHICH model the
  * budget gate would engage. */
 export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
+  if (config.fallback !== undefined) {
+    const sel: ModelSelector = parseModelSelector(config.fallback);
+    const thinking = sel.thinking ?? config.thinking;
+    return {
+      ...(sel.provider ? { provider: sel.provider } : {}),
+      ...(sel.model ? { model: sel.model } : {}),
+      ...(thinking ? { thinking } : {}),
+    };
+  }
   const fb = config.fallbackModel;
   if (!fb) return null;
-  const provider = fb.provider ?? config.provider;
-  const model = fb.model ?? config.model;
-  const thinking = fb.thinking ?? config.thinking;
+  // The top-level model is a selector too (parsed the same way withModelOverrides does), so a
+  // fallback field that omits model borrows the parsed id, never the raw selector string.
+  const topSel =
+    config.model !== undefined ? parseModelSelector(config.model, config.provider) : undefined;
+  const provider = fb.provider ?? topSel?.provider ?? config.provider;
+  const model = fb.model ?? topSel?.model ?? config.model;
+  const thinking = fb.thinking ?? topSel?.thinking ?? config.thinking;
   return {
     ...(provider ? { provider } : {}),
     ...(model ? { model } : {}),
