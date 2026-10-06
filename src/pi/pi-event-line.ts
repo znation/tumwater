@@ -6,7 +6,7 @@
  * subprocess layer for a pure parse: the same separation reply-contract.ts gives the
  * sentinel/verdict text. */
 
-import { isJsonObject, parseJsonObject } from "../json-object.js";
+import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization

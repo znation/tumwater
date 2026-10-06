@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { unlinkAllMissingTolerant } from "../files.js";
+import { unlinkAllMissingTolerant } from "../files/files.js";
 import { roleInboxDir } from "../paths.js";
 import { isNonBlankString } from "../text/text.js";
 import { agree } from "../phrases.js";

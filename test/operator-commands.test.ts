@@ -15,7 +15,7 @@ import {
 } from "../src/operator/operator-commands.js";
 import { pidAlive } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
-import { writeJsonFile } from "../src/json-files.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
 import {
@@ -33,7 +33,7 @@ import {
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 import { attemptAsync } from "./exit-capture.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 

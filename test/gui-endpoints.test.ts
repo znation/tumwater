@@ -10,7 +10,7 @@ import { handleBudget, handleConfigSet, handleRestart } from "../src/gui/gui-end
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
-import { writeJsonFile } from "../src/json-files.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";

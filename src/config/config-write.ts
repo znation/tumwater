@@ -13,8 +13,8 @@ import {
 import { configPath, configRequestPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../suggest.js";
-import { writeJsonAtomic } from "../json-files.js";
-import { isJsonObject } from "../json-object.js";
+import { writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";

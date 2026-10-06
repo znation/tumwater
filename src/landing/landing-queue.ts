@@ -1,7 +1,7 @@
 import path from "node:path";
-import { listQueueFiles, queueFileName, removeQueueFile } from "../file-queue.js";
-import { readJsonFile, writeJsonFile } from "../json-files.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
+import { readJsonFile, writeJsonFile } from "../files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { landQueueDir } from "../paths.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by

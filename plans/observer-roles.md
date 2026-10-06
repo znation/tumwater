@@ -161,7 +161,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `{ flows: { <name>: { lastRunAt: number; result: "passed" | "bug"; summary?: string } } }` at
   `.tumwater/state/qa-coverage.json` — no `mode` field: the flow name itself distinguishes
   `run (real)` from `run`. Reads via `readJsonFile`, writes via `writeJsonAtomic`, both in
-  `src/json-files.ts` (2/2).
+  `src/files/json-files.ts` (2/2).
 - `src/paths.ts` — `qaCoveragePath(root)` beside `statePath` (line 26):
   `path.join(tumwaterDir(root), "state", "qa-coverage.json")` (2/2).
 - `src/prompt/prompt.ts` — `TickPromptInput` gains `coverage?: string`; `buildTickPrompt` pushes it
@@ -310,7 +310,7 @@ Verified on this tree:
 - `src/paths.ts` — `tumwaterDir(root)` at 6; `statePath(root, role)` at 26 is the exact idiom
   `qaCoveragePath` copies; the state dir already holds `orchestrator.json`/landing markers, and
   `writeJsonAtomic` creates the parent, so no directory setup is needed.
-- `src/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn; `writeJsonAtomic`
+- `src/files/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn; `writeJsonAtomic`
   at 43 is the per-pid tmp+rename writer. Both are what invariant 5 needs.
 - `src/roles/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not recently
   exercised, as far as BUGS.md filings and Verified notes show" — the blind lookup this replaces.

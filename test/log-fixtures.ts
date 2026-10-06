@@ -10,7 +10,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { orchestratorStatePath, piLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, runMarker, userLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 /** Stamp a marker/request file the way tests simulate CLI/operator side effects: create the
  * parent directories, then write `value` as compact JSON directly to `file` with a plain

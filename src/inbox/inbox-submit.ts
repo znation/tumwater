@@ -1,5 +1,5 @@
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
-import { unlinkAllMissingTolerant } from "../files.js";
+import { unlinkAllMissingTolerant } from "../files/files.js";
 import {
   imageReferenceLines,
   promptImagesProblem,

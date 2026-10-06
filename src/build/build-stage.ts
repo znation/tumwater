@@ -3,7 +3,7 @@ import path from "node:path";
 import { stampBuild } from "./build-info.js";
 import { clipBuildTail } from "./build-check-report.js";
 import { resolveFromNodeModules } from "./build-check-detect.js";
-import { ensureDir, removeTree } from "../files.js";
+import { ensureDir, removeTree } from "../files/files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
 import { errorMessage } from "../text/text.js";

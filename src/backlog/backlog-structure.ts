@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readTextOrNull } from "../files.js";
+import { readTextOrNull } from "../files/files.js";
 import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text/text.js";

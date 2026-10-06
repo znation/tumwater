@@ -225,7 +225,7 @@ Corrections (pinned in place):
    failures the first run surfaces is part of this entry" made an unknown amount of work part of a
    one-run plan, and no worktree here can run Linux. Audited hazards (2026-09-21): the suite shells
    out only through `#!/bin/sh` shims (test/util.ts:48, :65), `findOnPath` gates on `X_OK`
-   (src/files.ts:55), temp dirs come from `fs.mkdtempSync(os.tmpdir())` (test/util.ts:14), and no
+   (src/files/files.ts:55), temp dirs come from `fs.mkdtempSync(os.tmpdir())` (test/util.ts:14), and no
    test or source invokes `timeout`, `sed -i`, `readlink -f`, `stat -f`, `date -r`, `shuf`,
    `nproc`, `pkill`, or `setsid` — the usual macOS↔Linux divergences are absent, and `git init -b`
    (git 2.28+) is satisfied by ubuntu-latest. So this entry ships the workflow and pins its
@@ -414,7 +414,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
 - src/config.ts — `applyConfigRequest(root, wt): { applied: string[]; ignored: string[]; error?: string } | null`
   (null when no request exists): read, permit-filter, validate, atomic write, delete. The atomic
   writer already exists and is already shared — `writeJsonAtomic(file, value, trailingNewline)` in
-  src/json-files.ts, which `setDailyBudgetUsd` was moved onto by 1963677 — so this adds a second
+  src/files/json-files.ts, which `setDailyBudgetUsd` was moved onto by 1963677 — so this adds a second
   caller, not a new helper.
 - src/loop.ts — call it in the director tick path between the pi run and `commitAll`; log
   `config_changed` (applied names) or `warning` (rejected/ignored).
@@ -454,7 +454,7 @@ oldest in the series, and ~40 landings have happened since). Every anchor verifi
 one real implementation gap and four seams pinned. Landable after 2/7; no dependency on 4a/7.**
 
 Verified as written: `setDailyBudgetUsd` (src/config.ts:185) is the idiom and it is on
-`writeJsonAtomic` (src/json-files.ts:50) — the call is `writeJsonAtomic(file, { ...cfg,
+`writeJsonAtomic` (src/files/json-files.ts:50) — the call is `writeJsonAtomic(file, { ...cfg,
 maxDailyCostUsd: value }, true)` at src/config.ts:200. `defaultConfig().review.exemptPaths` still
 lists `"tumwater.json"` (src/config.ts:61), and this repo's own `tumwater.json` sets no `review`
 key, so the default governs and dropping the entry takes effect here. The director-only exception
@@ -527,7 +527,7 @@ Verified as written: `defaultConfig().review.exemptPaths` still lists `"tumwater
 (src/config.ts:69; was :61), and this repo's own tumwater.json sets no `review` key, so the
 default governs. `setDailyBudgetUsd` is still the idiom, now src/config.ts:229 (was :185) with the
 fresh-`loadConfig` + `writeJsonAtomic(file, { ...cfg, ... }, true)` call at :244 (was :200);
-`writeJsonAtomic` is src/json-files.ts:51. The director-only exception is src/prompt/prompt.ts:234–236
+`writeJsonAtomic` is src/files/json-files.ts:51. The director-only exception is src/prompt/prompt.ts:234–236
 (was :223–226) and the custom-loop routing bullet :220 (was :210–215); COMMON_RULES' "Never touch
 the .tumwater directory or tumwater.json" is :85 and the resume variant :329 (were :84/:318).
 `validateConfig` is src/config-validation.ts:156 (was :99); the customLoops entry validation is
@@ -935,7 +935,7 @@ Verified as written: `spawn("pi", …)` is still the single pi spawn (src/pi.ts:
 `SPAWN_ERROR_PREFIX` constant sits at src/pi.ts:81, and `grep -rn 'findOnPath("pi")' src/`
 returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/doctor/doctor.ts:102 in
 `checkPiBinary`. `TumwaterConfig` is src/types.ts:78 and `TOP_LEVEL_KEYS` src/config-validation.ts:27;
-`findOnPath` is src/files.ts:55. Capability absence re-confirmed: `grep -rn
+`findOnPath` is src/files/files.ts:55. Capability absence re-confirmed: `grep -rn
 'agentBin\|TUMWATER_PI_BIN\|resolveAgentBin\|checkAgentBinary' src/ test/` is empty.
 
 Corrections:
@@ -960,7 +960,7 @@ Corrections:
    `resolveAgentBin` free of filesystem calls so it is trivially unit-testable, and test
    resolvability at the two preflight sites instead: a bare name through `findOnPath`, a path
    through `fs.accessSync(X_OK)`. Note `findOnPath` is POSIX-only (`X_OK` + `isFile()`, no
-   PATHEXT, src/files.ts:55) and the spawn keeps the raw bare name so the OS resolves it exactly
+   PATHEXT, src/files/files.ts:55) and the spawn keeps the raw bare name so the OS resolves it exactly
    as today.
 4. **`cmdRun` must load the config before its preflight.** Today the `findOnPath("pi")` check
    (src/cli.ts:122) precedes `const config = loadConfig(root)` (~src/cli.ts:130). Hoist the
@@ -1006,7 +1006,7 @@ except where re-pinned here.**
    `SPAWN_ERROR_PREFIX` is src/pi.ts:100; `PiRunOptions.config` is src/pi.ts:21; `TOP_LEVEL_KEYS`
    is src/config-validation.ts:40; `loadConfigSafe` is src/config.ts:118. `cmdRun`'s preflight
    still precedes its `loadConfig` (src/cli.ts:120 vs :128), so correction 4 stands as written;
-   `findOnPath` (src/files.ts:55) is unchanged, so correction 3 stands.
+   `findOnPath` (src/files/files.ts:55) is unchanged, so correction 3 stands.
 3. **Test pins refreshed.** `/pi not found on PATH/` now matches at test/cli.test.ts:388 and
    :1181 (was :1121); the `pi binary` check label is pinned at test/doctor.test.ts:275 and :297
    and test/cli.test.ts:1181 and :1208 (the 09-19 note's doctor.test.ts:221,243 no longer exist);

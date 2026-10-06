@@ -14,7 +14,7 @@ import path from "node:path";import {
 } from "../src/inbox/inbox.js";
 import { cancelPrompt, cancelRolePrompt } from "../src/inbox/inbox-cancel.js";
 import { notBeforeMs } from "../src/prompt/prompt-not-before.js";
-import { queueFileStamp } from "../src/file-queue.js";
+import { queueFileStamp } from "../src/files/file-queue.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";

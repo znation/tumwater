@@ -1,12 +1,12 @@
 import fs from "node:fs";
-import { openForRead, statOrNull } from "./files.js";
+import { openForRead, statOrNull } from "./files/files.js";
 import { piLogPath } from "./paths.js";
 
 /** Incremental consumption of append-only logs (the harness's JSONL event and pi logs):
  * complete-line window reads, the bounded backwards chunk scan (forEachTailChunk and the
  * readTailText collection loop built on it) that the windowed readers ask for, per-file tail
  * state that folds only appended bytes on each poll (plus the shared stat-and-clear entry
- * point for polling a role's pi log), and byte-offset following for `logs -f`. Split out of files.ts — which keeps the
+ * point for polling a role's pi log), and byte-offset following for `logs -f`. Split out of src/files/files.ts — which keeps the
  * generic file helpers — because this is one self-contained concern with its own internal
  * structure (readCompleteLines and forEachTailChunk as the primitives; withTail, followFile,
  * and readTailText built on them).

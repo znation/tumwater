@@ -7,7 +7,7 @@ import { readEvents } from "../events/event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
 import { freshLoopState, loadLoopState } from "../loop/loop-state.js";
 import { statePath } from "../paths.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (an event-tail

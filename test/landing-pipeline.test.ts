@@ -17,7 +17,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { writeJsonFile } from "../src/json-files.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import {
   APPROVE,
   allTasks,

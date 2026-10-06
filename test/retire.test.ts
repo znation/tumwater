@@ -16,7 +16,7 @@ import { initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { writeJsonAtomic } from "../src/json-files.js";
+import { writeJsonAtomic } from "../src/files/json-files.js";
 import { helpTopic } from "../src/cli/help.js";
 
 // `feature` is enabled by default config, so a retire of it must refuse; `clean` is a

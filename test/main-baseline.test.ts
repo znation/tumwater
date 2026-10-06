@@ -9,7 +9,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";
 import { pathReplace, projManifest } from "./fake-commands.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";

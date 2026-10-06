@@ -5,7 +5,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt, inboxSize, queuedPrompts, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitPrompt, submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { queueFileStamp } from "../src/file-queue.js";
+import { queueFileStamp } from "../src/files/file-queue.js";
 import { truncate } from "../src/text/text.js";
 import { inboxDir, roleInboxDir } from "../src/paths.js";
 import { makeRepo, writeMalformedJson } from "./repo-fixtures.js";

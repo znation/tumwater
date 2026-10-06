@@ -3,7 +3,7 @@ import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readJsonFile, writeJsonAtomic, writeJsonFile } from "../src/json-files.js";
+import { readJsonFile, writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 test("readJsonFile treats missing or torn files as no data, not errors", () => {

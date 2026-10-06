@@ -4,7 +4,7 @@ import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, short
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { stringList } from "../json-object.js";
+import { stringList } from "../files/json-object.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion

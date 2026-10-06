@@ -4,7 +4,7 @@ import { parseJsonObject } from "./json-object.js";
 
 /** The harness's plain JSON marker/info/state files: tolerant reads of files written by other
  * processes, and pretty-printed overwrites — plain or atomic (tmp+rename) — whose format
- * cannot drift per writer. Split out of files.ts — which keeps the generic file operations —
+ * cannot drift per writer. Split out of src/files/files.ts — which keeps the generic file operations —
  * because this is one self-contained convention with its own error policy (a missing or torn
  * file is "no data", never an error) shared by every reader and writer of those files. */
 
@@ -20,7 +20,7 @@ import { parseJsonObject } from "./json-object.js";
  * array), so the object check is part of the no-data policy, not an extra one. */
 export function readJsonFile<T extends object>(file: string): T | null {
   try {
-    // The parse-or-no-data half (torn text, a scalar, `null`, an array) is json-object.ts's
+    // The parse-or-no-data half (torn text, a scalar, `null`, an array) is src/files/json-object.ts's
     // parseJsonObject; only the unreadable-file half keeps its own try/catch here.
     return parseJsonObject(fs.readFileSync(file, "utf8")) as T;
   } catch {

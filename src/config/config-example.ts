@@ -3,7 +3,7 @@ import type { TumwaterConfig } from "./config-schema.js";
 import { defaultConfig, overlayDefaults, parseJsonConfig } from "./config.js";
 import { CONFIG_BASENAME, configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
-import { isJsonObject } from "../json-object.js";
+import { isJsonObject } from "../files/json-object.js";
 import { validateConfig } from "./config-validation.js";
 
 /** The tumwater.example.json template concern: seeding a fresh tumwater.json from the tracked

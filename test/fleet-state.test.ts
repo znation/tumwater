@@ -23,7 +23,7 @@ import {
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../src/paths.js";
 import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 test("isFleetPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();
@@ -364,7 +364,7 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
 // so the fold and cap apply there rather than trusting whoever wrote the file. The marker
 // is a hand-editable file, so the never-throws contract must hold for a wrong-shaped
 // reason too: standingMarker sits on the scheduler's per-cycle isFleetPaused poll and
-// status-data's once-per-poll snapshot, and a non-string reason (json-files.ts reads what
+// status-data's once-per-poll snapshot, and a non-string reason (src/files/json-files.ts reads what
 // is on disk as T unchecked) must read as no reason, not throw (BUGS.md 2026-09-30).
 test("a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote it", () => {
   const root = tmpdir();

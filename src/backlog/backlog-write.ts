@@ -10,7 +10,7 @@
  * other command bodies. */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
-import { readTextOrNull, writeTextAtomic } from "../files.js";
+import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";

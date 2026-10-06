@@ -2,11 +2,11 @@ import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
-import { isJsonObject } from "../json-object.js";
-import { writeJsonAtomic } from "../json-files.js";
+import { isJsonObject } from "../files/json-object.js";
+import { writeJsonAtomic } from "../files/json-files.js";
 import { validateConfig } from "./config-validation.js";
 
 /** Read and parse one of the config JSON files, phrasing a parse failure as

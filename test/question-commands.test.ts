@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
-import { writeTextAtomic } from "../src/files.js";
+import { writeTextAtomic } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attempt } from "./exit-capture.js";
 

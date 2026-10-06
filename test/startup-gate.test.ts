@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { findOnPath } from "../src/files.js";
+import { findOnPath } from "../src/files/files.js";
 import { initProject } from "../src/init/init.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import {

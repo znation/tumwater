@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
-import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "../files.js";
+import { ensureParentDir, openForRead, rotateIfLarge, statOrNull } from "../files/files.js";
 
 type EventListener = (event: HarnessEvent) => void;
 const listeners = new Set<EventListener>();

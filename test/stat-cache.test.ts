@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readJsonFile } from "../src/json-files.js";
-import { cachedByStat, type StatKeyedValue } from "../src/stat-cache.js";
+import { readJsonFile } from "../src/files/json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../src/files/stat-cache.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 test("cachedByStat drops a stale entry when the file vanishes and reloads fresh content", () => {

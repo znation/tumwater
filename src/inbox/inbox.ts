@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, writeTextAtomic } from "../files.js";
-import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../file-queue.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { ensureParentDir, writeTextAtomic } from "../files/files.js";
+import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { truncate } from "../text/text.js";

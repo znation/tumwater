@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isJsonObject } from "./json-object.js";
+import { isJsonObject } from "./files/json-object.js";
 import { squash } from "./text/text.js";
 import { shortSha, usd } from "./text/format.js";
 

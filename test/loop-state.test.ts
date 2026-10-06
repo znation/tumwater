@@ -22,7 +22,7 @@ import type { LoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 /** The persisted-state file's own tests (src/loop/loop-state.ts): fresh defaults, the tolerant load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in

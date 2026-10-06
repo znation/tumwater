@@ -5,7 +5,7 @@ import { createTranscriptRenderer, formatTranscript, readTranscript } from "../s
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./oracles.js";
 import { writeLogLines, writeTurnLog } from "./log-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { FIXED_TS, agentStart, assistantBlocks, userLine } from "./pi-events.js";
 

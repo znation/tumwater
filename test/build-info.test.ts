@@ -11,7 +11,7 @@ import {
   stampBuild,
 } from "../src/build/build-info.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 // Build provenance (src/build/build-info.ts): the stamp `npm run build` writes into dist/, and the
 // comparison against main that tells a self-hosting fleet whether it is running the code main

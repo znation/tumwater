@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { readJsonFile } from "./json-files.js";
+import { readJsonFile } from "./files/json-files.js";
 import { errorMessage } from "./text/text.js";
 
 /** The running harness's own version, read from its package.json — the one bare JSON read

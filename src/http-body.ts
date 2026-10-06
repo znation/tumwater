@@ -8,7 +8,7 @@
  * static page, and the token gate stay in gui/gui-server.ts.
  */
 import type http from "node:http";
-import { parseJsonObject } from "./json-object.js";
+import { parseJsonObject } from "./files/json-object.js";
 import { errorMessage } from "./text/text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
@@ -126,7 +126,7 @@ export async function readJsonObject(
   }
   // Malformed JSON and valid JSON that is not an object ("just a string", [1], null) get
   // the same fix as each other — pointing at a field of a body that has none would mislead
-  // — so json-object.ts's one parse-or-no-data policy (parseJsonObject) is exactly the
+  // — so src/files/json-object.ts's one parse-or-no-data policy (parseJsonObject) is exactly the
   // shape this check needs; only the oversized-body read above keeps its own try/catch,
   // because it sends a different status.
   const parsed = parseJsonObject(body);

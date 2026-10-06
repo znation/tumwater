@@ -7,7 +7,7 @@
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
-import { stringList } from "../json-object.js";
+import { stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../phrases.js";
 import { shortSha } from "../text/format.js";

@@ -5,7 +5,7 @@ import {
   THINKING_LEVELS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
-import { isJsonObject } from "../json-object.js";
+import { isJsonObject } from "../files/json-object.js";
 import { truncate, isNonBlankString } from "../text/text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error

@@ -12,7 +12,7 @@ import {
   ROLE_INSTRUCTIONS_MAX_CHARS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
-import { isJsonObject } from "../json-object.js";
+import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 import { tooLongMessage } from "../text/text.js";
 import { parseQuietHours } from "../quiet-hours.js";

@@ -1,5 +1,5 @@
 import type { TickResult } from "../tick/tick-outcome.js";
-import { readJsonFile, writeJsonAtomic } from "../json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { statePath } from "../paths.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
@@ -7,8 +7,8 @@ import { statePath } from "../paths.js";
  * save, and zeroCounters. The scheduling POLICY that mutates this state from tick outcomes
  * and operator wakes — the outcome application and resume limits in tick-apply.ts, the
  * clock arithmetic (backoff ladders, wakes, yield ring) in backoff.ts; the generic file
- * helpers are files.ts and the JSON convention
- * itself is json-files.ts. */
+ * helpers are src/files/files.ts and the JSON convention
+ * itself is src/files/json-files.ts. */
 
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
 export interface LoopState {

@@ -6,7 +6,7 @@ import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../backoff.js";
-import { writeJsonFile } from "../json-files.js";
+import { writeJsonFile } from "../files/json-files.js";
 import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that

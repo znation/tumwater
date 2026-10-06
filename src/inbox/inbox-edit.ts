@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { writeTextAtomic } from "../files.js";
+import { writeTextAtomic } from "../files/files.js";
 import { logEvent } from "../events/events.js";
 import { errCode } from "../errno.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";

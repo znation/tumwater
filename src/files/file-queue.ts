@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errCode } from "./errno.js";
+import { errCode } from "../errno.js";
 
 /** The directory-of-timestamped-files queue convention shared by the director's prompt inbox
  * (inbox.ts) and the durable land queue (landing-queue.ts): one file per entry, ordered by

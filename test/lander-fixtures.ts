@@ -17,7 +17,7 @@ import { mainSha, makeRepo, sh } from "./repo-fixtures.js";
 import { piRunResult } from "./fake-pi.js";
 import { runPi } from "../src/pi/pi.js";
 import { assistantLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 /** Shared fixtures for the landing tests — lander.test.ts, lander-restack.test.ts and
  * lander-bisect.test.ts,

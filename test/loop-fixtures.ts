@@ -11,7 +11,7 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 /** A real LoopRunner for one role — the constructor call every loop test repeats with the
  * same `defaultConfig()` and `"main"` trailing arguments, so those stay implied here and a

@@ -7,7 +7,7 @@
  * change for different reasons — and keeps core data collection out of the presentation
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
-import { readTextOrNull, statOrNull } from "../files.js";
+import { readTextOrNull, statOrNull } from "../files/files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../tail.js";

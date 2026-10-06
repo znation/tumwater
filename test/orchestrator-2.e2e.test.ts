@@ -26,7 +26,7 @@ import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./repo-fixtures.js"
 import { fakePi, readRunLines, recordingFakePi } from "./fake-pi.js";
 import { sleep, waitFor } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 
 const FAST_POLL_MS = 100;
 

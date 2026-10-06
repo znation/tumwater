@@ -6,7 +6,7 @@
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
 import { logEvent, warnEvent } from "./events/events.js";
-import { pruneOldFiles } from "./files.js";
+import { pruneOldFiles } from "./files/files.js";
 import { sessionsRootDir, toolOutputDir } from "./paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day

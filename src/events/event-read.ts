@@ -1,7 +1,7 @@
 import { dayKey } from "../text/datetime.js";
-import { finiteNumber, parseJsonObject } from "../json-object.js";
+import { finiteNumber, parseJsonObject } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { readTailTextWithEnd } from "../tail.js";
 import type { HarnessEvent } from "./events.js";
 

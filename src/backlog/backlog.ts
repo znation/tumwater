@@ -1,6 +1,6 @@
 import path from "node:path";
-import { readTextOrNull } from "../files.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { readTextOrNull } from "../files/files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";

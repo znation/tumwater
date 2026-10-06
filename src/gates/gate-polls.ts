@@ -28,7 +28,7 @@ import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spr
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEvent } from "../events/events.js";
-import { writeJsonFile } from "../json-files.js";
+import { writeJsonFile } from "../files/json-files.js";
 import type { OrchestratorInfo } from "../fleet/fleet-state.js";
 import { configForRole } from "../config/config-views.js";
 

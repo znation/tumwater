@@ -5,8 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
-import { readJsonFile, writeJsonAtomic } from "../src/json-files.js";
-import { finiteNumber } from "../src/json-object.js";
+import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
+import { finiteNumber } from "../src/files/json-object.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.

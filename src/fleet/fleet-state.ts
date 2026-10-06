@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
-import { readJsonFile, writeJsonAtomic } from "../json-files.js";
-import { ensureParentDir, removeQuiet } from "../files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { ensureParentDir, removeQuiet } from "../files/files.js";
 import { pidAlive } from "../process/process.js";
 import { withSyncLock } from "../lock.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
@@ -57,7 +57,7 @@ export const PAUSE_REASON_MAX = 200;
  * folded and capped here too — the same shape pauseFleet writes — so the marker's reason
  * reads as the operator's one-line why whoever wrote it: a pause standing across the
  * write-side fold (or a hand edit) must not hand the status header's badge a raw newline
- * (BUGS.md 2026-09-30). A non-string reason reads as no reason — json-files.ts's
+ * (BUGS.md 2026-09-30). A non-string reason reads as no reason — src/files/json-files.ts's
  * wrong-shape-reads-as-absent policy — and the type guard is what keeps this function's
  * never-throws contract intact: normalizePauseReason would throw on a number or object,
  * and this read sits on the scheduler's per-cycle isFleetPaused poll and every dashboard

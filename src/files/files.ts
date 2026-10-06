@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errCode } from "./errno.js";
+import { errCode } from "../errno.js";
 
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
@@ -8,7 +8,7 @@ import { errCode } from "./errno.js";
  * creation before file writes, quiet
  * deletes after marker consumption, and age-based pruning of pi session files. The JSON
  * state-file convention (tolerant reads of possibly-torn writes, pretty-printed overwrites)
- * lives in json-files.ts; stat-keyed caching of polled values in stat-cache.ts; incremental
+ * lives in src/files/json-files.ts; stat-keyed caching of polled values in src/files/stat-cache.ts; incremental
  * consumption of the append-only logs (complete-line tail reading, the backwards chunk scan
  * readTailText behind it, tail-state folding, byte-offset following) in tail.ts. */
 
@@ -114,7 +114,7 @@ export function ensureParentDir(file: string): void {
  * tick on a truncated user request or flash one on the dashboard. The tmp name carries the pid
  * because several processes can enqueue at once (CLI, TUI, GUI, a loop's re-queue); on failure
  * the tmp is removed and the error rethrown, leaving the target untouched. The harness's JSON
- * writer (writeJsonAtomic in json-files.ts) serializes first and writes through this helper,
+ * writer (writeJsonAtomic in src/files/json-files.ts) serializes first and writes through this helper,
  * so the pid-tmp and no-torn-file contract lives in exactly one place. */
 export function writeTextAtomic(file: string, text: string): void {
   ensureParentDir(file);

@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { LoopRunner } from "../loop/loop.js";
 import { logEvent } from "../events/events.js";
-import { removeQuiet } from "../files.js";
-import { readJsonFile } from "../json-files.js";
+import { removeQuiet } from "../files/files.js";
+import { readJsonFile } from "../files/json-files.js";
 import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath, STATE_DIR } from "../paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The

@@ -17,7 +17,7 @@ import {
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, STATE_DIR } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
-import { readJsonFile } from "../src/json-files.js";
+import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 

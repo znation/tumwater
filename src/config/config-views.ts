@@ -7,7 +7,7 @@ import type { FallbackModelConfig, ModelTier, TumwaterConfig } from "./config-sc
 import { MODEL_TIERS } from "./config-schema.js";
 import { parseModelSelector } from "../model-selector.js";
 import type { ModelSelector } from "../model-selector.js";
-import { isJsonObject } from "../json-object.js";
+import { isJsonObject } from "../files/json-object.js";
 import { formatModelSelector } from "../model-selector.js";
 import { roleById } from "../roles/roles.js";
 

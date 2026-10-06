@@ -6,7 +6,7 @@ import { logEvent } from "../src/events/events.js";
 import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine, userLine } from "./pi-events.js";
-import { ensureParentDir } from "../src/files.js";
+import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
 
 // The follow half of cmdLogs is covered by log-commands.test.ts (in-process, driven by mocked

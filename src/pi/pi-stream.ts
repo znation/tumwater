@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../phrases.js";
-import { parseJsonObject } from "../json-object.js";
+import { parseJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts — which keeps the child-process integration (runPi,

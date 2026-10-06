@@ -3,9 +3,9 @@ import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
 import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
-import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
-import { isJsonObject } from "../json-object.js";
-import { readJsonFile } from "../json-files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { isJsonObject } from "../files/json-object.js";
+import { readJsonFile } from "../files/json-files.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) fleet differs from an API one: unpriced or

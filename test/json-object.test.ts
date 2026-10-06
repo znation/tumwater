@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isJsonObject } from "../src/json-object.js";
+import { isJsonObject } from "../src/files/json-object.js";
 
-// json-object.ts is the one definition of "a JSON object at this position" for every consumer
+// src/files/json-object.ts is the one definition of "a JSON object at this position" for every consumer
 // that parses untrusted JSON — the state/marker/info files, the harness event log, pi's stdout
 // log lines, an HTTP request body, tumwater.json's sections, a model's cost map, the qa coverage
 // ledger. The three-part check (typeof object, not null, not an array) is easy to spell out

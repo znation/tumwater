@@ -157,7 +157,7 @@ export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", EVENTS_LOG_BASENAME);
 }
 
-/** The event log's one archived generation (files.ts rotateIfLarge renames the grown log to
+/** The event log's one archived generation (src/files/files.ts rotateIfLarge renames the grown log to
  * events.jsonl.1); the windowed readers continue into it when the live log ends inside the
  * window (event-window.ts). One archive, by design: the rotation note tells the truth about
  * coverage either way, and the archive path belongs beside eventsLogPath so the pair cannot

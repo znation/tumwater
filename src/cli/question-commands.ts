@@ -10,7 +10,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { fencedHeadingTitle, fenceTracker } from "../backlog/backlog-md.js";
 import { openQuestionEntries } from "../backlog/backlog.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
-import { readTextOrNull, writeTextAtomic } from "../files.js";
+import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 
 /** The ` -- <ellipsized body>` suffix one prose list line carries for its question's first

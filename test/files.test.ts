@@ -9,7 +9,7 @@ import {
   rotateIfLarge,
   statOrNull,
   writeTextAtomic,
-} from "../src/files.js";
+} from "../src/files/files.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { backdate } from "./backdate.js";
 import { failRenameSyncOn } from "./fs-faults.js";

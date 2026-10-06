@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfigSafe } from "../config/config.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { findOnPath } from "../files.js";
+import { findOnPath } from "../files/files.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "../git/git.js";
 import {

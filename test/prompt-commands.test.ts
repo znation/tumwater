@@ -8,7 +8,7 @@ import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt/prompt-not-before.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
-import { writeJsonFile } from "../src/json-files.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attemptAsync } from "./exit-capture.js";
