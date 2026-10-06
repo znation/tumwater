@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { OnceRound } from "../src/once-round.js";
+import { OnceRound } from "../src/scheduling/once-round.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

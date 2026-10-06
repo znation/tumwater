@@ -8,8 +8,8 @@
  * operator pause. In-flight ticks finish; the gate sits before eligibility, so a tick due
  * inside the window simply starts at window end. */
 
-import { logEvent } from "./events/events.js";
-import { gotSuffix, isNonBlankString } from "./text/text.js";
+import { logEvent } from "../events/events.js";
+import { gotSuffix, isNonBlankString } from "../text/text.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
  * window that wraps midnight (23:00-07:00 spans 23:00 → 00:00 → 07:00). */

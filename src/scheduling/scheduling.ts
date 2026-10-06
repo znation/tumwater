@@ -8,16 +8,16 @@
  * re-deriving them inside the loop. Dependency direction: orchestrator → scheduling; this
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
-import type { LoopRunner } from "./loop/loop.js";
-import type { LoopState } from "./loop/loop-state.js";
-import { configForRole } from "./config/config-views.js";
+import type { LoopRunner } from "../loop/loop.js";
+import type { LoopState } from "../loop/loop-state.js";
+import { configForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
   DEFERRABLE_ROLES,
   DIRECTOR_ROLE,
   roleTier,
   yieldScaledRole,
-} from "./roles/roles.js";
+} from "../roles/roles.js";
 import { yieldMultiplier } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */

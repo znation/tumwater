@@ -7,7 +7,7 @@ import {
   pushYieldOutcome,
   scheduleAtMinInterval,
   scheduleBackoff,
-} from "../backoff.js";
+} from "../scheduling/backoff.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 
 /** The state machine that applies a finished tick or landing to the loop's state: the

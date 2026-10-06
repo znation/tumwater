@@ -19,7 +19,7 @@ import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/
 import { logEvent, warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { writeJsonFile } from "../files/json-files.js";
-import { OnceRound } from "../once-round.js";
+import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../notify.js";
 import {
   consumeAbortRequests,
@@ -189,7 +189,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const landings = newLandingPipeline();
 
   // Once-mode bookkeeping (`tumwater run --once`) — the tick-count snapshot, the per-role
-  // settle reasons, and the quiet-poll exit rule — lives in src/once-round.ts.
+  // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 
   // The fleet-wide gates' and alarms' cross-poll memory (src/gates/gate-polls.ts owns the family's

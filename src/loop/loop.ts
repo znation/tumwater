@@ -17,7 +17,7 @@ import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "../backoff.js";
+import { clearBackoff } from "../scheduling/backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "../leftover.js";

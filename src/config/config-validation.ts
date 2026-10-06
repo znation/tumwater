@@ -15,7 +15,7 @@ import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 import { tooLongMessage } from "../text/text.js";
-import { parseQuietHours } from "../quiet-hours.js";
+import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { parseModelSelector } from "../model-selector.js";
 import {
   AT_LEAST_ONE,
@@ -177,7 +177,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
 
   checkBoolean(r, "", "autoRestart");
 
-  // Quiet hours (src/quiet-hours.ts): the value is off when empty or absent, and otherwise
+  // Quiet hours (src/scheduling/quiet-hours.ts): the value is off when empty or absent, and otherwise
   // must parse as "HH:MM-HH:MM" — parseQuietHours's message is the one actionable wording,
   // so validateConfig and `config set` cannot drift apart on what a valid window is.
   if ("quietHours" in r) {
@@ -444,7 +444,7 @@ function checkSelectorHalves(
     );
   });
 
-  // Per-role quiet hours (src/quiet-hours.ts): the same known-role gate as the caps — a
+  // Per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate as the caps — a
   // typo'd role id would silently no-op the window. Each value must parse as a quiet-hours
   // window (an empty string means off for that role, the same disablement the fleet-wide
   // key takes), and the message names the key and the offending id/value verbatim.

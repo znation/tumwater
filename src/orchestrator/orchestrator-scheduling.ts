@@ -6,10 +6,10 @@
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
  * landing drain) and the launch call itself. */
 import type { LoopRunner } from "../loop/loop.js";
-import type { OnceRound } from "../once-round.js";
+import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../work-landed-cache.js";
 import type { BudgetGate } from "../budget/budget.js";
-import { deferTick, isEligible } from "../scheduling.js";
+import { deferTick, isEligible } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
@@ -113,7 +113,7 @@ export async function pollRunnerReasons(
     ) {
       once.settle(runner.role, "paused");
     }
-    // Once mode's at-most-one-tick contract (src/once-round.ts): a role that already ran
+    // Once mode's at-most-one-tick contract (src/scheduling/once-round.ts): a role that already ran
     // its tick — or was settled with a skip reason — runs nothing further this round, even
     // when its backoff has expired or the clock override would admit it again. Without this
     // gate the one-tick guarantee held only for deferrable built-ins (their deferral

@@ -14,7 +14,7 @@
  * grow them unbounded. */
 
 import { subjectsBetween } from "./git/git.js";
-import { workLanded } from "./scheduling.js";
+import { workLanded } from "./scheduling/scheduling.js";
 
 export class WorkLandedCache {
   private readonly workLandedHeads = new Set<string>();

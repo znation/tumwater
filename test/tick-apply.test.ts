@@ -13,7 +13,7 @@ import {
   restoreMidTickWake,
   YIELD_RING,
   yieldMultiplier,
-} from "../src/backoff.js";
+} from "../src/scheduling/backoff.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -21,7 +21,7 @@ import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget/budget.js";
 
 /** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
- * src/backoff.ts for the clock): what a finished tick or landing does to the loop's state and
+ * src/scheduling/backoff.ts for the clock): what a finished tick or landing does to the loop's state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of
  * loop-state.test.ts when the policy split out of loop-state.ts, whose own tests (load/save,

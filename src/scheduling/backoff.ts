@@ -1,6 +1,6 @@
-import type { BackoffConfig } from "./config/config-schema.js";
-import type { LoopState } from "./loop/loop-state.js";
-import type { TickResult } from "./tick/tick-outcome.js";
+import type { BackoffConfig } from "../config/config-schema.js";
+import type { LoopState } from "../loop/loop-state.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 
 /** The loop's CLOCK policy: when a loop runs next — the wake semantics (clearBackoff,
  * restoreMidTickWake), the backoff ladders (nextBackoffSeconds, scheduleBackoff, the error

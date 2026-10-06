@@ -16,7 +16,7 @@ import { initProject } from "../src/init/init.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { clearBackoff } from "../src/backoff.js";
+import { clearBackoff } from "../src/scheduling/backoff.js";
 import { branchName, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";

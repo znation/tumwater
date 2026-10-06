@@ -10,7 +10,7 @@
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
-import { quietWindowEnd } from "../quiet-hours.js";
+import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { agree, pauseReasonSuffix, plural } from "../phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";

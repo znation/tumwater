@@ -26,7 +26,7 @@ import {
 } from "./build-check-events.js";
 import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../check-permit.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
-import { sampleSleepClock, type SleepSampler } from "../host-sleep.js";
+import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
 import { type InstallRunner, npmInstall } from "../dep-install.js";
 
 /** Run the project's declared check for a named scope — the detect → run → build_check

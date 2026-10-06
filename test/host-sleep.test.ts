@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sampleSleepClock, sleptMsBetween, type SleepSample } from "../src/host-sleep.js";
+import { sampleSleepClock, sleptMsBetween, type SleepSample } from "../src/scheduling/host-sleep.js";
 
 /** Pin the platform for one test and restore it, the same pattern test/process.test.ts uses:
  * the real clocks differ per OS, but the branch logic under test runs wherever the platform
@@ -16,7 +16,7 @@ async function withPlatform<T>(platform: string, run: () => Promise<T>): Promise
   }
 }
 
-// Unit coverage for the measured host sleep (src/host-sleep.ts): the two measurement paths —
+// Unit coverage for the measured host sleep (src/scheduling/host-sleep.ts): the two measurement paths —
 // Linux's boottime-vs-monotonic divergence and macOS's sleep-start→wake span — driven by
 // synthetic samples, because no test can suspend the host. The regression these pin is
 // BUGS.md 2026-09-30: a sleep inside a check's run must leave a measured trace, not only the

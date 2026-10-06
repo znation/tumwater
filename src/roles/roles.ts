@@ -18,7 +18,7 @@ export type { Role };
 export const DIRECTOR_ROLE = "director";
 
 /** The bugfix loop's id. It is the one work role that also defers like a maintenance role
- * while its backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling.ts. */
+ * while its backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. */
 export const BUGFIX_ROLE = "bugfix";
 
 
@@ -31,7 +31,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * a commit, and for which `no_change` means "checked, all well" rather than "found nothing to
  * do". The idle ladder's premise — a loop that keeps finding nothing stops burning model time
  * — does not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and
- * leaves `backoffSeconds` at 0 (src/backoff.ts). The error ladder still applies in full, and they
+ * leaves `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and they
  * are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `telemetry`) is not a function of whether main moved. */
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);

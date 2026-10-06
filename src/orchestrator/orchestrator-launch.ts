@@ -19,7 +19,7 @@ import {
 import type { FleetGateStates } from "../gates/gate-polls.js";
 import { logEvent } from "../events/events.js";
 import type { LoopRunner } from "../loop/loop.js";
-import { fairOrder } from "../scheduling.js";
+import { fairOrder } from "../scheduling/scheduling.js";
 import type { Semaphore } from "../semaphore.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleTick } from "../tick/tick-timing.js";

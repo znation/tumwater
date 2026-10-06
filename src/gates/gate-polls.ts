@@ -20,7 +20,7 @@ import {
   pollQuietHoursGate,
   roleQuietHold,
   type QuietHoursGateState,
-} from "../quiet-hours.js";
+} from "../scheduling/quiet-hours.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
 import { type FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../error-storm.js";
@@ -36,7 +36,7 @@ import { configForRole } from "../config/config-views.js";
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
  * hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
  * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts, src/gates/pause-gates.ts,
- * src/quiet-hours.ts, and the fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring
+ * src/scheduling/quiet-hours.ts, and the fleet-health trio in src/fleet/fleet-polls.ts); this owns the wiring
  * half — one poll advances every gate's state in place. Split out of orchestrator.ts so the
  * poll loop reads as phases (reload → requests → gates → redeploy → landings → schedule →
  * start) and the gate family's wiring sits in one place, the same split fleet/fleet-polls.ts made
@@ -204,7 +204,7 @@ export function pollFleetGates(
   // local midnight lifts the verdict by itself.
   const capPaused = pollRoleCapGate(root, states.cap, runners, liveConfig.maxDailyCostUsdPerRole, now);
 
-  // Per-role quiet hours (src/quiet-hours.ts): a role whose own quietHoursPerRole window
+  // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
   // covers `now` starts no new ticks — the fleet window's semantics scoped to one loop, the
   // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
   // capPaused: no crossing events, no state — a live config edit applies on the next poll
@@ -216,7 +216,7 @@ export function pollFleetGates(
     if (roleQuietHold(liveConfig.quietHoursPerRole, r.role, new Date(now))) roleQuietHeld.add(r.role);
   }
 
-  // Quiet hours (src/quiet-hours.ts): the config-driven daily local-time window during
+  // Quiet hours (src/scheduling/quiet-hours.ts): the config-driven daily local-time window during
   // which role loops start no new ticks — the operator pause's semantics on a schedule.
   // The config value is read fresh per cycle, so a live edit applies on the next poll;
   // exactly one quiet_hours_started/ended event per crossing. In-flight ticks finish;

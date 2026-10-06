@@ -319,7 +319,7 @@ test("formatEvent renders tick_aborted plainly under the role's loop", () => {
   assert.ok(!line.includes("warning"), `a user-initiated abort is routine, not a warning: ${line}`);
 });
 
-// Need-based scheduling (src/scheduling.ts): a maintenance tick held back because its last
+// Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its last
 // tick did nothing and no work has landed since. Routine state, not a warning — but the line
 // must name the loop and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders tick_deferred plainly with the no-work reason", () => {

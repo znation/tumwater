@@ -1,4 +1,4 @@
-/** backoff (src/backoff.ts): the loop's CLOCK policy — pure functions, no I/O, so every
+/** backoff (src/scheduling/backoff.ts): the loop's CLOCK policy — pure functions, no I/O, so every
  * rule here is tested directly: the wake levers (clearBackoff, restoreMidTickWake), the
  * yield-scaled clock (pushYieldOutcome's ring, yieldMultiplier's ladder), and the backoff
  * ladders (nextBackoffSeconds, scheduleBackoff, ERROR_BACKOFF's minutes-not-hours cap). */
@@ -16,7 +16,7 @@ import {
   scheduleBackoff,
   scheduleAtMinInterval,
   ERROR_BACKOFF,
-} from "../src/backoff.js";
+} from "../src/scheduling/backoff.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 
 function ladder(initialSeconds = 30, factor = 2, maxSeconds = 600) {

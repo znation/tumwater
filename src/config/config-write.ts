@@ -18,7 +18,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig } from "./config.js";
-import { parseQuietHours } from "../quiet-hours.js";
+import { parseQuietHours } from "../scheduling/quiet-hours.js";
 /** One definition of "a valid daily budget cap" (the TUI's Ctrl+B editor and the GUI's
  * /api/budget endpoint both run their input through it): a finite number of 0 or more —
  * 0 disables the gate, fractional dollars allowed (the badge renders cents). Returns an
@@ -38,7 +38,7 @@ export function checkDailyBudgetUsd(value: unknown): string | null {
   return null;
 }
 
-/** One definition of "a valid quietHours window" (src/quiet-hours.ts owns the format):
+/** One definition of "a valid quietHours window" (src/scheduling/quiet-hours.ts owns the format):
  * "HH:MM-HH:MM" in local time, wrapping permitted, empty means off. parseQuietHours's
  * message is the one wording every surface (validateConfig, `config set`, the TUI/GUI
  * editors) shows, so they cannot drift apart on what a valid window is. */

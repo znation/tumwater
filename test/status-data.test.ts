@@ -13,7 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { snapshot } from "../src/status/status-data.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
-import { quietHoursStatus } from "../src/quiet-hours.js";
+import { quietHoursStatus } from "../src/scheduling/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
 import { initProject } from "../src/init/init.js";

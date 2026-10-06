@@ -29,7 +29,7 @@ Ticks per role from `.tumwater/log/events.jsonl`, split at 2026-09-13:
 
 Three roles have not ticked at all in five days. This is a latch, and it is a bug in its own
 right (tracked separately in BUGS.md — see "Relationship to the deferral latch" below). Read
-`deferTick` in `src/scheduling.ts`:
+`deferTick` in `src/scheduling/scheduling.ts`:
 
 ```
 DEFERRABLE_ROLES.has(role) && s.lastResult === "no_change" && s.lastMainHead !== ""
@@ -102,7 +102,7 @@ already carve roles by charter, and reads the same way.
 ### Relationship to the deferral latch — resolved, this plan is landable now
 
 The latch was a live defect with its own BUGS.md entry; it is **fixed** (bugfix tick `704139c`,
-2026-09-18: `DEFER_MAX_MS = 3 h` and `deferralExpired(s, now)` in `src/scheduling.ts` force a due
+2026-09-18: `DEFER_MAX_MS = 3 h` and `deferralExpired(s, now)` in `src/scheduling/scheduling.ts` force a due
 tick to run once it has been deferred past the cap, so a deferred role ticks at least once per
 window and `lastResult` can no longer freeze its own precondition). The ordering this section
 used to impose — fix the latch first — is therefore satisfied; the two were never substitutes and
@@ -146,7 +146,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `else`: observers schedule at `minTickIntervalSeconds` and leave `backoffSeconds` at 0. The
   `user_aborted` arm (a deliberate operator stop, not a passing check) keeps its idle backoff for
   every role — the predicate is scoped to the final `else` only.
-- `src/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
+- `src/scheduling/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
   already reads. Note `deferTick` now takes a fifth argument, `now: number` (`704139c`), so the
   new "returns false for every observer" tests must pass it.
 - `src/reply-contract.ts` — `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
@@ -247,7 +247,7 @@ Verified on this tree:
   `nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff)` then `nextRunAt = now + backoff`, which
   is what observers must bypass. `state.ts` already imports from `roles/roles.js` (`DIRECTOR_ROLE`, line
   4), so `OBSERVER_ROLES` joins that import with no new edge and no cycle.
-- `src/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number` (`704139c`),
+- `src/scheduling/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number` (`704139c`),
   and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` (98) and `deferralExpired` (105) are the
   latch fix. The single production caller is `src/orchestrator.ts:684`. No change is needed here
   beyond `DEFERRABLE_ROLES` shrinking, as the Shape bullet says — but every new `deferTick` test

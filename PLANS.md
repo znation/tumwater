@@ -762,7 +762,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
 `now`.
 
 **Approach.**
-- `src/quiet-hours.ts`: reuse the existing parser — `parseQuietHours` already validates one
+- `src/scheduling/quiet-hours.ts`: reuse the existing parser — `parseQuietHours` already validates one
   `"HH:MM-HH:MM"` value (wrapping windows included) and `inQuietHours(window, date)` decides
   membership. Add one small helper, `roleQuietHold(perRole: Record<string, string> | undefined,
   role: string, now: Date): boolean`, that parses the role's value and returns membership
@@ -792,7 +792,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   status/status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
   Done entry rather than growing the change.
 
-**Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts,
+**Files touched:** src/scheduling/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts,
 src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/cli/help.ts,
 README.md, plus tests (quiet-hours and config-validation suites).
 

@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { backdate } from "./backdate.js";
 import { runTimedRoleTick, sleepInterruptible } from "../src/tick/tick-timing.js";
-import { DEFER_MAX_MS } from "../src/scheduling.js";
+import { DEFER_MAX_MS } from "../src/scheduling/scheduling.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
@@ -25,7 +25,7 @@ import {
   saveLoopState,
   zeroCounters,
 } from "../src/loop/loop-state.js";
-import { nextBackoffSeconds } from "../src/backoff.js";
+import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/fleet/fleet-state.js";
 import { resetRequestPath } from "../src/paths.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";

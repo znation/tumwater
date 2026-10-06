@@ -6,7 +6,7 @@
  * (build-check, main-baseline, main-red, review-precheck), three of them annotated "like
  * build-check.test.ts's" while drifting as separate definitions. */
 import assert from "node:assert/strict";
-import type { SleepSample, SleepSampler } from "../src/host-sleep.js";
+import type { SleepSample, SleepSampler } from "../src/scheduling/host-sleep.js";
 
 /** A sampler whose samples are consumed in order; asserts when a check samples more times
  * than the test scripted, so under-specified expectations fail loudly instead of reading as
