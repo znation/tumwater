@@ -60,7 +60,10 @@ Then, from another terminal:
 `tumwater help` lists every command and flag; `tumwater help <command>` shows one command's usage. `gui --all-interfaces` exposes the dashboard, and
 with it the director prompt, to your whole network, so pair it with `--token <secret>`.
 
-Settings live in `tumwater.json`: enabled roles, model, intervals, the daily spend cap
+Settings live in `tumwater.json`: enabled roles, model (either one selector or a map of tiers
+`small`/`default`/`strong` — omitted tiers inherit `default`; per-tier `fallback` overrides may name a
+model or `"pause"`, and a role's `model` may name a tier; see [plans/model-tiers.md](plans/model-tiers.md)),
+intervals, the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
 cap starts no new ticks until the next local day or a live edit), a nightly `quietHours` window
 (e.g. `"23:00-07:00"` local time) during
