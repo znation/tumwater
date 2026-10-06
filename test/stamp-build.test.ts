@@ -2,7 +2,9 @@
  * of a removed or renamed source, so the script removes every dist .js whose source is gone —
  * and must count a .tsx as a source. Checking .ts alone pruned each .tsx's output right after
  * tsc emitted it, and the incremental build never re-emitted it (2026-10-01: the ink
- * renderer's src/ui/tui.tsx lost dist/src/ui/tui.js, so the CLI could not start). */
+ * renderer's src/ui/tui.tsx lost dist/src/ui/tui.js, so the CLI could not start). It also keeps
+ * dist/test/.durations.json, whose only "source" is the runner's ledger — pruning it reset the
+ * longest-first file order on every run. */
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -26,6 +28,7 @@ test("the prune keeps a .ts or .tsx source's output and removes a sourceless one
   touch(path.join(root, "src", "kept.ts"));
   touch(path.join(root, "src", "ui", "app.tsx"));
   for (const out of ["kept.js", "ui/app.js", "gone.js", "ui/renamed.js"]) touch(path.join(root, "dist", "src", out));
+  touch(path.join(root, "dist", "test", ".durations.json"));
 
   execFileSync(process.execPath, [script], { cwd: root, stdio: "ignore" });
 
@@ -33,4 +36,8 @@ test("the prune keeps a .ts or .tsx source's output and removes a sourceless one
   assert.ok(left("kept.js"), "a .ts source keeps its output");
   assert.ok(left("ui/app.js"), "a .tsx source keeps its output");
   assert.ok(!left("gone.js") && !left("ui/renamed.js"), "an output with no source is pruned");
+  assert.ok(
+    fs.existsSync(path.join(root, "dist", "test", ".durations.json")),
+    "the suite's durations ledger has no test/ source and is kept by name",
+  );
 });

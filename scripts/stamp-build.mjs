@@ -21,9 +21,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { stampBuild } from "../dist/src/build/build-info.js";
 
-/** Artifacts in dist/ that are not compiled sources: the build stamp and tsc's own
- * incremental-state file (present when the last compile was incremental). */
-const KEEP = new Set(["build-info.json", "tsconfig.tsbuildinfo"]);
+/** Artifacts in dist/ that are not compiled sources: the build stamp, tsc's own
+ * incremental-state file (present when the last compile was incremental), and the test
+ * suite's per-file durations ledger (dist/test/.durations.json, written by test-runner.ts to
+ * order later runs longest-first). The ledger has no `test/` source, so without it in this set
+ * the prune deleted it on every `npm test` — the recorded order never outlived the run that
+ * recorded it. */
+const KEEP = new Set(["build-info.json", "tsconfig.tsbuildinfo", ".durations.json"]);
 
 function pruneDir(outDir, srcDir) {
   let entries;
