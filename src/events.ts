@@ -92,6 +92,24 @@ export interface HarnessEventInput {
   [key: string]: unknown;
 }
 
+/** The usage fields an event carries, as a fragment with both omitted when zero — the
+ * omit-when-zero convention the two usage-emitters apply (tick-finalize.ts's tick_end,
+ * landing-slot.ts's landed/land_failed): a zero-token, zero-cost run (a free model, an abort
+ * before any tokens) renders without usage, so event-format's usage fragment and
+ * `tumwater history` show nothing rather than "$0.00". Spreading the fragment keeps the
+ * fields absent rather than 0; readers (event-read.ts's eventUsage and the index-signature
+ * consumers) treat absent and 0 identically. Its two call sites are the logEvent emissions
+ * that carry usage. */
+export function usageFragment(
+  tokens: number,
+  costUsd: number,
+): { tokens?: number; costUsd?: number } {
+  return {
+    ...(tokens > 0 ? { tokens } : {}),
+    ...(costUsd > 0 ? { costUsd } : {}),
+  };
+}
+
 /** Append one event to the project's events.jsonl and notify in-process subscribers.
  * A torn trailing line (a crash or power loss mid-append leaves the last line without its
  * newline) is terminated first: appended raw, the new event would glue onto the fragment and

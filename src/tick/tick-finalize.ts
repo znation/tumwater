@@ -1,7 +1,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { saveLoopState, type LoopState } from "../loop-state.js";
 import { branchHead } from "../git.js";
-import { logEvent, warnEvent } from "../events.js";
+import { logEvent, usageFragment, warnEvent } from "../events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "../backoff.js";
 import type { TickOutcome } from "./tick-outcome.js";
@@ -121,8 +121,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     summary: outcome.summary,
     error: s.lastError,
     durationMs: tickDurationMs,
-    ...(s.generatedTokens > 0 ? { tokens: s.generatedTokens } : {}),
-    ...(usage.costUsd > 0 ? { costUsd: usage.costUsd } : {}),
+    ...usageFragment(s.generatedTokens, usage.costUsd),
   });
   return outcome;
 }
