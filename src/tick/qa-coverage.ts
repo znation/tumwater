@@ -1,6 +1,6 @@
-import { readJsonFile, writeJsonAtomic } from "./files/json-files.js";
-import { qaCoveragePath } from "./paths.js";
-import { isJsonObject } from "./files/json-object.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { qaCoveragePath } from "../paths.js";
+import { isJsonObject } from "../files/json-object.js";
 
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` tick
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a

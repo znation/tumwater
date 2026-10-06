@@ -69,7 +69,7 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
-/** The `qa` flow-coverage ledger (qa-coverage.ts): which flow each observer tick exercised
+/** The `qa` flow-coverage ledger (tick/qa-coverage.ts): which flow each observer tick exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
  * must leave the repo untouched, or every cheap pass would move main and wake the fleet. */
 export function qaCoveragePath(root: string): string {

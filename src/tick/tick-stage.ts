@@ -15,7 +15,7 @@ import {
 } from "../commit-message.js";
 import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
-import { recordFlow } from "../qa-coverage.js";
+import { recordFlow } from "./qa-coverage.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */

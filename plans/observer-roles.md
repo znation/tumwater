@@ -155,7 +155,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `FLOW: <name> — <passed|bug>`; a bare `FLOW: <name>` is tolerated as `passed`. The result token
   is load-bearing: `run (real)` commits its `## Verified` note, so deriving "bug" from "the tick
   changed files" would mislabel a passing real run (2/2).
-- `src/qa-coverage.ts` (new) — the ledger and its rendering: `readQaCoverage(root)`,
+- `src/tick/qa-coverage.ts` (new) — the ledger and its rendering: `readQaCoverage(root)`,
   `recordFlow(root, flow, result, summary?, now?)`, `renderCoverageBlock(coverage, now)`, the
   `QA_FLOWS` universe constant, and a few local age-formatting lines. Schema
   `{ flows: { <name>: { lastRunAt: number; result: "passed" | "bug"; summary?: string } } }` at
@@ -330,7 +330,7 @@ Pinned (open questions closed):
    em-dash/`- ` token and tolerates a bare name as `passed`. The role, not the harness, states
    the outcome; the harness stays dumb.
 2. **The flow universe.** "Never-exercised flows listed last" needs a known list; pinned to
-   `QA_FLOWS` in `src/qa-coverage.ts`, mirroring plans/qa-role.md's ordered list plus
+   `QA_FLOWS` in `src/tick/qa-coverage.ts`, mirroring plans/qa-role.md's ordered list plus
    `run (real)`. The block's rows are `QA_FLOWS ∪ Object.keys(coverage)`.
 3. **Ordering corrected.** The draft's example listed never-exercised flows last while its
    instruction said "exercise the flow at the top" — self-defeating. Pinned: never-exercised
@@ -342,7 +342,7 @@ Pinned (open questions closed):
    two success returns (`no_change`, `queued`) only; `error`/`aborted`/`quiet_killed`/`refused`
    record nothing, so an interrupted check never advances the ledger.
 
-Sizing: `src/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
+Sizing: `src/tick/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
 `src/verdict/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
 `src/loop.ts` ~8; `src/roles/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
 `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.

@@ -12,7 +12,7 @@ import { defaultConfig, customLoopNames, loadConfig } from "../src/config/config
 import { enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
-import { readQaCoverage, recordFlow } from "../src/qa-coverage.js";
+import { readQaCoverage, recordFlow } from "../src/tick/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { landHead } from "./orchestrator-fixtures.js";

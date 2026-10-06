@@ -2,7 +2,7 @@
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
- * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
+ * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in tick/telemetry-digest.ts. */
 import type { TickResult } from "../tick/tick-outcome.js";
 import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { type SpendCell } from "./time-spend.js";

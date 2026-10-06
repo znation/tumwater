@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { TELEMETRY_DIGEST_DAYS, telemetryDigest } from "../src/telemetry-digest.js";
+import { TELEMETRY_DIGEST_DAYS, telemetryDigest } from "../src/tick/telemetry-digest.js";
 import { atLocalTs as at } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

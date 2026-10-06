@@ -6,7 +6,7 @@ import { stageTickLanding } from "../src/tick/tick-stage.js";
 import { initializedWorktree, sh } from "./repo-fixtures.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
-import { readQaCoverage } from "../src/qa-coverage.js";
+import { readQaCoverage } from "../src/tick/qa-coverage.js";
 import { queueDepth, queuedLandings } from "../src/landing/landing-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";

@@ -201,7 +201,7 @@ interface TickPromptInput {
   principles?: string;
   /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when unreadable. */
   digest?: string;
-  /** Rendered flow-coverage block (see qa-coverage.ts); qa only, omitted when unreadable. */
+  /** Rendered flow-coverage block (see tick/qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */

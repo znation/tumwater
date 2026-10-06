@@ -9,8 +9,8 @@ import { readPrinciples } from "../principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { telemetryDigest } from "../telemetry-digest.js";
-import { readQaCoverage, renderCoverageBlock } from "../qa-coverage.js";
+import { telemetryDigest } from "./telemetry-digest.js";
+import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner

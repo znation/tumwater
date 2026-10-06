@@ -16,7 +16,7 @@ import { applyConfigRequest } from "../config/config-write.js";
 import { diagnoseNoChange } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../commit-message.js";
-import { recordFlow } from "../qa-coverage.js";
+import { recordFlow } from "./qa-coverage.js";
 
 interface TickVerdictContext {
   root: string;
