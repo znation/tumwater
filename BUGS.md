@@ -5,7 +5,10 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### `ensureDetachedWorktree` deletes a long-lived detached worktree whose top-level mtime has aged past TARGET_PRUNE_DAYS, then returns its path: worktree.ts:141 calls `pruneOldDirectory(dir, TARGET_PRUNE_DAYS)` with the worktree root itself, while both that call site's neighbor comment and pruneOldDirectory's own doc (files.ts) say the age reaper takes the stale gitignored build dir *inside* the worktree (this repo's gitignored dir is `dist/`, not the `target/` both comments name) — so a persistent detached worktree that has sat untouched for 7+ days (the redeploy mirror, the build witness, the gate-main worktree: each reused across calls that check out the same sha, where `checkout --detach`/`reset --hard`/`clean -fd` change nothing and leave the top-level mtime old) is `removeTree`d right before being returned, and every caller that day then runs git/build commands against a directory that no longer exists (found by clean 2026-10-05 while auditing the same-day worktree-prune commit 4fea76a5)
+
+- **Suspected cause:** the new `pruneOldDirectory` call in ensureDetachedWorktree passed `dir` where the documented intent ("a stale `target/` build dir inside a worktree") wanted the gitignored build dir beneath it; fresh lander worktrees hide the bug because `worktree add` recreates the directory, so only the reused mirror/witness/gate worktrees can reach the aged-mtime branch.
+- **Fix sketch:** point the call at the gitignored build dir (or fix the comments if the whole-worktree prune was intended — it cannot be, since the path is returned to the caller immediately after).
 
 ## Fixed
 
