@@ -163,6 +163,123 @@ Cause: the case (test/gui.test.ts:80) calls `initProject(makeRepo(), …)` (real
 Reproduce: run `npm test gui` on a loaded host; the bind case can fail and then pass on the immediate re-run the gate performs — that pairing is the gate's own "flaky" verdict.
 Suggested fix: make the case deterministic — assert the requested bind from `startGui`'s own configuration rather than a raw `address()` string, and bound the loopback `fetch` with an explicit short timeout plus one retry; if the live round trip is the only faithful check, keep it but pin it so one host hiccup cannot fail the gate. The 2026-09-28 precedent (`test/gui-server.test.ts`, now under `## Fixed`) fixed this same shape by making the assertion measure the invariant directly.
 
+### The reviewer checks a change's scope against the live `main` ref, which moves while the landing is vetted, so another loop's just-landed work reads as this change reverting it: 12 rejections since 2026-09-23 cite edits to files the rejected commit never touched, each made by a merge to main between the vet's rebase and the verdict (found by human log analysis 2026-10-06)
+Symptom: on 2026-10-04 at 12:16:58, clean's a593ddf2 was rejected. The change was "Append the missing
+trailing newline to the 38 src/test files that lacked one at EOF", 38 one-line diffs. The rejection
+cited "unclaimed semantic edits" in `src/event-format.ts`, `src/report-render.ts` and
+`test/event-format.test.ts`, saying the change replaced the locale-independent `formatTimestamp`
+with `toLocaleTimeString()`. The commit touches none of those files. Timeline:
+- 12:12:38: clean queued, and the vet rebased the pin onto main (970ba0a8).
+- 12:15:57: improve's 7194f982 merged. It switched exactly those three files *to*
+  `formatTimestamp`. clean's gate check was still running (12:15:46–12:16:41).
+- 12:16:41: the reviewer started. Its session
+  (`.tumwater/sessions/_review/clean/2026-10-04T19-16-41-515Z_*.jsonl`) ran
+  `git diff --name-only main | wc -l` (41, not 38), `git diff --numstat main`, and
+  `git diff main -- src/event-format.ts …`.
+
+A two-dot diff against a `main` that has moved shows 7194f982 in reverse. The reviewer wrote that
+the provided diff had no truncation note but `git diff main` showed three more files, and rejected
+the change. The landing itself would not have reverted anything: mergeToMain rebases onto main
+before the fast-forward.
+
+The same shape accounts for 12 rejections since syncPinToMain fixed the stale-pin case on
+2026-09-23. Each rejection names a file the commit never touched, and describes the change as the
+inverse of a merge that landed minutes earlier. Merge times are from `merged` events:
+- 3fc9e0d0 dry 09-25 04:07 (fa9ee0a4 merged 04:06:04)
+- 4652a723 coverage 09-25 07:49 (4f7c4267, 07:47:25)
+- 7d196dc2 dry 09-25 07:50 (457eb774, 07:49:04)
+- 81f42bbd coverage 09-28 16:23. dry's 865bc50f, which routed saveConfig's write through
+  `writeJsonAtomic`, merged at 16:23:30 *during* the review. The rejection said the change replaced
+  `writeJsonAtomic` with a bare `writeFileSync`.
+- d8550b2f coverage 09-29 00:31 (5eda1474, 00:30:50)
+- ad4df937 feature 09-29 15:47 (eb7b1235, 15:46:17)
+- 4ccfd204 clean 09-30 00:36 (aa2312d6, 00:35:39)
+- 9c4dc9a9 dry 09-30 05:12. bugfix's ca685cb0 merged at 05:11:21, 16 s after dry queued. The
+  rejection said the change was "silently reverting the spawnCli().kill() bugfix".
+- f18e6b28 dry 09-30 17:11 (79e54320 and 32be4a19, 17:10–17:11)
+- 0007f20e dry 09-30 18:07 (cd29f3d5, 18:06:22). It was rejected for deleting a BUGS.md Open entry,
+  citing `git diff main -- BUGS.md`.
+- dbeb9380 bugfix 10-01 00:45. coverage's c595a97e, which added the `checkBrief` unreadable-brief
+  test, merged at 00:44:26, 4 s before the review started. The rejection said the change was
+  "deleting the checkBrief test".
+- a593ddf2 clean 10-04 12:16 (above).
+
+Each was a correct change thrown away, because the reject path resets the branch. The author then
+re-derived it from scratch, with a note asking it to address objections that described main's own
+newer code.
+Reproduce: in a scratch repo:
+1. Pin a commit that touches file A in a detached, lander-style worktree.
+2. Land a commit on main that touches file B.
+3. In the lander worktree, `git diff --name-only main` lists both A and B, while
+   `aheadOfMainFiles`/`aheadOfMainDiff` (three-dot, src/git/git-diff.ts) list only A.
+
+buildReviewPrompt (src/gates/gate-prompts.ts) never names the base the diff is measured from.
+Its check 1 asks whether the diff does "more than it claims", and reviewers verify that with
+`git diff main`.
+Cause: `aheadOfMainDiff` (`main...HEAD`) is computed once, when the reviewer run starts. Main can
+move in the gap before it and during it:
+- the vet's rebase (syncPinToMain, src/landing/landing-core.ts) runs before the gate's build
+  pre-check, which takes 30–100 s plus any permit wait;
+- the reviewer run takes another 20–60 s.
+
+The fleet merges every one to three minutes, so main often moves inside that window. The prompt
+calls the diff "everything the branch is ahead of main". Its step 1 forbids re-fetching the diff
+only as a reading convenience. So a reviewer that double-checks scope with a two-dot
+`git diff main` reads every newer main commit, reversed, as part of the change, and trusts that
+over the prompt.
+Suggested fix: freeze the base the reviewer compares against.
+- When the gate builds the diff, resolve the change's base SHA once: the merge-base that
+  `aheadOfMainDiff` measures from (changeBaseRev, src/git/git.ts).
+- Name that SHA in the review prompt: "This diff is measured against <sha>. Other loops land on
+  main while you review, so compare against <sha>, never against `main`." Say the same in step 1,
+  and state that the provided diff is authoritative for which files the change touches.
+- Pin it in test/gate-prompts.test.ts, keeping the literal "VERDICT:" count at exactly two.
+- Optionally, add a tripwire: when every path a rejection's reasons name lies outside the
+  reviewed diff's files, and main gained commits touching those paths since the gate started,
+  log a warning naming those commits. The next occurrence then shows on the dashboards.
+
+### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06)
+Symptom: since 2026-09-22, 17 build-check rejections name the failing test file. In 16 of them
+the rejected commit did not touch that file. Examples:
+- **improve 9fd7dff6, 10-04 15:57.** Rejected for `✖ startParentDeathWatch takes a SIGKILLed
+  supervisor's grandchild down with it` (test/supervisor.test.ts). The diff touched only
+  src/cli-command-args.ts, src/help.ts and test/prompt-commands.test.ts. The gate had already
+  warned `gate check failed then passed on retry — flaky:` for that test at 10-04 10:50 (organize),
+  and for its `the orphaned grandchild's watch fired and ran its stop path` assertion at
+  10-01 01:14 (feature).
+- **09-30, 03:48 to 03:56.** One failure, `doctor.test.js` "expected exit 0", rejected three
+  unrelated changes from organize, coverage and dry within eight minutes. None of the three
+  touched test/doctor.test.ts.
+- **feature 26fe5df7, 10-06 00:00.** Rejected for `pollFleetGates: roleQuietHeld … docs'
+  near-all-day window holds at any local time` (test/gate-polls.test.ts), which failed whenever a
+  run straddled 23:59 local. Main was just as red at that minute, but its verdict for the tip SHA
+  was a cached green from an earlier run. The test has since been pinned to midday; the
+  attribution that blamed the change is unchanged.
+
+A deterministic rejection resets the branch just like a model rejection, so each of these
+discarded finished work.
+Reproduce: drive gateBuildPrecheck (src/review/review-precheck.ts) offline:
+1. Seed the main baseline cache green for main's tip SHA.
+2. Make the fake check fail twice on the change's tree, with a failure headline that already
+   appears in a `flaky:` warning event.
+3. The gate logs `review_rejected` with the check's reasons and runs nothing on main.
+Cause: gateBuildPrecheck re-runs a failure once, immediately, on the same loaded host. It then
+attributes a repeat through mainTipVerdict (src/baseline/main-red.ts), which reads
+checkMainBaseline's fleet-wide per-SHA cache. The landing that moved main to that SHA seeded the
+cache green, often hours earlier. A failure that depends on host load or wall-clock time therefore
+counts as the change's fault. The gate's own flake record is a bare `warnEvent` that no
+attribution step consults; the GUI-bind entry above notes the same missing memory from the other
+side.
+Suggested fix: two project-neutral steps before rejecting on a repeated failure.
+1. **Match known flakes.** Compare the failure's headline (failureHeadline in
+   src/build/build-check-report.ts, normalized as src/failure/failure-cluster.ts normalizes
+   digest clusters) against the last 24 h of `flaky:` warnings and of check-failure rejections of
+   other roles' changes. On a match, treat the tree as unverified, as the host-sleep path does:
+   keep the pin with no strike, and warn `known-flaky failure, landing kept: <headline>`.
+2. **Re-check main fresh.** Otherwise, re-run main's declared check for the attribution,
+   bypassing the per-SHA cache. Red goes to the existing main_red path; green rejects as today.
+   This costs one extra check per reproduced failure, about 41 over the last two weeks.
+
 ## Fixed
 
 ### The active rows an operator counts against `maxConcurrent` exceed it by the director's own in-flight tick: a running director renders as an ordinary `working` row (`loopPhase`'s `s.running` branch runs before the idle `DIRECTOR_ROLE` branch), `isActivePhase` matches it, and `status-payload` marks it `inFlight: true`, so while six role/landing permits are held the fleet table's In-progress group shows seven active rows and the cap reads as unenforced (reported by user 2026-10-06), fixed 2026-10-06 by bugfix loop

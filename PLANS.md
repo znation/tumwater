@@ -377,6 +377,311 @@ test/pi-args.test.ts.
   context-budget, followed by the role-notes extension once that plan lands.
 - `npm run test` green.
 
+### Revise rejected changes, part 1/2: a rejected change goes back to its author as uncommitted edits instead of being discarded (planned 2026-10-06 by operator)
+
+Context: a 2026-10-06 audit of the review gate covered events.jsonl since 2026-09-22.
+- **Volume.** Of about 2,070 landing attempts, 1,658 landed and 292 were rejected (14%).
+  Rejected changes consumed about 21% of recorded authoring spend. The feature loop's
+  rejection rate was 37%, about 44% of its authoring hours.
+- **Fixability.** Each of the window's 301 rejections was labelled by hand. Of the 260 that
+  were not build-check failures, 77% were fixable by a message fix, a BUGS/PLANS fix or a
+  few-line code change. Only 32 said the change should not exist.
+- **What happens instead.** The reject path discards the work. `reviewAheadOfMain`'s `reject`
+  closure (src/review/review.ts) resets the branch to main, and `reviewPinnedChange`
+  (src/landing/landing-core.ts) deletes the pin. The author's next tick gets only the reasons
+  (`buildRejectedReviewNote`) and re-derives the whole change from scratch. Each rewrite tends
+  to add new defects, and a fresh reviewer finds different ones:
+  - feature's timed pause was rejected eight times between 09-25 13:35 and 09-28 04:11, a
+    different bug each round, before it landed at 07:35;
+  - plan 4a/7 was rejected five times on 09-22, and per-role prompts four times on 09-25;
+  - 65 rejections were followed directly by another rejection.
+- **The earlier fix.** BUGS.md "A review rejection is invisible to every loop-level alarm"
+  (fixed 2026-10-01) bounded how often a role re-authors after rejections, but not what each
+  attempt costs. Its own analysis noted each attempt "pays the full authoring price instead of
+  a cheap correction".
+
+Why the author revises and not the reviewer:
+- The reviewer's only output channel is its verdict, so every byte that lands was judged by a
+  run that did not write it.
+- An in-slot build-fix run was tried and removed in 4e9bf7f1 ("Attribute a repeat gate-check
+  failure through main's baseline instead of an in-slot fix run"). It held the landing slot for
+  hours and never led to a landing.
+
+A revision instead runs on the author's own slot at its normal cadence, and goes through the
+full gate again. Check-failure rejections become revisions too. That covers the compile breaks a
+clean rebase cannot see, such as organize's 10-05 23:26 TS2307: a file another loop had just
+added still imported a module organize moved.
+
+**Goal.** A rejected change goes back to its author for at most two revision rounds. The
+author's next tick starts with the rejected diff re-applied onto current main as uncommitted
+edits. It fixes the named objections or drops the change. Whatever it produces lands through
+the normal gate.
+
+**Approach.**
+1. **Keep the commit.**
+   - `src/paths.ts` gets `rejectedRefName(role)` → `refs/tumwater/rejected/<role>`.
+   - In `reviewPinnedChange`'s `rejected` branch (src/landing/landing-core.ts), point that ref at
+     the rejected head (`state.lastReview.head`) before the landing ref is deleted, so the
+     object survives gc.
+2. **Count rounds.**
+   - `LandingEntry` (src/landing/landing-queue.ts) and `LandRequest` (landing-core.ts) gain
+     `revisionRound?: number`, absent for a fresh change. On a rejection,
+     `next = (req.revisionRound ?? 0) + 1`.
+   - When `next <= REVISION_LIMIT` (2, a constant in a new `src/loop/revision.ts`), set
+     `LoopState.revision = { sha, round: next, at }` (src/loop/loop-state.ts).
+   - Past the limit, clear `revision`, delete the rejected ref, and log `exhausted` (step 7).
+     The plain rejected note then says the change was rejected after its last revision.
+3. **Re-apply at tick start.** In `LoopRunner.runTick` (src/loop/loop.ts), after
+   `resetWorktreeToMain` and the red-main gate, and before `runRolePi`, call
+   `applyRevision(wt, mainBranch, sha)` (src/loop/revision.ts) when all of these hold: `s.revision`
+   is set, the role is not the director, and this tick dequeued no user request.
+   - It runs `git cherry-pick --no-commit <merge-base>..<sha>`, leaving the edits uncommitted.
+   - On a conflict it runs `git cherry-pick --abort`, resets to main, and returns false.
+4. **Prompt.** When `s.revision` is set, src/tick/tick-prompt.ts skips `buildRejectedReviewNote`
+   and runTick appends one note after the apply.
+   - **The diff applied.** Append `buildRevisionNote(lastReview, round, REVISION_LIMIT)`
+     (src/gates/gate-prompts.ts). It says:
+     - this tick's one task is revising the change already in the worktree;
+     - fix each numbered objection with the smallest edit that resolves it, and keep everything
+       else;
+     - rewrite the closing SUMMARY/WHY/RISK/VERIFIED block so it describes the whole change as
+       it now stands;
+     - for a build-check failure in a test the change does not touch that you cannot reproduce,
+       say so in RISK and keep the change as is;
+     - when an objection shows the change should not exist (its premise disproven, it
+       duplicates main, it has no reachable benefit), end with the nothing-to-do sentinel
+       instead.
+   - **The diff did not apply.** Clear `revision`, delete the ref, and append today's
+     `buildRejectedReviewNote` plus one sentence saying the rejected diff no longer applies to
+     current main.
+5. **Drop.** In `resolveTickVerdict` (src/tick/tick-verdict.ts), a revision tick
+   (`revisionRound` carried in its context) whose reply declares nothing-to-do while the
+   worktree is dirty:
+   - resets the worktree to main, clears `revision` and deletes the rejected ref;
+   - ends `no_change` and does not stage. Today a dirty worktree always stages.
+6. **Stage.**
+   - `stageTickLanding` (src/tick/tick-stage.ts) copies the tick's `revisionRound` onto the
+     `LandingEntry`.
+   - The tick clears `s.revision`, since the revision is now in flight.
+   - When that landing lands, delete the rejected ref.
+7. **Events.** One `revision` event: `action` (`"applied" | "conflict" | "dropped" |
+   "exhausted"`), `round` and `sha`. src/events/event-format.ts renders it, `tumwater logs` shows
+   it, and the digest can measure revision yield.
+
+**Files touched.** src/paths.ts, src/loop/revision.ts (new), src/loop/loop-state.ts,
+src/loop/loop.ts, src/landing/landing-core.ts, src/landing/landing-queue.ts,
+src/tick/tick-prompt.ts, src/tick/tick-verdict.ts, src/tick/tick-stage.ts,
+src/gates/gate-prompts.ts, src/events/event-format.ts. Tests: test/revision.test.ts (new), plus
+cases in test/lander.test.ts, test/tick-verdict.test.ts, test/tick-stage.test.ts,
+test/tick-prompt.test.ts and test/gate-prompts.test.ts.
+
+**Acceptance criteria.**
+- **Rejection.** A gate rejection of a fresh change sets `refs/tumwater/rejected/<role>` to
+  the rejected head and `LoopState.revision.round` to 1. A rejection of a round-2 revision
+  clears `revision`, deletes the ref and logs `revision` `exhausted`.
+- **Apply.** The role's next tick starts with the rejected diff applied as uncommitted edits
+  on a main that moved in an unrelated file, and its prompt carries the revision note instead
+  of the plain rejected note.
+- **Conflict.** When the diff conflicts with current main, the worktree is clean main,
+  `revision` is cleared, the prompt carries the plain note plus the no-longer-applies sentence,
+  and `revision` `conflict` is logged.
+- **Drop.** A revision tick that replies nothing-to-do ends `no_change` with a clean worktree,
+  no landing queued, and `revision` `dropped` logged.
+- **Stage.** A revision tick that stages queues a `LandingEntry` carrying its `revisionRound`.
+  That landing's rejection yields round 2, and its landing deletes the rejected ref.
+- **Exclusions.** The director never revises. A tick that dequeued a per-role user request
+  leaves `revision` untouched.
+- `npm run test` green.
+
+### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running)
+
+Context: the same audit found reviews of one idea flip between rounds, because each reviewer
+starts with no memory of the previous review.
+- On 09-28, bugfix's 2464b72f was rejected only for a wrong test count. Its re-land, 612848d4,
+  was then rejected for real bugs the first review had missed, such as `commandBuffersOutput`
+  misreading `2>>`.
+- On the core→ui digest move, one rejection implied the change could re-land once its records
+  were fixed. The next rejected it as a rule violation.
+- Feature's timed pause got a different set of objections in each of its eight rounds.
+
+Once part 1/2 keeps the rejected diff, the reviewer can be shown which objections a revision
+had to resolve and what it changed to resolve them.
+
+**Goal.** When a landing is a revision (`revisionRound` ≥ 1), the reviewer gets two things:
+- the prior review's numbered objections, with the instruction to check each one first (one
+  left unresolved is a rejection on its own);
+- the interdiff between the rejected version and the revision.
+
+It still reviews the whole diff as usual.
+
+**Approach.**
+1. **`src/landing/landing-queue.ts`, `src/landing/landing-core.ts`.**
+   - `LandingEntry` and `LandRequest` gain `priorReview?: { sha: string; reasons: string[] }`.
+   - `stageTickLanding` (src/tick/tick-stage.ts) fills it from `state.lastReview` when the tick
+     was a revision.
+   - A recovery landing reads it back as absent, so an orphaned revision is reviewed like a
+     fresh change.
+2. **`src/git/git-diff.ts`.** Add `revisionInterdiff(wt, mainBranch, priorSha, head)`:
+   - it runs `git range-diff <changeBaseRev(prior)>..<prior> <changeBaseRev(head)>..<head>`;
+   - it applies `aheadOfMainDiff`'s cap and truncation note;
+   - it never throws, and returns empty on any git failure, including a prior object that is
+     gone. Part 1/2's rejected ref keeps the object alive until the revision lands.
+3. **`src/review/review.ts`.** `reviewAheadOfMain` takes the optional prior review and passes it,
+   with the interdiff, to `buildReviewPrompt`.
+4. **`src/gates/gate-prompts.ts`.** `buildReviewPrompt` gains an optional `priorReview`
+   parameter. Its block goes right after the author's commit body:
+   - this change is revision N of one rejected in review;
+   - the objections, numbered, and the interdiff;
+   - every objection must be resolved, and an unresolved one is a finding by itself;
+   - new findings must be concrete and verifiable, as always.
+
+   The prompt keeps the literal "VERDICT:" exactly twice, because test/gate-prompts.test.ts
+   derives the accepted forms from it.
+5. **`src/events/event-format.ts`.** A revision's `review_start` carries `revision: N`, rendered
+   as `review (revision N)`.
+
+**Files touched.** src/landing/landing-queue.ts, src/landing/landing-core.ts,
+src/tick/tick-stage.ts, src/git/git-diff.ts, src/review/review.ts, src/gates/gate-prompts.ts,
+src/events/event-format.ts. Tests: test/gate-prompts.test.ts, test/review.test.ts,
+test/tick-stage.test.ts, and a new test/revision-interdiff.test.ts.
+
+**Acceptance criteria.**
+- **Prompt.** With a prior review, `buildReviewPrompt` contains each objection, the interdiff
+  and the resolve-first instruction. Without one it is byte-identical to today's prompt, and
+  "VERDICT:" still appears exactly twice.
+- **Interdiff.** On a scratch repo where a commit is rebased onto a moved main and then
+  amended, `revisionInterdiff` shows only the amendment, not main's movement. A missing prior
+  sha yields an empty string, not a throw.
+- **Events.** A revision landing's `review_start` carries `revision`; a fresh landing's does
+  not.
+- **Recovery.** A recovery landing of a revision is reviewed without the prior block.
+- `npm run test` green.
+
+### Pre-queue self-check, part 1/2: run the gate's deterministic backlog checks before a tick queues, with one fix-up turn on the author's session (planned 2026-10-06 by operator)
+
+Context: the gate's two deterministic backlog checks only run at landing time:
+`falseFixReason` (src/verdict/fix-claim.ts) and `backlogStructureReason`
+(src/backlog/backlog-structure.ts). By then the author's session is over, and a finding costs a
+queue slot, a vet, and a rejection that discards the work.
+- On 2026-09-23, bugfix got the same rejection seven times between 05:52 and 15:52, each a full
+  author, queue and vet cycle. The reason each time was `md-only BUGS.md edit moves "Any reply
+  that merely mentions TUMWATER_REFUSED…" to Fixed, but none of the symbols…`.
+- From 09-23 to 10-02 the gate caught 13 of these phantom-fix moves.
+
+Both checks read the worktree and the change's merge-base, so they can run at staging time. At
+that point the authoring session can still be continued; `requestSummary` already uses that
+moment to recover a missing SUMMARY.
+
+**Goal.** Before a changed tick commits, the harness runs the gate's deterministic checks. If
+any finding comes back, the author gets one bounded follow-up turn on its own session to fix it.
+The change then commits and queues as it does today, and the gate still has the final say.
+
+**Approach.**
+1. **`src/tick/stage-check.ts` (new).** Add
+   `stageCheckFindings(wt, mainBranch, exemptPaths): Promise<string[]>`.
+   - `files = changedFiles(wt)`: the uncommitted changes, untracked files included.
+   - It returns `backlogStructureReason(wt, mainBranch, files)` when that is set.
+   - It returns `falseFixReason(wt, mainBranch, files)` when `isExemptDiff(files, exemptPaths)`
+     holds, the same scope the gate applies it in.
+   - It never throws; a check that fails yields no finding.
+2. **`src/gates/gate-prompts.ts`.** Add `buildStageFixPrompt(findings)`:
+   - it lists the findings as what the landing gate will reject;
+   - it asks the author to fix them in the worktree and reply with the closing
+     SUMMARY/WHY/RISK/VERIFIED block again, or to say in RISK why a finding is wrong;
+   - it carries the tick prompt's no-git rule.
+3. **`src/loop/loop-pi.ts`.** Add `requestStageFix(wt, findings)`, a sibling of
+   `requestSummary`.
+   - It runs `--continue` on the authoring session.
+   - It has its own caps, e.g. a 600 s timeout with `SUMMARY_REQUEST_QUIET_S` quiet, and the
+     shared transient retry.
+   - It returns null when no resumable session exists.
+4. **`src/tick/tick-stage.ts`.** In `stageTickLanding`, after the SUMMARY recovery and before
+   `commitAll`, run `stageCheckFindings`. When it returns findings:
+   - run one `requestStageFix`; an aborted run goes to `finishAbortedTick`;
+   - re-extract the SUMMARY and body from the follow-up's reply when it has them, and re-run the
+     check;
+   - warn once with the counts before and after, e.g. `stage self-check: 1 finding — fixed by
+     the follow-up turn` or `…; 1 still open, queued for the gate`;
+   - commit and queue either way.
+
+   `TickStageContext` gains `stageCheck` and `requestStageFix` callbacks, wired in
+   src/loop/loop.ts the same way as `requestSummary`.
+
+**Files touched.** src/tick/stage-check.ts (new), src/tick/tick-stage.ts, src/loop/loop-pi.ts,
+src/loop/loop.ts, src/gates/gate-prompts.ts. Tests: test/stage-check.test.ts (new),
+test/tick-stage.test.ts, test/gate-prompts.test.ts.
+
+**Acceptance criteria.**
+- **False fix.** An uncommitted md-only BUGS.md edit that moves an entry to Fixed and names a
+  symbol absent from the tree yields one finding. The same edit with the symbol present yields
+  none.
+- **Structure.** A PLANS.md edit that duplicates `## Done` yields the structure finding.
+- **Follow-up (tick-stage tests with fake pi).**
+  - A finding triggers exactly one follow-up run. When that run fixes it, the change queues
+    with only the "fixed" warning.
+  - A finding the run leaves unfixed still queues, with the "still open" warning.
+  - No findings means no follow-up run.
+- **Abort.** An aborted follow-up finishes through `finishAbortedTick`, as the summary
+  follow-up does.
+- `npm run test` green.
+
+### Pre-queue self-check, part 2/2: flag stale path references, nonexistent paths, and lost final newlines (planned 2026-10-06 by operator; requires part 1/2 landed)
+
+Context: path drift is the organize loop's main rejection cause. In organize's 11 rejections from
+2026-10-04 to 10-06:
+- Seven left a renamed or deleted path still named in docs, comments, BUGS.md or plans/:
+  40fc155e, 1ea3c96d, dd971b48, e1b4e113, 04f4be3e, 3780b9a7, 177f2481.
+- One added paths that never existed: 025f5425 applied a path rewrite twice, producing
+  `src/backlog/src/backlog/…`.
+- One pointed at test paths that were never moved (16516b42).
+- Two of the eleven also removed files' final newlines.
+
+Each is a git-level fact the harness can compute without knowing the project's language. Today a
+model reviewer finds them by grepping and rejects the refactor, which discards it even when the
+reasons say the rest was verified correct.
+
+Doc-comment debris, such as an unterminated `/**` swallowed by the next comment or an import
+glued to a comment, is language-specific. It stays with the project's own lint and is out of
+scope here.
+
+**Goal.** Part 1/2's stage self-check also reports three kinds of finding. The author fixes them,
+or says why not, in the follow-up turn:
+- (a) every remaining reference to a path the change renamed or deleted;
+- (b) repo paths named on added lines that do not exist in the resulting tree;
+- (c) files whose final newline the change removed.
+
+**Approach.** Everything goes in `src/tick/stage-check.ts`, appended to `stageCheckFindings`.
+It is project-neutral and uses git only.
+1. Stage with `git add -A`; commitAll restages anyway, and git state belongs to the harness.
+   Read `git diff --cached -M --name-status <changeBaseRev>`.
+2. **(a) Stale references.** For each `D` path and each `R` old path, run
+   `git grep -n -F -I --cached -- <old path>`. Report up to 10 `file:line` hits per path in one
+   finding: "<old> was renamed to <new> (or deleted) but is still named at: …".
+3. **(b) Nonexistent paths.** In `git diff --cached -U0 <base>`, collect tokens on `+` lines
+   shaped `<top>/<segments>.<ext>`, where `<top>` is a tracked top-level directory (from
+   `git ls-files`) and the path ends in a file extension. Report those missing from the staged
+   tree, except step 2's old paths, which "moved from X" prose names legitimately. Cap the
+   list.
+4. **(c) Final newline.** Report, in one finding, every text file in the staged diff whose new
+   side ends with `\ No newline at end of file` while its base side did not. A new text file
+   with no final newline counts too.
+5. `buildStageFixPrompt` from part 1/2 already covers these. Each finding's text names its fix
+   concretely.
+
+**Files touched.** src/tick/stage-check.ts, test/stage-check.test.ts.
+
+**Acceptance criteria.**
+- **Stale references.** On a scratch repo, renaming `src/a.ts` to `src/x/a.ts` while README.md
+  still names `src/a.ts` yields one stale-reference finding citing `README.md:<line>`.
+  Updating the README clears it.
+- **Nonexistent paths.** An added line naming `src/x/src/x/a.ts` yields a nonexistent-path
+  finding. An added line naming the renamed-away `src/a.ts` ("moved from src/a.ts") does not.
+- **Final newline.** A change that removes a file's final newline yields the newline finding.
+  A file whose base already lacked one does not.
+- **No noise.** Binary and untouched files produce no findings. Findings are capped, so a
+  40-file rename produces a bounded finding text.
+- `npm run test` green.
+
 ---
 
 ## Done
