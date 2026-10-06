@@ -1,6 +1,6 @@
-import { loadConfigSafe } from "./config/config.js";
-import { fail, say, sayJson } from "./cli/cli-output.js";
-import { setConfigKey, parseConfigKey, unknownConfigKeyError } from "./config/config-write.js";
+import { loadConfigSafe } from "../config/config.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
+import { setConfigKey, parseConfigKey, unknownConfigKeyError } from "../config/config-write.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which holds
  * only the operator-intent marker commands): with no arguments, print the effective merged

@@ -19,7 +19,7 @@ import { collectFleetChanges, collectRoleChange } from "../change/change-data.js
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
 import { rolePayload } from "../roles/role-view.js";
 import { renderRoleMarkdown } from "../roles/role-render.js";
-import { answerQuestion, sayAnswered, sayQuestionList } from "../question-commands.js";
+import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
 
 /** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo
  * half of `tumwater run`'s startup gate, shared by every repo-bound command). */

@@ -3,7 +3,7 @@
  * full text is one template literal, and helpStanzas/helpTopic derive `tumwater help
  * <command>` from it by splitting the usage block on its `  tumwater <command>` lines, so a
  * topic can never drift out of sync with the full listing. */
-import { suggestClosest } from "./suggest.js";
+import { suggestClosest } from "../suggest.js";
 
 export const HELP = `tumwater — autonomous development harness built on pi
 

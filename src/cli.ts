@@ -16,7 +16,7 @@ import {
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
-import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
+import { cmdConfig, CONFIG_USAGE } from "./cli/config-commands.js";
 import { cmdRetire, cmdStop } from "./operator/operator-commands.js";
 import { cmdPrompt } from "./prompt/prompt-commands.js";
 import {
@@ -27,7 +27,7 @@ import {
   cmdStatus,
   requireReadyRepo,
 } from "./cli/cli-query-commands.js";
-import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
+import { cmdLogs, GREP_VALUE_ERROR } from "./cli/log-commands.js";
 import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
@@ -40,7 +40,7 @@ import { cmdReport } from "./report/report.js";
 
 import { didYouMean } from "./suggest.js";
 import { errorMessage } from "./text.js";
-import { HELP, helpTopic, suggestCommand } from "./help.js";
+import { HELP, helpTopic, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts

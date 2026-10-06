@@ -66,7 +66,7 @@ single-model form first, then tiers.
 
 **Approach.**
 1. **`setConfigKey` / `parseConfigKey`** (src/config/config-write.ts) — the one writer behind both
-   `tumwater config set` (src/config-commands.ts) and the GUI's config edits
+   `tumwater config set` (src/cli/config-commands.ts) and the GUI's config edits
    (src/gui/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts):
    `model` takes a selector, a dotted `model.strong` merges one map entry (the way
    `roles.qa.model` already merges a role entry), and `fallback` is editable. `provider` stays
@@ -365,10 +365,10 @@ test/model-selector.test.ts plus the config-views and pi-args suites).
 - `src/cli/cli-command-args.ts`, `parsePromptArgs`: scan for `--attach` occurrences (repeatable, each claiming itself and its value token like `--role`'s claim — a helper `attachClaims: number[]` beside `roleClaim`/`atClaim`); exclude claimed pairs from prompt text exactly as `roleClaim` and `atClaim` already are. Add `attachPaths: string[]` to the `enqueue` mode of the `PromptArgs` union. Mode guards mirror the existing `--at` guard verbatim: `--attach` only queues a prompt, so with `--list`, `--cancel`, or `--edit` it fails ("--attach only queues a prompt"); a missing value names the flag like `--cancel`'s does; a stray argument with `--list`/`--cancel` uses `failStrayArg` as those modes do.
 - `src/prompt/prompt-commands.ts`, `cmdPrompt` enqueue path: for each path, `fs.readFileSync` it (a missing or unreadable path fails with `errorMessage`, naming the path, before anything is queued), then build one `PromptImageInput { name: path.basename(p), dataBase64: bytes.toString("base64") }` per file and pass the array through the existing `submitRolePromptAndWake` images parameter (already plumbed to `submitRolePrompt` → `submitPromptWithImages` → `savePromptImages` — no inbox changes needed). Re-run validation client-side for a clean CLI error by calling `promptImagesProblem` first and `fail`-ing its message (covers the extension list, the 5 MiB per-image cap, and the 4-image cap with the same wording the GUI answers 400 with). The queue confirmation says what landed: the existing "queued for the … loop" line plus " with N image(s)" when attachments rode along.
 - `src/cli.ts` valued-flag list for prompt (`prompt: ["--role", "--file", "--at", "--cancel", "--edit"]`): add `"--attach"` so a value token is never eaten as prompt text.
-- `src/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
+- `src/cli/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
 - Tests in `test/` beside the existing prompt-args and prompt-command suites: `parsePromptArgs` keeps `--attach` pairs out of the text (positional before, between, and after flags), refuses it in list/cancel/edit modes, and names a missing value; `cmdPrompt` enqueue writes the image beside the queue file with the queue file's stem, the queued text ends with the `[image attached: <absolute path>]` line, and the confirmation names the count; error cases — a nonexistent path, a non-image extension, a fifth image — all exit nonzero with `promptImagesProblem`'s or the read-error message and queue nothing.
 
-**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator/operator-intent.ts`.
+**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt/prompt-commands.ts`, `src/cli.ts`, `src/cli/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator/operator-intent.ts`.
 
 **Acceptance criteria.**
 - `tumwater prompt "fix the layout" --role feature --attach shot.png` queues the prompt whose text ends with the image-reference line, saves `shot.png` beside the queue file, and prints the confirmation with the attachment count; the receiving role's next tick prompt carries the reference.
@@ -410,13 +410,13 @@ its not-before deferral exactly as it was.
 - CLI: `src/prompt/prompt-commands.ts` gains the `--edit <n> <text...>` mode (with the optional
   `--role`), `src/cli/cli-command-args.ts`'s PROMPT_FLAG_SPECS admits the flag (prompt's flag
   vocabulary lives there with its hand-rolled parser, not in cli-flag-specs.ts — corrected
-  2026-10-04 by feature when the anchor proved wrong), and `src/help.ts` documents it next to
+  2026-10-04 by feature when the anchor proved wrong), and `src/cli/help.ts` documents it next to
   the `--cancel` line: "Replace the Nth queued prompt's text in place (position, enqueue age,
   and a pending `--at` deferral are kept; as shown by --list)". Same broken-config policy as
   cancel: a load failure reports and exits non-zero without touching the queue.
 
 **Files touched.** New `src/inbox/inbox-edit.ts`; `src/prompt/prompt-commands.ts`, `src/cli/cli-flag-specs.ts`,
-`src/help.ts`; new tests beside `test/inbox.test.ts` (a `test/inbox-edit.test.ts` or its
+`src/cli/help.ts`; new tests beside `test/inbox.test.ts` (a `test/inbox-edit.test.ts` or its
 cases inside the existing file, following the file's local conventions).
 
 **Acceptance criteria.**
@@ -457,11 +457,11 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   (`landingRefName`) when present, and drop the role's paused-state marker if any.
 - CLI: `tumwater retire --role <id> [--force]` in `src/cli.ts`/`src/cli/cli-args.ts` (follow the
   `abort --role` vocabulary), a `--json` payload `{role, removed: [worktree, branch, landingRef...],
-  skipped: []}`, a help entry in `src/help.ts`, and a `tumwater help retire` shape test in the
+  skipped: []}`, a help entry in `src/cli/help.ts`, and a `tumwater help retire` shape test in the
   style of `test/command-shape.test.ts`. Doctor stays read-only — out of scope.
 
 **Files touched.** `src/retire.ts` (new), `src/worktree.ts`, `src/cli.ts`, `src/cli/cli-args.ts`,
-`src/help.ts`, `test/retire.test.ts` (new), `test/cli-operators.test.ts` (command-shape rows).
+`src/cli/help.ts`, `test/retire.test.ts` (new), `test/cli-operators.test.ts` (command-shape rows).
 
 **Acceptance criteria.**
 - On a fixture repo with a role worktree and branch: `retire --role <id>` removes the directory
@@ -544,7 +544,7 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
 
 **Approach.**
 - New module `src/backlog/backlog-write.ts` (write half, mirroring the read half in `src/backlog/backlog.ts` and the
-  scan/stamp/move pattern of `src/question-commands.ts`):
+  scan/stamp/move pattern of `src/cli/question-commands.ts`):
   - `fileBug(root, text)` — append one `### <symptom>` entry under BUGS.md's `## Open` (creating the
     file with the `# Bugs` header + `## Open` scaffolding when absent, as `tumwater init` seeds it),
     stamped `(reported by the operator YYYY-MM-DD)` using `datetime.ts`'s local-date helpers; entries
@@ -564,11 +564,11 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
   `prompt --role` (`src/prompt/prompt-commands.ts`'s `enqueueRolePrompt`/wake pair): a filed bug wakes
   `bugfix`, a filed plan wakes `feature`. If a matching paused state exists the wake simply waits,
   like `prompt --role` already does — no new pause logic.
-- Add one `tumwater bug ...` and one `tumwater plan ...` stanza to `src/help.ts`'s `HELP` literal
+- Add one `tumwater bug ...` and one `tumwater plan ...` stanza to `src/cli/help.ts`'s `HELP` literal
   (topics derive automatically via `helpStanzas`), and document both in README.md's steering row of
   the command table.
 
-**Files touched.** `src/backlog/backlog-write.ts` (new), `src/cli.ts`, `src/help.ts`, `README.md`,
+**Files touched.** `src/backlog/backlog-write.ts` (new), `src/cli.ts`, `src/cli/help.ts`, `README.md`,
 new `test/backlog-write.test.ts`, plus the help-topics pin and CLI smoke tests where the existing
 command tests live (`test/cli.test.ts` — extend, don't duplicate).
 
@@ -602,10 +602,10 @@ tests); `test/cli.test.ts` was left untouched.
 - `src/cli.ts` dispatcher `case "tick"` — admit `LAST_FLAG` in the `rejectUnknownArgs("tick", rest, [...])` call, and relax the pre-gate arity check from `positionals.length !== 2` to `positionals.length < 1 || positionals.length > 2` so the one-positional `--last` form reaches `cmdTick` (which already owns arity and keeps its own guard — the dispatcher comment says as much).
 - `src/tick/tick-detail.ts` `cmdTick` — take the extra flag (extend the signature to `(root, positionals, json, last)`, passing `rest.includes("--last")` from cli.ts). Arity rules: `last` accepts exactly one positional (`<role>`); the numeric path keeps exactly two. With `last`, resolve the newest tick via `readTickRows(root, 1, role)` from `src/history/history-data.ts` — rows come newest-first, so the first row's `tick` is the number; an empty array takes the existing not-found path (`sayJson(null)` / `tickNotFoundMessage(role, 0)` is wrong under `--last`, so make the not-found wording for this form say `no completed tick for <role> in the scanned window…` — extend `tickNotFoundMessage` or add a sibling `tickNotFoundLastMessage` and keep both used by the GUI's 404 wording where applicable; pick one shape and use it consistently). The resolved number then flows through the unchanged `readTickDetail` → `renderTickDetail` / `sayJson(detail)` tail — no rendering changes at all.
 - `TICK_USAGE` becomes `"tumwater tick <role> [<n>] [--last] [--json]"` — it is the single string the dispatcher gate and `cmdTick`'s guards both fail with, so all three sites move together.
-- `src/help.ts` — update the `tick` stanza's usage line and add one sentence: `--last` shows the newest completed tick's trail instead of numbering it.
+- `src/cli/help.ts` — update the `tick` stanza's usage line and add one sentence: `--last` shows the newest completed tick's trail instead of numbering it.
 - `README.md` — extend the per-tick-history row's `tumwater tick <role> <n>` mention with the `--last` spelling, phrased like the surrounding flags.
 
-**Files touched:** `src/cli/cli-flag-specs.ts`, `src/cli.ts`, `src/tick/tick-detail.ts`, `src/help.ts`, `README.md`, plus tests in `test/tick-detail.test.ts` (`--last` resolves the newest tick's trail identical to naming that number; `--last` on an empty log exits 0 with the parseable `null` under `--json` and the last-form not-found line otherwise; `tick <role> --last 3` fails with the usage; `--last` with an unknown role keeps the unknown-role wording) and `test/cli-arg-strictness.test.ts` (the dispatcher admits `--last` for `tick` and still rejects it elsewhere).
+**Files touched:** `src/cli/cli-flag-specs.ts`, `src/cli.ts`, `src/tick/tick-detail.ts`, `src/cli/help.ts`, `README.md`, plus tests in `test/tick-detail.test.ts` (`--last` resolves the newest tick's trail identical to naming that number; `--last` on an empty log exits 0 with the parseable `null` under `--json` and the last-form not-found line otherwise; `tick <role> --last 3` fails with the usage; `--last` with an unknown role keeps the unknown-role wording) and `test/cli-arg-strictness.test.ts` (the dispatcher admits `--last` for `tick` and still rejects it elsewhere).
 
 **Acceptance criteria:**
 - After a tick has run, `tumwater tick <role> --last` prints the same trail `tumwater tick <role> <n>` prints for the newest tick number (the tests assert this equality on a fixture log).
@@ -624,10 +624,10 @@ tests); `test/cli.test.ts` was left untouched.
 - `src/cli/cli-run.ts` `cmdRun` — parse `--for` with `parseDurationFlag` (the same helper the gate ran). Two body-level rules, both fail fast before boot: `--for` and `--once` are rivals (a one-round run and a windowed run cannot both apply — fail with a message naming both flags), and the cap is `pause --for`'s (`PAUSE_FOR_MAX_MS`, via the `failOverDurationCap` helper in operator/operator-commands.ts — import it or move the shared helper; pick one site and keep the wording identical). Where `--once` sets `once = true`, a `--for` run stays a daemon-shaped run: keep `createRedeployer` and `LaunchServicesWatch` exactly as they are — a mid-run self-redeploy hands off to the supervisor, which forwards the same args (including `--for`), so the deadline restarts in the new generation; state that in the command's doc comment rather than coding around it.
 - After the boot banner, when a deadline was given: `setTimeout(forMs, stop)` armed beside the existing `SIGINT`/`SIGTERM` handlers (the same `stop` closure, so the drain-and-exit path is literally identical), plus `clearTimeout` in the existing `finally` so an early Ctrl+C or a redeploy hand-off does not leave a stray timer. The boot banner says the window: `tumwater running on branch <name> · for 2h · build <sha>… — Ctrl+C to stop`. When the timer fires first, say a one-line `deadline reached — stopping` before the existing stop message so the log shows why.
 - Summary: a `--for` run prints the `onceSummary` line on exit (reuse the existing function; it already supports being called without settle reasons, deriving from `ticksBefore` deltas), so a scheduled invocation's log shows what the window accomplished. `--once` keeps its own settle-reason summary; the two stay separate call sites.
-- `src/help.ts` — extend the `run` usage line to `[--branch <name>] [--once] [--for <duration>] [--role <id>]` with a one-line explanation (windowed run, drains like Ctrl+C at the deadline; `--role` stays once-only).
+- `src/cli/help.ts` — extend the `run` usage line to `[--branch <name>] [--once] [--for <duration>] [--role <id>]` with a one-line explanation (windowed run, drains like Ctrl+C at the deadline; `--role` stays once-only).
 - `README.md` — one row/note in the usage table for `run --for <duration>`, phrased like the `--once` sibling.
 
-**Files touched:** `src/cli/cli-flag-specs.ts`, `src/cli/cli-run.ts`, `src/help.ts`, `README.md`, plus tests in `test/cli-run.test.ts` (flag parsing: `--for` accepted, `--for abc` rejected with the duration wording, `--for` + `--once` rival rule, over-cap rejection, `--for` without a value named by the gate) and `test/cli-run-live.test.ts` (one harness run with a short `--for` boots, stops itself at the deadline, drains, and prints the summary line — no real model; the fake pi shim stays on PATH).
+**Files touched:** `src/cli/cli-flag-specs.ts`, `src/cli/cli-run.ts`, `src/cli/help.ts`, `README.md`, plus tests in `test/cli-run.test.ts` (flag parsing: `--for` accepted, `--for abc` rejected with the duration wording, `--for` + `--once` rival rule, over-cap rejection, `--for` without a value named by the gate) and `test/cli-run-live.test.ts` (one harness run with a short `--for` boots, stops itself at the deadline, drains, and prints the summary line — no real model; the fake pi shim stays on PATH).
 
 **Acceptance criteria:**
 - `tumwater run --for 45m` boots the fleet, and without any operator input stops, drains in-flight ticks, prints the deadline line and the summary, and exits 0.
@@ -661,15 +661,15 @@ today's whole-key behavior.
     then the same validate → write idiom. `<id>` naming an unknown role fails with
     validateConfig's known-roles message when validation runs; the parser only checks shape.
   - `unknownConfigKeyError` keeps top-level membership for bare keys unchanged.
-- `src/config-commands.ts` `cmdConfig`: `config get maxDailyCostUsdPerRole.feature` reads
+- `src/cli/config-commands.ts` `cmdConfig`: `config get maxDailyCostUsdPerRole.feature` reads
   the resolved config and prints `config.maxDailyCostUsdPerRole?.["feature"] ?? null` — the
   same absent-key→null rule the whole-key get applies. The get path needs no new module:
   split the dotted key in place and index.
-- `src/help.ts` CONFIG area and README.md's audit/`config` mention: one clause — "dotted
+- `src/cli/help.ts` CONFIG area and README.md's audit/`config` mention: one clause — "dotted
   keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry; bare
   keys replace the whole value".
 
-**Files touched:** src/config/config-write.ts, src/config-commands.ts, src/help.ts, README.md,
+**Files touched:** src/config/config-write.ts, src/cli/config-commands.ts, src/cli/help.ts, README.md,
 plus tests.
 
 **Acceptance criteria.**
@@ -730,11 +730,11 @@ no new consumer loop — the existing wake request path grows one optional field
   deadline the existing consume path runs, and its `wake()` call is what clears the schedules
   the submit skipped. A non-numeric value reads as immediate (defensive; validation happens at
   the CLI).
-- `src/help.ts` and README.md's control-table `wake` row: append `--in <duration>` to the wake
+- `src/cli/help.ts` and README.md's control-table `wake` row: append `--in <duration>` to the wake
   usage with a one-clause scheduled-wake phrase, beside `pause --for`.
 
 **Files touched:** src/cli/cli-flag-specs.ts, src/cli.ts, src/operator/operator-commands.ts,
-src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/help.ts, README.md, plus tests.
+src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/cli/help.ts, README.md, plus tests.
 
 **Acceptance criteria.**
 - `tumwater wake --in 45m` writes a wake marker whose `notBeforeMs` is ~45 minutes out; a poll
@@ -785,7 +785,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   object of strings; every key passes the same `checkKnownRoleId` gate (a typo'd role id would
   silently no-op the window); every value passes `checkQuietHours`'s parse (empty string
   allowed = off).
-- `src/config/config-example.ts` / `src/help.ts` / README.md settings paragraph: name the new key one
+- `src/config/config-example.ts` / `src/cli/help.ts` / README.md settings paragraph: name the new key one
   line after its fleet-wide sibling, so `tumwater config` users can find it.
 - Status surface: follow status/status-data.ts's `roleCapPaused` pattern minimally — a loop held by
   its own window shows the same quiet-hours hold wording the fleet-wide gate already uses; if
@@ -793,7 +793,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   Done entry rather than growing the change.
 
 **Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts,
-src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/help.ts,
+src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/cli/help.ts,
 README.md, plus tests (quiet-hours and config-validation suites).
 
 **Acceptance criteria.**

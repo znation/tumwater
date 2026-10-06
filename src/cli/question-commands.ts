@@ -6,12 +6,12 @@
  * a missing `## Answered` section with the file's documented skeleton, so the loop→human→loop
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
-import { fail, say, sayJson } from "./cli/cli-output.js";
-import { fencedHeadingTitle, fenceTracker } from "./backlog/backlog-md.js";
-import { openQuestionEntries } from "./backlog/backlog.js";
-import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "./text.js";
-import { readTextOrNull, writeTextAtomic } from "./files.js";
-import { formatDate } from "./datetime.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fencedHeadingTitle, fenceTracker } from "../backlog/backlog-md.js";
+import { openQuestionEntries } from "../backlog/backlog.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text.js";
+import { readTextOrNull, writeTextAtomic } from "../files.js";
+import { formatDate } from "../datetime.js";
 
 /** The ` -- <ellipsized body>` suffix one prose list line carries for its question's first
  * body line: the `prompt --list` numbered shape, so an operator can tell two open questions

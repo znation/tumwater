@@ -36,7 +36,7 @@ import {
  * and TUI); the fleet-side consumer half is src/operator/operator-requests.ts; the `prompt` command,
  * which drives the durable per-loop queues rather than the marker protocol, lives beside
  * them in src/prompt/prompt-commands.ts, and the `config` command, which reads and writes
- * tumwater.json directly rather than touching fleet state, in src/config-commands.ts. Every
+ * tumwater.json directly rather than touching fleet state, in src/cli/config-commands.ts. Every
  * command here is deliberately usable without a live harness except `abort` and `stop`,
  * which have nothing to reach when no fleet is up. */
 

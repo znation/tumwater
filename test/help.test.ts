@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HELP, helpStanzas, helpTopic, suggestCommand } from "../src/help.js";
+import { HELP, helpStanzas, helpTopic, suggestCommand } from "../src/cli/help.js";
 
 /** Every command the full help lists — the set a `tumwater help <command>` topic must cover. */
 const ALL_COMMANDS = [

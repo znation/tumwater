@@ -1,17 +1,17 @@
-import { fail, say } from "./cli/cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli/cli-args.js";
+import { fail, say } from "../cli/cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
   SPARSE_WINDOW_NOTE,
-} from "./events/event-window.js";
-import { parseEventLine, readEventsTailWithEnd } from "./events/event-read.js";
-import type { HarnessEvent } from "./events/events.js";
-import { formatEvent } from "./events/event-format.js";
-import { followFile } from "./tail.js";
-import { createTranscriptRenderer } from "./ui/transcript.js";
-import { readTranscriptTail } from "./ui/transcript-tail.js";
-import { eventsLogPath, piLogPath } from "./paths.js";
+} from "../events/event-window.js";
+import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
+import type { HarnessEvent } from "../events/events.js";
+import { formatEvent } from "../events/event-format.js";
+import { followFile } from "../tail.js";
+import { createTranscriptRenderer } from "../ui/transcript.js";
+import { readTranscriptTail } from "../ui/transcript-tail.js";
+import { eventsLogPath, piLogPath } from "../paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.

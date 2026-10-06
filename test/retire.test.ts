@@ -17,7 +17,7 @@ import { cli } from "./cli-harness.js";
 import { setRef } from "../src/git/git.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeJsonAtomic } from "../src/json-files.js";
-import { helpTopic } from "../src/help.js";
+import { helpTopic } from "../src/cli/help.js";
 
 // `feature` is enabled by default config, so a retire of it must refuse; `clean` is a
 // user-defined loop the tests disable in tumwater.json first.

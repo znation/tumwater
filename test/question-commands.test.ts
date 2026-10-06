@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/question-commands.js";
+import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/cli/question-commands.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attempt } from "./exit-capture.js";
 
-/** src/question-commands.ts's own tests: the `tumwater questions` CLI layer — list
+/** src/cli/question-commands.ts's own tests: the `tumwater questions` CLI layer — list
  * numbering, the answer move (one block, verbatim, with the dated operator paragraph), the
  * out-of-range error wording, the --json payloads, and the missing-file degradation —
  * exercised in-process against a seeded QUESTIONS.md in a temp project root. cmdQuestion's

@@ -94,9 +94,8 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   `pi-stream.ts`, `pi-event-line.ts`, `pi-run-result.ts`, `pi-models.ts`, `pi-watchdogs.ts`).
 - `src/config/config.ts`: the config core (load, defaults, per-role views) beside its
   plumbing (`config-schema.ts`, `config-validation.ts`, `config-write.ts`, `config-live.ts`,
-  `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`).
-  The `config` CLI command body (`config-commands.ts`) stays in `src/` with the other command
-  bodies.
+  `config-views.ts`, `config-example.ts`, `config-editable-keys.ts`, `config-field-checks.ts`),
+  with the `config` CLI command body beside it in `src/cli/config-commands.ts`.
 - `src/git/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
 - `src/git/git.ts`, `src/git/git-diff.ts`: git queries over that layer and git-output parsing.
 - `src/build/build-info.ts`: the build stamp (dist/build-info.json), beside the staged compile
@@ -110,10 +109,10 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
 - `src/ui/`: TUI, GUI, status table, backlog report, and transcript rendering. Imported only by
-  each other and the CLI command layer that drives it (`cli.ts` and the `src/` command bodies).
+  each other and the CLI command layer that drives it (`cli.ts` and the `src/cli/` command bodies).
 - `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
-  `src/report/report-data.ts`) whose payloads they print, `src/log-commands.ts` (the `logs` command body),
+  `src/report/report-data.ts`) whose payloads they print, `src/cli/log-commands.ts` (the `logs` command body),
   and `src/cli/cli-query-commands.ts` (the other
   read-only command bodies).
 - `test/`: unit tests.

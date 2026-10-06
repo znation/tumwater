@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
  * delegates to. Anything else importing src/ui/ is a layering bug. */
 const COMMAND_LAYER = new Set([
   "cli/cli-query-commands.ts",
-  "log-commands.ts",
+  "cli/log-commands.ts",
   "gui/gui-server.ts",
   "gui/gui-endpoints.ts",
 ]);

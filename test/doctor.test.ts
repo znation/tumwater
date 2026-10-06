@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { runDoctor } from "../src/doctor/doctor.js";
 import { renderDoctor } from "../src/doctor/doctor-render.js";
-import { helpTopic } from "../src/help.js";
+import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
