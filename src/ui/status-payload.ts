@@ -48,9 +48,10 @@ export function statusPayload(root: string, now = Date.now()): object {
       // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
       // renders it as an asterisk beside the loop name.
       custom: s.custom,
-      // Part 7a (model-tiers.md "Observability"): the loop's seam tier and resolved
-      // selector, present only when a top-level model tier map is declared — the GUI
-      // renders a tier tag beside the loop name and the selector in the sub line.
+      // The loop's resolved selector, present whenever a model resolves (a single string
+      // `model` or a tier map); the seam tier tag (part 7a, model-tiers.md
+      // "Observability") rides only under a tier map. The GUI renders a tier tag beside
+      // the loop name and the selector in the sub line.
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
       phase,

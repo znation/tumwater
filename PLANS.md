@@ -6,46 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Show each loop's active model on `tumwater status`, the TUI, and the GUI (planned 2026-10-06 by director)
-
-**Goal.** An operator can see, on both observer surfaces, which model every loop runs on — not
-only when a tier map is declared. Today the per-row model selector is attached only when the
-top-level `model` is a tier-map object (`src/status/status-data.ts`'s `snapshot`, the
-`isJsonObject(cfg.model)` gate), so the common single-string model (`model: "provider/id"`)
-is invisible: the GUI sub line and the TUI name suffix stay bare. (`src/ui/gui-client-loops.ts`'s
-`loopCells` already renders `l.model` when present, and `src/ui/status-payload.ts` already
-forwards `s.model`, so only the snapshot gate and the TUI suffix need to change.)
-
-**Approach.**
-1. **`src/status/status-data.ts`** (`snapshot`, the `loops` map): always compute
-   `configForRole(cfg, r)` and spread `...modelSelectorField(eff)` into every row. Keep
-   `modelTier: roleSeamTier(cfg, r)` gated on `isJsonObject(cfg.model)` exactly as today (the
-   tier tag stays a tier-map-only affordance). Update the `StatusSnapshot.loops` field comment:
-   `model` is now present whenever a model resolves, `modelTier` only under a tier map.
-2. **`src/ui/status-render.ts`** (the row's `name` cell): replace the
-   `s.modelTier ? \` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})\` : ""` suffix with one
-   that also renders a lone model: with `s.modelTier` keep today's ` (tier · selector)` text
-   byte-for-byte; otherwise with `s.model` append ` (${s.model})`; with neither append nothing.
-3. **`src/ui/gui-client-loops.ts` and `src/ui/status-payload.ts` need no change** — verify this
-   rather than edit them.
-
-**Files touched.** src/status/status-data.ts, src/ui/status-render.ts, test/status-data.test.ts,
-test/status-render.test.ts.
-
-**Acceptance criteria.**
-- With `model: "prov-a/model-a"` and no map, every `snapshot(repo).loops` row carries
-  `model: "prov-a/model-a"` and no `modelTier`; `statusPayload(repo).loops` forwards the same
-  `model`; `renderStatus` shows an isolated row supplied `{ role: "clean", model:
-  "prov-a/model-a" }` as `clean (prov-a/model-a)`.
-- With the tier map `{ default: "prov-a/model-a", strong: "prov-s/model-s:high" }`, every row
-  carries `modelTier` and `model` exactly as today and `renderStatus` keeps the byte-identical
-  ` (strong · prov-s/model-s:high)` suffix (the existing status-render tier test stays green).
-- The existing test "snapshot loop rows carry their seam tier and selector only when a tier map
-  is declared" is renamed and updated: the no-map branch asserts `model` is present (it
-  currently asserts `undefined`) and `modelTier` stays undefined; a new status-render case pins
-  the lone-model suffix.
-- `npm run test` green.
-
 ### Log one `model_changed` event when a live config edit changes the fleet's model wiring (planned 2026-10-06 by director; independent of the display plan above)
 
 **Goal.** A live `tumwater.json` edit that changes which model a seam runs on leaves one
@@ -631,6 +591,47 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Show each loop's active model on `tumwater status`, the TUI, and the GUI (planned 2026-10-06 by director; done 2026-10-06 by feature)
+
+**Goal.** An operator can see, on both observer surfaces, which model every loop runs on — not
+only when a tier map is declared. The per-row model selector was attached only when the
+top-level `model` is a tier-map object (`src/status/status-data.ts`'s `snapshot`, the
+`isJsonObject(cfg.model)` gate), so the common single-string model (`model: "provider/id"`)
+was invisible: the GUI sub line and the TUI name suffix stayed bare. (`src/ui/gui-client-loops.ts`'s
+`loopCells` already renders `l.model` when present, and `src/ui/status-payload.ts` already
+forwards `s.model`; its stale comment was corrected to match.)
+
+**Approach.**
+1. **`src/status/status-data.ts`** (`snapshot`, the `loops` map): always compute
+   `configForRole(cfg, r)` and spread `...modelSelectorField(eff)` into every row. Keep
+   `modelTier: roleSeamTier(cfg, r)` gated on `isJsonObject(cfg.model)` exactly as today (the
+   tier tag stays a tier-map-only affordance). Updated the `StatusSnapshot.loops` field comment:
+   `model` is now present whenever a model resolves, `modelTier` only under a tier map.
+2. **`src/ui/status-render.ts`** (the row's `name` cell): replaced the
+   `s.modelTier ? \` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})\` : ""` suffix with one
+   that also renders a lone model: with `s.modelTier` it keeps today's ` (tier · selector)` text
+   byte-for-byte; otherwise with `s.model` it appends ` (${s.model})`; with neither it appends
+   nothing.
+3. **`src/ui/gui-client-loops.ts` needed no change** — verified it already renders `l.model`.
+   **`src/ui/status-payload.ts`** already forwarded `s.model`; only its comment was corrected.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-render.ts, src/ui/status-payload.ts,
+test/status-data.test.ts, test/status-render.test.ts.
+
+**Acceptance criteria.**
+- With `model: "prov-a/model-a"` and no map, every `snapshot(repo).loops` row carries
+  `model: "prov-a/model-a"` and no `modelTier`; `statusPayload(repo).loops` forwards the same
+  `model`; `renderStatus` shows an isolated row supplied `{ role: "clean", model:
+  "prov-a/model-a" }` as `clean (prov-a/model-a)`.
+- With the tier map `{ default: "prov-a/model-a", strong: "prov-s/model-s:high" }`, every row
+  carries `modelTier` and `model` exactly as today and `renderStatus` keeps the byte-identical
+  ` (strong · prov-s/model-s:high)` suffix (the existing status-render tier test stays green).
+- The old test "snapshot loop rows carry their seam tier and selector only when a tier map is
+  declared" was renamed to "snapshot loop rows carry the resolved selector always and the seam
+  tier only under a tier map": the no-map branch asserts `model` is present and `modelTier`
+  stays undefined; a new status-render case pins the lone-model suffix.
+- `npm run test` green.
 
 ### Per-tick prompt-token telemetry: record prompt, cache-read, and pre-first-edit tokens on tick_end (planned 2026-10-06 by operator; done 2026-10-06 by feature)
 

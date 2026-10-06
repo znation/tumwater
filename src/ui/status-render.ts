@@ -243,11 +243,16 @@ export function renderStatusSpans(
   // last result tones its outcome word, a backoff countdown reads yellow.
   const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
   const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
-    // Part 7a (model-tiers.md "Observability"): with a top-level tier map declared, the
-    // name cell appends the role's seam tier and that tier's resolved selector — the TUI
-    // row's model observability. No map keeps the name byte-identical to today's.
-    const name = (s.custom ? `${s.role}*` : s.role)
-      + (s.modelTier ? ` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})` : "");
+    // The name cell appends the selector the role resolves to; with a top-level tier map
+    // declared it additionally names the seam tier (model-tiers.md part 7a,
+    // "Observability"). No model resolved and no tier keeps the name byte-identical to
+    // today's.
+    const modelSuffix = s.modelTier
+      ? ` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})`
+      : s.model
+        ? ` (${s.model})`
+        : "";
+    const name = (s.custom ? `${s.role}*` : s.role) + modelSuffix;
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it

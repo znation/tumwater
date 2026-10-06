@@ -528,3 +528,14 @@ test("the loop name cell appends the seam tier and selector when a tier map is d
   // No tier fields: the name cell stays `clean` — today's bytes.
   assert.doesNotMatch(text, /clean \(/);
 });
+
+test("the loop name cell appends a lone selector when no tier map is declared", () => {
+  const snap = snapshotWith([
+    { role: "clean", model: "prov-a/model-a" } as never,
+    { role: "plan" },
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /clean \(prov-a\/model-a\)/);
+  // No model resolved: the name cell stays `plan` — today's bytes.
+  assert.doesNotMatch(text, /plan \(/);
+});

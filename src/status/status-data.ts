@@ -69,12 +69,11 @@ export interface StatusSnapshot {
    * mid-poll. LoopState itself stays the persisted type; this intersection is view-layer only. */
   loops: Array<LoopState & {
     custom: boolean;
-    /** The model seam tier (roleSeamTier) this loop's pi runs resolve at, plus the tier's
-     * resolved selector (`provider/id[:thinking]`, the configForRole view) — present only
-     * when the top-level `model` is a tier map (model-tiers.md part 7a, "Observability"):
-     * with a single string model every role rides the same pair and the rows would only
-     * repeat it, so the fields stay absent and the rows keep today's shape. Fresh per
-     * poll, like `custom`. */
+    /** The selector this loop's pi runs resolve at (`provider/id[:thinking]`, the
+     * configForRole view) — present whenever a model resolves, both for a single string
+     * `model` and under a tier map. The model seam tier (roleSeamTier) is a tier-map-only
+     * affordance (model-tiers.md part 7a, "Observability"): it stays absent with a single
+     * string model, where every role rides the same pair. Fresh per poll, like `custom`. */
     modelTier?: ModelTier;
     model?: string;
   }>;
@@ -254,15 +253,17 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const info = readOrchestratorInfo(root);
   const loops = roles.map((r) => {
     const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
-    // Part 7a (model-tiers.md "Observability"): with a tier map declared, each row carries
-    // its role's seam tier and that tier's resolved selector, so the dashboards show which
-    // tier a role rides and what it resolves to. A tier-name `roles.<id>.model` and a role
-    // selector override both resolve through configForRole — the same view the seam consumes.
-    if (isJsonObject(cfg.model)) {
-      const eff = configForRole(cfg, r);
-      return { ...base, modelTier: roleSeamTier(cfg, r), ...modelSelectorField(eff) };
-    }
-    return base;
+    // Every row carries the selector its config resolves to, so the dashboards show which
+    // model a role rides even with a single string `model`. A tier-name `roles.<id>.model`
+    // and a role selector override both resolve through configForRole — the same view the
+    // seam consumes. Part 7a (model-tiers.md "Observability"): the seam tier tag is added
+    // only with a tier map declared, where it names the tier a role rides.
+    const eff = configForRole(cfg, r);
+    return {
+      ...base,
+      ...modelSelectorField(eff),
+      ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
+    };
   });
   // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists
   // the directory and reads each file once): the count is the entries' length, so a prompt

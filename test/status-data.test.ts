@@ -845,14 +845,20 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(snapshot(capped).mainCheck, undefined, "past the scan cap the badge drops");
 });
 
-test("snapshot loop rows carry their seam tier and selector only when a tier map is declared", async () => {
+test("snapshot loop rows carry the resolved selector always and the seam tier only under a tier map", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
 
-  // No map: every role rides the same pair, so the rows keep today's shape.
+  // A single string model: every row carries the resolved selector; the tier tag stays absent.
+  writeConfig(repo, { model: "prov-a/model-a" });
   const plain = snapshot(repo);
   assert.equal(plain.loops[0]?.modelTier, undefined);
-  assert.equal(plain.loops[0]?.model, undefined);
+  assert.equal(plain.loops[0]?.model, "prov-a/model-a");
+
+  // The payload ships the same field per row — the GUI renders it beside the loop name.
+  const plainPayload = statusPayload(repo) as { loops: Array<{ role: string; modelTier?: string; model?: string }> };
+  assert.equal(plainPayload.loops[0]?.model, "prov-a/model-a");
+  assert.equal(plainPayload.loops[0]?.modelTier, undefined);
 
   // A tier map: each row carries its role's seam tier and that tier's resolved selector.
   writeConfig(repo, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
