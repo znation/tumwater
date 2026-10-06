@@ -2,8 +2,7 @@
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
  * (tui-frame.ts alertLines). Split from status-model.ts, whose per-loop derivation this reads
- * as input but does not share helpers with beyond badges.ts's pauseCountdown and text/phrases.ts's
- * pauseReasonSuffix; `tone` ranks an
+ * as input; `tone` ranks an
  * alert (red and amber ask for action, indigo asks a question, blue and gray inform), and
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
