@@ -326,9 +326,9 @@ test("role prompts and the reply contract name npm only inside a generic instruc
   const block = oneLine(SUMMARY_BLOCK);
   assert.doesNotMatch(block, /"npm test/);
 });
-test("the feature role maps PLANS.md by heading, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
+test("the feature role reads its plan from the injected index, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
   const find = oneLine(roleById("feature")!.find);
-  assert.match(find, /`grep -n '\^##' PLANS\.md` gives every heading with its line number/);
+  assert.match(find, /The prompt's <backlog-index> block lists PLANS\.md's `## Planned` entries/);
   assert.match(find, /read only the chosen entry's line range and the code it names/i);
   assert.match(find, /The reviewer checks your diff against the entry's files-touched list and acceptance criteria/);
   assert.match(find, /A plan too large to finish in this run is not split by you/);
@@ -387,10 +387,10 @@ test("the director investigates only enough to route", () => {
   assert.match(prompt, /Investigate only as much as routing precisely needs/);
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
 });
-test("the steward maps the backlog files by heading and reads bodies only by range", () => {
+test("the steward reads the injected index and reads bodies only by range", () => {
   const find = oneLine(roleById("steward")!.find);
   assert.match(find, /you may see PLANS\.md and BUGS\.md whole, but do it cheaply/i);
-  assert.match(find, /map each file first with `grep -n '\^##' FILE`/i);
+  assert.match(find, /The prompt's <backlog-index> block lists every Planned and Open entry with its line range/);
   assert.match(find, /read Done\/Fixed entries by line range only where your move needs their bodies/);
   // The compressed Fixed record's `gap:` tag comes from the body's Validation gap line, so that
   // one line IS read; the old blanket "no body read required" was self-contradictory.

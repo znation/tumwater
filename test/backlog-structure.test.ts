@@ -8,6 +8,8 @@ import {
   duplicateHeadings,
   strandedPlanEntries,
   renderBacklogStructureBlock,
+  actionableEntryRanges,
+  renderBacklogIndexBlock,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -321,4 +323,60 @@ test("duplicateHeadings lists each title that appears more than once, fence-awar
     ["Done"],
   );
   assert.deepEqual(duplicateHeadings("## Open\n\n## Fixed\n\n## Verified\n"), []);
+});
+
+test("actionableEntryRanges reports each entry's 1-based line range under the named section", () => {
+  const md = [
+    "# BUGS", // 1
+    "", // 2
+    "## Open", // 3
+    "", // 4
+    "### First bug", // 5
+    "body line", // 6
+    "", // 7
+    "### Second bug", // 8
+    "more", // 9
+    "", // 10
+    "## Fixed", // 11
+    "", // 12
+    "### Old bug", // 13
+    "old body", // 14
+  ].join("\n");
+  assert.deepEqual(actionableEntryRanges(md, "Open"), [
+    { title: "First bug", start: 5, end: 7 },
+    { title: "Second bug", start: 8, end: 10 },
+  ]);
+  assert.deepEqual(actionableEntryRanges(md, "Fixed"), [{ title: "Old bug", start: 13, end: 14 }]);
+});
+
+test("actionableEntryRanges ignores ### headings inside fenced code and ends at EOF", () => {
+  // lines: 1 ## Open, 2 blank, 3 ### Real, 4 ```md, 5 ### quoted, 6 ```, 7 body
+  const md = "## Open\n\n### Real\n```md\n### quoted\n```\nbody\n";
+  assert.deepEqual(actionableEntryRanges(md, "Open"), [{ title: "Real", start: 3, end: 7 }]);
+});
+
+test("renderBacklogIndexBlock lists actionable entries with ranges and strips stamp suffixes", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Ship it (planned 2026-10-01)\nDo the thing.\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    "# Bugs\n## Open\n### Broken (reported 2026-10-02)\nRepro.\n## Fixed\n_None._\n",
+  );
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"), "# Questions\n## Open\n_None yet._\n");
+  const block = renderBacklogIndexBlock(dir);
+  assert.ok(block);
+  assert.match(block, /<backlog-index>/);
+  assert.match(block, /PLANS\.md ## Planned\n- 3-4: Ship it/);
+  assert.match(block, /BUGS\.md ## Open\n- 3-4: Broken/);
+  assert.doesNotMatch(block, /## Done/);
+  assert.doesNotMatch(block, /## Fixed/);
+});
+
+test("renderBacklogIndexBlock returns undefined when the actionable sections are empty", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n");
+  assert.equal(renderBacklogIndexBlock(dir), undefined);
 });

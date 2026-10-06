@@ -11,7 +11,7 @@ import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
-import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
+import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
@@ -52,6 +52,10 @@ export function assembleTickPrompt(
   // verify command instead of asserting npm. Detection is a handful of stat calls — a
   // per-tick recompute keeps a config edit live on the next tick.
   const check = detectBuildCheck(root, config) ?? undefined;
+  // The bounded actionable index every tick and director prompt carries, replacing the model's
+  // per-tick `grep -n '^##'` map of the backlog files (BUGS.md 2026-10-06). One render serves
+  // both branches; the worktree starts at main at tick start, so the ranges hold then.
+  const backlogIndex = renderBacklogIndexBlock(root);
   let prompt: string;
   let userPrompt: string | null = null;
   if (role === DIRECTOR_ROLE) {
@@ -62,7 +66,7 @@ export function assembleTickPrompt(
     const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
     if (!dequeued) return null;
     userPrompt = stripNotBeforeMarker(dequeued);
-    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief);
+    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex);
   } else {
     // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
     // is its entire find-something-to-do text and the title identifies it in the prompt.
@@ -110,6 +114,7 @@ export function assembleTickPrompt(
       digest,
       coverage,
       backlogStructure,
+      backlogIndex,
       extraInstructions: config.roles[role]?.instructions,
       check,
       briefFile: brief,

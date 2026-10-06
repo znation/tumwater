@@ -50,7 +50,8 @@ export const ROLES: Role[] = [
     tier: "default",
     title: "feature implementer",
     find: `Implement the SINGLE most valuable planned feature in PLANS.md that is not yet implemented.
-   1. List the entries cheaply: \`grep -n '^##' PLANS.md\` gives every heading with its line number.
+   1. The prompt's <backlog-index> block lists PLANS.md's \`## Planned\` entries with each
+      entry's line range; read the one you pick by that range.
    2. Pick one entry under \`## Planned\`, preferring ones marked ready or with a written plan.
       Skip plans whose entry carries a Refused note, and skip entries already carrying a
       **Needs review …** note. If PLANS.md is empty or everything is done, there is nothing to do.
@@ -74,9 +75,9 @@ than forcing it.`,
     tier: "default",
     title: "bug fixer",
     find: `Fix the SINGLE most important open bug in BUGS.md.
-   1. \`grep -n '^##' BUGS.md\` lists the headings. Pick one entry under \`## Open\` and read only
-      that entry's line range. Skip BUGS.md entries carrying a Refused note: when every open entry
-      carries one, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
+   1. The prompt's <backlog-index> block lists BUGS.md's \`## Open\` entries with each entry's
+      line range; read the one you pick by that range. Skip BUGS.md entries carrying a Refused
+      note: when every open entry carries one, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
       latent-bug hunt at the end instead.
    2. Reproduce it if possible: a failing test or a scratch script.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
@@ -103,7 +104,8 @@ within that budget, there is nothing to do.`,
     tier: "strong",
     title: "feature planner",
     find: `Write ONE concrete plan for what this project needs next. Do not implement it.
-   1. Check what is already waiting: \`grep -n '^##' PLANS.md\` lists every entry.
+   1. Check what is already waiting: the prompt's <backlog-index> block lists PLANS.md's
+      \`## Planned\` entries with each entry's line range.
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently landable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.
@@ -360,9 +362,9 @@ arguments, config files, environment), and rough edges you meet while running th
 You edit only markdown — never source.
 
 Reading the backlog files: you may see PLANS.md and BUGS.md whole, but do it cheaply — they run to
-hundreds of KB. Map each file first with \`grep -n '^##' FILE\` (every section and entry heading
-with its line number), read the Planned and Open sections in full, and read Done/Fixed entries by
-line range only where your move needs their bodies. For the compression moves below, an entry's
+hundreds of KB. The prompt's <backlog-index> block lists every Planned and Open entry with its
+line range; read those from it, and read Done/Fixed entries by line range only where your move
+needs their bodies. For the compression moves below, an entry's
 heading line plus a \`grep -n\` for its landing citation (the "tick N (\`<sha>\`)" form) supply
 everything the one-line record needs — except a Fixed entry's \`gap:\` suffix, which comes from the
 \`**Validation gap:**\` line in its body: read that one line (\`grep -n 'Validation gap' FILE\`), not

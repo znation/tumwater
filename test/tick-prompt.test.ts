@@ -123,6 +123,38 @@ test("a director's prompt is built from the dequeued request, returned as userPr
   assert.match(result.prompt, /prefer no third-party deps/);
 });
 
+test("a role tick prompt injects the rendered <backlog-index> block from the primary checkout", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    "# Bugs\n## Open\n### Real bug (reported 2026-10-06)\nRepro.\n## Fixed\n_None._\n",
+  );
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "bugfix",
+    state: state({ role: "bugfix" }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /<backlog-index>/);
+  assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
+});
+
+test("a director prompt carries the same <backlog-index> block", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
+  enqueuePrompt(dir, "what should we build next");
+  const result = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: DIRECTOR_ROLE,
+    state: state({ role: DIRECTOR_ROLE }),
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /<backlog-index>/);
+  assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
+});
+
 test("an unknown role throws — the fleet cannot run a prompt with no task", () => {
   assert.throws(
     () =>

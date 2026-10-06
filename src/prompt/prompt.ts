@@ -124,11 +124,12 @@ Rules for this run:
 Orientation — read this much before choosing your task, and no more:
 - First read the project brief (${briefFile}) in full, plus QUESTIONS.md when present.
 - PLANS.md and BUGS.md grow without bound — never read them wholesale. Their actionable
-  sections come first (## Planned before ## Done; ## Open before ## Fixed): map the headings
-  with \`grep -n '^##' FILE\`, then read only the entries you need by line range — Planned plus
-  recent Done entries, Open plus recent Fixed ones. Consult older history via git log or a
-  targeted read only when a specific entry is needed. The steward role is the exception: it
-  curates those files and must see them whole.
+  sections come first (## Planned before ## Done; ## Open before ## Fixed): the prompt's
+  <backlog-index> block lists the actionable entries (PLANS.md ## Planned, BUGS.md ## Open,
+  QUESTIONS.md ## Open) with each entry's 1-based line range, so read only the entries you need
+  by those ranges — Planned plus recent Done entries, Open plus recent Fixed ones. Consult older
+  history via git log or a targeted read only when a specific entry is needed. The steward role
+  is the exception: it curates those files and must see them whole.
 - Your worktree starts clean at main, and the harness checks main's build before code roles
   start: do not run the build or test suite just to establish a baseline. Run it after your
   change, or when the task itself needs its output (reproducing a failure, counting the suite).
@@ -215,6 +216,8 @@ interface TickPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
+  /** Rendered actionable backlog index (see backlog-structure.ts); every tick carries it. */
+  backlogIndex?: string;
   extraInstructions?: string;
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`,
    * PLANS.md "Per-role prompts 1/2"), rendered as a labeled block near the top of the task text.
@@ -253,7 +256,7 @@ deadlines from it; never infer the date from the repo.`,
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, extraInstructions, check, briefFile, today, userRequest } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, extraInstructions, check, briefFile, today, userRequest } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt, today),
@@ -268,6 +271,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (coverage) parts.push(coverage);
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
+  if (backlogIndex) parts.push(backlogIndex);
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(commonRules(check, briefFile, role.scope).trim());
@@ -286,6 +290,9 @@ export function buildDirectorPrompt(
   briefFile?: string,
   /** Today's local date (see dateLine). Omitted: todayStamp() — tests pin it. */
   today?: string,
+  /** Rendered actionable backlog index (see backlog-structure.ts); the tick prompt carries it
+   * too, so the director can route against the same bounded view of the backlog. */
+  backlogIndex?: string,
 ): string {
   const parts = [
     `You are the "director" loop of tumwater, an autonomous development harness. The user steers
@@ -294,6 +301,7 @@ implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     ...sharedPreamble(initialPrompt, today),
   ];
   if (principles) parts.push(principlesBlock(principles));
+  if (backlogIndex) parts.push(backlogIndex);
   parts.push(`The user's request:\n<user-request>\n${userPrompt.trim()}\n</user-request>`);
   parts.push(
     `Interpret the request as a project-level command and route it — do NOT implement substantial

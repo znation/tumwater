@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
-import { headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
+import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text/text.js";
 
@@ -12,7 +12,9 @@ import { collapseWhitespace } from "../text/text.js";
  * `## Planned` invites re-implementation. It also holds the gate-side companion (part 4/4):
  * a change that ADDS a new plan directly under `## Done` is rejected before it can land.
  * Detection is pure markdown reading — no pi, no git — so the clean loop's tick prompt,
- * `tumwater doctor`, and every landing check can all afford it every time. */
+ * `tumwater doctor`, and every landing check can all afford it every time. It also renders the
+ * compact actionable backlog index every loop prompt carries (renderBacklogIndexBlock below),
+ * the bounded replacement for the per-tick heading map. */
 
 /** A `### ` heading the detector found filed under the wrong `## ` section of PLANS.md:
  * `title` is the full heading text (verbatim, dates and all), `section` the section it sits
@@ -211,4 +213,95 @@ that scan one section, so no loop sees them as backlog work:
 <backlog-structure>
 ${listed}
 </backlog-structure>`;
+}
+
+/** One actionable backlog entry with the 1-based line range its text occupies in its file:
+ * `start` is its `### ` heading line, `end` the last line before the next heading (or the
+ * file's last line). */
+interface ActionableEntryRange {
+  title: string;
+  start: number;
+  end: number;
+}
+
+/** The entries under one `## <sectionTitle>` section with their 1-based line ranges, in file
+ * order: the fence-aware walk sectionLines and parseEntryDetails share, carrying the line
+ * numbers neither returns. An entry starts at a `### ` line and ends at the line before the
+ * next `### ` or `## ` line (or EOF) — the same boundary parseEntryDetails closes bodies on —
+ * so a loop reading lines `start`..`end` sees exactly the entry's heading and body. A `## ` or
+ * `### ` line inside a fenced code block is body content, never a boundary, through
+ * backlog-md.ts's shared fenceTracker. */
+export function actionableEntryRanges(md: string, sectionTitle: string): ActionableEntryRange[] {
+  const lines = md.split("\n");
+  const fenced = fenceTracker();
+  const entries: ActionableEntryRange[] = [];
+  let inSection = false;
+  let open: { title: string; start: number } | null = null;
+  // `end` is the 1-based number of the entry's last body line, i.e. the 0-based index of the
+  // next heading; at EOF it is the line count (the last 1-based line number).
+  const close = (end: number): void => {
+    if (open !== null) entries.push({ title: open.title, start: open.start, end });
+    open = null;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (fenced.inside(line)) continue;
+    if (line.startsWith("## ")) {
+      close(i);
+      inSection = line.slice(3).trim() === sectionTitle;
+    } else if (inSection && line.startsWith("### ")) {
+      close(i);
+      open = { title: line.slice(4).trim(), start: i + 1 };
+    }
+  }
+  // A document ending in a newline splits to a trailing "" element; the last real line is one
+  // less, so an entry running to EOF ends there instead of at the phantom line.
+  close(md.endsWith("\n") ? lines.length - 1 : lines.length);
+  return entries;
+}
+
+/** Max characters an index title keeps before a trailing ellipsis, so one very long BUGS.md
+ * heading cannot dominate the block. */
+const INDEX_TITLE_MAX = 160;
+
+/** The index title for a `### ` heading: its stamp suffix (`(reported … 2026-…)`) removed via
+ * the shared ENTRY_STAMP_META_RE and whitespace collapsed, clipped to INDEX_TITLE_MAX with a
+ * trailing ellipsis. */
+function indexTitle(heading: string): string {
+  const title = collapseWhitespace(heading.replace(ENTRY_STAMP_META_RE, ""));
+  return title.length <= INDEX_TITLE_MAX ? title : `${title.slice(0, INDEX_TITLE_MAX - 1)}…`;
+}
+
+/** The files and sections the actionable index covers, in the order loops read them: PLANS.md's
+ * planned features, BUGS.md's open bugs, QUESTIONS.md's open questions. */
+const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
+  { file: "PLANS.md", section: "Planned" },
+  { file: "BUGS.md", section: "Open" },
+  { file: "QUESTIONS.md", section: "Open" },
+];
+
+/** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
+ * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
+ * checkout `root`. Replaces the per-tick `grep -n '^##'` heading map, whose pattern also matched
+ * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
+ * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
+ * has entries, so an empty backlog leaves the prompt unchanged. */
+export function renderBacklogIndexBlock(root: string): string | undefined {
+  const listed: string[] = [];
+  for (const { file, section } of INDEX_SECTIONS) {
+    // readTextOrNull never throws — an unreadable file arrives as null, its own contract.
+    const md = readTextOrNull(path.join(root, file));
+    if (md === null) continue; // Absent or unreadable file: contributes nothing.
+    const entries = actionableEntryRanges(md, section);
+    if (entries.length === 0) continue;
+    listed.push(`${file} ## ${section}`);
+    for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+  }
+  if (listed.length === 0) return undefined;
+  return `Actionable backlog — each entry with the 1-based line range it occupies in its file.
+Read the entries you need by those ranges; the files' closed sections make a full heading map
+grow with every tick.
+<backlog-index>
+${listed.join("\n")}
+</backlog-index>`;
 }

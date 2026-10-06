@@ -38,41 +38,6 @@ mistyped provider suffix passed validation, which today only rejects an empty pr
 half.
 
 
-### The orientation rule maps BUGS.md with `grep -n '^##'`, which also matches every `###` entry title, so about a third of ticks pull BUGS.md's closed history (108 KB today; 204 of its 207 titles are Fixed or Verified) and re-send it on every remaining turn: 4.4% of all fleet prompt tokens (found by human log analysis 2026-10-06)
-Symptom: the pi sessions of Oct 2–6 hold 421 `grep -n '^##' … BUGS.md` calls in 215 ticks
-(of 684), averaging 8.9k chars of output each. Every later turn of the tick re-sends that
-output, which adds up to 19.9M of 452M prompt tokens (input + cache read + cache write), or
-4.4%. That is about 7× what pruning superseded file reads would save (0.6%, measured on the
-same sessions). Today the command prints 108,348 chars: 207 `###` titles, of which 204 sit
-under ## Fixed or ## Verified, many over 500 chars each. bounded-output cuts this to a 16k
-head+tail. The head holds the 3 Open entries and the first Fixed titles, and the tail holds
-the oldest Verified ones, so almost none of what the model sees is actionable.
-Reproduce: in the repo, `grep -n '^##' BUGS.md | wc -c` prints ~108k, and
-`grep -n '^##' BUGS.md | grep -c ':### '` prints 207. Any role's tick prompt (`tumwater role
-bugfix`) carries the Orientation bullet that asks for exactly this command.
-Cause: src/prompt/prompt.ts `commonRules`, Orientation section: "map the headings with
-`grep -n '^##' FILE`". The pattern `^##` also matches `###`. Closed entries stay in BUGS.md
-under ## Fixed and ## Verified, each with a one-line title that carries the whole finding.
-PLANS.md's map is still small (2.7k chars) only because the steward compresses ## Done, and
-BUGS.md's closed sections are not compressed the same way.
-Suggested fix: have the harness render the actionable index, instead of asking the model to
-build it each tick.
-- Add a pure renderer next to `renderBacklogStructureBlock` (src/backlog/backlog-structure.ts),
-  reusing `parseEntryDetails`/`fenceAwareHeadingLines` (src/backlog/backlog-md.ts).
-- It lists the entries under PLANS.md ## Planned, BUGS.md ## Open and QUESTIONS.md ## Open.
-  Each line gives the title, with its stamp suffix stripped via `ENTRY_STAMP_META_RE` and
-  clipped to ~160 chars, plus the entry's 1-based line range (heading to the line before the
-  next heading).
-- Inject it into every tick and director prompt as a `<backlog-index>` block
-  (src/tick/tick-prompt.ts → `buildTickPrompt`/`buildDirectorPrompt`). The prompt is
-  assembled from main, and the worktree starts at main, so the ranges hold at tick start.
-- Rewrite the Orientation bullet: read the needed entries by those ranges (grep for a
-  title if it has moved), and never map the files' headings with grep. The steward keeps
-  whole-file access.
-
-Expected state: no tick or director prompt contains `grep -n '^##'`; the index for today's
-files is under ~3 KB; and no `###` title from ## Fixed, ## Done or ## Verified appears in it.
-
 ### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06)
 Symptom: there were two pricing errors, in opposite directions.
 - **Overcount (DeepSeek).** tumwater.json's `model` is `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`,
@@ -280,6 +245,43 @@ Suggested fix: freeze the base the reviewer compares against.
 
 **Fix:** the gate now resolves the change's base once (`changeBaseRev`, src/review/review.ts) when it builds the reviewer's diff, and hands that SHA to `buildReviewPrompt` (src/gates/gate-prompts.ts). The prompt names it in the diff heading and in step 1 — "It is measured against <sha>; other loops land on main while you review, so compare against <sha>, never against `main`, and treat the provided diff as authoritative for which files this change touches" — and points the truncated-diff fallback at the same SHA instead of `main`. test/gate-prompts.test.ts pins the named base, the never-`main` instruction, the authoritative-diff sentence, and the fallback SHA; a review prompt that omits a base keeps the generic wording. The optional timing tripwire was not added.
 **Validation gap:** no-observability — the gate recorded neither the base SHA the reviewer compared against nor the main tip at review time, so confirming the 12 rejections required reconstructing the merge and review timelines by hand from the raw log; the scratch-repo repro reproduces the two-dot diff shape but not the mis-attribution itself.
+
+### The orientation rule maps BUGS.md with `grep -n '^##'`, which also matches every `###` entry title, so about a third of ticks pull BUGS.md's closed history (108 KB today; 204 of its 207 titles are Fixed or Verified) and re-send it on every remaining turn: 4.4% of all fleet prompt tokens (found by human log analysis 2026-10-06, fixed 2026-10-06 by perf loop)
+Symptom: the pi sessions of Oct 2–6 hold 421 `grep -n '^##' … BUGS.md` calls in 215 ticks
+(of 684), averaging 8.9k chars of output each. Every later turn of the tick re-sends that
+output, which adds up to 19.9M of 452M prompt tokens (input + cache read + cache write), or
+4.4%. That is about 7× what pruning superseded file reads would save (0.6%, measured on the
+same sessions). Today the command prints 108,348 chars: 207 `###` titles, of which 204 sit
+under ## Fixed or ## Verified, many over 500 chars each. bounded-output cuts this to a 16k
+head+tail. The head holds the 3 Open entries and the first Fixed titles, and the tail holds
+the oldest Verified ones, so almost none of what the model sees is actionable.
+Reproduce: in the repo, `grep -n '^##' BUGS.md | wc -c` prints ~108k, and
+`grep -n '^##' BUGS.md | grep -c ':### '` prints 207. Any role's tick prompt (`tumwater role
+bugfix`) carries the Orientation bullet that asks for exactly this command.
+Cause: src/prompt/prompt.ts `commonRules`, Orientation section: "map the headings with
+`grep -n '^##' FILE`". The pattern `^##` also matches `###`. Closed entries stay in BUGS.md
+under ## Fixed and ## Verified, each with a one-line title that carries the whole finding.
+PLANS.md's map is still small (2.7k chars) only because the steward compresses ## Done, and
+BUGS.md's closed sections are not compressed the same way.
+Suggested fix: have the harness render the actionable index, instead of asking the model to
+build it each tick.
+- Add a pure renderer next to `renderBacklogStructureBlock` (src/backlog/backlog-structure.ts),
+  reusing `parseEntryDetails`/`fenceAwareHeadingLines` (src/backlog/backlog-md.ts).
+- It lists the entries under PLANS.md ## Planned, BUGS.md ## Open and QUESTIONS.md ## Open.
+  Each line gives the title, with its stamp suffix stripped via `ENTRY_STAMP_META_RE` and
+  clipped to ~160 chars, plus the entry's 1-based line range (heading to the line before the
+  next heading).
+- Inject it into every tick and director prompt as a `<backlog-index>` block
+  (src/tick/tick-prompt.ts → `buildTickPrompt`/`buildDirectorPrompt`). The prompt is
+  assembled from main, and the worktree starts at main, so the ranges hold at tick start.
+- Rewrite the Orientation bullet: read the needed entries by those ranges (grep for a
+  title if it has moved), and never map the files' headings with grep. The steward keeps
+  whole-file access.
+
+**Fix:** the harness now renders the index itself. `actionableEntryRanges` (src/backlog/backlog-structure.ts) returns each entry under a named section with its 1-based start and end line — the fence-aware walk, ending at the line before the next heading — and `renderBacklogIndexBlock` renders the entries under PLANS.md ## Planned, BUGS.md ## Open, and QUESTIONS.md ## Open as a `<backlog-index>` block, stripping each title's stamp suffix via `ENTRY_STAMP_META_RE` and clipping it to 160 chars. `assembleTickPrompt` (src/tick/tick-prompt.ts) injects the block into every tick and director prompt, and the Orientation bullet (src/prompt/prompt.ts, `commonRules`) now points at it instead of the wide heading map; the feature, bugfix, plan, and steward find texts (src/roles/role-catalog.ts) read their entries by those ranges.
+
+Expected state: every tick and director prompt carries a `<backlog-index>` block when the actionable sections hold at least one entry, listing only PLANS.md ## Planned, BUGS.md ## Open, and QUESTIONS.md ## Open; no prompt asks the model to map the headings with grep; the index for today's files is under ~3 KB; and no `### ` title from ## Fixed, ## Done or ## Verified appears in it.
+**Validation gap:** none — a prompt-construction change; test/backlog-structure.test.ts pins the line ranges, stamp stripping, and closed-section exclusion, and test/tick-prompt.test.ts pins the block's injection into role and director prompts.
 
 ### The failure digest's loss ranking silently drops restart-aborted tick_ends: the fold's own `CLUSTERED_RESULTS` names `aborted` as attributable to a cause, but the branch only takes one when `tick_end.error` is a non-empty string, and a shutdown abort leaves none — so the aborted hours sit inside the error-class cells itemized nowhere (found by telemetry loop 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the 2026-10-06 digest's Outcome table counts four aborts (feature 2, bugfix 2) and the time-and-spend table prices them, but the loss ranking itemizes 16 causes (5 shown plus `_+11 more loss causes by time not listed_`) and none is an abort. Those 16 decompose as four review-rejected roles (feature 0.9 h, bugfix 0.3 h, organize 0.2 h, dry), eleven no_change roles, and one error cluster (feature's 2× `400 … model_not_supported`) — the aborts' wall-clock is the bulk of the 0.3 h gap between the feature/bugfix error-class cells (1.1 h and 0.4 h) and their itemized causes. Unlike an `error`/`main_red` event with no text, which the error-clusters section already itemizes under a `(no error text recorded)` placeholder (BUGS.md 2026-09-30), an aborted tick_end has no fallback row, and when a stray earlier failure left `lastError` set it is instead clustered under that unrelated cause.
