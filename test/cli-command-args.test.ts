@@ -7,6 +7,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { expectFail, expectOk } from "./exit-capture.js";
@@ -387,6 +389,30 @@ test("parsePromptArgs --file: reads the file as the prompt, composes with --role
   // A duplicate fails like the other valued flags; the equals form names a real flag.
   assert.match(expectFail(() => parsePromptArgs(["--file", file, "--file", file])).stderr, /--file may only be given once/);
   assert.match(expectFail(() => parsePromptArgs(["--file=" + file])).stderr, /`--file <path>`/);
+});
+
+test("parsePromptArgs --file -: a failed stdin read names the error, not the empty-prompt wording", () => {
+  // A read of fd 0 that throws (here: fd 0 is a directory, which errors on read) must
+  // surface the underlying error message; folding it into "is empty" would misreport a
+  // broken pipe as a deliberately blank prompt. The read happens in this process's fd 0,
+  // so it runs in a child whose stdin is a directory fd; fail() exits 1 with the message.
+  const dir = tmpdir();
+  const fd = fs.openSync(dir, "r");
+  try {
+    const mod = fileURLToPath(new URL("../src/cli/cli-command-args.js", import.meta.url));
+    const script = "import(process.env.MOD).then((m) => m.parsePromptArgs(['--file', '-']));";
+    const r = spawnSync(process.execPath, ["-e", script], {
+      env: { ...process.env, MOD: mod },
+      stdio: [fd, "pipe", "pipe"],
+      encoding: "utf8",
+      timeout: 20_000,
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /cannot read prompt file "-" \(stdin\): /);
+    assert.ok(!r.stderr.includes("is empty"));
+  } finally {
+    fs.closeSync(fd);
+  }
 });
 
 test("parseInitArgs --template: never prompt content, validated against the catalog, composes with --file", () => {
