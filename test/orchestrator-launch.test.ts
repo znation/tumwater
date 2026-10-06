@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import { launchDueTicks } from "../src/orchestrator-launch.js";
 import type { LoopRunner } from "../src/loop.js";
 import type { LoopState } from "../src/loop-state.js";
-import type { TickOutcome } from "../src/tick-outcome.js";
+import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { FleetGateStates } from "../src/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/fallback-breaker.js";
 import { Semaphore } from "../src/semaphore.js";

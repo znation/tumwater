@@ -22,7 +22,7 @@ import type { LoopRunner } from "./loop.js";
 import { fairOrder } from "./scheduling.js";
 import type { Semaphore } from "./semaphore.js";
 import { DIRECTOR_ROLE, roleTier } from "./roles.js";
-import { runTimedRoleTick } from "./tick-timing.js";
+import { runTimedRoleTick } from "./tick/tick-timing.js";
 
 /** How many recent work-bearing tick durations the p75 sample keeps (drainInFlightWork's
  * HANDOFF_LANDING_WINDOW_MS input): the drain window tracks recent tick pace, not all-time

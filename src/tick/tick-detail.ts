@@ -4,15 +4,15 @@
  * convention beside history-data.ts / history.ts), so the CLI and the GUI History drill-down
  * serve the same payload; this module renders it for the terminal. Read-only over the event
  * log, stdout only. */
-import { fail, say, sayJson } from "./cli-output.js";
-import { parseCountFlag } from "./cli-args.js";
-import { knownRoleIdsCached } from "./config/config.js";
-import { readTickRows } from "./history-data.js";
+import { fail, say, sayJson } from "../cli-output.js";
+import { parseCountFlag } from "../cli-args.js";
+import { knownRoleIdsCached } from "../config/config.js";
+import { readTickRows } from "../history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
-import { formatEvent } from "./event-format.js";
-import { unknownRoleMessage } from "./roles.js";
-import { shortSpanPhrase } from "./phrases.js";
-import { shortSha } from "./format.js";
+import { formatEvent } from "../event-format.js";
+import { unknownRoleMessage } from "../roles.js";
+import { shortSpanPhrase } from "../phrases.js";
+import { shortSha } from "../format.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart

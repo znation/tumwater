@@ -1,6 +1,6 @@
 import { deleteRef, headOf, patchId, removeLandWorktree } from "../git.js";
 import { landingRefName } from "../paths.js";
-import { recordReview } from "../tick-apply.js";
+import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState } from "../loop-state.js";
 import { unverifiedTreeOutcome } from "../build-check-events.js";
 import { checkFailureReasons } from "../build-check-report.js";
@@ -10,7 +10,7 @@ import { mainRedPhrase } from "../phrases.js";
 import type { BuildCheckOutcome } from "../build-check.js";
 import type { BuildCheck } from "../build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickResult } from "../tick-outcome.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 import type { LoopState } from "../loop-state.js";
 import type { LanderContext } from "./landing-core.js";
 

@@ -20,7 +20,7 @@ test("outcome classes fold per role: landed, no_change, error; unknown results c
       ev({ ts: 100, result: "changed", durationMs: 1000, costUsd: 0.1 }),
       ev({ ts: 200, result: "no_change", durationMs: 500, costUsd: 0.2 }),
       ev({ ts: 300, result: "error", durationMs: 2000, costUsd: 0.3 }),
-      // A result the class map does not know (a new src/tick-outcome.ts value the fold has
+      // A result the class map does not know (a new src/tick/tick-outcome.ts value the fold has
       // not been taught) is skipped by costing, not guessed into a class.
       ev({ ts: 400, result: "mystery", durationMs: 9000, costUsd: 9 }),
     ],

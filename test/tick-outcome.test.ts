@@ -3,9 +3,9 @@ import { test } from "node:test";
 // Side-effect imports: both modules hold only shared types, so no value import anywhere
 // reaches their compiled JS and the suite's coverage table shows them as never loaded. The
 // imports here load the modules, and the registry below pins the vocabulary they name.
-import "../src/tick-outcome.js";
+import "../src/tick/tick-outcome.js";
 import "../src/pi/pi-run-result.js";
-import type { TickResult } from "../src/tick-outcome.js";
+import type { TickResult } from "../src/tick/tick-outcome.js";
 
 // The TickResult vocabulary (tick-outcome.ts), one human meaning each. `Record<TickResult, …>`
 // makes this a two-way exhaustive pin at compile time: adding a TickResult without a row here

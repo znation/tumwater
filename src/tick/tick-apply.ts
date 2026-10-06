@@ -1,13 +1,13 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { LandingEntry } from "./landing/landing-queue.js";
-import type { LoopState } from "./loop-state.js";
-import { DIRECTOR_ROLE, OBSERVER_ROLES } from "./roles.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { LandingEntry } from "../landing/landing-queue.js";
+import type { LoopState } from "../loop-state.js";
+import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles.js";
 import {
   ERROR_BACKOFF,
   pushYieldOutcome,
   scheduleAtMinInterval,
   scheduleBackoff,
-} from "./backoff.js";
+} from "../backoff.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 
 /** The state machine that applies a finished tick or landing to the loop's state: the

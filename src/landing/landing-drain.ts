@@ -13,7 +13,7 @@ import {
   type VettedLanding,
 } from "./landing-pipeline.js";
 import { drainVetting, LANDING_TIER } from "./landing-vetting.js";
-import type { TickResult } from "../tick-outcome.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 
 /** The tier the merge slot's conflict-resolution runs wait at: ahead of any vet parked for a
  * permit, because the merge is the one serial step every queued change waits on. (Nothing that

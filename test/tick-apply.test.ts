@@ -5,7 +5,7 @@ import {
   applyTickOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
-} from "../src/tick-apply.js";
+} from "../src/tick/tick-apply.js";
 import {
   clearBackoff,
   ERROR_BACKOFF,
@@ -20,7 +20,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles.js";
 import { todayStamp } from "../src/budget.js";
 
-/** The per-loop scheduling policy's tests (src/tick-apply.ts for the outcome application,
+/** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
  * src/backoff.ts for the clock): what a finished tick or landing does to the loop's state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of

@@ -35,7 +35,7 @@ import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor.js";
 import { renderDoctor } from "./doctor-render.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
-import { cmdTick, TICK_USAGE } from "./tick-detail.js";
+import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
 import { cmdReport } from "./report.js";
 
 import { didYouMean } from "./suggest.js";

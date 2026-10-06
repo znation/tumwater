@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { planTickStart } from "../src/tick-resume.js";
+import { planTickStart } from "../src/tick/tick-resume.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox.js";
 import type { LoopState } from "../src/loop-state.js";

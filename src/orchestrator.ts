@@ -39,7 +39,7 @@ import {
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
   sleepInterruptible,
-} from "./tick-timing.js";
+} from "./tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gate-polls.js";
 
 const POLL_MS = 2000;

@@ -19,7 +19,7 @@ import { LoopRunner } from "../src/loop.js";
 import { fakePiIdle } from "./fake-pi.js";
 import { waitFor } from "./wait.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { TickResult } from "../src/tick-outcome.js";
+import type { TickResult } from "../src/tick/tick-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around

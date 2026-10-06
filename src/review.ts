@@ -13,7 +13,7 @@ import { readPrinciples } from "./principles.js";
 import { buildReviewPrompt } from "./gate-prompts.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
-import { recordReview } from "./tick-apply.js";
+import { recordReview } from "./tick/tick-apply.js";
 import { saveLoopState } from "./loop-state.js";
 import { shortSha } from "./format.js";
 import { type SleepSampler } from "./host-sleep.js";

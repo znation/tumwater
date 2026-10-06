@@ -1,9 +1,9 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
-import type { PiRunResult } from "./pi/pi-run-result.js";
-import type { LoopState } from "./loop-state.js";
-import { commitAll } from "./git.js";
-import { changedFiles } from "./git-diff.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
+import type { LoopState } from "../loop-state.js";
+import { commitAll } from "../git.js";
+import { changedFiles } from "../git-diff.js";
 import {
   buildCommitMessage,
   commitTrailer,
@@ -12,10 +12,10 @@ import {
   fallbackSummary,
   formatCommitBody,
   stampedSubject,
-} from "./commit-message.js";
-import { logEvent } from "./events.js";
-import { enqueueLanding } from "./landing/landing-queue.js";
-import { recordFlow } from "./qa-coverage.js";
+} from "../commit-message.js";
+import { logEvent } from "../events.js";
+import { enqueueLanding } from "../landing/landing-queue.js";
+import { recordFlow } from "../qa-coverage.js";
 
 /** The pi reply's qa flow record, as extracted by reply-contract.ts's extractFlow (its type is
  * module-private there; this mirrors it so the tick staging needs no export from it). */

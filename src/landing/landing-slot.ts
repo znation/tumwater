@@ -1,8 +1,8 @@
 import type { LandingEntry } from "./landing-queue.js";
-import type { TickResult } from "../tick-outcome.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop-state.js";
-import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick-apply.js";
+import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { saveLoopState } from "../loop-state.js";
 import { logEvent, warnEvent } from "../events.js";
 import { dropLanding } from "./landing-queue.js";
@@ -266,7 +266,7 @@ export function writeLandingOutcome(
   applyLandingOutcome(state, result, entry);
   saveLoopState(root, state);
   // One warning per error episode, landing side (BUGS.md 2026-09-30): a review rejection
-  // feeds the same streak the tick-side warn reads (src/tick-finalize.ts), but it resolves
+  // feeds the same streak the tick-side warn reads (src/tick/tick-finalize.ts), but it resolves
   // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
   if (result === "rejected" && (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
     warnEvent(

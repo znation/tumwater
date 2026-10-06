@@ -13,7 +13,7 @@ import { runScopedBuildCheck } from "./build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check-report.js";
 import { sleptPhrase, unverifiedTreeOutcome } from "./build-check-events.js";
 import { sampleSleepClock } from "./host-sleep.js";
-import { recordReview } from "./tick-apply.js";
+import { recordReview } from "./tick/tick-apply.js";
 import { mainRedPhrase } from "./phrases.js";
 import { shortSha } from "./format.js";
 import { checkWaitStage, setLandingStage } from "./landing/landing-slot.js";

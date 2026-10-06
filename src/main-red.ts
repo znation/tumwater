@@ -7,7 +7,7 @@ import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build-che
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gate-prompts.js";
 import { logEvent, warnEvent } from "./events.js";
-import type { TickOutcome } from "./tick-outcome.js";
+import type { TickOutcome } from "./tick/tick-outcome.js";
 import type { TumwaterConfig } from "./config/config-schema.js";
 import { errorMessage } from "./text.js";
 import { mainRedPhrase } from "./phrases.js";

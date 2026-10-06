@@ -1,17 +1,17 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { LoopState } from "./loop-state.js";
-import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "./roles.js";
-import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "./inbox.js";
-import { stripNotBeforeMarker } from "./prompt-not-before.js";
-import { briefFile, readInitialPrompt } from "./readme.js";
-import { buildDirectorPrompt, buildTickPrompt } from "./prompt.js";
-import { readPrinciples } from "./principles.js";
-import { buildCutOffNote } from "./prompt-followup.js";
-import { buildConflictDiscardNote, buildRejectedReviewNote } from "./gate-prompts.js";
-import { detectBuildCheck } from "./build-check-detect.js";
-import { telemetryDigest } from "./telemetry-digest.js";
-import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
-import { renderBacklogStructureBlock } from "./backlog-structure.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { LoopState } from "../loop-state.js";
+import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles.js";
+import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox.js";
+import { stripNotBeforeMarker } from "../prompt-not-before.js";
+import { briefFile, readInitialPrompt } from "../readme.js";
+import { buildDirectorPrompt, buildTickPrompt } from "../prompt.js";
+import { readPrinciples } from "../principles.js";
+import { buildCutOffNote } from "../prompt-followup.js";
+import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gate-prompts.js";
+import { detectBuildCheck } from "../build-check-detect.js";
+import { telemetryDigest } from "../telemetry-digest.js";
+import { readQaCoverage, renderCoverageBlock } from "../qa-coverage.js";
+import { renderBacklogStructureBlock } from "../backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */

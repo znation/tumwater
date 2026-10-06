@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { finalizeTick } from "../src/tick-finalize.js";
+import { finalizeTick } from "../src/tick/tick-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop-state.js";
-import { TickUsage } from "../src/tick-usage.js";
-import type { TickOutcome } from "../src/tick-outcome.js";
+import { TickUsage } from "../src/tick/tick-usage.js";
+import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import {
   applyLandingOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
-} from "../src/tick-apply.js";
+} from "../src/tick/tick-apply.js";
 import type { LoopState } from "../src/loop-state.js";
 import { initializedRepo } from "./repo-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";

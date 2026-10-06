@@ -1,9 +1,9 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import { saveLoopState, type LoopState } from "./loop-state.js";
-import { branchHead } from "./git.js";
-import { logEvent, warnEvent } from "./events.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { saveLoopState, type LoopState } from "../loop-state.js";
+import { branchHead } from "../git.js";
+import { logEvent, warnEvent } from "../events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
-import { restoreMidTickWake } from "./backoff.js";
+import { restoreMidTickWake } from "../backoff.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { TickUsage } from "./tick-usage.js";
 
@@ -26,7 +26,7 @@ interface FinalizeTickDeps {
   /** When this tick started (the runner stamps state.lastTickStartedAt at tick start);
    * captured once so the tick_end span measures the tick's own wall clock. */
   tickStartedAt: number;
-  /** The tick's usage accumulator (src/tick-usage.ts): its costUsd rides the tick_end event. */
+  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the tick_end event. */
   usage: TickUsage;
   /** The landing failure this tick's leftover recovery is retrying, if any (set by
    * finishRecoveryTick); undefined for a tick that ran no leftover recovery. */
@@ -63,7 +63,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
   // the previous value rather than waking on "main moved" to nowhere.
   s.lastMainHead = (await branchHead(root, mainBranch)) ?? s.lastMainHead;
-  // Record the outcome on state and schedule the next run (see src/tick-apply.ts for the
+  // Record the outcome on state and schedule the next run (see src/tick/tick-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
   applyTickOutcome(s, config, role, outcome);
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome

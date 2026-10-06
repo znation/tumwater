@@ -1,7 +1,7 @@
 import { DIRECTOR_ROLE } from "../roles.js";
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "../status-data.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick-apply.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
 import { quietWindowEnd } from "../quiet-hours.js";

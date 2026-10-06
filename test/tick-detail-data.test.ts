@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the tick-detail collector (src/tick-detail-data.ts): the payload
+/** Unit-tier coverage for the tick-detail collector (src/tick/tick-detail-data.ts): the payload
  * behind `tumwater tick <role> <n>` and the GUI's History drill-down. Until now its block
  * rules ran in no test — the nearest relatives (history-data.test.ts pins the row view,
  * event-read.test.ts the pairing helpers) never exercise readTickDetail itself, so a slip in
@@ -11,7 +11,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events.js";
-import { readTickDetail } from "../src/tick-detail-data.js";
+import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeEvents } from "./log-fixtures.js";
 

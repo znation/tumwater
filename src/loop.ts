@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "./config/config-schema.js";
-import type { TickOutcome, TickResult } from "./tick-outcome.js";
+import type { TickOutcome, TickResult } from "./tick/tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "./pi/pi.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
@@ -7,22 +7,22 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events.js";
-import { assembleTickPrompt } from "./tick-prompt.js";
+import { assembleTickPrompt } from "./tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole } from "./config/config-views.js";
-import { planTickStart } from "./tick-resume.js";
+import { planTickStart } from "./tick/tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
-import { stageTickLanding } from "./tick-stage.js";
+import { stageTickLanding } from "./tick/tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { clearBackoff } from "./backoff.js";
-import { finalizeTick } from "./tick-finalize.js";
-import { TickUsage } from "./tick-usage.js";
+import { finalizeTick } from "./tick/tick-finalize.js";
+import { TickUsage } from "./tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "./main-red.js";
 import { mergeToMain } from "./landing/landing-merge.js";
-import { resolveTickVerdict } from "./tick-verdict.js";
+import { resolveTickVerdict } from "./tick/tick-verdict.js";
 import { extractFlow, type FlowResult } from "./reply-contract.js";
 import { landingRefName } from "./paths.js";
 import { errorMessage } from "./text.js";
@@ -37,19 +37,19 @@ export class LoopRunner {
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
-   * src/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
+   * src/tick/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
    * runner (src/fleet-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
     return this.usage.lastRateLimit;
   }
-  /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick-usage.ts): the
+  /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick/tick-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
    * kinds the fleet-wide hold groups storms by (src/fleet-hold.ts). Same runner surface,
    * same consumer. */
   get lastBackendFailure(): { at: number; kind: BackendFailureKind } | undefined {
     return this.usage.lastBackendFailure;
   }
-  /** Per-tick and lifetime usage accounting (src/tick-usage.ts): the turns/cost windows the
+  /** Per-tick and lifetime usage accounting (src/tick/tick-usage.ts): the turns/cost windows the
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
@@ -202,7 +202,7 @@ export class LoopRunner {
     return this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal;
   }
 
-  /** Assemble this tick's prompt via src/tick-prompt.ts (the prompt-content concern lives
+  /** Assemble this tick's prompt via src/tick/tick-prompt.ts (the prompt-content concern lives
    * there); the dequeued user request — the director's, or a per-role one — rides back so the
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
    * the loop has nothing to run (an empty director inbox); a role loop's assembly never
@@ -321,7 +321,7 @@ export class LoopRunner {
   }
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
-   * accounting itself lives in TickUsage.fold (src/tick-usage.ts); this keeps the once-per-run
+   * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
    * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
    * wiring (src/landing/landing-slot.ts) reach them. */
   private foldUsage(run: PiRunResult): void {
@@ -413,7 +413,7 @@ export class LoopRunner {
     }
     // Everything after the pi run — the outcome folds, the main-head read, next-run
     // scheduling, the episode warnings, and the tick_end event — is the tick's per-result
-    // bookkeeping policy, not runner lifecycle: it lives in src/tick-finalize.ts, which owns
+    // bookkeeping policy, not runner lifecycle: it lives in src/tick/tick-finalize.ts, which owns
     // the ordering (the folds land on state before the schedule, the head read happens while
     // `running` is still true) and the per-episode warning crossings. The tick number and
     // start time are passed through as captured above: both must describe the tick tick_start
@@ -438,7 +438,7 @@ export class LoopRunner {
   private async runTick(): Promise<TickOutcome> {
     const s = this.state;
     // How this tick starts — resume the interrupted session or run fresh, and which prompt —
-    // is the resume policy, not runner mechanics: it lives in src/tick-resume.ts, which also
+    // is the resume policy, not runner mechanics: it lives in src/tick/tick-resume.ts, which also
     // consumes the resume flags and reclaims the interrupted tick's re-queued prompt. A null
     // plan means the loop has nothing to run.
     const plan = planTickStart({
@@ -516,7 +516,7 @@ export class LoopRunner {
   /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
    * each half reads on its own screen — the setup above ends at the pi return. The verdict
    * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change)
-   * lives in resolveTickVerdict (src/tick-verdict.ts), and the fulfillable path — staging —
+   * lives in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
    * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
    * loops) so unfulfilled outcomes can re-queue it; `flow` is the qa observer's FLOW line
    * (null for every other role). */
@@ -529,7 +529,7 @@ export class LoopRunner {
   ): Promise<TickOutcome> {
     // Everything that decides the run left nothing landable — abort, config request,
     // quiet kill, timeout, refusal, failure without changes, no change — lives in
-    // resolveTickVerdict (src/tick-verdict.ts); null means the run IS fulfillable.
+    // resolveTickVerdict (src/tick/tick-verdict.ts); null means the run IS fulfillable.
     const verdict = await resolveTickVerdict({
       ...this.loopCtx,
       state: this.state,
@@ -545,7 +545,7 @@ export class LoopRunner {
     });
     if (verdict) return verdict;
 
-    // The commit is pinned and the worktree is free (src/tick-stage.ts): stage it for the
+    // The commit is pinned and the worktree is free (src/tick/tick-stage.ts): stage it for the
     // land queue and END the tick — the orchestrator drains the queue on its single landing
     // slot, outside the author semaphore, so this slot is free the moment the work is
     // committed (plans/merge-queue.md 3/5). Staging derives the commit message from the reply's

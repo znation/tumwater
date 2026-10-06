@@ -3,7 +3,7 @@
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
  * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
-import type { TickResult } from "./tick-outcome.js";
+import type { TickResult } from "./tick/tick-outcome.js";
 import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
 import { type SpendCell } from "./time-spend.js";
 import { plural } from "./phrases.js";
@@ -15,7 +15,7 @@ import { eventsRotationLabel } from "./events.js";
 const ROLES_SHOWN = 4;
 
 /** Every `TickResult`, mapped to its display/column rank. Typed as a `Record<TickResult, …>`,
- * so adding a result to src/tick-outcome.ts and forgetting it here is a compile error — the
+ * so adding a result to src/tick/tick-outcome.ts and forgetting it here is a compile error — the
  * vocabulary is closed by the type checker, not by a comment. Order runs from "made progress"
  * through "did not" to the operator/shutdown outcomes. */
 const RESULT_ORDER: Record<TickResult, number> = {
@@ -89,7 +89,7 @@ function hoursPhrase(ms: number): string {
 
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only
  * with the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed
- * by src/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed
+ * by src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed
  * by the cut), and every free string is capped — cluster examples at 120 chars (plus a
  * `… (+N chars)` cut marker when truncated, so a marked cut can never read as a complete
  * message — BUGS.md 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4 names plus a remainder count, and any loop id

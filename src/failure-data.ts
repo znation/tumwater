@@ -8,7 +8,7 @@
  * in failure-cluster.ts, shared with the error-storm reducer. The time-and-spend fold —
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
-import type { TickResult } from "./tick-outcome.js";
+import type { TickResult } from "./tick/tick-outcome.js";
 import { readWindowEvents } from "./event-window.js";
 import { eventDayKey, eventRole } from "./event-read.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";

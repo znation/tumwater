@@ -1,22 +1,22 @@
 /** The UNFULFILLED-VERDICT half of a finished pi run's classification (see loop.ts's
  * handlePiResult for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
- * with the staging handoff (src/tick-stage.ts) staying on the runner. Returns null when the
+ * with the staging handoff (src/tick/tick-stage.ts) staying on the runner. Returns null when the
  * run IS fulfillable, which loop.ts answers with stageTickLanding. Split out of loop.ts so the
  * runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
-import type { LoopState } from "./loop-state.js";
-import type { PiRunResult } from "./pi/pi-run-result.js";
+import type { LoopState } from "../loop-state.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TickOutcome } from "./tick-outcome.js";
-import type { FlowResult } from "./reply-contract.js";
-import type { PendingPrompt } from "./pending-prompt.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import { isDirty } from "./git.js";
-import { applyConfigRequest } from "./config/config-write.js";
-import { diagnoseNoChange } from "./no-change.js";
-import { handleRefusal, refusalContradiction } from "./refusal.js";
-import { extractSummary } from "./commit-message.js";
-import { recordFlow } from "./qa-coverage.js";
+import type { FlowResult } from "../reply-contract.js";
+import type { PendingPrompt } from "../pending-prompt.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import { isDirty } from "../git.js";
+import { applyConfigRequest } from "../config/config-write.js";
+import { diagnoseNoChange } from "../no-change.js";
+import { handleRefusal, refusalContradiction } from "../refusal.js";
+import { extractSummary } from "../commit-message.js";
+import { recordFlow } from "../qa-coverage.js";
 
 interface TickVerdictContext {
   root: string;

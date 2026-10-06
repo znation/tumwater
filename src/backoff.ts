@@ -1,6 +1,6 @@
 import type { BackoffConfig } from "./config/config-schema.js";
 import type { LoopState } from "./loop-state.js";
-import type { TickResult } from "./tick-outcome.js";
+import type { TickResult } from "./tick/tick-outcome.js";
 
 /** The loop's CLOCK policy: when a loop runs next — the wake semantics (clearBackoff,
  * restoreMidTickWake), the backoff ladders (nextBackoffSeconds, scheduleBackoff, the error
@@ -35,7 +35,7 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
  * overwrites the wake: lastTickEndedAt is re-stamped past wokenAt (so the min-gap exemption
  * reads stale) and nextRunAt is scheduled a fresh gap or backoff out — the operator's "try
  * again now" silently waits out the whole interval. Called by the tick's end-save after
- * applyTickOutcome (src/tick-apply.ts), it re-applies the demand exactly like a wake
+ * applyTickOutcome (src/tick/tick-apply.ts), it re-applies the demand exactly like a wake
  * arriving one poll after the tick ended: backoff cleared, nextRunAt now, wokenAt re-armed
  * past the new gap window's opening. Returns whether a mid-tick wake was found. Two cases
  * deliberately do not restore: a wake older than the tick's start was already honored by the
@@ -64,7 +64,7 @@ const YIELD_LAND = "L";
 const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", "quiet_killed"]);
 
 /** Record one finished tick's result on the state's yield ring, oldest entries falling off
- * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome (src/tick-apply.ts)
+ * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome (src/tick/tick-apply.ts)
  * beside the streak counters. */
 export function pushYieldOutcome(s: LoopState, result: TickResult): void {
   if (UNCOUNTED_RESULTS.has(result)) return;

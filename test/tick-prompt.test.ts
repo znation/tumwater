@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { assembleTickPrompt } from "../src/tick-prompt.js";
+import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
@@ -12,7 +12,7 @@ import { qaCoveragePath } from "../src/paths.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-/** Unit coverage for src/tick-prompt.ts — the assembly of what one loop's tick actually runs
+/** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
  * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
  * (empty inbox = nothing to run), the qa/telemetry evidence blocks, custom roles, and the

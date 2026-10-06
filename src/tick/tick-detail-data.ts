@@ -6,10 +6,10 @@
  * Every datum rides the events the harness already writes, so this is a distillation of the
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
  * CLI command — lives in tick-detail.ts. */
-import { HISTORY_SCAN_MAX_EVENTS } from "./history-data.js";
-import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "./event-read.js";
-import { usageText } from "./event-format.js";
-import type { HarnessEvent } from "./events.js";
+import { HISTORY_SCAN_MAX_EVENTS } from "../history-data.js";
+import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../event-read.js";
+import { usageText } from "../event-format.js";
+import type { HarnessEvent } from "../events.js";
 
 /** One tick's full event trail, as `tumwater tick <role> <n>` and the GUI's tick drill-down
  * serve it. `startTs`/`endTs` bound the tick's block: `endTs` is null while the tick is in

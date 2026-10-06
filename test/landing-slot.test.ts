@@ -26,7 +26,7 @@ import { landingRefName, landingStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
-import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick-apply.js";
+import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/event-read.js";
 import { LoopRunner } from "../src/loop.js";
