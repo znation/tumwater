@@ -13,7 +13,7 @@ import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { loadConfigSafe } from "../config/config.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
-import { collectReport } from "../report-data.js";
+import { collectReport } from "../report/report-data.js";
 import { collectFailureReport } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { readTranscript } from "../ui/transcript.js";

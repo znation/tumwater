@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectReport, collectReportSince, type ReportData } from "../src/report-data.js";
-import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report-render.js";
+import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
+import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";

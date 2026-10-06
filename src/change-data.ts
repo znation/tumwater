@@ -4,7 +4,7 @@
  * dirty state. Everything is read-only git plumbing already used elsewhere — this module only
  * wires the pieces into one operator view, degrading like `report` does when the fleet (or
  * just this role's worktree) does not exist yet. Lives beside the other collectors
- * (report-data.ts, history-data.ts, status-data.ts); the terminal rendering of these views is
+ * (src/report/report-data.ts, history-data.ts, status-data.ts); the terminal rendering of these views is
  * change-render.ts's half. */
 
 import { knownRoleIdsCached, loadConfigSafe } from "./config/config.js";

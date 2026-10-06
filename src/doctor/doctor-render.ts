@@ -1,6 +1,6 @@
 /** Terminal rendering of `tumwater doctor`'s report: a header line, one line per check
  * (level, name, detail), and the verdict. Lives in the CLI output layer beside the other
- * terminal renderers (report-render.ts, backlog-render.ts); the report's shape is the core
+ * terminal renderers (src/report/report-render.ts, backlog-render.ts); the report's shape is the core
  * contract in doctor-checks.ts. Pure function of the report — no I/O. */
 import type { DoctorReport } from "./doctor-checks.js";
 

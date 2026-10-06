@@ -1,20 +1,20 @@
 /** Collection half of the usage report: read the harness's event log and backlog history over
  * a window of local calendar days and distill it into a `ReportData` — per-day tick/token/
  * commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and BUGS.md.
- * The Markdown rendering of this data lives in report-render.ts, a pure function of it; the split
+ * The Markdown rendering of this data lives in src/report/report-render.ts, a pure function of it; the split
  * mirrors the failure report's (src/failure/failure-data.ts / src/failure/failure-render.ts) and keeps "what happened"
  * (window math, aggregation, bounds) apart from "how it prints" (bars, cell wording), which
  * change for different reasons — and keeps core data collection out of the presentation
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
-import { readTextOrNull, statOrNull } from "./files.js";
-import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./events/event-window.js";
-import { eventDayKey, eventRole, eventUsage, parseEventLine } from "./events/event-read.js";
-import { readCompleteLines } from "./tail.js";
-import { eventsLogPath } from "./paths.js";
-import type { HarnessEvent } from "./events/events.js";
-import { entryDates } from "./backlog/backlog-md.js";
-import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
+import { readTextOrNull, statOrNull } from "../files.js";
+import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
+import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
+import { readCompleteLines } from "../tail.js";
+import { eventsLogPath } from "../paths.js";
+import type { HarnessEvent } from "../events/events.js";
+import { entryDates } from "../backlog/backlog-md.js";
+import { dayAt, dayKey, dayWindow, formatDate } from "../datetime.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window

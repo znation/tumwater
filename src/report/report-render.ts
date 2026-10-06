@@ -1,17 +1,17 @@
-/** The usage report's Markdown render: turn a collected `ReportData` (report-data.ts) into the
+/** The usage report's Markdown render: turn a collected `ReportData` (src/report/report-data.ts) into the
  * bounded Markdown the CLI prints and the TUI usage pane reuses (pure function of the data —
  * no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The
- * command half (cmdReport) lives in report.ts. It sits at the top level beside
+ * command half (cmdReport) lives in report.ts, alongside it in src/report/. report-render.ts sits beside
  * src/failure/failure-render.ts — the failure digest's Markdown render of the same shape — because it is
  * a pure render with no ink or UI dependency, and core modules (rank.ts, history-data.ts)
  * name it in their contracts. */
 import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
-import { rankCountEntries } from "./rank.js";
-import { compactTokens, usd } from "./format.js";
-import { durationLabel } from "./cli/cli-args.js";
-import { formatTimestamp, reportWindow } from "./datetime.js";
-import { eventsRotationLabel } from "./events/events.js";
-import { SPARSE_WINDOW_NOTE } from "./events/event-window.js";
+import { rankCountEntries } from "../rank.js";
+import { compactTokens, usd } from "../format.js";
+import { durationLabel } from "../cli/cli-args.js";
+import { formatTimestamp, reportWindow } from "../datetime.js";
+import { eventsRotationLabel } from "../events/events.js";
+import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */

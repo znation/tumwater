@@ -3,7 +3,7 @@
  * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
  * (sectionEntries and the root-based plannedPlans/openBugs/openQuestions family): consumers who
  * only parse markdown (question-commands.ts's QUESTIONS.md walks, backlog-write.ts's section
- * appends, backlog-structure.ts's stranding checks, report-data.ts's Done/Fixed date scan)
+ * appends, backlog-structure.ts's stranding checks, src/report/report-data.ts's Done/Fixed date scan)
  * import from here without reaching the file/cache layer, and a caller who parses a string never
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
  * never disagree about what is body content. */
@@ -81,7 +81,7 @@ export function fencedHeadingTitle(
  * `## ` line inside a fenced code block (entries quote markdown templates and shell traces) is
  * body content, never a boundary. The single home of "where a section starts and ends" — every
  * reader of a `## ` section (backlog entry parsing here, the usage report's Done/Fixed date
- * scan in src/report-data.ts, and backlog-structure.ts's strandedPlanEntries) walks its
+ * scan in src/report/report-data.ts, and backlog-structure.ts's strandedPlanEntries) walks its
  * section through this, so independent readers can never disagree about the boundary. */
 export function sectionLines(md: string, sectionTitle: string): string[] {
   const lines: string[] = [];

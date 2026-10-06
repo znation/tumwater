@@ -1,4 +1,4 @@
-// --- report-data.ts: collectReport's memoized event-log fold ---
+// --- src/report/report-data.ts: collectReport's memoized event-log fold ---
 // collectReport caches the event-log half of the day report per (root, fromKey) so a
 // dashboard re-fetching /api/report every poll folds only appended log lines instead of
 // re-reading the whole window. These tests pin the contract the memo must hold: a warm call
@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectReport } from "../src/report-data.js";
+import { collectReport } from "../src/report/report-data.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 

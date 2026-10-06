@@ -36,7 +36,7 @@ import { runDoctor } from "./doctor/doctor.js";
 import { renderDoctor } from "./doctor/doctor-render.js";
 import { cmdHistory, HISTORY_GREP_VALUE_ERROR } from "./history.js";
 import { cmdTick, TICK_USAGE } from "./tick/tick-detail.js";
-import { cmdReport } from "./report.js";
+import { cmdReport } from "./report/report.js";
 
 import { didYouMean } from "./suggest.js";
 import { errorMessage } from "./text.js";

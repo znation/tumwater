@@ -1,5 +1,5 @@
 /** The renderer behind `tumwater diff` — the operator-facing text for the change views the
- * collector (change-data.ts, beside report-data.ts and history-data.ts) gathers: one role's
+ * collector (change-data.ts, beside src/report/report-data.ts and history-data.ts) gathers: one role's
  * pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 

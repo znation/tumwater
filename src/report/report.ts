@@ -1,17 +1,17 @@
 /** The usage report's CLI command half (cmdReport): parse the flags, collect through
- * report-data.ts / src/failure/failure-data.ts, and print. The Markdown renderers live in the pure-render
- * modules they pair with: report-render.ts (top level, beside src/failure/failure-render.ts) and
+ * src/report/report-data.ts / src/failure/failure-data.ts, and print. The Markdown renderers live in the pure-render
+ * modules they pair with: src/report/report-render.ts (beside src/failure/failure-render.ts) and
  * src/failure/failure-render.ts. */
 import { collectReport, collectReportSince } from "./report-data.js";
-import { collectFailureReport } from "./failure/failure-data.js";
-import { renderFailureMarkdown } from "./failure/failure-render.js";
+import { collectFailureReport } from "../failure/failure-data.js";
+import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
-import { say, sayJson, sayJsonOrRender } from "./cli/cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli/cli-args.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "./events/event-window.js";
+import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
+import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli/cli-args.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags,
- * collect through report-data.ts / src/failure/failure-data.ts, and print. Unknown-args rejection and the
+ * collect through src/report/report-data.ts / src/failure/failure-data.ts, and print. Unknown-args rejection and the
  * no-ready-repo-gate decision stay in cli.ts's case, like every other command's. */
 export async function cmdReport(root: string, args: string[]): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a

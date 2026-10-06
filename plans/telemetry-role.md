@@ -99,7 +99,7 @@ depends on 1/2 of that series for the scheduling half).
    capped. The tick prompt is ~8k tokens
    today; the digest must remain a rounding error against it, not a second window filler.
 3. **One backwards scan, one home.** The windowed, early-stopping backwards read of events.jsonl
-   exists today as `readWindowEvents` in `src/report.ts` and moves to core `src/events/event-window.ts`
+   exists today as `readWindowEvents` in `src/report/report.ts` and moves to core `src/events/event-window.ts`
    (Refined 2026-09-18). Both the usage report and the failure digest import it rather than
    re-deriving it — one reader of the log's tail, as `parseEventLine` is one parser.
 4. **The role writes only BUGS.md**, and only its `## Open` section (plus the normal `_None yet._`
@@ -117,13 +117,13 @@ depends on 1/2 of that series for the scheduling half).
   "imported only by each other and `cli.ts`") plus the codebase's zero core→ui imports
   (`grep -rn 'from "./ui/' src/*.ts` names only `cli.ts`) make a core→ui import a violation.
 - `src/events/event-window.ts` — new **core** module: `readWindowEvents` and its `oldestCompleteLine`
-  helper move here from `src/report.ts`, along with `REPORT_DEFAULT_DAYS` / `REPORT_MAX_DAYS`,
+  helper move here from `src/report/report.ts`, along with `REPORT_DEFAULT_DAYS` / `REPORT_MAX_DAYS`,
   and `readWindowEvents`'s return widens to `{ events: HarnessEvent[]; coversFullWindow: boolean }`:
   the flag is true when the backwards scan early-stopped on a line older than the window (proof
   the retained log reaches back past the window's start) and false when it consumed the file's
   start. The caller cannot otherwise tell "the log was rotated inside the window" from "the fleet
   was idle that week" — both leave the oldest returned event later than the window start.
-  `src/report.ts` imports the reader and re-exports the two constants (so `cli.ts`'s and the
+  `src/report/report.ts` imports the reader and re-exports the two constants (so `cli.ts`'s and the
   tests' imports are unchanged); `collectReport`'s single call site adapts with a destructure (one
   line). Invariant 3's one reader is preserved and both the usage report and the digest share it.
 - `src/cli.ts` — `tumwater report --failures [--days N]`, sharing `REPORT_DEFAULT_DAYS` /
@@ -249,7 +249,7 @@ test/roles.test.ts:44–62; the slow-clock assertion and its `continue` list at
 test/config.test.ts:36–52.
 
 **Defect.** 2/2 injects the digest in `tickPrompt()`, which is core; 1/2 placed the digest in
-`src/ui/failure-report.ts` and left the reader in `src/report.ts`. Core→ui has no precedent
+`src/ui/failure-report.ts` and left the reader in `src/report/report.ts`. Core→ui has no precedent
 (only `cli.ts` imports `src/ui/`), so the injection as written would either violate the
 presentation-layer boundary or duplicate the log reader. Resolved by the core placement in the
 Shape section above.
@@ -270,7 +270,7 @@ no-backoff behavior needs no loop test. No design question remains open.
 The digest and the CLI flag are in. `src/failure-report.ts` (core) holds
 `collectFailureReport` / `renderFailureMarkdown` / `normalizeClusterKey` /
 `TELEMETRY_DIGEST_DAYS = 1`; `src/events/event-window.ts` (core) holds the moved windowed tail read
-and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`; `src/report.ts`
+and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`; `src/report/report.ts`
 imports the reader and re-exports the constants; `src/cli.ts` adds the valueless `--failures`
 flag. `test/failure-report.test.ts` is new. `npm test`: 1,118 pass.
 
