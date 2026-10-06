@@ -6,7 +6,7 @@
  * zero-byte grace, the warned-call set) and exposes the flags the run's close handler reads
  * back; pi.ts feeds the parser live through the deps accessors, so no notification path is
  * needed when events land. */
-import { commandBuffersOutput } from "../command-shape.js";
+import { bufferedCommandStallMs, commandBuffersOutput } from "../command-shape.js";
 import type { OpenToolCall } from "./pi-event-line.js";
 
 interface PiWatchdogDeps {
@@ -119,13 +119,28 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
                 if (warnedStalledCalls.has(call.id)) continue;
                 // A command whose stdout is piped or redirected holds its bytes away from
                 // pi until it exits, so "no output" there is the prescribed shape, not
-                // evidence of a hang — warn only when silence could mean something
-                // (BUGS.md 2026-09-28: the tick prompt tells every loop to pipe its
-                // verification through `tail`, and the resulting false alarms were the
-                // digest's top warning cluster, drowning real hangs). The call's full raw
-                // command is classified, never its display label: the label truncates at
-                // 32 chars, so an operator past that point would be invisible there.
-                if (commandBuffersOutput(call.command || call.label)) continue;
+                // evidence of a hang (BUGS.md 2026-09-28: the tick prompt tells every loop
+                // to pipe its verification through `tail`, and the resulting false alarms
+                // were the digest's top warning cluster, drowning real hangs). Silence is
+                // not the only way such a command hangs, though: a leaked grandchild
+                // holding the pipe open keeps `tail` from ever seeing EOF (BUGS.md
+                // 2026-10-06: a 19-min piped verify raised no warning and held a restart's
+                // drain). So a buffered call gets a wall-clock threshold instead — open
+                // far longer than any healthy verify run — with the duration, not
+                // silence, named as the evidence. The call's full raw command is
+                // classified, never its display label: the label truncates at 32 chars,
+                // so an operator past that point would be invisible there.
+                if (commandBuffersOutput(call.command || call.label)) {
+                  const openMs = Date.now() - call.lastActivityAt;
+                  const bufferedStallMs = bufferedCommandStallMs(deps.stallMs);
+                  if (openMs >= bufferedStallMs) {
+                    warnedStalledCalls.add(call.id);
+                    deps.onToolCallStalled?.(
+                      `tool call stalled: ${call.label} — no exit for ${Math.round(openMs / 60_000)}m`,
+                    );
+                  }
+                  continue;
+                }
                 const silentMs = Date.now() - call.lastActivityAt;
                 if (silentMs >= deps.stallMs) {
                   warnedStalledCalls.add(call.id);

@@ -254,6 +254,45 @@ test("a stalled tool call warns once with the command named", async (t) => {
   }
 });
 
+// A piped command's silence is the prescribed shape (BUGS.md 2026-09-28), but the command
+// itself can hang past any healthy verify run's duration (BUGS.md 2026-10-06): there the
+// evidence is wall-clock, and the warning names the open duration instead of silence.
+
+test("a piped command open past the buffered wall-clock threshold warns even though it holds its bytes", async (t) => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  // The quiet watchdog must not win the race: its silence window (2× quiet after the first
+  // byte, no progress events in this fixture) must outlast the 10-min buffered floor.
+  config.quietTimeoutSeconds = 700;
+  config.toolCallStallSeconds = 300;
+  const warnings: string[] = [];
+  const clock = watchdogClock(t);
+  const restore = fakePi(
+    [
+      `printf '%s\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName: "bash", args: { command: "sleep 999 | tail -1" } })}'`,
+      `exec sleep 30`, // exec so SIGTERM reaches the sleeper directly and the run ends promptly
+    ].join("\n"),
+  );
+  try {
+    const opts = runPiFixture(dir, { config, onToolCallStalled: (message) => warnings.push(message) });
+    const run = runPi(opts);
+    await waitForLogLines(opts.rawLogFile, "tool_execution_start");
+    clock.advance(610_000); // past the 10-minute buffered wall-clock floor (max(2×300s, 10 min))
+    assert.equal(warnings.length, 1, "the buffered hang is warned once, by duration");
+    assert.match(
+      warnings[0] ?? "",
+      /^tool call stalled: bash sleep 999 \| tail -1 — no exit for \d+m/,
+      "a buffered call's warning names the open duration, not silence",
+    );
+    clock.advance(900_000); // total 1510s > 2× quiet: the quiet watchdog still owns the kill
+    const result = await run;
+    assert.equal(result.quietKilled, true, "the kill remains the quiet watchdog's");
+    assert.equal(warnings.length, 1, "one warning per stalled call — not one per interval tick");
+  } finally {
+    restore();
+  }
+});
+
 test("no stall warning when the tool call ends before the threshold", async () => {
   const dir = tmpdir();
   const config = defaultConfig();

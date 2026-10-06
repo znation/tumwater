@@ -1,5 +1,5 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi/pi-event-line.js";
-import { commandBuffersOutput } from "../command-shape.js";
+import { bufferedCommandStallMs, commandBuffersOutput } from "../command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
@@ -253,8 +253,10 @@ export function toolCallStallMs(root: string): number {
  * for tests (freshly fed lines stamp Date.now(), so nothing is stalled right after parsing).
  * A call whose stdout is piped or redirected holds its bytes away from pi until it exits
  * (BUGS.md 2026-09-28: the tick prompt itself prescribes `npm run test 2>&1 | tail`), so its
- * silence is the prescribed shape and never evidence of a hang — the same classification
- * runPi's warning applies, so the state cell and the event feed agree on "stalled". */
+ * silence is the prescribed shape and never evidence of a hang — but the command can still
+ * hang (a leaked grandchild holding the pipe open), so past a wall-clock threshold it is
+ * flagged anyway (BUGS.md 2026-10-06), the same threshold runPi's warning applies so the
+ * state cell and the event feed agree on "stalled". */
 export function stalledToolLabel(
   open: LiveProgress["openToolCalls"],
   now = Date.now(),
@@ -262,7 +264,10 @@ export function stalledToolLabel(
 ): string | undefined {
   if (!open || stallMs <= 0) return undefined;
   for (const call of open) {
-    if (commandBuffersOutput(call.command || call.label)) continue;
+    if (commandBuffersOutput(call.command || call.label)) {
+      if (now - call.lastActivityAt >= bufferedCommandStallMs(stallMs)) return call.label;
+      continue;
+    }
     if (now - call.lastActivityAt >= stallMs) return call.label;
   }
   return undefined;

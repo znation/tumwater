@@ -472,18 +472,25 @@ test("stalledToolLabel names the first call silent past the threshold", () => {
   );
 });
 
-test("stalledToolLabel skips a call whose stdout is piped or redirected — the tick prompt's own verify shape", () => {
+test("a piped call is flagged past the buffered wall-clock threshold, not the silence one", () => {
   const now = Date.now();
   // End-to-end through the parser: the full raw command rides the open call (BUGS.md
-  // 2026-09-28, the dashboard half of the piped-stall fix), and a piped verify command
-  // silent past the threshold is the prescribed shape, never a stall.
+  // 2026-09-28, the dashboard half of the piped-stall fix). Silence past the threshold is
+  // still the prescribed shape for a piped verify command (its bytes are held away from pi),
+  // but a piped command can also hang (BUGS.md 2026-10-06: a leaked grandchild keeps `tail`
+  // from ever seeing EOF), so past the buffered wall-clock threshold it is flagged anyway.
   const piped = "npm run test 2>&1 | tail -8";
   const p = parseProgress([SESSION, toolStart("bash", { command: piped })], 0);
   assert.equal(p.openToolCalls?.[0]?.command, piped, "the full raw command rides the open call");
   assert.equal(
     stalledToolLabel(p.openToolCalls, now + 301_000),
     undefined,
-    "a piped verify command silent past the threshold is not flagged",
+    "silence past the silence threshold is not evidence for a buffered command",
+  );
+  assert.equal(
+    stalledToolLabel(p.openToolCalls, now + 601_000),
+    "bash npm run test 2>&1 | tail -8",
+    "open past the 10-minute buffered wall-clock floor is a stall",
   );
   // The display label truncates at 32 chars, so a redirect operator can live entirely past
   // it — the classification must read the raw command, never the label.
@@ -491,6 +498,11 @@ test("stalledToolLabel skips a call whose stdout is piped or redirected — the 
   const p2 = parseProgress([SESSION, toolStart("bash", { command: redirected })], 0);
   assert.ok(!p2.openToolCalls?.[0]?.label.includes(">"), "the redirect is invisible in the label");
   assert.equal(stalledToolLabel(p2.openToolCalls, now + 301_000), undefined);
+  assert.equal(
+    stalledToolLabel(p2.openToolCalls, now + 601_000),
+    "bash npm run test --run ./test/long-…",
+    "a redirected command is flagged past the buffered wall-clock threshold too",
+  );
   // A bare (live-stdout) call beside a silent piped one is still named.
   const both = parseProgress(
     [

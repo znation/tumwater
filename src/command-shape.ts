@@ -12,6 +12,19 @@
  * the other stays silent (BUGS.md 2026-09-28): src/pi/pi.ts's runPi stall warning and
  * src/ui/progress-data.ts's in-flight stall flag. Extracted from src/pi/pi.ts on 2026-09-30 — a pure
  * string classifier the UI should not need the process spawner for. */
+/** The wall-clock stall threshold for a command that buffers its output, in ms. Silence
+ * carries no hang signal for a piped or redirected command (commandBuffersOutput), but the
+ * command itself can still hang — a leaked grandchild holding the pipe open keeps `tail`
+ * from ever seeing EOF (BUGS.md 2026-10-06: a 19-min piped verify raised no warning). There
+ * the evidence is duration, not silence: the call has been open far longer than any healthy
+ * verify run. The threshold is max(two silence windows, 10 minutes) — the 10-minute floor
+ * keeps a legitimately slow suite below it while a hang surfaces within one quiet window of
+ * the default. Both stall surfaces (runPi's warning, the dashboard's flag) must apply the
+ * same threshold or one cries wolf while the other stays silent. */
+export function bufferedCommandStallMs(stallMs: number): number {
+  return Math.max(stallMs * 2, 10 * 60_000);
+}
+
 export function commandBuffersOutput(command: string): boolean {
   if (command.includes("|")) return true; // a pipeline stage buffers until its upstream exits
   for (let i = 0; i < command.length; i++) {
