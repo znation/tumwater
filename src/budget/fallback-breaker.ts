@@ -229,18 +229,28 @@ export function fallbackProbeDuePair(map: FallbackBreakerMap, now: number): stri
   return null;
 }
 
+/** Apply `f` to the pair's entry when the map holds one, else return the map unchanged — the
+ * shape shared by the map-scoped breaker transitions below (claim/hand back a probe, fold a
+ * tick): a pair the resolution dropped has no judgment to touch. */
+function withPair(
+  map: FallbackBreakerMap,
+  pair: string,
+  f: (b: FallbackBreaker) => FallbackBreaker,
+): FallbackBreakerMap {
+  const b = map[pair];
+  return b === undefined ? map : { ...map, [pair]: f(b) };
+}
+
 /** Admit the half-open probe on the pair named `pair`: marks its entry probing until the
  * evidence fold hears back. An absent entry is left alone (nothing to probe). */
 export function startFallbackProbeAt(map: FallbackBreakerMap, pair: string): FallbackBreakerMap {
-  const b = map[pair];
-  return b === undefined ? map : { ...map, [pair]: startFallbackProbe(b) };
+  return withPair(map, pair, startFallbackProbe);
 }
 
 /** Hand an admitted probe's claim back on the pair named `pair` — it never ran (see
  * abandonFallbackProbe). An absent entry is left alone. */
 export function abandonFallbackProbeAt(map: FallbackBreakerMap, pair: string): FallbackBreakerMap {
-  const b = map[pair];
-  return b === undefined ? map : { ...map, [pair]: abandonFallbackProbe(b) };
+  return withPair(map, pair, abandonFallbackProbe);
 }
 
 /** Fold one finished role tick into the pair named `pair`'s entry (recordFallbackTick's
@@ -255,6 +265,5 @@ export function recordFallbackTickAt(
   now: number,
   policy: FallbackBreakerPolicy = FALLBACK_BREAKER_POLICY,
 ): FallbackBreakerMap {
-  const b = map[pair];
-  return b === undefined ? map : { ...map, [pair]: recordFallbackTick(b, ranOn, result, probe, now, policy) };
+  return withPair(map, pair, (b) => recordFallbackTick(b, ranOn, result, probe, now, policy));
 }
