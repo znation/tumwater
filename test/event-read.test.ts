@@ -6,8 +6,8 @@ import {
   eventUsage,
   tickSpanMs,
   tickStartMap,
-} from "../src/event-read.js";
-import type { HarnessEvent } from "../src/events.js";
+} from "../src/events/event-read.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { dayKey as dayKeyOracle } from "./oracles.js";
 
 // The read side's per-event query conventions — eventRole, eventUsage, eventDayKey, and the

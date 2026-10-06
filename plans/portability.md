@@ -418,7 +418,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
   caller, not a new helper.
 - src/loop.ts — call it in the director tick path between the pi run and `commitAll`; log
   `config_changed` (applied names) or `warning` (rejected/ignored).
-- src/types.ts — `config_changed` in `HarnessEvent["type"]`; src/ui/event-format.ts — one case.
+- src/types.ts — `config_changed` in `HarnessEvent["type"]`; src/events/event-format.ts — one case.
 - src/prompt/prompt.ts — replace the director-only "you may edit tumwater.json" exception with the
   request-file contract and a worked example; COMMON_RULES' blanket "never touch the .tumwater
   directory or tumwater.json" now applies to the director too, with no exception.
@@ -431,7 +431,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
   file and no longer grants a tumwater.json exception), test/event-format.test.ts.
 
 **Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/types.ts, src/prompt/prompt.ts,
-src/ui/event-format.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts,
+src/events/event-format.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts,
 test/prompt.test.ts, test/event-format.test.ts.
 
 **Acceptance criteria.**
@@ -461,7 +461,7 @@ key, so the default governs and dropping the entry takes effect here. The direct
 is verbatim at src/prompt/prompt.ts:223–226 and the custom-loop routing bullet at src/prompt/prompt.ts:210–215;
 COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" is src/prompt/prompt.ts:84 (resume
 variant :318). `HarnessEvent["type"]` is src/types.ts:258–294 with the index signature, and
-src/ui/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
+src/events/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
 exported (src/config-validation.ts:99) and already validates `customLoops` (name regex, collision,
 uniqueness, task cap) at :227–263. `isDirty` is `git status --porcelain` (src/git.ts:185) and
 `commitAll` is `git add -A` (src/git.ts:361); `DIRECTOR_ROLE` is src/roles.ts:11. `.gitignore`
@@ -542,7 +542,7 @@ exist.
 
 Corrections (pinned in place):
 
-1. **`config_changed` already exists — src/types.ts and src/ui/event-format.ts LEAVE Files
+1. **`config_changed` already exists — src/types.ts and src/events/event-format.ts LEAVE Files
    touched.** `HarnessEvent` has `"config_changed"` (src/types.ts:305) and event-format.ts renders
    it (:133–137). Better still, the applied case needs NO new emission anywhere: the orchestrator's
    ~2 s reload already diffs the previous live config against the new one and logs one
@@ -578,7 +578,7 @@ Corrections (pinned in place):
 Sizing now, smaller than the 2026-09-18 estimate: config.ts ~55 (the function + the orphan
 strip), loop.ts ~10 (the guarded call + the rejection warning — no event plumbing), prompt.ts ~20,
 paths.ts ~5, tests ~150 across test/config.test.ts, test/loop.test.ts, test/prompt.test.ts.
-src/types.ts and src/ui/event-format.ts drop out entirely. One run. No design question remains
+src/types.ts and src/events/event-format.ts drop out entirely. One run. No design question remains
 open.
 
 ---

@@ -1,5 +1,5 @@
 import { openQuestions } from "../backlog/backlog.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 
 /** Emit one `question_posted` event per entry QUESTIONS.md's ## Open gained since `before` —
  * the capture-and-diff both merge paths record alongside their `merged` events (landing-merge.ts's

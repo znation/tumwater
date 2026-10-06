@@ -9,7 +9,7 @@
  * Dependency direction: doctor and orchestrator → launch-services → process (the probe). */
 
 import type { CheckOutcome } from "./doctor/doctor-checks.js";
-import { warnEvent } from "./events.js";
+import { warnEvent } from "./events/events.js";
 import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
 import { compactTokens } from "./format.js";
 

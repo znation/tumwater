@@ -8,7 +8,7 @@ import {
   type ErrorStormObservation,
 } from "../src/error-storm.js";
 import { pollErrorStorm } from "../src/fleet-polls.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The fleet-wide error-storm warning (src/error-storm.ts; BUGS.md 2026-09-29 "A fleet-wide

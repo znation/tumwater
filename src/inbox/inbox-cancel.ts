@@ -1,5 +1,5 @@
 import path from "node:path";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { promptPreview, queuedFileAtPosition, queuedFiles, takeQueuedFile } from "./inbox.js";

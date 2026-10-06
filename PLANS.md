@@ -68,7 +68,7 @@ healthy one. Hold only what the failing provider serves.
 3. The `rate_limit_hold` / `rate_limit_resumed` events carry the provider.
 
 **Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gate-polls.ts,
-src/orchestrator-scheduling.ts, src/events.ts, src/event-format.ts, and their tests.
+src/orchestrator-scheduling.ts, src/events/events.ts, src/events/event-format.ts, and their tests.
 
 **Acceptance criteria.**
 - Two roles failing with 429 on provider P within the window hold roles on P only; roles on Q
@@ -98,7 +98,7 @@ to, and whether every declared model can run, before the fleet finds out the har
    inherited environment — and points at `model.small` / `model.strong`.
 
 **Files touched.** src/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
-src/budget-gates.ts (event payload), src/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
+src/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
 
 **Acceptance criteria.**
 - Role rows show `strong` and its model for plan with a strong tier declared.
@@ -224,7 +224,7 @@ src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-mo
 
 ### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed, done 2026-10-05 by feature)
 
-**Done 2026-10-05 by feature.** As planned, with one simplification: `src/events.ts` keeps its
+**Done 2026-10-05 by feature.** As planned, with one simplification: `src/events/events.ts` keeps its
 `[key: string]: unknown` payload convention, so `model` is documented on the two entries' line
 comments rather than declared as a per-type optional field — a top-level `model?: string` on
 `HarnessEvent` would have claimed the field on every event type. Implemented by
@@ -233,7 +233,7 @@ triple the tick resolved, omitted when `cfg.model` is unset — the budget-fallb
 the runner's config to the fallback pair before `tick()` reads it, so the logged string names
 the fallback), src/review/review.ts (`review_start` gains `model` from `reviewRunConfig(config)`,
 resolved once and reused as the run's `config`, so the event cannot disagree with the run),
-and src/event-format.ts (both lines render `on <model>` when the field is present; old logs
+and src/events/event-format.ts (both lines render `on <model>` when the field is present; old logs
 render unchanged). Tests: two new integration cases in test/loop.test.ts (model present on
 both events; absent from both when no model is configured) and event-format rendering cases
 in test/event-format.test.ts. `npm run test` green.
@@ -249,11 +249,11 @@ starts on, so outcomes, review verdicts, and spend can be compared per model.
    that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
    on the budget fallback it names the fallback).
 2. **src/review/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
-3. **src/events.ts / src/event-format.ts:** optional `model?: string` on both event types,
+3. **src/events/events.ts / src/events/event-format.ts:** optional `model?: string` on both event types,
    rendered after the existing text. Omitted when no model is configured (pi's own default),
    and old logs without the field still read and render.
 
-**Files touched.** src/loop.ts, src/review/review.ts, src/events.ts, src/event-format.ts, and their tests.
+**Files touched.** src/loop.ts, src/review/review.ts, src/events/events.ts, src/events/event-format.ts, and their tests.
 
 **Acceptance criteria.**
 - A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its

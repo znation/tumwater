@@ -13,7 +13,7 @@ import { ensureDetachedWorktree } from "../worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { ffMainTo } from "./landing-git.js";
 import { syncRootInstall } from "../dep-install.js";
 import { withLock } from "../lock.js";

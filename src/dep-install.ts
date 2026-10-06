@@ -3,7 +3,7 @@ import { resolveFromNodeModules } from "./build-check/build-check-detect.js";
 import { readJsonFile } from "./json-files.js";
 import { EXEC_MAX_BUFFER } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events/events.js";
 
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
  * gitignored, so a tumwater worktree has none of its own: its toolchain and every import

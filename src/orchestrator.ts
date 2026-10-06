@@ -16,7 +16,7 @@ import { branchHead, currentBranch } from "./git.js";
 import { queuedLandingFiles } from "./landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "./landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "./landing/landing-pipeline.js";
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events/events.js";
 import { removeQuiet } from "./files.js";
 import { writeJsonFile } from "./json-files.js";
 import { OnceRound } from "./once-round.js";

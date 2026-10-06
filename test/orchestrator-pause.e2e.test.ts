@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { loadLoopState } from "../src/loop-state.js";
 import { pauseRole, resumeRole } from "../src/fleet-state.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";

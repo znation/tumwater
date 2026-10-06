@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { readEventsSince, readWindowEvents } from "../src/event-window.js";
+import { readEventsSince, readWindowEvents } from "../src/events/event-window.js";
 import { collectReport } from "../src/report-data.js";
 import { renderReportMarkdown } from "../src/report-render.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./oracles.js";

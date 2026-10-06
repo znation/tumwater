@@ -5,7 +5,7 @@ import { saveLoopState } from "../loop-state.js";
 import { unverifiedTreeOutcome } from "../build-check/build-check-events.js";
 import { checkFailureReasons } from "../build-check/build-check-report.js";
 import { mainTipVerdict } from "../main-red.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { mainRedNotMine } from "../phrases.js";
 import type { BuildCheckOutcome } from "../build-check/build-check.js";
 import type { BuildCheck } from "../build-check/build-check-detect.js";

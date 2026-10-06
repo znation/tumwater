@@ -63,7 +63,7 @@ to ask.
   the rebase and compare after `ffMergeToMain` succeeds; for each new entry log one
   `question_posted` alongside the existing `merged` event — pi stays out of the event system.
   Add `question_posted` to the `HarnessEvent.type` union (src/types.ts) with plain rendering in
-  `formatEvent` (src/event-format.ts — it no longer lives in src/events.ts); no warning prefix,
+  `formatEvent` (src/events/event-format.ts — it no longer lives in src/events/events.ts); no warning prefix,
   this is routine operation.
 
 ## Files touched
@@ -78,7 +78,7 @@ questions section in the project status panel), `src/tui.ts` (highlighted line +
 list in the Ctrl+T project-status view),
 `src/merge.ts` (post-merge count diff → event in tryMerge; extracted from loop.ts 2026-08-29),
 `src/types.ts` (event type) +
-`src/event-format.ts` (plain rendering); tests: new `test/questions.test.ts` (count parsing,
+`src/events/event-format.ts` (plain rendering); tests: new `test/questions.test.ts` (count parsing,
 header rendering, prompt contract text, director routing text, post-merge event emission) plus
 GUI payload/panel and TUI project-status-view assertions in test/gui.test.ts / test/tui.test.ts
 (mirroring the backlog plan's test precedent), README.

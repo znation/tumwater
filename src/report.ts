@@ -8,7 +8,7 @@ import { renderFailureMarkdown } from "./failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
 import { say, sayJson, sayJsonOrRender } from "./cli/cli-output.js";
 import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli/cli-args.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "./event-window.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "./events/event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags,
  * collect through report-data.ts / src/failure/failure-data.ts, and print. Unknown-args rejection and the

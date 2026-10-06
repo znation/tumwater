@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { HarnessEvent } from "../src/events.js";
+import type { HarnessEvent } from "../src/events/events.js";
 // The tick_end/tick_start fixture builders' single home is the shared test-fake catalog
 // (test/fakes/log.ts, PLANS.md 2026-10-04); aliased here so the call sites read as before.
 import { tickEnd as endEvent, tickStart as startEvent } from "./fakes/log.js";

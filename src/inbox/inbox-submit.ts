@@ -6,7 +6,7 @@ import {
   savePromptImages,
   type PromptImageInput,
 } from "./inbox-attachments.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "../readme.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { tooLongMessage } from "../text.js";

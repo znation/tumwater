@@ -260,16 +260,16 @@ ticks are usually md-only → exempt by construction). No special-casing.
 `review_start` / `review_verdict` events (verdict event carries approve/reject + first line of
 reasons); `review_failed` on unparseable/failed runs; reviewer tokens/cost fold into the loop's
 totals (`generatedTokens`/`totalCostUsd`). The new event types join the `HarnessEvent.type`
-union (src/types.ts) and get plain rendering in `formatEvent` (src/event-format.ts — it no longer
-lives in src/events.ts).
+union (src/types.ts) and get plain rendering in `formatEvent` (src/events/event-format.ts — it no longer
+lives in src/events/events.ts).
 
 ## Files touched
 
 `src/loop.ts`, `src/prompt/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
 `src/review/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
 review-run orchestration shared by the tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
-state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer
-lives in src/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),
+state — not src/status.ts), `src/events/event-format.ts` (review event rendering — formatEvent no longer
+lives in src/events/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),
 `test/review.test.ts` (renamed from review-gate.test.ts; fake-pi shim scripting both verdicts; review-section config
 validation + accessor fallback over top-level values; exemption matcher unit tests — basename vs
 path patterns, all-files-must-match; approve merges / reject resets + next-prompt

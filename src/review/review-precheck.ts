@@ -7,7 +7,7 @@
 
 import type { ReviewContext, GateResult } from "./review.js";
 import type { LoopState } from "../loop-state.js";
-import { warnEvent } from "../events.js";
+import { warnEvent } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build-check/build-check-detect.js";
 import { runScopedBuildCheck } from "../build-check/build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build-check/build-check-report.js";

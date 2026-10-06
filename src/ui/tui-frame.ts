@@ -4,9 +4,9 @@
  * the tones of activity and transcript lines. The TUI shares the dashboard's vocabulary — the
  * same view names (Activity, Transcript, Backlog, Usage, Failures), the same alert wording,
  * the same status colors — drawn in the terminal's base colors, so they follow its theme. */
-import type { HarnessEvent } from "../events.js";
+import type { HarnessEvent } from "../events/events.js";
 import { clipSpans, type StatusLine, type StatusSpan } from "./status-render.js";
-import { eventResult } from "../event-format.js";
+import { eventResult } from "../events/event-format.js";
 import { eventKind, resultTone, type Tone } from "./tone.js";
 import type { FleetAlert } from "./fleet-alerts.js";
 import { displayWidth } from "../text-width.js";

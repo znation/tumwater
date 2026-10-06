@@ -5,7 +5,7 @@
  * orchestrator → retention; this module owns the whole "which files age out, and when" concern
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events/events.js";
 import { pruneOldFiles } from "./files.js";
 import { sessionsRootDir, toolOutputDir } from "./paths.js";
 

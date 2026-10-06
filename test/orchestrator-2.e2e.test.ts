@@ -14,7 +14,7 @@ import path from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { clearBackoff } from "../src/backoff.js";
 import { branchName, resetRequestPath, wakeRequestPath, worktreePath } from "../src/paths.js";

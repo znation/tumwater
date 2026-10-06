@@ -4,7 +4,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { saveLoopState } from "../loop-state.js";
-import { logEvent, usageFragment, warnEvent } from "../events.js";
+import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { dropLanding } from "./landing-queue.js";
 import { readJsonFile, writeJsonAtomic } from "../json-files.js";
 import { removeQuiet } from "../files.js";

@@ -27,7 +27,7 @@ import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure/failure-spread.js";
 import type { LoopRunner } from "./loop.js";
 import { DIRECTOR_ROLE } from "./roles.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 import { writeJsonFile } from "./json-files.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
 

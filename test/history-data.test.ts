@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { HarnessEvent } from "../src/events.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { readTickRowsSince, tickRows } from "../src/history-data.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { writeEvents } from "./log-fixtures.js";

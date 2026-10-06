@@ -1,6 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, enabledRoleIds, loadConfigCached } from "./config.js";
-import { logEvent, warnEvent } from "../events.js";
+import { logEvent, warnEvent } from "../events/events.js";
 import { LoopRunner } from "../loop.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../semaphore.js";

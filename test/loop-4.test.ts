@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";

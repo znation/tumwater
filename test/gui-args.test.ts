@@ -8,7 +8,7 @@ import {
   requirePausedFlag,
 } from "../src/gui/gui-args.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakeRes } from "./fake-res.js";

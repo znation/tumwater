@@ -1,7 +1,7 @@
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
-import { readEvents } from "../event-read.js";
-import type { HarnessEvent } from "../events.js";
-import { eventMessage, eventResult, formatEvent } from "../event-format.js";
+import { readEvents } from "../events/event-read.js";
+import type { HarnessEvent } from "../events/events.js";
+import { eventMessage, eventResult, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget.js";
 import { snapshot } from "../status-data.js";

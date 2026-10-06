@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { writeTextAtomic } from "../files.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { errCode } from "../errno.js";
 import { promptPreview, queuedFileAtPosition } from "./inbox.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";

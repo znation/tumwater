@@ -10,8 +10,8 @@ import { rankCountEntries } from "./rank.js";
 import { compactTokens, usd } from "./format.js";
 import { durationLabel } from "./cli/cli-args.js";
 import { formatTimestamp, reportWindow } from "./datetime.js";
-import { eventsRotationLabel } from "./events.js";
-import { SPARSE_WINDOW_NOTE } from "./event-window.js";
+import { eventsRotationLabel } from "./events/events.js";
+import { SPARSE_WINDOW_NOTE } from "./events/event-window.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */

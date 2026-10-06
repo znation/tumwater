@@ -12,7 +12,7 @@ import {
   pollRoleCapGate,
   roleCapPaused,
 } from "../src/role-cap-gates.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 const DAY = 24 * 60 * 60 * 1000;

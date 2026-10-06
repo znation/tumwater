@@ -8,7 +8,7 @@ import {
   consumeWakeRequest,
   type AbortableLanding,
 } from "../src/operator-requests.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
   resetRequestPath,

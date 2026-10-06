@@ -13,7 +13,7 @@ import {
   formatCommitBody,
   stampedSubject,
 } from "../commit-message.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
 import { recordFlow } from "../qa-coverage.js";
 

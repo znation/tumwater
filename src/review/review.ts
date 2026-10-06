@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop-state.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { formatModelSelector } from "../model-selector.js";
-import { logEvent, warnEvent } from "../events.js";
+import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git-run.js";
 import { headOf, patchId } from "../git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "../git-diff.js";

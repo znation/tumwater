@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { cmdLogs } from "../src/log-commands.js";
-import { logEvent } from "../src/events.js";
+import { logEvent } from "../src/events/events.js";
 import { eventsLogPath, piLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";

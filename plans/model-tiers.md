@@ -238,7 +238,7 @@ src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, 
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
 src/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
-src/loop.ts (`tick_start` model), src/events.ts, src/event-format.ts, src/fleet-hold.ts,
+src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet-hold.ts,
 src/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,

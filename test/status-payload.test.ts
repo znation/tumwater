@@ -278,8 +278,8 @@ test("the status payload carries the operator pause flag; its phase outranks bud
 test("the status payload names the project and carries the recent events as data", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui event items test");
-  const { logEvent } = await import("../src/events.js");
-  const { formatEvent } = await import("../src/event-format.js");
+  const { logEvent } = await import("../src/events/events.js");
+  const { formatEvent } = await import("../src/events/event-format.js");
   logEvent(repo, { loop: "qa", type: "tick_end", tick: 3, result: "error", error: "429 Rate limit exceeded" });
   logEvent(repo, { loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" });
   logEvent(repo, { loop: "bugfix", type: "build_check", scope: "landing", script: "test", status: "failed" });

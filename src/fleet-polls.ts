@@ -1,5 +1,5 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import { sortedRoles } from "./failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure/failure-spread.js";

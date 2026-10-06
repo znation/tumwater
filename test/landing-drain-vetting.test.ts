@@ -7,7 +7,7 @@ import { abortableLandings, landingTasks } from "../src/landing/landing-pipeline
 import { queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
 import { refSha } from "../src/git.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig } from "../src/config/config.js";
 import {

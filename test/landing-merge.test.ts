@@ -10,7 +10,7 @@ import { checkMainBaseline } from "../src/main-baseline.js";
 import { branchName, landWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/worktree.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { ResolvedModelConfig } from "../src/config/config-views.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";

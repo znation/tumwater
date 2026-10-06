@@ -8,7 +8,7 @@
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
 import { stringList } from "../json-object.js";
-import type { HarnessEvent } from "../events.js";
+import type { HarnessEvent } from "../events/events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../phrases.js";
 import { shortSha } from "../format.js";
 

@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince } from "../src/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report-render.js";
-import { REPORT_SINCE_MAX_MS } from "../src/event-window.js";
+import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { atLocalTs as at, dayKey, HOUR, ago } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";

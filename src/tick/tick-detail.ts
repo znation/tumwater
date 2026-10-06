@@ -9,7 +9,7 @@ import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { readTickRows } from "../history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
-import { formatEvent } from "../event-format.js";
+import { formatEvent } from "../events/event-format.js";
 import { unknownRoleMessage } from "../roles.js";
 import { shortSpanPhrase } from "../phrases.js";
 import { shortSha } from "../format.js";

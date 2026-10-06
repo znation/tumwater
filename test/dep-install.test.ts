@@ -12,7 +12,7 @@ import {
 import { runBuildCheck } from "../src/build-check/build-check.js";
 import { runScopedBuildCheck } from "../src/build-check/build-check-scoped.js";
 import { buildCheckSkipWarning } from "../src/build-check/build-check-events.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";

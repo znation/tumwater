@@ -1,8 +1,8 @@
-import { dayKey } from "./datetime.js";
-import { parseJsonObject } from "./json-object.js";
-import { eventsLogPath } from "./paths.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
-import { readTailTextWithEnd } from "./tail.js";
+import { dayKey } from "../datetime.js";
+import { parseJsonObject } from "../json-object.js";
+import { eventsLogPath } from "../paths.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
+import { readTailTextWithEnd } from "../tail.js";
 import type { HarnessEvent } from "./events.js";
 
 /** The READ side of the event feed: everything that consumes events.jsonl after the fact —

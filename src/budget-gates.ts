@@ -16,7 +16,7 @@ import {
 import { applyFallbackModel, fallbackPair } from "./config/config-views.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import type { FallbackModelConfig } from "./config/config-schema.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 import { fallbackModelFree } from "./pi/pi-models.js";
 import type { LoopState } from "./loop-state.js";
 

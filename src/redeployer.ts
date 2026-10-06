@@ -1,6 +1,6 @@
 import type { BuildInfo, BuildStaleness, BuildStatus } from "./build-info.js";
 import type { CompileResult } from "./build-stage.js";
-import type { HarnessEventInput } from "./events.js";
+import type { HarnessEventInput } from "./events/events.js";
 import { errorMessage } from "./text.js";
 import { shortSha } from "./format.js";
 import { mainRedPhrase } from "./phrases.js";

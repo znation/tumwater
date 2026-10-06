@@ -1,5 +1,5 @@
 import { openQuestions } from "../backlog/backlog.js";
-import { logEvent } from "../events.js";
+import { logEvent } from "../events/events.js";
 import { headOf } from "../git.js";
 import { aheadOfMainFiles } from "../git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
@@ -19,7 +19,7 @@ import { noteGreenBaseline } from "../main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
-import { warnEvent } from "../events.js";
+import { warnEvent } from "../events/events.js";
 import { withLock } from "../lock.js";
 import { buildConflictPrompt } from "../gate-prompts.js";
 import { mergeLockDir } from "../paths.js";

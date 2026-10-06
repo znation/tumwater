@@ -10,7 +10,7 @@ import {
   checkTimeoutMs,
   type BuildCheckOutcome,
 } from "./build-check.js";
-import { logEvent, warnEvent } from "../events.js";
+import { logEvent, warnEvent } from "../events/events.js";
 import {
   MERGE_SCOPES,
   SCOPE_WORDS,

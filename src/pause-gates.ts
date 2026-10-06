@@ -5,7 +5,7 @@
  * fleet hold) — the orchestrator owns only the wiring. */
 
 import { isFleetPaused, pausedRoles } from "./fleet-state.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
  * instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the

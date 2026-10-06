@@ -9,10 +9,10 @@
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
 import type { TickResult } from "../tick/tick-outcome.js";
-import { readWindowEvents } from "../event-window.js";
-import { eventDayKey, eventRole } from "../event-read.js";
+import { readWindowEvents } from "../events/event-window.js";
+import { eventDayKey, eventRole } from "../events/event-read.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "../time-spend.js";
-import type { HarnessEvent } from "../events.js";
+import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayWindow, formatDate } from "../datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, truncateExample, type Cluster } from "./failure-cluster.js";

@@ -104,7 +104,7 @@ everyone else.
   harness level (`loop: "harness"`) with `spentUsd` + `capUsd`. The orchestrator tracks the
   previous cycle's paused state and logs exactly one event per transition — including
   transitions caused by a live cap edit or midnight rollover, since the predicate is re-evaluated
-  every poll. src/event-format.ts renders both (e.g. `budget paused — $50.12 of $50.00 daily
+  every poll. src/events/event-format.ts renders both (e.g. `budget paused — $50.12 of $50.00 daily
   cost reached` / `budget resumed ($3.20 of $50.00 today)`), plain lines, no warning prefix —
   a routine state change, like `counters_reset`.
 
@@ -142,7 +142,7 @@ TOP_LEVEL_KEYS, validation), src/state.ts (`freshLoopState` defaults; `todayStam
 records the daily window), src/orchestrator.ts (gate in poll loop + transition events),
 src/status.ts (snapshot `budget` field), src/status-render.ts (header badge; `loopPhase`
 param), src/gui.ts (pass paused into phase payload), src/ui/gui-page.ts (header badge JS),
-src/event-format.ts (two render cases), test/config.test.ts, test/state.test.ts,
+src/events/event-format.ts (two render cases), test/config.test.ts, test/state.test.ts,
 test/orchestrator.test.ts, test/status-render.test.ts, test/event-format.test.ts,
 test/gui.test.ts, README.md.
 

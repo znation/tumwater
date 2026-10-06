@@ -15,7 +15,7 @@ import { DIRECTOR_ROLE } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gate-polls.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 

@@ -9,7 +9,7 @@ import { type SpendCell } from "../time-spend.js";
 import { plural } from "../phrases.js";
 import { shortSha, usd } from "../format.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "../datetime.js";
-import { eventsRotationLabel } from "../events.js";
+import { eventsRotationLabel } from "../events/events.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;

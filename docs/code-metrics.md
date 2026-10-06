@@ -86,7 +86,7 @@ Comment share is comment lines divided by comment plus code lines.
   and 76 functions (5.2%) above 10.
 - **Most complex functions:**
   - `runOrchestrator`: complexity 78, cognitive complexity 157, 307 lines ([src/orchestrator.ts](../src/orchestrator.ts)).
-  - `eventMessage`: 72, mostly one flat switch ([src/event-format.ts](../src/event-format.ts)).
+  - `eventMessage`: 72, mostly one flat switch ([src/events/event-format.ts](../src/events/event-format.ts)).
   - The TUI key handler: 60 ([src/ui/tui-keys.ts](../src/ui/tui-keys.ts)).
   - `main`: 57 ([src/cli.ts](../src/cli.ts)).
   - `reviewAheadOfMain`: 50 ([src/review/review.ts](../src/review/review.ts)).

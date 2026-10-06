@@ -8,7 +8,7 @@
  * itself and returns null/false, so a handler is one guard line per argument.
  */
 import { knownRoleIdsCached } from "../config/config.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { DIRECTOR_ROLE } from "../roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text.js";

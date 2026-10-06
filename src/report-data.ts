@@ -8,11 +8,11 @@
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
 import path from "node:path";
 import { readTextOrNull, statOrNull } from "./files.js";
-import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./event-window.js";
-import { eventDayKey, eventRole, eventUsage, parseEventLine } from "./event-read.js";
+import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "./events/event-window.js";
+import { eventDayKey, eventRole, eventUsage, parseEventLine } from "./events/event-read.js";
 import { readCompleteLines } from "./tail.js";
 import { eventsLogPath } from "./paths.js";
-import type { HarnessEvent } from "./events.js";
+import type { HarnessEvent } from "./events/events.js";
 import { entryDates } from "./backlog/backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "./datetime.js";
 

@@ -1,4 +1,4 @@
-/** The fleet-control family of formatEvent tests (src/event-format.ts): the events the harness
+/** The fleet-control family of formatEvent tests (src/events/event-format.ts): the events the harness
  * emits as it manages the fleet — the daily-cost budget's transitions (and its per-role cap
  * siblings), the live config changes (maxConcurrent, sessionRetentionDays, edited keys), the
  * operator and breaker pause/resume events, and the fleet-wide 429/backend holds with their
@@ -7,7 +7,7 @@
  * are tested together, apart from the tick/merge/review event lines in event-format.test.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatEvent } from "../src/event-format.js";
+import { formatEvent } from "../src/events/event-format.js";
 
 // The daily cost budget's transition events (plans/daily-cost-budget.md): routine state
 // changes like counters_reset — plain lines carrying the spend and cap that triggered them,

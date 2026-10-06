@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { failingThenIdle, transientErrorText, type TransientFailure } from "./fakes/transient.js";
 import { fakeClock, sleepRecorder } from "./fakes/time.js";

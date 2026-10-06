@@ -5,8 +5,8 @@
  * sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
  * src/failure/failure-render.ts as a pure function of the collected data. */
 import type { TickResult } from "./tick/tick-outcome.js";
-import type { HarnessEvent } from "./events.js";
-import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js";
+import type { HarnessEvent } from "./events/events.js";
+import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./events/event-read.js";
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure/failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";

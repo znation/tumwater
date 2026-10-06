@@ -1,14 +1,14 @@
 import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "./config/config-schema.js";
-import { subscribeEvents, warnEvent, type HarnessEvent } from "./events.js";
-import { formatEvent } from "./event-format.js";
+import { subscribeEvents, warnEvent, type HarnessEvent } from "./events/events.js";
+import { formatEvent } from "./events/event-format.js";
 import { errorMessage } from "./text.js";
 
 /** The operator notify hook (PLANS.md "Operator notify hook"): one configured shell command
  * (tumwater.json's `notify`) that the orchestrator runs whenever a notable event fires — the
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *
- * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events.ts), which
+ * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
  * only sees events THIS process logs. All six allowlisted types are logged by the
  * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts and
  * role-cap-gates.ts, landing-slot.ts, redeployer.ts), so nothing notable is missed; events appended by

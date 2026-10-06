@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { drainLandings } from "../src/landing/landing-drain.js";
 import { landingTasks } from "../src/landing/landing-pipeline.js";
 import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./landing-fixtures.js";
 import { mainSha, makeRepo, sh } from "./repo-fixtures.js";

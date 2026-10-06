@@ -13,7 +13,7 @@ import { consumeRestartRequest } from "../src/operator-requests.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { configPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/event-window.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";

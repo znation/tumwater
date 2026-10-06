@@ -4,10 +4,10 @@ import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
   SPARSE_WINDOW_NOTE,
-} from "./event-window.js";
-import { parseEventLine, readEventsTailWithEnd } from "./event-read.js";
-import type { HarnessEvent } from "./events.js";
-import { formatEvent } from "./event-format.js";
+} from "./events/event-window.js";
+import { parseEventLine, readEventsTailWithEnd } from "./events/event-read.js";
+import type { HarnessEvent } from "./events/events.js";
+import { formatEvent } from "./events/event-format.js";
 import { followFile } from "./tail.js";
 import { createTranscriptRenderer } from "./ui/transcript.js";
 import { readTranscriptTail } from "./ui/transcript-tail.js";

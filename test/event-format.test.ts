@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eventResult, formatEvent, usageText } from "../src/event-format.js";
+import { eventResult, formatEvent, usageText } from "../src/events/event-format.js";
 import { formatTimestamp } from "../src/datetime.js";
 import { displayWidth } from "../src/text-width.js";
 

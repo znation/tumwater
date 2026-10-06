@@ -20,8 +20,8 @@ import { isFleetPaused, orchestratorAlive, pausedRoles } from "../fleet-state.js
 import { runStartupCheck, runStartupProblem } from "../startup-gate.js";
 import { initProject } from "../init.js";
 import { templateCatalog } from "../init-templates.js";
-import { logEvent, subscribeEvents } from "../events.js";
-import { formatEvent } from "../event-format.js";
+import { logEvent, subscribeEvents } from "../events/events.js";
+import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy-policy.js";
 import { loadLoopState, stateSkipReason } from "../loop-state.js";
 import { plural } from "../phrases.js";

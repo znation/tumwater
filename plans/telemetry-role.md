@@ -99,7 +99,7 @@ depends on 1/2 of that series for the scheduling half).
    capped. The tick prompt is ~8k tokens
    today; the digest must remain a rounding error against it, not a second window filler.
 3. **One backwards scan, one home.** The windowed, early-stopping backwards read of events.jsonl
-   exists today as `readWindowEvents` in `src/report.ts` and moves to core `src/event-window.ts`
+   exists today as `readWindowEvents` in `src/report.ts` and moves to core `src/events/event-window.ts`
    (Refined 2026-09-18). Both the usage report and the failure digest import it rather than
    re-deriving it — one reader of the log's tail, as `parseEventLine` is one parser.
 4. **The role writes only BUGS.md**, and only its `## Open` section (plus the normal `_None yet._`
@@ -116,7 +116,7 @@ depends on 1/2 of that series for the scheduling half).
   `src/loop.ts` — injects it into the role's prompt, and the README's layering rule (`src/ui/`
   "imported only by each other and `cli.ts`") plus the codebase's zero core→ui imports
   (`grep -rn 'from "./ui/' src/*.ts` names only `cli.ts`) make a core→ui import a violation.
-- `src/event-window.ts` — new **core** module: `readWindowEvents` and its `oldestCompleteLine`
+- `src/events/event-window.ts` — new **core** module: `readWindowEvents` and its `oldestCompleteLine`
   helper move here from `src/report.ts`, along with `REPORT_DEFAULT_DAYS` / `REPORT_MAX_DAYS`,
   and `readWindowEvents`'s return widens to `{ events: HarnessEvent[]; coversFullWindow: boolean }`:
   the flag is true when the backwards scan early-stopped on a line older than the window (proof
@@ -177,7 +177,7 @@ the bottom of the page:
 6. **Warning clusters** — `warning.message` grouped the same way (harness-scoped warnings carry
    `loop: "harness"`; no special case needed).
 7. **Top rejection clusters** — `review_rejected.reasons` by role, top 5, clustered on `reasons[0]`
-   (the same field the event feed renders, src/event-format.ts), so a digest line reads like a
+   (the same field the event feed renders, src/events/event-format.ts), so a digest line reads like a
    `tumwater logs` line; when more than 5 clusters exist the section ends with a `_+N more clusters
    holding K rejections_` line whose K equals the Deltas table's rejections column, so the cut is
    visible and cross-checkable (BUGS.md 2026-09-22).
@@ -269,7 +269,7 @@ no-backoff behavior needs no loop test. No design question remains open.
 
 The digest and the CLI flag are in. `src/failure-report.ts` (core) holds
 `collectFailureReport` / `renderFailureMarkdown` / `normalizeClusterKey` /
-`TELEMETRY_DIGEST_DAYS = 1`; `src/event-window.ts` (core) holds the moved windowed tail read
+`TELEMETRY_DIGEST_DAYS = 1`; `src/events/event-window.ts` (core) holds the moved windowed tail read
 and the `REPORT_*_DAYS` bounds, now returning `{ events, coversFullWindow }`; `src/report.ts`
 imports the reader and re-exports the constants; `src/cli.ts` adds the valueless `--failures`
 flag. `test/failure-report.test.ts` is new. `npm test`: 1,118 pass.

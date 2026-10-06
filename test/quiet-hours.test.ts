@@ -15,7 +15,7 @@ import {
   quietHoursStatus,
   roleQuietHold,
 } from "../src/quiet-hours.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 function localDate(hours: number, minutes: number): Date {

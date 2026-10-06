@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import { newPauseGateState, pollPauseGates } from "../src/pause-gates.js";
 import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/fleet-state.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 function types(root: string, ...names: string[]): string[] {

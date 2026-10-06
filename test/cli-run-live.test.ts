@@ -6,7 +6,7 @@ import path from "node:path";
 import { initProject } from "../src/init.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { eventsOfType, writeOrchestratorMarker } from "./log-fixtures.js";
 import { pathReplace, writeScript } from "./fake-commands.js";

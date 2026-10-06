@@ -6,7 +6,7 @@ import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "./events/events.js";
 import { assembleTickPrompt } from "./tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";

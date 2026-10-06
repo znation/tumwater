@@ -12,7 +12,7 @@ import { headLanding } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
 import { Semaphore } from "../src/semaphore.js";
 import { loadLoopState } from "../src/loop-state.js";
-import { logEvent } from "../src/events.js";
+import { logEvent } from "../src/events/events.js";
 import { type RedeployDeps } from "../src/redeploy-policy.js";
 import { Redeployer } from "../src/redeployer.js";
 import { LoopRunner } from "../src/loop.js";

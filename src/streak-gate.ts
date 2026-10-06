@@ -35,7 +35,7 @@
 import { ERROR_STREAK_BREAKER } from "./tick/tick-apply.js";
 import type { LoopState } from "./loop-state.js";
 import { pauseRole } from "./fleet-state.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
  * (src/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */

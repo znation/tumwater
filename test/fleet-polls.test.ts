@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { FLEET_OPEN, HOLD_BASE_MS, HOLD_CAP_MS } from "../src/fleet-hold.js";
 import { pollFleetHold, type HoldInputs } from "../src/fleet-polls.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The orchestrator's fleet-hold poll (src/fleet-polls.ts): the wiring half of the fleet-wide

@@ -9,7 +9,7 @@ import { scriptedSampler, woke } from "./sleep-clock.js";
 import { checkFailureReasons } from "../src/build-check/build-check-report.js";
 import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check/build-check-events.js";
 import { detectBuildCheck } from "../src/build-check/build-check-detect.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
 import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-commands.js";

@@ -13,7 +13,7 @@ import { deferTick, isEligible } from "./scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "./roles.js";
 import { inboxSize } from "./inbox/inbox.js";
 import { queuedLandingFiles } from "./landing/landing-queue.js";
-import { logEvent } from "./events.js";
+import { logEvent } from "./events/events.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
  * the scheduling pass runs (FleetGatePoll's fields beside the pass's own inputs). */

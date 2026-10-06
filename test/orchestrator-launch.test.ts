@@ -24,7 +24,7 @@ import type { FleetGateStates } from "../src/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/fallback-breaker.js";
 import { Semaphore } from "../src/semaphore.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
-import { readEvents } from "../src/event-read.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 

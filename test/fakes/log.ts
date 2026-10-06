@@ -7,7 +7,7 @@
  * the shape the real writers stamp (feature loop, tick 1, changed); overrides pass through.
  * Node built-ins only.
  */
-import type { HarnessEvent } from "../../src/events.js";
+import type { HarnessEvent } from "../../src/events/events.js";
 import { writeEvents } from "../log-fixtures.js";
 
 /** A `tick_end` event with the shape tick-finalize stamps: the feature loop, tick 1,

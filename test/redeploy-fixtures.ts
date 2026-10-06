@@ -1,6 +1,6 @@
 import { sleep } from "./wait.js";
 import assert from "node:assert/strict";
-import type { HarnessEventInput } from "../src/events.js";
+import type { HarnessEventInput } from "../src/events/events.js";
 import type { BuildStaleness } from "../src/build-info.js";
 import { defaultConfig } from "../src/config/config.js";
 import { type AutoRestartRecord, type RedeployDeps } from "../src/redeploy-policy.js";

@@ -1,8 +1,8 @@
-import { dayKey } from "./datetime.js";
+import { dayKey } from "../datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { eventsArchivePath, eventsLogPath } from "./paths.js";
-import { readTailText } from "./tail.js";
+import { eventsArchivePath, eventsLogPath } from "../paths.js";
+import { readTailText } from "../tail.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
  * --days, `tumwater report --failures --days`, and /api/report?days=N): 14-day default, at most
