@@ -170,7 +170,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
             body: entry.body,
             highFriction: entry.highFriction,
           },
-          { state: author.state, foldUsage, runPi: (w, prompt, s) => author.runLandingPi(w, prompt, s), runGatePi: (opts) => author.runGatePi(opts) },
+          { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
         );
       } catch (err) {
         verdict = { kind: "result", result: "error" };

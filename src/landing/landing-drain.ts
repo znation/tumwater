@@ -99,10 +99,10 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         state: v.author.state,
         foldUsage: v.foldUsage,
         runGatePi: (opts) => v.author.runGatePi(opts),
-        runPi: async (w, prompt, s) => {
+        runPi: async (w, prompt, s, cfg) => {
           await semaphore.acquire(MERGE_TIER);
           try {
-            return await v.author.runLandingPi(w, prompt, s);
+            return await v.author.runLandingPi(w, prompt, s, cfg);
           } finally {
             semaphore.release();
           }

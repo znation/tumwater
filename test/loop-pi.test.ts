@@ -175,6 +175,34 @@ test("with only default declared, the resolver's config argv is unchanged from t
   }
 });
 
+// The landing path's resolver wiring: runLandingPi takes the same optional config and must
+// forward it to the run's argv — the lander lambdas pass the strong tier's config through
+// (plans/model-tiers.md part 4/8), and a dropped argument would silently demote the resolver
+// to the role's own model.
+test("runLandingPi's explicit config replaces the role's config in that run's argv", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args);
+  try {
+    const { loopPi } = makeHost(root, {
+      ...defaultConfig(),
+      model: { default: "prov/default", strong: "prov/strong" },
+    });
+    await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-3-conflict");
+    await loopPi.runLandingPi(
+      root,
+      "resolve the conflict",
+      "tumwater-feature-3-conflict",
+      resolverConfig({ ...defaultConfig(), model: { default: "prov/default", strong: "prov/strong" } }),
+    );
+    const lines = runArgs(args);
+    assert.match(lines[0]!, /--provider prov --model default/, "the unconfigured landing run carries default's model");
+    assert.match(lines[1]!, /--provider prov --model strong/, "the resolver run carries the strong model's argv");
+  } finally {
+    restore();
+  }
+});
+
 test("a rate-limited run earns exactly one retry that waits out the Retry-After hint and continues the session", async () => {
   const root = tmpdir();
   const args = path.join(root, "args");

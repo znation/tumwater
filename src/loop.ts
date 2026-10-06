@@ -11,7 +11,7 @@ import { assembleTickPrompt } from "./tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole } from "./config/config-views.js";
+import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";
 import { formatModelSelector } from "./model-selector.js";
 import { planTickStart } from "./tick/tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
@@ -338,8 +338,8 @@ export class LoopRunner {
    * not abort it either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
    * The plumbing itself lives in src/loop-pi.ts; this is the landing slot's public face. */
-  async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
-    return this.pi.runLandingPi(wt, prompt, sessionName);
+  async runLandingPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
+    return this.pi.runLandingPi(wt, prompt, sessionName, config);
   }
 
   /** Run pi for the landing gate's reviewer (the review run and its verdict follow-up) through

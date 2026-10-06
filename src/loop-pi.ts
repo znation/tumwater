@@ -99,9 +99,14 @@ export class LoopPi {
    * either. Session naming is the caller's (the reviewer composes its own from
    * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
    */
-  async runLandingPi(wt: string, prompt: string, sessionName: string): Promise<PiRunResult> {
+  async runLandingPi(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    config?: ResolvedModelConfig,
+  ): Promise<PiRunResult> {
     return this.runWithTransientRetry({
-      ...this.loopPiOpts(wt, prompt, sessionName),
+      ...this.loopPiOpts(wt, prompt, sessionName, false, config),
       signal: this.host.signal,
     });
   }
