@@ -42,8 +42,8 @@ export const GIT_MISSING_MESSAGE =
 
 /** The git binary the harness spawns, resolved once per process. On macOS the first git on
  * PATH is routinely /usr/bin/git — the xcode-select stub, which re-resolves the developer
- * directory on every exec before running the real binary (the same cost test-runner.ts's
- * suiteEnv already keeps out of the suite). Resolving the real binary once and spawning it
+ * directory on every exec before running the real binary (the same cost
+ * test/test-runner.ts's suiteEnv already keeps out of the suite). Resolving the real binary once and spawning it
  * by absolute path cuts that per-spawn tax from every harness git call without changing what
  * any command does: the same binary ends up executing the same argv. Any other first git —
  * Linux, Homebrew — spawns by name exactly as before, and a machine with no git at all keeps
