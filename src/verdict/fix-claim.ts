@@ -26,7 +26,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { parseEntryDetails, type BacklogEntry } from "../backlog/backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace } from "../text/text.js";
 
@@ -47,7 +47,16 @@ export function normalizeFixedHeading(heading: string): string {
  * and what is quoted content: a `### ` line inside a fenced code block is body text, never
  * a Fixed entry. */
 export function fixedHeadings(doc: string): string[] {
-  return parseEntryDetails(doc, "Fixed").map((entry) => entry.title);
+  return fixedEntries(doc).map((entry) => entry.title);
+}
+
+/** The `## Fixed` section's parsed entries, in document order — one parse that headings and
+ * bodies both read from. Callers that need more than one heading's body (falseFixReason's
+ * base-vs-head comparison) iterate this once instead of calling the per-heading lookups, each
+ * of which re-parsed the whole document: with ~200 Fixed entries, building the base body map
+ * and walking the head section re-parsed BUGS.md ~400 times per check. */
+function fixedEntries(doc: string): BacklogEntry[] {
+  return parseEntryDetails(doc, "Fixed");
 }
 
 /** The body of one `### ` entry in a BUGS.md document: everything from after its heading to
@@ -63,7 +72,7 @@ export function fixedHeadings(doc: string): string[] {
  * and bodies alike, so the two lookups can never disagree about where an entry starts,
  * ends, or what is quoted content. */
 export function bugEntryBody(doc: string, heading: string): string {
-  return parseEntryDetails(doc, "Fixed").find((entry) => entry.title === heading)?.body ?? "";
+  return fixedEntries(doc).find((entry) => entry.title === heading)?.body ?? "";
 }
 
 /** The backticked, whitespace-free spans of one entry's `**Fix:**` paragraph (the whole body
@@ -157,15 +166,14 @@ export async function falseFixReason(
   // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
   // 2026-09-23 — the in-place narrative rewrite is how a second phantom landing evaded it).
   const baseBodies = new Map(
-    fixedHeadings(base).map((h) => [normalizeFixedHeading(h), bugEntryBody(base, h)]),
+    fixedEntries(base).map((e) => [normalizeFixedHeading(e.title), e.body]),
   );
   // Built lazily, only once a Fixed record's body actually changed: the haystack walks and
   // reads the entire source tree (~5 MB here), and the common BUGS.md edit moves nothing to
   // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
   // recheck each paid that walk for a check that never reached a symbol.
   let haystack: string | undefined;
-  for (const heading of fixedHeadings(head)) {
-    const body = bugEntryBody(head, heading);
+  for (const { title: heading, body } of fixedEntries(head)) {
     if (baseBodies.get(normalizeFixedHeading(heading)) === body) continue;
     haystack ??= sourceHaystack(wt);
     const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
