@@ -10,6 +10,11 @@ import { rankByCount } from "./rank.js";
  * failure-data.ts. */
 export const EXAMPLE_MAX = 120;
 
+/** The example and cluster key every message-less failure takes, shared by the digest's
+ * error-clusters section (failure-data.ts) and its loss ranking (time-spend.ts) so a broken
+ * `tick_end` that skipped its error text reads the same on both surfaces. */
+export const NO_ERROR_TEXT = "(no error text recorded)";
+
 /** Render a message as a display example of at most `max` chars, marking any cut. A bare
  * slice leaves the reader unable to tell a complete message from a truncated one — and an
  * example's tail is often the repro (the failing assertion's file, the recovery action, a

@@ -164,6 +164,30 @@ test("a no_change tick's loss cause is its role, with an empty example", () => {
   ]);
 });
 
+test("a clustered failure that records no error text still itemizes a loss cause", () => {
+  const events = [
+    ev({ loop: "bugfix", ts: 100, result: "aborted", durationMs: 600_000, costUsd: 0.4 }),
+    ev({ loop: "feature", ts: 200, result: "error", durationMs: 60_000, costUsd: 0.1 }),
+  ];
+  const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(events, events);
+  // The error-class cells price both spans...
+  assert.equal(timeSpend.find((r) => r.role === "bugfix")!.classes.error.ms, 600_000);
+  assert.equal(timeSpend.find((r) => r.role === "feature")!.classes.error.ms, 60_000);
+  // ...and, rather than dropping the message-less clustered results, the ranking itemizes
+  // them under the digest's no-text placeholder — the same one the error-clusters section uses.
+  assert.deepEqual(lossCauses, [
+    {
+      kind: "error-cluster",
+      roles: ["bugfix", "feature"],
+      example: "(no error text recorded)",
+      ticks: 2,
+      ms: 660_000,
+      costUsd: 0.5,
+    },
+  ]);
+  assert.equal(lossCausesHidden, 0);
+});
+
 test("the loss ranking keeps at most five causes", () => {
   const events = ["r1", "r2", "r3", "r4", "r5", "r6"].map((role, i) =>
     ev({ loop: role, ts: 100 + i, result: "no_change", durationMs: 1000 }),

@@ -15,7 +15,7 @@ import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
-import { clusterMessages, truncateExample, type Cluster } from "./failure-cluster.js";
+import { clusterMessages, NO_ERROR_TEXT, truncateExample, type Cluster } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
@@ -274,7 +274,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
         message:
           typeof ev.error === "string" && ev.error !== ""
             ? ev.error
-            : "(no error text recorded)",
+            : NO_ERROR_TEXT,
         role: eventRole(ev),
         ts: ev.ts,
       })),

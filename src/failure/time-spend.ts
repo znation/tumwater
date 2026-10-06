@@ -7,7 +7,7 @@
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, NO_ERROR_TEXT, truncateExample } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
 import { stringList } from "../files/json-object.js";
@@ -184,9 +184,14 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     if (cls === "no_change") {
       key = `no_change\u0000${role}`;
       kind = "no_change";
-    } else if (CLUSTERED_RESULTS.has(String(ev.result)) && typeof ev.error === "string" && ev.error !== "") {
-      key = poolTimeoutKey(normalizeClusterKey(ev.error));
-      example = truncateExample(ev.error);
+    } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
+      // A clustered result with no error text still owns its time: an abort's tick_end never
+      // carries one (planTickStart clears s.lastError, tick-finalize logs error: undefined),
+      // and a malformed error tick can lose it too, so both take the same placeholder cause the
+      // error-clusters section already itemizes rather than dropping the span itemized nowhere.
+      const text = typeof ev.error === "string" && ev.error !== "" ? ev.error : NO_ERROR_TEXT;
+      key = poolTimeoutKey(normalizeClusterKey(text));
+      example = truncateExample(text);
     } else if (ev.result === "queued" && resolvedOutcome?.result === "rejected") {
       key = `review-rejected\u0000${role}`;
       kind = "review-rejected";
