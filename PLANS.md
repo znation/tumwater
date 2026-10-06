@@ -6,7 +6,95 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### Model failure fallback, part 1/2: run a failing role's ticks on its tier fallback (planned 2026-10-06 by plan loop)
+
+Design: plans/fallback-model.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md.
+The docs describe a per-role fallback on repeated backend failures; this lands the behavior
+(the canary-probe wording in the docs is superseded — see part 2/2, which corrects the docs).
+Part 2/2 adds the surfaces and depends on this landing.
+
+**Goal.** When a role's primary model keeps failing with provider-class errors, keep the role's
+ticks productive on its tier's resolved `fallback` pair instead of burning the error ladder
+until the streak breaker pauses it, and return it to the primary once a probe succeeds.
+
+**Approach.**
+1. **`src/loop/model-fallback.ts` (new, pure).** `ModelFallbackState = { failures: number;
+   since: number; probeAt: number; cooldownMs: number; reason: string }`;
+   `MODEL_FALLBACK_FAILURES = 3`, `MODEL_FALLBACK_COOLDOWN_MS = 5 * 60_000`,
+   `MODEL_FALLBACK_MAX_COOLDOWN_MS = 30 * 60_000`. Functions with the clock injected (no
+   `Date.now()` inside): `recordModelFallback(state, { providerFailure, now, reason })` returns
+   the next state — the third consecutive provider failure trips `fallback`, any other outcome
+   leaves a non-tripped state and clears `failures`; `modelFallbackProbe(state, now)` is true
+   only while in fallback with `probeAt` elapsed; `modelFallbackActive(state, now)` is true only
+   while in fallback with `probeAt` in the future; a failed probe doubles `cooldownMs` to the cap.
+2. **`src/config/config-views.ts`** — export `fallbackRoleConfig(config, role):
+   ResolvedModelConfig | null`: the role's `roleSeamTier` pair from
+   `resolveTierFallbacks(config, () => true)` (tier own pair, else the existing borrow order),
+   shaped like `configForRole` (provider/model/thinking + the role's `minTickIntervalSeconds`).
+   Null when the tier resolves to pause (no `fallback` configured), so the feature is off.
+3. **`src/loop/loop-state.ts`** — `LoopState.modelFallback?: ModelFallbackState` (persisted;
+   absent means primary, so existing state files read unchanged).
+4. **`src/loop/loop.ts`** (`LoopRunner.tick()` and `runTick()`) — at tick start read
+   `this.state.modelFallback`: with `fallbackRoleConfig` non-null and `modelFallbackActive`,
+   resolve `cfg` from that fallback config, pass it as the explicit config to the authoring
+   `this.pi.runRolePi(wt, prompt, name, resuming, cfg)` call, and set `tickPair` to it; with
+   `modelFallbackProbe`, run the tick on the primary as the probe. At tick end, build the
+   provider-class evidence from `TickUsage.lastRateLimit` / `lastBackendFailure` only when the
+   observation's `at` is at or after `tickStartedAt` (so an earlier tick's stamp never counts),
+   call `recordModelFallback`, persist it, and emit `model_fallback_started` /
+   `model_fallback_ended`.
+5. **`src/events/events.ts` + `src/events/event-format.ts`** — the two event types carry role,
+   provider, model, and the tripping reason (and episode duration on end), rendered in the feed.
+
+**Files touched.** src/loop/model-fallback.ts (new), src/loop/loop.ts, src/loop/loop-state.ts,
+src/config/config-views.ts, src/events/events.ts, src/events/event-format.ts,
+test/model-fallback.test.ts (new), test/loop-fallback.test.ts (new), test/config-views.test.ts,
+test/event-format.test.ts.
+
+**Acceptance criteria.**
+- State-machine unit tests: two provider failures leave the role on primary; the third trips
+  fallback; a content failure (rejected/no_change/error without a provider flag) never trips and
+  clears the running count; a probe is offered only after the cooldown; a successful probe clears
+  the state; a failed probe doubles the cooldown to the 30-minute cap; a role whose tier resolves
+  to no fallback pair never trips.
+- Fake-pi integration: a role whose authoring runs fail provider-class three times runs its next
+  tick with the fallback pair in the `--provider`/`--model` argv; a successful probe tick after
+  the cooldown runs on the primary and emits `model_fallback_ended`; `model_fallback_started`
+  precedes it in the feed.
+- A role with no `fallback` configured emits no new event and its `--model` argv is unchanged.
+- `npm run test` green.
+
+### Model failure fallback, part 2/2: show the episode on every surface (planned 2026-10-06 by plan loop; requires part 1/2 landed)
+
+**Goal.** An operator can see which loops are running off-model, and why, on `tumwater status`,
+the TUI, and the dashboard without reading the event log.
+
+**Approach.**
+1. **`src/status/status-data.ts`** — add the active fallback (resolved pair, `since`, reason) to
+   each loop row from `LoopState.modelFallback`; absent leaves the row shape byte-identical.
+2. **`src/ui/status-payload.ts`, `src/ui/status-render.ts`, `src/ui/gui-client-loops.ts`** — a
+   `fallback` tag on the loop row (status/TUI cell and GUI row) while an episode is active.
+3. **`src/roles/role-view.ts` + `src/roles/role-render.ts`** — `tumwater role <id>` names the
+   effective fallback pair and "on fallback since <time> (primary failing: <reason>)".
+4. **Docs** — README's Backends/Status note and docs/how-it-works.md describe the shipped
+   trigger and return policy; docs/feature-model-fallback.md and
+   docs/implementation-model-fallback.md are corrected to match (the probe is a real tick on the
+   primary, not a separate canary request); plans/fallback-model.md's "Out of scope" line no
+   longer calls failure fallback out of scope.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/status-render.ts,
+src/ui/gui-client-loops.ts, src/roles/role-view.ts, src/roles/role-render.ts, README.md,
+docs/how-it-works.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md,
+plans/fallback-model.md, and their tests.
+
+**Acceptance criteria.**
+- `tumwater status --json` carries the fallback field for a role mid-episode and omits it
+  otherwise; existing row snapshots are unchanged when no episode is active.
+- The status/TUI loop cell and the GUI loop row show the fallback tag while active, and nothing
+  otherwise.
+- `tumwater role <id>` names the fallback pair and the episode's start and reason.
+- The docs state the shipped trigger (3 consecutive provider-class failures), the tier-resolved
+  pair, the probe tick, and the return policy; no doc still calls failure fallback out of scope.
 
 ---
 
