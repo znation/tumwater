@@ -4,7 +4,7 @@ import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, short
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { stringList } from "../files/json-object.js";
+import { isJsonObject, stringList } from "../files/json-object.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -196,10 +196,7 @@ export function eventMessage(e: HarnessEvent): string {
       // map (tiers, part 7b/8 — only emitted when the tiers resolve to two or more distinct
       // pairs), list each tier's pair and let the borrowed ones' `(from …)` suffixes show a
       // strong-tier borrow at a glance; a tier-free event keeps today's single-pair text.
-      const tiers =
-        typeof e.tiers === "object" && e.tiers !== null && !Array.isArray(e.tiers)
-          ? (e.tiers as Record<string, unknown>)
-          : undefined;
+      const tiers = isJsonObject(e.tiers) ? e.tiers : undefined;
       const tierEntries = tiers
         ? ["small", "default", "strong"]
             .filter((t) => typeof tiers[t] === "string")

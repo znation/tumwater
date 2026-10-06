@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { unlinkAllMissingTolerant } from "../files/files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
 import { isNonBlankString } from "../text/text.js";
 import { agree } from "../text/phrases.js";
@@ -43,10 +44,10 @@ export function promptImagesProblem(images: unknown): string | null {
     return `at most ${PROMPT_IMAGES_MAX_COUNT} images per prompt (got ${images.length})`;
   }
   for (const image of images) {
-    if (typeof image !== "object" || image === null || Array.isArray(image)) {
+    if (!isJsonObject(image)) {
       return "each image must be { name, dataBase64 }";
     }
-    const { name, dataBase64 } = image as Record<string, unknown>;
+    const { name, dataBase64 } = image;
     if (!isNonBlankString(name)) return "each image needs a file name";
     const ext = path.extname(name).toLowerCase();
     if (!PROMPT_IMAGE_EXTENSIONS.includes(ext)) {

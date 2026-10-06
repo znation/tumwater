@@ -1,5 +1,6 @@
 import path from "node:path";
 import { listQueueFiles, queueFileName, removeQueueFile } from "../files/file-queue.js";
+import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile, writeJsonFile } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { landQueueDir } from "../paths.js";
@@ -76,8 +77,8 @@ const entryCache = new Map<string, StatKeyedValue<LandingEntry>>();
  * undefined, which surface as bogus session names (`tumwater-<role>-undefined-review`) and
  * `undefined` in the reviewer's prompt. Optional fields are checked only when present. */
 function isLandingEntry(v: unknown): v is LandingEntry {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
-  const e = v as Record<string, unknown>;
+  if (!isJsonObject(v)) return false;
+  const e = v;
   return (
     typeof e.role === "string" &&
     typeof e.sha === "string" &&
