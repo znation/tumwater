@@ -56,9 +56,9 @@ export function TuiApp({
 }: {
   view: TuiAppView;
   noColor: boolean;
-  keys?: TuiKeys;
+  keys: TuiKeys;
 }) {
-  if (keys) useTuiKeys(keys);
+  useTuiKeys(keys);
   return (
     <Box flexDirection="column">
       {view.lines.map((line, i) =>
