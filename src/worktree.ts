@@ -35,9 +35,16 @@ async function clearStaleWorktree(root: string, dir: string): Promise<void> {
   }
 }
 
-/** Age past which a stale `target/` build dir inside a worktree is pruned (see pruneOldDirectory).
- * `git clean -fd` leaves gitignored dirs like `target/` behind, so they are reaped by age. */
-const TARGET_PRUNE_DAYS = 7;
+/** Age past which a stale `dist/` build dir inside a worktree is pruned (see pruneOldDirectory).
+ * `git clean -fd` leaves gitignored dirs like `dist/` (this repo's tsconfig outDir) behind, so
+ * they are reaped by age. */
+const BUILD_PRUNE_DAYS = 7;
+
+/** The gitignored build dir inside a worktree, reaped by age under it — never the worktree root
+ * itself, which every ensureDetachedWorktree/resetWorktreeToMain caller uses right after. */
+function pruneStaleBuildDir(wt: string): void {
+  pruneOldDirectory(path.join(wt, "dist"), BUILD_PRUNE_DAYS);
+}
 
 /** The tail of each repository's queue of worktree setups (serializeSetup). */
 const setupQueues = new Map<string, Promise<unknown>>();
@@ -136,7 +143,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
   await git(dir, "checkout", "--detach", ref);
   await git(dir, "reset", "--hard", ref);
   await git(dir, "clean", "-fd");
-  await pruneOldDirectory(dir, TARGET_PRUNE_DAYS);
+  pruneStaleBuildDir(dir);
   return dir;
 }
 
@@ -180,12 +187,12 @@ export async function abortSync(wt: string): Promise<void> {
   await gitTry(wt, "rebase", "--abort");
 }
 
-/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive).
+/** Hard-reset a worktree's branch to main and drop untracked files (ignored files survive; the stale `dist/` build dir is reaped by age).
  * An interrupted merge or rebase is aborted first — otherwise the next tick would wedge on
  * "you are already rebasing" / "merge in progress". */
 export async function resetWorktreeToMain(wt: string, mainBranch: string): Promise<void> {
   await abortSync(wt);
   await git(wt, "reset", "--hard", mainBranch);
   await git(wt, "clean", "-fd");
-  await pruneOldDirectory(wt, TARGET_PRUNE_DAYS);
+  pruneStaleBuildDir(wt);
 }

@@ -114,6 +114,40 @@ test("concurrent worktree setups in one repository all succeed (prune/add race)"
   assert.equal(sh(repo, "git", "worktree", "list").split("\n").length, 1 + 2 * 9, "every setup registered its worktree");
 });
 
+// The age reaper takes the gitignored `dist/` build dir inside a worktree, never the worktree
+// root: the root is handed straight back to callers (and resetWorktreeToMain's caller keeps
+// working in it), so reaping it by its own mtime — stale after a reused mirror sits untouched —
+// deleted the very directory the function was about to return.
+test("worktree reaping prunes an aged dist/ build dir and never the worktree root", async () => {
+  const agedMs = (Date.now() - 8 * 24 * 3600 * 1000) / 1000;
+  const age = (p: string) => fs.utimesSync(p, agedMs, agedMs);
+  const touchDist = (dir: string) => {
+    fs.mkdirSync(path.join(dir, "dist"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "dist", "old.js"), "stale\n");
+  };
+
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, ".gitignore"), "dist\n");
+  sh(repo, "git", "add", "-A");
+  sh(repo, "git", "commit", "-q", "-m", "ignore dist");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const dir = mirrorWorktreePath(repo);
+  await ensureDetachedWorktree(repo, dir, head);
+  touchDist(dir); // clean -fd leaves a gitignored dist/ behind, exactly the stale shape
+  age(dir);
+  age(path.join(dir, "dist"));
+  await ensureDetachedWorktree(repo, dir, head);
+  assert.ok(fs.existsSync(dir), "the worktree root survives its own aged mtime");
+  assert.equal(fs.existsSync(path.join(dir, "dist")), false, "the aged dist/ build dir is reaped");
+  assert.equal(sh(dir, "git", "rev-parse", "HEAD"), head, "the surviving worktree still holds the ref");
+
+  // A young dist/ is live build output, not dead weight: it stays.
+  const wt = await ensureWorktree(repo, "dry", "main");
+  touchDist(wt);
+  await resetWorktreeToMain(wt, "main");
+  assert.ok(fs.existsSync(path.join(wt, "dist", "old.js")), "a young dist/ survives the reset");
+});
+
 test("resetWorktreeToMain discards commits and untracked files", async () => {
   const repo = makeRepo();
   const wt = await ensureWorktree(repo, "dry", "main");

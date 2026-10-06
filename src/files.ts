@@ -168,7 +168,8 @@ export function pruneOldFiles(dir: string, days: number): number {
 }
 
 /** Remove `dir` entirely when the directory itself is older than `days` days (its own mtime, not
- * its children's). Worktree builds leave a `target/` dir that `git clean -fd` does not drop; this
+ * its children's). Worktree builds leave a gitignored `dist/` dir that `git clean -fd` does not
+ * drop; this
  * prunes it at the next tick, bounded by the same age rule. Returns true when the directory was
  * removed. Mirrors pruneOldFiles' vanish-tolerant style. */
 export function pruneOldDirectory(dir: string, days: number): boolean {
