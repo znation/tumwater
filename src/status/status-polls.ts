@@ -3,7 +3,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingInFlight } from "../landing/landing-slot.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
-import { readEvents } from "../events/event-read.js";
+import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
 import { freshLoopState, loadLoopState } from "../loop/loop-state.js";
 import { statePath } from "../paths.js";
@@ -30,9 +30,10 @@ export interface MainCheckStatus {
   at: number;
 }
 
-/** How far mainCheckForPoll may grow its event tail. The per-poll default (readEvents' 200)
- * covers a healthy fleet — a merge-scope check rides every landing and every redeploy — but a
- * burst of quiet or failing ticks logs hundreds of events without moving main, and a tail
+/** How far mainCheckForPoll may grow its event tail. The per-poll default
+ * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy fleet — a merge-scope check rides
+ * every landing and every redeploy — but a burst of quiet or failing ticks logs hundreds
+ * of events without moving main, and a tail
  * that ends before the last check makes the header badge vanish and reappear as ticks tick
  * by. Growing until the check is found keeps "absent" meaning what the field's contract says
  * (no merge-scope check has run) rather than "the window ended"; the cap keeps the worst
@@ -41,9 +42,10 @@ export interface MainCheckStatus {
  * Past the cap the badge drops, the same graceful loss log rotation already imposes. */
 const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 
-/** Per-root note that the previous poll had to grow past the default 200-event tail without
- * finding a merge-scope check. A check rides every landing, so a poll that grew all the way to
- * the cap is a burst of quiet or failing ticks — hundreds of events between landings — and the
+/** Per-root note that the previous poll had to grow past the default event tail
+ * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every landing, so a
+ * poll that grew all the way to the cap is a burst of quiet or failing ticks — hundreds of
+ * events between landings — and the
  * next poll's growth starts straight at the cap instead of re-scanning the ×4 ladder's
  * intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per fresh tail, vs 5.2k for
  * 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per append+poll). A poll
@@ -63,7 +65,7 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   let check: ReturnType<typeof readEvents>[number] | undefined;
   let events: ReturnType<typeof readEvents> = [];
   const grewFull = mainCheckGrewFull.has(root);
-  for (let window = 200; ; window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
+  for (let window = DEFAULT_EVENT_TAIL; ; window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
     events = readEvents(root, window);
     for (const e of events) {
       if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {

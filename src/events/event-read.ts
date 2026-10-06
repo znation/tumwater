@@ -80,6 +80,12 @@ export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): numbe
   return startTs === undefined ? null : Math.max(0, ev.ts - startTs);
 }
 
+/** The event-tail size readEvents falls back to when a caller omits `limit` — a working
+ * handful of a busy fleet's recent activity, small enough that the per-poll tail read stays
+ * cheap. Exported so a caller that starts a scan at the default (status-polls.ts's
+ * mainCheckForPoll ladder) grows from the same value instead of re-spelling the literal. */
+export const DEFAULT_EVENT_TAIL = 200;
+
 /** Read the last `limit` events (best-effort; skips malformed lines).
  * A limit that is not a positive number reads as an empty window — `[]` — matching
  * readTranscriptTail's zero-boundary semantics (the raw `lines.slice(-limit)` below would not: `slice(-0)` is
@@ -93,7 +99,7 @@ export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): numbe
  * append-only, so an unchanged stat means unchanged tail bytes, and a steady-state poll costs
  * one stat instead of open + read + `limit` JSON.parse calls. Rotation swaps the inode and every
  * append changes size, so both invalidate through the same freshness check. */
-export function readEvents(root: string, limit = 200): HarnessEvent[] {
+export function readEvents(root: string, limit = DEFAULT_EVENT_TAIL): HarnessEvent[] {
   // A non-positive guard (`limit <= 0`) passes NaN — every comparison with NaN is false —
   // and slice(-NaN) is slice(0), the whole scanned window; the sibling readTranscriptTail
   // and readTranscript guards are `limit > 0` positives-checks for exactly this reason.
