@@ -27,7 +27,7 @@ import {
 import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../concurrency/check-permit.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
-import { type InstallRunner, npmInstall } from "../dep-install.js";
+import { type InstallRunner, npmInstall } from "./dep-install.js";
 
 /** Run the project's declared check for a named scope — the detect → run → build_check
  * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing

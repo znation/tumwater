@@ -15,7 +15,7 @@ import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { logEvent } from "../events/events.js";
 import { ffMainTo } from "./landing-git.js";
-import { syncRootInstall } from "../dep-install.js";
+import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
 import { mergeLockDir } from "../paths.js";
 import { type BuildCheckOutcome } from "../build/build-check.js";

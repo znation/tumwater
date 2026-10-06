@@ -25,7 +25,7 @@ import { buildConflictPrompt } from "../gates/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
-import { syncRootInstall } from "../dep-install.js";
+import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
 import type { TickResult } from "../tick/tick-outcome.js";
