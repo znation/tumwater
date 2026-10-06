@@ -5,7 +5,82 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### Two test files leak a temp dir per test into the system temp dir: test/tui-keys.test.ts and test/review-followup.test.ts create their roots with a raw `fs.mkdtempSync(path.join(os.tmpdir(), …))`, outside the suite's run root, and nothing removes them (found by human log analysis 2026-10-06)
+Symptom: the per-user temp dir (`getconf DARWIN_USER_TEMP_DIR`) grows by about 1,000 entries an
+hour while the fleet runs. On 2026-10-06 at 02:55 PDT it held 26,249 entries, including 13,103
+`tui-keys-*` and 5,145 `review-followup-*` dirs; 3,626 of those two were created after midnight
+the same day. Every full suite run adds one per test in each file (9 `makeRoot()` calls in
+tui-keys, one `makeCtx()` per test in review-followup), and the fleet runs the suite well over
+100 times an hour across gate checks, landings, and agents' own runs.
+Reproduce: `d=$(getconf DARWIN_USER_TEMP_DIR); ls -f "$d" | grep -c '^tui-keys-'`, run
+`npm test` once, and count again; the count rises by the number of tests that call `makeRoot()`.
+Same for `review-followup-`.
+Cause: test/tui-keys.test.ts:19 (`makeRoot`) and test/review-followup.test.ts:46 (`makeCtx`)
+call `fs.mkdtempSync(path.join(os.tmpdir(), "<prefix>-"))` directly instead of
+test/repo-fixtures.ts's `tmpdir(prefix)`, which creates the dir under `testRunRoot()` so the
+suite's per-run cleanup removes it. Neither file has a `t.after`/`after` that removes its roots.
+The same leak class made the suite time out on 2026-09-21: 1.68M `tumwater-test-*` dirs made
+`mkdtemp` about 9,000x slower (357 ms/call). At today's rate that takes months to reach, but it
+compounds and nothing reaps the dir. Older leaked prefixes from earlier fixes are still there:
+3,102 `tw-ver-*` (the last created 2026-10-04) and 586 `tw-eng-*`.
+Suggested fix: switch both helpers to `tmpdir("tui-keys-")` / `tmpdir("review-followup-")`
+from test/repo-fixtures.ts. Consider a guard so this cannot recur, such as a test that greps
+test/ for `mkdtempSync(path.join(os.tmpdir()` outside repo-fixtures.ts. One-time cleanup of the
+existing dirs is safe while no suite is running.
+
+### Agents spend 43% of their tool-call time on test runs, and about a fifth of their full-suite runs re-run an unchanged tree only to see a different slice of the output (found by human log analysis 2026-10-06)
+Symptom: over 4.3 h of pi logs (2026-10-05 22:33 to 2026-10-06 02:52 PDT, all roles), test
+commands took 2.04 h of the 4.74 h agents spent between an assistant turn starting and its first
+tool result arriving. Search/read commands took 1.86 h, edits 0.34 h, git 0.26 h. Agents ran the
+full suite 136 times, on top of the harness's 133 gate, landing, and baseline checks. 30 of
+those 136 ran the suite again on a tree no edit, write, or file-mutating command had touched
+since the previous full run. The usual shape is `npm run test 2>&1 | tail -15` followed by
+`npm run test 2>&1 | grep -E '^✖|ℹ fail'` or `| grep -B2 -A12 "<test name>"` to see the part
+`tail` cut off. Four commands ran it twice in one line
+(`npm run test 2>&1 | tail -3; echo ===; npm run test 2>&1 | grep -E "^not ok" | head`). A run
+takes about 38 s alone and 54–63 s while other suites overlap it (the host load average hit 41
+on 18 cores at 02:52), so the 30 re-runs cost roughly 25 min of tick time plus the load they add
+to every concurrent check.
+Reproduce: parse `message_end` assistant tool calls in `.tumwater/log/*.pi.jsonl*` in order,
+dedupe by call id, and count full-suite bash commands with no edit/write call or mutating bash
+command (sed -i, mv, cp, rm, a build) since the previous full run in the same session.
+Cause: commonRules (src/prompt/prompt.ts) tells every run to "Pipe its output through `tail` —
+only the failures matter", so the first run keeps only the tail. When the failure detail is
+above it, nothing tells the agent the output can be kept, so it re-runs the suite with a
+different filter. The rule is right about context cost but leaves no cheap way back to the
+discarded output.
+Suggested fix (project-neutral, since the rule ships to every project): change the verification
+rule to send the check's full output to a file in a scratch dir once (`<check> > <scratch>/check.log 2>&1; tail -n 30 <scratch>/check.log`)
+and to grep that file for anything else, re-running only after a change. A complementary
+harness-side signal: suite-rerun.ts already detects full-suite commands for the reviewer, so a
+warning event when an authoring run repeats one on an unchanged tree would make this measurable
+in the failure digest.
+
+### A hung piped command goes unreported until the quiet watchdog kills the tick: the stall warning skips every command whose stdout is piped or redirected, so a 19-min hang of `npm run test 2>&1 | tail -15` raised no warning and held up a self-redeploy until a manual `tumwater abort` (found by human log analysis 2026-10-06)
+Symptom: on 2026-10-05 at 22:41 PDT the coverage loop's tick 544 resumed after the 22:33 restart
+and called `npm run test 2>&1 | tail -15` (bash tool timeout 1800 s). The call never returned: the
+tick produced 28 output tokens in total, there was no tool result, and no `tool call stalled`
+warning fired in its 19 minutes. The self-redeploy that went pending at 22:41 waited on it
+(`restart` event: `drainedMs` 1,155,779 of a 1,800,000 drain window) until a manual
+`tumwater abort` ended it at 23:00:40 (`tick_end result: user_aborted`). A normal full suite
+takes 40–60 s. Why the run hung is unknown: its output was never captured, and the bash tool's
+1800 s timeout was 11 minutes from firing.
+Reproduce: in a tick, run a piped command that never exits (`sleep 3600 | tail -1`). No
+`tool call stalled` warning appears after `toolCallStallSeconds` (300 s). The quiet watchdog's
+kill comes only after `quietTimeoutSeconds` (1800 s by default, 3600 s in this fleet's
+tumwater.json).
+Cause: src/pi/pi-watchdogs.ts skips stall detection when `commandBuffersOutput(call.command)` is
+true. That was deliberate (BUGS.md 2026-09-28): piped commands hold their bytes until exit, so
+"no output for 5 min" was a false alarm for every long `| tail` verification run and drowned the
+digest. But the prompt tells every loop to pipe its verification through `tail`, so the most
+common long-running command is exactly the one with no hang detection. It is also the command
+most likely to hang (a leaked grandchild holding the pipe open keeps `tail` from ever seeing EOF).
+Suggested fix: keep silence-based detection off for buffered commands, but give them a
+wall-clock threshold. Warn when a buffered call has been open longer than a multiple of the
+declared check's recent duration (the median `durationMs` of recent `build_check` events, e.g. 5x,
+with a floor of about 10 min), naming the command the way the stall warning does. Consider also
+letting a pending restart's drain abort a tick whose only open call has passed that threshold,
+rather than waiting out the drain window.
 
 ## Fixed
 
