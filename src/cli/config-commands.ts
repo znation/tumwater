@@ -1,6 +1,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { setConfigKey, parseConfigKey, unknownConfigKeyError } from "../config/config-write.js";
+import { modelTierMap } from "../config/config-schema.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which holds
  * only the operator-intent marker commands): with no arguments, print the effective merged
@@ -47,12 +48,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
       parsed.kind === "map"
         ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
         : parsed.kind === "tier"
-          ? (() => {
-              const model = record.model;
-              if (typeof model === "string") return parsed.tier === "default" ? model : undefined; // a string is shorthand for { default }
-              if (model && typeof model === "object") return (model as Record<string, unknown>)[parsed.tier];
-              return undefined;
-            })()
+          ? modelTierMap(record.model)[parsed.tier] // a string is shorthand for { default }
           : parsed.kind === "role"
             ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
                 parsed.field

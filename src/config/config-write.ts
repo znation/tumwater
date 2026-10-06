@@ -6,6 +6,7 @@
  * model derivations in config-views.ts. */
 import fs from "node:fs";
 import {
+  modelTierMap,
   ROLE_ENTRY_KEYS,
   TIER_MAP_KEYS,
   TOP_LEVEL_KEYS,
@@ -219,18 +220,12 @@ export function setConfigKey(
         return { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
       }
       if (parsed.kind === "tier") {
-        // A string `model` is shorthand for `{ default: <string> }`, so setting a tier on
-        // one promotes it to the map form rather than overwriting the bare string — the
-        // other tiers' models survive. validateConfig in writeConfigMutation owns the
+        // Setting a tier on a string `model` promotes it to the map form rather than
+        // overwriting the bare string — the other tiers' models survive (modelTierMap owns
+        // that reading). validateConfig in writeConfigMutation owns the
         // type truth of the merged map, so the cast is safe: a type-invalid merge fails
         // there and nothing is written.
-        const model = record.model;
-        const existing =
-          typeof model === "string"
-            ? { default: model }
-            : model && typeof model === "object"
-              ? model
-              : {};
+        const existing = modelTierMap(record.model);
         oldValue = existing[parsed.tier];
         return { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
       }

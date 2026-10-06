@@ -22,6 +22,20 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
  * keys are not exactly these tiers is a typo that would silently never resolve. */
 export const TIER_MAP_KEYS: readonly string[] = MODEL_TIERS;
 
+/** The top-level `model` read as a tier map: a bare selector string means
+ * `{ default: <string> }`, any other object passes through as-is, and a missing or non-object
+ * model reads as an empty map. Shared by `config set model.<tier>`'s merge and
+ * `config get model.<tier>`'s lookup, so those two verbs cannot disagree about what a string
+ * model means. Values are not type-checked here — validateConfig owns the shape of the merged
+ * candidate. (config-views.ts keeps its own parse-aware reading: a string model there is
+ * parsed under the legacy top-level provider.) */
+export function modelTierMap(model: unknown): Record<string, unknown> {
+  if (typeof model === "string") return { default: model };
+  return model !== null && typeof model === "object"
+    ? (model as Record<string, unknown>)
+    : {};
+}
+
 /** Per-role configuration in tumwater.json. */
 export interface RoleConfig {
   enabled: boolean;
