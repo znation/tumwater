@@ -1,6 +1,6 @@
 /** The tests' single home for "read a JSON file and parse it": the
  * readFileSync(…, "utf8") + JSON.parse dance that 62 call sites across the suite hand-rolled
- * when this was factored out (2026-09-30). Strict on purpose — unlike src/src/files/json-files.ts's tolerant readJsonFile (a missing
+ * when this was factored out (2026-09-30). Strict on purpose — unlike src/files/json-files.ts's tolerant readJsonFile (a missing
  * or torn marker file is "no data", never an error), a test that reads state a process under
  * test was supposed to write WANTS the failure: a missing file or a syntax error must fail
  * the test loudly, not masquerade as an empty result behind a swallowed throw. So a read or

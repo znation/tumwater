@@ -13,7 +13,7 @@ import { tooLongMessage } from "../text/text.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
  * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox/inbox.ts,
- * and the image side of a submission in src/inbox-attachments.ts): the shared length cap,
+ * and the image side of a submission in src/inbox/inbox-attachments.ts): the shared length cap,
  * the validation, and the submit wrappers the TUI, GUI, and CLI all go through. */
 
 /** Cap on a submitted prompt's length: the same ceiling for every loop's queue, director and

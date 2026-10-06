@@ -86,7 +86,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     project: projectName(root),
     running: snap.running,
     pid: snap.pid,
-    // The running harness's build stamp and staleness (src/build/build/build-info.ts); null when no
+    // The running harness's build stamp and staleness (src/build/build-info.ts); null when no
     // harness runs or its dist carries no stamp — machine-readable for `status --json`.
     build: snap.build,
     // The header's build badge pre-formatted through badges.ts's buildBadge — the same

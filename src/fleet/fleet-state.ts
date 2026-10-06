@@ -254,7 +254,7 @@ export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
   roles: string[];
-  /** The running build's stamp and staleness (src/build/build/build-info.ts); absent when dist/ carries no
+  /** The running build's stamp and staleness (src/build/build-info.ts); absent when dist/ carries no
    * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
    * read one file instead of running git themselves. */
   build?: BuildStatus;
