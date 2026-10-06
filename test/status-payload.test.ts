@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../src/config/config.js";
 import { snapshot } from "../src/status/status-data.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";

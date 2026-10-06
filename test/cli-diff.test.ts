@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";

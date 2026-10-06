@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { strict as assert } from "node:assert";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 import { runOrchestrator } from "../src/orchestrator/orchestrator.js";
 import { drainMerge } from "../src/landing/landing-drain.js";

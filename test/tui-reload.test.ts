@@ -6,7 +6,7 @@ import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { DASHBOARD_CHILD_ENV } from "../src/self-reload.js";
 import { makeRepo } from "./repo-fixtures.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 
 // The TUI's self-reload wiring (runTui's watch onTrigger: latch the request, wake the main
 // loop, tear the terminal down, then re-exec at most once) is the half of the redeploy story

@@ -169,7 +169,7 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 - **Legacy `provider` / `thinking` on `roles.<id>` and `review`** keep their meaning, applied over
   the seam's resolved model — so a thinking-only override such as `review.thinking: "high"` still
   works.
-- **Writers emit only the new form:** `tumwater init` templates (src/init-templates.ts),
+- **Writers emit only the new form:** `tumwater init` templates (src/init/init-templates.ts),
   `tumwater config set` (a dotted `model.strong` merges one map entry, the way `roles.qa.model`
   already does), and the GUI's config edits (`EDITABLE_CONFIG_KEYS`). Nothing rewrites an
   existing tumwater.json.
@@ -240,7 +240,7 @@ src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
 src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status/status-data.ts, src/ui/*,
-src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
+src/config-editable-keys.ts, src/config-write.ts, src/init/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.
 

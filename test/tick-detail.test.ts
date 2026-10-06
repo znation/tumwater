@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { cmdTick, renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { writeEvents } from "./log-fixtures.js";

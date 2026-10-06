@@ -12,7 +12,7 @@ import { displayWidth } from "../src/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { tmpdir, makeRepo } from "./repo-fixtures.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";

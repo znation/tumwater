@@ -14,7 +14,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { ensureParentDir } from "../src/files.js";
 import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";

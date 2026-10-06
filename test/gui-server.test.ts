@@ -4,7 +4,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import type { HarnessEvent } from "../src/events/events.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { tickRows } from "../src/history/history-data.js";
 import { writeEvents } from "./log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";

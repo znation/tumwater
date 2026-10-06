@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";

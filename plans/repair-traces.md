@@ -115,7 +115,7 @@ on compression, which is the same deliberate lossiness the existing compression 
   - `steward.find` — the BUGS.md compression rule (the one-line form at line 244, the no-commit
     clause at line 254) gains the `gap:` suffix clause, and the curation-move list (lines
     213–216) gains gap promotion.
-- `src/init-templates.ts` — `BUGS_TEMPLATE`'s guidance line (line 134) mentions the field, so a fresh
+- `src/init/init-templates.ts` — `BUGS_TEMPLATE`'s guidance line (line 134) mentions the field, so a fresh
   project starts with the convention rather than acquiring it.
 - `test/prompt.test.ts` — assert the `bugfix` prompt embeds the shared constant and names the
   line, that every tag in the vocabulary appears in the guidance, and that the steward's Fixed
@@ -166,7 +166,7 @@ embeds `${DECOMPOSITION_GUIDANCE}` at line 81, and `plan.find` embeds `${PLAN_SI
 `${DECOMPOSITION_GUIDANCE}` at lines 100–101. The `bugfix.find` Fixed sentence is at line 79
 ("… and update BUGS.md to mark it fixed (move it to a Fixed section with the date)."), and the
 `steward` role (line 207) carries the BUGS.md Fixed compression paragraph at lines 242–259, whose
-exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init-templates.ts's
+exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init/init-templates.ts's
 `BUGS_TEMPLATE` (line 130) has its guidance line at line 134, and no test pins its content.
 `highFriction` exists as the problem statement says (src/loop.ts:693, stamped by
 commit-message.ts:84) and attaches to the commit, not the bug.
@@ -203,7 +203,7 @@ commit-message.ts:84) and attaches to the commit, not the bug.
    infrastructure that would retire it", and the Fixed paragraph (after the no-commit sentence at
    line 254) carries the suffix rule. The plan's existing "one curation move per tick still
    holds" sentence already covers the fifth move.
-5. **The template mention is testable and needs one init assertion.** Pinned: src/init.ts:26's
+5. **The template mention is testable and needs one init assertion.** Pinned: src/init/init.ts:26's
    guidance line adds the `**Validation gap:** <tag> — <one sentence>` field, and
    test/init.test.ts gains one string assertion over the seeded BUGS.md (mirroring the existing
    seeded-PRINCIPLES test at test/init.test.ts:32) so the convention cannot silently drop.
@@ -215,7 +215,7 @@ commit-message.ts:84) and attaches to the commit, not the bug.
    planned feature.
 
 **Sizing.** Unchanged and still one run: src/roles/roles.ts ~35 lines (two exported constants, one
-fragment embedded in two places, one move-list clause), src/init.ts ~2, test/prompt.test.ts ~40
+fragment embedded in two places, one move-list clause), src/init/init.ts ~2, test/prompt.test.ts ~40
 (three assertions plus the one updated form), test/init.test.ts ~5. No source behavior changes, no
 new state, no new file. No design question remains open.
 

@@ -16,7 +16,7 @@ import { queueFileStamp } from "../src/file-queue.js";
 import { quietHoursStatus } from "../src/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { quietBadge } from "../src/ui/badges.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { mainSha, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";

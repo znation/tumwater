@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { collectRoleChange } from "../src/change/change-data.js";
 import { renderRoleChange } from "../src/change/change-render.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh } from "./repo-fixtures.js";
 

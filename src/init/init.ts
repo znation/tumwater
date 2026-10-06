@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { saveConfig } from "./config/config.js";
-import { seedConfig } from "./config/config-example.js";
-import { findOnPath } from "./files.js";
-import { COMMIT_IDENT, GIT_MISSING_MESSAGE, git, gitTry } from "./git/git-run.js";
-import { hasCommits, isGitRepo } from "./git/git.js";
+import { saveConfig } from "../config/config.js";
+import { seedConfig } from "../config/config-example.js";
+import { findOnPath } from "../files.js";
+import { COMMIT_IDENT, GIT_MISSING_MESSAGE, git, gitTry } from "../git/git-run.js";
+import { hasCommits, isGitRepo } from "../git/git.js";
 import {
   INITIAL_PROMPT_MAX_CHARS,
   PROMPT_END,
@@ -13,9 +13,9 @@ import {
   briefTemplate,
   readInitialPrompt,
   readmeTemplate,
-} from "./readme.js";
-import { CONFIG_BASENAME, STATE_DIR, configPath } from "./paths.js";
-import { projectName } from "./project-name.js";
+} from "../readme.js";
+import { CONFIG_BASENAME, STATE_DIR, configPath } from "../paths.js";
+import { projectName } from "../project-name.js";
 import {
   getTemplate,
   BUGS_TEMPLATE,

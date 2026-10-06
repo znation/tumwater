@@ -6,7 +6,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build/build-info.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";

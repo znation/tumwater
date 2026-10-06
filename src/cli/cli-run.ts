@@ -18,8 +18,8 @@ import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "../fleet/fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
-import { initProject } from "../init.js";
-import { templateCatalog } from "../init-templates.js";
+import { initProject } from "../init/init.js";
+import { templateCatalog } from "../init/init-templates.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
@@ -27,7 +27,7 @@ import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../phrases.js";
 import { shortSha } from "../format.js";
 
-/** `tumwater init`: seed a project directory from the operator's brief (src/init.ts does the
+/** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the
  * work; this prints the report). --dry-run prints the would-be actions without writing
  * anything; an already-initialized repo is reported as a no-op, never an error. */
 export async function cmdInit(root: string, args: string[]): Promise<void> {

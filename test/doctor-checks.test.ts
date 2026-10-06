@@ -16,7 +16,7 @@ import {
   checkStateDir,
 } from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";

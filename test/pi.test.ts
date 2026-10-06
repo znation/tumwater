@@ -10,7 +10,7 @@ import {
 import { NO_LAUNCH_SERVICES_CHECK_IN, withoutLaunchServicesCheckIn } from "../src/process/process.js";
 import { toolUpdateHasContent } from "../src/pi/pi-event-line.js";
 import { defaultConfig } from "../src/config/config.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { gitOnlyBinDir, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logFlagsTo, readRunLines } from "./fake-pi.js";

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { inboxSize } from "../src/inbox/inbox.js";
 import { postJson, startLocalGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

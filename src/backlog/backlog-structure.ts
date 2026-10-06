@@ -131,7 +131,7 @@ export function duplicateHeadings(md: string): string[] {
  * a second one where the base had none), or (b) a title present on the base is gone from the
  * head (a whole section dropped). The rule is deliberately about heading sets, not section
  * names: a project whose BUGS.md adds `## Verified` (this repo's does) or a fresh repo seeded
- * from src/init.ts's templates passes unchanged. A base that already carries a duplicate never
+ * from src/init/init.ts's templates passes unchanged. A base that already carries a duplicate never
  * blocks unrelated edits — rule (a) fires only when the head's count EXCEEDS the base's, so a
  * change that removes a duplicate always passes. For PLANS.md there is a third rule
  * (part 4/4): a head that ADDS a `### ` entry directly under `## Done` whose joined heading

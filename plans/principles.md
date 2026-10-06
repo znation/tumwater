@@ -19,7 +19,7 @@ constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and READ
 
 ## Design
 
-- **Template at init** (`src/init.ts`): seed `PRINCIPLES.md` beside PLANS.md/BUGS.md with a short
+- **Template at init** (`src/init/init.ts`): seed `PRINCIPLES.md` beside PLANS.md/BUGS.md with a short
   header explaining its purpose and 3–4 starter principles phrased positively (e.g. "prefer the
   standard library over a new dependency", "keep every module under ~500 lines", "every behavior
   change ships with a test"). Add to the init commit and to `initProject`'s created-files list.
@@ -39,7 +39,7 @@ constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and READ
 
 ## Files touched
 
-`src/init.ts`, `src/prompt/prompt.ts`, `src/roles/roles.ts` (readme role: keep PRINCIPLES.md out of its
+`src/init/init.ts`, `src/prompt/prompt.ts`, `src/roles/roles.ts` (readme role: keep PRINCIPLES.md out of its
 status-section remit), `test/init.test.ts`, `test/prompt.test.ts`, `PRINCIPLES.md` (this repo),
 README ("How it works" mention).
 

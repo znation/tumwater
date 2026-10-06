@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readJson } from "./json-read.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { readInitialPrompt } from "../src/readme.js";
 import { defaultConfig } from "../src/config/config.js";

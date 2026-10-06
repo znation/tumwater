@@ -7,7 +7,7 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { lanAddresses } from "../src/gui/gui-command.js";
 import { startGui } from "../src/gui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";

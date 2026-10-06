@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import {

@@ -7,7 +7,7 @@ import { collectFailureReport } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { eventsLogPath } from "../src/paths.js";
 import { compactTokens } from "../src/format.js";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./oracles.js";
 import { withGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

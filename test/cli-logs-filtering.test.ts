@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { eventsLogPath } from "../src/paths.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { cli, spawnCli } from "./cli-harness.js";

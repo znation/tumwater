@@ -6,7 +6,7 @@
  * is short and deterministic. Extracted from tui.test.ts so each topic file imports it
  * instead of carrying its own copy. */
 import { EventEmitter } from "node:events";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { runTui, type TuiStdin } from "../src/ui/tui.js";
 import { makeRepo } from "./repo-fixtures.js";

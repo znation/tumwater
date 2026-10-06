@@ -23,7 +23,7 @@ to ask.
 
 ## Design
 
-- **The file**: tracked `QUESTIONS.md`, seeded at init (`src/init.ts`) with `## Open` /
+- **The file**: tracked `QUESTIONS.md`, seeded at init (`src/init/init.ts`) with `## Open` /
   `## Answered` sections. Each question: a stable id (`Q<n>`), the asking role and date, one
   paragraph of context, the concrete options, and the loop's own recommendation — a senior asks
   with a proposal, not a shrug. Question-only diffs are md-only, hence cheap under the review
@@ -68,7 +68,7 @@ to ask.
 
 ## Files touched
 
-`src/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt/prompt.ts` (read-first list +
+`src/init/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt/prompt.ts` (read-first list +
 ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new: count + entry
 parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
 `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),

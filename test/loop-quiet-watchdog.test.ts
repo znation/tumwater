@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { initProject } from "../src/init.js";
+import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { piLogPath, worktreePath } from "../src/paths.js";

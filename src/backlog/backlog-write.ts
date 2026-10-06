@@ -14,7 +14,7 @@ import { readTextOrNull, writeTextAtomic } from "../files.js";
 import { formatDate } from "../datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text.js";
-import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init.js";
+import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
