@@ -44,6 +44,28 @@ async function tallyCheckFailure(
   return { head, patch, count };
 }
 
+/** The terminal deterministic-reject sink shared by landingBlocked and attributeRedCheck:
+ * record the reject review, reset the unreviewed-failure streak, persist state, delete the
+ * landing ref, release the disposable lander worktree when one is held, and log
+ * review_rejected. Returns "rejected". review.ts's reject path is a different sink — it
+ * resets the branch instead of deleting the ref — and keeps its own copy deliberately. */
+async function rejectChange(
+  ctx: { root: string },
+  role: string,
+  head: string,
+  reasons: string[],
+  state: LoopState,
+  wt?: string,
+): Promise<TickResult> {
+  recordReview(state, "reject", reasons, head);
+  state.unreviewFailures = 0;
+  saveLoopState(ctx.root, state);
+  await deleteRef(ctx.root, landingRefName(role));
+  if (wt) await removeLandWorktree(ctx.root, wt);
+  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
+  return "rejected";
+}
+
 /** A landing blocked because its in-lock check went red on the rebased tree (landing-merge.ts's
  * verifyLanding). The count is keyed by the patch-id; under LANDING_CHECK_FAILURE_LIMIT the
  * pin is kept (merge_blocked) for recovery's re-land; at the limit the red is attributed like
@@ -90,14 +112,7 @@ export async function landingBlocked(
     ctx.state.lastError = `merge failed: merge_blocked — ${blocked}`;
     return "merge_blocked";
   }
-  const reasons = [`landing blocked: ${blocked}`];
-  recordReview(ctx.state, "reject", reasons, head);
-  ctx.state.unreviewFailures = 0;
-  saveLoopState(ctx.root, ctx.state);
-  await deleteRef(ctx.root, landingRefName(role));
-  await removeLandWorktree(ctx.root, wt);
-  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
-  return "rejected";
+  return rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state, wt);
 }
 
 /** Attribute a check that went red over ONE change's tree after its vet approved it — a batch
@@ -138,13 +153,7 @@ export async function attributeRedCheck(
   if (main.status === "unavailable") {
     reasons.push(`main's own baseline was unavailable (${main.why}), so the red ${label} is attributed to this change`);
   }
-  recordReview(state, "reject", reasons, head);
-  state.unreviewFailures = 0;
-  saveLoopState(ctx.root, state);
-  await deleteRef(ctx.root, landingRefName(role));
-  // Terminal rejection: release the disposable lander worktree too, matching the other
-  // rejected/discarded sinks (reviewPinnedChange, landApprovedChange, landingBlocked).
-  if (wt) await removeLandWorktree(ctx.root, wt);
-  logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
-  return "rejected";
+  // Terminal rejection: the sink releases the disposable lander worktree too, matching the
+  // other rejected/discarded sinks (reviewPinnedChange, landApprovedChange).
+  return rejectChange(ctx, role, head, reasons, state, wt);
 }
