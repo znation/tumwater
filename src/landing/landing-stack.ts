@@ -18,7 +18,7 @@ import { ffMainTo } from "./landing-git.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
 import { mergeLockDir } from "../paths.js";
-import { type BuildCheckOutcome } from "../build/build-check.js";
+import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";

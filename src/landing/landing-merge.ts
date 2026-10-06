@@ -12,7 +12,7 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "./landing-git.js";
 import { abortSync } from "../git/worktree.js";
-import { type BuildCheckOutcome } from "../build/build-check.js";
+import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
