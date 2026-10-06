@@ -9,7 +9,7 @@ import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
-import { consumeRestartRequest } from "../src/operator-requests.js";
+import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { configPath } from "../src/paths.js";
 import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";

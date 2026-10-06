@@ -7,7 +7,7 @@ import {
   consumeResetRequest,
   consumeWakeRequest,
   type AbortableLanding,
-} from "../src/operator-requests.js";
+} from "../src/operator/operator-requests.js";
 import { readEvents } from "../src/events/event-read.js";
 import {
   abortRequestPath,
@@ -19,7 +19,7 @@ import type { LoopRunner } from "../src/loop.js";
 import { eventsOfType, writeMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-/** A recording stand-in for LoopRunner covering exactly the surface operator-requests.ts
+/** A recording stand-in for LoopRunner covering exactly the surface operator/operator-requests.ts
  * touches: role, in-memory running flag, and the three mutators it calls. */
 interface FakeRunner {
   role: string;

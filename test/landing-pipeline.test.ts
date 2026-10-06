@@ -9,7 +9,7 @@ import {
   type InFlightLanding,
 } from "../src/landing/landing-pipeline.js";
 import { vetLimit } from "../src/landing/landing-vetting.js";
-import { consumeAbortRequests } from "../src/operator-requests.js";
+import { consumeAbortRequests } from "../src/operator/operator-requests.js";
 import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/landing/landing-queue.js";
 import { abortRequestPath, landQueueDir, landingRefName, landingStatePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git.js";

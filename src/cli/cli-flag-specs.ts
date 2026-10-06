@@ -10,7 +10,7 @@
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
-import { PAUSE_FOR_MAX_MS } from "../operator-intent.js";
+import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];

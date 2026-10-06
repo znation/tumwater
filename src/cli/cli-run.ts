@@ -1,6 +1,6 @@
 /** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
  * with its supervisor half (src/supervisor.ts). cli.ts stays the pure dispatcher; every other
- * command it dispatches already delegates to a module (operator-commands.ts, prompt-commands.ts,
+ * command it dispatches already delegates to a module (operator/operator-commands.ts, prompt-commands.ts,
  * config-commands.ts, log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
 import { enabledRoleIds } from "../config/config.js";
@@ -14,7 +14,7 @@ import {
   parseDurationFlag,
   parseRoleFlag,
 } from "./cli-args.js";
-import { PAUSE_FOR_MAX_MS } from "../operator-intent.js";
+import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "../fleet/fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";

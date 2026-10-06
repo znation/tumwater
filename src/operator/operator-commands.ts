@@ -1,12 +1,12 @@
-import { knownRoleIds, loadConfig } from "./config/config.js";
-import { fail, say, sayJson } from "./cli/cli-output.js";
-import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "./cli/cli-args.js";
-import { errorMessage } from "./text.js";
-import { REASON_VALUE_ERROR } from "./cli/cli-flag-specs.js";
-import { artifactPhrase, retireRole } from "./retire.js";
-import { agree, pauseReasonSuffix } from "./phrases.js";
-import { errCode } from "./errno.js";
-import { allRoleIds } from "./roles/roles.js";
+import { knownRoleIds, loadConfig } from "../config/config.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
+import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
+import { errorMessage } from "../text.js";
+import { REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
+import { artifactPhrase, retireRole } from "../retire.js";
+import { agree, pauseReasonSuffix } from "../phrases.js";
+import { errCode } from "../errno.js";
+import { allRoleIds } from "../roles/roles.js";
 import {
   normalizePauseReason,
   pauseFleet,
@@ -15,8 +15,8 @@ import {
   readOrchestratorInfo,
   resumeFleet,
   resumeRole,
-} from "./fleet/fleet-state.js";
-import { pidAlive } from "./process.js";
+} from "../fleet/fleet-state.js";
+import { pidAlive } from "../process.js";
 import {
   markerApplyNote,
   NO_HARNESS_ERROR,
@@ -32,8 +32,8 @@ import {
 /** The CLI layer of the operator commands that drive the fleet: the `reset-counters`,
  * `wake`, `abort`, `pause`, `resume`, and `stop` commands, split out of cli.ts so the
  * command bodies live beside their shared `--role` resolution. The marker-writing cores and
- * shared confirmations they print live in src/operator-intent.ts (shared with the dashboard
- * and TUI); the fleet-side consumer half is src/operator-requests.ts; the `prompt` command,
+ * shared confirmations they print live in src/operator/operator-intent.ts (shared with the dashboard
+ * and TUI); the fleet-side consumer half is src/operator/operator-requests.ts; the `prompt` command,
  * which drives the durable per-loop queues rather than the marker protocol, lives beside
  * them in src/prompt/prompt-commands.ts, and the `config` command, which reads and writes
  * tumwater.json directly rather than touching fleet state, in src/config-commands.ts. Every

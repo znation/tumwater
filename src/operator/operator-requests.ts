@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { LoopRunner } from "./loop.js";
-import { logEvent } from "./events/events.js";
-import { removeQuiet } from "./files.js";
-import { readJsonFile } from "./json-files.js";
-import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath, STATE_DIR } from "./paths.js";
+import type { LoopRunner } from "../loop.js";
+import { logEvent } from "../events/events.js";
+import { removeQuiet } from "../files.js";
+import { readJsonFile } from "../json-files.js";
+import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath, STATE_DIR } from "../paths.js";
 
 /** The in-flight landing fields `consumeAbortRequests` needs to cancel one. The
  * orchestrator's `InFlightLanding` carries exactly these plus its `promise`, and the vetting

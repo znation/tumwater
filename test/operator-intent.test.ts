@@ -13,7 +13,7 @@ import {
   roleResumeMessage,
   submitRolePromptAndWake,
   timedPauseBits,
-} from "../src/operator-intent.js";
+} from "../src/operator/operator-intent.js";
 import { loadLoopState, saveLoopState } from "../src/loop-state.js";
 import { orchestratorStatePath, pausedPath, STATE_DIR } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -21,7 +21,7 @@ import { readJsonFile } from "../src/json-files.js";
 import { writeMarker } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-/** src/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the
+/** src/operator/operator-intent.ts's own tests: the marker-writing cores are shared by the CLI, the
  * dashboard's POST routes, and the TUI, so their confirmations and on-disk effects are pinned
  * here once instead of trusting each surface's manual check. */
 

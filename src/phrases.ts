@@ -8,7 +8,7 @@ import { shortSha, usd } from "./format.js";
  * transition's "$x of $y", main's red-tip naming, a tool call's one-line label, the plural
  * helper) shared by the event feed (event-format.ts), the failure digest (src/failure/failure-render.ts
  * and src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
- * (operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer. Pure
+ * (operator/operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer. Pure
  * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
  * into words. Pure value formats — the token a number or hash renders as (compactTokens,
  * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
@@ -32,7 +32,7 @@ export function plural(n: number, one: string, many = `${one}s`): string {
  * plural for the verb-only slots plural's count-plus-noun shape cannot fill: a subject that
  * already carries its own phrasing (listRoles's role list, a joined role list, a count printed
  * earlier in the sentence) still needs its verb to agree. The fleet alerts' banner titles
- * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator-commands.ts), and
+ * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator/operator-commands.ts), and
  * the dropped-attachment note (inbox-attachments.ts) all rendered the same `=== 1 ? … : …`
  * selection inline before, so the singular/plural decision now has one home beside plural's. */
 export function agree(n: number, one: string, many: string): string {
@@ -60,7 +60,7 @@ export function mainRedNotMine(sha: unknown): string {
 }
 
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
- * one home so the CLI's confirmation line (operator-commands.ts), the status header's pause
+ * one home so the CLI's confirmation line (operator/operator-commands.ts), the status header's pause
  * badge (ui/badges.ts), and the paused alert's title (ui/fleet-alerts.ts) cannot drift on the
  * quoting. No reason, no suffix: every caller's reasonless phrasing keeps today's byte-exact
  * form. (The GUI keeps its own JS copies in gui-client.ts: a separate runtime that cannot

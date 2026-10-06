@@ -17,7 +17,7 @@ import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } fro
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
-import { submitRolePromptAndWake } from "../operator-intent.js";
+import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that

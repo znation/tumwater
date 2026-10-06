@@ -369,7 +369,7 @@ test/model-selector.test.ts plus the config-views and pi-args suites).
 - `src/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
 - Tests in `test/` beside the existing prompt-args and prompt-command suites: `parsePromptArgs` keeps `--attach` pairs out of the text (positional before, between, and after flags), refuses it in list/cancel/edit modes, and names a missing value; `cmdPrompt` enqueue writes the image beside the queue file with the queue file's stem, the queued text ends with the `[image attached: <absolute path>]` line, and the confirmation names the count; error cases — a nonexistent path, a non-image extension, a fifth image — all exit nonzero with `promptImagesProblem`'s or the read-error message and queue nothing.
 
-**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator-intent.ts`.
+**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator/operator-intent.ts`.
 
 **Acceptance criteria.**
 - `tumwater prompt "fix the layout" --role feature --attach shot.png` queues the prompt whose text ends with the image-reference line, saves `shot.png` beside the queue file, and prints the confirmation with the attachment count; the receiving role's next tick prompt carries the reference.
@@ -622,7 +622,7 @@ tests); `test/cli.test.ts` was left untouched.
 **Approach.** Everything hangs off machinery that already exists; no orchestrator changes.
 
 - `src/cli/cli-flag-specs.ts` — add `{ names: ["--for"], value: true, valueName: "<duration>", validate: (v) => parseDurationFlag("--for", v) }` to `RUN_FLAG_SPECS`, so the dispatcher's `rejectUnknownArgs` gate accepts the spelling and rejects a malformed value with the parser's own wording before the ready-repo gate.
-- `src/cli/cli-run.ts` `cmdRun` — parse `--for` with `parseDurationFlag` (the same helper the gate ran). Two body-level rules, both fail fast before boot: `--for` and `--once` are rivals (a one-round run and a windowed run cannot both apply — fail with a message naming both flags), and the cap is `pause --for`'s (`PAUSE_FOR_MAX_MS`, via the `failOverDurationCap` helper in operator-commands.ts — import it or move the shared helper; pick one site and keep the wording identical). Where `--once` sets `once = true`, a `--for` run stays a daemon-shaped run: keep `createRedeployer` and `LaunchServicesWatch` exactly as they are — a mid-run self-redeploy hands off to the supervisor, which forwards the same args (including `--for`), so the deadline restarts in the new generation; state that in the command's doc comment rather than coding around it.
+- `src/cli/cli-run.ts` `cmdRun` — parse `--for` with `parseDurationFlag` (the same helper the gate ran). Two body-level rules, both fail fast before boot: `--for` and `--once` are rivals (a one-round run and a windowed run cannot both apply — fail with a message naming both flags), and the cap is `pause --for`'s (`PAUSE_FOR_MAX_MS`, via the `failOverDurationCap` helper in operator/operator-commands.ts — import it or move the shared helper; pick one site and keep the wording identical). Where `--once` sets `once = true`, a `--for` run stays a daemon-shaped run: keep `createRedeployer` and `LaunchServicesWatch` exactly as they are — a mid-run self-redeploy hands off to the supervisor, which forwards the same args (including `--for`), so the deadline restarts in the new generation; state that in the command's doc comment rather than coding around it.
 - After the boot banner, when a deadline was given: `setTimeout(forMs, stop)` armed beside the existing `SIGINT`/`SIGTERM` handlers (the same `stop` closure, so the drain-and-exit path is literally identical), plus `clearTimeout` in the existing `finally` so an early Ctrl+C or a redeploy hand-off does not leave a stray timer. The boot banner says the window: `tumwater running on branch <name> · for 2h · build <sha>… — Ctrl+C to stop`. When the timer fires first, say a one-line `deadline reached — stopping` before the existing stop message so the log shows why.
 - Summary: a `--for` run prints the `onceSummary` line on exit (reuse the existing function; it already supports being called without settle reasons, deriving from `ticksBefore` deltas), so a scheduled invocation's log shows what the window accomplished. `--once` keeps its own settle-reason summary; the two stay separate call sites.
 - `src/help.ts` — extend the `run` usage line to `[--branch <name>] [--once] [--for <duration>] [--role <id>]` with a one-line explanation (windowed run, drains like Ctrl+C at the deadline; `--role` stays once-only).
@@ -710,12 +710,12 @@ no new consumer loop — the existing wake request path grows one optional field
   `command === "pause" ? [ROLE_FLAG, DURATION_FLAG, REASON_FLAG] : command === "wake" ?
   [ROLE_FLAG, WAKE_IN_FLAG] : [ROLE_FLAG]`, so a stray `--in` on pause/reset-counters still
   fails fast. Update the comment naming the per-command vocabularies.
-- `src/operator-commands.ts` `cmdWake`: when `flagValue(args, "--in")` is non-null, parse it
+- `src/operator/operator-commands.ts` `cmdWake`: when `flagValue(args, "--in")` is non-null, parse it
   with `parseDurationFlag("--in", ...)` (the failOverDurationCap idiom in cli-args.ts applies —
   the same ceiling `pause --for` honors), compute `dueMs = Date.now() + ms` at submit (the
   deferral starts when the operator typed it — the decision `prompt --at`'s comment records),
   and pass it through.
-- `src/operator-intent.ts` `requestWake`: add an optional trailing `notBeforeMs?: number`
+- `src/operator/operator-intent.ts` `requestWake`: add an optional trailing `notBeforeMs?: number`
   parameter — the absolute ms-epoch deadline. When it is still ahead the wake is SCHEDULED:
   ONLY the marker is written (`{ at, roles, notBeforeMs }`; `{ at, roles }` stays the absent
   case, so older markers keep parsing) and the backoff-clearing state change is SKIPPED — it
@@ -724,7 +724,7 @@ no new consumer loop — the existing wake request path grows one optional field
   marker at or after the deadline. At-or-past deadlines read as immediate. The confirmation
   gains `wake scheduled for <roles> — wakes in ${durationLabel(ms)} — …` on the deferred path,
   reusing the phrasing `prompt --at`'s confirmation uses.
-- `src/operator-requests.ts` `consumeWakeRequest`: before the `roleRequestTargets` read, if
+- `src/operator/operator-requests.ts` `consumeWakeRequest`: before the `roleRequestTargets` read, if
   the marker carries a numeric `notBeforeMs` greater than `Date.now()`, return WITHOUT removing
   the marker — a later poll retries it; the wake lands within one poll cycle after the
   deadline, the same delivery granularity `prompt --at`'s consumer gives. At or past the
@@ -734,8 +734,8 @@ no new consumer loop — the existing wake request path grows one optional field
 - `src/help.ts` and README.md's control-table `wake` row: append `--in <duration>` to the wake
   usage with a one-clause scheduled-wake phrase, beside `pause --for`.
 
-**Files touched:** src/cli/cli-flag-specs.ts, src/cli.ts, src/operator-commands.ts,
-src/operator-intent.ts, src/operator-requests.ts, src/help.ts, README.md, plus tests.
+**Files touched:** src/cli/cli-flag-specs.ts, src/cli.ts, src/operator/operator-commands.ts,
+src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/help.ts, README.md, plus tests.
 
 **Acceptance criteria.**
 - `tumwater wake --in 45m` writes a wake marker whose `notBeforeMs` is ~45 minutes out; a poll

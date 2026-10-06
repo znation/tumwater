@@ -15,9 +15,9 @@ import { eventsLogPath, piLogPath } from "./paths.js";
 
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.
- * Unlike operator-commands.ts these write nothing but stdout — they only read the event log
+ * Unlike operator/operator-commands.ts these write nothing but stdout — they only read the event log
  * and each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
- * cli/cli-query-commands.ts, operator-commands.ts), which may import the ui/ rendering layer they
+ * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering layer they
  * drive — here the event formatter and the transcript renderer — while src/ui/ itself stays
  * off src/ module boundaries it does not own. */
 

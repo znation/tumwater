@@ -1,20 +1,20 @@
-import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "./fleet/fleet-state.js";
-import { durationLabel } from "./cli/cli-args.js";
-import { formatDate, formatTime } from "./datetime.js";
-import { submitRolePrompt } from "./inbox/inbox-submit.js";
-import type { PromptImageInput } from "./inbox/inbox-attachments.js";
-import { DIRECTOR_ROLE } from "./roles/roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
-import { clearBackoff } from "./backoff.js";
-import { writeJsonFile } from "./json-files.js";
-import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "./paths.js";
+import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "../fleet/fleet-state.js";
+import { durationLabel } from "../cli/cli-args.js";
+import { formatDate, formatTime } from "../datetime.js";
+import { submitRolePrompt } from "../inbox/inbox-submit.js";
+import type { PromptImageInput } from "../inbox/inbox-attachments.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { loadLoopState, saveLoopState, zeroCounters } from "../loop-state.js";
+import { clearBackoff } from "../backoff.js";
+import { writeJsonFile } from "../json-files.js";
+import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that
- * writes one (the `cmd*` CLI commands in src/operator-commands.ts, the dashboard's POST
+ * writes one (the `cmd*` CLI commands in src/operator/operator-commands.ts, the dashboard's POST
  * routes in src/gui/gui-endpoint-commands.ts, and the TUI's key bindings in ui/tui.tsx): each core returns
  * the confirmation its caller prints verbatim, so the surfaces cannot drift on marker
- * format, idempotence, or wording. The fleet-side consumer half is src/operator-requests.ts;
- * this module holds the producer half's shared core, split out of operator-commands.ts so
+ * format, idempotence, or wording. The fleet-side consumer half is src/operator/operator-requests.ts;
+ * this module holds the producer half's shared core, split out of operator/operator-commands.ts so
  * the UI layer never depends on the CLI's arg parsing. */
 
 /** The error every live-harness-only command reports (abort, stop): one literal so the two

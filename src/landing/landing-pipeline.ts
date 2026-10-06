@@ -4,7 +4,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef, removeLandWorktree } from "../git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
 import { landingRefName, landWorktreePath } from "../paths.js";
-import type { AbortableLanding } from "../operator-requests.js";
+import type { AbortableLanding } from "../operator/operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { FoldsUsage } from "../loop-pi.js";

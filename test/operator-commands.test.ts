@@ -12,7 +12,7 @@ import {
   cmdStop,
   cmdWake,
   signalOrchestrator,
-} from "../src/operator-commands.js";
+} from "../src/operator/operator-commands.js";
 import { pidAlive } from "../src/process.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/json-files.js";
@@ -37,8 +37,8 @@ import { ensureParentDir } from "../src/files.js";
 import { attemptAsync } from "./exit-capture.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
-/** Producer-side tests for the operator-intent protocol (src/operator-intent.ts, with the
- * CLI command layer in src/operator-commands.ts). Its
+/** Producer-side tests for the operator-intent protocol (src/operator/operator-intent.ts, with the
+ * CLI command layer in src/operator/operator-commands.ts). Its
  * consumer half is pinned in operator-requests.test.ts; until now these five CLI commands
  * were only exercised by spawning the real binary (test/cli.test.ts), which cannot assert
  * the marker contents or the untouched scheduling fields in-process. */

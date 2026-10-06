@@ -71,7 +71,7 @@ export function parseCountFlag(flag: string, raw: string | undefined, max?: numb
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a
  * read-only view down — a broken file falls back to the built-in catalog rather than refusing
  * every id. Without --role no config is read. (State-changing commands instead resolve --role
- * against loadConfig and fail loudly on a broken file, as operator-commands.ts and
+ * against loadConfig and fail loudly on a broken file, as operator/operator-commands.ts and
  * prompt-commands.ts do.) The id
  * set comes from config.knownRoleIdsCached, the one home of the cached-with-built-in-fallback
  * rule. Shared by the tail views that scope their output to one loop (cmdLogs, cmdHistory). */

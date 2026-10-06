@@ -26,7 +26,7 @@ import {
   consumeRestartRequest,
   consumeResetRequest,
   consumeWakeRequest,
-} from "./operator-requests.js";
+} from "./operator/operator-requests.js";
 import { piModelsPath } from "./pi/pi-models.js";
 import { Semaphore } from "./semaphore.js";
 import { orchestratorStatePath } from "./paths.js";

@@ -1,6 +1,6 @@
 /** The CLI layer of `tumwater prompt` — the steering-prompt command: submit a prompt to the
  * director (default) or one role's queue, `--list` what is queued with per-loop position
- * numbering, or `--cancel <n>` a queued prompt by position. Split out of operator-commands.ts
+ * numbering, or `--cancel <n>` a queued prompt by position. Split out of operator/operator-commands.ts
  * because this command is not a fleet-control marker: its sibling commands there ride the
  * operator-intent marker protocol, while every mode here reads or writes the durable per-loop
  * queues (src/inbox/inbox.ts) directly, each with its own broken-config policy — so the command
@@ -30,7 +30,7 @@ import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.j
 import { errorMessage } from "../text.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
-import { submitRolePromptAndWake } from "../operator-intent.js";
+import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 
 /** One traversal of the queues behind `prompt --list`'s render: with `--role`, that loop's
  * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
