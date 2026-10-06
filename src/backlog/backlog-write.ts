@@ -13,7 +13,7 @@ import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "../files.js";
 import { formatDate } from "../datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { collapseWhitespace } from "../text.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";
@@ -77,13 +77,14 @@ function appendEntry(
   const content = lines
     .slice(sectionIdx + 1, sectionEnd)
     .filter((line) => fencedContent.inside(line) || line.trim() !== "_None yet._");
-  while (content.length > 0 && (content[0] ?? "").trim() === "") content.shift();
-  while (content.length > 0 && (content[content.length - 1] ?? "").trim() === "") content.pop();
+  trimLeadingBlankLines(content);
+  trimTrailingBlankLines(content);
   const rest = lines.slice(sectionEnd);
   // One blank line after the entry block, before whatever follows the section: the trailing
   // blanks the trim above popped were the separator between the section and the next `## `
   // heading, and without restoring one here the filed entry's heading abuts that heading —
-  // the only writer of these files that produced a heading-on-heading join. When the section
+  // the only writer of these files that produced a heading-on-heading join. The edge blanks
+  // are the trim helpers' (text.ts's trimLeadingBlankLines/trimTrailingBlankLines). When the section
   // ends at EOF the blank is the file's trailing newline shape, never an extra line.
   const out = [
     ...lines.slice(0, sectionIdx + 1),

@@ -9,7 +9,7 @@ import path from "node:path";
 import { fail, say, sayJson } from "./cli/cli-output.js";
 import { fencedHeadingTitle, fenceTracker } from "./backlog/backlog-md.js";
 import { openQuestionEntries } from "./backlog/backlog.js";
-import { collapseWhitespace } from "./text.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "./text.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";
 
@@ -145,7 +145,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   }
   const block = scanned.blocks[n - 1] as OpenEntryBlock;
   const moved = lines!.slice(block.start, block.end);
-  while (moved.length > 0 && (moved[moved.length - 1] ?? "").trim() === "") moved.pop();
+  trimTrailingBlankLines(moved);
 
   // Cut the block out of ## Open: everything before it, everything from its end on. When the
   // section is left with no content at all, restore the `_None yet._` placeholder the skeleton
@@ -217,8 +217,8 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   }
   const head = rebuilt.slice(0, insertAt);
   const tail = rebuilt.slice(insertAt);
-  while (head.length > 0 && (head[head.length - 1] ?? "").trim() === "") head.pop();
-  while (tail.length > 0 && (tail[0] ?? "").trim() === "") tail.shift();
+  trimTrailingBlankLines(head);
+  trimLeadingBlankLines(tail);
   const result = head.concat("", answerLines, tail);
   writeTextAtomic(file, result.join("\n"));
   return { title: block.title };

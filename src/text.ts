@@ -58,6 +58,22 @@ export function isNonBlankString(v: unknown): v is string {
   return typeof v === "string" && v.trim() !== "";
 }
 
+/** Drop the blank lines at the start of `lines`, in place — the one home of the
+ * leading-blank trim loop shared by the backlog writer's section-content rebuild and
+ * `questions answer`'s tail slice (the lines after the moved answer). Blank means
+ * whitespace-only: the same `(line ?? "").trim() === ""` test the inline loops spelled. */
+export function trimLeadingBlankLines(lines: string[]): void {
+  while (lines.length > 0 && (lines[0] ?? "").trim() === "") lines.shift();
+}
+
+/** Drop the blank lines at the end of `lines`, in place — the one home of the trailing-blank
+ * trim loop shared by the backlog writer's section-content rebuild and `questions answer`'s
+ * moved block and head slice, so the three cannot drift on what counts as blank or on
+ * whether the array may end up empty (it may). */
+export function trimTrailingBlankLines(lines: string[]): void {
+  while (lines.length > 0 && (lines[lines.length - 1] ?? "").trim() === "") lines.pop();
+}
+
 /** True when `code` is a UTF-16 high (leading) surrogate — the first code unit of an astral
  * character's two-unit encoding (emoji and other non-BMP characters). */
 function isHighSurrogate(code: number): boolean {
