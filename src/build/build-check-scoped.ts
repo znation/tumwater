@@ -24,7 +24,7 @@ import {
   sleptPhrase,
   type BuildCheckScope,
 } from "./build-check-events.js";
-import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../check-permit.js";
+import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../concurrency/check-permit.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
 import { type InstallRunner, npmInstall } from "../dep-install.js";

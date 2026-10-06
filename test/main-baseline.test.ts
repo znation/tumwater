@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
+import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";

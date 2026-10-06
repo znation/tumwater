@@ -142,7 +142,7 @@ export function pausedRolesPath(root: string): string {
  * (pauseRole/resumeRole in fleet/fleet-state.ts): the CLI and the GUI server are separate processes
  * that can toggle different roles in the same instant, and without serialization the last
  * writer's whole-set overwrite silently drops the other's pause. A lock directory owned by the
- * shared mkdir-and-pid mutex (withSyncLock, src/lock.ts), which creates and removes it; lives
+ * shared mkdir-and-pid mutex (withSyncLock, src/concurrency/lock.ts), which creates and removes it; lives
  * beside the marker path it guards, same single-definition rule. */
 export function pausedRolesLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "paused-roles.lock");

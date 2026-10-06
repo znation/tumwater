@@ -33,7 +33,7 @@ import {
   piMissingMessage,
   resolveAgentBin,
 } from "../readiness.js";
-import { classifyLock, readLockPid } from "../lock.js";
+import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";

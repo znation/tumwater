@@ -5,7 +5,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { newLiveConfigReload } from "../src/config/config-live.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { Semaphore } from "../src/semaphore.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { makeRepo, writeConfig } from "./repo-fixtures.js";

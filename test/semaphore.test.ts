@@ -1,7 +1,7 @@
 import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Semaphore } from "../src/semaphore.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
 
 test("semaphore bounds concurrency", async () => {
   const sem = new Semaphore(2);

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/lock.js";
+import { classifyLock, readLockPid, withLock, withSyncLock } from "../src/concurrency/lock.js";
 import { runningAsRoot, tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 import { backdate } from "./backdate.js";
@@ -332,7 +332,7 @@ test("withSyncLock excludes a second writer and releases on the way out", () => 
 
 test("withSyncLock waits out a live holder in another process and then proceeds", async () => {
   const lock = path.join(tmpdir(), "held.lock");
-  const module = fileURLToPath(new URL("../src/lock.js", import.meta.url));
+  const module = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
   const child = spawn(
     process.execPath,
     [

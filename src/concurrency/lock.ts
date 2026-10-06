@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pidAlive } from "./process/process.js";
-import { errorMessage, parsePositiveInt } from "./text/text.js";
-import { removeTree } from "./files/files.js";
-import { errCode } from "./errno.js";
+import { pidAlive } from "../process/process.js";
+import { errorMessage, parsePositiveInt } from "../text/text.js";
+import { removeTree } from "../files/files.js";
+import { errCode } from "../errno.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
  * recorded pid still looks alive, so a reused pid cannot latch a dead holder as live. */

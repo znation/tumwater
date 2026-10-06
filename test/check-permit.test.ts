@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CHECK_TIER, withCheckPermit } from "../src/check-permit.js";
+import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js";
 import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { readEvents } from "../src/events/event-read.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
@@ -161,7 +161,7 @@ test("a merge-tier waiter is granted ahead of an earlier other-tier waiter", asy
 
 // ── Process-wide check cap (PLANS.md "Land-queue speed 2b"): every full suite takes one permit
 // from a single semaphore sized by config.maxConcurrentChecks, so a burst of landings cannot
-// stack suites on the host. The cap lives in src/check-permit.ts; these tests drive it through
+// stack suites on the host. The cap lives in src/concurrency/check-permit.ts; these tests drive it through
 // runScopedBuildCheck (the checks' real entry point) as well as withCheckPermit directly.
 
 const ROLE = "improve";

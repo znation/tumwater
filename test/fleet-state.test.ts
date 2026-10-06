@@ -232,7 +232,7 @@ test("a paused-roles lock held by another process is waited for, not stolen", as
   const lock = pausedRolesLockPath(root);
   // A live holder via the real protocol (withSyncLock in the compiled build), releasing after
   // 300ms — well inside pauseRole's 10s wait bound.
-  const module = fileURLToPath(new URL("../src/lock.js", import.meta.url));
+  const module = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
   const holder = spawn(
     process.execPath,
     [

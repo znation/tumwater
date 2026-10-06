@@ -125,7 +125,7 @@ export interface CheckConfig {
 
 /** The config slice the build-check family reads (src/build/build-check-detect.ts's detectBuildCheck,
  * src/build/build-check-scoped.ts's runScopedBuildCheck, src/baseline/main-baseline.ts's checkMainBaseline and
- * mainIsGreen, src/doctor/doctor-checks.ts's checkBuildCheck, and src/check-permit.ts's withCheckPermit):
+ * mainIsGreen, src/doctor/doctor-checks.ts's checkBuildCheck, and src/concurrency/check-permit.ts's withCheckPermit):
  * the declared check plus the cap that sizes the process-wide check permit. Every field is
  * optional because every caller differs — most hand a full TumwaterConfig, doctor hands a
  * possibly-torn one, and the tests hand a bare `{ check }` — and each field is guarded again
@@ -183,7 +183,7 @@ export interface TumwaterConfig {
   landBatchMax: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the
    * whole harness process — every gate, landing, batch, and main-baseline check takes one
-   * permit (src/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
+   * permit (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */

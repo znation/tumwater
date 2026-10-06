@@ -20,7 +20,7 @@ import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { warnEvent } from "../events/events.js";
-import { withLock } from "../lock.js";
+import { withLock } from "../concurrency/lock.js";
 import { buildConflictPrompt } from "../gates/gate-prompts.js";
 import { mergeLockDir } from "../paths.js";
 import { logNewQuestions } from "./landing-questions.js";

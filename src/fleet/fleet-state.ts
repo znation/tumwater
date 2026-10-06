@@ -4,7 +4,7 @@ import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { ensureParentDir, removeQuiet } from "../files/files.js";
 import { pidAlive } from "../process/process.js";
-import { withSyncLock } from "../lock.js";
+import { withSyncLock } from "../concurrency/lock.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 
 /** The fleet pause marker read once as the standing pause it represents: non-null while the
@@ -160,7 +160,7 @@ export function pausedRoles(root: string): string[] {
  * (the CLI's pause/resume --role and the dashboard's per-row toggle are separate processes),
  * and writeJsonAtomic's last-writer-wins policy — correct for overwrite-style state — silently
  * drops one caller's pause when two whole-set writes race. These writers therefore serialize
- * through withSyncLock (src/lock.ts), the same mkdir-and-pid mutex the merge path uses, so the
+ * through withSyncLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses, so the
  * crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are the
  * tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
  * acquired within PAUSED_ROLES_LOCK_TIMEOUT_MS throws rather than writing unlocked — a pause

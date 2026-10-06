@@ -8,7 +8,7 @@ import {
   sleepInterruptible,
 } from "../src/tick/tick-timing.js";
 import { pollFleetHold, type HoldInputs } from "../src/fleet/fleet-polls.js";
-import { Semaphore } from "../src/semaphore.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
 import { readEvents } from "../src/events/event-read.js";
 import { FLEET_OPEN, HOLD_BASE_MS, type FleetHold } from "../src/fleet/fleet-hold.js";
 

@@ -10,7 +10,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
-import type { PermitWaitHooks } from "../check-permit.js";
+import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the

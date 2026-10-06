@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { defaultConfig } from "./config/config.js";
-import type { CheckConfigSlice } from "./config/config-schema.js";
+import { defaultConfig } from "../config/config.js";
+import type { CheckConfigSlice } from "../config/config-schema.js";
 import { Semaphore } from "./semaphore.js";
 
 /** One process-wide bound on concurrent runs of the declared check (config.maxConcurrentChecks,

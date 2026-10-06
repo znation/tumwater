@@ -28,7 +28,7 @@ import {
   consumeWakeRequest,
 } from "../operator/operator-requests.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { Semaphore } from "../semaphore.js";
+import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import { type Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../launch-services.js";

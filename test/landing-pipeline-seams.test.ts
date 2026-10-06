@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { abortOnShutdown, acquireUnlessAborted } from "../src/landing/landing-pipeline.js";
-import { Semaphore } from "../src/semaphore.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
 
 // Unit-tier coverage for the landing pipeline's two shutdown seams (src/landing/landing-pipeline.ts):
 // the wiring that turns the harness stop into a landing task's own abort, and the

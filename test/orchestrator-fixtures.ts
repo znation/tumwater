@@ -10,7 +10,7 @@ import { newLandingPipeline, type LandingPipelineContext } from "../src/landing/
 import { startVet } from "../src/landing/landing-vetting.js";
 import { headLanding } from "../src/landing/landing-queue.js";
 import { landingRefName } from "../src/paths.js";
-import { Semaphore } from "../src/semaphore.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { logEvent } from "../src/events/events.js";
 import { type RedeployDeps } from "../src/redeploy/redeploy-policy.js";

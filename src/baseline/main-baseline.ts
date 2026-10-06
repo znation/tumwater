@@ -6,7 +6,7 @@ import {
 } from "../build/build-check.js";
 import { SLEEP_SPAN_TOLERANCE_MS } from "../build/build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
-import { CHECK_TIER, withCheckPermit } from "../check-permit.js";
+import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { refSha } from "../git/git.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
