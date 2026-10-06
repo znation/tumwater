@@ -48,34 +48,6 @@ src/budget.ts, src/gate-polls.ts, src/loop.ts, and their tests.
 - A breaker-demoted pair re-resolves only the tiers using it.
 - The director still keeps its paid model.
 
-### Model tiers, part 6/8: the fleet-wide backend hold keys storms by provider (planned 2026-10-05 by operator; requires part 3/8 landed)
-
-Design: plans/model-tiers.md ("Fleet hold per provider").
-
-**Goal.** `fleetHold` (src/fleet-hold.ts) trips one fleet-wide hold when `HOLD_STORM_ROLES`
-roles fail the same way within `HOLD_STORM_WINDOW_MS`; it assumes a single backend. Once seams
-run on different providers, a 429 storm at the reviewer's provider would stop authors on a
-healthy one. Hold only what the failing provider serves.
-
-**Approach.**
-1. `HoldObservation` gains `provider` (from the run's resolved config); observations count
-   toward one storm only when both provider and kind match.
-2. `FleetHold` holds per provider. `pollFleetHold` (src/fleet-polls.ts) keeps one hold per
-   provider in `states.fleetHold` (src/gate-polls.ts), and the start pass
-   (src/orchestrator-scheduling.ts) blocks a role only when its tick model's provider is held.
-   A hold on the strong tier's provider while review is on still blocks every role, because
-   nothing could land.
-3. The `rate_limit_hold` / `rate_limit_resumed` events carry the provider.
-
-**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gate-polls.ts,
-src/orchestrator-scheduling.ts, src/events/events.ts, src/events/event-format.ts, and their tests.
-
-**Acceptance criteria.**
-- Two roles failing with 429 on provider P within the window hold roles on P only; roles on Q
-  keep ticking.
-- With every seam on one provider, behavior is identical to today (existing fleet-hold tests
-  pass unchanged).
-- A storm on the reviewer's provider with review on holds the fleet.
 
 ### Model tiers, part 7/8: operator visibility — role rows, the fallback badge, and doctor checks (planned 2026-10-05 by operator; requires parts 3/8 and 5/8 landed)
 
@@ -139,6 +111,52 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 6/8: the fleet-wide backend hold keys storms by provider (planned 2026-10-05 by operator; requires part 3/8 landed, done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Fleet hold per provider").
+
+**Goal.** `fleetHold` (src/fleet-hold.ts) trips one fleet-wide hold when `HOLD_STORM_ROLES`
+roles fail the same way within `HOLD_STORM_WINDOW_MS`; it assumes a single backend. Once seams
+run on different providers, a 429 storm at the reviewer's provider would stop authors on a
+healthy one. Hold only what the failing provider serves.
+
+**Approach.**
+1. `HoldObservation` gains `provider` (from the run's resolved config — gate-polls builds each
+   runner's HoldInputs provider via `configForRole`; undefined when pi's default is in charge);
+   observations count toward one storm only when both provider and kind match.
+2. `FleetHold` holds per provider: `FleetHold` itself gained the `provider` it is about, and
+   `pollFleetHold` (src/fleet-polls.ts) keeps one hold PER PROVIDER in `states.fleetHold` (a
+   `Map<string | undefined, FleetHold>`, src/gate-polls.ts). A provider whose hold re-opened
+   STAYS keyed in the map — its kind, provider, relapse count, and re-open time are the
+   relapse memory — so "held" is read only through fleet-hold.ts's new `heldProviders()`
+   (until non-null), never bare key presence: a lifted hold never keeps blocking. The
+   scheduling pass (src/orchestrator-scheduling.ts) blocks a role when its tick model's
+   provider (a per-poll `roleProviders` map) is held, or when `reviewHeld` stands; the
+   orchestrator (src/orchestrator.ts — also touched, beyond the original list, because the
+   permit-time closures read the holds there) computes both from the latest poll's map, and
+   its landing-drain gate blocks only on `reviewHeld`. A hold on the reviewer's provider while
+   review is on blocks every role, because nothing could land.
+3. The `rate_limit_hold` / `rate_limit_resumed` events carry the provider when one is
+   configured (omitted for pi's default, so an unconfigured fleet's events render exactly as
+   before); event-format names the provider and scopes "role loops on that provider / every
+   provider".
+
+**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gate-polls.ts,
+src/orchestrator-scheduling.ts, src/orchestrator.ts, src/events/events.ts, src/events/event-format.ts,
+test/fleet-polls.test.ts, test/orchestrator-seams.test.ts, test/event-format-fleet.test.ts,
+and the new test/orchestrator-scheduling.test.ts.
+
+**Acceptance criteria.**
+- Two roles failing with 429 on provider P within the window hold roles on P only; roles on Q
+  keep ticking (pinned in test/fleet-polls.test.ts and, through the scheduling pass,
+  test/orchestrator-scheduling.test.ts — including the storm → lift → subsequent-poll arc the
+  2026-10-06 review called untested: the lift clears `heldProviders()`, the entry stays keyed
+  with its relapse memory, and the next poll re-admits the previously held roles).
+- With every seam on one provider, behavior is identical to today (existing fleet-hold tests
+  pass unchanged; undefined providers group as one key).
+- A storm on the reviewer's provider with review on holds the fleet (pinned through
+  scheduling in test/orchestrator-scheduling.test.ts).
 
 ### Model tiers, part 4/8: the conflict resolver runs on the strong tier (planned 2026-10-05 by operator; requires part 3/8 landed and running, done 2026-10-06 by feature)
 

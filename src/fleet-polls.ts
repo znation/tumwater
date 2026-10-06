@@ -1,6 +1,6 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEvent } from "./events/events.js";
-import { fleetHold, type FleetHold, type HoldObservation } from "./fleet-hold.js";
+import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import { sortedRoles } from "./failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure/failure-spread.js";
 import type { LoopState } from "./loop-state.js";
@@ -14,12 +14,14 @@ import type { BackendFailureKind } from "./pi/pi.js";
  * orchestrator's timing/scheduling seams into also carrying this polling family — so the
  * timing seams read as timing again and the fleet-health polls read as one family. */
 
-/** A runner as the hold poll reads it: the role and its two episodic observations, both
- * optional (a runner with neither simply contributes nothing). Structural, so tests stand in
- * plain objects for the runner — its real getters are readonly, and only these fields are
- * ever read. */
+/** A runner as the hold poll reads it: the role, its two episodic observations, both
+ * optional (a runner with neither simply contributes nothing), and the provider its runs
+ * resolve to (the run's resolved config — configForRole; undefined when pi's own default
+ * is in charge). Structural, so tests stand in plain objects for the runner — its real
+ * getters are readonly, and only these fields are ever read. */
 export type HoldInputs = {
   role: string;
+  provider?: string;
   lastRateLimit?: { at: number; retryAfterSeconds?: number };
   lastBackendFailure?: { at: number; kind: BackendFailureKind };
 };
@@ -32,46 +34,70 @@ export type HoldInputs = {
 function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
   return runners.flatMap((r) => [
     ...(r.lastRateLimit
-      ? [{ role: r.role, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
+      ? [{ role: r.role, provider: r.provider, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
       : []),
     ...(r.lastBackendFailure
-      ? [{ role: r.role, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      ? [{ role: r.role, provider: r.provider, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
       : []),
   ]);
 }
 
-/** One poll of the fleet-wide backend-failure hold (src/fleet-hold.ts): gather each
- * runner's latest run that ended on a provider failure — LoopRunner.lastRateLimit (429s,
- * stamped with the "rate-limit" kind) and LoopRunner.lastBackendFailure (the connection,
- * timeout, server, and model-load kinds) — every role's, the director's included, since its
- * failures are the same provider's evidence — step the pure gate, and log exactly one event
- * per crossing, like the budget gate's: `rate_limit_hold` on the way in (which kind, which
- * roles tripped it, for how long, and how many relapses deep it is) and `rate_limit_resumed`
- * when it re-opens at its own deadline. Returns the new hold for the caller to keep. Exported
- * as a unit-test seam, like its sibling polls below. */
+/** The holds map's per-provider fleet-wide failure hold poll. One hold per provider: each
+ * provider's own hold steps with ONLY its own providers' observations — the reducer's
+ * provider+kind grouping made per-provider stepping equivalent to grouping there — so a
+ * 429 storm at the reviewer's provider holds the roles on that provider while roles on a
+ * healthy one keep ticking (PLANS.md 2026-10-05). A provider whose hold re-opened STAYS in
+ * the map — its kind, provider, relapse count, and re-open time are the memory the next
+ * storm's relapse test needs — so "held" is always read through fleet-hold.ts's
+ * heldProviders() (until non-null), never bare key presence: a lifted hold must never
+ * keep blocking. Events carry the provider when one is configured (an undefined provider
+ * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).
+ * Returns the new map for the caller to keep. Exported as a unit-test seam, like its
+ * sibling polls below. */
 export function pollFleetHold(
   root: string,
-  prev: FleetHold,
+  prev: ReadonlyMap<string | undefined, FleetHold>,
   runners: readonly HoldInputs[],
   now: number,
-): FleetHold {
+): Map<string | undefined, FleetHold> {
   const observations = holdObservations(runners);
-  const next = fleetHold(prev, observations, now);
-  if (prev.until === null && next.until !== null) {
-    logEvent(root, {
-      loop: "harness",
-      type: "rate_limit_hold",
-      kind: next.kind,
-      roles: next.roles,
-      holdMs: next.until - now,
-      escalation: next.escalation,
-    });
-  } else if (prev.until !== null && next.until === null) {
-    // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
-    // the lift must be able to name what actually ended too — "429 hold lifted" after a
-    // connection-error hold is the same lie the hold line's kind split removed
-    // (BUGS.md 2026-09-29).
-    logEvent(root, { loop: "harness", type: "rate_limit_resumed", kind: next.kind });
+  const byProvider = new Map<string | undefined, HoldObservation[]>();
+  for (const o of observations) {
+    const group = byProvider.get(o.provider) ?? [];
+    if (group.length === 0) byProvider.set(o.provider, group);
+    group.push(o);
+  }
+  const next = new Map<string | undefined, FleetHold>();
+  // Every provider the map already knows, plus every provider this poll observed: a hold
+  // standing with no fresh observations still re-opens at its own deadline (its event),
+  // and an open provider with no observations just passes through unchanged.
+  for (const provider of new Set([...prev.keys(), ...byProvider.keys()])) {
+    const pPrev = prev.get(provider) ?? { ...FLEET_OPEN, provider };
+    const pNext = fleetHold(pPrev, byProvider.get(provider) ?? [], now);
+    next.set(provider, pNext);
+    const providerFields = provider === undefined ? {} : { provider };
+    if (pPrev.until === null && pNext.until !== null) {
+      logEvent(root, {
+        loop: "harness",
+        type: "rate_limit_hold",
+        ...providerFields,
+        kind: pNext.kind,
+        roles: pNext.roles,
+        holdMs: pNext.until - now,
+        escalation: pNext.escalation,
+      });
+    } else if (pPrev.until !== null && pNext.until === null) {
+      // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
+      // the lift must be able to name what actually ended too — "429 hold lifted" after a
+      // connection-error hold is the same lie the hold line's kind split removed
+      // (BUGS.md 2026-09-29).
+      logEvent(root, {
+        loop: "harness",
+        type: "rate_limit_resumed",
+        ...providerFields,
+        kind: pNext.kind,
+      });
+    }
   }
   return next;
 }

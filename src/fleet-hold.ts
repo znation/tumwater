@@ -71,6 +71,12 @@ export type HoldKind = "rate-limit" | BackendFailureKind;
  * latest per role matters: the storm test counts distinct roles, never a role's repeats. */
 export interface HoldObservation {
   role: string;
+  /** Which backend served the failing run (the resolved config's provider; undefined when
+   * none is configured — pi's own default backend, which every unconfigured role shares).
+   * The second axis the storm test groups by (PLANS.md 2026-10-05): a 429 storm at the
+   * reviewer's provider must not stop authors on a healthy one, so observations count
+   * together only when both provider AND kind match. */
+  provider?: string;
   /** Which failure the run ended on — the field the storm test groups by. */
   kind: HoldKind;
   /** Epoch ms the run ended on the failure. */
@@ -83,6 +89,11 @@ export interface HoldObservation {
 
 /** The hold's state across polls. Open while `until` is null. */
 export interface FleetHold {
+  /** Which backend this hold is about — the provider the storm's failures came from
+   * (undefined when the runs ran on pi's default, no provider configured). Kept across a
+   * re-open like `kind`, for the same reason: the relapse test compares the NEXT storm's
+   * provider and kind against the hold that just ended. */
+  provider: string | undefined;
   /** Epoch ms the current hold re-opens at; null while the fleet is open. */
   until: number | null;
   /** Which failure kind the current (or last) hold is about — null before the fleet's first
@@ -105,8 +116,30 @@ export interface FleetHold {
   reopenedAt: number | null;
 }
 
-/** The fleet's starting state: open, with no history. */
-export const FLEET_OPEN: FleetHold = { until: null, kind: null, roles: [], escalation: 0, reopenedAt: null };
+/** The fleet's starting state: open, with no history. Providers are map keys elsewhere
+ * (pollFleetHold keeps one hold per provider), so undefined means "pi's default backend" —
+ * the grouping an unconfigured fleet (every existing config before providers) lands in. */
+export const FLEET_OPEN: FleetHold = {
+  provider: undefined,
+  until: null,
+  kind: null,
+  roles: [],
+  escalation: 0,
+  reopenedAt: null,
+};
+
+/** The providers (pi's default included as undefined) whose fleet hold STANDS — `until`
+ * non-null. A provider whose hold has re-opened stays in the holds map (its kind, relapse
+ * count, and re-open time are the memory the next storm's relapse test needs), so key
+ * presence alone must never read as "held": this is the one predicate every consumer —
+ * the scheduling pass and both permit-time closures — goes through. */
+export function heldProviders(
+  holds: ReadonlyMap<string | undefined, FleetHold>,
+): ReadonlySet<string | undefined> {
+  const held = new Set<string | undefined>();
+  for (const [provider, hold] of holds) if (hold.until !== null) held.add(provider);
+  return held;
+}
 
 /** Step the hold by one orchestrator poll: from `prev` and every role's latest failure
  * observations, decide what holds at `now`. A held fleet stays held until `until` and then
@@ -125,35 +158,55 @@ export function fleetHold(
 ): FleetHold {
   if (prev.until !== null) {
     if (now < prev.until) return prev;
-    // kind stays: the next storm's relapse test compares against the hold that just ended.
-    return { until: null, kind: prev.kind, roles: [], escalation: prev.escalation, reopenedAt: now };
+    // kind and provider stay: the next storm's relapse test compares against the hold that
+    // just ended.
+    return {
+      provider: prev.provider,
+      until: null,
+      kind: prev.kind,
+      roles: [],
+      escalation: prev.escalation,
+      reopenedAt: now,
+    };
   }
   const recent = observations.filter(
     (o) => (prev.reopenedAt === null || o.at > prev.reopenedAt) && now - o.at <= HOLD_STORM_WINDOW_MS,
   );
-  // Group the recent failures by kind (in first-seen order, so the pick is deterministic) and
-  // hold about the first kind that has enough distinct roles behind it.
-  const byKind = new Map<HoldKind, HoldObservation[]>();
+  // Group the recent failures by provider+kind (in first-seen order, so the pick is
+  // deterministic) and hold about the first pair that has enough distinct roles behind it.
+  // undefined providers share one key: an unconfigured fleet is one backend by construction.
+  const byProviderKind = new Map<string, { provider: string | undefined; kind: HoldKind; group: HoldObservation[] }>();
   for (const o of recent) {
-    const group = byKind.get(o.kind) ?? [];
-    if (group.length === 0) byKind.set(o.kind, group);
-    group.push(o);
+    const key = `${o.provider ?? ""}\n${o.kind}`;
+    const entry = byProviderKind.get(key) ?? { provider: o.provider, kind: o.kind, group: [] };
+    if (entry.group.length === 0) byProviderKind.set(key, entry);
+    entry.group.push(o);
   }
   let storm: HoldObservation[] = [];
   let kind: HoldKind | null = null;
-  for (const [k, group] of byKind) {
-    const roles = new Set(group.map((o) => o.role));
+  let provider: string | undefined;
+  for (const entry of byProviderKind.values()) {
+    const roles = new Set(entry.group.map((o) => o.role));
     if (roles.size >= HOLD_STORM_ROLES) {
-      storm = group;
-      kind = k;
+      storm = entry.group;
+      kind = entry.kind;
+      provider = entry.provider;
       break;
     }
   }
   if (kind === null) return prev;
   const roles = sortedRoles(new Set(storm.map((o) => o.role)));
-  const relapse = prev.kind !== null && prev.kind === kind && prev.reopenedAt !== null && now - prev.reopenedAt <= HOLD_RELAPSE_MS;
+  // A relapse is per provider AND kind: the same storm re-tripping inside the window
+  // escalates, while a different kind — or the same kind at a DIFFERENT provider — after a
+  // re-open is a new incident at the base.
+  const relapse =
+    prev.kind !== null &&
+    prev.kind === kind &&
+    prev.provider === provider &&
+    prev.reopenedAt !== null &&
+    now - prev.reopenedAt <= HOLD_RELAPSE_MS;
   const escalation = relapse ? prev.escalation + 1 : 0;
   const retryAfterMs = Math.max(0, ...storm.map((o) => o.at + (o.retryAfterSeconds ?? 0) * 1000 - now));
   const holdMs = Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
-  return { until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
+  return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }

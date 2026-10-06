@@ -217,17 +217,23 @@ export function eventMessage(e: HarnessEvent): string {
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = rolesPhrase(e.roles, "several roles");
+      // The provider rides the event when one is configured (pollFleetHold omits it for pi's
+      // default), so a multi-provider fleet can tell WHICH backend the storm was at.
+      const at = typeof e.provider === "string" ? ` at ${e.provider}` : "";
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold (${backendKindPhrase(e.kind)}) — ${roles} hit backend failures; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
-      return `429 hold — ${roles} rate-limited by the provider; role loops and landings start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+        return `backend hold (${backendKindPhrase(e.kind)})${at} — ${roles} hit backend failures; role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+      return `429 hold${at} — ${roles} rate-limited by the provider; role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
     case "rate_limit_resumed": {
       // The ended hold's kind rides the resumed event (pollFleetHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
+      // The provider rides the event when one is configured (pollFleetHold omits it for pi's
+      // default), so a multi-provider fleet can tell WHICH backend the storm was at.
+      const at = typeof e.provider === "string" ? ` at ${e.provider}` : "";
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold lifted (${backendKindPhrase(e.kind)}) — role loops tick again`;
-      return `429 hold lifted — role loops tick again`;
+        return `backend hold lifted (${backendKindPhrase(e.kind)})${at} — role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} tick again`;
+      return `429 hold lifted${at} — role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} tick again`;
     }
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.

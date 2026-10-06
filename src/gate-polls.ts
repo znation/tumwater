@@ -21,8 +21,8 @@ import {
   roleQuietHold,
   type QuietHoursGateState,
 } from "./quiet-hours.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold } from "./fleet-polls.js";
-import { FLEET_OPEN, type FleetHold } from "./fleet-hold.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "./fleet-polls.js";
+import { type FleetHold } from "./fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure/failure-spread.js";
 import type { LoopRunner } from "./loop.js";
@@ -30,6 +30,7 @@ import { DIRECTOR_ROLE } from "./roles.js";
 import { logEvent } from "./events/events.js";
 import { writeJsonFile } from "./json-files.js";
 import type { OrchestratorInfo } from "./fleet-state.js";
+import { configForRole } from "./config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
@@ -46,16 +47,18 @@ import type { OrchestratorInfo } from "./fleet-state.js";
  * in place by each poll. In memory only — a restart re-trusts the fallback, re-opens the
  * hold, and can re-log at most one event per gate. Two members are also mutated from
  * outside this module: the budget gate's breaker collects the start pass's tick evidence
- * and its probe (src/fallback-breaker.ts), and `fleetHold` is the hold's LATEST verdict,
- * read at permit time by the start pass's closures — read it from `states.fleetHold` at
- * call time, never from a per-poll snapshot (the poll loop's docs below). */
+ * and its probe (src/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map —
+ * the holds' LATEST verdicts, read at permit time by the start pass's closures — read it
+ * from `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's
+ * docs below). Key presence is not "held": providers whose hold re-opened stay in the map
+ * for their relapse memory, so every consumer goes through fleet-hold.ts's heldProviders(). */
 export interface FleetGateStates {
   budget: BudgetGateState;
   pause: PauseGateState;
   streak: StreakGateState;
   cap: RoleCapGateState;
   quiet: QuietHoursGateState;
-  fleetHold: FleetHold;
+  fleetHold: ReadonlyMap<string | undefined, FleetHold>;
   errorStorm: ErrorStorm;
   failureSpread: FailureSpread;
 }
@@ -70,7 +73,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     streak: newStreakGateState(),
     cap: newRoleCapGateState(),
     quiet: newQuietHoursGateState(),
-    fleetHold: FLEET_OPEN,
+    fleetHold: new Map(),
     errorStorm: ERROR_STORM_QUIET,
     failureSpread: FAILURE_SPREAD_QUIET,
   };
@@ -224,23 +227,39 @@ export function pollFleetGates(
     new Date(now),
   );
 
-  // Fleet-wide failure hold (src/fleet-hold.ts): once two roles' runs have ended on
-  // the SAME provider failure kind within a short window — 429s, or a connection, timeout,
-  // 5xx, or model-load backend failure — role loops start no new ticks — and the land
-  // queue starts no new vet (the director's included), whose reviewer run has no retry
-  // and would spend a review strike on the storm — until the hold re-opens at its own
-  // deadline (Retry-After honoured on the rate-limit kind, doubling on a relapse, capped).
-  // The director's ticks are exempt, as under the budget gate and the operator pause: an
+  // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
+  // episodic fields, and the provider its runs resolve to (configForRole — the run's
+  // resolved config; undefined when pi's default is in charge). Built ONCE per poll so the
+  // hold and the spread read the same list, like holdObservations on the reducer side.
+  const holdInputs = (config: TumwaterConfig, rs: readonly LoopRunner[]): HoldInputs[] =>
+    rs.map((r) => ({
+      role: r.role,
+      provider: configForRole(config, r.role).provider,
+      ...(r.lastRateLimit ? { lastRateLimit: r.lastRateLimit } : {}),
+      ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
+    }));
+
+  // Fleet-wide failure hold, per provider (src/fleet-hold.ts, PLANS.md 2026-10-05): once two
+  // roles' runs have ended on the SAME provider AND failure kind within a short window —
+  // 429s, or a connection, timeout, 5xx, or model-load backend failure — role loops on THAT
+  // provider start no new ticks, and the land queue starts no new vet, whose reviewer run
+  // has no retry and would spend a review strike on the storm — until the hold re-opens at
+  // its own deadline (Retry-After honoured on the rate-limit kind, doubling on a relapse,
+  // capped). Roles on a healthy provider keep ticking; a hold on the reviewer's provider
+  // (with the review gate on) still blocks everything, since nothing could land — the
+  // orchestrator's scheduling and start passes derive that verdict from this map. The
+  // director's ticks are exempt, as under the budget gate and the operator pause: an
   // explicit human prompt outranks an autonomous gate, one director run is not the
   // concurrency that sustains a storm, its 429 runs keep the per-run transient retry
   // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfil
   // goes back to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like
   // both siblings, and a role tick already parked in the semaphore meets the same hold at
   // its permit (the start gate) and hands its reservation back instead of starting
-  // into the storm. The verdict is written back to states.fleetHold — the scheduling pass
-  // reads this poll's copy as `held`, and the permit-time closures read the LATEST poll's
-  // copy there, so a waiter granted its permit after a later poll sees that poll's world.
-  states.fleetHold = pollFleetHold(root, states.fleetHold, runners, now);
+  // into the storm. The verdicts are written back to states.fleetHold — one hold per
+  // provider, lifted holds kept keyed for their relapse memory but never reading as held —
+  // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
+  // permit after a later poll sees that poll's world.
+  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(liveConfig, runners), now);
 
   // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
@@ -256,7 +275,7 @@ export function pollFleetGates(
   // together — this counts raw failures of one kind across roles in a rolling window,
   // so a degraded backend that fails the fleet widely and shallowly still names itself.
   // Observational only, like the error storm: it gates nothing.
-  states.failureSpread = pollFailureSpread(root, states.failureSpread, runners, now);
+  states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(liveConfig, runners), now);
 
   return { gate, roleConfig, userPaused, pausedRoles: pausedRolesNow, capPaused, roleQuietHeld, quietNow };
 }

@@ -41,6 +41,8 @@ import {
   sleepInterruptible,
 } from "./tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gate-polls.js";
+import { heldProviders } from "./fleet-hold.js";
+import { configForRole, reviewRunConfig } from "./config/config-views.js";
 
 const POLL_MS = 2000;
 
@@ -307,7 +309,24 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         info,
         infoFile,
       });
-      const held = gateStates.fleetHold.until !== null;
+      // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
+      // tick model's provider stands under a hold, and every role is held when the
+      // reviewer's provider is (with the review gate on, nothing could land — and the land
+      // queue below reads the same reviewHeld verdict). Key presence in the map is relapse
+      // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
+      // so a lifted hold never keeps blocking. Read fresh from gateStates.fleetHold — the
+      // permit-time closures below see the latest poll's verdicts, not this poll's snapshot.
+      const fleetHeldProviders = heldProviders(gateStates.fleetHold);
+      // Fresh reads for the permit-time closures: they run after later polls have advanced
+      // gateStates.fleetHold, so they re-derive from the LATEST poll's map, not this snapshot.
+      const fleetHeldNow = () => heldProviders(gateStates.fleetHold);
+      const reviewHeldNow = () =>
+        liveConfig.review.enabled && fleetHeldNow().has(reviewRunConfig(liveConfig).provider);
+      const reviewHeld =
+        liveConfig.review.enabled && fleetHeldProviders.has(reviewRunConfig(liveConfig).provider);
+      const roleProviders = new Map(
+        runners.map((r) => [r.role, configForRole(liveConfig, r.role).provider as string | undefined]),
+      );
 
       // Self-redeploy (src/redeployer.ts): with main's head in hand, let the state machine observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's
@@ -357,7 +376,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // merge slot, and the dedupe against main). A held poll starts no vet and no merge,
       // exactly as it starts no tick; what is already in flight runs on, and a vet parked for
       // its permit meets the same start gate as a parked tick when the permit comes.
-      if (!holdForRestart && !held) {
+      if (!holdForRestart && !reviewHeld) {
         await drainLandings(
           {
             root,
@@ -367,7 +386,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             runners,
             liveConfig,
             roleConfig,
-            startHeld: () => tickStartHeld() || gateStates.fleetHold.until !== null,
+            startHeld: () => tickStartHeld() || reviewHeldNow(),
           },
           landings,
         );
@@ -400,7 +419,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         gate,
         probeDue,
         holdForRestart,
-        held,
+        heldProviders: fleetHeldProviders,
+        reviewHeld,
+        roleProviders,
         openBugsNow,
         workBacklogOpen,
         deferredDue,
@@ -421,7 +442,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         roleInFlight,
         directorInFlight,
         roleTickDurationsMs,
-        startHeld: (role) => tickStartHeld() || (role !== DIRECTOR_ROLE && gateStates.fleetHold.until !== null),
+        startHeld: (role) =>
+          tickStartHeld() ||
+          (role !== DIRECTOR_ROLE &&
+            (reviewHeldNow() || fleetHeldNow().has(roleProviders.get(role)))),
       });
 
       // Once mode's exit: every enabled role settled, no tick in flight, and the land queue

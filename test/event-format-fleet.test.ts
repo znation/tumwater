@@ -244,7 +244,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
   } as never);
   assert.match(
     hold,
-    /harness\s+429 hold — bugfix, coverage rate-limited by the provider; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    /harness\s+429 hold — bugfix, coverage rate-limited by the provider; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
     `the hold must name its roles, duration and scope: ${hold}`,
   );
   assert.ok(!hold.includes("warning"), `the hold is routine, not a warning: ${hold}`);
@@ -260,7 +260,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
   assert.match(relapse, /for 15m \(relapse 4\) \(director keeps running\)$/, `relapse line: ${relapse}`);
 
   const resumed = formatEvent({ ts: 0, loop: "harness", type: "rate_limit_resumed" } as never);
-  assert.match(resumed, /harness\s+429 hold lifted — role loops tick again$/, `resumed line: ${resumed}`);
+  assert.match(resumed, /harness\s+429 hold lifted — role loops on every provider tick again$/, `resumed line: ${resumed}`);
 });
 
 // The hold's generalization (PLANS.md 2026-09-29): a backend-failure kind renders as a backend
@@ -278,13 +278,13 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     backend,
-    /harness\s+backend hold \(connection error\) — bugfix, clean hit backend failures; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    /harness\s+backend hold \(connection error\) — bugfix, clean hit backend failures; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
     `backend hold line: ${backend}`,
   );
   const modelLoad = formatEvent({
     ts: 0, loop: "harness", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
   } as never);
-  assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops and landings start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
+  assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops on every provider start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
   // A timeout storm names its own phrase too — the digest pools plain and progressing tick
   // timeouts under this kind, and a timeout hold must not borrow a connection's wording.
@@ -293,7 +293,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     timeout,
-    /harness\s+backend hold \(request timed out\) — tests hit backend failures; role loops and landings start nothing new for 60s \(director keeps running\)$/,
+    /harness\s+backend hold \(request timed out\) — tests hit backend failures; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
     `timeout hold line: ${timeout}`,
   );
   const timeoutResumed = formatEvent({
@@ -301,7 +301,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     timeoutResumed,
-    /harness\s+backend hold lifted \(request timed out\) — role loops tick again$/,
+    /harness\s+backend hold lifted \(request timed out\) — role loops on every provider tick again$/,
     `timeout resumed line: ${timeoutResumed}`,
   );
 
@@ -312,12 +312,12 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     backendResumed,
-    /harness\s+backend hold lifted \(connection error\) — role loops tick again$/,
+    /harness\s+backend hold lifted \(connection error\) — role loops on every provider tick again$/,
     `backend resumed line: ${backendResumed}`,
   );
   // A rate-limit hold's lift (and a torn resumed line with no kind) keeps the historical wording.
   const rlResumed = formatEvent({
     ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "rate-limit",
   } as never);
-  assert.match(rlResumed, /429 hold lifted — role loops tick again$/, `rate-limit resumed line: ${rlResumed}`);
+  assert.match(rlResumed, /429 hold lifted — role loops on every provider tick again$/, `rate-limit resumed line: ${rlResumed}`);
 });

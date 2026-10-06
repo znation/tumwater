@@ -33,8 +33,16 @@ interface SchedulingPassCtx {
   /** A demoted fallback's half-open window: the pass may admit one role tick past the
    * `paused` budget gate as the breaker's probe. */
   probeDue: boolean;
-  /** The fleet-wide failure hold: no new role ticks while it stands (the director exempt). */
-  held: boolean;
+  /** The providers whose fleet-wide failure hold stands (fleet-hold.ts heldProviders —
+   * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
+   * tick while ITS provider is held (the director exempt). */
+  heldProviders: ReadonlySet<string | undefined>;
+  /** The reviewer's provider is held while the review gate is on: nothing could land, so
+   * EVERY role is blocked, not just roles ticking on that provider. */
+  reviewHeld: boolean;
+  /** Each runner's tick model provider (configForRole at poll time): the key the
+   * heldProviders check reads for that role. */
+  roleProviders: ReadonlyMap<string, string | undefined>;
   /** BUGS.md `## Open` non-empty (backlog.ts's openBugs), read once per poll by the poll body. */
   openBugsNow: boolean;
   /** A pending self-redeploy hold: nothing new starts, on any loop. */
@@ -64,7 +72,9 @@ export async function pollRunnerReasons(
     roleQuietHeld,
     gate,
     probeDue,
-    held,
+    heldProviders,
+    reviewHeld,
+    roleProviders,
     openBugsNow,
     workBacklogOpen,
     holdForRestart,
@@ -122,7 +132,11 @@ export async function pollRunnerReasons(
     if (capPaused.has(runner.role)) continue;
     if (operatorPauseBlocks(runner.role))
       continue; // no new role ticks while either gate holds
-    if (held && runner.role !== DIRECTOR_ROLE) continue; // nor while a failure storm holds
+    if (
+      runner.role !== DIRECTOR_ROLE &&
+      (reviewHeld || heldProviders.has(roleProviders.get(runner.role)))
+    )
+      continue; // nor while ITS provider's failure storm holds — or the reviewer's (nothing could land)
     // The loop's OWN queue decides inbox due-ness: the director counts its historical
     // inbox, every other loop its per-role queue (tumwater prompt --role <id>) — so a
     // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
