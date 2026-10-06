@@ -172,6 +172,24 @@ export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
   };
 }
 
+/** The optional provider/model/thinking fields of a resolved model seam, with each unset
+ * (empty) field left out so the result carries only what was resolved — the one home of that
+ * assembly. The five sites that build a triple this way (fallbackPair's three branches,
+ * tierOwnFallback, and role-view's RoleViewPayload) follow the same rule: an absent or empty
+ * value is omitted rather than written as undefined/"" (an empty selector field would read as
+ * "override present," so it must not appear). */
+export function resolvedModelFields(
+  provider: string | undefined,
+  model: string | undefined,
+  thinking: string | undefined,
+): Pick<FallbackModelConfig, "provider" | "model" | "thinking"> {
+  const fields: Pick<FallbackModelConfig, "provider" | "model" | "thinking"> = {};
+  if (provider) fields.provider = provider;
+  if (model) fields.model = model;
+  if (thinking) fields.thinking = thinking;
+  return fields;
+}
+
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
  * fallback is configured. The selector-string `fallback` (plans/model-tiers.md) and the
@@ -194,20 +212,10 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
       const sel = fb.default;
       if (sel === undefined || sel === "pause") return null;
       const parsed = parseModelSelector(sel);
-      const thinking = parsed.thinking ?? config.thinking;
-      return {
-        ...(parsed.provider ? { provider: parsed.provider } : {}),
-        ...(parsed.model ? { model: parsed.model } : {}),
-        ...(thinking ? { thinking } : {}),
-      };
+      return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
     }
     const sel: ModelSelector = parseModelSelector(fb);
-    const thinking = sel.thinking ?? config.thinking;
-    return {
-      ...(sel.provider ? { provider: sel.provider } : {}),
-      ...(sel.model ? { model: sel.model } : {}),
-      ...(thinking ? { thinking } : {}),
-    };
+    return resolvedModelFields(sel.provider, sel.model, sel.thinking ?? config.thinking);
   }
   const fbo = config.fallbackModel;
   if (!fbo) return null;
@@ -217,11 +225,7 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
   const provider = fbo.provider ?? topSel?.provider ?? config.provider;
   const model = fbo.model ?? topSel?.model;
   const thinking = fbo.thinking ?? topSel?.thinking ?? config.thinking;
-  return {
-    ...(provider ? { provider } : {}),
-    ...(model ? { model } : {}),
-    ...(thinking ? { thinking } : {}),
-  };
+  return resolvedModelFields(provider, model, thinking);
 }
 
 /** One tier's budget-fallback resolution (plans/model-tiers.md "Budget fallback by tier"):
@@ -267,12 +271,7 @@ function tierOwnFallback(config: TumwaterConfig, tier: ModelTier): FallbackModel
   }
   if (selector === undefined) return undefined;
   const parsed = parseModelSelector(selector);
-  const thinking = parsed.thinking ?? config.thinking;
-  return {
-    ...(parsed.provider ? { provider: parsed.provider } : {}),
-    ...(parsed.model ? { model: parsed.model } : {}),
-    ...(thinking ? { thinking } : {}),
-  };
+  return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
 }
 
 /** Which free pair each tier runs on at the daily cap (plans/model-tiers.md "Budget fallback

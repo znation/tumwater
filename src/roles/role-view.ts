@@ -16,7 +16,7 @@ import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { configForRole, fallbackPair, roleSeamTier } from "../config/config-views.js";
+import { configForRole, fallbackPair, resolvedModelFields, roleSeamTier } from "../config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
@@ -98,9 +98,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     paused: pausedRoles(root).includes(role),
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
-    ...(effective.provider ? { provider: effective.provider } : {}),
-    ...(effective.model ? { model: effective.model } : {}),
-    ...(effective.thinking ? { thinking: effective.thinking } : {}),
+    ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
     fallback,
     fallbackFree: fallback ? fallbackModelFree(cfg, modelsPath) : false,
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
