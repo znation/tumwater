@@ -8,7 +8,7 @@
  * `actions` are the dashboard's buttons (`act` names a page action — open a loop, a view,
  * the cap editor…). */
 
-import type { StatusSnapshot } from "../status-data.js";
+import type { StatusSnapshot } from "../status/status-data.js";
 import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";

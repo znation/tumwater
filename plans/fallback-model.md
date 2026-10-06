@@ -106,7 +106,7 @@ src/types.ts (FallbackModelConfig, config field, `budget_fallback`), src/config-
 (key list + shape), src/config.ts (`fallbackPair`, `applyFallbackModel`, clone/merge),
 src/pi-models.ts (`pairFree`, `fallbackModelFree`), src/state.ts (`BudgetGate`, `budgetGate`),
 src/orchestrator.ts (gate, transition events, config push, landing config, `modelsPath` seam),
-src/status-data.ts (snapshot `budget.fallback`), src/ui/status-render.ts (badge, state cells),
+src/status/status-data.ts (snapshot `budget.fallback`), src/ui/status-render.ts (badge, state cells),
 src/ui/status-payload.ts, src/events/event-format.ts, README.md, and their tests.
 
 ## Acceptance criteria

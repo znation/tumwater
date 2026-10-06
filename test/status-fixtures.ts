@@ -3,7 +3,7 @@
  * their StatusSnapshots and logs from, plus the header-line extractor the badge suites read. Split out of status-render.test.ts when the status-model
  * suite moved to its own file, so the two halves cannot drift (one fixture, two surfaces). */
 import assert from "node:assert/strict";
-import type { StatusSnapshot } from "../src/status-data.js";
+import type { StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState } from "../src/loop-state.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";

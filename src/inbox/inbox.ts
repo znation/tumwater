@@ -32,7 +32,7 @@ const PROMPT_PREVIEW_MAX = 80;
 
 /** One-line preview of a queued prompt — the single width shared by the prompt_enqueued
  * event preview (this module) and the prompt_cancelled preview (inbox-cancel.ts),
- * the dashboards' inboxPrompts (status-data.ts), and
+ * the dashboards' inboxPrompts (status/status-data.ts), and
  * the CLI's cancel output (cli.ts). Surrogate-safe via truncate: an over-long prompt is marked
  * with an ellipsis like every other label and never carries a lone surrogate at the cut point. */
 export function promptPreview(text: string): string {

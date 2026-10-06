@@ -179,7 +179,7 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 - `tick_start` and `review_start`, plus the conflict resolver's run, record the model actually
   used (`model: "provider/id:thinking"`). Today they carry only the tick number or head, so no
   model choice can be evaluated from the event log.
-- Role rows (src/roles/role-view.ts, src/status-data.ts, both dashboards) show each role's tier and
+- Role rows (src/roles/role-view.ts, src/status/status-data.ts, both dashboards) show each role's tier and
   resolved model.
 - `budget_fallback` carries the per-tier resolution, e.g. `tiers: { default:
   "omlx/Qwen3.8-27B-MLX-oQ4e-mtp", strong: "omlx/Qwen3.8-27B-MLX-oQ4e-mtp (from default)" }`,
@@ -239,7 +239,7 @@ src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budge
 src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
-src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status-data.ts, src/ui/*,
+src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.

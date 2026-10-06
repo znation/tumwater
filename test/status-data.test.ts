@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { snapshot } from "../src/status-data.js";
+import { snapshot } from "../src/status/status-data.js";
 import { queueFileStamp } from "../src/file-queue.js";
 import { quietHoursStatus } from "../src/quiet-hours.js";
 import { statusPayload } from "../src/ui/status-payload.js";
@@ -57,7 +57,7 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
     quietBadge(set.quietHours, set.inQuietHours),
   );
 
-  // A malformed value degrades with the whole config — status-polls.ts's configForStatus
+  // A malformed value degrades with the whole config — status/status-polls.ts's configForStatus
   // serves the last-known-good one, so the badge never flashes off on a single broken write.
   writeConfig(repo, { quietHours: "23:00" });
   const broken = snapshot(repo);
@@ -762,7 +762,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // A merge-scope check older than the default 200-event tail still badges the header: a
   // burst of quiet ticks logs hundreds of events without moving main, and a tail that ends
   // before the last check would make the badge vanish and reappear as ticks tick by. The
-  // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/status-data.ts) until the check is inside it —
+  // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/status/status-data.ts) until the check is inside it —
   // every event after the check is newer, so one window holds the whole derivation.
   const busy = makeRepo();
   writeEvents(busy, [

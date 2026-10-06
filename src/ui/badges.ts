@@ -1,5 +1,5 @@
 import type { TestCounts } from "../build-check/build-check-counts.js";
-import type { StatusSnapshot } from "../status-data.js";
+import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, type BudgetGate } from "../budget.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { humanSeconds, pad2, secondsUntil } from "../datetime.js";

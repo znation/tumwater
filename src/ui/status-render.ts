@@ -1,5 +1,5 @@
 import type { LoopState } from "../loop-state.js";
-import type { StatusSnapshot } from "../status-data.js";
+import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget.js";
 import type { LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
@@ -14,7 +14,7 @@ import { phaseTone, resultTone, type Tone } from "./tone.js";
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
  * display model (status-model.ts); this module decides column widths and layout. Depends on
- * status-data.ts one way — rendering reads reads the snapshot; it never collects fleet state itself
+ * status/status-data.ts one way — rendering reads reads the snapshot; it never collects fleet state itself
  * (live tick detail is display-only). */
 
 function ago(ts: number | undefined): string {

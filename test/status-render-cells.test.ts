@@ -154,7 +154,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   const c = freshLoopState("organize");
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
-  // ...and the badge carries the same sum (status-data.ts derives both from the loops).
+  // ...and the badge carries the same sum (status/status-data.ts derives both from the loops).
   const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, capHitAt: null, free: false, fallback: null });
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const totalsRow = lines[lines.length - 1] ?? "";

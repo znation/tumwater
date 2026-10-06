@@ -39,7 +39,7 @@ type CapObservation = {
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
  * is configured, it is a finite number above zero (0 disables that role's cap, like the fleet
  * cap), and today's spend has reached it. The role→cap lookup stays with the caller
- * (`caps?.[role]`), so part 2/2's observers (src/status-data.ts) share this single definition
+ * (`caps?.[role]`), so part 2/2's observers (src/status/status-data.ts) share this single definition
  * with the scheduler. */
 export function roleCapPaused(
   state: Pick<LoopState, "dayStamp" | "dayCostUsd">,

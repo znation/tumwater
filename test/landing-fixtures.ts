@@ -16,7 +16,7 @@ import { setRef } from "../src/git.js";
 import { Semaphore } from "../src/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop-state.js";
-import { snapshot } from "../src/status-data.js";
+import { snapshot } from "../src/status/status-data.js";
 import { landingForRole, loopPhase } from "../src/ui/status-model.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";

@@ -61,7 +61,7 @@ interface RunOptions {
    * without one — a `--once` round, and every in-process test, so none reads the real Mac. */
   launchServicesWatch?: LaunchServicesWatch | null;
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
-   * configured fallback model is actually cost-free — a test seam, like status-data.ts's
+   * configured fallback model is actually cost-free — a test seam, like status/status-data.ts's
    * snapshot(). */
   modelsPath?: string;
   /** The fallback breaker's thresholds (src/fallback-breaker.ts, default

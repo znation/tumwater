@@ -10,7 +10,7 @@ import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli
 import { repoNotReady } from "../gates/startup-gate.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { parsePositiveInt } from "../text.js";
-import { snapshot } from "../status-data.js";
+import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";

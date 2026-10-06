@@ -63,7 +63,7 @@ Design: plans/model-tiers.md ("Observability", "Doctor").
 to, and whether every declared model can run, before the fleet finds out the hard way.
 
 **Approach.**
-1. **Role rows:** `rolePayload` (src/roles/role-view.ts) and src/status-data.ts expose `tier` beside
+1. **Role rows:** `rolePayload` (src/roles/role-view.ts) and src/status/status-data.ts expose `tier` beside
    the resolved model, and both dashboards show it.
 2. **`budget_fallback`** gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its
    existing `provider` / `model` (the default tier's). The header badge keeps today's
@@ -75,7 +75,7 @@ to, and whether every declared model can run, before the fleet finds out the har
    they are oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the
    inherited environment — and points at `model.small` / `model.strong`.
 
-**Files touched.** src/roles/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
+**Files touched.** src/roles/role-view.ts, src/status/status-data.ts, src/ui/* (role rows, badge),
 src/gates/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
 
 **Acceptance criteria.**
@@ -772,9 +772,9 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   allowed = off).
 - `src/config/config-example.ts` / `src/help.ts` / README.md settings paragraph: name the new key one
   line after its fleet-wide sibling, so `tumwater config` users can find it.
-- Status surface: follow status-data.ts's `roleCapPaused` pattern minimally — a loop held by
+- Status surface: follow status/status-data.ts's `roleCapPaused` pattern minimally — a loop held by
   its own window shows the same quiet-hours hold wording the fleet-wide gate already uses; if
-  status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
+  status/status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
   Done entry rather than growing the change.
 
 **Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator.ts,
@@ -792,7 +792,7 @@ README.md, plus tests (quiet-hours and config-validation suites).
 - Tests cover the helper (in/out/absent-key/wrapping), the validation cases, and a gate-polls
   test asserting the hold set. `npm run test` passes.
 
-_Note on the status surface: the plan's "same quiet-hours hold wording" is delivered — status-data.ts computes `roleQuietPaused` (role → window, director exempt) with the new roleQuietHold helper, and status-model.ts's loopPhase renders the fleet badge's own `quiet until <end>` wording scoped to the loop's window, carried to the GUI payload through status-payload.ts. `src/config/config-example.ts` holds no key catalog (it seeds from the tracked tumwater.example.json, which sets no quietHours), so it needed no change; help.ts and the README settings paragraph name the new key beside its fleet-wide sibling._
+_Note on the status surface: the plan's "same quiet-hours hold wording" is delivered — status/status-data.ts computes `roleQuietPaused` (role → window, director exempt) with the new roleQuietHold helper, and status-model.ts's loopPhase renders the fleet badge's own `quiet until <end>` wording scoped to the loop's window, carried to the GUI payload through status-payload.ts. `src/config/config-example.ts` holds no key catalog (it seeds from the tracked tumwater.example.json, which sets no quietHours), so it needed no change; help.ts and the README settings paragraph name the new key beside its fleet-wide sibling._
 
 - `tumwater prompt --at <duration>` — queue a steering prompt that stays hidden until its time arrives (planned 2026-10-04, done 2026-10-04; commit 654f15b3)
 - `tumwater questions` — read and answer the open-question outbox from the CLI (planned 2026-10-04, done 2026-10-04; commit 7cf0c37a)

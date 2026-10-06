@@ -1,19 +1,19 @@
-import type { TestCounts } from "./build-check/build-check-counts.js";
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { LandingInFlight } from "./landing/landing-slot.js";
-import type { LoopState } from "./loop-state.js";
-import { defaultConfig, loadConfigCached } from "./config/config.js";
-import { readEvents } from "./events/event-read.js";
-import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "./git.js";
-import { freshLoopState, loadLoopState } from "./loop-state.js";
-import { statePath } from "./paths.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
+import type { TestCounts } from "../build-check/build-check-counts.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { LandingInFlight } from "../landing/landing-slot.js";
+import type { LoopState } from "../loop-state.js";
+import { defaultConfig, loadConfigCached } from "../config/config.js";
+import { readEvents } from "../events/event-read.js";
+import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git.js";
+import { freshLoopState, loadLoopState } from "../loop-state.js";
+import { statePath } from "../paths.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 
-/** The per-poll cached readers behind status-data.ts's snapshot(): one poll's view of the
+/** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (an event-tail
  * scan with its own grown-full memo), the config to display against (stat-keyed, with a
  * last-known-good fallback so a transiently broken tumwater.json never blinds an observer),
- * and each role's loop state (stat-keyed, copied per poll). Split out of status-data.ts —
+ * and each role's loop state (stat-keyed, copied per poll). Split out of status/status-data.ts —
  * which keeps the StatusSnapshot contract and the snapshot assembly — so the contract file
  * carries no module-level cache state of its own. Lives beside it in src/: pure data
  * collection, no presentation concern. */

@@ -1,28 +1,28 @@
-import type { LoopState } from "./loop-state.js";
-import type { BuildStatus } from "./build-info.js";
-import { openQuestions } from "./backlog/backlog.js";
-import { enabledRoleIds, isCustomRole } from "./config/config.js";
-import { fallbackPair } from "./config/config-views.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models.js";
+import type { LoopState } from "../loop-state.js";
+import type { BuildStatus } from "../build-info.js";
+import { openQuestions } from "../backlog/backlog.js";
+import { enabledRoleIds, isCustomRole } from "../config/config.js";
+import { fallbackPair } from "../config/config-views.js";
+import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
-import { queuedRolePromptEntries } from "./inbox/inbox.js";
-import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
-import { DIRECTOR_ROLE } from "./roles/roles.js";
+import { queuedRolePromptEntries } from "../inbox/inbox.js";
+import { quietHoursStatus, roleQuietHold } from "../quiet-hours.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import {
   orchestratorAlive,
   pausedRoles,
   readOrchestratorInfo,
   standingFleetPause,
-} from "./fleet/fleet-state.js";
-import { readLandingMarker, type LandingInFlight } from "./landing/landing-slot.js";
-import { fleetDailyCost, projectCapHit } from "./budget.js";
-import { roleCapPaused } from "./gates/role-cap-gates.js";
-import { queuedLandings } from "./landing/landing-queue.js";
+} from "../fleet/fleet-state.js";
+import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
+import { fleetDailyCost, projectCapHit } from "../budget.js";
+import { roleCapPaused } from "../gates/role-cap-gates.js";
+import { queuedLandings } from "../landing/landing-queue.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
  * snapshot() reads through (main-check scan, last-known-good config, loop-state stat cache)
- * live in status-polls.ts. */
+ * live in status/status-polls.ts. */
 
 export interface StatusSnapshot {
   running: boolean;

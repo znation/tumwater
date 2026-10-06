@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { renderStatus } from "../src/ui/status-render.js";
 import { buildBadge } from "../src/ui/badges.js";
-import type { StatusSnapshot } from "../src/status-data.js";
+import type { StatusSnapshot } from "../src/status/status-data.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { DEFAULT_BUDGET, headerOf, snapshotWith } from "./status-fixtures.js";
 

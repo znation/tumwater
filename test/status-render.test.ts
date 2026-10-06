@@ -10,7 +10,7 @@ import fs from "node:fs";
 import { renderStatus } from "../src/ui/status-render.js";
 import { displayWidth } from "../src/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
-import { snapshot, type StatusSnapshot } from "../src/status-data.js";
+import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { initProject } from "../src/init.js";
 import { orchestratorStatePath } from "../src/paths.js";

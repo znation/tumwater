@@ -1,6 +1,6 @@
 // Benchmark: steady-state cost of one dashboard frame (snapshot + renderStatus) with
 // every loop running. Not a pass/fail gate — run it by hand before and after a change to
-// status-data.ts/status-render.ts/progress.ts and compare the us/frame numbers. A jump usually
+// status/status-data.ts/status-render.ts/progress.ts and compare the us/frame numbers. A jump usually
 // means a helper stopped receiving the threaded readLiveProgress tail and re-reads the log
 // per cell; renderStatus reads once per running loop and passes `live` down on purpose.
 import fs from "node:fs";
@@ -11,9 +11,9 @@ import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs
 // Before the dist/ imports below: a tree without a build would otherwise die with a raw
 // ERR_MODULE_NOT_FOUND stack instead of the fix. The benchmark's numbers mean nothing against
 // a stale one anyway, so a missing dist is not an edge case.
-requireDistBuild("../dist/src/status-data.js", "bench-live benchmarks the compiled build");
+requireDistBuild("../dist/src/status/status-data.js", "bench-live benchmarks the compiled build");
 
-const { snapshot } = await import("../dist/src/status-data.js");
+const { snapshot } = await import("../dist/src/status/status-data.js");
 const { renderStatus } = await import("../dist/src/ui/status-render.js");
 
 const ROLES = await distRoleIds();

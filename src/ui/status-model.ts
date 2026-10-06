@@ -1,6 +1,6 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { LoopState } from "../loop-state.js";
-import type { StatusSnapshot } from "../status-data.js";
+import type { StatusSnapshot } from "../status/status-data.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
@@ -19,12 +19,12 @@ import { landingChanges, type LandingChange, type LandingStage } from "../landin
 /** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its landing cell,
  * and its per-loop row derivation (the header badges live next door in badges.ts, the
  * in-flight tick's live progress detail in tick-progress-model.ts) — derived from the status
- * data (status-data.ts)
+ * data (status/status-data.ts)
  * and shared by BOTH
  * observer surfaces: the terminal table (status-render.ts's renderStatus/stateCell) and the
  * JSON/GUI payload (status-payload.ts). Kept apart from status-render.ts so the GUI payload
  * depends on the shared model, not on the TUI table module — "what to show" (here) is separate
- * from "how a terminal lays it out" (status-render.ts). Depends on status-data.ts one way: deriving
+ * from "how a terminal lays it out" (status-render.ts). Depends on status/status-data.ts one way: deriving
  * reads the snapshot and never collects fleet state itself (live tick detail is display-only). */
 
 type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
@@ -237,10 +237,10 @@ export function loopRowCells(
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
     // between ticks (BUGS.md 2026-09-30) — the banner (fleetAlerts) reads this same phase.
     snap.mainCheck,
-    // The per-role cap's verdict, computed once per poll in the snapshot (status-data.ts
+    // The per-role cap's verdict, computed once per poll in the snapshot (status/status-data.ts
     // roleCapPaused): an idle loop over its own cap reads `cap paused` on every surface.
     snap.capPaused.includes(s.role),
-    // The per-role quiet window's verdict (status-data.ts roleQuietPaused): an idle loop
+    // The per-role quiet window's verdict (status/status-data.ts roleQuietPaused): an idle loop
     // inside its own window reads `quiet until <end>` — the fleet badge's wording, scoped.
     snap.roleQuietPaused?.[s.role],
   );
