@@ -5,6 +5,7 @@ import { liveConfig } from "./config/config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "./main-baseline.js";
 import { compileStaged, swapDist } from "./build-stage.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
+import { finiteNumber } from "./json-object.js";
 import { ensureDetachedWorktree } from "./worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "./paths.js";
 import { type AutoRestartRecord, type RedeployDeps, RESTART_DRAIN_MAX_MS } from "./redeploy-policy.js";
@@ -22,7 +23,7 @@ export function autoRestartRecord(root: string): AutoRestartRecord {
   const file = autoRestartStampPath(root);
   const stored = readJsonFile<{ at?: unknown }>(file)?.at;
   return {
-    lastAt: typeof stored === "number" && Number.isFinite(stored) ? stored : null,
+    lastAt: finiteNumber(stored, null),
     record: (at) => writeJsonFile(file, { at }),
   };
 }

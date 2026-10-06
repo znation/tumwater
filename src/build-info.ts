@@ -2,6 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitTry } from "./git-run.js";
 import { readJsonFile, writeJsonFile } from "./json-files.js";
+import { finiteNumber } from "./json-object.js";
 import { refSha } from "./git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
@@ -50,7 +51,7 @@ export function buildInfoPath(dist: string): string {
 export function readBuildInfo(dist = distDir()): BuildInfo | null {
   const info = readJsonFile<Partial<BuildInfo>>(buildInfoPath(dist));
   if (!info || typeof info.sha !== "string" || !info.sha || typeof info.root !== "string") return null;
-  return { sha: info.sha, builtAt: typeof info.builtAt === "number" ? info.builtAt : 0, root: info.root };
+  return { sha: info.sha, builtAt: finiteNumber(info.builtAt, 0), root: info.root };
 }
 
 /** Stamp a freshly compiled `dist` with the commit it was built from — `sha` when the caller

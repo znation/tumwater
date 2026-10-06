@@ -25,6 +25,19 @@ export function stringList(value: unknown): string[] {
   return Array.isArray(value) ? (value as string[]) : [];
 }
 
+/** Read an untrusted JSON field that should be a number, returning `fallback` when it is
+ * absent, not a number, or not finite (NaN/±Infinity poison arithmetic and comparisons: a
+ * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
+ * home of the "the field is the number or it is nothing" read. The exact call sites:
+ * event-read.ts's eventUsage (tokens, costUsd → 0), redeploy.ts's autoRestartRecord
+ * (lastAt → null), build-info.ts's readBuildInfo (builtAt → 0), and test-runner.ts's
+ * orderByDuration cost (→ Infinity, the "no recorded duration" marker). Fields that carry
+ * an extra constraint beyond finiteness keep their own check beside the call (pi-stream.ts's
+ * usageNumber and time-spend.ts's tickDurationMs additionally require >= 0). */
+export function finiteNumber<T>(value: unknown, fallback: T): number | T {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 /** Parse `text` as JSON and require the result to be a plain object, returning null when
  * either half fails — the one home of the "read one JSON value or read it as no data" policy
  * every line-oriented parser here applies (parseEventLine on the harness event log,

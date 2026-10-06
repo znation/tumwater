@@ -1,5 +1,5 @@
 import { dayKey } from "../datetime.js";
-import { parseJsonObject } from "../json-object.js";
+import { finiteNumber, parseJsonObject } from "../json-object.js";
 import { eventsLogPath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { readTailTextWithEnd } from "../tail.js";
@@ -50,9 +50,8 @@ export function eventRole(ev: HarnessEvent): string {
  * including what a corrupt value contributes — lives beside the consumers, not re-spelled
  * per consumer. */
 export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number } {
-  const tokens = typeof ev.tokens === "number" && Number.isFinite(ev.tokens) ? ev.tokens : 0;
-  const costUsd =
-    typeof ev.costUsd === "number" && Number.isFinite(ev.costUsd) ? ev.costUsd : 0;
+  const tokens = finiteNumber(ev.tokens, 0);
+  const costUsd = finiteNumber(ev.costUsd, 0);
   return { tokens, costUsd };
 }
 

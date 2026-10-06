@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
 import { readJsonFile, writeJsonAtomic } from "../src/json-files.js";
+import { finiteNumber } from "../src/json-object.js";
 import { SUPERVISED_ENV } from "../src/supervisor.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.
@@ -168,7 +169,7 @@ function defaultDistDir(): string {
 export function orderByDuration(files: readonly string[], durations: Readonly<Record<string, number>>): string[] {
   const cost = (file: string): number => {
     const ms = durations[path.basename(file)];
-    return typeof ms === "number" && Number.isFinite(ms) ? ms : Infinity;
+    return finiteNumber(ms, Infinity);
   };
   return files
     .map((file, index) => ({ file, index, ms: cost(file) }))
