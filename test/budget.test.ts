@@ -10,7 +10,7 @@ import {
   projectCapHit,
   recordDailyCost,
   todayStamp,
-} from "../src/budget.js";
+} from "../src/budget/budget.js";
 import {
   abandonFallbackProbe,
   FALLBACK_BREAKER_POLICY,
@@ -23,7 +23,7 @@ import {
   recordFallbackTick,
   rekeyFallbackBreaker,
   startFallbackProbe,
-} from "../src/fallback-breaker.js";
+} from "../src/budget/fallback-breaker.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 

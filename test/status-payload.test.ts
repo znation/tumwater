@@ -13,7 +13,7 @@ import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { todayStamp } from "../src/budget.js";
+import { todayStamp } from "../src/budget/budget.js";
 import { writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";

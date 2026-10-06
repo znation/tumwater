@@ -26,7 +26,7 @@
  * streak-gate doc accepts). */
 
 import type { LoopState } from "../loop/loop-state.js";
-import { dailyCost } from "../budget.js";
+import { dailyCost } from "../budget/budget.js";
 import { logEvent } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 

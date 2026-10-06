@@ -15,7 +15,7 @@ import {
   standingFleetPause,
 } from "../fleet/fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
-import { fleetDailyCost, projectCapHit } from "../budget.js";
+import { fleetDailyCost, projectCapHit } from "../budget/budget.js";
 import { roleCapPaused } from "../gates/role-cap-gates.js";
 import { queuedLandings } from "../landing/landing-queue.js";
 

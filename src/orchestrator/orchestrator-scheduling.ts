@@ -8,7 +8,7 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../once-round.js";
 import type { WorkLandedCache } from "../work-landed-cache.js";
-import type { BudgetGate } from "../budget.js";
+import type { BudgetGate } from "../budget/budget.js";
 import { deferTick, isEligible } from "../scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { inboxSize } from "../inbox/inbox.js";

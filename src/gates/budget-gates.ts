@@ -6,12 +6,12 @@
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "../budget.js";
+import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "../budget/budget.js";
 import {
   type FallbackBreakerMap,
   fallbackServingPair,
   rekeyFallbackBreakers,
-} from "../fallback-breaker.js";
+} from "../budget/fallback-breaker.js";
 import { applyFallbackModel, fallbackPair, resolveTierFallbacks } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";

@@ -6,7 +6,7 @@ import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
   fallbackProbeDuePair,
-} from "../fallback-breaker.js";
+} from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
@@ -64,7 +64,7 @@ interface RunOptions {
    * configured fallback model is actually cost-free — a test seam, like status/status-data.ts's
    * snapshot(). */
   modelsPath?: string;
-  /** The fallback breaker's thresholds (src/fallback-breaker.ts, default
+  /** The fallback breaker's thresholds (src/budget/fallback-breaker.ts, default
    * FALLBACK_BREAKER_POLICY) — a
    * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
@@ -198,7 +198,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // memory (deadline, kind, relapse count). In memory only — a restart re-trusts the
   // fallback, starts with the hold open, and can re-log at most one event per gate. The
   // budget gate's breaker is also the fallback ticks' evidence sink: the start pass below
-  // records every tick's outcome into it and runs its probe (src/fallback-breaker.ts), and
+  // records every tick's outcome into it and runs its probe (src/budget/fallback-breaker.ts), and
   // the start gate reads gateStates.fleetHold at permit time, so its closures always see
   // the latest poll's hold verdict rather than the poll that created them.
   const gateStates: FleetGateStates = newFleetGateStates(config);

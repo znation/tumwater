@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { BudgetGate } from "../budget.js";
+import type { BudgetGate } from "../budget/budget.js";
 import {
   gateRoleConfig,
   newBudgetGateState,
@@ -7,7 +7,7 @@ import {
   tickOnPair,
   type BudgetGateState,
 } from "./budget-gates.js";
-import { fallbackDemotion } from "../fallback-breaker.js";
+import { fallbackDemotion } from "../budget/fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
@@ -47,7 +47,7 @@ import { configForRole } from "../config/config-views.js";
  * in place by each poll. In memory only — a restart re-trusts the fallback, re-opens the
  * hold, and can re-log at most one event per gate. Two members are also mutated from
  * outside this module: the budget gate's breaker collects the start pass's tick evidence
- * and its probe (src/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map —
+ * and its probe (src/budget/fallback-breaker.ts), and `fleetHold` is the holds-per-provider map —
  * the holds' LATEST verdicts, read at permit time by the start pass's closures — read it
  * from `states.fleetHold` at call time, never from a per-poll snapshot (the poll loop's
  * docs below). Key presence is not "held": providers whose hold re-opened stay in the map

@@ -17,7 +17,7 @@ import {
   readOrchestratorInfo,
   resumeFleet,
 } from "../src/fleet/fleet-state.js";
-import { dailyCost, todayStamp } from "../src/budget.js";
+import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { orchestratorStatePath, pausedPath, statePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./repo-fixtures.js";

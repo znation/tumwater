@@ -6,7 +6,7 @@
  * (src/loop/loop-pi.ts) already gives each transient failure one wait-and-retry, but it has no
  * cross-role view — with maxConcurrent loops issuing requests against one backend, each burns
  * its retry straight into a storm the fleet is collectively sustaining. POLICY only, on the
- * shape of the budget gate (src/budget.ts): pure functions of the observations the
+ * shape of the budget gate (src/budget/budget.ts): pure functions of the observations the
  * orchestrator collects each poll and the previous hold, so the rule is unit-testable without
  * a fleet and the orchestrator owns only the wiring (the transition events and the scheduling
  * skip). Unlike the budget gate this one has memory — when the hold ends and how often it has

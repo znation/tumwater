@@ -137,7 +137,7 @@ Borrowing upward costs only speed, since the model is free. Borrowing one step d
 fleet working. The strong tier never drops to a small model, because a weak reviewer or planner
 does more harm than a paused one.
 
-The fleet-level gate (`budgetGate`, src/budget.ts) stays three-valued:
+The fleet-level gate (`budgetGate`, src/budget/budget.ts) stays three-valued:
 
 - `open` — under the cap.
 - `paused` — the default tier pauses (no usable fallback anywhere), or review is on and the
@@ -151,7 +151,7 @@ on; `budget_handback` hands running ticks back when the gate reopens; the review
 (a selector, not a tier name) is dropped at the cap, so the seam falls back through its built-in
 tier and a paid pin cannot keep spending.
 
-The fallback breaker (src/fallback-breaker.ts) is one `FallbackBreaker` keyed by the pair's name
+The fallback breaker (src/budget/fallback-breaker.ts) is one `FallbackBreaker` keyed by the pair's name
 today; it becomes a map keyed by pair, so tiers sharing a fallback share a breaker and a demoted
 pair re-resolves only the tiers that use it.
 
@@ -235,8 +235,8 @@ src/config-schema.ts (types, key lists), src/config-validation.ts and src/config
 (shapes, legacy conflicts), src/config.ts (defaults, overlay of string-or-map), a new
 src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
 `fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts (`tier`),
-src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
-src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
+src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget/budget.ts,
+src/gates/budget-gates.ts, src/budget/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
 src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status/status-data.ts, src/ui/*,

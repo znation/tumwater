@@ -5,7 +5,7 @@
  * orchestrator can hold it in memory and fold tick outcomes into it without importing the
  * budget. The gate reads its verdict through fallbackServing (budget.ts's budgetGate). */
 
-import type { TickResult } from "./tick/tick-outcome.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 
 /** How the fallback breaker trips and retries. A test seam (the orchestrator's RunOptions
  * accepts an override, like pollMs); production uses FALLBACK_BREAKER_POLICY. */

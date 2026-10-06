@@ -3,7 +3,7 @@ import { readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMessage, eventResult, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
-import { dailyCost } from "../budget.js";
+import { dailyCost } from "../budget/budget.js";
 import { snapshot } from "../status/status-data.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";

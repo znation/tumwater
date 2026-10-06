@@ -9,7 +9,7 @@ import { MAX_BODY_BYTES } from "../src/http-body.js";
 import { initProject } from "../src/init/init.js";
 import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { todayStamp } from "../src/budget.js";
+import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";

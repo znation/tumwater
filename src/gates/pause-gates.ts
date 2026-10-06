@@ -1,7 +1,7 @@
 /** The operator pause (`tumwater pause`) and the per-role pause (`tumwater pause --role <id>`),
  * as the orchestrator polls them each cycle. Extracted from orchestrator.ts's poll loop: the
  * marker reads, the edge-triggered pause/resume events, and the cross-poll bookkeeping are one
- * concern beside the other fleet gates (src/budget.ts's budget gate, src/fleet/fleet-hold.ts's
+ * concern beside the other fleet gates (src/budget/budget.ts's budget gate, src/fleet/fleet-hold.ts's
  * fleet hold) — the orchestrator owns only the wiring. */
 
 import { isFleetPaused, pausedRoles } from "../fleet/fleet-state.js";

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import type { BuildStatus } from "../build/build-info.js";
-import type { FallbackDemotion } from "../fallback-breaker.js";
+import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../json-files.js";
 import { ensureParentDir, removeQuiet } from "../files.js";
 import { pidAlive } from "../process/process.js";
@@ -23,7 +23,7 @@ export function standingFleetPause(root: string): PauseMarker | null {
  * removes it — pausing before startup starts an already-paused fleet. Never throws (a missing
  * .tumwater/ reads false). Lives here because both the scheduler and every observer must
  * evaluate it from disk without importing each other's modules — the same "single
- * definition" rule that put the daily-cost budget in src/budget.ts. */
+ * definition" rule that put the daily-cost budget in src/budget/budget.ts. */
 export function isFleetPaused(root: string): boolean {
   return standingFleetPause(root) !== null;
 }
@@ -258,7 +258,7 @@ export interface OrchestratorInfo {
    * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
    * read one file instead of running git themselves. */
   build?: BuildStatus;
-  /** Present while the budget gate's fallback breaker (src/fallback-breaker.ts) holds the configured free
+  /** Present while the budget gate's fallback breaker (src/budget/fallback-breaker.ts) holds the configured free
    * fallback demoted: the cap is reached and the pair is priced at zero, but its backend failed
    * the breaker's failureLimit consecutive role ticks, so the scheduler reads the gate as
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.

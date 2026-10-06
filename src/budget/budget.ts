@@ -8,9 +8,9 @@
  * without importing either — the one-way rule that previously kept these functions in
  * loop-state.ts. */
 
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { LoopState } from "./loop/loop-state.js";
-import { dayAt, dayKey } from "./text/datetime.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { LoopState } from "../loop/loop-state.js";
+import { dayAt, dayKey } from "../text/datetime.js";
 
 /** The local calendar day as YYYY-MM-DD — the same local-time convention as every other
  * wall-clock display in the harness (lastTickCell). */

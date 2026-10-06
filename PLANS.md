@@ -9,7 +9,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed)
 
 **Approach.**
-1. **src/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
+1. **src/budget/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
    on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
    resolved to pause (strong-tier roles with review off) is blocked beside the poll's
    per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
@@ -17,7 +17,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop/loop.ts) is
    matched against every resolved fallback pair, not only one.
 
-**Files touched.** src/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop/loop.ts,
+**Files touched.** src/budget/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop/loop.ts,
 and their tests.
 
 **Acceptance criteria.**
@@ -91,7 +91,7 @@ files above, and the config-write tests.
 ## Done
 ### Model tiers, part 5b/8: the fallback breaker becomes a map keyed by pair (planned 2026-10-06 by feature, split from part 5/8; requires part 5a/8 landed, done 2026-10-06 by feature)
 
-**Approach.** **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`
+**Approach.** **src/budget/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`
 becomes a map keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
 `pairFree(...)` and `fallbackServing(...)`. Tiers sharing a fallback pair share a breaker, and a
 demoted pair re-resolves only the tiers that use it.
@@ -115,7 +115,7 @@ it was borrowed from, and rewrite a config's model map to those pairs. A single 
    `applyFallbackModel(config, resolved)` rewrites the `model` map to those pairs, so each seam
    keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
    the `FALLBACK_REVIEW_TIMEOUT_S` floor.
-2. **src/fallback-breaker.ts / src/gates/budget-gates.ts (part 5b/8), src/budget.ts,
+2. **src/budget/fallback-breaker.ts / src/gates/budget-gates.ts (part 5b/8), src/budget/budget.ts,
    src/gates/gate-polls.ts, src/loop/loop.ts (part 5c/8):** later ticks wire the engine into the
    gates.
 

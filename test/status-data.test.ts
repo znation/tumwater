@@ -24,7 +24,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { withCountedReads } from "./fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";
-import { projectCapHit, recordDailyCost } from "../src/budget.js";
+import { projectCapHit, recordDailyCost } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { landQueueDir, landingStatePath, orchestratorStatePath, pausedPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/json-files.js";

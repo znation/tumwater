@@ -13,9 +13,9 @@ import {
   startFallbackProbe,
   type FallbackBreaker,
   type FallbackBreakerPolicy,
-} from "../src/fallback-breaker.js";
+} from "../src/budget/fallback-breaker.js";
 
-/** The fallback circuit breaker's tests (src/fallback-breaker.ts): the rekey rules (a changed
+/** The fallback circuit breaker's tests (src/budget/fallback-breaker.ts): the rekey rules (a changed
  * subject re-trusts), the half-open probe admission, the evidence vocabulary, and the fold of
  * one finished tick — trips, served closes from any state, failed probes double the cool-down
  * up to the cap, stragglers leave the running cool-down alone. */
@@ -188,7 +188,7 @@ import {
   rekeyFallbackBreakers,
   startFallbackProbeAt,
   type FallbackBreakerMap,
-} from "../src/fallback-breaker.js";
+} from "../src/budget/fallback-breaker.js";
 
 test("rekeyFallbackBreakers re-keys per pair, adds fresh entries, and drops pairs that left", () => {
   const held = { ...demoted(), pair: "free/qwen", capUsd: 5 };
