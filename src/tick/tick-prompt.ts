@@ -3,7 +3,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
-import { briefFile, readInitialPrompt } from "../readme.js";
+import { readBrief } from "../readme.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
@@ -35,12 +35,16 @@ export interface TickPromptInput {
 export function assembleTickPrompt(
   { root, config, role, state, preview = false }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null } | null {
-  const initialPrompt = readInitialPrompt(root);
+  // One read of the brief yields both the prompt it carries and the owning file's name
+  // (readme.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
+  // file on this per-tick path.
+  const briefState = readBrief(root);
+  const initialPrompt = briefState?.prompt ?? "";
   // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
   // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
   // README.md. "README.md" is the fallback for a repo with no marked file yet — the fleet
   // runs blind on prompts either way, so the name in the rules should still point somewhere.
-  const brief = briefFile(root) ?? "README.md";
+  const brief = briefState?.file ?? "README.md";
   // The project's design principles ride along in every prompt — tick and director alike — so
   // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
   const principles = readPrinciples(root);
