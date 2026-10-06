@@ -25,6 +25,7 @@ import {
   checkKnownRoleId,
   checkModelTripleField,
   checkNumberField,
+  checkObjectSection,
   checkStringArrayField,
   checkStringField,
   NON_NEGATIVE,
@@ -198,69 +199,51 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // The project's own verification command (plans/portability.md §6/7): a blank command is the
   // same silent-ignore class as a blank agentBin — the operator named a check, so an empty or
   // whitespace-only value must fail validation, not silently fall back to npm detection.
-  if ("check" in r) {
-    const c = r.check;
-    if (!isJsonObject(c)) {
-      problems.push(`check must be an object (got ${show(c)})`);
-    } else {
-      const o = c;
-      checkKnownKeys(o, CHECK_KEYS, "check", problems);
-      checkString(o, "check.", "command", false);
-      // gateCommand is a string like command, but blank means off: falling back from it runs
-      // the FULL check at the gate — the stronger check, never a silently weaker one.
-      checkString(o, "check.", "gateCommand");
-      checkString(o, "check.", "cwd");
-      checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
-    }
-  }
+  checkObjectSection(r, "check", problems, (o) => {
+    checkKnownKeys(o, CHECK_KEYS, "check", problems);
+    checkString(o, "check.", "command", false);
+    // gateCommand is a string like command, but blank means off: falling back from it runs
+    // the FULL check at the gate — the stronger check, never a silently weaker one.
+    checkString(o, "check.", "gateCommand");
+    checkString(o, "check.", "cwd");
+    checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);
+  });
 
-  if ("idleBackoff" in r) {
-    const b = r.idleBackoff;
-    if (!isJsonObject(b)) {
-      problems.push(`idleBackoff must be an object (got ${show(b)})`);
-    } else {
-      const o = b;
-      checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
-      checkNumber(o, "idleBackoff.", "initialSeconds", DURATION_NON_NEGATIVE);
-      checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
-      checkNumber(o, "idleBackoff.", "maxSeconds", DURATION_NON_NEGATIVE);
-    }
-  }
+  checkObjectSection(r, "idleBackoff", problems, (o) => {
+    checkKnownKeys(o, BACKOFF_KEYS, "idleBackoff", problems);
+    checkNumber(o, "idleBackoff.", "initialSeconds", DURATION_NON_NEGATIVE);
+    checkNumber(o, "idleBackoff.", "factor", AT_LEAST_ONE);
+    checkNumber(o, "idleBackoff.", "maxSeconds", DURATION_NON_NEGATIVE);
+  });
 
-  if ("review" in r) {
-    const rv = r.review;
-    if (!isJsonObject(rv)) {
-      problems.push(`review must be an object (got ${show(rv)})`);
-    } else {
-      const o = rv;
-      checkKnownKeys(o, REVIEW_KEYS, "review", problems);
-      checkBoolean(o, "review.", "enabled");
-      checkStringArray(o, "review.", "exemptPaths");
-      // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
-      // pattern shaped like something git never emits can never match: the diff it was meant
-      // to exempt gets a model review anyway, and the operator never learns the pattern was
-      // inert. Reject the shapes git paths never take — an absolute path, a "./" prefix, a
-      // ".." segment, or a trailing "/" — the blank-entry rule above applied to the pattern's
-      // shape instead of its emptiness. Each message names the position so one edit fixes it.
-      if (Array.isArray(o.exemptPaths)) {
-        (o.exemptPaths as unknown[]).forEach((p, i) => {
-          if (!isNonBlankString(p)) return; // Already reported by checkStringArray.
-          const fix =
-            p.startsWith("/") || p.startsWith("./")
-              ? 'must be repo-relative — drop the leading "/" or "./"'
-              : p.split("/").includes("..")
-                ? 'must not contain a ".." segment — patterns match repo-relative paths'
-                : p.endsWith("/")
-                  ? 'must name files, not a directory — drop the trailing "/" (e.g. "docs/**")'
-                  : null;
-          if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
-        });
-      }
-      checkModelTriple(o, "review.", "tier-name");
-      checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
-      checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
+  checkObjectSection(r, "review", problems, (o) => {
+    checkKnownKeys(o, REVIEW_KEYS, "review", problems);
+    checkBoolean(o, "review.", "enabled");
+    checkStringArray(o, "review.", "exemptPaths");
+    // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
+    // pattern shaped like something git never emits can never match: the diff it was meant
+    // to exempt gets a model review anyway, and the operator never learns the pattern was
+    // inert. Reject the shapes git paths never take — an absolute path, a "./" prefix, a
+    // ".." segment, or a trailing "/" — the blank-entry rule above applied to the pattern's
+    // shape instead of its emptiness. Each message names the position so one edit fixes it.
+    if (Array.isArray(o.exemptPaths)) {
+      (o.exemptPaths as unknown[]).forEach((p, i) => {
+        if (!isNonBlankString(p)) return; // Already reported by checkStringArray.
+        const fix =
+          p.startsWith("/") || p.startsWith("./")
+            ? 'must be repo-relative — drop the leading "/" or "./"'
+            : p.split("/").includes("..")
+              ? 'must not contain a ".." segment — patterns match repo-relative paths'
+              : p.endsWith("/")
+                ? 'must name files, not a directory — drop the trailing "/" (e.g. "docs/**")'
+                : null;
+        if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
+      });
     }
-  }
+    checkModelTriple(o, "review.", "tier-name");
+    checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
+    checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
+  });
 
   // The free fallback model (plans/fallback-model.md): shape only — whether the named pair is
   // actually cost-free is a question about pi's models.json, not about this file, so it is
@@ -293,17 +276,12 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   }
   if ("fallback" in r && "fallbackModel" in r)
     problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
-  if ("fallbackModel" in r) {
-    const fb = r.fallbackModel;
-    if (!isJsonObject(fb)) {
-      problems.push(`fallbackModel must be an object (got ${show(fb)})`);
-    } else {
-      checkKnownKeys(fb, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
-      checkModelTriple(fb, "fallbackModel.");
-      if (!("provider" in fb) && !("model" in fb))
-        problems.push(`fallbackModel must name a provider or a model (got ${show(fb)})`);
-    }
-  }
+  checkObjectSection(r, "fallbackModel", problems, (o) => {
+    checkKnownKeys(o, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
+    checkModelTriple(o, "fallbackModel.");
+    if (!("provider" in o) && !("model" in o))
+      problems.push(`fallbackModel must name a provider or a model (got ${show(o)})`);
+  });
 
   /** A selector string that parses to an empty provider or model half (`"/id"`, `"p/"`) passes
  * the non-empty-string rule but never reaches pi: piArgs skips an empty value when it builds

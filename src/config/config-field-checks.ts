@@ -54,6 +54,27 @@ export function checkKnownKeys(
   }
 }
 
+/** Run a section's rule body only when its optional key is a plain JSON object: an absent key
+ * leaves everything alone, present-but-not-an-object reports the one type problem against the
+ * key (through show) and skips the body, and an object hands off to `validate` — so a
+ * wrongly-typed section cannot also make every field under it report a second error. The one
+ * home of the present→object→validate shape the check, idleBackoff, review, and fallbackModel
+ * sections share. */
+export function checkObjectSection(
+  root: Record<string, unknown>,
+  key: string,
+  problems: string[],
+  validate: (obj: Record<string, unknown>) => void,
+): void {
+  if (!(key in root)) return;
+  const value = root[key];
+  if (!isJsonObject(value)) {
+    problems.push(`${key} must be an object (got ${show(value)})`);
+    return;
+  }
+  validate(value);
+}
+
 /** The numeric shapes a tumwater.json field must satisfy, each bundled with the wording its
  * violation reports — one definition per shape, so a predicate and the text explaining it
  * cannot drift apart across the fields that share it. */
