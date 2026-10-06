@@ -11,6 +11,19 @@ import { validateConfig } from "./config-validation.js";
  * Split out of config.ts so the load/save/validate core does not own this init- and doctor-
  * facing surface (plans/portability.md §4a/7). */
 
+/** Read the tracked tumwater.example.json, or `undefined` when it is absent: the single
+ * existsSync + parseJsonConfig pass every example-template reader goes through, so the
+ * file is parsed once per call instead of each site restating the read and its problem
+ * check (seedConfig previously parsed the template twice — once inside its
+ * exampleConfigProblem guard, once for its own overlay). The problem is returned, not
+ * thrown: each caller decides what a broken template means for it. */
+function parseExampleTemplate(root: string): { raw: unknown; problem?: string } | undefined {
+  const file = exampleConfigPath(root);
+  if (!fs.existsSync(file)) return undefined;
+  const { raw, problem } = parseJsonConfig(file, EXAMPLE_CONFIG_BASENAME);
+  return { raw, problem };
+}
+
 /** Build the config `init` seeds a fresh tumwater.json with (plans/portability.md §4a/7): the
  * tracked tumwater.example.json overlaid on the defaults when the project ships one, the bare
  * defaults when it does not. Never throws: an unparseable or invalid template falls back to the
@@ -18,14 +31,18 @@ import { validateConfig } from "./config-validation.js";
  * validation protects. */
 export function seedConfig(root: string): TumwaterConfig {
   const base = defaultConfig();
-  const file = exampleConfigPath(root);
   // Absent and broken both seed the bare defaults: no template, or one that cannot serve.
-  if (!fs.existsSync(file) || exampleConfigProblem(root) !== null) return base;
-  // The template already passed exampleConfigProblem's read; reparse here instead of threading
-  // the earlier raw through, so a file torn between the two reads seeds the bare defaults.
-  const { raw, problem } = parseJsonConfig(file, EXAMPLE_CONFIG_BASENAME);
-  if (problem !== undefined) return base;
-  return overlayDefaults(base, raw as Partial<TumwaterConfig>);
+  // One read serves both the can-it-serve judgment and the overlay: a file torn between
+  // the check and the use within this single parse falls back with the same semantics the
+  // old double read gave it.
+  const template = parseExampleTemplate(root);
+  if (template === undefined || template.problem !== undefined) return base;
+  try {
+    validateConfig(template.raw, EXAMPLE_CONFIG_BASENAME);
+  } catch {
+    return base;
+  }
+  return overlayDefaults(base, template.raw as Partial<TumwaterConfig>);
 }
 
 /** Why tumwater.example.json cannot serve as a seed template, or null when it can: null when
@@ -35,9 +52,9 @@ export function seedConfig(root: string): TumwaterConfig {
  * without it the operator's template intent (their roles/intervals baseline for fresh clones)
  * is ignored with nothing anywhere saying so. doctor's init check surfaces the message. */
 export function exampleConfigProblem(root: string): string | null {
-  const file = exampleConfigPath(root);
-  if (!fs.existsSync(file)) return null;
-  const { raw, problem } = parseJsonConfig(file, EXAMPLE_CONFIG_BASENAME);
+  const template = parseExampleTemplate(root);
+  if (template === undefined) return null;
+  const { raw, problem } = template;
   if (problem !== undefined) return problem;
   try {
     validateConfig(raw, EXAMPLE_CONFIG_BASENAME);
@@ -54,10 +71,9 @@ export function exampleConfigProblem(root: string): string | null {
  * when either file is missing or unparseable: with no template there is nothing to drift from,
  * and a broken local file is checkInit's fail, not a drift line. */
 export function exampleDrift(root: string): string[] {
-  const example = exampleConfigPath(root);
   const config = configPath(root);
-  if (!fs.existsSync(example) || !fs.existsSync(config)) return [];
-  const template = parseJsonConfig(example, EXAMPLE_CONFIG_BASENAME);
+  const template = parseExampleTemplate(root);
+  if (!fs.existsSync(config) || template === undefined) return [];
   const local = parseJsonConfig(config, CONFIG_BASENAME);
   if (template.problem !== undefined || local.problem !== undefined) return [];
   if (!isJsonObject(template.raw) || !isJsonObject(local.raw)) return [];
