@@ -5,7 +5,7 @@
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { exitWithOwnerEnv } from "./victim-fixture.js";
 
 // The CLI runs main() on import and reports failures via process.exit, so it is

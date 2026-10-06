@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import type { HarnessEventInput } from "./events/events.js";
-import { RESTART_EXIT_CODE } from "./redeploy/redeploy-policy.js";
+import type { HarnessEventInput } from "../events/events.js";
+import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 
 /** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor
  * (the one the operator started, holding the terminal) and a child that actually runs the

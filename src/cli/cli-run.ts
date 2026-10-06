@@ -1,5 +1,5 @@
 /** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
- * with its supervisor half (src/supervisor.ts). cli.ts stays the pure dispatcher; every other
+ * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every other
  * command it dispatches already delegates to a module (operator/operator-commands.ts, prompt-commands.ts,
  * config-commands.ts, log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
@@ -105,7 +105,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
   // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
-  const { SUPERVISED_ENV, startParentDeathWatch } = await import("../supervisor.js");
+  const { SUPERVISED_ENV, startParentDeathWatch } = await import("../process/supervisor.js");
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
@@ -277,7 +277,7 @@ export function onceSummary(
   return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
-/** The supervisor half of `tumwater run` (src/supervisor.ts): spawn the orchestrator as a child
+/** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a child
  * generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself. Ctrl+C
  * reaches the child directly from the terminal, so only SIGTERM is forwarded; the supervisor's
  * own exit code is whatever the last generation's was. A fleet that goes down without the
@@ -286,7 +286,7 @@ export function onceSummary(
 async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null): Promise<void> {
   // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
   // that never boots the fleet never compiles it.
-  const { fleetDownEvent, spawnRunChild, superviseRun } = await import("../supervisor.js");
+  const { fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
   const controller = new AbortController();
   let stopping = false;
   process.on("SIGINT", () => {

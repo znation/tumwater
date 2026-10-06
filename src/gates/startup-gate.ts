@@ -19,7 +19,7 @@ import {
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
  * three askers and they must get one answer: cmdRun (cli/cli-run.ts) fails fast on it at startup, the
  * self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the fleet and again right before its swap,
- * and the supervisor (supervisor.ts) asks it to name why a generation died. On 2026-09-22 only the first
+ * and the supervisor (src/process/supervisor.ts) asks it to name why a generation died. On 2026-09-22 only the first
  * existed: a redeploy swapped onto a build whose child found tumwater.json missing, exited "not
  * initialized", and the supervisor exited with it — 4 h 44 m of a dead fleet and no event (BUGS.md
  * 2026-09-23). The operator-facing wording lives in readiness.ts, shared with doctor's per-check

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { type BuildInfo, isSelfHosted, readBuildInfo } from "./build/build-info.js";
 import { RESTART_EXIT_CODE } from "./redeploy/redeploy-policy.js";
-import { startParentDeathWatch } from "./supervisor.js";
+import { startParentDeathWatch } from "./process/supervisor.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
  *

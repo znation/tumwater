@@ -5,7 +5,7 @@ import { test } from "node:test";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { SUPERVISED_ENV } from "../src/supervisor.js";
+import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { readJson } from "./json-read.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {

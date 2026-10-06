@@ -17,10 +17,10 @@ import {
   SUPERVISED_ENV,
   spawnRunChild,
   superviseRun,
-} from "../src/supervisor.js";
+} from "../src/process/supervisor.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-// The respawn loop behind `tumwater run` (src/supervisor.ts), driven with a scripted child so
+// The respawn loop behind `tumwater run` (src/process/supervisor.ts), driven with a scripted child so
 // the policy is pinned without spawning processes: respawn on the restart code, exit with any
 // other code, honor a stop request, and refuse to spin on a crash-looping build.
 
@@ -330,7 +330,7 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
   try {
     // The grandchild imports the same compiled module the production generation runs, so the
     // watch under test is the shipped code, not a reimplementation.
-    const supervisorUrl = fileURLToPath(new URL("../src/supervisor.js", import.meta.url));
+    const supervisorUrl = fileURLToPath(new URL("../src/process/supervisor.js", import.meta.url));
     const grandchild = path.join(dir, "grandchild.mjs");
     fs.writeFileSync(
       grandchild,

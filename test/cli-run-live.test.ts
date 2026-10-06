@@ -124,7 +124,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
   await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
     assert.match(s.out(), /loops: clean/);
 
-    // The top-level process is the supervisor (src/supervisor.ts), not the orchestrator:
+    // The top-level process is the supervisor (src/process/supervisor.ts), not the orchestrator:
     // the event stream names the orchestrator's own pid, which must be a different process.
     const m = s.out().match(/orchestrator started \(pid (\d+)/);
     assert.ok(m, `expected an "orchestrator started (pid …)" event:\n${s.out()}`);

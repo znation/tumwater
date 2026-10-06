@@ -5,7 +5,7 @@ import type { CompileResult } from "../build/build-stage.js";
  * have moved past the running build, verify that main is green, compile it into a staging dir,
  * drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
  * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor
- * (supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
+ * (src/process/supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every step is
  * non-blocking from the orchestrator's poll: the green check and the compile run in the
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
  * Completed restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11), so
