@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import type { HarnessEventInput } from "../src/events/events.js";
-import { readBuildInfo } from "../src/build-info.js";
+import { readBuildInfo } from "../src/build/build-info.js";
 import { createRedeployer, redeployDeps } from "../src/redeploy/redeploy.js";
 import { Redeployer } from "../src/redeploy/redeployer.js";
 import { IDLE } from "./redeploy-fixtures.js";

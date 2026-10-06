@@ -49,7 +49,7 @@ export const GIT_MISSING_MESSAGE =
  * Linux, Homebrew — spawns by name exactly as before, and a machine with no git at all keeps
  * the "git" name so the spawn still fails ENOENT and GIT_MISSING_MESSAGE still applies.
  * Resolution caches the found absolute path (null = spawn by name); it never re-walks. The
- * deliberate exception is build-check/build-check.ts's toolchain probe, which must keep spawning PATH's
+ * deliberate exception is build/build-check.ts's toolchain probe, which must keep spawning PATH's
  * stub — its "broken" verdict exists to catch exactly the stub's exit-69-on-invalid-license
  * failure, which the real binary would never surface. */
 let resolvedGit: string | null | undefined;

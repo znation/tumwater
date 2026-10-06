@@ -1,4 +1,4 @@
-import type { CompileResult } from "../build-stage.js";
+import type { CompileResult } from "../build/build-stage.js";
 import type { RedeployDeps } from "./redeploy-policy.js";
 import { errorMessage } from "../text.js";
 

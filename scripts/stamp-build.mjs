@@ -1,7 +1,7 @@
 // Post-compile dist/ preparation (package.json "build" and "test" both end here): prune
 // outputs that no longer have a source, then stamp dist/ with the commit it was built
 // from, so the running harness can tell whether main has moved past its own code (see
-// src/build-info.ts). Runs from the package root — npm sets cwd there — and imports the
+// src/build/build-info.ts). Runs from the package root — npm sets cwd there — and imports the
 // just-built module so the stamp's shape has exactly one definition. Missing git (or a
 // checkout without HEAD) leaves the build unstamped: provenance then reads as unknown,
 // which is the honest answer, and nothing else about the build changes.
@@ -19,7 +19,7 @@
 // the bit is restored on every rebuild.
 import fs from "node:fs";
 import path from "node:path";
-import { stampBuild } from "../dist/src/build-info.js";
+import { stampBuild } from "../dist/src/build/build-info.js";
 
 /** Artifacts in dist/ that are not compiled sources: the build stamp and tsc's own
  * incremental-state file (present when the last compile was incremental). */

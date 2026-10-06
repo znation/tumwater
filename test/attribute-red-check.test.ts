@@ -8,8 +8,8 @@ import { refSha, setRef } from "../src/git/git.js";
 import { landingRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/format.js";
-import type { BuildCheck } from "../src/build-check/build-check-detect.js";
-import type { BuildCheckOutcome, BuildCheckRun } from "../src/build-check/build-check.js";
+import type { BuildCheck } from "../src/build/build-check-detect.js";
+import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.js";
 import { mainSha, makeRepo, tmpdir } from "./repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./loop-fixtures.js";
 

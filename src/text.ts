@@ -46,7 +46,7 @@ export function gotSuffix(v: unknown): string {
  * every structural read of an unknown-typed JSON field applies (a blank or whitespace-only
  * string reads as unset, exactly like a wrong type or a missing key). A type predicate, so a
  * true answer also narrows `v` to `string` for the code that consumes it — the one spelling
- * shared by build-check/build-check-detect.ts's check-script/command/cwd/gateCommand reads, config
+ * shared by build/build-check-detect.ts's check-script/command/cwd/gateCommand reads, config
  * validation's thinking-level check and model-field guards (tier-map values, the legacy model/
  * fallback selector and its legacy provider, exempt paths, custom-loop tasks),
  * pi-event-line.ts's tool-result content test, quiet-hours.ts's per-role window lookup, and

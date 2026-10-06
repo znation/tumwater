@@ -360,7 +360,7 @@ test("formatEvent renders a user_aborted tick_end with its result verbatim", () 
 });
 
 test("formatEvent renders the self-redeploy events and the build stamp on orchestrator_start", () => {
-  // Build provenance (src/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one fact about
+  // Build provenance (src/build/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one fact about
   // the fleet nothing inside it can otherwise see, so its events must name both commits.
   const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
   assert.match(start, /orchestrator started \(pid 7, build abcdef12\)/);

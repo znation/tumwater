@@ -1,7 +1,7 @@
 import { shortSha } from "../format.js";
 import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
-import { describeCheck } from "../build-check/build-check-report.js";
-import type { BuildCheck } from "../build-check/build-check-detect.js";
+import { describeCheck } from "../build/build-check-report.js";
+import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../datetime.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the

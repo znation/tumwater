@@ -99,6 +99,9 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   bodies.
 - `src/git/git-run.ts`: the git execution layer (spawn, GitError, commit identity).
 - `src/git/git.ts`, `src/git/git-diff.ts`: git queries over that layer and git-output parsing.
+- `src/build/build-info.ts`: the build stamp (dist/build-info.json), beside the staged compile
+  (`build-stage.ts`) and the deterministic pre-check (`build-check.ts` and its plumbing,
+  `build-check-*.ts`).
 - `src/worktree.ts`: the persistent worktree lifecycle.
 - `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
   the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection, fast-forward).

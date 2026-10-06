@@ -42,14 +42,14 @@ test("checkFixClaims reads ok for a record whose symbols exist — one live symb
 test("checkFixClaims warns naming the heading and missing symbols of a record whose symbols are all absent", () => {
   const root = fixClaimsRepo([
     "`liveSymbol` is real.",
-    "`runScriptGroup` now signals via `signalTree` in `src/build-check/build-check.ts`, bounded by `killAfter`.",
+    "`runScriptGroup` now signals via `signalTree` in `src/build/build-check.ts`, bounded by `killAfter`.",
     "`anotherPhantom` landed.",
   ]);
   const r = checkFixClaims(root);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /"Entry 1: details \(found by qa 2026-09-20, fixed 2026-09-21\)" as Fixed/);
   // Up to three names, falseFixReason's shape — the fourth is elided.
-  assert.ok(r.detail.includes("runScriptGroup, signalTree, src/build-check/build-check.ts…"), r.detail);
+  assert.ok(r.detail.includes("runScriptGroup, signalTree, src/build/build-check.ts…"), r.detail);
   assert.ok(!r.detail.includes("killAfter"), r.detail);
   // A second suspect is still named, so fixing the first does not hide it.
   assert.match(r.detail, /and 1 more record\(s\): "Entry 2:/);

@@ -449,7 +449,7 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
   });
 });
 
-// Build provenance check (src/build-info.ts): does dist/ hold the code main describes? The
+// Build provenance check (src/build/build-info.ts): does dist/ hold the code main describes? The
 // stamp and head are injected so every branch runs without compiling anything.
 test("checkBuild reports an unstamped dist, a foreign harness, a matching build, and a stale one", async () => {
   const repo = makeRepo();

@@ -6,10 +6,10 @@ import {
   MERGE_SCOPES,
   SCOPE_WORDS,
   timedOutPhrase,
-} from "../src/build-check/build-check-events.js";
-import type { BuildCheckRun } from "../src/build-check/build-check.js";
+} from "../src/build/build-check-events.js";
+import type { BuildCheckRun } from "../src/build/build-check.js";
 
-// Unit pins for the presentation half of the build check (src/build-check/build-check-events.ts): the
+// Unit pins for the presentation half of the build check (src/build/build-check-events.ts): the
 // timeout wording, the environmental-skip warning, and the build_check event's shape. These
 // are pure functions shared by four surfaces (gate, landing, batch, red-main baseline), so a
 // wording regression here mislabels the feed everywhere at once — including the false

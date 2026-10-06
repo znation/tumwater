@@ -1,7 +1,7 @@
-import type { BuildStaleness } from "../build-info.js";
-import type { CompileResult } from "../build-stage.js";
+import type { BuildStaleness } from "../build/build-info.js";
+import type { CompileResult } from "../build/build-stage.js";
 
-/** Self-redeploy for a self-hosting fleet (see build-info.ts for why): when main's build inputs
+/** Self-redeploy for a self-hosting fleet (see build/build-info.ts for why): when main's build inputs
  * have moved past the running build, verify that main is green, compile it into a staging dir,
  * drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
  * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor

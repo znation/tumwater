@@ -2,7 +2,7 @@ import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runBuildCheck } from "../src/build-check/build-check.js";
+import { runBuildCheck } from "../src/build/build-check.js";
 import { errCode } from "../src/errno.js";
 import { pidAlive } from "../src/process/process.js";
 import { buildCheckFixture } from "./loop-fixtures.js";

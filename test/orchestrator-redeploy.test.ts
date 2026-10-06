@@ -14,7 +14,7 @@ import path from "node:path";
 import { loadLoopState } from "../src/loop-state.js";
 import { readOrchestratorInfo } from "../src/fleet/fleet-state.js";
 import { eventsLogPath } from "../src/paths.js";
-import type { BuildStatus } from "../src/build-info.js";
+import type { BuildStatus } from "../src/build/build-info.js";
 import type { Redeployer } from "../src/redeploy/redeployer.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./orchestrator-fixtures.js";
 import { fakePi, fakePiIdle } from "./fake-pi.js";

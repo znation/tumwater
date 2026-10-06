@@ -141,7 +141,7 @@ test("the status header budget badge reads n/a for an all-free fleet", () => {
 });
 
 test("the header names the running build and flags a stale one", () => {
-  // Build provenance (src/build-info.ts): the dashboards are where an operator learns the fleet
+  // Build provenance (src/build/build-info.ts): the dashboards are where an operator learns the fleet
   // is running code main no longer describes — the badge must carry the commit and the gap.
   const fresh = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
   assert.match(headerOf(renderStatus("/tmp/x", fresh)), /running \(pid 4242, build aaaaaaaa\)/);

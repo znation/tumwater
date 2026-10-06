@@ -1,9 +1,9 @@
-import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build-info.js";
-import { buildCheckEvent } from "../build-check/build-check-events.js";
-import { type BuildCheckOutcome } from "../build-check/build-check.js";
+import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build/build-info.js";
+import { buildCheckEvent } from "../build/build-check-events.js";
+import { type BuildCheckOutcome } from "../build/build-check.js";
 import { liveConfig } from "../config/config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../main-baseline.js";
-import { compileStaged, swapDist } from "../build-stage.js";
+import { compileStaged, swapDist } from "../build/build-stage.js";
 import { readJsonFile, writeJsonFile } from "../json-files.js";
 import { finiteNumber } from "../json-object.js";
 import { ensureDetachedWorktree } from "../worktree.js";

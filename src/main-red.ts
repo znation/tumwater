@@ -1,9 +1,9 @@
 import { BASELINE_BLOCKED_ROLES } from "./roles/roles.js";
 import { isCustomRole, liveConfig } from "./config/config.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "./build-check/build-check-detect.js";
-import { failureHeadline } from "./build-check/build-check-report.js";
-import type { BuildCheckOutcome } from "./build-check/build-check.js";
-import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build-check/build-check-events.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "./build/build-check-detect.js";
+import { failureHeadline } from "./build/build-check-report.js";
+import type { BuildCheckOutcome } from "./build/build-check.js";
+import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "./gates/gate-prompts.js";
 import { logEvent, warnEvent } from "./events/events.js";
@@ -22,7 +22,7 @@ import { ensureDetachedWorktree } from "./worktree.js";
  * roles skip authoring instead of burning runs that are guaranteed to fail. Split out of loop.ts —
  * which keeps the tick lifecycle around it — because this is a self-contained policy with its own
  * per-process state (one harness-level warning per newly-discovered red SHA) and its own event
- * contract; what it borrows from the loop is identity only, and it consumes build-check/build-check.ts's
+ * contract; what it borrows from the loop is identity only, and it consumes build/build-check.ts's
  * checkMainBaseline machinery (detection + execution + per-SHA cache), which stays unaware of
  * ticks. */
 

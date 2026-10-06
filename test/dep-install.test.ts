@@ -9,9 +9,9 @@ import {
   syncInstall,
   syncRootInstall,
 } from "../src/dep-install.js";
-import { runBuildCheck } from "../src/build-check/build-check.js";
-import { runScopedBuildCheck } from "../src/build-check/build-check-scoped.js";
-import { buildCheckSkipWarning } from "../src/build-check/build-check-events.js";
+import { runBuildCheck } from "../src/build/build-check.js";
+import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
+import { buildCheckSkipWarning } from "../src/build/build-check-events.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";

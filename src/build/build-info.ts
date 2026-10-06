@@ -1,9 +1,9 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { gitTry } from "./git/git-run.js";
-import { readJsonFile, writeJsonFile } from "./json-files.js";
-import { finiteNumber } from "./json-object.js";
-import { refSha } from "./git/git.js";
+import { gitTry } from "../git/git-run.js";
+import { readJsonFile, writeJsonFile } from "../json-files.js";
+import { finiteNumber } from "../json-object.js";
+import { refSha } from "../git/git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
  * by `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the
@@ -37,7 +37,7 @@ export const STALE_INPUTS_LABEL = BUILD_INPUTS.join(", ");
 /** The dist directory this module was loaded from (…/dist), derived from import.meta.url so it
  * is correct wherever the compiled harness lives (a global install, a worktree's own dist). */
 export function distDir(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
 /** Where a dist directory keeps its stamp. */

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import type { BuildStatus } from "../build-info.js";
+import type { BuildStatus } from "../build/build-info.js";
 import type { FallbackDemotion } from "../fallback-breaker.js";
 import { readJsonFile, writeJsonAtomic } from "../json-files.js";
 import { ensureParentDir, removeQuiet } from "../files.js";
@@ -254,7 +254,7 @@ export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
   roles: string[];
-  /** The running build's stamp and staleness (src/build-info.ts); absent when dist/ carries no
+  /** The running build's stamp and staleness (src/build/build/build-info.ts); absent when dist/ carries no
    * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
    * read one file instead of running git themselves. */
   build?: BuildStatus;

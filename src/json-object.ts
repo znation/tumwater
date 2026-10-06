@@ -30,7 +30,7 @@ export function stringList(value: unknown): string[] {
  * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
  * home of the "the field is the number or it is nothing" read. The exact call sites:
  * event-read.ts's eventUsage (tokens, costUsd → 0), redeploy.ts's autoRestartRecord
- * (lastAt → null), build-info.ts's readBuildInfo (builtAt → 0), and test-runner.ts's
+ * (lastAt → null), build/build-info.ts's readBuildInfo (builtAt → 0), and test-runner.ts's
  * orderByDuration cost (→ Infinity, the "no recorded duration" marker). Fields that carry
  * an extra constraint beyond finiteness keep their own check beside the call (pi-stream.ts's
  * usageNumber and time-spend.ts's tickDurationMs additionally require >= 0). */

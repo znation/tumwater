@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { BuildInfo } from "../src/build-info.js";
+import type { BuildInfo } from "../src/build/build-info.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -11,7 +11,7 @@ import {
   type ReloadSpawn,
   watchReloadSupervisor,
 } from "../src/self-reload.js";
-import { readBuildInfo } from "../src/build-info.js";
+import { readBuildInfo } from "../src/build/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
 import fs from "node:fs";

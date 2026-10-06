@@ -9,7 +9,7 @@ import { Semaphore } from "./semaphore.js";
  * gate/landing/batch scopes and main-baseline.ts's checkMainBaseline, which runs the suite
  * directly — takes a permit here first, so a burst of landings cannot stack suites on the host
  * beside the authors' own test runs (the suite has load-sensitive tests). Split out of
- * build-check/build-check.ts — which keeps the deterministic execution and classification (detect → spawn
+ * build/build-check.ts — which keeps the deterministic execution and classification (detect → spawn
  * → classify) — because permit accounting is scheduling policy, not check semantics: it
  * changes when the concurrency or fairness policy changes, not when the check's execution
  * does. Separate from the orchestrator's maxConcurrent semaphore: a role tick holds one of

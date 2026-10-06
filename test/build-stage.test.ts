@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { readBuildInfo } from "../src/build-info.js";
-import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build-stage.js";
+import { readBuildInfo } from "../src/build/build-info.js";
+import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
 import { ensureDetachedWorktree } from "../src/worktree.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
-// The build-stage helpers (src/build-stage.ts) — the redeploy's real filesystem effects, exercised
+// The build-stage helpers (src/build/build-stage.ts) — the redeploy's real filesystem effects, exercised
 // against temp projects: swapDist's dist replacement and restore-on-failure invariants, and
 // compileStaged's real tsc runs (stamping, toolchain discovery, spawn failures, timeouts). The
 // redeployer's state machine itself stays in test/redeployer.test.ts, driven by scripted effects.

@@ -1,4 +1,4 @@
-import { BUILD_CHECK_TIMEOUT_MS } from "../build-check/build-check-detect.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files.js";
 import type { InFlightLanding } from "../landing/landing-pipeline.js";

@@ -1,5 +1,5 @@
 import type { LoopState } from "../loop-state.js";
-import type { BuildStatus } from "../build-info.js";
+import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
 import { fallbackPair } from "../config/config-views.js";
@@ -144,7 +144,7 @@ export interface StatusSnapshot {
    * scheduler's own predicate — so the dashboards and the hold cannot disagree. Fresh per
    * poll, like `quietHours`. */
   inQuietHours: boolean;
-  /** The running harness's build (src/build-info.ts) as the orchestrator published it: the stamp
+  /** The running harness's build (src/build/build/build-info.ts) as the orchestrator published it: the stamp
    * plus whether main's build inputs have moved past it. Null when no harness is running or its
    * dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the fleet that nothing inside the fleet can otherwise see. */

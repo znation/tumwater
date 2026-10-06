@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui.js";
-import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
+import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { DASHBOARD_CHILD_ENV } from "../src/self-reload.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { initProject } from "../src/init.js";

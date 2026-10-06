@@ -5,7 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { distDir, buildInfoPath } from "../src/build-info.js";
+import { distDir, buildInfoPath } from "../src/build/build-info.js";
 import { initProject } from "../src/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";

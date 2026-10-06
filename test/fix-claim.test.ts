@@ -147,8 +147,8 @@ test("missingSymbolNames truncates a long missing list to three names plus an el
 
 test("fixSymbols keeps whitespace-free backticked spans, drops prose and call parens", () => {
   assert.deepEqual(
-    fixSymbols("The fix: `npm test` passes, `runScriptGroup()` in `src/build-check/build-check.ts` signals."),
-    ["runScriptGroup", "src/build-check/build-check.ts"],
+    fixSymbols("The fix: `npm test` passes, `runScriptGroup()` in `src/build/build-check.ts` signals."),
+    ["runScriptGroup", "src/build/build-check.ts"],
   );
   assert.deepEqual(fixSymbols("No symbols at all here."), []);
   assert.deepEqual(fixSymbols("Body without an explicit **Fix:** line, `stillCounted`."), [
@@ -241,7 +241,7 @@ test("falseFixReason flags a new Fixed entry whose Fix names nothing on the tree
   fs.writeFileSync(
     path.join(root, "BUGS.md"),
     "## Fixed\n\n### A bug (found 2026-09-22, fixed 2026-09-23)\n\n" +
-      "**Fix:** `runScriptGroup` in src/build-check/build-check.ts now signals the tree.\n",
+      "**Fix:** `runScriptGroup` in src/build/build-check.ts now signals the tree.\n",
   );
   const reason = await falseFixReason(root, "main", ["BUGS.md"]);
   assert.match(reason!, /runScriptGroup/);

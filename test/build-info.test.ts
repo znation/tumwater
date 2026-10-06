@@ -9,11 +9,11 @@ import {
   isSelfHosted,
   readBuildInfo,
   stampBuild,
-} from "../src/build-info.js";
+} from "../src/build/build-info.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 
-// Build provenance (src/build-info.ts): the stamp `npm run build` writes into dist/, and the
+// Build provenance (src/build/build-info.ts): the stamp `npm run build` writes into dist/, and the
 // comparison against main that tells a self-hosting fleet whether it is running the code main
 // describes. Pinned against real git repos — the whole point is agreement with git's view.
 
