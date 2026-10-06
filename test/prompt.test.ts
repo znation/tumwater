@@ -405,7 +405,7 @@ test("every tick, director, conflict, and review prompt states the given date ex
     buildTickPrompt({ role, initialPrompt: "Make a CLI.", today }),
     buildDirectorPrompt("the tui flickers", "Make a CLI.", undefined, undefined, undefined, today),
   ];
-  const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
+  const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, undefined, today);
   const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, today), review];
   for (const p of [...loopPrompts, ...gatePrompts]) {
     assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);

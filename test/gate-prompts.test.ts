@@ -196,6 +196,24 @@ test("buildReviewPrompt omits optional sections when their arguments are absent"
   assert.ok(!prompt.includes("<principles>"), "no principles block without a file");
 });
 
+test("buildReviewPrompt freezes and names the comparison base so a moved main cannot read as the change", () => {
+  // BUGS.md 2026-10-06: the reviewer double-checked scope with `git diff main`; a merge that
+  // landed while the review ran showed up reversed, and the change was rejected for edits it
+  // never made. The prompt must name the frozen base and point every check at it.
+  const base = "abcdef1234567890abcdef1234567890abcdef12";
+  const short = base.slice(0, 8);
+  const prompt = oneLine(buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, base));
+  assert.match(prompt, new RegExp(`measured against ${short}`));
+  assert.match(prompt, new RegExp(`compare against ${short}, never against \`main\``));
+  assert.match(prompt, /treat the provided diff as authoritative for which files this change touches/);
+  assert.match(prompt, new RegExp(`diffs against ${short}, one path at a time`));
+  assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2, "the verdict contract is untouched");
+  // Without a base the prompt keeps the generic wording, so callers that omit it are unchanged.
+  const plain = oneLine(buildReviewPrompt("diff body"));
+  assert.ok(!plain.includes("never against `main`"), "no base clause without a base");
+  assert.match(plain, /everything the branch is ahead of main/);
+});
+
 test("the review prompt carries the fan-out rule in its reading budget and still advertises VERDICT exactly twice", () => {
   const prompt = buildReviewPrompt("diff body");
   const flat = oneLine(prompt);

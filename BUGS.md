@@ -157,7 +157,51 @@ Cause: the case (test/gui.test.ts:80) calls `initProject(makeRepo(), …)` (real
 Reproduce: run `npm test gui` on a loaded host; the bind case can fail and then pass on the immediate re-run the gate performs — that pairing is the gate's own "flaky" verdict.
 Suggested fix: make the case deterministic — assert the requested bind from `startGui`'s own configuration rather than a raw `address()` string, and bound the loopback `fetch` with an explicit short timeout plus one retry; if the live round trip is the only faithful check, keep it but pin it so one host hiccup cannot fail the gate. The 2026-09-28 precedent (`test/gui-server.test.ts`, now under `## Fixed`) fixed this same shape by making the assertion measure the invariant directly.
 
-### The reviewer checks a change's scope against the live `main` ref, which moves while the landing is vetted, so another loop's just-landed work reads as this change reverting it: 12 rejections since 2026-09-23 cite edits to files the rejected commit never touched, each made by a merge to main between the vet's rebase and the verdict (found by human log analysis 2026-10-06)
+### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06)
+Symptom: since 2026-09-22, 17 build-check rejections name the failing test file. In 16 of them
+the rejected commit did not touch that file. Examples:
+- **improve 9fd7dff6, 10-04 15:57.** Rejected for `✖ startParentDeathWatch takes a SIGKILLed
+  supervisor's grandchild down with it` (test/supervisor.test.ts). The diff touched only
+  src/cli-command-args.ts, src/help.ts and test/prompt-commands.test.ts. The gate had already
+  warned `gate check failed then passed on retry — flaky:` for that test at 10-04 10:50 (organize),
+  and for its `the orphaned grandchild's watch fired and ran its stop path` assertion at
+  10-01 01:14 (feature).
+- **09-30, 03:48 to 03:56.** One failure, `doctor.test.js` "expected exit 0", rejected three
+  unrelated changes from organize, coverage and dry within eight minutes. None of the three
+  touched test/doctor.test.ts.
+- **feature 26fe5df7, 10-06 00:00.** Rejected for `pollFleetGates: roleQuietHeld … docs'
+  near-all-day window holds at any local time` (test/gate-polls.test.ts), which failed whenever a
+  run straddled 23:59 local. Main was just as red at that minute, but its verdict for the tip SHA
+  was a cached green from an earlier run. The test has since been pinned to midday; the
+  attribution that blamed the change is unchanged.
+
+A deterministic rejection resets the branch just like a model rejection, so each of these
+discarded finished work.
+Reproduce: drive gateBuildPrecheck (src/review/review-precheck.ts) offline:
+1. Seed the main baseline cache green for main's tip SHA.
+2. Make the fake check fail twice on the change's tree, with a failure headline that already
+   appears in a `flaky:` warning event.
+3. The gate logs `review_rejected` with the check's reasons and runs nothing on main.
+Cause: gateBuildPrecheck re-runs a failure once, immediately, on the same loaded host. It then
+attributes a repeat through mainTipVerdict (src/baseline/main-red.ts), which reads
+checkMainBaseline's fleet-wide per-SHA cache. The landing that moved main to that SHA seeded the
+cache green, often hours earlier. A failure that depends on host load or wall-clock time therefore
+counts as the change's fault. The gate's own flake record is a bare `warnEvent` that no
+attribution step consults; the GUI-bind entry above notes the same missing memory from the other
+side.
+Suggested fix: two project-neutral steps before rejecting on a repeated failure.
+1. **Match known flakes.** Compare the failure's headline (failureHeadline in
+   src/build/build-check-report.ts, normalized as src/failure/failure-cluster.ts normalizes
+   digest clusters) against the last 24 h of `flaky:` warnings and of check-failure rejections of
+   other roles' changes. On a match, treat the tree as unverified, as the host-sleep path does:
+   keep the pin with no strike, and warn `known-flaky failure, landing kept: <headline>`.
+2. **Re-check main fresh.** Otherwise, re-run main's declared check for the attribution,
+   bypassing the per-SHA cache. Red goes to the existing main_red path; green rejects as today.
+   This costs one extra check per reproduced failure, about 41 over the last two weeks.
+
+## Fixed
+
+### The reviewer checks a change's scope against the live `main` ref, which moves while the landing is vetted, so another loop's just-landed work reads as this change reverting it: 12 rejections since 2026-09-23 cite edits to files the rejected commit never touched, each made by a merge to main between the vet's rebase and the verdict (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: on 2026-10-04 at 12:16:58, clean's a593ddf2 was rejected. The change was "Append the missing
 trailing newline to the 38 src/test files that lacked one at EOF", 38 one-line diffs. The rejection
 cited "unclaimed semantic edits" in `src/event-format.ts`, `src/report-render.ts` and
@@ -232,49 +276,8 @@ Suggested fix: freeze the base the reviewer compares against.
   reviewed diff's files, and main gained commits touching those paths since the gate started,
   log a warning naming those commits. The next occurrence then shows on the dashboards.
 
-### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06)
-Symptom: since 2026-09-22, 17 build-check rejections name the failing test file. In 16 of them
-the rejected commit did not touch that file. Examples:
-- **improve 9fd7dff6, 10-04 15:57.** Rejected for `✖ startParentDeathWatch takes a SIGKILLed
-  supervisor's grandchild down with it` (test/supervisor.test.ts). The diff touched only
-  src/cli-command-args.ts, src/help.ts and test/prompt-commands.test.ts. The gate had already
-  warned `gate check failed then passed on retry — flaky:` for that test at 10-04 10:50 (organize),
-  and for its `the orphaned grandchild's watch fired and ran its stop path` assertion at
-  10-01 01:14 (feature).
-- **09-30, 03:48 to 03:56.** One failure, `doctor.test.js` "expected exit 0", rejected three
-  unrelated changes from organize, coverage and dry within eight minutes. None of the three
-  touched test/doctor.test.ts.
-- **feature 26fe5df7, 10-06 00:00.** Rejected for `pollFleetGates: roleQuietHeld … docs'
-  near-all-day window holds at any local time` (test/gate-polls.test.ts), which failed whenever a
-  run straddled 23:59 local. Main was just as red at that minute, but its verdict for the tip SHA
-  was a cached green from an earlier run. The test has since been pinned to midday; the
-  attribution that blamed the change is unchanged.
-
-A deterministic rejection resets the branch just like a model rejection, so each of these
-discarded finished work.
-Reproduce: drive gateBuildPrecheck (src/review/review-precheck.ts) offline:
-1. Seed the main baseline cache green for main's tip SHA.
-2. Make the fake check fail twice on the change's tree, with a failure headline that already
-   appears in a `flaky:` warning event.
-3. The gate logs `review_rejected` with the check's reasons and runs nothing on main.
-Cause: gateBuildPrecheck re-runs a failure once, immediately, on the same loaded host. It then
-attributes a repeat through mainTipVerdict (src/baseline/main-red.ts), which reads
-checkMainBaseline's fleet-wide per-SHA cache. The landing that moved main to that SHA seeded the
-cache green, often hours earlier. A failure that depends on host load or wall-clock time therefore
-counts as the change's fault. The gate's own flake record is a bare `warnEvent` that no
-attribution step consults; the GUI-bind entry above notes the same missing memory from the other
-side.
-Suggested fix: two project-neutral steps before rejecting on a repeated failure.
-1. **Match known flakes.** Compare the failure's headline (failureHeadline in
-   src/build/build-check-report.ts, normalized as src/failure/failure-cluster.ts normalizes
-   digest clusters) against the last 24 h of `flaky:` warnings and of check-failure rejections of
-   other roles' changes. On a match, treat the tree as unverified, as the host-sleep path does:
-   keep the pin with no strike, and warn `known-flaky failure, landing kept: <headline>`.
-2. **Re-check main fresh.** Otherwise, re-run main's declared check for the attribution,
-   bypassing the per-SHA cache. Red goes to the existing main_red path; green rejects as today.
-   This costs one extra check per reproduced failure, about 41 over the last two weeks.
-
-## Fixed
+**Fix:** the gate now resolves the change's base once (`changeBaseRev`, src/review/review.ts) when it builds the reviewer's diff, and hands that SHA to `buildReviewPrompt` (src/gates/gate-prompts.ts). The prompt names it in the diff heading and in step 1 — "It is measured against <sha>; other loops land on main while you review, so compare against <sha>, never against `main`, and treat the provided diff as authoritative for which files this change touches" — and points the truncated-diff fallback at the same SHA instead of `main`. test/gate-prompts.test.ts pins the named base, the never-`main` instruction, the authoritative-diff sentence, and the fallback SHA; a review prompt that omits a base keeps the generic wording. The optional timing tripwire was not added.
+**Validation gap:** no-observability — the gate recorded neither the base SHA the reviewer compared against nor the main tip at review time, so confirming the 12 rejections required reconstructing the merge and review timelines by hand from the raw log; the scratch-repo repro reproduces the two-dot diff shape but not the mis-attribution itself.
 
 ### The failure digest's loss ranking silently drops restart-aborted tick_ends: the fold's own `CLUSTERED_RESULTS` names `aborted` as attributable to a cause, but the branch only takes one when `tick_end.error` is a non-empty string, and a shutdown abort leaves none — so the aborted hours sit inside the error-class cells itemized nowhere (found by telemetry loop 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the 2026-10-06 digest's Outcome table counts four aborts (feature 2, bugfix 2) and the time-and-spend table prices them, but the loss ranking itemizes 16 causes (5 shown plus `_+11 more loss causes by time not listed_`) and none is an abort. Those 16 decompose as four review-rejected roles (feature 0.9 h, bugfix 0.3 h, organize 0.2 h, dry), eleven no_change roles, and one error cluster (feature's 2× `400 … model_not_supported`) — the aborts' wall-clock is the bulk of the 0.3 h gap between the feature/bugfix error-class cells (1.1 h and 0.4 h) and their itemized causes. Unlike an `error`/`main_red` event with no text, which the error-clusters section already itemizes under a `(no error text recorded)` placeholder (BUGS.md 2026-09-30), an aborted tick_end has no fallback row, and when a stray earlier failure left `lastError` set it is instead clustered under that unrelated cause.

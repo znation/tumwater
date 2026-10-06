@@ -61,9 +61,13 @@ ${TEST_RUNNER_RULE}
  * the suite in scratch copies under /tmp while holding the landing slot (BUGS.md 2026-09-23). It
  * appears only when a verified result exists: after a timed-out, killed, or skipped pre-check no
  * green run stands behind the tree, and a reviewer running the suite itself is doing its job.
- * `today` pins the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The
- * text must contain the literal "VERDICT:" exactly twice — the two advertised forms — because a
- * prompt test derives the accepted forms from it. */
+ * `baseRev` is the frozen revision the diff is measured against (changeBaseRev's merge-base,
+ * resolved when the gate builds the diff): the prompt names it and tells the reviewer to compare
+ * against it, never `main`, because other loops land on main while the review runs (BUGS.md
+ * 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins the
+ * date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must contain
+ * the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt test derives
+ * the accepted forms from it. */
 export function buildReviewPrompt(
   diff: string,
   summary?: string,
@@ -71,6 +75,7 @@ export function buildReviewPrompt(
   principles?: string,
   highFriction?: boolean,
   verifiedByHarness?: string,
+  baseRev?: string,
   today?: string,
 ): string {
   const parts = [
@@ -103,7 +108,16 @@ never exercise, claims the diff does not back, work left half-done.`,
       `Design principles this project holds — your review standard; a violation of one is a finding:\n<principles>\n${principles}\n</principles>`,
     );
   }
-  parts.push(`The full diff this merge will land (everything the branch is ahead of main):\n<diff>\n${diff}\n</diff>`);
+  // The base the diff is measured from, named in the prompt: main moves while a landing is vetted,
+  // and a reviewer that double-checks scope with `git diff main` reads a newer merge, reversed, as
+  // part of the change (BUGS.md 2026-10-06). Sentence only when a base is given; the callers that
+  // omit it (unit tests of the prompt's other clauses) keep the generic wording.
+  const diffBase = baseRev ? `measured against ${shortSha(baseRev)}` : "everything the branch is ahead of main";
+  const baseClause = baseRev
+    ? ` It is measured against ${shortSha(baseRev)}; other loops land on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`, and treat the provided diff as authoritative for which files this change touches.`
+    : "";
+  const truncationBase = baseRev ? shortSha(baseRev) : "main";
+  parts.push(`The full diff this merge will land (${diffBase}):\n<diff>\n${diff}\n</diff>`);
   // Right after the scratch-copy allowance it qualifies: a scratch copy stays fine for measuring
   // something, but a copy made to run the suite is the re-run this line forbids.
   const noRerunRule = verifiedByHarness
@@ -118,8 +132,8 @@ never exercise, claims the diff does not back, work left half-done.`,
     `Review adversarially: hunt for correctness bugs, violations of the project's principles,
 unjustified complexity growth, and incomplete or half-done work. Work in this order:
    1. The diff above is current — read it there; do not fetch it again with \`git diff\`,
-      \`git show\`, or \`git log -p\`. Only when it opens with a "[diff truncated: …]" note, fetch
-      the omitted files' diffs against main, one path at a time.
+      \`git show\`, or \`git log -p\`.${baseClause} Only when it opens with a "[diff truncated: …]" note, fetch
+      the omitted files' diffs against ${truncationBase}, one path at a time.
    2. From the diff and the claims, pick the few things that need checking against reality: each
       claim in the summary, WHY, and VERIFIED; the riskiest changed lines; the tests that should
       cover them. A diff that does more than it claims is a finding.

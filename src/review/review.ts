@@ -3,7 +3,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git/git-run.js";
-import { headOf, patchId } from "../git/git.js";
+import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
@@ -237,6 +237,11 @@ export async function reviewAheadOfMain(
   state.phase = "review";
   saveLoopState(root, state);
 
+  // Freeze the revision the diff is measured from once, before the run: main moves while a
+  // landing is vetted, and a reviewer comparing against the live `main` ref reads another loop's
+  // just-landed work as this change reverting it (BUGS.md 2026-10-06). The prompt names this SHA
+  // and tells the reviewer to compare against it instead.
+  const base = await changeBaseRev(wt, mainBranch);
   const diff = await aheadOfMainDiff(wt, mainBranch);
   // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
   // merge on local hardware is a fleet-level cost an operator must be able to see.
@@ -253,7 +258,7 @@ export async function reviewAheadOfMain(
   // them from the pinned commit's message).
   const pi = await ctx.runGatePi({
     cwd: wt,
-    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness),
+    prompt: buildReviewPrompt(diff, summary, commitBody, readPrinciples(root), highFriction, verifiedByHarness, base),
     // The reviewer runs on its own time budget (review.timeoutSeconds), never longer than a
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
     // path below — commit kept, no strike — and re-lands through the author's next tick
