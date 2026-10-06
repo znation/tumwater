@@ -49,6 +49,65 @@ Reproduce: offline — write one `tick_end` with `result: "aborted"`, `durationM
 Cause: `timeAndSpend` (src/failure/time-spend.ts) declares `CLUSTERED_RESULTS = {"error", "aborted", "quiet_killed"}` — its own doc says "exactly the results the plan names: an error, an abort, or a quiet kill" — but the branch that sets the cause key is `CLUSTERED_RESULTS.has(...) && typeof ev.error === "string" && ev.error !== ""`; an aborted tick fails the second test, so `key` stays null and the following `if (key === null) continue;` drops the loss draft after the cell has already absorbed the span. Quiet kills pass because their verdict writes the hang into `lastError`; aborts do not. The guard dates to the fold's introduction, 5d50f981 (2026-09-29, "Price the failure digest by agent-hours and dollars"), since extracted into src/failure/time-spend.ts by 9973970a.
 Suggested fix: give a clustered result with no error text its own cause instead of dropping it — the same `(no error text recorded)` placeholder the error-clusters section uses — so the aborted hours are itemized and `lossCausesHidden` counts them; if aborts are deliberately not losses because their work resumes, drop `aborted` from `CLUSTERED_RESULTS` and let the digest say so, so the error-class cells and the itemized causes reconcile either way. Pin both shapes in test/failure-render.test.ts (an aborted tick with no error appears as an itemized cause, and the hidden-count arithmetic counts it).
 
+### The orientation rule maps BUGS.md with `grep -n '^##'`, which also matches every `###` entry title, so about a third of ticks pull BUGS.md's closed history (108 KB today; 204 of its 207 titles are Fixed or Verified) and re-send it on every remaining turn: 4.4% of all fleet prompt tokens (found by human log analysis 2026-10-06)
+Symptom: the pi sessions of Oct 2–6 hold 421 `grep -n '^##' … BUGS.md` calls in 215 ticks
+(of 684), averaging 8.9k chars of output each. Every later turn of the tick re-sends that
+output, which adds up to 19.9M of 452M prompt tokens (input + cache read + cache write), or
+4.4%. That is about 7× what pruning superseded file reads would save (0.6%, measured on the
+same sessions). Today the command prints 108,348 chars: 207 `###` titles, of which 204 sit
+under ## Fixed or ## Verified, many over 500 chars each. bounded-output cuts this to a 16k
+head+tail. The head holds the 3 Open entries and the first Fixed titles, and the tail holds
+the oldest Verified ones, so almost none of what the model sees is actionable.
+Reproduce: in the repo, `grep -n '^##' BUGS.md | wc -c` prints ~108k, and
+`grep -n '^##' BUGS.md | grep -c ':### '` prints 207. Any role's tick prompt (`tumwater role
+bugfix`) carries the Orientation bullet that asks for exactly this command.
+Cause: src/prompt/prompt.ts `commonRules`, Orientation section: "map the headings with
+`grep -n '^##' FILE`". The pattern `^##` also matches `###`. Closed entries stay in BUGS.md
+under ## Fixed and ## Verified, each with a one-line title that carries the whole finding.
+PLANS.md's map is still small (2.7k chars) only because the steward compresses ## Done, and
+BUGS.md's closed sections are not compressed the same way.
+Suggested fix: have the harness render the actionable index, instead of asking the model to
+build it each tick.
+- Add a pure renderer next to `renderBacklogStructureBlock` (src/backlog/backlog-structure.ts),
+  reusing `parseEntryDetails`/`fenceAwareHeadingLines` (src/backlog/backlog-md.ts).
+- It lists the entries under PLANS.md ## Planned, BUGS.md ## Open and QUESTIONS.md ## Open.
+  Each line gives the title, with its stamp suffix stripped via `ENTRY_STAMP_META_RE` and
+  clipped to ~160 chars, plus the entry's 1-based line range (heading to the line before the
+  next heading).
+- Inject it into every tick and director prompt as a `<backlog-index>` block
+  (src/tick/tick-prompt.ts → `buildTickPrompt`/`buildDirectorPrompt`). The prompt is
+  assembled from main, and the worktree starts at main, so the ranges hold at tick start.
+- Rewrite the Orientation bullet: read the needed entries by those ranges (grep for a
+  title if it has moved), and never map the files' headings with grep. The steward keeps
+  whole-file access.
+
+Expected state: no tick or director prompt contains `grep -n '^##'`; the index for today's
+files is under ~3 KB; and no `###` title from ## Fixed, ## Done or ## Verified appears in it.
+
+### The daily budget counts cache reads as free for any model priced `cacheRead: 0`, and nothing flags it: GLM-5.3-Flash:together, primary until 2026-10-06, sent 349.6M of its 379M prompt tokens (92%) as cache reads over Oct 2–6, all at $0 (found by human log analysis 2026-10-06)
+Symptom: ~/.pi/agent/models.json prices `huggingface/zai-org/GLM-5.3-Flash:together` at
+$0.15/M input, $0 cache read and $0.50/M output. pi's per-message `usage.cost.cacheRead` was 0
+on all 14,889 GLM turns that read from the cache. The tick_end `costUsd` values and the
+daily budget (`TickUsage.fold` → `recordDailyCost`, src/tick/tick-usage.ts) therefore
+recorded $6.26 for those four days, none of it for cache reads. Together bills cached input
+at a discount, not at zero; this is unverified for the HF route, so check the HF billing page.
+At even 10% of the input price, the real spend was ~$11.50, nearly double. The current primary
+(DeepSeek-V4.1-Flash:deepinfra) prices its cache reads, so the gap stays latent until a model
+priced like GLM runs again, and nothing would report it when it does.
+Reproduce: in `.tumwater/sessions/<role>/*.jsonl`, open any GLM assistant message from Oct 2–6.
+`usage.cacheRead` is above 0 and `usage.cost.cacheRead` is 0. `tumwater doctor` reports
+nothing about the pricing.
+Cause: the harness trusts pi's cost. src/pi/pi-models.ts only tells "free" apart from
+"priced": a model is free when its cost is absent or every component is 0. A model with a
+positive input price and a zero or missing `cacheRead` price is treated as fully priced.
+Suggested fix: add a `cacheReadUnpriced` check to src/pi/pi-models.ts: input price above 0,
+and `cacheRead` missing or 0. `tumwater doctor` (src/doctor/doctor-checks.ts) should warn for
+every configured role, tier, reviewer and fallback model it matches: "cache reads priced at
+$0 — the daily budget will undercount; set the provider's cached-input price in
+~/.pi/agent/models.json". The same warning should be logged once at fleet start and again on
+`config_changed`. The price itself is operator config, so correcting GLM's entry is the
+operator's half of the fix.
+
 ## Fixed
 
 ### A resume run that fails before doing anything commits the interrupted tick's half-done edits: `resolveTickVerdict` stages any dirty worktree whose run failed, so after a restart a provider error on the resume run ships the killed tick's unfinished work under a diff-derived subject (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)

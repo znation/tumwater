@@ -96,6 +96,197 @@ plans/fallback-model.md, and their tests.
 - The docs state the shipped trigger (3 consecutive provider-class failures), the tier-resolved
   pair, the probe tick, and the return policy; no doc still calls failure fallback out of scope.
 
+### Per-tick prompt-token telemetry: record prompt, cache-read, and pre-first-edit tokens on tick_end (planned 2026-10-06 by operator)
+
+Context: a 2026-10-06 analysis of 684 ticks (Oct 2–6) had to rebuild these numbers from pi
+session files, because tick_end carries only output tokens (`tokens`) and `costUsd`.
+- 92% of prompt tokens are cache re-sends.
+- About half of all prompt tokens are spent before a tick's first edit. Ticks that never edit
+  account for 18%, and ticks that do edit spend 42% of theirs before the first edit.
+
+Without these numbers on the event feed, nobody can tell whether a prompt or context change
+made ticks leaner. That includes the BUGS.md backlog-index fix filed the same day and the role
+notebook planned below.
+
+**Goal.** Every tick_end reports three numbers: the prompt tokens the tick sent, how many of
+them were cache reads, and how many were sent before the tick's first edit. A prompt or
+context change can then be measured from events.jsonl alone.
+
+**Approach.**
+1. **`src/pi/pi-stream.ts`** — in the `message_end` assistant branch, accumulate
+   `promptTokens += input + cacheRead + cacheWrite` (via `usageNumber`) and
+   `cacheReadTokens += cacheRead`. Until the first assistant message whose content holds a
+   `toolCall` named `edit` or `write`, also accumulate `preEditPromptTokens`, including that
+   message's own prompt. Record `firstEditTurn` (1-based; undefined when the run never edits).
+2. **`src/pi/pi-run-result.ts`** — carry the four fields on `PiRunResult`.
+3. **`src/tick/tick-usage.ts`**
+   - `TickUsage` gains per-tick `promptTokens`, `cacheReadTokens`, `preEditPromptTokens` and
+     an `editSeen` flag, all cleared in `reset()`.
+   - `fold()` adds `promptTokens` and `cacheReadTokens` for every run, like `costUsd`.
+   - `fold()` adds a run's `preEditPromptTokens` only for authoring runs and only while
+     `editSeen` is false, then sets `editSeen` once a run reports `firstEditTurn`. Landing,
+     review and conflict-resolution runs (`foldLandingUsage`) never touch the pre-edit
+     counter.
+4. **`src/tick/tick-finalize.ts`** — tick_end carries `promptTokens`, `cacheReadTokens` and
+   `preEditPromptTokens`, omitted when zero, the same way `usageFragment` treats its fields.
+5. **Telemetry digest** (`src/tick/telemetry-digest.ts` / `src/failure/failure-render.ts`) —
+   one per-role line over the digest window: median `promptTokens` per tick, and the pre-edit
+   share (sum of `preEditPromptTokens` over sum of `promptTokens`). The telemetry role then
+   sees where its fleet's prompt budget goes.
+
+**Files touched.** src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/tick/tick-usage.ts,
+src/tick/tick-finalize.ts, src/tick/telemetry-digest.ts, src/failure/failure-render.ts, and their
+tests (test/pi-stream.test.ts, test/tick-usage.test.ts, test/failure-render.test.ts).
+
+**Acceptance criteria.**
+- A stream of three assistant messages with set `usage.input`/`usage.cacheRead`, where the
+  second holds an `edit` toolCall, yields `promptTokens` and `cacheReadTokens` equal to the
+  sums, `preEditPromptTokens` equal to the first two messages' prompts, and `firstEditTurn` 2.
+- A run with no edit or write has `preEditPromptTokens == promptTokens`.
+- A tick whose resumed second run follows an edit in its first run adds nothing to the
+  pre-edit counter. A landing run's usage reaches `promptTokens` but not
+  `preEditPromptTokens`.
+- tick_end lines in events.jsonl carry the three fields, and a tick with no usage omits them.
+  Existing report and digest output is unchanged apart from the new digest line.
+- `npm run test` green.
+
+### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first)
+
+Context: the 2026-10-06 analysis recorded a decision to keep a fresh pi session per tick, for
+three reasons.
+- Replaying the fleet with each tick carrying its predecessor's context costs 2.0× the prompt
+  tokens raw, or 1.7× compacted to ~23k (pi's `keepRecentTokens` 20k plus a summary).
+- Carried file views go stale: the worktree resets to main each tick, and other loops land
+  in between.
+- Fresh ticks are what retired session poisoning (1046112).
+
+The continuity worth keeping is small: 25% of what a role reads is a file it also read in its
+previous tick, and each tick re-derives the same codebase facts. omp's experimental
+notes-backed context (`compaction.experimentalContextManagement`: a 16 KB `context_notes`
+notebook plus `new_context` rollover, no summarizer) is the same design. This plan gives each
+tumwater role that notebook, with the tick boundary serving as the rollover.
+
+**Goal.** At tick start, each role loop sees a short note written by its own earlier ticks:
+codebase facts, dead ends, and where its search stands. The loop can replace the note before
+ending. No transcript is carried.
+
+**Approach.**
+1. **`src/paths.ts`** — `roleNotesPath(root, role)` → `.tumwater/state/notes/<role>.md`.
+   This is runtime state that is never committed, like `qaCoveragePath`.
+2. **`src/pi-extension/role-notes.ts`** (new bundled extension) — registers a `role_notes`
+   tool (`text: string`) through `pi.registerTool()`, but only when `TUMWATER_NOTES_PATH` is set
+   in the environment.
+   - The tool replaces the file at that path with `text`, writing to a temp file and renaming.
+   - Text over 4,096 UTF-8 bytes is rejected with an error that names the limit, and nothing
+     is written.
+   - Empty text clears the note.
+   - The validation is a pure exported function, so it is unit-testable without pi, the same
+     pattern as bounded-output and context-budget.
+3. **Wiring.**
+   - `src/pi/pi-args.ts` adds `role-notes.js` to `bundledExtensionPaths()`.
+   - The authoring runs in `src/loop/loop-pi.ts` (`runRolePi`, including resumes) set
+     `TUMWATER_NOTES_PATH=roleNotesPath(root, role)` in the child env, beside the existing
+     run marker (`src/pi/pi.ts`).
+   - Review, landing and conflict-resolver runs leave it unset, so the tool never registers
+     there.
+   - The director gets no notebook: its work is the operator's prompt, not a recurring search.
+4. **`src/tick/tick-prompt.ts` + `src/prompt/prompt.ts`** — `buildTickPrompt` takes an
+   optional `notes` input, read from `roleNotesPath`; a missing, empty or unreadable file
+   means no block. The block reads:
+   "Notes your role wrote in earlier ticks (yours, unverified — check against the code before
+   relying on them): <role-notes>…</role-notes>. Before you end, if you learned something the
+   next tick of your role should know (where things live, what you ruled out and why, what you
+   would look at next), call role_notes with the full replacement note (at most 4 KB). Do not
+   copy backlog entries into it — PLANS.md and BUGS.md hold the work itself."
+5. **`src/roles/role-view.ts` / `src/roles/role-render.ts`** — `tumwater role <id>` shows the
+   current note, so the operator can read what each role believes.
+6. **docs/how-it-works.md** — one paragraph: what the notebook is, where it lives, its size
+   cap, and that it is the only state carried between a role's ticks besides the repo itself.
+
+**Evaluation (operator, after 7 days on).** Use the tick_end fields from the plan above to
+compare, for the 7 days before and after: each role's median `preEditPromptTokens`, its share
+of ticks that never edit, and its prompt tokens per landed change.
+- Keep the notebook if those numbers fall.
+- Otherwise remove it (the extension, the prompt block and the path). The note costs up to
+  ~1k tokens on every turn, so it must pay for itself.
+
+**Files touched.** src/paths.ts, src/pi-extension/role-notes.ts (new), src/pi/pi-args.ts,
+src/pi/pi.ts, src/loop/loop-pi.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts,
+src/roles/role-view.ts, src/roles/role-render.ts, docs/how-it-works.md, and tests
+(test/role-notes.test.ts (new), test/pi-args.test.ts, test/prompt.test.ts, test/role-view.test.ts).
+
+**Acceptance criteria.**
+- Validation accepts 4,096 bytes and rejects 4,097 bytes with the limit in the error,
+  writing nothing. Empty text clears the file.
+- With fake pi, an authoring run's child env carries `TUMWATER_NOTES_PATH`, and review,
+  landing and conflict-resolver runs' envs do not.
+- A role's tick prompt carries the `<role-notes>` block when the file has content and omits
+  it otherwise. The director's prompt never carries it.
+- `tumwater role <id>` shows the note, or says there is none.
+- `npm run test` green.
+
+### Fallback-window shake: reclaim old tool output instead of only warning when a small-window model fills (planned 2026-10-06 by operator; matters once roles run on a fallback model with a ~127k–258k window)
+
+Context: when a run fills its window, two things happen today.
+- The context-budget extension (src/pi-extension/context-budget.ts) tells the model its fill
+  level at 50/70/85% and asks it to wrap up.
+- Past the window minus 16,384, pi compacts with an LLM summary that loses the run's reads.
+
+On the 1M-window primaries neither fires: the largest fleet tick from Oct 2–6 reached 140k.
+The oMLX fallback models have 127k and 258k windows, though, and the model-fallback plans
+above will route roles there on provider failures. omp's `shake` compaction method reclaims
+context without a model call: it replaces old tool results with recoverable references and
+keeps the recent window intact. pi 1.0.0 has the primitive to do the same from an extension:
+a `turn_end` handler can append persisted `context_edit` entries (pi docs: extensions.md,
+session-format.md).
+
+**Goal.** When a run crosses 70% of its window, its old bulky tool results are replaced with
+short pointers the model can follow. The run can then finish its task instead of stopping
+early or being summarized.
+
+**Approach.**
+1. **`src/pi-extension/context-shake.ts`** (new bundled extension, loaded after
+   bounded-output and before context-budget) with a pure planner `shakePlan(messages, usage)`.
+   - At or above 70% usage, it selects `read` and `bash` tool results that are older than
+     the newest 20,000 estimated tokens and longer than 2,000 chars.
+   - A bash result is replaced by `[elided by tumwater: N chars; full output in <path>]`. It
+     reuses `details.fullOutputPath`, or else writes the full text with bounded-output's
+     `writeFullOutput`.
+   - A read result is replaced by `[elided by tumwater: N chars of <path>:<start>-<end>;
+     re-read the range if you still need it]`.
+   - It never selects edit or write results, error results, or the user prompt.
+   - It returns an empty plan when it would reclaim fewer than 10,000 estimated tokens.
+2. **Apply** — through a `turn_end` handler that returns `context_edit` replacement entries.
+   These are persisted, so a `--continue` resume rebuilds the same context. First check the
+   exact return shape against pi's exported `extensions/types.ts`. If `turn_end` cannot
+   propose edits, apply the same deterministic plan in the request-local `context` event
+   instead.
+3. **Once per crossing** — shake at 70%, and again at 85% only if the first pass did not bring
+   the run back under 70%. Already-elided results are never re-elided. Append one line to the
+   next tool result, as context-budget does: "[tumwater: elided N old tool results (~K
+   tokens); each pointer says where the full text is]".
+4. **`src/pi-extension/context-budget.ts`** — refresh its header, which still describes pi
+   0.87. Keep its 85% stop-reading note as the backstop.
+
+**Files touched.** src/pi-extension/context-shake.ts (new), src/pi/pi-args.ts
+(`bundledExtensionPaths`), src/pi-extension/context-budget.ts, test/context-shake.test.ts (new),
+test/pi-args.test.ts.
+
+**Acceptance criteria.**
+- Planner tests:
+  - Below 70%, the plan is empty.
+  - At 70%, only results outside the newest 20k tokens and over 2,000 chars are selected.
+  - Edit, write and error results are never selected.
+  - A plan that reclaims under 10k tokens is empty.
+  - An already-elided result is not selected again.
+- A bash replacement names a full-output path, and a bash result without
+  `details.fullOutputPath` gets one written. A read replacement names the range.
+- With `contextWindow` 1,048,575 and fleet-sized contexts (≤140k), the extension plans
+  nothing.
+- `bundledExtensionPaths()` lists the extensions in the order bounded-output, context-shake,
+  context-budget, followed by the role-notes extension once that plan lands.
+- `npm run test` green.
+
 ---
 
 ## Done
