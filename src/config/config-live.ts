@@ -1,5 +1,6 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, enabledRoleIds, loadConfigCached } from "./config.js";
+import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";
@@ -77,11 +78,34 @@ export function newLiveConfigReload(deps: {
       }
       if (reloaded.config) {
         live = reloaded.config;
+        const nextConfig = reloaded.config;
         // A live edit that changes behavior elsewhere logs one event naming the settings that
         // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
         const changedKeys = changedConfigKeys(prevLive, reloaded.config);
-        if (changedKeys.length > 0)
+        if (changedKeys.length > 0) {
           logEvent(deps.root, { loop: "harness", type: "config_changed", keys: changedKeys });
+          // A real model-wiring change gets its own event naming the new selector(s), which the
+          // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
+          const fromModel = fleetModelLabel(prevLive);
+          const toModel = fleetModelLabel(reloaded.config);
+          const roleDiffs = changedKeys
+            .filter((key) => key.startsWith("roles."))
+            .map((key) => {
+              const role = key.slice("roles.".length);
+              const from = modelSelectorField(configForRole(prevLive, role)).model ?? null;
+              const to = modelSelectorField(configForRole(nextConfig, role)).model ?? null;
+              return { role, from, to };
+            })
+            .filter((d) => d.from !== d.to);
+          if (fromModel !== toModel || roleDiffs.length > 0)
+            logEvent(deps.root, {
+              loop: "harness",
+              type: "model_changed",
+              from: fromModel,
+              to: toModel,
+              ...(roleDiffs.length > 0 ? { roles: roleDiffs } : {}),
+            });
+        }
         prevLive = reloaded.config;
         for (const r of deps.runners) r.config = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute

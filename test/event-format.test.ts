@@ -610,3 +610,22 @@ test("formatEvent renders dep_install with packages, status, duration, and an op
     `a failed install must carry the reason after the status: ${failed}`,
   );
 });
+
+test("formatEvent renders model_changed with the new selector, or pi's default", () => {
+  const changed = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "model_changed",
+    from: "prov-a/model-a",
+    to: "prov-b/model-b",
+  } as never);
+  assert.match(changed, /harness\s+model changed — now prov-b\/model-b$/);
+  const cleared = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "model_changed",
+    from: "prov-a/model-a",
+    to: null,
+  } as never);
+  assert.match(cleared, /harness\s+model changed — now pi's default$/);
+});

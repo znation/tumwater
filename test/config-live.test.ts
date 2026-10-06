@@ -26,6 +26,10 @@ function changedKeys(root: string): string[][] {
     .map((e) => (e as unknown as { keys: string[] }).keys);
 }
 
+function modelEvents(root: string): { from?: string; to?: string; roles?: { role: string; from: string | null; to: string | null }[] }[] {
+  return readEvents(root).filter((e) => e.type === "model_changed") as never;
+}
+
 function newReload(
   root: string,
   config: TumwaterConfig,
@@ -83,6 +87,73 @@ test("a config edit is pushed to existing runners and logged once, not once per 
   // The second poll of the same file is a no-op: the event is edge-triggered.
   assert.equal(live.poll().model, "other-model");
   assert.equal(changedKeys(root).length, 1);
+});
+
+test("a top-level model edit logs one model_changed with the new label, edge-triggered", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
+  live.poll();
+
+  const edited = cloneConfig(config);
+  edited.model = "prov-a/model-a";
+  writeConfig(root, edited);
+  live.poll();
+
+  // config_changed (unchanged) then the model-specific line, exactly once.
+  assert.deepEqual(changedKeys(root), [["model"]]);
+  const models = modelEvents(root);
+  assert.equal(models.length, 1);
+  assert.equal(models[0]!.from, null);
+  assert.equal(models[0]!.to, "prov-a/model-a");
+
+  // An unchanged poll of the same file adds nothing more.
+  live.poll();
+  assert.equal(modelEvents(root).length, 1);
+});
+
+test("a roles.<id>.model edit logs a model_changed carrying the per-role diff", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
+  live.poll();
+
+  const edited = cloneConfig(config);
+  edited.roles.qa = { ...edited.roles.qa, enabled: true, model: "prov-b/model-b" };
+  writeConfig(root, edited);
+  live.poll();
+
+  const models = modelEvents(root);
+  assert.equal(models.length, 1);
+  assert.equal(models[0]!.from, null);
+  assert.equal(models[0]!.to, null);
+  assert.deepEqual(models[0]!.roles, [{ role: "qa", from: null, to: "prov-b/model-b" }]);
+});
+
+test("a roles.<id>.instructions edit logs config_changed but no model_changed", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
+  live.poll();
+
+  const edited = cloneConfig(config);
+  edited.roles.qa = { ...edited.roles.qa, enabled: true, instructions: "be nice" };
+  writeConfig(root, edited);
+  live.poll();
+
+  assert.deepEqual(changedKeys(root), [["roles.qa"]]);
+  assert.equal(modelEvents(root).length, 0);
+});
+
+test("a minTickIntervalSeconds-only edit logs no model_changed", () => {
+  const config = defaultConfig();
+  const { root, live } = liveReload(config);
+  live.poll();
+
+  const edited = cloneConfig(config);
+  edited.minTickIntervalSeconds = (edited.minTickIntervalSeconds ?? 0) + 1;
+  writeConfig(root, edited);
+  live.poll();
+
+  assert.deepEqual(changedKeys(root), [["minTickIntervalSeconds"]]);
+  assert.equal(modelEvents(root).length, 0);
 });
 
 test("a maxConcurrent edit live-resizes the semaphore and logs its own event", () => {

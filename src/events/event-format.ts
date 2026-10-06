@@ -272,6 +272,10 @@ export function eventMessage(e: HarnessEvent): string {
       const keys = stringList(e.keys).join(", ");
       return `config changed${keys ? `: ${keys}` : ""}`;
     }
+    case "model_changed":
+      // The live-edit sibling of config_changed: names the new selector, the one fact the key
+      // list cannot show. The per-role diffs stay structured on the event.
+      return `model changed — now ${e.to ?? "pi's default"}`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.

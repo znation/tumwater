@@ -7,6 +7,7 @@ import {
   configForRole,
   FALLBACK_REVIEW_TIMEOUT_S,
   fallbackPair,
+  fleetModelLabel,
   reviewConfig,
   resolveTierFallbacks,
   reviewRunConfig,
@@ -212,6 +213,22 @@ test("tierModel resolves each tier of a map-form model, a string form being the 
   assert.equal(tierModel(str, "strong")?.thinking, "low");
   // No model at all: none.
   assert.equal(tierModel(defaultConfig(), "strong"), undefined);
+});
+
+test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => {
+  // Every tier unset: pi's own default, so the live-edit event names no model.
+  assert.equal(fleetModelLabel(defaultConfig()), null);
+  // A string form applies at every tier, so all set tiers agree on one selector.
+  const str: TumwaterConfig = defaultConfig();
+  str.model = "prov-a/model-a";
+  assert.equal(fleetModelLabel(str), "prov-a/model-a");
+  // A map whose tiers differ lists each tier's effective selector — small inherits default.
+  const map: TumwaterConfig = defaultConfig();
+  map.model = { default: "prov-a/model-a", strong: "prov-s/model-s:high" };
+  assert.equal(
+    fleetModelLabel(map),
+    "small=prov-a/model-a, default=prov-a/model-a, strong=prov-s/model-s:high",
+  );
 });
 
 test("configForRole resolves each seam's tier: plan strong, readme small, others default", () => {

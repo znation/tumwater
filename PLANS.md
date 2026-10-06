@@ -6,56 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Log one `model_changed` event when a live config edit changes the fleet's model wiring (planned 2026-10-06 by director; independent of the display plan above)
-
-**Goal.** A live `tumwater.json` edit that changes which model a seam runs on leaves one
-human-readable events.jsonl line naming the new selector, instead of only the key list the
-existing `config_changed` event carries. It fires only on an actual model-wiring change — never
-per tick; the per-tick `tick_start.model` field stays for the history/report trail. Budget
-fallback transitions already log their model on `budget_fallback`/`budget_handback`, so this
-event covers the config-edit path only.
-
-**Approach.**
-1. **`src/config/config-views.ts`** — export `fleetModelLabel(config: TumwaterConfig): string |
-   null`: for each tier in `MODEL_TIERS`, format that tier's effective selector via
-   `tierModel(config, tier)` and `formatModelSelector`; return null when every tier is unset
-   (pi's own default), the single selector when all set tiers agree, and the
-   `small=…, default=…, strong=…` list when they differ. Using all tiers makes an edit to any
-   tier's entry change the label.
-2. **`src/events/events.ts`** — add `"model_changed"` to the `HarnessEvent["type"]` union with
-   a doc comment: "a live tumwater.json edit changed the fleet's model wiring; carries
-   `from`/`to` (`fleetModelLabel` of the previous/next config) and `roles` (the per-role
-   selector diffs) when a `roles.<id>` model override changed".
-3. **`src/config/config-live.ts`** (`poll`, beside the existing `config_changed` block) — after
-   logging `config_changed`, compute the model change: `topChanged = fleetModelLabel(prevLive)
-   !== fleetModelLabel(reloaded.config)`; and from `changedKeys`' `roles.<id>` entries, keep a
-   `{ role, from, to }` for each id whose `modelSelectorField(configForRole(...)).model` differs
-   between `prevLive` and `reloaded.config` (imports `configForRole`, `fleetModelLabel`,
-   `modelSelectorField` from config-views). When `topChanged || roleDiffs.length > 0`,
-   `logEvent(root, { loop: "harness", type: "model_changed", from: fleetModelLabel(prevLive),
-   to: fleetModelLabel(reloaded.config), ...(roleDiffs.length ? { roles: roleDiffs } : {}) })`.
-   An edit touching no model key (e.g. `roles.<id>.instructions` or `minTickIntervalSeconds`)
-   emits nothing.
-4. **`src/events/event-format.ts`** — a `case "model_changed"` rendering `model changed — now
-   ${e.to ?? "pi's default"}` (one feed line; the per-role diffs stay structured on the event).
-
-**Files touched.** src/config/config-views.ts, src/config/config-live.ts, src/events/events.ts,
-src/events/event-format.ts, test/config-live.test.ts, test/config-views.test.ts,
-test/event-format.test.ts.
-
-**Acceptance criteria.**
-- `fleetModelLabel` returns null for an unset model, `prov-a/model-a` for the string
-  `model: "prov-a/model-a"`, and a differing-tier list for `{ default: "prov-a/model-a",
-  strong: "prov-s/model-s:high" }`.
-- A reload whose only change is the top-level `model` logs exactly one `config_changed`
-  (unchanged) followed by one `model_changed` whose `to` is the new label; an unchanged poll
-  after it logs nothing more (edge-triggered like `config_changed`).
-- A `roles.qa.model` edit logs a `model_changed` whose `roles` holds `{ role: "qa", from, to }`;
-  a `roles.qa.instructions` edit logs `config_changed` and no `model_changed`; a
-  `minTickIntervalSeconds`-only edit logs no model event.
-- `event-format` renders `model changed — now prov-a/model-a`.
-- `npm run test` green.
-
 ### Model failure fallback, part 1/2: run a failing role's ticks on its tier fallback (planned 2026-10-06 by plan loop)
 
 Design: plans/fallback-model.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md.
@@ -591,6 +541,56 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Log one `model_changed` event when a live config edit changes the fleet's model wiring (planned 2026-10-06 by director; independent of the display plan above; done 2026-10-06 by feature)
+
+**Goal.** A live `tumwater.json` edit that changes which model a seam runs on leaves one
+human-readable events.jsonl line naming the new selector, instead of only the key list the
+existing `config_changed` event carries. It fires only on an actual model-wiring change — never
+per tick; the per-tick `tick_start.model` field stays for the history/report trail. Budget
+fallback transitions already log their model on `budget_fallback`/`budget_handback`, so this
+event covers the config-edit path only.
+
+**Approach.**
+1. **`src/config/config-views.ts`** — export `fleetModelLabel(config: TumwaterConfig): string |
+   null`: for each tier in `MODEL_TIERS`, format that tier's effective selector via
+   `tierModel(config, tier)` and `formatModelSelector`; return null when every tier is unset
+   (pi's own default), the single selector when all set tiers agree, and the
+   `small=…, default=…, strong=…` list when they differ. Using all tiers makes an edit to any
+   tier's entry change the label.
+2. **`src/events/events.ts`** — add `"model_changed"` to the `HarnessEvent["type"]` union with
+   a doc comment: "a live tumwater.json edit changed the fleet's model wiring; carries
+   `from`/`to` (`fleetModelLabel` of the previous/next config) and `roles` (the per-role
+   selector diffs) when a `roles.<id>` model override changed".
+3. **`src/config/config-live.ts`** (`poll`, beside the existing `config_changed` block) — after
+   logging `config_changed`, compute the model change: `topChanged = fleetModelLabel(prevLive)
+   !== fleetModelLabel(reloaded.config)`; and from `changedKeys`' `roles.<id>` entries, keep a
+   `{ role, from, to }` for each id whose `modelSelectorField(configForRole(...)).model` differs
+   between `prevLive` and `reloaded.config` (imports `configForRole`, `fleetModelLabel`,
+   `modelSelectorField` from config-views). When `topChanged || roleDiffs.length > 0`,
+   `logEvent(root, { loop: "harness", type: "model_changed", from: fleetModelLabel(prevLive),
+   to: fleetModelLabel(reloaded.config), ...(roleDiffs.length ? { roles: roleDiffs } : {}) })`.
+   An edit touching no model key (e.g. `roles.<id>.instructions` or `minTickIntervalSeconds`)
+   emits nothing.
+4. **`src/events/event-format.ts`** — a `case "model_changed"` rendering `model changed — now
+   ${e.to ?? "pi's default"}` (one feed line; the per-role diffs stay structured on the event).
+
+**Files touched.** src/config/config-views.ts, src/config/config-live.ts, src/events/events.ts,
+src/events/event-format.ts, test/config-live.test.ts, test/config-views.test.ts,
+test/event-format.test.ts.
+
+**Acceptance criteria.**
+- `fleetModelLabel` returns null for an unset model, `prov-a/model-a` for the string
+  `model: "prov-a/model-a"`, and a differing-tier list for `{ default: "prov-a/model-a",
+  strong: "prov-s/model-s:high" }`.
+- A reload whose only change is the top-level `model` logs exactly one `config_changed`
+  (unchanged) followed by one `model_changed` whose `to` is the new label; an unchanged poll
+  after it logs nothing more (edge-triggered like `config_changed`).
+- A `roles.qa.model` edit logs a `model_changed` whose `roles` holds `{ role: "qa", from, to }`;
+  a `roles.qa.instructions` edit logs `config_changed` and no `model_changed`; a
+  `minTickIntervalSeconds`-only edit logs no model event.
+- `event-format` renders `model changed — now prov-a/model-a`.
+- `npm run test` green.
 
 ### Show each loop's active model on `tumwater status`, the TUI, and the GUI (planned 2026-10-06 by director; done 2026-10-06 by feature)
 

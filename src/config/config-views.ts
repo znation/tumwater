@@ -205,6 +205,20 @@ export function modelSelectorField(
     : {};
 }
 
+/** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`
+ * event: null when no tier resolves to a model (pi's own default), the single selector when
+ * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…` list
+ * when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the label. */
+export function fleetModelLabel(config: TumwaterConfig): string | null {
+  const entries = MODEL_TIERS.map((tier) => {
+    const sel = tierModel(config, tier);
+    return sel ? { tier, label: formatModelSelector(sel) } : null;
+  }).filter((e): e is { tier: ModelTier; label: string } => e !== null);
+  if (entries.length === 0) return null;
+  if (entries.every((e) => e.label === entries[0]!.label)) return entries[0]!.label;
+  return entries.map((e) => `${e.tier}=${e.label}`).join(", ");
+}
+
 /** The provider/model pair a configured fallback resolves to — its own fields over the
  * top-level ones, the same precedence every other override section uses — or null when no
  * fallback is configured. The selector-string `fallback` (plans/model-tiers.md) and the
