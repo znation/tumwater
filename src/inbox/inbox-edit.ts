@@ -1,8 +1,6 @@
-import fs from "node:fs";
 import { writeTextAtomic } from "../files/files.js";
 import { logEvent } from "../events/events.js";
-import { errCode } from "../errno.js";
-import { promptPreview, queuedFileAtPosition } from "./inbox.js";
+import { promptPreview, queuedFileAtPosition, readQueueText } from "./inbox.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 
@@ -42,13 +40,8 @@ export type EditOutcome =
  * old file or the whole new one — never a half-written prompt. */
 export function editRolePrompt(root: string, role: string, position: number, newText: string): EditOutcome {
   const file = queuedFileAtPosition(root, role, position);
-  let oldFileText: string;
-  try {
-    oldFileText = fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if (errCode(err) === "ENOENT") return { status: "gone" }; // Dequeued or cancelled mid-listing.
-    throw err;
-  }
+  const oldFileText = readQueueText(file);
+  if (oldFileText === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
   // The marker is plumbing: the edit replaces only the content beneath it. notBeforeMs
   // reads the writer's exact marker shape, so content that merely resembles a marker is
   // content, and the new text goes in marker-free.

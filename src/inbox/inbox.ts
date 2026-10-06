@@ -147,8 +147,10 @@ function cachedPromptText(file: string): string | null {
  * null, like readTextOrNull) and rethrowing any other error: a permission failure is not a
  * race, and reporting it as "empty queue" would make a loop skip its tick while the prompt
  * stays queued — the same ENOENT discrimination cancelPrompt's and dequeuePrompt's take
- * already pin (test/inbox.test.ts). */
-function readQueueText(file: string): string | null {
+ * already pin (test/inbox.test.ts). The single home of that read for the queue paths that
+ * need the current content: the listing/deliverability cache above, takeQueuedFile's
+ * pop-then-remove, and inbox-edit.ts's rewrite (which maps null to its "gone" outcome). */
+export function readQueueText(file: string): string | null {
   try {
     return fs.readFileSync(file, "utf8");
   } catch (err) {
@@ -243,13 +245,8 @@ export function queuedRolePromptCount(root: string, role: string): number {
  * oldest-first, so the prompt recorded at requeue time is the one reclaimed, whatever else
  * was enqueued or cancelled meanwhile — so the race policy lives once. */
 export function takeQueuedFile(file: string): string | null {
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch (err) {
-    if (errCode(err) === "ENOENT") return null; // Cancelled mid-listing.
-    throw err;
-  }
+  const text = readQueueText(file);
+  if (text === null) return null; // Cancelled mid-listing.
   if (!removeQueueFile(file)) return null; // A concurrent cancel won the race — do not run a cancelled prompt.
   removeSameStemSiblings(file);
   return text;
