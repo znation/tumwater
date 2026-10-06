@@ -84,29 +84,83 @@ build it each tick.
 Expected state: no tick or director prompt contains `grep -n '^##'`; the index for today's
 files is under ~3 KB; and no `###` title from ## Fixed, ## Done or ## Verified appears in it.
 
-### The daily budget counts cache reads as free for any model priced `cacheRead: 0`, and nothing flags it: GLM-5.3-Flash:together, primary until 2026-10-06, sent 349.6M of its 379M prompt tokens (92%) as cache reads over Oct 2–6, all at $0 (found by human log analysis 2026-10-06)
-Symptom: ~/.pi/agent/models.json prices `huggingface/zai-org/GLM-5.3-Flash:together` at
-$0.15/M input, $0 cache read and $0.50/M output. pi's per-message `usage.cost.cacheRead` was 0
-on all 14,889 GLM turns that read from the cache. The tick_end `costUsd` values and the
-daily budget (`TickUsage.fold` → `recordDailyCost`, src/tick/tick-usage.ts) therefore
-recorded $6.26 for those four days, none of it for cache reads. Together bills cached input
-at a discount, not at zero; this is unverified for the HF route, so check the HF billing page.
-At even 10% of the input price, the real spend was ~$11.50, nearly double. The current primary
-(DeepSeek-V4.1-Flash:deepinfra) prices its cache reads, so the gap stays latent until a model
-priced like GLM runs again, and nothing would report it when it does.
-Reproduce: in `.tumwater/sessions/<role>/*.jsonl`, open any GLM assistant message from Oct 2–6.
-`usage.cacheRead` is above 0 and `usage.cost.cacheRead` is 0. `tumwater doctor` reports
-nothing about the pricing.
-Cause: the harness trusts pi's cost. src/pi/pi-models.ts only tells "free" apart from
-"priced": a model is free when its cost is absent or every component is 0. A model with a
-positive input price and a zero or missing `cacheRead` price is treated as fully priced.
-Suggested fix: add a `cacheReadUnpriced` check to src/pi/pi-models.ts: input price above 0,
-and `cacheRead` missing or 0. `tumwater doctor` (src/doctor/doctor-checks.ts) should warn for
-every configured role, tier, reviewer and fallback model it matches: "cache reads priced at
-$0 — the daily budget will undercount; set the provider's cached-input price in
-~/.pi/agent/models.json". The same warning should be logged once at fleet start and again on
-`config_changed`. The price itself is operator config, so correcting GLM's entry is the
-operator's half of the fix.
+### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06)
+Symptom: there were two pricing errors, in opposite directions.
+- **Overcount (DeepSeek).** tumwater.json's `model` is `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`,
+  but ~/.pi/agent/models.json defined only `deepseek-ai/DeepSeek-V4.1-Flash`, without the
+  suffix. pi priced every DeepSeek V4.1 turn at $0.95 input, $0.16 cache read and $4.00 output
+  per 1M tokens: 1,265 turns over Oct 2–6, plus 73 on `DeepSeek-V4-Flash-0731:deepinfra`.
+  Those are exactly `moonshotai/Kimi-K2.6`'s catalog prices. The HF router lists DeepInfra's
+  route at $0.20 input and $0.60 output, so input and output were overcounted 5–7×. The
+  same runs also carried Kimi's 262,144-token `contextWindow` and `maxTokens` in place of
+  DeepSeek's 1,048,576 window. As a result, the context-budget extension's 50/70/85% notes
+  fired against 262k, and pi's compaction threshold sat at ~246k instead of ~1.03M.
+- **Undercount (GLM).** `zai-org/GLM-5.3-Flash:together` was priced at $0.15 input, $0 cache
+  read and $0.50 output. Together's pricing page lists cached input at $0.03/M, and HF's
+  pricing docs say routed requests pass the provider's rates through with no markup. 92% of
+  GLM's prompt tokens are cache reads. Over Oct 2–6, pi recorded $7.25 for GLM against about
+  $18.00 at Together's rates, roughly 2.5× under.
+- **Net effect.** From 00:00 to 05:04 on 2026-10-06, the budget recorded $21.72: DeepSeek
+  V4.1 $19.20, GLM $1.78, V4-Flash-0731 $0.74. At published rates the same turns cost about
+  $6.00 (DeepSeek ~$1.78, GLM ~$4.22). The 05:04 `budget_fallback` (spentUsd 20.69, cap 20)
+  moved the fleet onto the oMLX fallback, which had been down since 10-04.
+
+Reproduce:
+- **Fallback clone.** With HF_TOKEN set, run
+  `pi --print --mode json --no-session --provider huggingface --model <an id absent from models.json> "ok"`.
+  stderr says `Warning: Model "<id>" not found for provider "huggingface". Using custom model id.`,
+  the `message_end` cost divided by the token counts gives Kimi-K2.6's rates, and
+  `pi --list-models <id>` lists nothing for the id. This was re-checked live on 2026-10-06 with
+  `deepseek-ai/DeepSeek-V4-Flash-0731:deepinfra`, which is still undefined: pi applied $0.95
+  input and $4.00 output.
+- **Zero cache price.** Before the operator fix below, any GLM assistant message in
+  `.tumwater/sessions/<role>/*.jsonl` showed `usage.cacheRead` > 0 with
+  `usage.cost.cacheRead` == 0.
+- **No warning.** `tumwater doctor` reports neither problem.
+
+Cause:
+- **Fallback clone.** In pi 1.0.0, `buildFallbackModel` (dist/core/model-resolver.js) builds
+  any model id that has no exact models.json or catalog entry from the provider's default
+  model (`defaultModelPerProvider.huggingface = "moonshotai/Kimi-K2.6"`), replacing only `id`
+  and `name`. Cost, `contextWindow`, `maxTokens` and input types are all inherited. pi
+  warns only on stderr, and tumwater does not surface it.
+- **Zero cache price.** The HF router's `/v1/models` publishes only `input` and `output`
+  prices, with no cache price for any provider. pi's bundled HF catalog and the hand-written
+  models.json entries copy those two prices and write `cacheRead: 0`, which here means
+  "unknown", not "free". pi-ai's `providers/data/together.json` does carry Together's cache
+  prices, e.g. GLM-5.3-Flash at $0.03/M.
+- **Trusting pi's cost.** tumwater uses pi's cost as-is (`TickUsage.fold` → `recordDailyCost`,
+  src/tick/tick-usage.ts). src/pi/pi-models.ts only tells free models apart from priced ones,
+  so it cannot see either error.
+
+Operator half — done 2026-10-06; ~/.pi/agent/models.json backed up as
+`models.json.bak-pre-pricing-fix-2026-10-06`:
+- GLM's `cacheRead` is now 0.03.
+- An exact `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra` entry was added: $0.20 input,
+  $0.0057 cache read and $0.60 output. The cache price is DeepInfra's $0.004 promo price
+  ÷ 0.7, since HF lists none. The entry has a 1,048,576 window and keeps the 262,144
+  `maxTokens` the fleet already ran with.
+- `pi --list-models` now lists the exact id. One live request per model confirmed the rates
+  pi applies: $0.20 / $0.0057 / $0.60 and $0.15 / $0.03 / $0.50.
+
+Suggested fix (harness half):
+1. **Detect both conditions** in src/pi/pi-models.ts:
+   - `exactModelDefined(provider, model)`: true only when models.json defines that exact id,
+     or pi's catalog does. For the catalog, match the exact id in `pi --list-models <id>`,
+     cached until the config changes.
+   - `cacheReadUnpriced(def)`: input price above 0, and `cacheRead` missing or 0.
+2. **Warn about them.** Check every configured model (role, tier, reviewer, fallback) in
+   `tumwater doctor` (src/doctor/doctor-checks.ts), once at fleet start, and on
+   `config_changed`.
+   - An undefined id gets an error: "pi will run <id> with <provider default>'s price and
+     context window; add an exact entry to ~/.pi/agent/models.json".
+   - Unpriced cache reads get a warning: "cache reads priced at $0 — the daily budget will
+     undercount".
+3. **Catch it at run time.** Capture pi's "not found for provider … Using custom model id"
+   stderr line in the run result and emit a warning event, so a clone can never run unseen.
+
+Expected state: `tumwater doctor` flags the pre-fix config (`models.json.bak-pre-pricing-fix-2026-10-06`)
+on both counts and stays silent on the fixed one.
 
 ## Fixed
 
