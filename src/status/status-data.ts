@@ -16,6 +16,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
+import { deliverableAt } from "../prompt/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import {
@@ -282,7 +283,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const roleInboxPrompts: StatusSnapshot["roleInboxPrompts"] = {};
   // One listing pass per role serves both the deliverable count and the cancel-addressable
   // entries: queuedRolePromptRecords already carries each readable prompt's notBeforeMs, and
-  // deliverableNow is exactly `notBeforeMs === null || notBeforeMs <= now` (prompt-not-before.ts)
+  // deliverableAt is exactly `notBeforeMs === null || notBeforeMs <= now` (prompt-not-before.ts)
   // over the same cached text — so the old second pass (queuedRolePromptCount's own readdir +
   // deliverability filter, once per role per poll across all 12 non-director loops) repeated
   // work the entries pass had just done. One clock read outside the loop pins the count and the
@@ -291,7 +292,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   for (const r of roles) {
     if (r === DIRECTOR_ROLE) continue;
     const entries = queuedRolePromptEntries(root, r);
-    roleInbox[r] = entries.filter((e) => e.notBeforeMs === null || e.notBeforeMs <= nowMs).length;
+    roleInbox[r] = entries.filter((e) => deliverableAt(e.notBeforeMs, nowMs)).length;
     if (entries.length) roleInboxPrompts[r] = entries;
   }
   const running = orchestratorAlive(root, info);

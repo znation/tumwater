@@ -24,7 +24,7 @@ import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
  * marker vocabulary for deferred prompts lives in prompt-not-before.ts (compose, parse, strip,
  * and the deliverableNow predicate this module filters on). */
 
-import { deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
+import { deliverableAt, deliverableNow, notBeforeMarker, notBeforeMs, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 
 /** Cap on a queued prompt's one-line preview, so an over-long prompt cannot bloat an event
  * log line, the dashboard payload, or the CLI output. */
@@ -206,7 +206,7 @@ export function queuedRolePromptRecords(
 export function queuedRolePrompts(root: string, role: string): string[] {
   const now = Date.now();
   return queuedRolePromptRecords(root, role)
-    .filter((e) => e.notBeforeMs === null || e.notBeforeMs <= now)
+    .filter((e) => deliverableAt(e.notBeforeMs, now))
     .map((e) => e.text);
 }
 

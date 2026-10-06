@@ -50,9 +50,17 @@ export function stripNotBeforeMarker(text: string): string {
   return text.replace(NOT_BEFORE_MARKER, "");
 }
 
-/** Deliverable now: no marker, or its time has arrived. The one predicate every
- * deliverability filter (dequeue, peek, the counts) shares. */
-export function deliverableNow(text: string, now: number): boolean {
-  const at = notBeforeMs(text);
+/** Deliverable now from an already-parsed not-before time (notBeforeMs): no marker (`null`),
+ * or its time has arrived. The one home for the predicate's `at === null || at <= now` body,
+ * shared by deliverableNow (which parses the text first) and the two callers that already
+ * hold the parsed value — inbox.ts's queuedRolePrompts and status-data.ts's per-role inbox
+ * count — instead of re-spelling the comparison. */
+export function deliverableAt(at: number | null, now: number): boolean {
   return at === null || at <= now;
+}
+
+/** Deliverable now: parse the queue-file text's not-before marker, then apply deliverableAt.
+ * The predicate the text-reading deliverability filters (dequeue, peek) share. */
+export function deliverableNow(text: string, now: number): boolean {
+  return deliverableAt(notBeforeMs(text), now);
 }
