@@ -18,6 +18,7 @@ import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
+import { FLAKY_WARNING_PREFIX, isKnownFlake } from "./known-flakes.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
  * (`resolved` — a deterministic rejection, failure, or unverified tree) or the tree passed
@@ -88,7 +89,7 @@ export async function gateBuildPrecheck(
           warnEvent(root, role, sleptPhrase("gate check", outcome.run!.sleptMs!, "then passed on retry"));
         } else {
           const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
-          warnEvent(root, role, `gate check failed then passed on retry — flaky: ${flaky}`);
+          warnEvent(root, role, `${FLAKY_WARNING_PREFIX}${flaky}`);
         }
         outcome = retry.outcome;
       } else if (retry?.outcome.status === "failed") {
@@ -105,6 +106,19 @@ export async function gateBuildPrecheck(
       return { resolved: { decision: "failed", detail, unverified: true } };
     }
     if (outcome.status === "failed") {
+      // A claimed failure the gate itself already recorded as flaky within the window (its own
+      // re-run passed on this exact headline) says nothing about this change: attribute nothing
+      // — keep the commit and the pin, count no strike — and name the flake, exactly as the
+      // host-sleep path above does. Before this, the repeat was attributed through main's
+      // per-SHA baseline cache (usually a green seeded by an earlier landing), so a load- or
+      // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
+      const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
+      if (isKnownFlake(root, flaky)) {
+        const detail = `known-flaky failure, landing kept: ${flaky}`;
+        recordReview(state, "failed", [detail], head);
+        warnEvent(root, role, detail);
+        return { resolved: { decision: "failed", detail, unverified: true } };
+      }
       const reasons = checkFailureReasons(check, outcome);
       // A failure that reproduced is attributed, never fixed here: the one landing slot the
       // whole queue waits on is no place for a model run (the in-slot build-fix run this

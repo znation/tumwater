@@ -116,7 +116,29 @@ Suggested fix (harness half):
 Expected state: `tumwater doctor` flags the pre-fix config (`models.json.bak-pre-pricing-fix-2026-10-06`)
 on both counts and stays silent on the fixed one.
 
-### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06)
+### A repeated gate failure that matches no recorded flake still attributes through main's cached per-SHA verdict, so a clock-sensitive test that now fails on a SHA whose cached verdict is green rejects an unrelated change (found by bugfix loop 2026-10-06, split from the flake-memory entry now under Fixed — the fresh-main re-check that entry's suggested step 2 left open)
+Symptom: `mainTipVerdict` (src/baseline/main-red.ts) reads `checkMainBaseline`'s fleet-wide
+per-SHA cache, which short-circuits on a cached green. A test whose result depends on host load
+or wall-clock time can pass when the landing (or the gate's own pre-check) ran it and fail later
+on the very same immutable SHA, so a green cached hours earlier is no longer true. The
+2026-10-06 flake-memory fix under Fixed matches failures the gate already recorded as flaky;
+this is the remaining case where the gate never saw that failure pass. Example from that entry:
+feature 26fe5df7 at 10-06 00:00 was rejected for `pollFleetGates … holds at any local time`,
+which failed whenever a run straddled 23:59 local; main was just as red at that minute, but its
+verdict for the tip SHA was a cached green from an earlier run (the test has since been pinned
+to midday).
+Reproduce: seed main's baseline cache green for the tip SHA (`noteGreenBaseline`), then drive a
+pre-check that fails twice with a headline that matches no flake warning; the gate rejects the
+change without running main's check, even though a fresh main run would fail now.
+Suggested fix: when a repeated failure matches no recorded flake, re-run main's declared check
+for the attribution, bypassing the per-SHA cache (including the cached green). A fresh red goes
+to the existing main_red path (keep the pin, no strike); a fresh green rejects as today. This
+costs one extra check per reproduced failure — about 41 over the two weeks the Fixed entry
+measured.
+
+## Fixed
+
+### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: since 2026-09-22, 17 build-check rejections name the failing test file. In 16 of them
 the rejected commit did not touch that file. Examples:
 - **improve 9fd7dff6, 10-04 15:57.** Rejected for `✖ startParentDeathWatch takes a SIGKILLed
@@ -158,7 +180,14 @@ Suggested fix: two project-neutral steps before rejecting on a repeated failure.
    bypassing the per-SHA cache. Red goes to the existing main_red path; green rejects as today.
    This costs one extra check per reproduced failure, about 41 over the last two weeks.
 
-## Fixed
+**Fix:** the gate now reads its own flake warnings from the last 24 h (src/review/known-flakes.ts)
+and, when a repeat failure's headline matches one (normalized by the shared failure-cluster
+rules), keeps the commit and pin with no strike and warns `known-flaky failure, landing kept:
+<headline>` instead of asking main's cached verdict. Only the gate's positive flake record is
+trusted — a check-failure rejection is not treated as evidence of flakiness. The fresh-main
+re-check the Suggested fix's step 2 names is recorded as a separate Open entry above.
+
+**Validation gap:** no-repro — the flake is load- or clock-sensitive, so the underlying failure cannot be reproduced deterministically offline; the regression test seeds the gate's own recorded flake warning and, with the fix removed, watched the repeat reject (the actual flaky run is never synthesized).
 
 ### The orientation rule maps BUGS.md with `grep -n '^##'`, which also matches every `###` entry title, so about a third of ticks pull BUGS.md's closed history (108 KB today; 204 of its 207 titles are Fixed or Verified) and re-send it on every remaining turn: 4.4% of all fleet prompt tokens (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the pi sessions of Oct 2–6 hold 421 `grep -n '^##' … BUGS.md` calls in 215 ticks

@@ -16,6 +16,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
+import { logEvent } from "../src/events/events.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType } from "./log-fixtures.js";
@@ -372,6 +373,56 @@ test("a pre-check failure that passes its one re-run is a flake: no pi run befor
     ]);
     // The reviewer is told the check passed, the same claim a first-time pass makes.
     assert.match(runs[0] ?? "", /`npm run build` \(the project's declared check\) passed/);
+  });
+});
+
+// BUGS.md 2026-10-06: the gate had already recorded a flake for this exact failure earlier in
+// the day, then rejected an unrelated change on its repeat by asking main's cached per-SHA
+// verdict. A repeat whose headline matches that record is the flake firing again — the commit
+// and pin stay, strike-free — not a deterministic failure of the change.
+test("a repeat failure matching a recorded flake keeps the commit and counts no strike", async () => {
+  const flakyHeadline =
+    "✖ startParentDeathWatch takes a SIGKILLed supervisor grandchild down with it — AssertionError [ERR_ASSERTION]: boom";
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    [
+      "#!/bin/sh",
+      "echo '✖ startParentDeathWatch takes a SIGKILLed supervisor grandchild down with it (12.3ms)' >&2",
+      "echo 'AssertionError [ERR_ASSERTION]: boom' >&2",
+      "exit 1",
+      "",
+    ].join("\n"),
+  );
+  seedGreenMain(root);
+  // The gate logged this exact failure as a flake earlier in the window (its re-run passed).
+  logEvent(root, {
+    loop: "organize",
+    type: "warning",
+    message: `gate check failed then passed on retry — flaky: ${flakyHeadline}`,
+  });
+  const marker = piRanMarker();
+  await withPi(reviewerStub(marker), async () => {
+    const state = freshLoopState(ROLE);
+    state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
+    const head = await headOf(wt, "HEAD");
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "failed");
+    assert.equal(result.unverified, true, "the flake says nothing about the change");
+    assert.equal(result.mainRed, undefined, "main is not consulted, let alone blamed");
+    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
+    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
+    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
+    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+    assert.equal(await aheadOfMain(wt, "main"), 1);
+    assert.ok(!fs.existsSync(marker), "no pi run before a flake decision");
+    const events = readEvents(root);
+    assert.ok(!events.some((e) => e.type === "review_rejected"), "no rejection logged");
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main was never consulted");
+    const warnings = events.filter((e) => e.type === "warning").map((e) => String(e.message));
+    assert.ok(
+      warnings.includes(`known-flaky failure, landing kept: ${flakyHeadline}`),
+      `the known flake is named; got: ${JSON.stringify(warnings)}`,
+    );
   });
 });
 
