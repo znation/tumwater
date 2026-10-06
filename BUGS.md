@@ -5,6 +5,73 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### A resume run that fails before doing anything commits the interrupted tick's half-done edits: `resolveTickVerdict` stages any dirty worktree whose run failed, so after a restart a provider error on the resume run ships the killed tick's unfinished work under a diff-derived subject (found by human log analysis 2026-10-06)
+Symptom: on 2026-10-06 the fleet was stopped at 03:34:47 PDT mid-tick and came back at 03:35:50 on
+a model id the provider rejected (`deepseek-ai/DeepSeek-V4-Flash-0731:DeepInfra`; HF's router
+wants the lowercase `deepinfra`). Bugfix tick 913 had finished the stall-warning fix's code and
+tests and was partway through moving its BUGS.md entry from Open to Fixed. Its resume run (tick
+914) failed on its first request with `400 … model_not_supported`, and so did the
+missing-SUMMARY follow-up. The tick still ended `queued`: the harness committed the worktree with
+the derived subject "Update src/command-shape.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts
+and 2 more" and sent it to landing. At 03:43:49 the reviewer rejected it because the BUGS.md
+entry was still under Open, which was exactly the step the stop had interrupted. The rejection
+reset the branch, so the finished code was discarded too, and bugfix started the same bug again
+from scratch at 03:44:51. Feature hit the same path at the same moment. Its interrupted tick 1172
+had edited only `src/config/config-write.ts`. Its resume (tick 1173) also failed on the 400 and
+was committed as "Update src/config/config-write.ts". The gate check then failed on it twice
+(6.6 s and 2.2 s, compile errors) and rejected it.
+Reproduce: start a tick, stop the orchestrator while the run has uncommitted edits (any stop
+that aborts rather than drains), point `model` at an id the provider rejects, and start the
+fleet again. The resume run fails on its first request, yet the tick ends `queued` with a
+"reply had no SUMMARY line — follow-up gave none; subject derived from the changed files"
+warning, and the half-done edits reach the land queue.
+Cause: src/tick/tick-verdict.ts returns an error only for `!pi.ok && !changed`. A failed run
+with a dirty worktree falls through to staging (tick-stage.ts), whose missing-SUMMARY fallback
+derives a subject from the changed files. That path exists for runs that did real work and then
+crashed. On a resume, though, the dirty tree is the killed tick's half-done edits, which the
+abort branch at the top of the same function deliberately refuses to commit ("A killed run may
+leave half-done edits; never commit those"). A resume that fails before producing a single turn
+(a 4xx config error, an auth failure, a dead backend) adds nothing of its own, but ships exactly
+those edits.
+Suggested fix: when the run failed (`!pi.ok`) and produced no completed assistant turn of its
+own, return `error` instead of staging, and keep the worktree and session for the next resume
+(the error ladder already spaces the retries). The missing-SUMMARY warning should also name the
+run's error when the follow-up failed, rather than saying it "gave none". A test: resume a tick
+whose worktree has unfinished edits, with a fake pi that fails its first request, and require
+the tick to end `error` with the edits still uncommitted in the worktree.
+
+### A reviewer failing on a permanent config error is retried in a tight loop, and every retry pays for a full gate check first: four suite runs in 2 min went to a `400 model_not_supported` that no retry could fix (found by human log analysis 2026-10-06)
+Symptom: with the fleet on the rejected model id above (03:35:50–03:38:44 PDT on 2026-10-06), bugfix's
+queued change went through the land queue four times. Each landing ran the full gate check first
+(passed in 54.3 s, 38.8 s, 33.5 s and 33.4 s), and then the reviewer failed in under a second on
+the same `400 … the provider or policy you attempted to specify 'DeepInfra' is not valid … model_not_supported`.
+After each failure, leftover recovery re-queued the pin within about 50 ms (ticks 915, 916 and
+917 each ended `queued` in 40–56 ms as "recovered leftover work from bugfix: …"). Only the
+operator's 03:38:44 stop, to fix the model id, ended the cycle. Nothing in the harness would
+have: a failed reviewer run is strike-free by design (src/review/review.ts, BUGS.md 2026-09-20),
+so `REVIEW_FAILURE_LIMIT` never trips, and no backoff applies between attempts. Feature's own
+authoring ticks on the same id (1174, 1175) failed with the same 400 and took the error ladder,
+so only the landing path loops.
+Reproduce: queue a change for landing with `model` (or the reviewer's tier) set to an id the
+provider rejects with a 4xx. Every landing attempt logs a passing `build_check` (scope gate),
+then a `review_failed` with the 400, then a `land_queued` from leftover recovery, and repeats
+about every 35–55 s for as long as the config stays wrong.
+Cause: two independent gaps compound. (1) The landing path does not tell a permanent failure
+from a transient one. A 400 `model_not_supported`/`invalid_request_error` (and likewise 401, 403
+or 404) means the request can never succeed until the config changes, yet it gets the same
+strike-free, immediately re-queued treatment as a connection blip. (2) The review pre-check runs
+the declared check before the reviewer run is ever attempted (src/review/review-precheck.ts), so
+each futile attempt costs a full suite run. On a busy host that slows every other loop's checks
+too, because they share `maxConcurrentChecks`.
+Suggested fix: classify provider 4xx config errors (other than 408/429) as a configuration
+failure. On one, keep the pin, stop re-queuing it, and hold that role's landings (or every role
+on the same model) until `config_changed` names a model key, logging one warning that names the
+bad id. Independently, back off leftover recovery's re-queue after consecutive `review_error`s
+on the same head, so any unforeseen permanent failure cannot loop at suite speed. Optionally,
+validate a changed `model`/tier selector with one cheap request when the config loads: the
+mistyped provider suffix passed validation, which today only rejects an empty provider or model
+half.
+
 ### A hung piped command goes unreported until the quiet watchdog kills the tick: the stall warning skips every command whose stdout is piped or redirected, so a 19-min hang of `npm run test 2>&1 | tail -15` raised no warning and held up a self-redeploy until a manual `tumwater abort` (found by human log analysis 2026-10-06)
 Symptom: on 2026-10-05 at 22:41 PDT the coverage loop's tick 544 resumed after the 22:33 restart
 and called `npm run test 2>&1 | tail -15` (bash tool timeout 1800 s). The call never returned: the
