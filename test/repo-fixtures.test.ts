@@ -40,6 +40,18 @@ test("a test process that used tmpdir() leaves no temp dir behind at exit", () =
   assert.equal(fs.existsSync(runRoot), false, `per-run root survived process exit: ${runRoot}`);
 });
 
+test("every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()", () => {
+  const testDir = path.dirname(fileURLToPath(import.meta.url));
+  const offenders: string[] = [];
+  for (const name of fs.readdirSync(testDir)) {
+    if (!name.endsWith(".test.ts")) continue;
+    const text = fs.readFileSync(path.join(testDir, name), "utf8");
+    if (text.includes("mkdtempSync(path.join(os.tmpdir()")) offenders.push(name);
+  }
+  assert.deepEqual(offenders, [],
+    `temp dirs created outside the per-run root leak into the system temp dir; use tmpdir() from repo-fixtures.ts in: ${offenders.join(", ")}`);
+});
+
 test("writeBacklogFile renders the canonical backlog skeleton per file", () => {
   const root = tmpdir();
   writeBacklogFile(root, "PLANS.md", [

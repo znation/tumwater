@@ -6,7 +6,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { requestNoRerun, requestVerdict } from "../src/review/review-followup.js";
@@ -18,6 +17,7 @@ import { type ToolCallStart } from "../src/review/suite-rerun.js";
 import { hasResumableSession} from "../src/pi/pi.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { type ReviewContext } from "../src/review/review.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 import type { PiRunOptions } from "../src/pi/pi.js";
 
@@ -43,7 +43,7 @@ function captureRun() {
 }
 
 function makeCtx(config: TumwaterConfig = defaultConfig()) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "review-followup-"));
+  const root = tmpdir("review-followup-");
   const { captured, runGatePi } = captureRun();
   const ctx: ReviewContext = {
     root,

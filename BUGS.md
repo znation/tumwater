@@ -5,29 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### Two test files leak a temp dir per test into the system temp dir: test/tui-keys.test.ts and test/review-followup.test.ts create their roots with a raw `fs.mkdtempSync(path.join(os.tmpdir(), …))`, outside the suite's run root, and nothing removes them (found by human log analysis 2026-10-06)
-Symptom: the per-user temp dir (`getconf DARWIN_USER_TEMP_DIR`) grows by about 1,000 entries an
-hour while the fleet runs. On 2026-10-06 at 02:55 PDT it held 26,249 entries, including 13,103
-`tui-keys-*` and 5,145 `review-followup-*` dirs; 3,626 of those two were created after midnight
-the same day. Every full suite run adds one per test in each file (9 `makeRoot()` calls in
-tui-keys, one `makeCtx()` per test in review-followup), and the fleet runs the suite well over
-100 times an hour across gate checks, landings, and agents' own runs.
-Reproduce: `d=$(getconf DARWIN_USER_TEMP_DIR); ls -f "$d" | grep -c '^tui-keys-'`, run
-`npm test` once, and count again; the count rises by the number of tests that call `makeRoot()`.
-Same for `review-followup-`.
-Cause: test/tui-keys.test.ts:19 (`makeRoot`) and test/review-followup.test.ts:46 (`makeCtx`)
-call `fs.mkdtempSync(path.join(os.tmpdir(), "<prefix>-"))` directly instead of
-test/repo-fixtures.ts's `tmpdir(prefix)`, which creates the dir under `testRunRoot()` so the
-suite's per-run cleanup removes it. Neither file has a `t.after`/`after` that removes its roots.
-The same leak class made the suite time out on 2026-09-21: 1.68M `tumwater-test-*` dirs made
-`mkdtemp` about 9,000x slower (357 ms/call). At today's rate that takes months to reach, but it
-compounds and nothing reaps the dir. Older leaked prefixes from earlier fixes are still there:
-3,102 `tw-ver-*` (the last created 2026-10-04) and 586 `tw-eng-*`.
-Suggested fix: switch both helpers to `tmpdir("tui-keys-")` / `tmpdir("review-followup-")`
-from test/repo-fixtures.ts. Consider a guard so this cannot recur, such as a test that greps
-test/ for `mkdtempSync(path.join(os.tmpdir()` outside repo-fixtures.ts. One-time cleanup of the
-existing dirs is safe while no suite is running.
-
 ### Agents spend 43% of their tool-call time on test runs, and about a fifth of their full-suite runs re-run an unchanged tree only to see a different slice of the output (found by human log analysis 2026-10-06)
 Symptom: over 4.3 h of pi logs (2026-10-05 22:33 to 2026-10-06 02:52 PDT, all roles), test
 commands took 2.04 h of the 4.74 h agents spent between an assistant turn starting and its first
@@ -83,6 +60,30 @@ letting a pending restart's drain abort a tick whose only open call has passed t
 rather than waiting out the drain window.
 
 ## Fixed
+
+### Two test files leak a temp dir per test into the system temp dir: test/tui-keys.test.ts and test/review-followup.test.ts create their roots with a raw `fs.mkdtempSync(path.join(os.tmpdir(), …))`, outside the suite's run root, and nothing removes them (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
+- **Validation gap:** unclear-invariant — every suite run was green on the leak, so the invariant "a test temp dir must live under the per-run root the exit hook reaps" had to be reconstructed first; the fix adds the guard test that pins it.
+Symptom: the per-user temp dir (`getconf DARWIN_USER_TEMP_DIR`) grows by about 1,000 entries an
+hour while the fleet runs. On 2026-10-06 at 02:55 PDT it held 26,249 entries, including 13,103
+`tui-keys-*` and 5,145 `review-followup-*` dirs; 3,626 of those two were created after midnight
+the same day. Every full suite run adds one per test in each file (9 `makeRoot()` calls in
+tui-keys, one `makeCtx()` per test in review-followup), and the fleet runs the suite well over
+100 times an hour across gate checks, landings, and agents' own runs.
+Reproduce: `d=$(getconf DARWIN_USER_TEMP_DIR); ls -f "$d" | grep -c '^tui-keys-'`, run
+`npm test` once, and count again; the count rises by the number of tests that call `makeRoot()`.
+Same for `review-followup-`.
+Cause: test/tui-keys.test.ts:19 (`makeRoot`) and test/review-followup.test.ts:46 (`makeCtx`)
+call `fs.mkdtempSync(path.join(os.tmpdir(), "<prefix>-"))` directly instead of
+test/repo-fixtures.ts's `tmpdir(prefix)`, which creates the dir under `testRunRoot()` so the
+suite's per-run cleanup removes it. Neither file has a `t.after`/`after` that removes its roots.
+The same leak class made the suite time out on 2026-09-21: 1.68M `tumwater-test-*` dirs made
+`mkdtemp` about 9,000x slower (357 ms/call). At today's rate that takes months to reach, but it
+compounds and nothing reaps the dir. Older leaked prefixes from earlier fixes are still there:
+3,102 `tw-ver-*` (the last created 2026-10-04) and 586 `tw-eng-*`.
+Suggested fix: switch both helpers to `tmpdir("tui-keys-")` / `tmpdir("review-followup-")`
+from test/repo-fixtures.ts. Consider a guard so this cannot recur, such as a test that greps
+test/ for `mkdtempSync(path.join(os.tmpdir()` outside repo-fixtures.ts. One-time cleanup of the
+existing dirs is safe while no suite is running. ~~Suggested~~ Done: both helpers switched, plus the guard test `every test file creates temp dirs through tmpdir(), never a raw mkdtempSync under os.tmpdir()` in test/repo-fixtures.test.ts.
 
 ### The operator request markers a running fleet consumes were written non-atomically, so the corrupt-marker fallback the wake consumer just learned fired early: `tumwater wake --in 2h` wrote its marker with a plain `fs.writeFileSync` (json-files.ts's `writeJsonFile`), so a poll reading the marker mid-write saw a torn file, which `readJsonFile` folds to null — and consumeWakeRequest's same-day corrupt-marker fix (b3314cd5) maps a null marker on an existing file to EVERY runner with `notBeforeMs` undefined, firing the scheduled wake immediately instead of at the deadline; reset-counters, restart, and abort markers shared the same torn-write window (repro: the new test `operator request markers are written atomically (tmp+rename, never a torn write)` in test/operator-intent.test.ts — it spies fs.renameSync, and on the pre-fix writer no rename ever lands the marker; the torn read itself is a concurrency race with no deterministic single-process repro, which is why the b3314cd5 RISK note asserted "markers are written atomically via writeTextAtomic" without a check behind it) (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's corrupt-wake-marker commit b3314cd5, fixed 2026-10-06 by bugfix loop)
 - **Validation gap:** no-repro — the harm is a torn read in a write/read race, not deterministically reproducible in-process, so the fix is pinned by observing the write path itself: the marker must land via fs.rename (writeTextAtomic), which the direct writeFileSync never does.

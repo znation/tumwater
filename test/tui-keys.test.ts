@@ -6,7 +6,6 @@
  * and flash expiry. The full-TUI key behavior keeps its coverage in tui-operator-keys.test.ts
  * and tui.test.ts through the same dispatch. */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,9 +13,10 @@ import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui-keys.js";
 import { abortRequestPath } from "../src/paths.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
+import { tmpdir } from "./repo-fixtures.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
-const makeRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), "tui-keys-"));
+const makeRoot = (): string => tmpdir("tui-keys-");
 
 /** A handler wired to a controllable clock, a quit recorder, and a render-request recorder. */
 function makeKeys(root: string, now: () => number) {
