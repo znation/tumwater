@@ -29,7 +29,7 @@ import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
-import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles.js";
+import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator-intent.js";
 
 /** One traversal of the queues behind `prompt --list`'s render: with `--role`, that loop's

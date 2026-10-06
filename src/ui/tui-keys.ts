@@ -15,7 +15,7 @@ import {
 } from "../operator-intent.js";
 import { errorMessage } from "../text.js";
 import { usdCap } from "../format.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import {
   applyKey,
   parseBudgetInput,

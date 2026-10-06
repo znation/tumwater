@@ -8,7 +8,7 @@ import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs
 // Before any dist/ import below: a tree without a build would otherwise die with a raw
 // ERR_MODULE_NOT_FOUND stack instead of the fix. This script's whole subject is comparing
 // builds, so a missing build is not an edge case — name it and the command that produces one.
-requireDistBuild("../dist/src/roles.js", "diff-check compares compiled builds");
+requireDistBuild("../dist/src/roles/roles.js", "diff-check compares compiled builds");
 
 // Same guard for the baseline side: on a fresh checkout (or after a /tmp cleanup) no baseline
 // has ever been staged, and the import below would die with a raw ERR_MODULE_NOT_FOUND stack

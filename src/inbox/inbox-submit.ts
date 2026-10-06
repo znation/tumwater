@@ -8,7 +8,7 @@ import {
 } from "./inbox-attachments.js";
 import { logEvent } from "../events/events.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "../readme.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —

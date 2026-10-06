@@ -7,7 +7,7 @@ independently landable and cross-references this document.
 ## The problem
 
 The fleet's loop set is fixed: the twelve catalog roles plus the director, hardcoded in
-src/roles.ts and changeable only by hand-editing tumwater.json outside the harness. A user who
+src/roles/roles.ts and changeable only by hand-editing tumwater.json outside the harness. A user who
 wants an extra standing task (e.g. "keep the README examples current") has no first-class way
 to give it a loop of its own.
 

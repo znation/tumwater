@@ -6,7 +6,7 @@ import { cmdPrompt } from "../src/prompt/prompt-commands.js";
 import { enqueueRolePrompt, inboxSize, dequeuePrompt, dequeueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { notBeforeMs } from "../src/prompt/prompt-not-before.js";
-import { DIRECTOR_ROLE } from "../src/roles.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";

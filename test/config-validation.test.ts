@@ -5,7 +5,7 @@ import path from "node:path";
 import { defaultConfig, loadConfig, loadConfigSafe, saveConfig } from "../src/config/config.js";
 import { show } from "../src/config/config-field-checks.js";
 import { validateConfig } from "../src/config/config-validation.js";
-import { allRoleIds } from "../src/roles.js";
+import { allRoleIds } from "../src/roles/roles.js";
 import { errorMessage } from "../src/text.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 

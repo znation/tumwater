@@ -24,7 +24,7 @@ export function requireDistBuild(relModule, purpose) {
 /** Every role the catalog knows, straight from the compiled harness. A hardcoded copy once
  * drifted — it silently omitted `telemetry` — so both scripts track the real role set instead. */
 export async function distRoleIds() {
-  return (await import("../dist/src/roles.js")).allRoleIds();
+  return (await import("../dist/src/roles/roles.js")).allRoleIds();
 }
 
 // A realistic raw log tail: session start + a few assistant turns with usage.

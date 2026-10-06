@@ -11,7 +11,7 @@ import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { dequeuePrompt, enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
-import { DIRECTOR_ROLE } from "../src/roles.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { bufferedBodyBytes, MAX_BODY_BYTES } from "../src/http-body.js";
 import { readBuildInfo, type BuildInfo } from "../src/build-info.js";
 import { startGui } from "../src/gui/gui-server.js";

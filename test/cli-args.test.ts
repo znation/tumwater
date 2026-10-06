@@ -17,7 +17,7 @@ import {
   RUN_FLAG_SPECS,
   WAKE_IN_FLAG,
 } from "../src/cli/cli-flag-specs.js";
-import { allRoleIds } from "../src/roles.js";
+import { allRoleIds } from "../src/roles/roles.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 
 // cli/cli-args.ts's shared parsers, driven in-process (like test/cli-command-args.test.ts

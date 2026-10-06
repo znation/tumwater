@@ -25,7 +25,7 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Design
 
-- **Role** (`src/roles.ts`): id `steward`, title "project steward", appended to the end of the
+- **Role** (`src/roles/roles.ts`): id `steward`, title "project steward", appended to the end of the
   `ROLES` array — after `improve`. The director is not a catalog entry (it is appended separately
   by `allRoleIds()`), so last-in-`ROLES` is exactly the lowest tie-break priority: it should never
   outrank shipping work. Find prompt,
@@ -79,7 +79,7 @@ them, and nothing compares the codebase to the project's reason for existing.
 
 ## Files touched
 
-`src/roles.ts`, `src/types.ts`, `src/config.ts` (RoleConfig field, ROLE_ENTRY_KEYS + validation,
+`src/roles/roles.ts`, `src/types.ts`, `src/config.ts` (RoleConfig field, ROLE_ENTRY_KEYS + validation,
 `configForRole` fallback, defaultConfig steward entry), `src/orchestrator.ts` (`isEligible`
 min-gap via configForRole) + `src/loop.ts` (resolve once in tick(); use in the changed/skipped/
 cut-off-resume branches), `test/steward.test.ts` (role prompt contract — curation move list,

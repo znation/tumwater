@@ -63,7 +63,7 @@ Design: plans/model-tiers.md ("Observability", "Doctor").
 to, and whether every declared model can run, before the fleet finds out the hard way.
 
 **Approach.**
-1. **Role rows:** `rolePayload` (src/role-view.ts) and src/status-data.ts expose `tier` beside
+1. **Role rows:** `rolePayload` (src/roles/role-view.ts) and src/status-data.ts expose `tier` beside
    the resolved model, and both dashboards show it.
 2. **`budget_fallback`** gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its
    existing `provider` / `model` (the default tier's). The header badge keeps today's
@@ -75,7 +75,7 @@ to, and whether every declared model can run, before the fleet finds out the har
    they are oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the
    inherited environment — and points at `model.small` / `model.strong`.
 
-**Files touched.** src/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
+**Files touched.** src/roles/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
 src/gates/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
 
 **Acceptance criteria.**
@@ -218,9 +218,9 @@ in part 5/8; until then a map `fallback` uses its `default` entry.)
 1. **src/config/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
    `fallback` become `string | Partial<Record<ModelTier, string>>`, where a string means
    `{ default: <string> }`. `fallback` map values may also be `"pause"` (consulted in part 5/8).
-2. **src/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
+2. **src/roles/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
    `small`, every other catalog role (director included) → `default`; user-defined loops
-   (src/roles.ts) → `default`.
+   (src/roles/roles.ts) → `default`.
 3. **src/config/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
    `default`'s, else none (pi's own default). `configForRole` resolves `roles.<id>.model` (a
    tier name → that tier, a selector → itself), else the role's catalog tier. `reviewConfig`
@@ -233,7 +233,7 @@ in part 5/8; until then a map `fallback` uses its `default` entry.)
    (the conflict resolver's, part 4/8), so the budget never reads n/a while a priced strong
    model can spend.
 
-**Files touched.** src/config/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config/config-views.ts,
+**Files touched.** src/config/config-schema.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/config/config-views.ts,
 src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
 
 **Acceptance criteria.**

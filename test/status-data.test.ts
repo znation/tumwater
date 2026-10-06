@@ -20,7 +20,7 @@ import { initProject } from "../src/init.js";
 import { mainSha, makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { ensureParentDir } from "../src/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { allRoleIds } from "../src/roles.js";
+import { allRoleIds } from "../src/roles/roles.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { withCountedReads } from "./fs-faults.js";
 import { writeEvents, writeOrchestratorMarker } from "./log-fixtures.js";

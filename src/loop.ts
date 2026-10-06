@@ -3,7 +3,7 @@ import type { TickOutcome, TickResult } from "./tick/tick-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "./pi/pi.js";
 import type { PiRunResult } from "./pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DIRECTOR_ROLE } from "./roles/roles.js";
 import { setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events/events.js";

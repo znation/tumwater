@@ -94,7 +94,7 @@ on compression, which is the same deliberate lossiness the existing compression 
 
 1. **`bugfix` records, never promotes.** Writing the line is part of closing an entry; it never
    spends extra tool calls investigating the gap, and it never writes to PLANS.md.
-2. **The vocabulary is closed and lives in one place** — `src/roles.ts`, embedded in both the
+2. **The vocabulary is closed and lives in one place** — `src/roles/roles.ts`, embedded in both the
    `bugfix` find text and the `steward` compression rule from a single exported constant, so the
    two cannot drift. A gap that fits no tag uses the closest one and says so in the free text;
    adding a tag is a deliberate edit, not a role's improvisation.
@@ -106,7 +106,7 @@ on compression, which is the same deliberate lossiness the existing compression 
 
 ## Shape
 
-- `src/roles.ts`
+- `src/roles/roles.ts`
   - an exported `VALIDATION_GAP_TAGS` (readonly array of the seven tag strings) and a shared
     `VALIDATION_GAP_GUIDANCE` fragment rendering each tag with its meaning (the same define-once
     pattern as `DECOMPOSITION_GUIDANCE` and `PLAN_SIZING`, which two role texts already embed).
@@ -159,7 +159,7 @@ load-bearing claim verified on this tree, with the corrections below pinned in p
 absence re-confirmed: no `Validation gap`, `VALIDATION_GAP`, or `gap:` string exists anywhere in
 src/ or test/ (`grep -rn 'Validation gap\|VALIDATION_GAP\|gap: ' src/ test/` is empty).
 
-**Verified as written.** src/roles.ts is 326 lines and import-free. `DECOMPOSITION_GUIDANCE`
+**Verified as written.** src/roles/roles.ts is 326 lines and import-free. `DECOMPOSITION_GUIDANCE`
 (line 17) and `PLAN_SIZING` (line 26) are exported template literals, and the two role texts embed
 them by interpolation — the define-once pattern this plan copies: `bugfix.find` (role at line 75)
 embeds `${DECOMPOSITION_GUIDANCE}` at line 81, and `plan.find` embeds `${PLAN_SIZING}` /
@@ -184,7 +184,7 @@ commit-message.ts:84) and attaches to the commit, not the bug.
 2. **The constants are exported and the tag list is one source of truth.** Pinned:
    `export const VALIDATION_GAP_TAGS` (a `readonly` array of the seven tag strings) and
    `export const VALIDATION_GAP_GUIDANCE` (a template literal rendering each tag with its
-   meaning), both from src/roles.ts — the same export shape as `DECOMPOSITION_GUIDANCE`. The
+   meaning), both from src/roles/roles.ts — the same export shape as `DECOMPOSITION_GUIDANCE`. The
    guidance hardcodes the table and a test asserts every `VALIDATION_GAP_TAGS` entry appears in
    it, which is the existing constant-vs-copy guard.
 3. **The steward's exact one-line form changes, and an existing test pins the old one.**
@@ -197,7 +197,7 @@ commit-message.ts:84) and attaches to the commit, not the bug.
    `- <symptom headline> (<date clause>; gap: <tag>)` (and plain `(<date clause>)` when both are
    absent). The line-711 assertion is updated in place and a sibling asserts the suffix rule.
 4. **The steward's move list gains the promotion as a fifth move.** The first paragraph's move
-   list (src/roles.ts:213–216) currently names four moves (prune plans, flag drift, tighten a
+   list (src/roles/roles.ts:213–216) currently names four moves (prune plans, flag drift, tighten a
    principle, record a structural risk). Pinned: one clause is appended for "promote a recurring
    non-`none` gap tag (three or more retained Fixed entries) into a PLANS.md entry for the
    infrastructure that would retire it", and the Fixed paragraph (after the no-commit sentence at
@@ -214,7 +214,7 @@ commit-message.ts:84) and attaches to the commit, not the bug.
    touched; the `readme` loop updates the status entry after this lands, as it does for every
    planned feature.
 
-**Sizing.** Unchanged and still one run: src/roles.ts ~35 lines (two exported constants, one
+**Sizing.** Unchanged and still one run: src/roles/roles.ts ~35 lines (two exported constants, one
 fragment embedded in two places, one move-list clause), src/init.ts ~2, test/prompt.test.ts ~40
 (three assertions plus the one updated form), test/init.test.ts ~5. No source behavior changes, no
 new state, no new file. No design question remains open.

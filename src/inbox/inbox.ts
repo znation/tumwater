@@ -4,7 +4,7 @@ import { ensureParentDir, writeTextAtomic } from "../files.js";
 import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { roleInboxDir } from "../paths.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { truncate } from "../text.js";
 import { errCode } from "../errno.js";
 import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";

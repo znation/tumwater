@@ -9,7 +9,7 @@ import {
   allRoleIds,
   roleById,
   unknownRoleMessage,
-} from "../src/roles.js";
+} from "../src/roles/roles.js";
 
 // role-catalog.ts is the single source of truth for which loops exist (roles.ts re-exports it).
 // Its structural invariants are

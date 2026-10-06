@@ -22,7 +22,7 @@ import {
   statePath,
   worktreePath,
 } from "../src/paths.js";
-import { allRoleIds } from "../src/roles.js";
+import { allRoleIds } from "../src/roles/roles.js";
 
 /** Unit coverage for src/paths.ts — the single source of truth for where every piece of
  * harness runtime state lives. The functions are pure path builders (no I/O), so a fixed

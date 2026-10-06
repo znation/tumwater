@@ -14,7 +14,7 @@ import {
   rekeyFallbackBreaker,
 } from "../fallback-breaker.js";
 import { applyFallbackModel, fallbackPair } from "../config/config-views.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { FallbackModelConfig } from "../config/config-schema.js";
 import { logEvent } from "../events/events.js";
 import { fallbackModelFree } from "../pi/pi-models.js";

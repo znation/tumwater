@@ -1,5 +1,5 @@
 import path from "node:path";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DIRECTOR_ROLE } from "./roles/roles.js";
 
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";

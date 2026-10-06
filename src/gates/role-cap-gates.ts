@@ -28,7 +28,7 @@
 import type { LoopState } from "../loop-state.js";
 import { dailyCost } from "../budget.js";
 import { logEvent } from "../events/events.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 
 /** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
 type CapObservation = {

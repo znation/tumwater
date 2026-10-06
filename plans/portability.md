@@ -464,7 +464,7 @@ variant :318). `HarnessEvent["type"]` is src/types.ts:258–294 with the index s
 src/events/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
 exported (src/config-validation.ts:99) and already validates `customLoops` (name regex, collision,
 uniqueness, task cap) at :227–263. `isDirty` is `git status --porcelain` (src/git.ts:185) and
-`commitAll` is `git add -A` (src/git.ts:361); `DIRECTOR_ROLE` is src/roles.ts:11. `.gitignore`
+`commitAll` is `git add -A` (src/git.ts:361); `DIRECTOR_ROLE` is src/roles/roles.ts:11. `.gitignore`
 lists only `.tumwater/`, `node_modules/`, `dist/`, so `.tumwater-config-request.json` at the
 worktree root is NOT ignored — `git status` reports it and `git add -A` stages it.
 
@@ -533,7 +533,7 @@ the .tumwater directory or tumwater.json" is :85 and the resume variant :329 (we
 `validateConfig` is src/config-validation.ts:156 (was :99); the customLoops entry validation is
 :331–356; the orphaned `roles.<id>` check is :381–387 (was :273–278) — pin 2's real gap still
 exists exactly as described. `loadConfig` still seeds `merged.roles[c.name]` per custom loop
-(src/config.ts:107; was :98–99). `DIRECTOR_ROLE` is src/roles.ts:11; `commitAll` is still
+(src/config.ts:107; was :98–99). `DIRECTOR_ROLE` is src/roles/roles.ts:11; `commitAll` is still
 `git add -A` (src/git.ts) and `isDirty` still `git status --porcelain`. paths.ts still has no
 `configRequestPath` (`configPath` is :11). plans/user-defined-loops.md still carries both
 superseded bullets (:52 "commit → review gate → merge → live reload"; :53 the exemptPaths bullet).
@@ -1477,7 +1477,7 @@ only ever been pointed at repos it created itself.
 - src/init.ts — `--adopt` and automatic adoption; today's README-without-markers error becomes
   that path plus one informational line; `--dry-run`; the trimmed PRINCIPLES template.
 - src/cli/cli-args.ts — `parseInitArgs` gains `--adopt` and `--dry-run`.
-- src/roles.ts + src/prompt/prompt.ts — the readme role's instructions and the orientation rules name
+- src/roles/roles.ts + src/prompt/prompt.ts — the readme role's instructions and the orientation rules name
   "the project brief (`TUMWATER.md`, or `README.md` in repos tumwater created)" instead of
   README.md.
 - src/doctor/doctor.ts — report which file holds the brief.
@@ -1486,7 +1486,7 @@ only ever been pointed at repos it created itself.
   test/readme.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
-**Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli/cli-args.ts, src/roles.ts,
+**Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli/cli-args.ts, src/roles/roles.ts,
 src/prompt/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
@@ -1521,7 +1521,7 @@ no-`--file` path returns `args.join(" ")` at 135 — free-form prompt text. `src
 the initial prompt block in README.md"), and is embedded by BOTH `buildTickPrompt` (172) and
 `buildDirectorPrompt` (221); `TickPromptInput` is at 142, `buildTickPrompt` at 163, and
 `buildDirectorPrompt(userPrompt, initialPrompt, principles)` is the shape `loop.ts:154` calls.
-`src/roles.ts`: `readme.find` names README.md and the status markers at 108; `plan.find` says
+`src/roles/roles.ts`: `readme.find` names README.md and the status markers at 108; `plan.find` says
 "its initial prompt in README.md" at 94. `src/doctor/doctor.ts`: checks are an array in `runDoctor` (203)
 with `checkInit` at 207; `renderDoctor` pads the name column to 12 (222–224). Tests:
 `test/readme.test.ts` (78 lines, every case through a `writeReadme` helper that writes README.md),
@@ -1635,7 +1635,7 @@ Verified as written:
   `/First read README\.md in full/` — correction 2's byte-identical fallback
   (`briefFile(this.root) ?? "README.md"`) keeps it green; the file gains one adopted-brief
   variant whose prompt names TUMWATER.md instead.
-- `src/roles.ts` (412 lines): `plan.find` names "its initial prompt in README.md" at :135;
+- `src/roles/roles.ts` (412 lines): `plan.find` names "its initial prompt in README.md" at :135;
   `readme.find` :151 names README.md and the status markers. Correction 2's rewrite of both holds.
 - `src/loop.ts` (818 lines): `readInitialPrompt(this.root)` :160 and the
   `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :169 — correction 2's
@@ -1673,7 +1673,7 @@ Verified as written:
 - `src/prompt/prompt.ts` (442→473): `COMMON_RULES` :53 still names README.md at :57 and :86 — both pins
   identical to the 09-23 audit; `TickPromptInput` :144; `buildTickPrompt` :169 embedding
   COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
-- `src/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
+- `src/roles/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
 - `test/readme.test.ts` (94): the `writeReadme` helper :14 — unchanged.
 - Doctor's name column is still `padEnd(12)` (src/doctor/doctor.ts:317), so correction 8's "brief" name
   fits.

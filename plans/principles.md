@@ -39,7 +39,7 @@ constraints are scattered across `COMMON_RULES` in src/prompt/prompt.ts and READ
 
 ## Files touched
 
-`src/init.ts`, `src/prompt/prompt.ts`, `src/roles.ts` (readme role: keep PRINCIPLES.md out of its
+`src/init.ts`, `src/prompt/prompt.ts`, `src/roles/roles.ts` (readme role: keep PRINCIPLES.md out of its
 status-section remit), `test/init.test.ts`, `test/prompt.test.ts`, `PRINCIPLES.md` (this repo),
 README ("How it works" mention).
 

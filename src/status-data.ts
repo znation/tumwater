@@ -7,7 +7,7 @@ import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "./inbox/inbox.js";
 import { quietHoursStatus, roleQuietHold } from "./quiet-hours.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DIRECTOR_ROLE } from "./roles/roles.js";
 import {
   orchestratorAlive,
   pausedRoles,

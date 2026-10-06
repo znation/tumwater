@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
-import { allRoleIds } from "../roles.js";
+import { allRoleIds } from "../roles/roles.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text.js";

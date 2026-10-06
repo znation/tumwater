@@ -17,7 +17,7 @@ import {
 import { freshLoopState } from "../src/loop-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
-import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles.js";
+import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget.js";
 
 /** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,

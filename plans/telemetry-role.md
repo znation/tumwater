@@ -10,9 +10,9 @@ document.
 
 The fleet can read its own source and cannot watch itself run.
 
-Every role prompt in `src/roles.ts` searches the *tree*: `git log --stat`, `wc -l` over sources,
+Every role prompt in `src/roles/roles.ts` searches the *tree*: `git log --stat`, `wc -l` over sources,
 `grep -rn` for a pattern, ranged reads. Not one of them reads `.tumwater/log/events.jsonl`, the
-per-role pi transcripts, or `tumwater logs` — `grep -n "events.jsonl\|tumwater logs" src/roles.ts
+per-role pi transcripts, or `tumwater logs` — `grep -n "events.jsonl\|tumwater logs" src/roles/roles.ts
 src/prompt/prompt.ts` returns nothing. The harness emits a dense, structured, append-only record of
 everything it does and no agent has ever opened it.
 
@@ -128,7 +128,7 @@ depends on 1/2 of that series for the scheduling half).
   line). Invariant 3's one reader is preserved and both the usage report and the digest share it.
 - `src/cli.ts` — `tumwater report --failures [--days N]`, sharing `REPORT_DEFAULT_DAYS` /
   `REPORT_MAX_DAYS` with the usage report so both surfaces bound the window identically.
-- `src/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are observers)
+- `src/roles/roles.ts` — the `telemetry` role, placed after `qa` in catalog order (both are observers)
   and before `improve`; `OBSERVER_ROLES` gains `"telemetry"`. `DEFERRABLE_ROLES` and
   `BASELINE_BLOCKED_ROLES` already exclude it by construction — no code change — but
   `test/roles.test.ts`'s `exempt` set and observer message must be updated.
@@ -241,7 +241,7 @@ The audit found one design defect and pinned five seams; the Shape bullets above
 place. Verified anchors: `TickPromptInput` at src/prompt/prompt.ts:142 and
 `buildTickPrompt` at :163; `tickPrompt()` at src/loop.ts:144, which reads `readPrinciples` from
 core principles.ts (so a core digest function is the only clean injection); the `qa` catalog entry at
-src/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles.ts:274;
+src/roles/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles/roles.ts:274;
 `DEFERRABLE_ROLES` at :282 and `BASELINE_BLOCKED_ROLES` at :312; `roles.qa`'s clock at
 src/config.ts:21; the observer no-backoff arm at src/state.ts:217; `"*.md"` in
 `review.exemptPaths` at src/config.ts:61; the exact-set catalog assertion and `exempt` set at

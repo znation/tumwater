@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { DIRECTOR_ROLE } from "../src/roles.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePrompts, takeQueuedFile } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/pending-prompt.js";
 import type { LoopState } from "../src/loop-state.js";

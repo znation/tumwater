@@ -4,7 +4,7 @@ import {
   TIER_MAP_KEYS,
   THINKING_LEVELS,
 } from "./config-schema.js";
-import { allRoleIds } from "../roles.js";
+import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../json-object.js";
 import { truncate, isNonBlankString } from "../text.js";
 

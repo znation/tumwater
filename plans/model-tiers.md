@@ -105,7 +105,7 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 | Conflict resolver | strong | src/landing/landing-merge.ts `resolveConflict` (today: the authoring loop's own config) |
 | SUMMARY follow-up, transient retry, resume-on-restart | the tick's own model | continuations stay on the session's model; switching would lose the prompt cache |
 
-- Catalog roles carry their tier as a new `tier` field in src/role-catalog.ts; user-defined loops
+- Catalog roles carry their tier as a new `tier` field in src/roles/role-catalog.ts; user-defined loops
   are `default`.
 - Why these: **strong** where an error costs the most and runs are rare or gate everything (the
   reviewer judges every code change; the plan role steers many feature ticks; the resolver edits
@@ -179,7 +179,7 @@ This keeps today's behavior exactly: a single `fallbackModel` F reads as `fallba
 - `tick_start` and `review_start`, plus the conflict resolver's run, record the model actually
   used (`model: "provider/id:thinking"`). Today they carry only the tick number or head, so no
   model choice can be evaluated from the event log.
-- Role rows (src/role-view.ts, src/status-data.ts, both dashboards) show each role's tier and
+- Role rows (src/roles/role-view.ts, src/status-data.ts, both dashboards) show each role's tier and
   resolved model.
 - `budget_fallback` carries the per-tier resolution, e.g. `tiers: { default:
   "omlx/Qwen3.8-27B-MLX-oQ4e-mtp", strong: "omlx/Qwen3.8-27B-MLX-oQ4e-mtp (from default)" }`,
@@ -234,12 +234,12 @@ Each lands and is useful on its own:
 src/config-schema.ts (types, key lists), src/config-validation.ts and src/config-field-checks.ts
 (shapes, legacy conflicts), src/config.ts (defaults, overlay of string-or-map), a new
 src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
-`fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/role-catalog.ts (`tier`),
+`fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts (`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
 src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet/fleet-hold.ts,
-src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
+src/fleet/fleet-polls.ts, src/doctor/doctor-checks.ts, src/roles/role-view.ts, src/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.

@@ -17,7 +17,7 @@ import {
   DIRECTOR_ROLE,
   roleTier,
   yieldScaledRole,
-} from "./roles.js";
+} from "./roles/roles.js";
 import { yieldMultiplier } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */

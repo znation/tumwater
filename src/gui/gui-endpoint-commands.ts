@@ -16,7 +16,7 @@ import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attac
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd } from "../config/config-write.js";
 import { pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { PAUSE_FOR_MAX_MS, requestAbort, requestRestart, requestWake, submitRolePromptAndWake } from "../operator-intent.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "../http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";

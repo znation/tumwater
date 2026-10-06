@@ -17,8 +17,8 @@ import { backlogPayload } from "../backlog/backlog.js";
 import { renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
-import { rolePayload } from "../role-view.js";
-import { renderRoleMarkdown } from "../role-render.js";
+import { rolePayload } from "../roles/role-view.js";
+import { renderRoleMarkdown } from "../roles/role-render.js";
 import { answerQuestion, sayAnswered, sayQuestionList } from "../question-commands.js";
 
 /** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo

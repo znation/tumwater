@@ -1,4 +1,4 @@
-import { BASELINE_BLOCKED_ROLES } from "./roles.js";
+import { BASELINE_BLOCKED_ROLES } from "./roles/roles.js";
 import { isCustomRole, liveConfig } from "./config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "./build-check/build-check-detect.js";
 import { failureHeadline } from "./build-check/build-check-report.js";

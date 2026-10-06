@@ -10,7 +10,7 @@ import type { OnceRound } from "./once-round.js";
 import type { WorkLandedCache } from "./work-landed-cache.js";
 import type { BudgetGate } from "./budget.js";
 import { deferTick, isEligible } from "./scheduling.js";
-import { BUGFIX_ROLE, DIRECTOR_ROLE } from "./roles.js";
+import { BUGFIX_ROLE, DIRECTOR_ROLE } from "./roles/roles.js";
 import { inboxSize } from "./inbox/inbox.js";
 import { queuedLandingFiles } from "./landing/landing-queue.js";
 import { logEvent } from "./events/events.js";

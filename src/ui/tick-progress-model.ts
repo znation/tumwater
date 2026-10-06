@@ -1,5 +1,5 @@
 import type { LoopState } from "../loop-state.js";
-import { yieldScaledRole } from "../roles.js";
+import { yieldScaledRole } from "../roles/roles.js";
 import { yieldMultiplier } from "../backoff.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "../progress-data.js";
 import { compactTokens } from "../format.js";

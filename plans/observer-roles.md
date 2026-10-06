@@ -76,7 +76,7 @@ Name the category the scheduler is missing: an **observer role**, whose product 
 rather than a commit, and for which `no_change` means "checked, all well" rather than "found
 nothing to do".
 
-- `OBSERVER_ROLES` in `src/roles.ts`: `qa` today, plus `telemetry` when it lands.
+- `OBSERVER_ROLES` in `src/roles/roles.ts`: `qa` today, plus `telemetry` when it lands.
 - **Observers do not climb the idle ladder.** A `no_change` tick schedules at the role's plain
   `minTickIntervalSeconds`. The *error* ladder still applies in full — a broken toolchain must
   still park an observer, exactly as it parks everything else, and that is what `ERROR_BACKOFF`
@@ -139,7 +139,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
 
 ## Shape
 
-- `src/roles.ts` — `OBSERVER_ROLES` (exported); `qa` removed from `DEFERRABLE_ROLES` and the
+- `src/roles/roles.ts` — `OBSERVER_ROLES` (exported); `qa` removed from `DEFERRABLE_ROLES` and the
   set's doc comment updated (it currently says "exactly the nine deferrable built-ins"); the `qa`
   find text gains the `FLOW:` contract line (2/2).
 - `src/state.ts` — `applyTickOutcome` takes the observer predicate into account in its final
@@ -238,14 +238,14 @@ confirmed absent: `grep -rn OBSERVER src/ test/` is empty, and `qa` is still in
 
 Verified on this tree:
 
-- `src/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it reading
+- `src/roles/roles.ts` — `DEFERRABLE_ROLES` at line 272 (`qa` at 279), the doc comment above it reading
   "exactly the nine deferrable built-ins"; `WORK_ROLES` at 268; `BASELINE_BLOCKED_ROLES` at 300
   (does not contain `qa`); the `qa` role at 185, whose find text already tells the model to
   "prefer a flow not recently exercised, as far as BUGS.md filings and Verified notes show" —
   exactly the blind lookup 2/2 replaces.
 - `src/state.ts` — `applyTickOutcome` at 185; its final `else` (the idle branch) at 268–270 is
   `nextBackoffSeconds(s.backoffSeconds, cfg.idleBackoff)` then `nextRunAt = now + backoff`, which
-  is what observers must bypass. `state.ts` already imports from `roles.js` (`DIRECTOR_ROLE`, line
+  is what observers must bypass. `state.ts` already imports from `roles/roles.js` (`DIRECTOR_ROLE`, line
   4), so `OBSERVER_ROLES` joins that import with no new edge and no cycle.
 - `src/scheduling.ts` — `deferTick` at 121 now takes a fifth argument, `now: number` (`704139c`),
   and ANDs `!deferralExpired(s, now)`; `DEFER_MAX_MS` (98) and `deferralExpired` (105) are the
@@ -274,13 +274,13 @@ Corrections:
    plan's scheduling shape is otherwise unchanged.
 4. **The `DEFERRABLE_ROLES` doc comment must move with the set.** It says "exactly the nine
    deferrable built-ins" and lists the roles; removing `qa` makes it eight. One-line edit in
-   `src/roles.ts`.
+   `src/roles/roles.ts`.
 5. **The observer predicate is scoped to the final `else` only.** The `user_aborted` arm also
    schedules on the idle ladder, but it is a deliberate operator stop rather than a passing
    check; it is left unchanged for every role. This closes the only place a literal reading of
    "observers do not climb the idle ladder" could over-reach.
 
-Sizing unchanged: `src/roles.ts` ~6 lines (the set, its comment, the export); `src/state.ts` ~4
+Sizing unchanged: `src/roles/roles.ts` ~6 lines (the set, its comment, the export); `src/state.ts` ~4
 (the observer branch in the final `else`); tests ~25 across `test/state.test.ts` and
 `test/orchestrator.test.ts`. One run. No design question remains open.
 
@@ -312,7 +312,7 @@ Verified on this tree:
   `writeJsonAtomic` creates the parent, so no directory setup is needed.
 - `src/json-files.ts` — `readJsonFile<T>` at 15 returns null on missing/torn; `writeJsonAtomic`
   at 43 is the per-pid tmp+rename writer. Both are what invariant 5 needs.
-- `src/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not recently
+- `src/roles/roles.ts` — the `qa` role at 185; its find text currently says "prefer a flow not recently
   exercised, as far as BUGS.md filings and Verified notes show" — the blind lookup this replaces.
 - plans/qa-role.md — line 53 fixes the ordered flow universe
   `init → status → logs → prompt → reset-counters → gui → tui → run`, which `QA_FLOWS` mirrors;
@@ -344,6 +344,6 @@ Pinned (open questions closed):
 
 Sizing: `src/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
 `src/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
-`src/loop.ts` ~8; `src/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
+`src/loop.ts` ~8; `src/roles/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
 `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
 One run. No design question remains open.

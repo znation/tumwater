@@ -11,7 +11,7 @@ import {
   readInitialPrompt,
 } from "../src/readme.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
-import { VALIDATION_GAP_TAGS } from "../src/role-guidance.js";
+import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { assertClean, makeRepo, sh, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
 

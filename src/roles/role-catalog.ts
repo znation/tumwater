@@ -14,8 +14,8 @@ import {
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TALLY,
 } from "./role-guidance.js";
-import { NOTHING_TO_DO } from "./reply-contract.js";
-import type { ModelTier } from "./config/config-schema.js";
+import { NOTHING_TO_DO } from "../reply-contract.js";
+import type { ModelTier } from "../config/config-schema.js";
 
 export interface Role {
   /** The loop's unique identifier — the .tumwater/state/<id>.json state file's name, the

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
-import { roleById } from "../src/roles.js";
+import { roleById } from "../src/roles/roles.js";
 import {
   DECOMPOSITION_GUIDANCE,
   NEEDS_REVIEW_NOTE,
@@ -12,11 +12,11 @@ import {
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
-} from "../src/role-guidance.js";
+} from "../src/roles/role-guidance.js";
 import { oneLine } from "./oracles.js";
 import { sh, tmpdir } from "./repo-fixtures.js";
 
-// Contract for src/role-guidance.ts's shared prompt constants (plans/repair-traces.md and
+// Contract for src/roles/role-guidance.ts's shared prompt constants (plans/repair-traces.md and
 // friends): the decomposition, validation-gap, needs-review, plan-sizing, and search guidance
 // each live in one exported constant that prompt.ts and role-catalog.ts embed verbatim, so a reworded
 // copy or a dropped clause fails here instead of drifting silently into every role's find text.

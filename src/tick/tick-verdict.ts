@@ -10,7 +10,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { FlowResult } from "../reply-contract.js";
 import type { PendingPrompt } from "../pending-prompt.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty } from "../git.js";
 import { applyConfigRequest } from "../config/config-write.js";
 import { diagnoseNoChange } from "../no-change.js";

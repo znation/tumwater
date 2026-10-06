@@ -1,5 +1,5 @@
-// Unit coverage for src/role-view.ts (the collector behind `tumwater role <id>`) and
-// src/role-render.ts (its Markdown renderer). The collector reads only persisted state —
+// Unit coverage for src/roles/role-view.ts (the collector behind `tumwater role <id>`) and
+// src/roles/role-render.ts (its Markdown renderer). The collector reads only persisted state —
 // tumwater.json, the loop's state file, the queue directories, the pause marker — so every
 // test runs against a bare fixture dir with no fleet, which is also the degradation claim
 // under test: a missing read yields its empty answer, never a throw.
@@ -8,8 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { rolePayload } from "../src/role-view.js";
-import { renderRoleMarkdown } from "../src/role-render.js";
+import { rolePayload } from "../src/roles/role-view.js";
+import { renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath } from "../src/paths.js";
 import { readmeTemplate } from "../src/readme.js";

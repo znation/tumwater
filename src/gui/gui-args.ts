@@ -10,7 +10,7 @@
 import { knownRoleIdsCached } from "../config/config.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
-import { DIRECTOR_ROLE } from "../roles.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text.js";
 import { typoSuffix } from "../suggest.js";
 import { sendJson } from "../http-body.js";

@@ -11,7 +11,7 @@ import path from "node:path";
 
 import { defaultConfig } from "../src/config/config.js";
 import { recordDailyCost } from "../src/budget.js";
-import { DIRECTOR_ROLE } from "../src/roles.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";

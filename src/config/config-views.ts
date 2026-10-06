@@ -8,7 +8,7 @@ import { MODEL_TIERS } from "./config-schema.js";
 import { parseModelSelector } from "../model-selector.js";
 import type { ModelSelector } from "../model-selector.js";
 import { isJsonObject } from "../json-object.js";
-import { roleById } from "../roles.js";
+import { roleById } from "../roles/roles.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to

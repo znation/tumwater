@@ -7,7 +7,7 @@ import {
   type FallbackBreakerPolicy,
   fallbackProbeDue,
 } from "./fallback-breaker.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import { DIRECTOR_ROLE } from "./roles/roles.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs, plannedPlans } from "./backlog/backlog.js";
