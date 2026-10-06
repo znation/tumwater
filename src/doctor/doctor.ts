@@ -17,6 +17,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkTierModels,
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doctor-backlog.js";
@@ -58,6 +59,7 @@ export async function runDoctor(
     { name: "init", ...checkInit(root) },
     { name: "brief", ...checkBrief(root) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
+    { name: "tier models", ...(await checkTierModels(root)) },
     { name: "pi binary", ...checkAgentBinary(root, pathEnv) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "merge lock", ...checkMergeLock(root) },

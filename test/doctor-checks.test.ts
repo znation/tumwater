@@ -14,7 +14,9 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
+  checkTierModels,
 } from "../src/doctor/doctor-checks.js";
+import { piProviderAuth } from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
@@ -23,6 +25,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";
 import { backdate } from "./backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
+import { writeScript } from "./fake-commands.js";
 
 // Unit coverage for the pre-flight environment checks (src/doctor/doctor-checks.ts): every check's
 // ok/fail/warn branches. The binary checks take an explicit PATH so the missing branch is
@@ -557,3 +560,145 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   assert.match(healthy.detail, /template drift/);
 });
 
+
+// --- checkTierModels (plans/model-tiers.md "Doctor", part 7c/8) ---
+
+// Every pair the config can put on a seam is checked once: the `auth` stub records which
+// providers were probed so a config naming the same provider through several surfaces
+// (top-level tiers, a role override, the reviewer) probes it a single time.
+test("checkTierModels verifies declared tier models and probes each provider once", async () => {
+  const models = writeModels();
+  const probed: string[] = [];
+  const root = readyRepo();
+  writeConfig(root, {
+    model: { small: "local/free-model", default: "paid/gpt-x" },
+    review: { enabled: true },
+  });
+  const outcome = await checkTierModels(root, models, async (p) => {
+    probed.push(p);
+    return "ready";
+  });
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /2 declared models resolve/);
+  assert.match(outcome.detail, /all providers local, paid report ready/);
+  assert.deepEqual(probed.sort(), ["local", "paid"]);
+
+  // A tier with no entry of its own resolves to default's model, and the reviewer with no
+  // override runs there too — the same pair, checked once.
+
+  // With no top-level model the seams all use pi's own default: nothing to check.
+  const none = readyRepo();
+  assert.deepEqual(await checkTierModels(none, models, async () => "ready"), {
+    level: "ok",
+    detail: "no models declared — every seam uses pi's own default",
+  });
+});
+
+test("checkTierModels fails a pair pi cannot resolve and warns on an unready provider", async () => {
+  const models = writeModels();
+
+  // A typo'd model id fails: a strong tier pi cannot resolve would fail every review.
+  const typoRoot = readyRepo();
+  writeConfig(typoRoot, { model: "paid/no-such-model" });
+  const typo = await checkTierModels(typoRoot, models, async () => "ready");
+  assert.equal(typo.level, "fail");
+  assert.match(typo.detail, /paid\/no-such-model does not resolve/);
+
+  // A provider pi has never heard of fails too.
+  const unknownRoot = readyRepo();
+  writeConfig(unknownRoot, { model: "nowhere/mystery" });
+  const unknownProvider = await checkTierModels(unknownRoot, models, async () => "ready");
+  assert.equal(unknownProvider.level, "fail");
+  assert.match(unknownProvider.detail, /provider nowhere is not in pi's definitions/);
+
+  // Credentials are a separate question from resolution: a resolvable model on a provider
+  // without credentials warns, so a config edit and a re-login are distinguishable.
+  const authRoot = readyRepo();
+  writeConfig(authRoot, { model: "paid/gpt-x" });
+  const notReady = await checkTierModels(authRoot, models, async () => "not-ready");
+  assert.equal(notReady.level, "warn");
+  assert.match(notReady.detail, /provider paid reports not ready — check its credentials/);
+
+  // A probe that could not run is unknown, never conflated with not-ready.
+  const unknownAuth = await checkTierModels(authRoot, models, async () => "unknown");
+  assert.equal(unknownAuth.level, "warn");
+  assert.match(unknownAuth.detail, /could not verify provider paid/);
+
+  // A role override naming a selector is one of the declared pairs.
+  const roleRoot = readyRepo();
+  writeConfig(roleRoot, { roles: { qa: { model: "paid/no-such-qa-model" } } });
+  const roleModel = await checkTierModels(roleRoot, models, async () => "ready");
+  assert.equal(roleModel.level, "fail");
+  assert.match(roleModel.detail, /paid\/no-such-qa-model does not resolve/);
+});
+
+test("checkTierModels degrades to a warning when the definitions file is unreadable", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "paid/gpt-x" });
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => "ready");
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /cannot check — could not read pi's model definitions/);
+});
+
+test("checkTierModels reports set PI_*_MODEL variables and points at the tier keys", async () => {
+  const models = writeModels();
+  const root = readyRepo();
+
+  // Set: the note appends and the level warns (a warn never touches the exit code).
+  const withVar = await checkTierModels(root, models, async () => "ready", { PI_SMOL_MODEL: "x" });
+  assert.equal(withVar.level, "warn");
+  assert.match(withVar.detail, /PI_SMOL_MODEL is set: tumwater does not read it/);
+  assert.match(withVar.detail, /model\.small \/ model\.strong/);
+
+  // Several at once are listed together.
+  const withBoth = await checkTierModels(root, models, async () => "ready", {
+    PI_SLOW_MODEL: "x",
+    PI_PLAN_MODEL: "y",
+  });
+  assert.equal(withBoth.level, "warn");
+  assert.match(withBoth.detail, /PI_SLOW_MODEL and PI_PLAN_MODEL are set: tumwater does not read them/);
+
+  // Unset: no note anywhere.
+  const without = await checkTierModels(root, models, async () => "ready", {});
+  assert.equal(without.level, "ok");
+  assert.ok(!without.detail.includes("PI_"), `no PI note when unset: ${without.detail}`);
+
+  // A fail outranks the note's warn; the note still travels with the detail.
+  writeConfig(root, { model: "paid/missing" });
+  const failWithNote = await checkTierModels(root, models, async () => "ready", { PI_SMOL_MODEL: "x" });
+  assert.equal(failWithNote.level, "fail");
+  assert.match(failWithNote.detail, /does not resolve .*PI_SMOL_MODEL is set/);
+
+  // The empty-string form counts as unset: an exported-but-empty variable is no signal.
+  writeConfig(root, {}); // back to the clean config: no declared pairs, nothing to fail on
+  const emptyVar = await checkTierModels(root, models, async () => "ready", { PI_SMOL_MODEL: "" });
+  assert.equal(emptyVar.level, "ok");
+});
+
+test("checkTierModels cannot run on an invalid config and says so without failing", async () => {
+  const root = readyRepo();
+  writeConfig(root, { bogusKey: 1 });
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent.json"), async () => "ready");
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /cannot check — invalid tumwater\.json/);
+});
+
+// The default probe runs the resolved agent binary's own auth check; pinned against a fake
+// pi on PATH (never a real model) for each verdict shape.
+test("piProviderAuth reads ready out of the agent binary's auth check and never throws", async () => {
+  const binDir = tmpdir("doctor-auth-bins-");
+  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":true}\'');
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "ready");
+
+  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":false}\'');
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "not-ready");
+
+  writeScript(path.join(binDir, "pi"), "echo not-json");
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
+
+  writeScript(path.join(binDir, "pi"), "exit 3");
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
+
+  // A binary that does not exist is unknown, not a thrown error.
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", tmpdir("doctor-empty-bins-")), "unknown");
+});

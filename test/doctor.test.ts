@@ -38,7 +38,7 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — harness not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "brief", "fallback", "pi binary", "state dir", "merge lock", "project check", "fix claims", "stranded plans", "backlog headings", "build", "orphans", "mach ports"],
+    ["node", "git binary", "repo", "init", "brief", "fallback", "tier models", "pi binary", "state dir", "merge lock", "project check", "fix claims", "stranded plans", "backlog headings", "build", "orphans", "mach ports"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.

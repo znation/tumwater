@@ -6,26 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 7c/8: the doctor checks every declared tier model (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run; requires parts 3/8 and 5/8 landed, 7a done)
-
-Design: plans/model-tiers.md ("Doctor"). Split from part 7/8; sibling 7a landed the role rows.
-
-**Goal.** `tumwater doctor` catches a tier model pi cannot resolve, or a provider without
-credentials, before the fleet finds out the hard way mid-review.
-
-**Approach.** src/doctor/doctor-checks.ts: `checkFallbackModel` covers each tier's fallback. A
-new check verifies that every declared tier model resolves in pi's catalog and that its provider
-reports `ready` from `pi auth check --provider <p> --json`. When `PI_SMOL_MODEL`,
-`PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it notes that tumwater does not read them — they are
-oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the inherited
-environment — and points at `model.small` / `model.strong`.
-
-**Files touched.** src/doctor/doctor-checks.ts and its tests.
-
-**Acceptance criteria.**
-- `tumwater doctor` fails a tier model pi cannot resolve, warns on a provider that is not
-  `ready`, and prints the `PI_*_MODEL` note only when one is set.
-
 ### Model tiers, part 8/8: writers emit the new form, and the docs describe tiers (planned 2026-10-05 by operator; requires parts 1/8–7/8 landed)
 
 Design: plans/model-tiers.md ("Backward compatibility", "Notes for local fallbacks").
@@ -58,6 +38,32 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 7c/8: the doctor checks every declared tier model (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run; requires parts 3/8 and 5/8 landed, 7a done; done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Doctor"). Split from part 7/8; sibling 7a landed the role rows.
+
+**Goal.** `tumwater doctor` catches a tier model pi cannot resolve, or a provider without
+credentials, before the fleet finds out the hard way mid-review.
+
+**Approach.** src/doctor/doctor-checks.ts: a new `checkTierModels` verifies that every declared
+tier model resolves in pi's catalog and that its provider reports `ready` from
+`pi auth check --provider <p> --json` (probe verdict ready/not-ready/unknown; injectable so
+tests never spawn pi). When `PI_SMOL_MODEL`, `PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it
+notes that tumwater does not read them — they are oh-my-pi's, pi ignores them, and with omp as
+`agentBin` they reach omp through the inherited environment — and points at `model.small` /
+`model.strong`. Scope note: per-tier fallback pricing stays on `checkFallbackModel`'s existing
+default-pair report rather than extending it to each tier's fallback — the gate already prices
+every tier's resolved pair at resolution time (part 5a/8), so a doctor re-derivation would only
+restate it.
+
+**Files touched.** src/doctor/doctor-checks.ts (checkTierModels, piProviderAuth),
+src/doctor/doctor.ts (wiring, new "tier models" row), test/doctor-checks.test.ts,
+test/doctor.test.ts (the pinned check-name list).
+
+**Acceptance criteria.**
+- `tumwater doctor` fails a tier model pi cannot resolve, warns on a provider that is not
+  `ready`, and prints the `PI_*_MODEL` note only when one is set.
 
 ### Model tiers, part 7b/8: the `budget_fallback` badge lists the tiers (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows (7a), this badge, and the doctor checks (7c); requires parts 3/8 and 5/8 landed, 7a done; done 2026-10-06 by feature)
 

@@ -1,15 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
 import {
   enabledRoleIds,
+  defaultConfig,
   loadConfig,
   loadConfigSafe,
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
-import { fallbackPair } from "../config/config-views.js";
+import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
-import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
-import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
+import { fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { MODEL_TIERS, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { findOnPath } from "../files/files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
@@ -236,6 +238,157 @@ export function checkFallbackModel(
     level: "warn",
     detail: `${name} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`,
   };
+}
+
+/** The credential verdict one provider's `pi auth check --provider <p> --json` gives:
+ * ready (the provider has credentials), not-ready (pi ran and said otherwise), or unknown
+ * (the check could not run or its output could not be parsed — never conflated with
+ * not-ready, which would tell the operator to re-login when the real problem is elsewhere). */
+type ProviderAuth = "ready" | "not-ready" | "unknown";
+
+/** How long the credential probe may take before it counts as unknown — a doctor run is a
+ * pre-flight, not a place to wait out a hung backend. */
+const AUTH_CHECK_TIMEOUT_MS = 15_000;
+
+/** The default credential probe: run the resolved agent binary's own auth check for one
+ * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
+ * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
+ * the pi it would actually run. Never throws; every failure mode lands on "unknown". */
+export async function piProviderAuth(
+  config: TumwaterConfig,
+  provider: string,
+  pathEnv: string = process.env.PATH ?? "",
+): Promise<ProviderAuth> {
+  const resolved = resolveAgentBin(config);
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(resolved.bin, ["auth", "check", "--provider", provider, "--json"], {
+        cwd: process.cwd(),
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, PATH: pathEnv },
+      });
+    } catch {
+      resolve("unknown");
+      return;
+    }
+    let out = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+    }, AUTH_CHECK_TIMEOUT_MS);
+    child.stdout?.on("data", (chunk: Buffer) => {
+      out += chunk.toString("utf8");
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("unknown");
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      try {
+        const doc: unknown = JSON.parse(out);
+        const ready = doc !== null && typeof doc === "object" && (doc as { ready?: unknown }).ready;
+        if (code === 0 && ready === true) resolve("ready");
+        else if (code === 0 && ready === false) resolve("not-ready");
+        else resolve("unknown");
+      } catch {
+        resolve("unknown");
+      }
+    });
+  });
+}
+
+/** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the
+ * config can put on a seam must resolve in pi's definitions, and its provider must report
+ * `ready` from the agent binary's own auth check. A strong tier pi cannot resolve would fail
+ * every review, and so every landing — the check exists so the operator finds out before the
+ * fleet does, mid-review. Pairs collected in the same sweep fleetModelsFree prices: each
+ * tier's top-level selector (a string is default's), every enabled role's resolved pair
+ * (per-role overrides included; tier-name overrides resolve through configForRole), and the
+ * reviewer's while review is on. A pair with no model is pi's own default and out of scope;
+ * fallback pairs are the sibling check's (checkFallbackModel prices the cap pair). Levels:
+ * an unresolvable pair fails, a provider that is not ready warns (credentials are fixable
+ * without a config edit), a probe that cannot run warns rather than guesses. When one of
+ * PI_SMOL_MODEL / PI_SLOW_MODEL / PI_PLAN_MODEL is set the check also reports that tumwater
+ * does not read it — the variables are oh-my-pi's, pi ignores them, and with omp as
+ * `agentBin` they still reach omp through the inherited environment (src/pi/pi.ts) — pointing
+ * at the tier keys that do the same job (`model.small` / `model.strong`). `auth` is
+ * injectable so tests need no pi on PATH; `env` so the PI_* branches stay hermetic. */
+export async function checkTierModels(
+  root: string,
+  modelsPath: string = piModelsPath(),
+  auth: (provider: string) => Promise<ProviderAuth> = (provider) =>
+    piProviderAuth(loadConfigSafe(root).config ?? defaultConfig(), provider),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CheckOutcome> {
+  // checkInit already fails on a broken tumwater.json; this check only says it could not run.
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) return { level: "warn", detail: `cannot check — ${error}` };
+  const pairs = new Map<string, { provider?: string; model?: string }>();
+  const add = (provider: string | undefined, model: string | undefined) => {
+    if (model !== undefined) pairs.set(`${provider ?? ""}/${model}`, { provider, model });
+  };
+  for (const tier of MODEL_TIERS) {
+    const sel = tierModel(config, tier);
+    if (sel) add(sel.provider, sel.model);
+  }
+  for (const role of enabledRoleIds(config)) {
+    const rc = configForRole(config, role);
+    add(rc.provider, rc.model);
+  }
+  if (config.review.enabled) {
+    const rv = reviewConfig(config);
+    add(rv.provider, rv.model);
+  }
+  const ompVars = ["PI_SMOL_MODEL", "PI_SLOW_MODEL", "PI_PLAN_MODEL"].filter(
+    (v) => env[v] !== undefined && env[v] !== "",
+  );
+  const ompNote =
+    ompVars.length === 0
+      ? ""
+      : ` — ${ompVars.join(" and ")} ${ompVars.length === 1 ? "is" : "are"} set: tumwater does not read ${ompVars.length === 1 ? "it" : "them"} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
+  if (pairs.size === 0)
+    return { level: ompVars.length === 0 ? "ok" : "warn", detail: `no models declared — every seam uses pi's own default${ompNote}` };
+  const providers = readPiProviders(modelsPath);
+  if (!providers)
+    return {
+      level: "warn",
+      detail: `cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`,
+    };
+  const fails: string[] = [];
+  const warns: string[] = [];
+  const readyProviders = new Set<string>();
+  const checkedProviders = new Set<string>();
+  for (const { provider, model } of pairs.values()) {
+    if (provider === undefined) {
+      warns.push(`${model} names no provider — pi resolves it with its own default, tumwater cannot verify it`);
+      continue;
+    }
+    const defs = providers.get(provider);
+    if (!defs) {
+      fails.push(`provider ${provider} is not in pi's definitions (${modelsPath})`);
+      continue;
+    }
+    if (!defs.some((d) => d.id === model)) {
+      fails.push(`${provider}/${model} does not resolve in pi's definitions (${modelsPath})`);
+      continue;
+    }
+    if (!checkedProviders.has(provider)) {
+      checkedProviders.add(provider);
+      const verdict = await auth(provider);
+      if (verdict === "ready") readyProviders.add(provider);
+      else if (verdict === "not-ready")
+        warns.push(`provider ${provider} reports not ready — check its credentials`);
+      else warns.push(`could not verify provider ${provider} — the auth check did not run or its output was unreadable`);
+    }
+  }
+  const found = [...fails, ...warns].join("; ");
+  const base =
+    fails.length === 0 && warns.length === 0
+      ? `${pairs.size} declared ${pairs.size === 1 ? "model" : "models"} resolve${readyProviders.size > 0 ? ` and ${readyProviders.size === 1 ? "provider" : "all providers"} ${[...readyProviders].sort().join(", ")} report ready` : ""}`
+      : found;
+  if (fails.length > 0) return { level: "fail", detail: `${base}${ompNote}` };
+  return { level: warns.length > 0 || ompVars.length > 0 ? "warn" : "ok", detail: `${base}${ompNote}` };
 }
 
 /** Agent binary (plans/portability.md §5/7) — resolves TUMWATER_PI_BIN → agentBin → "pi"
