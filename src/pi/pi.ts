@@ -221,6 +221,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
       finalMessageContentless: parser.finalMessageContentless,
+      producedAssistantContent: parser.producedAssistantContent,
       compacted: parser.compacted,
       ...overrides,
     });

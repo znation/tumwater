@@ -204,6 +204,24 @@ test("parser flags a contentless final message (generation cut off mid-stream)",
   assert.equal(toolOnly.finalMessageContentless, false);
 });
 
+test("parser tracks whether any assistant message carried content of its own", () => {
+  // The 2026-10-06 provider error shape: one message_end with empty content and stopReason
+  // "error". It counts as a turn but produced nothing, so a dirty worktree is not this run's.
+  const failed = new PiStreamParser();
+  failed.feed(errorLine("400: model_not_supported") + "\n");
+  assert.equal(failed.turns, 1, "the provider's error turn still counts as a turn");
+  assert.equal(failed.producedAssistantContent, false, "an empty error turn produced nothing");
+
+  const worked = new PiStreamParser();
+  worked.feed(assistantLine("editing the file") + "\n");
+  worked.feed(errorLine("connection lost") + "\n");
+  assert.equal(
+    worked.producedAssistantContent,
+    true,
+    "an earlier content turn is this run's own work",
+  );
+});
+
 test("parser records that pi auto-compacted the session", () => {
   const parser = new PiStreamParser();
   assert.equal(parser.compacted, false);

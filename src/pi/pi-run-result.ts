@@ -83,6 +83,12 @@ export interface PiRunResult {
    * the declared context window, with the provider misreporting the truncation as a normal
    * stop. Used to diagnose otherwise-mysterious no-sentinel no_change ticks. */
   finalMessageContentless: boolean;
+  /** True when any assistant message carried a tool call or non-empty text — the run did
+   * something of its own. False on a run that ended on a provider error turn with empty
+   * `content` (one completed turn, no content), which lets resolveTickVerdict tell a resumed
+   * run that added nothing from a failed run whose dirty worktree is its own (BUGS.md
+   * 2026-10-06). */
+  producedAssistantContent: boolean;
   /** pi auto-compacted the session during (or at the end of) the run. */
   compacted: boolean;
 }

@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { dequeuePrompt, dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
-import { initializedRepo, makeMainRed, tmpdir } from "./repo-fixtures.js";
+import { sessionDir } from "../src/paths.js";
+import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./repo-fixtures.js";
 import { fakePi, logPromptsTo, readPromptRuns, TOUCH_SESSION } from "./fake-pi.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./pi-events.js";
 
@@ -111,6 +112,56 @@ test("a failed resume re-queues the reclaimed prompt, so the request is not lost
     assert.equal(runs.length, 3);
     assert.doesNotMatch(runs[1]!, /flubbernator/, "the resume bridge does not re-send the request text");
     assert.match(runs[2]!, /flubbernator/, "the fresh tick after the failed resume retries the request");
+  } finally {
+    restore();
+  }
+});
+
+// BUGS.md 2026-10-06: a resume that dies on the provider's error turn (one assistant message
+// with empty content and stopReason "error") adds no work of its own, so a dirty worktree holds
+// only the interrupted tick's half-done edits. The fix must end the tick `error`, keep those
+// edits, AND re-queue the dequeued per-role prompt through requeueForResume so the next resume
+// reclaims exactly that copy — re-queueing it unrecorded would leave it queued for a fresh tick
+// to run the same request twice (BUGS.md 2026-09-25's reclaim invariant).
+test("a resume that fails on the provider's error turn keeps the edits and requeues the prompt for reclaim", async () => {
+  const { root, wt } = await initializedWorktree("perf");
+  const promptsFile = path.join(tmpdir(), "prompts-error-turn.log");
+  const counter = path.join(tmpdir(), "error-turn-count");
+  // The interrupted tick's leftovers: a half-done edit, its session, and the per-role prompt it
+  // had re-queued for the resume (recorded in resumePromptFile, as requeueForResume leaves it).
+  fs.writeFileSync(path.join(wt, "partial.txt"), "partial\n");
+  fs.mkdirSync(sessionDir(root, "perf"), { recursive: true });
+  fs.writeFileSync(path.join(sessionDir(root, "perf"), "interrupted.jsonl"), "{}\n");
+  const queuedFile = enqueueRolePrompt(root, "perf", "fix the flubbernator");
+  const restore = fakePi(
+    [
+      logPromptsTo(promptsFile),
+      `n=$(cat "${counter}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${counter}"`,
+      `if [ "$n" = 1 ]; then printf '%s\\n' '${errorLine("400: the provider or policy you attempted to specify 'DeepInfra' is not valid — model_not_supported")}'; exit 1; else printf '%s\\n' '${assistantLine("done\nSUMMARY: finish the partial work")}'; fi`,
+    ].join("\n"),
+  );
+  try {
+    const runner = makeLoopRunner(root, "perf");
+    runner.state.resumePending = true; // what the interrupted tick left behind
+    runner.state.resumePromptFile = queuedFile;
+    const first = await runner.tick();
+    assert.equal(first.result, "error", "a resume that produced no content of its own ends the tick error");
+    assert.equal(first.commit, undefined, "nothing was committed");
+    assert.ok(fs.existsSync(path.join(wt, "partial.txt")), "the interrupted edits stay uncommitted");
+    assert.equal(runner.state.resumePending, true, "the edits and session are kept for the next resume");
+    assert.ok(runner.state.resumePromptFile, "the prompt is recorded for the resume to reclaim");
+    assert.deepEqual(queuedRolePrompts(root, "perf"), ["fix the flubbernator"], "the durable copy is queued");
+    const runs = readPromptRuns(promptsFile);
+    assert.equal(runs.length, 1, "the error turn needed no missing-SUMMARY follow-up");
+    assert.match(runs[0]!, /--continue/, "the failed tick was the resume");
+    assert.doesNotMatch(runs[0]!, /flubbernator/, "the resume bridge does not re-send the request text");
+
+    // The next resume fulfills the task: it reclaims the exact queued copy, so nothing is left
+    // for a later fresh tick to run a second time.
+    const second = await runner.tick();
+    assert.equal(second.result, "queued");
+    assert.deepEqual(queuedRolePrompts(root, "perf"), [], "the resume consumed the requeued prompt");
+    assert.equal(runner.state.resumePromptFile, undefined, "the reclaim record is consumed");
   } finally {
     restore();
   }

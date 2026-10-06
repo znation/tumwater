@@ -5,41 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A resume run that fails before doing anything commits the interrupted tick's half-done edits: `resolveTickVerdict` stages any dirty worktree whose run failed, so after a restart a provider error on the resume run ships the killed tick's unfinished work under a diff-derived subject (found by human log analysis 2026-10-06)
-Symptom: on 2026-10-06 the fleet was stopped at 03:34:47 PDT mid-tick and came back at 03:35:50 on
-a model id the provider rejected (`deepseek-ai/DeepSeek-V4-Flash-0731:DeepInfra`; HF's router
-wants the lowercase `deepinfra`). Bugfix tick 913 had finished the stall-warning fix's code and
-tests and was partway through moving its BUGS.md entry from Open to Fixed. Its resume run (tick
-914) failed on its first request with `400 … model_not_supported`, and so did the
-missing-SUMMARY follow-up. The tick still ended `queued`: the harness committed the worktree with
-the derived subject "Update src/pi/command-shape.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts
-and 2 more" and sent it to landing. At 03:43:49 the reviewer rejected it because the BUGS.md
-entry was still under Open, which was exactly the step the stop had interrupted. The rejection
-reset the branch, so the finished code was discarded too, and bugfix started the same bug again
-from scratch at 03:44:51. Feature hit the same path at the same moment. Its interrupted tick 1172
-had edited only `src/config/config-write.ts`. Its resume (tick 1173) also failed on the 400 and
-was committed as "Update src/config/config-write.ts". The gate check then failed on it twice
-(6.6 s and 2.2 s, compile errors) and rejected it.
-Reproduce: start a tick, stop the orchestrator while the run has uncommitted edits (any stop
-that aborts rather than drains), point `model` at an id the provider rejects, and start the
-fleet again. The resume run fails on its first request, yet the tick ends `queued` with a
-"reply had no SUMMARY line — follow-up gave none; subject derived from the changed files"
-warning, and the half-done edits reach the land queue.
-Cause: src/tick/tick-verdict.ts returns an error only for `!pi.ok && !changed`. A failed run
-with a dirty worktree falls through to staging (tick-stage.ts), whose missing-SUMMARY fallback
-derives a subject from the changed files. That path exists for runs that did real work and then
-crashed. On a resume, though, the dirty tree is the killed tick's half-done edits, which the
-abort branch at the top of the same function deliberately refuses to commit ("A killed run may
-leave half-done edits; never commit those"). A resume that fails before producing a single turn
-(a 4xx config error, an auth failure, a dead backend) adds nothing of its own, but ships exactly
-those edits.
-Suggested fix: when the run failed (`!pi.ok`) and produced no completed assistant turn of its
-own, return `error` instead of staging, and keep the worktree and session for the next resume
-(the error ladder already spaces the retries). The missing-SUMMARY warning should also name the
-run's error when the follow-up failed, rather than saying it "gave none". A test: resume a tick
-whose worktree has unfinished edits, with a fake pi that fails its first request, and require
-the tick to end `error` with the edits still uncommitted in the worktree.
-
 ### A reviewer failing on a permanent config error is retried in a tight loop, and every retry pays for a full gate check first: four suite runs in 2 min went to a `400 model_not_supported` that no retry could fix (found by human log analysis 2026-10-06)
 Symptom: with the fleet on the rejected model id above (03:35:50–03:38:44 PDT on 2026-10-06), bugfix's
 queued change went through the land queue four times. Each landing ran the full gate check first
@@ -79,6 +44,49 @@ Suspected cause: BUGS.md 2026-09-24 fixed the parked-waiter conflation and its e
 Suggested fix: give the running director its own phase (e.g. `director working …`, still clearly active so its work is not hidden) that `isActivePhase`'s cap-mirroring set excludes, so the rows an operator counts against `maxConcurrent` are exactly the permit holders; alternatively have the dashboard render explicit cap utilization (`n/maxConcurrent`) from permit holders. Keep the director's scheduling exemption (`usesSlot`) unchanged. Pin the running-director phase and the active-row count in test/status-model.test.ts.
 
 ## Fixed
+
+### A resume run that fails before doing anything commits the interrupted tick's half-done edits: `resolveTickVerdict` stages any dirty worktree whose run failed, so after a restart a provider error on the resume run ships the killed tick's unfinished work under a diff-derived subject (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
+Symptom: on 2026-10-06 the fleet was stopped at 03:34:47 PDT mid-tick and came back at 03:35:50 on
+a model id the provider rejected (`deepseek-ai/DeepSeek-V4-Flash-0731:DeepInfra`; HF's router
+wants the lowercase `deepinfra`). Bugfix tick 913 had finished the stall-warning fix's code and
+tests and was partway through moving its BUGS.md entry from Open to Fixed. Its resume run (tick
+914) failed on its first request with `400 … model_not_supported`, and so did the
+missing-SUMMARY follow-up. The tick still ended `queued`: the harness committed the worktree with
+the derived subject "Update src/pi/command-shape.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts
+and 2 more" and sent it to landing. At 03:43:49 the reviewer rejected it because the BUGS.md
+entry was still under Open, which was exactly the step the stop had interrupted. The rejection
+reset the branch, so the finished code was discarded too, and bugfix started the same bug again
+from scratch at 03:44:51. Feature hit the same path at the same moment. Its interrupted tick 1172
+had edited only `src/config/config-write.ts`. Its resume (tick 1173) also failed on the 400 and
+was committed as "Update src/config/config-write.ts". The gate check then failed on it twice
+(6.6 s and 2.2 s, compile errors) and rejected it.
+Reproduce: start a tick, stop the orchestrator while the run has uncommitted edits (any stop
+that aborts rather than drains), point `model` at an id the provider rejects, and start the
+fleet again. The resume run fails on its first request, yet the tick ends `queued` with a
+"reply had no SUMMARY line — follow-up gave none; subject derived from the changed files"
+warning, and the half-done edits reach the land queue.
+Cause: src/tick/tick-verdict.ts returns an error only for `!pi.ok && !changed`. A failed run
+with a dirty worktree falls through to staging (tick-stage.ts), whose missing-SUMMARY fallback
+derives a subject from the changed files. That path exists for runs that did real work and then
+crashed. On a resume, though, the dirty tree is the killed tick's half-done edits, which the
+abort branch at the top of the same function deliberately refuses to commit ("A killed run may
+leave half-done edits; never commit those"). A resume that fails before producing a single turn
+(a 4xx config error, an auth failure, a dead backend) adds nothing of its own, but ships exactly
+those edits.
+Suggested fix: when the run failed (`!pi.ok`) and produced no completed assistant turn of its
+own, return `error` instead of staging, and keep the worktree and session for the next resume
+(the error ladder already spaces the retries). The missing-SUMMARY warning should also name the
+run's error when the follow-up failed, rather than saying it "gave none". A test: resume a tick
+whose worktree has unfinished edits, with a fake pi that fails its first request, and require
+the tick to end `error` with the edits still uncommitted in the worktree.
+Fixed: src/tick/tick-verdict.ts now treats a failed run that produced no assistant content of its
+own (`PiRunResult.producedAssistantContent`, tracked by the parser across the whole run) as having
+added nothing to the worktree: when the worktree is dirty, the tick ends `error`, arms
+`resumePending`, and keeps the edits and session for the next resume; a per-role prompt re-queues
+through `requeueForResume` so the resume reclaims exactly that copy (BUGS.md 2026-09-25), while a
+clean worktree or a director tick re-queues the prompt unrecorded as before. A failed run that did
+produce content still stages.
+**Validation gap:** unclear-invariant — confirming the bug offline required first reconstructing what made a dirty worktree the failed run's own work rather than a prior interrupted tick's, an invariant the code never stated (the closest tag; the fake-pi shim and error-turn fixture already existed).
 
 ### A hung piped command goes unreported until the quiet watchdog kills the tick: the stall warning skips every command whose stdout is piped or redirected, so a 19-min hang of `npm run test 2>&1 | tail -15` raised no warning and held up a self-redeploy until a manual `tumwater abort` (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: on 2026-10-05 at 22:41 PDT the coverage loop's tick 544 resumed after the 22:33 restart

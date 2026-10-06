@@ -197,6 +197,12 @@ export class PiStreamParser {
    * with incomplete_details.reason "max_output_tokens"), so on the current backend a
    * contentless final message points at a genuine cut-off, not a misreported stop. */
   finalMessageContentless = false;
+  /** True once any assistant message carried real content — a tool call or non-empty text.
+   * A failed run whose every assistant turn is contentless (the provider's error turn has
+   * `content: []` and stopReason "error") produced no work of its own, so a dirty worktree
+   * belongs to a prior interrupted tick rather than this run (BUGS.md 2026-10-06). Distinct
+   * from finalMessageContentless, which describes only the LAST message. */
+  producedAssistantContent = false;
   /** True when pi auto-compacted the session during (or at the end of) the run. */
   compacted = false;
   /** Incremented for every parsed event that represents real forward progress — message,
@@ -315,6 +321,7 @@ export class PiStreamParser {
     this.finalMessageContentless = !(msg.content ?? []).some(
       (c) => c.type === "toolCall" || (c.type === "text" && Boolean(c.text?.trim())),
     );
+    if (!this.finalMessageContentless) this.producedAssistantContent = true;
     if (text.trim()) this.finalText = text;
     if (isNothingToDo(text)) this.declaredNothingToDo = true;
     // The refusal comes only from an anchored `TUMWATER_REFUSED: <reason>` line: a bare

@@ -124,12 +124,31 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
 
   const changed = await isDirty(ctx.wt);
-  if (!pi.ok && !changed) {
+  // A failed run that produced no assistant content of its own did nothing to the worktree: a
+  // 4xx config error, an auth failure, or a dead backend ends on an assistant message_end with
+  // empty `content` and stopReason "error" — one completed turn, zero content — so
+  // `producedAssistantContent` stays false, while a run that did real work (tool calls, text)
+  // before failing sets it true. On a resume the dirty files are the interrupted tick's
+  // half-done edits, which the abort branch above deliberately refuses to commit; staging them
+  // would ship unfinished work under a diff-derived subject and drop the resumable session
+  // (BUGS.md 2026-10-06). Keep the worktree and session for the next resume.
+  if (!pi.ok && (!changed || !pi.producedAssistantContent)) {
     s.lastError = pi.errorMessage ?? "pi failed";
-    // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
-    // IS fulfillment (a question-type prompt answered without file changes) — never
-    // re-queue that, or such prompts would loop forever.
-    ctx.pending.requeueUnfulfilled(ctx.userPrompt);
+    // A dirty worktree on a run that added nothing of its own is a prior tick's work: arm the
+    // resume so the next tick continues that session instead of resetting the edits. A role
+    // loop re-queues through requeueForResume, so the resume reclaims exactly this prompt
+    // rather than leaving a duplicate for a later fresh tick to run again (BUGS.md 2026-09-25);
+    // the director never resumes, so its prompt always re-runs fresh. A clean worktree has
+    // nothing to carry forward, so the plain re-queue still applies.
+    if (changed && ctx.role !== DIRECTOR_ROLE) {
+      s.resumePending = true;
+      ctx.pending.requeueForResume(s, ctx.userPrompt);
+    } else {
+      // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
+      // IS fulfillment (a question-type prompt answered without file changes) — never
+      // re-queue that, or such prompts would loop forever.
+      ctx.pending.requeueUnfulfilled(ctx.userPrompt);
+    }
     return { result: "error" };
   }
   if (!changed) {
