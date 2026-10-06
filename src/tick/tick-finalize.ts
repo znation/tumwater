@@ -4,6 +4,7 @@ import { branchHead } from "../git/git.js";
 import { logEvent, usageFragment, warnEvent } from "../events/events.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
+import { consecutiveFailuresWarning } from "../text/phrases.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { TickUsage } from "./tick-usage.js";
 
@@ -87,8 +88,10 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     warnEvent(
       root,
       role,
-      `${s.consecutiveErrors} consecutive tick failures: ` +
-        `${s.lastError ?? outcome.recoveryFailure ?? "unknown error"}`,
+      consecutiveFailuresWarning(
+        s.consecutiveErrors ?? 0,
+        s.lastError ?? outcome.recoveryFailure ?? "unknown error",
+      ),
     );
   }
   // One warning per quiet-kill episode (BUGS.md 2026-09-18): a loop burning an hour per

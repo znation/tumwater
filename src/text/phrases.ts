@@ -69,6 +69,15 @@ export function pauseReasonSuffix(reason: string | undefined): string {
   return reason ? ` — "${reason}"` : "";
 }
 
+/** The harness warning a loop crossing the error-streak threshold raises — `3 consecutive
+ * tick failures: <reason>` — shared by the tick-side crossing (tick-finalize.ts, an error or
+ * recovery failure) and the landing-side crossing a review rejection resolves
+ * (landing-slot.ts), the two sites that build the message, so the operator-facing wording
+ * their tests pin cannot drift between them. */
+export function consecutiveFailuresWarning(count: number, reason: string): string {
+  return `${count} consecutive tick failures: ${reason}`;
+}
+
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
  * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
  * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-

@@ -11,6 +11,7 @@ import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
+import { consecutiveFailuresWarning } from "../text/phrases.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the
@@ -272,7 +273,10 @@ export function writeLandingOutcome(
     warnEvent(
       root,
       entry.role,
-      `${state.consecutiveErrors} consecutive tick failures: ${state.lastError ?? "review rejected"}`,
+      consecutiveFailuresWarning(
+        state.consecutiveErrors ?? 0,
+        state.lastError ?? "review rejected",
+      ),
     );
   }
   // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's bookkeeping:
