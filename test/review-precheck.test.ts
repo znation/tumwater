@@ -20,7 +20,7 @@ import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { projManifest, writeScript } from "./fake-commands.js";
-import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
+import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { logPromptsTo, piRanMarker, readPromptRuns, reviewerStub, TOUCH_SESSION, withPi } from "./fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
@@ -48,8 +48,7 @@ test("gate pre-check compiles the worktree against the root install — a health
     projManifest({ build: "buildcheck-tool --ok" }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
 
   const marker = piRanMarker();
   await withPi(reviewerStub(marker), async () => {
@@ -92,8 +91,7 @@ test("the gate's green pre-check attests the runner's counts in the event and th
     projManifest({ build: "buildcheck-tool --ok" }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
 
   // The fake pi dumps its prompt (pi's last argv) to a file so the attested line is asserted,
   // not merely assumed.
@@ -143,8 +141,7 @@ async function gateBuildFixture(
     projManifest({ [scriptName]: buildScript }),
   );
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
   return { root, wt };
 }
 
@@ -322,8 +319,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
   uniqueMain(root);
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(path.join(wt, "change.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
   const ctx = {
     ...gateCtx(root, wt),
     config: {
@@ -387,8 +383,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
   seedGreenMain(root);
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
   const ctx = {
     ...gateCtx(root, wt),
     config: { ...defaultConfig(), check: { command: "echo 'pytest: 3 failing'; exit 1" } },
@@ -413,8 +408,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
   // build_check event's script field, exactly like an npm check's run. A fresh change — the
   // reject above reset the branch to main, and an empty diff is exempt, not approved.
   fs.appendFileSync(path.join(wt, "seed.txt"), "second change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change 2");
+  commitIn(wt, "wip change 2");
   const greenCtx = {
     ...gateCtx(root, wt),
     config: { ...defaultConfig(), check: { command: "true" } },

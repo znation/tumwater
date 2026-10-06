@@ -6,7 +6,7 @@ import { reviewAheadOfMain } from "../src/review/review.js";
 import { runPi } from "../src/pi/pi.js";
 import { headOf } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { makeRepo, sh } from "./repo-fixtures.js";
+import { commitIn, makeRepo } from "./repo-fixtures.js";
 
 /** Shared scaffolding for the review-gate orchestration tests — the "Gate orchestration"
  * sections of review.test.ts and fix-claim.test.ts, which both drive reviewAheadOfMain
@@ -36,8 +36,7 @@ export async function gateFixture(): Promise<{ root: string; wt: string; head: s
   const root = makeRepo();
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
-  sh(wt, "git", "add", "-A");
-  sh(wt, "git", "commit", "-m", "wip change");
+  commitIn(wt, "wip change");
   return { root, wt, head: await headOf(wt, "HEAD") };
 }
 
