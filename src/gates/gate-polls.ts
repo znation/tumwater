@@ -22,7 +22,7 @@ import {
   type QuietHoursGateState,
 } from "../scheduling/quiet-hours.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
-import { type FleetHold } from "../fleet/fleet-hold.js";
+import type { FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";

@@ -32,7 +32,7 @@ import {
 import { piModelsPath } from "../pi/pi-models.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
-import { type Redeployer } from "../redeploy/redeployer.js";
+import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../launch-services.js";
 import { RetentionPruner } from "../retention.js";
 import { WorkLandedCache } from "../scheduling/work-landed-cache.js";

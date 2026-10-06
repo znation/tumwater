@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
-import { type Role } from "../roles/roles.js";
+import type { Role } from "../roles/roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../roles/role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "../verdict/reply-contract.js";
 import { todayStamp } from "../budget/budget.js";

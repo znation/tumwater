@@ -9,7 +9,7 @@
 import { Box, Text, useInput } from "ink";
 import type { StatusLine, StatusSpan } from "./status-render.js";
 import { inkKeyToReadline } from "./tui-keymap.js";
-import { type TuiKeys } from "./tui-keys.js";
+import type { TuiKeys } from "./tui-keys.js";
 
 /** A span tone's ink color: dim reads as gray, bold as bright white, and the brand mark as
  * bright cyan — the same hues the pre-ink ANSI painter used for the same tones. */
