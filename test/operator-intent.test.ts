@@ -15,7 +15,7 @@ import {
   timedPauseBits,
 } from "../src/operator/operator-intent.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { orchestratorStatePath, pausedPath, STATE_DIR } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, STATE_DIR, wakeRequestPath } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { writeMarker } from "./log-fixtures.js";
@@ -45,6 +45,34 @@ function liveRoot(): string {
 function stateOf(root: string, role: string): Record<string, unknown> {
   return readJsonFile(path.join(root, STATE_DIR, "state", `${role}.json`)) ?? {};
 }
+
+/** The operator request markers (wake/reset/restart/abort) must be written ATOMICALLY
+ * (tmp+rename): a concurrent poll reading a marker mid-write sees a torn file, which
+ * readJsonFile folds to null — the corrupt-marker superset that wakes every runner. For a
+ * scheduled wake that superset drops notBeforeMs, firing `wake --in` hours early. This pins
+ * the write path: the marker lands via fs.rename (writeTextAtomic), never a direct
+ * writeFileSync to the marker path. */
+test("operator request markers are written atomically (tmp+rename, never a torn write)", () => {
+  const root = deadRoot();
+  const wakeFile = wakeRequestPath(root);
+  const realRename = fs.renameSync;
+  const renamed: string[] = [];
+  (fs as unknown as { renameSync: unknown }).renameSync = (from: string, to: string) => {
+    renamed.push(to);
+    return realRename.call(fs, from, to);
+  };
+  try {
+    requestWake(root, ["fix"], 60_000);
+  } finally {
+    (fs as unknown as { renameSync: unknown }).renameSync = realRename;
+  }
+  assert.ok(renamed.includes(wakeFile), `expected the wake marker ${wakeFile} to land via rename`);
+  // The rename is the last step, so the marker's final content is intact and no tmp remnant
+  // is left behind.
+  assert.ok(readJsonFile<{ notBeforeMs?: number }>(wakeFile)?.notBeforeMs);
+  assert.strictEqual(fs.readdirSync(path.dirname(wakeFile)).filter((f) => f.includes(".tmp-"))
+    .length, 0);
+});
 
 test("markerApplyNote reports the no-harness tail without an orchestrator info file", () => {
   const n = markerApplyNote(deadRoot());

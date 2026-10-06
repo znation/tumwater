@@ -6,7 +6,7 @@ import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
-import { writeJsonFile } from "../files/json-files.js";
+import { writeJsonAtomic } from "../files/json-files.js";
 import { abortRequestPath, resetRequestPath, restartRequestPath, wakeRequestPath } from "../paths.js";
 
 /** The marker-writing cores of the operator-intent protocol, shared by every surface that
@@ -53,7 +53,10 @@ function applyClause(live: boolean, when: string, verb: string): string {
  * so only the CLI consumes this core. */
 export function requestResetCounters(root: string, roles: string[]): string {
   for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
-  writeJsonFile(resetRequestPath(root), { at: Date.now(), roles });
+  // Atomic: a concurrent poll reading the marker mid-write would see a torn file, which
+  // readJsonFile folds to null — the corrupt-marker superset that wakes/resets EVERY runner.
+  // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
+  writeJsonAtomic(resetRequestPath(root), { at: Date.now(), roles });
   // Only a live fleet consumes the marker; without one the state files are already zeroed and
   // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
@@ -80,7 +83,9 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   const deferred = inMs !== undefined && inMs > 0;
   if (!deferred)
     for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
-  writeJsonFile(
+  // Atomic — see requestResetCounters: a torn wake marker reads as corrupt and wakes every
+  // runner immediately, dropping a scheduled wake's notBeforeMs on the floor.
+  writeJsonAtomic(
     wakeRequestPath(root),
     deferred ? { at: now, roles, notBeforeMs: now + inMs } : { at: now, roles },
   );
@@ -110,7 +115,7 @@ export function requestRestart(root: string): { ok: true; message: string } | { 
   if (info?.build && info.build.stale !== true) {
     return { ok: false, error: "no restart is pending — the running build is current with main" };
   }
-  writeJsonFile(restartRequestPath(root), { at: Date.now() });
+  writeJsonAtomic(restartRequestPath(root), { at: Date.now() });
   const { live, when } = markerApplyNote(root);
   const message =
     `restart requested — ${applyClause(live, when, "applies it")}` +
@@ -143,7 +148,7 @@ export function requestAbort(root: string, role: string): { ok: true; message: s
   if (!orchestratorAlive(root)) {
     return { ok: false, error: NO_HARNESS_ERROR };
   }
-  writeJsonFile(abortRequestPath(root, role), { at: Date.now() });
+  writeJsonAtomic(abortRequestPath(root, role), { at: Date.now() });
   let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
   if (role === DIRECTOR_ROLE) {
     // The director's in-flight prompt was dequeued from the inbox file at tick start and an

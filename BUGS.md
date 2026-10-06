@@ -84,6 +84,9 @@ rather than waiting out the drain window.
 
 ## Fixed
 
+### The operator request markers a running fleet consumes were written non-atomically, so the corrupt-marker fallback the wake consumer just learned fired early: `tumwater wake --in 2h` wrote its marker with a plain `fs.writeFileSync` (json-files.ts's `writeJsonFile`), so a poll reading the marker mid-write saw a torn file, which `readJsonFile` folds to null — and consumeWakeRequest's same-day corrupt-marker fix (b3314cd5) maps a null marker on an existing file to EVERY runner with `notBeforeMs` undefined, firing the scheduled wake immediately instead of at the deadline; reset-counters, restart, and abort markers shared the same torn-write window (repro: the new test `operator request markers are written atomically (tmp+rename, never a torn write)` in test/operator-intent.test.ts — it spies fs.renameSync, and on the pre-fix writer no rename ever lands the marker; the torn read itself is a concurrency race with no deterministic single-process repro, which is why the b3314cd5 RISK note asserted "markers are written atomically via writeTextAtomic" without a check behind it) (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's corrupt-wake-marker commit b3314cd5, fixed 2026-10-06 by bugfix loop)
+- **Validation gap:** no-repro — the harm is a torn read in a write/read race, not deterministically reproducible in-process, so the fix is pinned by observing the write path itself: the marker must land via fs.rename (writeTextAtomic), which the direct writeFileSync never does.
+
 ### A corrupt wake marker is never consumed: the poll loop wedges before reading it (found by feature loop 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the test `a corrupt wake marker wakes every runner and is still consumed`
 (test/orchestrator-2.e2e.test.ts) times out waiting for the marker file to disappear.
