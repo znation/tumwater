@@ -15,11 +15,11 @@ import {
   runMarkersInEnviron,
   runMarkersInPs,
   sweepRunMarker,
-} from "../src/run-marker.js";
+} from "../src/process/run-marker.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { errnoError } from "./fs-faults.js";
 
-// The TUMWATER_RUN markers runPi stamps on its process tree (src/run-marker.ts): the
+// The TUMWATER_RUN markers runPi stamps on its process tree (src/process/run-marker.ts): the
 // parsers over environment-entry lists and ps -E output, and the sweep that reaps this
 // run's cross-group leftovers at exit. The probe-level reads (systemProcessProbe.runMarkers)
 // stay pinned in process.test.ts; here the marker plumbing itself is under test, and the

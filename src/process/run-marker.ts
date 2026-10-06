@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 
-import { execFileAsync } from "./process/process.js";
+import { execFileAsync } from "./process.js";
 
 /** Every lookup normally finishes in well under a second; a wedged one must not hang
  * its caller — the same ceiling process-table.ts's probe lookups carry. */

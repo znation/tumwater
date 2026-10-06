@@ -7,7 +7,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import type { TestContext } from "node:test";
 
-import { runMarkerEnv } from "../src/run-marker.js";
+import { runMarkerEnv } from "../src/process/run-marker.js";
 import { OWNER_PID_ENV } from "./exit-with-owner.js";
 
 /** The owner-watch preload (exit-with-owner.ts), as the NODE_OPTIONS flag that loads it. */
