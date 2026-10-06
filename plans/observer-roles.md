@@ -164,7 +164,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
   `src/json-files.ts` (2/2).
 - `src/paths.ts` — `qaCoveragePath(root)` beside `statePath` (line 26):
   `path.join(tumwaterDir(root), "state", "qa-coverage.json")` (2/2).
-- `src/prompt.ts` — `TickPromptInput` gains `coverage?: string`; `buildTickPrompt` pushes it
+- `src/prompt/prompt.ts` — `TickPromptInput` gains `coverage?: string`; `buildTickPrompt` pushes it
   immediately after the principles block (line 169), beside that existing injection (2/2).
 - `src/loop.ts` — `tickPrompt()` (line 143) renders the block for `qa` only
   (`this.role === "qa" ? renderCoverageBlock(readQaCoverage(this.root), Date.now()) : undefined`)
@@ -298,7 +298,7 @@ Verified on this tree:
   the plan assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder
   or null. `extractRefusal` (line 37) is the precedent for a thin wrapper. The `FLOW` label is
   literal text, so there is no regex-escaping concern.
-- `src/prompt.ts` — `interface TickPromptInput` at 142 (fields
+- `src/prompt/prompt.ts` — `interface TickPromptInput` at 142 (fields
   `role`/`initialPrompt`/`principles?`/`extraInstructions?`); `buildTickPrompt` at 163; the
   principles push at 169 (`if (principles) parts.push(principlesBlock(principles));`). The
   coverage push goes on the next line, before `parts.push(...role.find...)` at 170.
@@ -343,7 +343,7 @@ Pinned (open questions closed):
    record nothing, so an interrupted check never advances the ledger.
 
 Sizing: `src/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
-`src/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt.ts` ~3;
+`src/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
 `src/loop.ts` ~8; `src/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
 `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
 One run. No design question remains open.

@@ -108,7 +108,7 @@ load (live-reload keeps last-known-good and warns; the override silently never a
 even if it were accepted, enabling it would spawn a runner whose `tickPrompt` throws on every
 tick (no catalog entry). One top-level section keeps all gate settings together.
 
-### Prompt (`src/prompt.ts`)
+### Prompt (`src/prompt/prompt.ts`)
 
 New `buildReviewPrompt(diff, summary, commitBody, principles)`. Instructions: adversarial stance —
 hunt for correctness bugs, principle violations, complexity growth, incomplete work; read
@@ -265,7 +265,7 @@ lives in src/events.ts).
 
 ## Files touched
 
-`src/loop.ts`, `src/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
+`src/loop.ts`, `src/prompt/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
 `src/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
 review-run orchestration shared by the tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
 state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer

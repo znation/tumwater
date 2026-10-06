@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTickPrompt } from "../src/prompt.js";
+import { buildTickPrompt } from "../src/prompt/prompt.js";
 import { ROLES, roleById } from "../src/roles.js";
 import { oneLine } from "./oracles.js";
 

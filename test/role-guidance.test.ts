@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt.js";
+import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
 import { roleById } from "../src/roles.js";
 import {
   DECOMPOSITION_GUIDANCE,

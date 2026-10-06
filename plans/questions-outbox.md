@@ -28,7 +28,7 @@ to ask.
   paragraph of context, the concrete options, and the loop's own recommendation — a senior asks
   with a proposal, not a shrug. Question-only diffs are md-only, hence cheap under the review
   gate's exemption.
-- **Prompt contract** (`src/prompt.ts`): add QUESTIONS.md to the read-first list in COMMON_RULES
+- **Prompt contract** (`src/prompt/prompt.ts`): add QUESTIONS.md to the read-first list in COMMON_RULES
   plus a new bullet: "when a fork in the road is genuinely the user's call, do not guess — append
   a question to QUESTIONS.md (context, options, your recommendation) and either continue with the
   parts that don't depend on it or end the tick. Never block on an unanswered question; check for
@@ -68,7 +68,7 @@ to ask.
 
 ## Files touched
 
-`src/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt.ts` (read-first list +
+`src/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt/prompt.ts` (read-first list +
 ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new: count + entry
 parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
 `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),

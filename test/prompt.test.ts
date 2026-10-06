@@ -11,12 +11,12 @@ import {
   TEST_RUNNER_RULE,
   buildDirectorPrompt,
   buildTickPrompt,
-} from "../src/prompt.js";
+} from "../src/prompt/prompt.js";
 import {
   PRINCIPLES_MAX_CHARS,
   readPrinciples,
 } from "../src/principles.js";
-import { buildResumePrompt } from "../src/prompt-followup.js";
+import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gate-prompts.js";
 import { todayStamp } from "../src/budget.js";
@@ -266,7 +266,7 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // these assertions pin the contract in the find text. Same whitespace-collapsed matching as above —
 // the prose is hard-wrapped and formatting ticks reflow it, so assertions match content, not layout.
 
-// Context-ceiling handling (src/prompt.ts): half of all autonomous-era ticks ended cut off at
+// Context-ceiling handling (src/prompt/prompt.ts): half of all autonomous-era ticks ended cut off at
 // the window, almost all of it tool output from reading wholesale. The budget rule rides on
 // every run; the resume bridge names the real cause; a fresh tick after cut-offs carries a note.
 

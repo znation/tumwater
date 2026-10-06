@@ -21,7 +21,7 @@ not in the vocabulary.
 
 ## Design
 
-- **Sentinel protocol** (`src/prompt.ts`): alongside `TUMWATER_NOTHING_TO_DO`, add
+- **Sentinel protocol** (`src/prompt/prompt.ts`): alongside `TUMWATER_NOTHING_TO_DO`, add
   `TUMWATER_REFUSED: <one-line reason>`. New COMMON_RULES bullet: "If partway in you conclude the
   task would harm the project — it violates PRINCIPLES.md, grows complexity without justification,
   or keeps fighting back — revert nothing yourself; record your objection as a note in PLANS.md
@@ -111,7 +111,7 @@ not in the vocabulary.
 
 ## Files touched
 
-`src/prompt.ts`, `src/pi.ts` (sentinel + turn counter), `src/git.ts` (`changedFiles` + the
+`src/prompt/prompt.ts`, `src/pi.ts` (sentinel + turn counter), `src/git.ts` (`changedFiles` + the
 selective commit/discard helper), `src/loop.ts`, `src/types.ts` (TickResult, PiRunResult.turns,
 config fields), `src/config.ts` (thrash thresholds + validation), `src/roles.ts`,
 `test/refusal.test.ts` (sentinel parse; md-only refusal commits and merges; mixed refusal keeps

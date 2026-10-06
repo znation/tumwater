@@ -1,5 +1,5 @@
 import { shortSha } from "./format.js";
-import { TEST_RUNNER_RULE, dateLine } from "./prompt.js";
+import { TEST_RUNNER_RULE, dateLine } from "./prompt/prompt.js";
 import { describeCheck } from "./build-check/build-check-report.js";
 import type { BuildCheck } from "./build-check/build-check-detect.js";
 import { formatTimestamp } from "./datetime.js";

@@ -1,11 +1,11 @@
 import path from "node:path";
-import { describeCheck } from "./build-check/build-check-report.js";
-import type { BuildCheck } from "./build-check/build-check-detect.js";
-import { type Role } from "./roles.js";
-import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "./role-guidance.js";
-import { CLAIMS_RULE, REPLY_ENDINGS } from "./reply-contract.js";
-import { todayStamp } from "./budget.js";
-import { worktreePath } from "./paths.js";
+import { describeCheck } from "../build-check/build-check-report.js";
+import type { BuildCheck } from "../build-check/build-check-detect.js";
+import { type Role } from "../roles.js";
+import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "../role-guidance.js";
+import { CLAIMS_RULE, REPLY_ENDINGS } from "../reply-contract.js";
+import { todayStamp } from "../budget.js";
+import { worktreePath } from "../paths.js";
 
 /** Prompt construction for the role loops' pi runs (tick and director). The reply contract
  * those runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the

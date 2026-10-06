@@ -18,7 +18,7 @@ import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
 import { cmdRetire, cmdStop } from "./operator-commands.js";
-import { cmdPrompt } from "./prompt-commands.js";
+import { cmdPrompt } from "./prompt/prompt-commands.js";
 import {
   cmdBacklog,
   cmdDiff,

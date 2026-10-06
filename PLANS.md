@@ -324,12 +324,12 @@ test/model-selector.test.ts plus the config-views and pi-args suites).
 
 **Approach.**
 - `src/cli/cli-command-args.ts`, `parsePromptArgs`: scan for `--attach` occurrences (repeatable, each claiming itself and its value token like `--role`'s claim — a helper `attachClaims: number[]` beside `roleClaim`/`atClaim`); exclude claimed pairs from prompt text exactly as `roleClaim` and `atClaim` already are. Add `attachPaths: string[]` to the `enqueue` mode of the `PromptArgs` union. Mode guards mirror the existing `--at` guard verbatim: `--attach` only queues a prompt, so with `--list`, `--cancel`, or `--edit` it fails ("--attach only queues a prompt"); a missing value names the flag like `--cancel`'s does; a stray argument with `--list`/`--cancel` uses `failStrayArg` as those modes do.
-- `src/prompt-commands.ts`, `cmdPrompt` enqueue path: for each path, `fs.readFileSync` it (a missing or unreadable path fails with `errorMessage`, naming the path, before anything is queued), then build one `PromptImageInput { name: path.basename(p), dataBase64: bytes.toString("base64") }` per file and pass the array through the existing `submitRolePromptAndWake` images parameter (already plumbed to `submitRolePrompt` → `submitPromptWithImages` → `savePromptImages` — no inbox changes needed). Re-run validation client-side for a clean CLI error by calling `promptImagesProblem` first and `fail`-ing its message (covers the extension list, the 5 MiB per-image cap, and the 4-image cap with the same wording the GUI answers 400 with). The queue confirmation says what landed: the existing "queued for the … loop" line plus " with N image(s)" when attachments rode along.
+- `src/prompt/prompt-commands.ts`, `cmdPrompt` enqueue path: for each path, `fs.readFileSync` it (a missing or unreadable path fails with `errorMessage`, naming the path, before anything is queued), then build one `PromptImageInput { name: path.basename(p), dataBase64: bytes.toString("base64") }` per file and pass the array through the existing `submitRolePromptAndWake` images parameter (already plumbed to `submitRolePrompt` → `submitPromptWithImages` → `savePromptImages` — no inbox changes needed). Re-run validation client-side for a clean CLI error by calling `promptImagesProblem` first and `fail`-ing its message (covers the extension list, the 5 MiB per-image cap, and the 4-image cap with the same wording the GUI answers 400 with). The queue confirmation says what landed: the existing "queued for the … loop" line plus " with N image(s)" when attachments rode along.
 - `src/cli.ts` valued-flag list for prompt (`prompt: ["--role", "--file", "--at", "--cancel", "--edit"]`): add `"--attach"` so a value token is never eaten as prompt text.
 - `src/help.ts` prompt stanza and the README usage-table row for steering: name the flag (`--attach <path>` may repeat, up to 4 images).
 - Tests in `test/` beside the existing prompt-args and prompt-command suites: `parsePromptArgs` keeps `--attach` pairs out of the text (positional before, between, and after flags), refuses it in list/cancel/edit modes, and names a missing value; `cmdPrompt` enqueue writes the image beside the queue file with the queue file's stem, the queued text ends with the `[image attached: <absolute path>]` line, and the confirmation names the count; error cases — a nonexistent path, a non-image extension, a fifth image — all exit nonzero with `promptImagesProblem`'s or the read-error message and queue nothing.
 
-**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator-intent.ts`.
+**Files touched.** `src/cli/cli-command-args.ts`, `src/prompt/prompt-commands.ts`, `src/cli.ts`, `src/help.ts`, `README.md`, and the prompt tests under `test/`. No changes to the inbox modules, `src/ui/*`, or `src/operator-intent.ts`.
 
 **Acceptance criteria.**
 - `tumwater prompt "fix the layout" --role feature --attach shot.png` queues the prompt whose text ends with the image-reference line, saves `shot.png` beside the queue file, and prints the confirmation with the attachment count; the receiving role's next tick prompt carries the reference.
@@ -357,7 +357,7 @@ its not-before deferral exactly as it was.
   between listing and write — a normal race, never an error, exactly like
   `takeCancelledPrompt`.
 - Deferral preservation: when the record's `notBeforeMs` is non-null, the new file content is
-  `notBeforeMarker(notBeforeMs)` (from `src/prompt-not-before.ts`) followed by the new text —
+  `notBeforeMarker(notBeforeMs)` (from `src/prompt/prompt-not-before.ts`) followed by the new text —
   the marker is plumbing, the edit replaces only content. A non-deferred prompt stays
   marker-free even if the new text's first line resembles a marker.
 - One `prompt_edited` event under the target loop, preview via `promptPreview` of the new
@@ -368,7 +368,7 @@ its not-before deferral exactly as it was.
   resolves, several are an `ambiguous` error with the `--role` escape hatch, none is a
   `missing` miss) — factored so the two cannot drift, e.g. a small shared
   `resolveListedQueue(root, scope, position)` helper both call.
-- CLI: `src/prompt-commands.ts` gains the `--edit <n> <text...>` mode (with the optional
+- CLI: `src/prompt/prompt-commands.ts` gains the `--edit <n> <text...>` mode (with the optional
   `--role`), `src/cli/cli-command-args.ts`'s PROMPT_FLAG_SPECS admits the flag (prompt's flag
   vocabulary lives there with its hand-rolled parser, not in cli-flag-specs.ts — corrected
   2026-10-04 by feature when the anchor proved wrong), and `src/help.ts` documents it next to
@@ -376,7 +376,7 @@ its not-before deferral exactly as it was.
   and a pending `--at` deferral are kept; as shown by --list)". Same broken-config policy as
   cancel: a load failure reports and exits non-zero without touching the queue.
 
-**Files touched.** New `src/inbox/inbox-edit.ts`; `src/prompt-commands.ts`, `src/cli/cli-flag-specs.ts`,
+**Files touched.** New `src/inbox/inbox-edit.ts`; `src/prompt/prompt-commands.ts`, `src/cli/cli-flag-specs.ts`,
 `src/help.ts`; new tests beside `test/inbox.test.ts` (a `test/inbox-edit.test.ts` or its
 cases inside the existing file, following the file's local conventions).
 
@@ -522,7 +522,7 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
   (`bug` takes exactly one rest-joined sentence; `plan` takes a title plus optional body words),
   gated by the existing `requireReadyRepo` path the other backlog commands use, and after a
   successful write wake the matching loop via the prompt-queue's role enqueue + wake used by
-  `prompt --role` (`src/prompt-commands.ts`'s `enqueueRolePrompt`/wake pair): a filed bug wakes
+  `prompt --role` (`src/prompt/prompt-commands.ts`'s `enqueueRolePrompt`/wake pair): a filed bug wakes
   `bugfix`, a filed plan wakes `feature`. If a matching paused state exists the wake simply waits,
   like `prompt --role` already does — no new pause logic.
 - Add one `tumwater bug ...` and one `tumwater plan ...` stanza to `src/help.ts`'s `HELP` literal

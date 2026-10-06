@@ -6,31 +6,31 @@
  * queues (src/inbox/inbox.ts) directly, each with its own broken-config policy — so the command
  * lives beside the queue module it drives. The fleet-side half (the dequeues a loop performs)
  * is inbox.ts and pending-prompt.ts. */
-import { fail, say, sayJson } from "./cli/cli-output.js";
+import { fail, say, sayJson } from "../cli/cli-output.js";
 import fs from "node:fs";
 import path from "node:path";
-import { parsePromptArgs } from "./cli/cli-command-args.js";
+import { parsePromptArgs } from "../cli/cli-command-args.js";
 import {
   type CancelOutcome,
   type ListedCancelOutcome,
   cancelListedPrompt,
   cancelRolePrompt,
-} from "./inbox/inbox-cancel.js";
+} from "../inbox/inbox-cancel.js";
 import {
   type EditOutcome,
   type ListedEditOutcome,
   editListedPrompt,
   editRolePrompt,
-} from "./inbox/inbox-edit.js";
-import { promptPreview, queuedRolePromptRecords } from "./inbox/inbox.js";
+} from "../inbox/inbox-edit.js";
+import { promptPreview, queuedRolePromptRecords } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
-import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
-import { durationLabel } from "./cli/cli-args.js";
-import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config/config.js";
-import { errorMessage } from "./text.js";
-import { promptImagesProblem, type PromptImageInput } from "./inbox/inbox-attachments.js";
-import { DIRECTOR_ROLE, unknownRoleMessage } from "./roles.js";
-import { submitRolePromptAndWake } from "./operator-intent.js";
+import { humanSeconds, secondsSince, secondsUntil } from "../datetime.js";
+import { durationLabel } from "../cli/cli-args.js";
+import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
+import { errorMessage } from "../text.js";
+import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
+import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles.js";
+import { submitRolePromptAndWake } from "../operator-intent.js";
 
 /** One traversal of the queues behind `prompt --list`'s render: with `--role`, that loop's
  * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the

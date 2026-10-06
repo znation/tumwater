@@ -364,7 +364,7 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
 });
 
 // A deferred prompt (`tumwater prompt --at <duration>`) delivers once its not-before time has
-// passed; the marker line is plumbing (src/prompt-not-before.ts) and must never reach the loop — the same
+// passed; the marker line is plumbing (src/prompt/prompt-not-before.ts) and must never reach the loop — the same
 // strip every display surface applies (stripNotBeforeMarker).
 test("a delivered deferred prompt rides without its not-before marker line", () => {
   const dir = root();

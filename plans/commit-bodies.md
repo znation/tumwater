@@ -41,7 +41,7 @@ paper trail of claimed understanding to check against.
 
 ## Design
 
-- **Protocol** (`src/prompt.ts`): extend `SUMMARY_RULE` — the single constant both tick/director
+- **Protocol** (`src/prompt/prompt.ts`): extend `SUMMARY_RULE` — the single constant both tick/director
   prompts (via COMMON_RULES) and the resume bridge share; extending it there keeps all three from
   drifting. After the existing `SUMMARY:` line, a run that made changes appends three short lines:
   `WHY:` (the motivation, one or two sentences), `RISK:` (what could break and where to look),
@@ -65,7 +65,7 @@ paper trail of claimed understanding to check against.
 - **Trailer format (decided):** one line — `Tick: <role> #<tick> · turns <t> · ctx <c>` where
   `<tick>` is `s.ticks` and `<c>` uses the status table's compact style (`12k` at ≥10,000, bare
   integer below). Built by a pure helper (e.g. `commitTrailer(role, tick, turns, peakCtx)`) in
-  src/prompt.ts beside the extractors — unit-tested there, formatting kept out of the tick
+  src/prompt/prompt.ts beside the extractors — unit-tested there, formatting kept out of the tick
   lifecycle. The high-friction flag from [refusal-and-thrash.md](refusal-and-thrash.md) appends to
   this line when set (that plan owns the flag; this one reserves the slot).
 - **Trailer number sources (decided):** a tick can fold several pi runs before its commit — the
@@ -95,7 +95,7 @@ paper trail of claimed understanding to check against.
 
 ## Files touched
 
-`src/prompt.ts` (SUMMARY_RULE extension, extractCommitBody + commitTrailer), `src/pi.ts` (parser
+`src/prompt/prompt.ts` (SUMMARY_RULE extension, extractCommitBody + commitTrailer), `src/pi.ts` (parser
 turn counter; PiRunResult.turns via the single builder), `src/loop.ts` (tickTurns reset in tick()
 + increment in foldUsage; assembly at the changed-tick site), `src/types.ts` (PiRunResult.turns),
 `test/commit-bodies.test.ts` (extraction tolerant of partial blocks + 200-char caps; trailer

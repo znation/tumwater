@@ -35,7 +35,7 @@ against a branch named `main`, driving one local MLX server and one 27B model, v
   `src/build-check/build-check.ts` walks up for `package.json` + `node_modules` and runs `npm run
   test|typecheck|build` — so against a Python, Rust, or Go repo the review gate's build
   pre-check, the red-main baseline gate, and redeploy's green check all silently degrade to "no
-  check". `src/prompt.ts` tells every tick its worktree "borrows the install at the repo root,
+  check". `src/prompt/prompt.ts` tells every tick its worktree "borrows the install at the repo root,
   two levels up (`../../node_modules`)", which is false anywhere else.
 - **Init assumes it owns the repo.** `readInitialPrompt` reads the project brief only from
   README.md's managed markers, and `initProject` hard-fails when a README exists without them —
@@ -419,7 +419,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
 - src/loop.ts — call it in the director tick path between the pi run and `commitAll`; log
   `config_changed` (applied names) or `warning` (rejected/ignored).
 - src/types.ts — `config_changed` in `HarnessEvent["type"]`; src/ui/event-format.ts — one case.
-- src/prompt.ts — replace the director-only "you may edit tumwater.json" exception with the
+- src/prompt/prompt.ts — replace the director-only "you may edit tumwater.json" exception with the
   request-file contract and a worked example; COMMON_RULES' blanket "never touch the .tumwater
   directory or tumwater.json" now applies to the director too, with no exception.
 - src/config.ts `defaultConfig()` — drop `"tumwater.json"` from `review.exemptPaths`.
@@ -430,7 +430,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
   request never appears in a diff), test/prompt.test.ts (the director prompt names the request
   file and no longer grants a tumwater.json exception), test/event-format.test.ts.
 
-**Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/types.ts, src/prompt.ts,
+**Files touched.** src/paths.ts, src/config.ts, src/loop.ts, src/types.ts, src/prompt/prompt.ts,
 src/ui/event-format.ts, plans/user-defined-loops.md, test/config.test.ts, test/loop.test.ts,
 test/prompt.test.ts, test/event-format.test.ts.
 
@@ -458,8 +458,8 @@ Verified as written: `setDailyBudgetUsd` (src/config.ts:185) is the idiom and it
 maxDailyCostUsd: value }, true)` at src/config.ts:200. `defaultConfig().review.exemptPaths` still
 lists `"tumwater.json"` (src/config.ts:61), and this repo's own `tumwater.json` sets no `review`
 key, so the default governs and dropping the entry takes effect here. The director-only exception
-is verbatim at src/prompt.ts:223–226 and the custom-loop routing bullet at src/prompt.ts:210–215;
-COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" is src/prompt.ts:84 (resume
+is verbatim at src/prompt/prompt.ts:223–226 and the custom-loop routing bullet at src/prompt/prompt.ts:210–215;
+COMMON_RULES' "Never touch the .tumwater directory or tumwater.json" is src/prompt/prompt.ts:84 (resume
 variant :318). `HarnessEvent["type"]` is src/types.ts:258–294 with the index signature, and
 src/ui/event-format.ts is a `switch (e.type)` ending at `default:` :156. `validateConfig` is
 exported (src/config-validation.ts:99) and already validates `customLoops` (name regex, collision,
@@ -501,10 +501,10 @@ Pinned seams (all on this tree):
    top-level key into `ignored` and drop it before building the candidate, so "accepts
    `customLoops` and nothing else" holds by construction and the warning names the ignored keys.
 5. **The prompt rewrite has two sites, not one.** Replace the exception paragraph
-   (src/prompt.ts:223–226) with the request-file contract — path,
+   (src/prompt/prompt.ts:223–226) with the request-file contract — path,
    `{ "customLoops": [ { name, task } ] }` shape, "write it and stop; the harness consumes and
    deletes it; the array replaces the current one" — and change the routing bullet
-   (src/prompt.ts:210–215) from "execute it by editing tumwater.json's customLoops array" to
+   (src/prompt/prompt.ts:210–215) from "execute it by editing tumwater.json's customLoops array" to
    "write `.tumwater-config-request.json` in your worktree". COMMON_RULES is unchanged: the file
    sits at the worktree root, so both "never touch tumwater.json" and "never write above your
    worktree" still hold and now bind the director too.
@@ -527,7 +527,7 @@ Verified as written: `defaultConfig().review.exemptPaths` still lists `"tumwater
 (src/config.ts:69; was :61), and this repo's own tumwater.json sets no `review` key, so the
 default governs. `setDailyBudgetUsd` is still the idiom, now src/config.ts:229 (was :185) with the
 fresh-`loadConfig` + `writeJsonAtomic(file, { ...cfg, ... }, true)` call at :244 (was :200);
-`writeJsonAtomic` is src/json-files.ts:51. The director-only exception is src/prompt.ts:234–236
+`writeJsonAtomic` is src/json-files.ts:51. The director-only exception is src/prompt/prompt.ts:234–236
 (was :223–226) and the custom-loop routing bullet :220 (was :210–215); COMMON_RULES' "Never touch
 the .tumwater directory or tumwater.json" is :85 and the resume variant :329 (were :84/:318).
 `validateConfig` is src/config-validation.ts:156 (was :99); the customLoops entry validation is
@@ -1073,7 +1073,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   its message-line retention — the error-message line above the ten-line window is kept so
   `failureHeadline` (:162, moved here from main-red.ts by d39e426) can name the failure — and both
   operate on arbitrary output text, so a configured command's output is classified unchanged.
-- src/prompt.ts — thread `describeCheck` into COMMON_RULES; drop the unconditional node_modules
+- src/prompt/prompt.ts — thread `describeCheck` into COMMON_RULES; drop the unconditional node_modules
   sentence.
 - Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
   role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (build-check/build-check.ts:359) calls
@@ -1106,7 +1106,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   internal config load degrades to defaults in a tmp repo), test/doctor.test.ts.
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check/build-check-detect.ts,
-src/build-check/build-check.ts, src/prompt.ts,
+src/build-check/build-check.ts, src/prompt/prompt.ts,
 src/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
 src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
@@ -1136,7 +1136,7 @@ re-verified; the "two-site change"
 claim is now wrong in three ways, and one acceptance criterion contradicts existing merge-scope
 policy. Corrected in place above; the pins follow.**
 
-Verified as written: src/prompt.ts's node_modules sentence is still lines 74–76 and the vague
+Verified as written: src/prompt/prompt.ts's node_modules sentence is still lines 74–76 and the vague
 "if it has a build or test command" line 78; `detectBuildCheck` (src/build-check/build-check.ts:114) still
 walks up for `package.json` + `node_modules` and prefers test → typecheck → build via the private
 `buildCheckFrom` (line 71); `BUILD_CHECK_TIMEOUT_MS` is 300_000 (line 140); `BuildCheckOutcome`
@@ -1217,7 +1217,7 @@ three states and the same timeout-remap policy, `clipBuildTail` :235, `failureHe
 whose internal `detectBuildCheck(wt)` is :375 and `runBuildCheck` :378. The three scopes serve
 `gate` (src/review.ts:161, was :157, still passing `ctx.buildCheckTimeoutMs ??
 BUILD_CHECK_TIMEOUT_MS` at :166), `landing` (src/merge.ts:151, unchanged) and `batch`
-(src/lander.ts:394, was :376). `src/prompt.ts` — COMMON_RULES (:53) still carries the
+(src/lander.ts:394, was :376). `src/prompt/prompt.ts` — COMMON_RULES (:53) still carries the
 unconditional node_modules sentence (:75–77, was 74–76) and the vague "if it has a build or test
 command" bullet (:79, was :78). `src/doctor/doctor.ts` — the direct `detectBuildCheck(root)` call now
 lives in `checkBuildCheck` (:184, was :145) at :185, and its no-check branch still returns `ok`
@@ -1299,7 +1299,7 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
   with the same timeout expression at :261. Both gate sites sit inside `reviewBuild` where
   `config` is already destructured (:158), so they need no extra threading — but the fix prompt
   they spawn does (correction 1).
-- src/prompt.ts: `COMMON_RULES` :53, the node_modules sentence :75–77, and the vague "if it has
+- src/prompt/prompt.ts: `COMMON_RULES` :53, the node_modules sentence :75–77, and the vague "if it has
   a build or test command" wording is now the Leave-the-project-working bullet at :79
   (reworded since the audit; the sentence to replace is the same).
 - src/doctor/doctor.ts: `checkBuildCheck(root)` :209 (was :184), its `detectBuildCheck(root)` :210
@@ -1322,7 +1322,7 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
 
 Correction (pinned in place):
 1. **The gate's build-fix prompt is an npm assumption the 09-23 fix-on-the-spot feature added.**
-   `buildBuildFixPrompt(roleId, script, reasons)` (src/prompt.ts:346) interpolates
+   `buildBuildFixPrompt(roleId, script, reasons)` (src/prompt/prompt.ts:346) interpolates
    `` `npm run ${script}` `` twice into its text, and src/review.ts:235 calls it with
    `check.script` — a field the configured-command variant of the `BuildCheck` union does not
    have. The rejection reasons are equally npm-shaped: the headline at src/review.ts:226–227
@@ -1386,7 +1386,7 @@ Re-pinned anchors (09-24 note's terms → today):
   branch :277, the stale "None declared is informational" comment :272–273), its array entry at
   :350; `runDoctor(root, pathEnv)` :327 still loads config once behind a guard (~:330) — the
   09-24 pin's shape holds, `checkBuildCheck` gains the config parameter from it.
-- **Fix prompt:** `buildBuildFixPrompt(roleId, script, reasons)` src/prompt.ts:354 (was :346),
+- **Fix prompt:** `buildBuildFixPrompt(roleId, script, reasons)` src/prompt/prompt.ts:354 (was :346),
   npm interpolations :356 and :366; called with `check.script` at review.ts:246; the reasons
   headline is still built in reviewBuild's failure branch (:226–235 region, failureHeadline at
   :234). Tests: test/prompt.test.ts:316 (`buildBuildFixPrompt names the role, the failing
@@ -1477,7 +1477,7 @@ only ever been pointed at repos it created itself.
 - src/init.ts — `--adopt` and automatic adoption; today's README-without-markers error becomes
   that path plus one informational line; `--dry-run`; the trimmed PRINCIPLES template.
 - src/cli/cli-args.ts — `parseInitArgs` gains `--adopt` and `--dry-run`.
-- src/roles.ts + src/prompt.ts — the readme role's instructions and the orientation rules name
+- src/roles.ts + src/prompt/prompt.ts — the readme role's instructions and the orientation rules name
   "the project brief (`TUMWATER.md`, or `README.md` in repos tumwater created)" instead of
   README.md.
 - src/doctor/doctor.ts — report which file holds the brief.
@@ -1487,7 +1487,7 @@ only ever been pointed at repos it created itself.
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
 **Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli/cli-args.ts, src/roles.ts,
-src/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
+src/prompt/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1516,7 +1516,7 @@ README-without-markers guard at 99–104 throws; `write()` (create-if-absent) at
 `ensureGitignore` (66); `saveConfig` only when `configPath` is absent; the `created` list drives
 `git add`/commit and `cmdInit`'s output (`src/cli.ts:95–108`). `src/cli/cli-args.ts`:
 `parseInitArgs(args): string` at 112 rejects every `--` token except `--file` (114–116), and the
-no-`--file` path returns `args.join(" ")` at 135 — free-form prompt text. `src/prompt.ts`:
+no-`--file` path returns `args.join(" ")` at 135 — free-form prompt text. `src/prompt/prompt.ts`:
 `COMMON_RULES` (52) names README.md at 56 ("First read README.md in full") and 85 ("Never edit
 the initial prompt block in README.md"), and is embedded by BOTH `buildTickPrompt` (172) and
 `buildDirectorPrompt` (221); `TickPromptInput` is at 142, `buildTickPrompt` at 163, and
@@ -1629,7 +1629,7 @@ Verified as written:
   block's `run` line :52.
 - `src/cli/cli-args.ts` (182 lines): `parseInitArgs` :115, shape unchanged — the `--file`-only rule
   (:117–118), the duplicate check (:123), `failStrayArg` (:126) — correction 1 lands as written.
-- `src/prompt.ts` (442 lines): `COMMON_RULES` :53, naming README.md at :57 and :86;
+- `src/prompt/prompt.ts` (442 lines): `COMMON_RULES` :53, naming README.md at :57 and :86;
   `TickPromptInput` :144; `buildTickPrompt` :169 (embeds COMMON_RULES :180);
   `buildDirectorPrompt` :185 (embeds :232). `test/prompt.test.ts:525` pins
   `/First read README\.md in full/` — correction 2's byte-identical fallback
@@ -1670,7 +1670,7 @@ Verified as written:
   `INITIAL_PROMPT_MAX_CHARS` :15 (was :12 — its doc comment grew), the end-marker-after-start
   ordering guard :51, the cap check :54, the truncation backstop :59 (was :58–60). Same two
   markers, same parse-trim-cap shape — `briefCandidates` resolution needs no new seam here.
-- `src/prompt.ts` (442→473): `COMMON_RULES` :53 still names README.md at :57 and :86 — both pins
+- `src/prompt/prompt.ts` (442→473): `COMMON_RULES` :53 still names README.md at :57 and :86 — both pins
   identical to the 09-23 audit; `TickPromptInput` :144; `buildTickPrompt` :169 embedding
   COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
 - `src/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.

@@ -2,11 +2,11 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles.js";
 import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
-import { stripNotBeforeMarker } from "../prompt-not-before.js";
+import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 import { briefFile, readInitialPrompt } from "../readme.js";
-import { buildDirectorPrompt, buildTickPrompt } from "../prompt.js";
+import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../principles.js";
-import { buildCutOffNote } from "../prompt-followup.js";
+import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gate-prompts.js";
 import { detectBuildCheck } from "../build-check/build-check-detect.js";
 import { telemetryDigest } from "../telemetry-digest.js";
@@ -52,7 +52,7 @@ export function assembleTickPrompt(
   let userPrompt: string | null = null;
   if (role === DIRECTOR_ROLE) {
     // A deferred director prompt's `tumwater:not-before` marker line is plumbing
-    // (src/prompt-not-before.ts),
+    // (src/prompt/prompt-not-before.ts),
     // not content — stripped here exactly like the per-role path below, so the director's tick
     // prompt and the runner's re-queue both see the operator's text alone.
     const dequeued = preview ? peekPrompt(root) : dequeuePrompt(root);
@@ -76,7 +76,7 @@ export function assembleTickPrompt(
     // in the tick's prompt; loop.ts's runner records it as pending and re-queues it on every
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
-    // (src/prompt-not-before.ts), not
+    // (src/prompt/prompt-not-before.ts), not
     // content: it is stripped at delivery, so the loop sees the operator's text alone and the
     // runner's re-queue writes clean text.
     const dequeued = preview ? peekRolePrompt(root, role) : dequeueRolePrompt(root, role);

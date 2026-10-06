@@ -13,7 +13,7 @@ The fleet can read its own source and cannot watch itself run.
 Every role prompt in `src/roles.ts` searches the *tree*: `git log --stat`, `wc -l` over sources,
 `grep -rn` for a pattern, ranged reads. Not one of them reads `.tumwater/log/events.jsonl`, the
 per-role pi transcripts, or `tumwater logs` — `grep -n "events.jsonl\|tumwater logs" src/roles.ts
-src/prompt.ts` returns nothing. The harness emits a dense, structured, append-only record of
+src/prompt/prompt.ts` returns nothing. The harness emits a dense, structured, append-only record of
 everything it does and no agent has ever opened it.
 
 The operator has. Counting every attribution in BUGS.md (55 across 24 full entries and the
@@ -132,7 +132,7 @@ depends on 1/2 of that series for the scheduling half).
   and before `improve`; `OBSERVER_ROLES` gains `"telemetry"`. `DEFERRABLE_ROLES` and
   `BASELINE_BLOCKED_ROLES` already exclude it by construction — no code change — but
   `test/roles.test.ts`'s `exempt` set and observer message must be updated.
-- `src/prompt.ts` — `TickPromptInput` gains `digest?: string`; `buildTickPrompt` renders it as a
+- `src/prompt/prompt.ts` — `TickPromptInput` gains `digest?: string`; `buildTickPrompt` renders it as a
   `<failure-digest>` block beside the `<principles>` block.
 - `src/loop.ts` — `tickPrompt()` computes the digest via `collectFailureReport` +
   `renderFailureMarkdown` only when `this.role === "telemetry"`, reading `this.root` (the project
@@ -238,7 +238,7 @@ acquired a sense it did not have.
 The entry was created 2026-09-17 and had never been audited (1/2 was refined that day; the tree
 is now `833cabf` and none of the landings since the README's stamp touches this plan's anchors).
 The audit found one design defect and pinned five seams; the Shape bullets above are corrected in
-place. Verified anchors: `TickPromptInput` at src/prompt.ts:142 and
+place. Verified anchors: `TickPromptInput` at src/prompt/prompt.ts:142 and
 `buildTickPrompt` at :163; `tickPrompt()` at src/loop.ts:144, which reads `readPrinciples` from
 core principles.ts (so a core digest function is the only clean injection); the `qa` catalog entry at
 src/roles.ts:185–195 with `improve` at :196; `OBSERVER_ROLES` at src/roles.ts:274;
