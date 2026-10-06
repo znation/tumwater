@@ -1,7 +1,7 @@
-import type { LoopState } from "./loop/loop-state.js";
-import { enqueueRolePrompt, takeQueuedFile } from "./inbox/inbox.js";
-import { stripVanishedImageReferences } from "./inbox/inbox-attachments.js";
-import { DIRECTOR_ROLE } from "./roles/roles.js";
+import type { LoopState } from "../loop/loop-state.js";
+import { enqueueRolePrompt, takeQueuedFile } from "./inbox.js";
+import { stripVanishedImageReferences } from "./inbox-attachments.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 
 /**
  * The raw user prompt a director tick is executing, and the requeue policy for every outcome

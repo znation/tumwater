@@ -12,7 +12,7 @@ import {
 import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
 import { dequeueRolePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
-import { PendingPrompt } from "../src/pending-prompt.js";
+import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 

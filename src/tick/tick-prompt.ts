@@ -5,7 +5,7 @@ import { dequeuePrompt, dequeueRolePrompt, peekPrompt, peekRolePrompt } from "..
 import { stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 import { briefFile, readInitialPrompt } from "../readme.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
-import { readPrinciples } from "../principles.js";
+import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";

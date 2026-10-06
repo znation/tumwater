@@ -1,12 +1,12 @@
 // The classifier's shape table, moved here from test/pi.test.ts (2026-09-30) when
-// commandBuffersOutput moved from src/pi/pi.ts to src/command-shape.ts. The runPi stall-warning
+// commandBuffersOutput moved from src/pi/pi.ts to src/pi/command-shape.ts. The runPi stall-warning
 // behavior that consumes it stays pinned in test/pi.test.ts ("a stalled piped-stdout call
 // warns nothing; the redirect is found in the full command, not the truncated label"),
 // together with src/ui/progress-data.ts's matching skip (test/progress.test.ts) — the two
 // surfaces must classify identically (BUGS.md 2026-09-28).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBuffersOutput } from "../src/command-shape.js";
+import { commandBuffersOutput } from "../src/pi/command-shape.js";
 
 test("commandBuffersOutput classifies the redirect shapes", () => {
   const buffered = [

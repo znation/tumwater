@@ -11,7 +11,7 @@ import {
   type ReloadWatchSeams,
   type SupervisorWatchSeams,
   watchReloadSupervisor,
-} from "../self-reload.js";
+} from "../redeploy/self-reload.js";
 import {
   renderInputView,
   tuiTerminalError,

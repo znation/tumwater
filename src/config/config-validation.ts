@@ -16,7 +16,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 import { tooLongMessage } from "../text/text.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
-import { parseModelSelector } from "../model-selector.js";
+import { parseModelSelector } from "./model-selector.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,

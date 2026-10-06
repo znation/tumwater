@@ -10,7 +10,7 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
-} from "../src/readiness.js";
+} from "../src/gates/readiness.js";
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";

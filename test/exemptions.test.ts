@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isExemptDiff, isExemptPath } from "../src/exemptions.js";
+import { isExemptDiff, isExemptPath } from "../src/review/exemptions.js";
 
 // Pins the exemption glob semantics (moved here with the logic when it split out of
-// review.ts into src/exemptions.ts): pattern shape decides what a diff exempts from the
+// review.ts into src/review/exemptions.ts): pattern shape decides what a diff exempts from the
 // model reviewer, so every case below guards the gate's exempt-diff early return.
 
 test("isExemptPath matches a slash-free pattern against the basename at any depth", () => {

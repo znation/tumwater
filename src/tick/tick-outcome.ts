@@ -60,7 +60,7 @@ export interface TickOutcome {
    * bridge says the run moved back to the primary model. Set only by those outcomes; every
    * other resume cause is derived from state (cut-off streak, restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed";
-  /** The tick ended on leftover recovery (src/leftover.ts) — the leftover went on the land queue
+  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the land queue
    * (or already was there, or could not be pinned) — without an authoring run. No model ran, so
    * the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
   recoveredLeftover?: boolean;

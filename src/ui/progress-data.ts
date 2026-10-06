@@ -1,5 +1,5 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "../pi/pi-event-line.js";
-import { bufferedCommandStallMs, commandBuffersOutput } from "../command-shape.js";
+import { bufferedCommandStallMs, commandBuffersOutput } from "../pi/command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";

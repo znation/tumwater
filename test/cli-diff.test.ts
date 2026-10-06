@@ -8,7 +8,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh, tmpdir, writeConfig } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";
 import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
-import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
+import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
 // The `diff` command: the change a loop holds — its branch's unlanded commits (with the

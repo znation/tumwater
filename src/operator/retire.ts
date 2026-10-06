@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { enabledRoleIds, loadConfigSafe } from "./config/config.js";
+import { enabledRoleIds, loadConfigSafe } from "../config/config.js";
 import {
   branchExists,
   currentBranch,
@@ -8,13 +8,13 @@ import {
   isMergedInto,
   refSha,
   targetBranch,
-} from "./git/git.js";
-import { errorMessage } from "./text/text.js";
-import { loadLoopState } from "./loop/loop-state.js";
-import { branchName, landingRefName, worktreePath } from "./paths.js";
-import { isUsableWorktree, removeWorktree } from "./git/worktree.js";
-import { resumeRole } from "./fleet/fleet-state.js";
-import { git } from "./git/git-run.js";
+} from "../git/git.js";
+import { errorMessage } from "../text/text.js";
+import { loadLoopState } from "../loop/loop-state.js";
+import { branchName, landingRefName, worktreePath } from "../paths.js";
+import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
+import { resumeRole } from "../fleet/fleet-state.js";
+import { git } from "../git/git-run.js";
 
 /** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus
  * the per-role landing ref and paused-state marker that outlive it. The safety rails and the

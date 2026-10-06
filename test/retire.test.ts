@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { branchName, landingRefName, pausedRolesPath, worktreePath } from "../src/paths.js";
-import { collectRetire, retireRole, type RetireResult, type RetireStatus } from "../src/retire.js";
+import { collectRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
 import { landingRefExists } from "./orchestrator-fixtures.js";
 import { initializedWorktree, mainSha, sh } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";

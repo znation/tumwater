@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
-import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../readiness.js";
+import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../gates/readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../process/run-marker.js";
 import { piArgs } from "./pi-args.js";

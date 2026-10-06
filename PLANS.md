@@ -409,7 +409,7 @@ provider — the acceptance criterion that a `fallback` string engages exactly l
 `fallbackModel` object requires it (with a legacy provider in scope, `"fallback":
 "omlx/local-free"` would otherwise resolve to a bare id under the budgeted provider). A string
 `model` still obeys the legacy rule everywhere it appears. Implemented by
-src/model-selector.ts (`parseModelSelector`, `formatModelSelector`, both omitting unset fields),
+src/config/model-selector.ts (`parseModelSelector`, `formatModelSelector`, both omitting unset fields),
 selector parsing in src/config-views.ts (`withModelOverrides` now parses the top-level model
 string too, under the top level's own legacy provider), `fallback` on TumwaterConfig and in
 `TOP_LEVEL_KEYS`, and the two validation checks; test/model-selector.test.ts is new, and
@@ -421,7 +421,7 @@ config-views/pi-args/config-validation suites grew the selector and fallback-str
 and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the same way. `roles.<id>.model` and `review.model` accept the same strings.
 
 **Approach.**
-1. **src/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
+1. **src/config/model-selector.ts (new):** `parseModelSelector(s, legacyProvider?)` returns
    `{ provider?, model, thinking? }`; `formatModelSelector(triple)` is its inverse. Rules: a
    trailing `:x` is thinking only when `x` is in `THINKING_LEVELS` (src/config-schema.ts), so
    `…:together` survives; with `legacyProvider` the rest is a bare id under that provider;
@@ -437,7 +437,7 @@ and `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` names the budget fallback the 
 4. **Validation** (src/config-validation.ts, src/config-field-checks.ts): `fallback` is a
    non-empty string, and `fallback` together with `fallbackModel` is an error naming both keys.
 
-**Files touched.** src/model-selector.ts (new), src/config-schema.ts, src/config-views.ts,
+**Files touched.** src/config/model-selector.ts (new), src/config-schema.ts, src/config-views.ts,
 src/config-validation.ts, src/config-field-checks.ts, and tests (a new
 test/model-selector.test.ts plus the config-views and pi-args suites).
 
@@ -538,7 +538,7 @@ scans keep tripping over. `tumwater doctor` reports orphan processes but nothing
 to clean up a retired loop's workspace. Give the operator one command that does it safely.
 
 **Approach.**
-- New module `src/retire.ts` with `collectRetire(root, role)` returning what exists today
+- New module `src/operator/retire.ts` with `collectRetire(root, role)` returning what exists today
   (worktree present? branch present? `aheadOfMain` count, dirty flag, enabled-in-config flag)
   and `retireRole(root, role, { force })` performing the removal. Reuse the existing pieces:
   `worktreePath`/`branchName` from `src/paths.ts`, `aheadOfMain`/`isDirty`/`deleteRef` from
@@ -556,7 +556,7 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   skipped: []}`, a help entry in `src/cli/help.ts`, and a `tumwater help retire` shape test in the
   style of `test/command-shape.test.ts`. Doctor stays read-only — out of scope.
 
-**Files touched.** `src/retire.ts` (new), `src/git/worktree.ts`, `src/cli.ts`, `src/cli/cli-args.ts`,
+**Files touched.** `src/operator/retire.ts` (new), `src/git/worktree.ts`, `src/cli.ts`, `src/cli/cli-args.ts`,
 `src/cli/help.ts`, `test/retire.test.ts` (new), `test/cli-operators.test.ts` (command-shape rows).
 
 **Acceptance criteria.**

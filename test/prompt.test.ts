@@ -16,7 +16,7 @@ import {
 import {
   PRINCIPLES_MAX_CHARS,
   readPrinciples,
-} from "../src/principles.js";
+} from "../src/prompt/principles.js";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gates/gate-prompts.js";

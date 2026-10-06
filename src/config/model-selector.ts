@@ -4,7 +4,7 @@
  * (src/pi/pi-args.ts) still passes `--provider` / `--model` / `--thinking` separately. Pure
  * string algebra — no I/O, no config knowledge beyond THINKING_LEVELS. */
 
-import { THINKING_LEVELS } from "./config/config-schema.js";
+import { THINKING_LEVELS } from "./config-schema.js";
 
 /** The parsed form of one selector: the triple piArgs consumes. `provider` is absent for a
  * bare model pattern (pi resolves it itself), `thinking` for a selector without a level

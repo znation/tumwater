@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { NOT_INITIALIZED_MESSAGE } from "../src/readiness.js";
+import { NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { runStartupProblem } from "../src/gates/startup-gate.js";
 import { BUILD, HEAD_B, HEAD_C, IDLE, fakeDeps, harness, settle } from "./redeploy-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";

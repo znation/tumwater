@@ -11,7 +11,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT } from "../src/leftover.js";
+import { MERGE_CONFLICT_LIMIT } from "../src/loop/leftover.js";
 import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";

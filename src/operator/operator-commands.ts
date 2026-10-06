@@ -3,7 +3,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
 import { REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
-import { artifactPhrase, retireRole } from "../retire.js";
+import { artifactPhrase, retireRole } from "./retire.js";
 import { agree, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { allRoleIds } from "../roles/roles.js";
@@ -265,7 +265,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
 
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
  * branch, landing ref, and paused-state marker. The collection, safety rails, and removal live
- * in src/retire.ts; this is the render layer — one line per removed artifact, the skip lines
+ * in src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
  * that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
   // As in cmdAbort: the config exists only to validate the id against built-ins plus

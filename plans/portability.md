@@ -604,7 +604,7 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   (src/config.ts:154) keep returning `defaultConfig()` for a missing file; nothing seeds at run
   time. A fresh clone of an initialized project therefore runs `tumwater init` first, and until
   then `doctor`'s existing "init" check fails with `NOT_INITIALIZED_MESSAGE`
-  (src/readiness.ts:10) — unchanged.
+  (src/gates/readiness.ts:10) — unchanged.
 - **`seedConfig` never throws.** An example that is unparseable or fails `validateConfig` falls
   back to `defaultConfig()`: `init` must not die on a bad template, and the user's own file is
   what validation protects.
@@ -681,7 +681,7 @@ re-pinned on this tree: `ensureGitignore` (src/init/init.ts:69, its one-entry ea
 `created.push("tumwater.json")` (:131), the `.gitignore` push (:133), `git add -- …created` (:137)
 and the commit (:142); `configPath` (src/paths.ts:11); `defaultConfig` (src/config.ts:13),
 `loadConfig` (:77), `loadConfigSafe` (:118), `loadConfigCached` (:158, default fallback :163);
-`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10); `checkRepo` (src/doctor/doctor.ts:88), `checkInit`
+`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts:10); `checkRepo` (src/doctor/doctor.ts:88), `checkInit`
 (:99), and the report's check list (:243–247, `{ name: "init", … }` at :247); the CLI's `created`
 line is src/cli.ts:105–112. Test pins: `"N roles enabled"` (test/doctor.test.ts:118/125) and the
 check-name list (test/doctor.test.ts:274). Capability absence re-confirmed: `grep -rn` for
@@ -713,7 +713,7 @@ Re-pinned anchors:
   shape: when the pathspec keeps a subset, `committed` must reflect the commit that actually ran.
 - `src/paths.ts`: `configPath` :11. `src/config.ts` (434 lines): `defaultConfig` :14,
   `loadConfig` :79, `loadConfigSafe` :120, `loadConfigCached` :160 (default fallback :165).
-- `src/readiness.ts`: `NOT_INITIALIZED_MESSAGE` :10 (unchanged).
+- `src/gates/readiness.ts`: `NOT_INITIALIZED_MESSAGE` :10 (unchanged).
 - `src/doctor/doctor.ts` (301 lines): `CheckOutcome` :45; `checkRepo` :101; `checkInit` :124 — the
   `NOT_INITIALIZED_MESSAGE` fail at :126 and the `` `${n} roles enabled` `` ok at :129 are the two
   details the drift fold must preserve; the checks array is :276 with `{ name: "init", … }` at
@@ -855,7 +855,7 @@ one-entry early return now :79), `initProject` (:98), the `created` list (:145),
 `.gitignore` push (:162), `git add -- …created` (:166) and the commit (:171); `configPath`
 (src/paths.ts:11, unchanged); `defaultConfig` (src/config.ts:14), `loadConfig` (:79),
 `loadConfigSafe` (:120), `loadConfigCached` (:160, default fallback :165);
-`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10, unchanged); `checkRepo` (src/doctor/doctor.ts:101),
+`NOT_INITIALIZED_MESSAGE` (src/gates/readiness.ts:10, unchanged); `checkRepo` (src/doctor/doctor.ts:101),
 `checkInit` (:124), and the report's check list (`{ name: "init", … }` at :280); the CLI's
 `created` line is src/cli.ts:132–139. Test pins: `"N roles enabled"` (test/doctor.test.ts:141
 and :148) and the check-name list (test/doctor.test.ts:298). Capability absence re-confirmed:
@@ -911,7 +911,7 @@ side are all impossible.
   spawn-error message names the resolved binary), test/cli.test.ts (preflight failure text),
   test/doctor.test.ts (all three sources).
 
-**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/readiness.ts, src/cli.ts,
+**Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/gates/readiness.ts, src/cli.ts,
 src/doctor/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
 `tumwater.example.json` only when 4a/7 has already created it (see correction 6 below).
 
@@ -941,11 +941,11 @@ returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/docto
 Corrections:
 
 1. **The missing-binary message is one shared constant, not a per-caller string.**
-   `PI_MISSING_MESSAGE` lives in `src/readiness.ts:11` and both `src/cli.ts:24` and
+   `PI_MISSING_MESSAGE` lives in `src/gates/readiness.ts:11` and both `src/cli.ts:24` and
    `src/doctor/doctor.ts:14` import it; readiness.ts's own doc comment promises the two surfaces "cannot
    drift". Naming the resolved binary + source therefore cannot be done at the two call sites:
    add a builder (`piMissingMessage(resolved)`) beside `PI_MISSING_MESSAGE` in readiness.ts and
-   add **src/readiness.ts** to Files touched. Keep the default-source text byte-identical to
+   add **src/gates/readiness.ts** to Files touched. Keep the default-source text byte-identical to
    today's — `test/cli.test.ts:388` and `:1121` match `/pi not found on PATH/` and
    `test/doctor.test.ts:78` pins the install hint — so only a non-default source gains the
    "resolved `<bin>` from `TUMWATER_PI_BIN`/`agentBin`" clause.
@@ -982,7 +982,7 @@ Corrections:
    criterion. Top-level key validation is pinned in **test/config.test.ts:383** (there is no
    `test/config-validation.test.ts`), so `agentBin`'s validation test joins that file.
 
-Sizing unchanged: src/pi.ts ~20 lines, src/readiness.ts ~8, src/cli.ts ~5, src/doctor/doctor.ts ~8,
+Sizing unchanged: src/pi.ts ~20 lines, src/gates/readiness.ts ~8, src/cli.ts ~5, src/doctor/doctor.ts ~8,
 src/types.ts + src/config-validation.ts ~4, tests ~40. No design question remains open; landable
 after 2/7.
 

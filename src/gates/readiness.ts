@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { TumwaterConfig } from "./config/config-schema.js";
-import { findOnPath } from "./files/files.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { findOnPath } from "../files/files.js";
 
 /** The pre-flight messages behind the readiness gate. startup-gate.ts answers with the first
  * unmet precondition (cmdRun and requireReadyRepo fail on it, the self-redeploy refuses a swap

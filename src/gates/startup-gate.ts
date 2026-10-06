@@ -13,7 +13,7 @@ import {
   findAgentBinary,
   piMissingMessage,
   resolveAgentBin,
-} from "../readiness.js";
+} from "./readiness.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has

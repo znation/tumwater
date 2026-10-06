@@ -34,7 +34,7 @@ import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../launch-services.js";
-import { RetentionPruner } from "../retention.js";
+import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import {
   drainInFlightWork,
@@ -159,7 +159,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
 
-  // Session retention (src/retention.ts owns the whole concern): construction runs the
+  // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged fleet prunes at most once
   // per day — and 0 disables pruning, the same convention as quietTimeoutSeconds.
   const retentionPruner = new RetentionPruner(root, config.sessionRetentionDays);
@@ -252,7 +252,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
       // Live session retention (the last restart-only setting): the edge-triggered
       // retention_changed event, the once-per-day gate, and the prune itself live in
-      // src/retention.ts. The live config (last-known-good while the file is broken or
+      // src/orchestrator/retention.ts. The live config (last-known-good while the file is broken or
       // missing) drives the check, like the budget gate.
       retentionPruner.poll(root, liveConfig.sessionRetentionDays);
 

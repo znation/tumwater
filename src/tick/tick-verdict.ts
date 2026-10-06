@@ -9,7 +9,7 @@ import type { LoopState } from "../loop/loop-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { FlowResult } from "../verdict/reply-contract.js";
-import type { PendingPrompt } from "../pending-prompt.js";
+import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-write.js";
@@ -24,7 +24,7 @@ interface TickVerdictContext {
   mainBranch: string;
   /** The loop's live state object — mutated in place (`lastError`), not swapped. */
   state: LoopState;
-  /** The dequeued prompt's requeue policy (src/pending-prompt.ts): unfulfilled outcomes
+  /** The dequeued prompt's requeue policy (src/inbox/pending-prompt.ts): unfulfilled outcomes
    * re-queue the raw director request through it. */
   pending: PendingPrompt;
   /** Assistant turns folded into this tick so far — the same field handleRefusal reads. */
@@ -82,7 +82,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // handled — keep the session and the worktree's edits, resume promptly, bounded by the
     // same quiet-kill streak — while a run with no recent progress keeps the discard path
     // below. Director ticks never resume; requeueForResume re-queues their prompt
-    // fresh (src/pending-prompt.ts), and applyTickOutcome schedules the immediate retry
+    // fresh (src/inbox/pending-prompt.ts), and applyTickOutcome schedules the immediate retry
     // without a resume.
     s.lastError = pi.errorMessage ?? "timed out while still making progress";
     ctx.pending.requeueForResume(s, ctx.userPrompt);

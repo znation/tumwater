@@ -6,7 +6,7 @@
  * zero-byte grace, the warned-call set) and exposes the flags the run's close handler reads
  * back; pi.ts feeds the parser live through the deps accessors, so no notification path is
  * needed when events land. */
-import { bufferedCommandStallMs, commandBuffersOutput } from "../command-shape.js";
+import { bufferedCommandStallMs, commandBuffersOutput } from "./command-shape.js";
 import type { OpenToolCall } from "./pi-event-line.js";
 
 interface PiWatchdogDeps {

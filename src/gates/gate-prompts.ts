@@ -217,7 +217,7 @@ export function buildRejectedReviewNote(review: {
 }
 
 /** The note injected into a role's prompt after leftover recovery discarded its pinned change
- * at MERGE_CONFLICT_LIMIT (src/leftover.ts): the landing failures were harness-level, so without
+ * at MERGE_CONFLICT_LIMIT (src/loop/leftover.ts): the landing failures were harness-level, so without
  * it the author would never learn its work is gone — or that redoing it from memory of the old
  * diff would conflict again. A pure function so its shape is pinned in tests. */
 export function buildConflictDiscardNote(summary: string, attempts: number): string {

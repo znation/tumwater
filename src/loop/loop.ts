@@ -13,13 +13,13 @@ import { LoopPi } from "./loop-pi.js";
 
 import { configForRole, modelSelectorField, type ResolvedModelConfig } from "../config/config-views.js";
 import { planTickStart } from "../tick/tick-resume.js";
-import { PendingPrompt } from "../pending-prompt.js";
+import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
-import { recoverLeftover, type LeftoverRecovery } from "../leftover.js";
+import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
@@ -53,7 +53,7 @@ export class LoopRunner {
    * commit trailer and tick_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
-  /** The dequeued user prompt a tick is executing and its requeue policy (src/pending-prompt.ts):
+  /** The dequeued user prompt a tick is executing and its requeue policy (src/inbox/pending-prompt.ts):
    * the raw director request is recorded at dequeue so an unfulfilled tick (abort, timeout, or
    * failure without changes) can re-queue it instead of losing the request. */
   private readonly pending: PendingPrompt;
@@ -284,7 +284,7 @@ export class LoopRunner {
     return true;
   }
 
-  /** End a tick whose leftover recovery found work to salvage (src/leftover.ts) without an
+  /** End a tick whose leftover recovery found work to salvage (src/loop/leftover.ts) without an
    * authoring run — the leftover owns the role's one landing ref until its landing resolves. A
    * tick's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
    * the land queue ends the tick `queued` exactly like a fresh changed tick (the land-queue
@@ -469,7 +469,7 @@ export class LoopRunner {
       await abortSync(wt);
       logEvent(this.root, { loop: this.role, type: "resume", cause: resumeCause });
     } else {
-      // Salvage a commit a previous tick left unlanded (src/leftover.ts): recovery puts it back
+      // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it back
       // on the land queue, so it lands through the orchestrator's landing pipeline — the same
       // gate as a fresh tick's change, and main keeps exactly one writer (an in-tick recovery
       // landing raced the slot's batches into `merge_blocked`). A salvaged leftover ENDS the

@@ -1,7 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { hasResumableSession } from "../pi/pi.js";
 import { RETRIABLE_LANDING_RESULTS } from "../landing/landing-core.js";
-import type { PendingPrompt } from "../pending-prompt.js";
+import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { sessionDir } from "../paths.js";
 import { buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.js";
 
@@ -78,7 +78,7 @@ export function planTickStart(opts: {
   // work, and any uncommitted edits are the reviewer's stray output, discarded by the fresh
   // path's reset below.
   const resuming = resumableSession && s.phase !== "review";
-  // Reclaim the prompt the interrupted tick re-queued for its resume (src/pending-prompt.ts):
+  // Reclaim the prompt the interrupted tick re-queued for its resume (src/inbox/pending-prompt.ts):
   // the resumed session still owns that request in its context, so this tick's bookkeeping
   // operates on the queue's copy. Consumed even when this tick does not resume, so a stale
   // record never survives into a later resume.

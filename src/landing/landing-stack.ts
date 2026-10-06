@@ -22,7 +22,7 @@ import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
-import { isExemptDiff } from "../exemptions.js";
+import { isExemptDiff } from "../review/exemptions.js";
 import { checkWaitStage, setLandingStage } from "./landing-slot.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 

@@ -5,11 +5,11 @@
  * config.ts, the write side in config-write.ts. */
 import type { FallbackModelConfig, ModelTier, TumwaterConfig } from "./config-schema.js";
 import { MODEL_TIERS } from "./config-schema.js";
-import { parseModelSelector } from "../model-selector.js";
-import type { ModelSelector } from "../model-selector.js";
+import { parseModelSelector } from "./model-selector.js";
+import type { ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
-import { formatModelSelector } from "../model-selector.js";
+import { formatModelSelector } from "./model-selector.js";
 import { roleById } from "../roles/roles.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/leftover.js";
+import { MERGE_CONFLICT_LIMIT, recoverLeftover, type LeftoverContext } from "../src/loop/leftover.js";
 import { commitTrailer } from "../src/git/commit-message.js";
 import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
@@ -13,7 +13,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
-// Unit coverage for src/leftover.ts's recoverLeftover — the salvage path that puts a commit a
+// Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit a
 // previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no

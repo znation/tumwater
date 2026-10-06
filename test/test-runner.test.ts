@@ -440,7 +440,7 @@ test("coverageRowsFromDumps keeps blank lines from scrambling which lines a proc
 test("coverageRowsFromDumps distrusts node:test's phantom zero-count function roots", () => {
   // node:test's V8 dumps record some functions their own tests demonstrably ran as phantom fn
   // roots — isBlockCoverage: false, count: 0 — while sibling roots in the same dump carry real
-  // counts (BUGS.md 2026-10-01, src/self-reload.js). Taking that zero at face value left
+  // counts (BUGS.md 2026-10-01, src/redeploy/self-reload.js). Taking that zero at face value left
   // lines and functions the tests executed marked uncovered, byte-identically across runs.
   // When the module ran in the dump's process (some fn root has count > 0), such a root must
   // not shadow its enclosing range's real count.

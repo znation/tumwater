@@ -10,7 +10,7 @@ import {
   type ReloadChild,
   type ReloadSpawn,
   watchReloadSupervisor,
-} from "../src/self-reload.js";
+} from "../src/redeploy/self-reload.js";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import { ExitError } from "./exit-capture.js";
@@ -19,7 +19,7 @@ import path from "node:path";
 import { commitIn, mainSha, makeRepo } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
 
-// The dashboards' auto-reload (src/self-reload.ts): decide staleness from the process's own
+// The dashboards' auto-reload (src/redeploy/self-reload.ts): decide staleness from the process's own
 // startup stamp versus the on-disk stamp, then re-exec the same command once. All seams are
 // injected so these tests launch no process, run no git, and touch no dist.
 

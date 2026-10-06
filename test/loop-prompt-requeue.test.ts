@@ -1,7 +1,7 @@
 /** The prompt-requeue survival cluster: a queued request must outlive every tick that
  * dequeues it but cannot fulfill — a red-main gate, a failed resume, and a crash after the
  * dequeue all hand the prompt back to its queue. This exercises the durable-copy policy
- * src/pending-prompt.ts implements. Split from the numbered loop-2.test.ts grab-bag so the
+ * src/inbox/pending-prompt.ts implements. Split from the numbered loop-2.test.ts grab-bag so the
  * concern has a topic-named file like its siblings. */
 import test from "node:test";
 import assert from "node:assert/strict";

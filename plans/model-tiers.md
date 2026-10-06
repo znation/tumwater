@@ -233,7 +233,7 @@ Each lands and is useful on its own:
 
 src/config-schema.ts (types, key lists), src/config-validation.ts and src/config-field-checks.ts
 (shapes, legacy conflicts), src/config.ts (defaults, overlay of string-or-map), a new
-src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
+src/config/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
 `fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/roles/role-catalog.ts (`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget/budget.ts,
 src/gates/budget-gates.ts, src/budget/fallback-breaker.ts, src/landing/landing-merge.ts and
