@@ -8,7 +8,7 @@
  * runScopedBuildCheck (build-check.ts) is the only caller that both runs a check and uses this
  * wording; the baseline surfaces use the event/warning helpers alone. */
 
-import type { HarnessEventInput } from "./events.js";
+import type { HarnessEventInput } from "../events.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main

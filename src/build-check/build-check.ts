@@ -1,10 +1,10 @@
 import { BUILD_CHECK_TIMEOUT_MS, type BuildCheck } from "./build-check-detect.js";
-import { EXEC_MAX_BUFFER, execFileAsync } from "./process.js";
-import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";
+import { EXEC_MAX_BUFFER, execFileAsync } from "../process.js";
+import { KILL_GRACE_MS, runScriptGroup } from "../process-group.js";
 import { clipBuildTail } from "./build-check-report.js";
 import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
-import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "./host-sleep.js";
-import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
+import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "../host-sleep.js";
+import { type InstallRunner, npmInstall, syncInstall } from "../dep-install.js";
 
 /** The deterministic build pre-check the review gate runs before any model reviewer: detect
  * the project's declared check (an npm script — `test` preferred per npm convention, then

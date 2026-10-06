@@ -11,12 +11,12 @@
  *   when it last woke (`kern.waketime`). A wake newer than the window's opening sample means
  *   the host slept inside it; the newest sleep's span — wake minus sleep start — is its
  *   measured duration. libuv's monotonic clock on macOS counts time asleep (the
- *   BuildCheckRun docblock in build-check.ts), so it cannot be differenced against anything.
+ *   BuildCheckRun docblock in build-check/build-check.ts), so it cannot be differenced against anything.
  * - **Linux:** `/proc/uptime` runs on CLOCK_BOOTTIME, which advances through suspend, while
  *   the monotonic clock does not; their divergence over the window is the suspended time.
  *
  * Zero dependencies: sysctl through execFile, /proc through a plain read. Split from
- * build-check.ts so the measurement is testable on its own — every reader takes its samples
+ * build-check/build-check.ts so the measurement is testable on its own — every reader takes its samples
  * through the injectable SleepSampler, and tests hand synthetic samples to sleptMsBetween
  * instead of suspending the host. */
 
@@ -83,7 +83,7 @@ async function readSysctlTime(name: string): Promise<number | undefined> {
  * a window holding several sleeps is undercounted, never overcounted — and 0 means no wake
  * fell inside the window, i.e. no evidence of sleep. On Linux it is the boottime clock's
  * divergence from the monotonic clock, 0 when the host stayed awake. Callers decide what
- * counts as sleep (SLEEP_SPAN_TOLERANCE_MS in build-check-events.ts), not this function. */
+ * counts as sleep (SLEEP_SPAN_TOLERANCE_MS in build-check/build-check-events.ts), not this function. */
 export function sleptMsBetween(a: SleepSample, b: SleepSample): number | undefined {
   if (a.bootMs !== undefined && b.bootMs !== undefined && a.monoNs !== undefined && b.monoNs !== undefined) {
     const wall = b.bootMs - a.bootMs;

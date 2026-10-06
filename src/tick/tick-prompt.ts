@@ -8,7 +8,7 @@ import { buildDirectorPrompt, buildTickPrompt } from "../prompt.js";
 import { readPrinciples } from "../principles.js";
 import { buildCutOffNote } from "../prompt-followup.js";
 import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gate-prompts.js";
-import { detectBuildCheck } from "../build-check-detect.js";
+import { detectBuildCheck } from "../build-check/build-check-detect.js";
 import { telemetryDigest } from "../telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "../qa-coverage.js";
 import { renderBacklogStructureBlock } from "../backlog-structure.js";

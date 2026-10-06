@@ -1,6 +1,6 @@
 import path from "node:path";
-import { describeCheck } from "./build-check-report.js";
-import type { BuildCheck } from "./build-check-detect.js";
+import { describeCheck } from "./build-check/build-check-report.js";
+import type { BuildCheck } from "./build-check/build-check-detect.js";
 import { type Role } from "./roles.js";
 import { DECOMPOSITION_GUIDANCE, NEEDS_REVIEW_NOTE, PLAN_SIZING } from "./role-guidance.js";
 import { CLAIMS_RULE, REPLY_ENDINGS } from "./reply-contract.js";

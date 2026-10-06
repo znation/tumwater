@@ -1,6 +1,6 @@
 /** Wording half of the failure digest's Fleet state changes section: which transition event
  * types the digest replays and the bounded one-liner describing each. Split out of
- * failure-data.ts (the same seam build-check-events.ts split from build-check.ts) so the
+ * failure-data.ts (the same seam build-check/build-check-events.ts split from build-check/build-check.ts) so the
  * per-event-type wording — which changes whenever the harness grows a new self-decision —
  * stays apart from the collection rules (clustering, window math, section cuts) in
  * failure-data.ts. Every free string is sliced here, so the digest's byte bound holds for any

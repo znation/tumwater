@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { BuildCheck } from "../src/build-check-detect.js";
-import type { BuildCheckOutcome } from "../src/build-check.js";
-import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build-check-report.js";
+import type { BuildCheck } from "../src/build-check/build-check-detect.js";
+import type { BuildCheckOutcome } from "../src/build-check/build-check.js";
+import { checkFailureReasons, clipBuildTail, failureHeadline } from "../src/build-check/build-check-report.js";
 
 // build-check-report.ts's checkFailureReasons turns a red check's outcome into the machine
 // text every rejecting gate hands its author — the reason lines injected into the next-tick
@@ -82,7 +82,7 @@ test("an unverified red with an empty tail still says why the tree is unverified
 
 // --- The clipBuildTail/failureHeadline unit coverage, moved here from build-check.test.ts
 // (2026-09-30) so each build-check module's tests live in its own topic-named file:
-// build-check.test.ts keeps only src/build-check.ts's own run/classification tests.
+// build-check.test.ts keeps only src/build-check/build-check.ts's own run/classification tests.
 // --- clipBuildTail: what of a chatty build's output survives into persisted state and the
 // reviewer-injected note — blanks and npm's own banners must not count against the ten-line cap.
 

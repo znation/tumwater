@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 
-// Type-only back-reference, the same shape build-check-events.ts uses: runScriptGroup's
+// Type-only back-reference, the same shape build-check/build-check-events.ts uses: runScriptGroup's
 // result carries the caller's run record (BuildCheckRun), and no runtime cycle is created —
-// build-check.ts imports this module's runtime values, this file imports only the type.
-import type { BuildCheckRun } from "./build-check.js";
+// build-check/build-check.ts imports this module's runtime values, this file imports only the type.
+import type { BuildCheckRun } from "./build-check/build-check.js";
 import { signalTree, withoutLaunchServicesCheckIn } from "./process.js";
 import { errCode } from "./errno.js";
 
@@ -12,7 +12,7 @@ import { errCode } from "./errno.js";
  * deadline plus the SIGTERM → SIGKILL escalation grace. Split out of process.ts, whose other
  * residents (the exec helper, the liveness and process-table probes, the LaunchServices
  * preload) are generic child-process plumbing shared across the harness: this runner's only
- * runtime consumer is the build check (build-check.ts), and its result carries that caller's
+ * runtime consumer is the build check (build-check/build-check.ts), and its result carries that caller's
  * run record, so it lives beside that boundary instead of inside the shared module. The
  * signals it escalates with come from process.ts's signalTree; the children it starts carry
  * withoutLaunchServicesCheckIn's preload, so its npm trees check in with launchservicesd
@@ -22,7 +22,7 @@ import { errCode } from "./errno.js";
  * group gets SIGTERM, and anything still alive this much later (a SIGTERM-trapping runner, a
  * wedged worker) is SIGKILLed — and the run settles then, whether or not the tree ever closed
  * its pipes, so a timed-out run is bounded at its deadline plus this grace. The default of
- * runBuildCheck's killGraceMs parameter (build-check.ts), which tests shrink — pinning that
+ * runBuildCheck's killGraceMs parameter (build-check/build-check.ts), which tests shrink — pinning that
  * the escalation is armed on timeout (never at spawn: a healthy run that merely outlasts the
  * grace period must run to completion), that a surviving grandchild is taken down before the
  * run settles, and that a tree the SIGTERM already took down does not wait out the grace. */

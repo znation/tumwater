@@ -3,16 +3,16 @@ import {
   type BuildCheckRun,
   type BuildSkipReason,
   runBuildCheck,
-} from "./build-check.js";
-import { SLEEP_SPAN_TOLERANCE_MS } from "./build-check-events.js";
+} from "./build-check/build-check.js";
+import { SLEEP_SPAN_TOLERANCE_MS } from "./build-check/build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "./check-permit.js";
-import { detectBuildCheck } from "./build-check-detect.js";
+import { detectBuildCheck } from "./build-check/build-check-detect.js";
 import { refSha } from "./git.js";
 import type { CheckConfigSlice } from "./config/config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
- * machinery that produces it. Split out of build-check.ts — which keeps running and classifying
+ * machinery that produces it. Split out of build-check/build-check.ts — which keeps running and classifying
  * the project's declared check — because a verdict ABOUT a specific SHA is a different concern
  * from the mechanics of running one: this module owns the cache, the in-flight dedup, the
  * re-verification policy that keeps one worktree's environmental red from blocking the fleet.
@@ -34,7 +34,7 @@ interface MainBaseline {
   sha: string;
   /** Red only: the script that failed. */
   script?: string;
-  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build-check-report.ts) picks the
+  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build-check/build-check-report.ts) picks the
    * line that goes into the warning event so an operator sees what broke without opening a
    * transcript. */
   outputTail?: string[];
@@ -185,7 +185,7 @@ export async function checkMainBaseline(
     pending = (async () => {
       const check = detectBuildCheck(wt, config);
       if (!check) return { baseline: null }; // No declared check — nothing to verify, nothing to block on.
-      // The same process-wide check permit the scoped checks take (build-check.ts's
+      // The same process-wide check permit the scoped checks take (build-check/build-check.ts's
       // withCheckPermit): this runs the suite directly, so it must count against the cap too.
       // Only the one run per key holds a permit; deduped waiters above await `pending` holding
       // none.

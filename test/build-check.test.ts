@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runBuildCheck } from "../src/build-check.js";
-import { runScopedBuildCheck } from "../src/build-check-scoped.js";
-import { parseTestCounts } from "../src/build-check-counts.js";
+import { runBuildCheck } from "../src/build-check/build-check.js";
+import { runScopedBuildCheck } from "../src/build-check/build-check-scoped.js";
+import { parseTestCounts } from "../src/build-check/build-check-counts.js";
 import { scriptedSampler, woke } from "./sleep-clock.js";
-import { checkFailureReasons } from "../src/build-check-report.js";
-import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check-events.js";
-import { detectBuildCheck } from "../src/build-check-detect.js";
+import { checkFailureReasons } from "../src/build-check/build-check-report.js";
+import { buildCheckEvent, buildCheckSkipWarning } from "../src/build-check/build-check-events.js";
+import { detectBuildCheck } from "../src/build-check/build-check-detect.js";
 import { readEvents } from "../src/event-read.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { buildCheckFixture } from "./loop-fixtures.js";
@@ -16,7 +16,7 @@ import { pathPrepend, pathReplace, projManifest, writeScript } from "./fake-comm
 import { sh, tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
-// Unit coverage for the deterministic build pre-check (src/build-check.ts): execution and
+// Unit coverage for the deterministic build pre-check (src/build-check/build-check.ts): execution and
 // outcome classification, plus the configured-check.command detection boundary. The walk-up
 // detection tests live in build-check-detect.test.ts beside their subject, the process-tree
 // teardown hygiene (group signals, the SIGKILL escalation, settle bounds) in

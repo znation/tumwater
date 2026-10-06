@@ -150,7 +150,7 @@ export function eventMessage(e: HarnessEvent): string {
       // review gate, the red-main baseline check of main itself, or the merge lock's
       // post-rebase re-check of the tree about to land). script carries the npm script name
       // for an npm check but the FULL configured command otherwise (checkScriptName in
-      // build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
+      // build-check/build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
       return `build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
     case "dep_install": {

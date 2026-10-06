@@ -17,7 +17,7 @@ const execFileRaw = promisify(execFile);
 export const EXEC_MAX_BUFFER = 32 * 1024 * 1024;
 
 /** The harness's one execFile helper: promisify(execFile) with the shared output ceiling baked
- * in as the default. Every module that shells out — git.ts, build-stage.ts, build-check.ts —
+ * in as the default. Every module that shells out — git.ts, build-stage.ts, build-check/build-check.ts —
  * runs through this, so the ceiling and the child handle (a caller may end the spawned stdin,
  * as patch-id does) behave the same everywhere. */
 export function execFileAsync(

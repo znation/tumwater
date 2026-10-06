@@ -1,5 +1,5 @@
 import path from "node:path";
-import { resolveFromNodeModules } from "./build-check-detect.js";
+import { resolveFromNodeModules } from "./build-check/build-check-detect.js";
 import { readJsonFile } from "./json-files.js";
 import { EXEC_MAX_BUFFER } from "./process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "./process-group.js";

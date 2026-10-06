@@ -10,7 +10,7 @@ import {
   checkTimeoutMs,
   type BuildCheckOutcome,
 } from "./build-check.js";
-import { logEvent, warnEvent } from "./events.js";
+import { logEvent, warnEvent } from "../events.js";
 import {
   MERGE_SCOPES,
   SCOPE_WORDS,
@@ -24,10 +24,10 @@ import {
   sleptPhrase,
   type BuildCheckScope,
 } from "./build-check-events.js";
-import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "./check-permit.js";
-import type { CheckConfigSlice } from "./config/config-schema.js";
-import { sampleSleepClock, type SleepSampler } from "./host-sleep.js";
-import { type InstallRunner, npmInstall } from "./dep-install.js";
+import { CHECK_TIER, type PermitWaitHooks, withCheckPermit } from "../check-permit.js";
+import type { CheckConfigSlice } from "../config/config-schema.js";
+import { sampleSleepClock, type SleepSampler } from "../host-sleep.js";
+import { type InstallRunner, npmInstall } from "../dep-install.js";
 
 /** Run the project's declared check for a named scope — the detect → run → build_check
  * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing

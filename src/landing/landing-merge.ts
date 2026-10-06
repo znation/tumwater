@@ -12,9 +12,9 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "./landing-git.js";
 import { abortSync } from "../worktree.js";
-import { type BuildCheckOutcome } from "../build-check.js";
-import { runScopedBuildCheck } from "../build-check-scoped.js";
-import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build-check-detect.js";
+import { type BuildCheckOutcome } from "../build-check/build-check.js";
+import { runScopedBuildCheck } from "../build-check/build-check-scoped.js";
+import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build-check/build-check-detect.js";
 import { noteGreenBaseline } from "../main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";

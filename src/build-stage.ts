@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { stampBuild } from "./build-info.js";
-import { clipBuildTail } from "./build-check-report.js";
-import { resolveFromNodeModules } from "./build-check-detect.js";
+import { clipBuildTail } from "./build-check/build-check-report.js";
+import { resolveFromNodeModules } from "./build-check/build-check-detect.js";
 import { ensureDir, removeTree } from "./files.js";
 import { stagingDir, stagingRootDir } from "./paths.js";
 import { execFileAsync } from "./process.js";

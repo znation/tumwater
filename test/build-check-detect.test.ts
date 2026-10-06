@@ -10,7 +10,7 @@ import {
   detectBuildCheck,
   gateCommandOf,
   resolveFromNodeModules,
-} from "../src/build-check-detect.js";
+} from "../src/build-check/build-check-detect.js";
 
 // build-check-detect.ts is the pure-filesystem half of the build check: it decides WHERE the
 // deterministic check lives (the nearest ancestor holding both package.json and node_modules)
@@ -189,7 +189,7 @@ test("detectBuildCheck returns the NEAREST qualifying ancestor when several qual
 });
 
 // --- detectBuildCheck semantics: preference, first-qualifying-directory-wins, and failure modes.
-// These are documented in src/build-check.ts but were untested; the first-qualifier rule is the
+// These are documented in src/build-check/build-check.ts but were untested; the first-qualifier rule is the
 // load-bearing one — skipping past a scriptless installed project to an unrelated ancestor would
 // run THAT project's build script against this worktree (or nothing of this project at all).
 
