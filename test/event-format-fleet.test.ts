@@ -178,7 +178,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
   const empty = formatEvent({ ts: 0, loop: "harness", type: "config_changed", keys: [] } as never);
   assert.match(empty, /config changed$/);
 });
-// Operator-intent gate (src/orchestrator.ts): `tumwater pause`/`resume` log these once per
+// Operator-intent gate (src/orchestrator/orchestrator.ts): `tumwater pause`/`resume` log these once per
 // transition. Both are routine state changes an operator reads at a glance; the paused line
 // states the scope and the director exemption, the resumed line says role ticks are back.
 test("formatEvent renders the fleet pause and resume events plainly", () => {

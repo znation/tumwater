@@ -1,19 +1,19 @@
-/** The poll loop's per-runner scheduling pass (src/orchestrator.ts): decide, for each
+/** The poll loop's per-runner scheduling pass (src/orchestrator/orchestrator.ts): decide, for each
  * runner, whether this poll admits a tick and why — the pause/quiet/cost-cap/failure-hold
  * gates, the merge-queue interlock, need-based deferral, and once-mode settlement —
  * producing the reasons map orchestrator-launch.ts's launchDueTicks starts ticks from.
  * Split out of runOrchestrator's poll body so the WHY-due policy reads on its own screen;
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
  * landing drain) and the launch call itself. */
-import type { LoopRunner } from "./loop/loop.js";
-import type { OnceRound } from "./once-round.js";
-import type { WorkLandedCache } from "./work-landed-cache.js";
-import type { BudgetGate } from "./budget.js";
-import { deferTick, isEligible } from "./scheduling.js";
-import { BUGFIX_ROLE, DIRECTOR_ROLE } from "./roles/roles.js";
-import { inboxSize } from "./inbox/inbox.js";
-import { queuedLandingFiles } from "./landing/landing-queue.js";
-import { logEvent } from "./events/events.js";
+import type { LoopRunner } from "../loop/loop.js";
+import type { OnceRound } from "../once-round.js";
+import type { WorkLandedCache } from "../work-landed-cache.js";
+import type { BudgetGate } from "../budget.js";
+import { deferTick, isEligible } from "../scheduling.js";
+import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
+import { inboxSize } from "../inbox/inbox.js";
+import { queuedLandingFiles } from "../landing/landing-queue.js";
+import { logEvent } from "../events/events.js";
 
 /** One poll's gate verdicts and context, exactly the local view the poll body holds when
  * the scheduling pass runs (FleetGatePoll's fields beside the pass's own inputs). */

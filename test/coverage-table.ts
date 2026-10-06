@@ -7,7 +7,7 @@ import path from "node:path";
  *
  * Why this exists (BUGS.md 2026-09-30): node --experimental-test-coverage's own table merges
  * the per-process coverage reports and its result flips between runs on the same tree — for
- * src/orchestrator.ts between 87% and 99% lines — because V8 omits a nested block range whose
+ * src/orchestrator/orchestrator.ts between 87% and 99% lines — because V8 omits a nested block range whose
  * count equals its parent's, so the set of ranges a process reports varies, and node's
  * per-function merge depends on which reports it combines. This module instead counts a range
  * as covered when ANY process's innermost containing range ran it: the merge
@@ -31,7 +31,7 @@ interface CoverageCounts {
 }
 
 interface CoverageRow {
-  /** Path of the compiled file relative to the dist root, e.g. `src/orchestrator.js`. */
+  /** Path of the compiled file relative to the dist root, e.g. `src/orchestrator/orchestrator.js`. */
   file: string;
   lines: CoverageCounts;
   branches: CoverageCounts;

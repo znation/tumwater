@@ -152,9 +152,9 @@ healthy one. Hold only what the failing provider serves.
    STAYS keyed in the map — its kind, provider, relapse count, and re-open time are the
    relapse memory — so "held" is read only through fleet/fleet-hold.ts's new `heldProviders()`
    (until non-null), never bare key presence: a lifted hold never keeps blocking. The
-   scheduling pass (src/orchestrator-scheduling.ts) blocks a role when its tick model's
+   scheduling pass (src/orchestrator/orchestrator-scheduling.ts) blocks a role when its tick model's
    provider (a per-poll `roleProviders` map) is held, or when `reviewHeld` stands; the
-   orchestrator (src/orchestrator.ts — also touched, beyond the original list, because the
+   orchestrator (src/orchestrator/orchestrator.ts — also touched, beyond the original list, because the
    permit-time closures read the holds there) computes both from the latest poll's map, and
    its landing-drain gate blocks only on `reviewHeld`. A hold on the reviewer's provider while
    review is on blocks every role, because nothing could land.
@@ -164,7 +164,7 @@ healthy one. Hold only what the failing provider serves.
    provider".
 
 **Files touched.** src/fleet/fleet-hold.ts, src/fleet/fleet-polls.ts, src/gates/gate-polls.ts,
-src/orchestrator-scheduling.ts, src/orchestrator.ts, src/events/events.ts, src/events/event-format.ts,
+src/orchestrator/orchestrator-scheduling.ts, src/orchestrator/orchestrator.ts, src/events/events.ts, src/events/event-format.ts,
 test/fleet-polls.test.ts, test/orchestrator-seams.test.ts, test/event-format-fleet.test.ts,
 and the new test/orchestrator-scheduling.test.ts.
 
@@ -775,7 +775,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   `quiet_hours_started`/`quiet_hours_ended` per crossing), a per-role hold is an anonymous,
   stateless verdict recomputed per poll, exactly like `capPaused`'s set (the pause marker is
   anonymous and must never masquerade as an operator's).
-- `src/orchestrator.ts`: where the scheduling pass folds `quietNow` into the no-new-tick hold
+- `src/orchestrator/orchestrator.ts`: where the scheduling pass folds `quietNow` into the no-new-tick hold
   (the `(userPaused || quietNow || ...)` condition), add the role's membership in
   `roleQuietHold` as a fourth disjunct, director-excluded by the same existing role check.
 - `src/config/config-schema.ts`: add `quietHoursPerRole?: Record<string, string>` to the config
@@ -792,7 +792,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   status/status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
   Done entry rather than growing the change.
 
-**Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator.ts,
+**Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts,
 src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/help.ts,
 README.md, plus tests (quiet-hours and config-validation suites).
 

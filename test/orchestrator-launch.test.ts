@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the orchestrator's launch pass (src/orchestrator-launch.ts):
+/** Unit-tier coverage for the orchestrator's launch pass (src/orchestrator/orchestrator-launch.ts):
  * the half of the poll that turns the decision pass's due-runner map into reserved,
  * semaphore-gated, in-flight ticks. Until now this wiring ran in no test at any tier:
  * runTimedRoleTick has its own unit tests and the orchestrator's fallback-probe admission
@@ -16,7 +16,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { launchDueTicks } from "../src/orchestrator-launch.js";
+import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";

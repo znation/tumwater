@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the orchestrator's fallback-probe admission (src/orchestrator.ts's
+/** Unit-tier coverage for the orchestrator's fallback-probe admission (src/orchestrator/orchestrator.ts's
  * start pass): once the demoted fallback's cool-down elapses, the orchestrator opens the paused
  * budget gate for exactly ONE role tick — the probe — and closes it again the moment that tick
  * is admitted (startFallbackProbe marks the breaker probing, so a second due role in the same

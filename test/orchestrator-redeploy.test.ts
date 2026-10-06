@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the orchestrator's self-redeploy wiring (src/orchestrator.ts's
+/** Unit-tier coverage for the orchestrator's self-redeploy wiring (src/orchestrator/orchestrator.ts's
  * `if (redeploy)` block): the policy's verdict gates the fleet — a `hold` starts no new ticks
  * and its lift resumes them, a `restart` ends the run with restart: true — and the policy's
  * status() is published into orchestrator.json, at startup and again whenever it changes. The

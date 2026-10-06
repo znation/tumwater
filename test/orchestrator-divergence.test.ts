@@ -1,4 +1,4 @@
-/** Unit-tier coverage for the orchestrator's branch-divergence watch (src/orchestrator.ts):
+/** Unit-tier coverage for the orchestrator's branch-divergence watch (src/orchestrator/orchestrator.ts):
  * when the primary checkout sits on a branch other than the fleet's merge target, the
  * orchestrator warns once — and only once — naming the branch, then re-arms when the checkout
  * returns to the target branch, so a second divergence warns again. The gating `npm test`

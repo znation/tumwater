@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import { pollRunnerReasons } from "../src/orchestrator-scheduling.js";
+import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.js";
 import { OnceRound } from "../src/once-round.js";
 import { pollFleetHold } from "../src/fleet/fleet-polls.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";

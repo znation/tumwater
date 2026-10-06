@@ -165,7 +165,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
   let exit;
   try {
-    exit = await (await import("../orchestrator.js")).runOrchestrator({
+    exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
       root,
       config,
       mainBranch,

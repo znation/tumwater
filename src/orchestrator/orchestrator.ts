@@ -1,48 +1,48 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { OrchestratorInfo } from "./fleet/fleet-state.js";
-import { enabledRoleIds } from "./config/config.js";
-import { newLiveConfigReload } from "./config/config-live.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { OrchestratorInfo } from "../fleet/fleet-state.js";
+import { enabledRoleIds } from "../config/config.js";
+import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
   fallbackProbeDuePair,
-} from "./fallback-breaker.js";
-import { DIRECTOR_ROLE } from "./roles/roles.js";
+} from "../fallback-breaker.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
-import { openBugs, plannedPlans } from "./backlog/backlog.js";
-import { LoopRunner } from "./loop/loop.js";
-import { branchHead, currentBranch } from "./git/git.js";
-import { queuedLandingFiles } from "./landing/landing-queue.js";
-import { drainLandings, settleAbortedVetted } from "./landing/landing-drain.js";
-import { abortableLandings, landingTasks, newLandingPipeline } from "./landing/landing-pipeline.js";
-import { logEvent, warnEvent } from "./events/events.js";
-import { removeQuiet } from "./files.js";
-import { writeJsonFile } from "./json-files.js";
-import { OnceRound } from "./once-round.js";
-import { newNotifier } from "./notify.js";
+import { openBugs, plannedPlans } from "../backlog/backlog.js";
+import { LoopRunner } from "../loop/loop.js";
+import { branchHead, currentBranch } from "../git/git.js";
+import { queuedLandingFiles } from "../landing/landing-queue.js";
+import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
+import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
+import { logEvent, warnEvent } from "../events/events.js";
+import { removeQuiet } from "../files.js";
+import { writeJsonFile } from "../json-files.js";
+import { OnceRound } from "../once-round.js";
+import { newNotifier } from "../notify.js";
 import {
   consumeAbortRequests,
   consumeRestartRequest,
   consumeResetRequest,
   consumeWakeRequest,
-} from "./operator/operator-requests.js";
-import { piModelsPath } from "./pi/pi-models.js";
-import { Semaphore } from "./semaphore.js";
-import { orchestratorStatePath } from "./paths.js";
-import { type Redeployer } from "./redeploy/redeployer.js";
-import type { LaunchServicesWatch } from "./launch-services.js";
-import { RetentionPruner } from "./retention.js";
-import { WorkLandedCache } from "./work-landed-cache.js";
+} from "../operator/operator-requests.js";
+import { piModelsPath } from "../pi/pi-models.js";
+import { Semaphore } from "../semaphore.js";
+import { orchestratorStatePath } from "../paths.js";
+import { type Redeployer } from "../redeploy/redeployer.js";
+import type { LaunchServicesWatch } from "../launch-services.js";
+import { RetentionPruner } from "../retention.js";
+import { WorkLandedCache } from "../work-landed-cache.js";
 import {
   drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
   p75TickDurationMs,
   sleepInterruptible,
-} from "./tick/tick-timing.js";
-import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gates/gate-polls.js";
-import { heldProviders } from "./fleet/fleet-hold.js";
-import { configForRole, reviewRunConfig } from "./config/config-views.js";
+} from "../tick/tick-timing.js";
+import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
+import { heldProviders } from "../fleet/fleet-hold.js";
+import { configForRole, reviewRunConfig } from "../config/config-views.js";
 
 const POLL_MS = 2000;
 

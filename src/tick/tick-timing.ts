@@ -5,7 +5,7 @@ import type { InFlightLanding } from "../landing/landing-pipeline.js";
 import { landingStatePath } from "../paths.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
-/** The orchestrator's tick-timing and scheduling seams (src/orchestrator.ts keeps the poll loop
+/** The orchestrator's tick-timing and scheduling seams (src/orchestrator/orchestrator.ts keeps the poll loop
  * itself — the control flow that calls these). Each is exported as a unit-test seam
  * (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an abort-interruptible
  * sleep, and the restart hand-off's bounded wait on the in-flight landing. Split out of

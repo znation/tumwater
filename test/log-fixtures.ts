@@ -22,7 +22,7 @@ export function writeMarker(file: string, value: unknown): void {
 }
 
 /** Simulate the orchestrator state marker the harness writes at startup — the
- * {pid, startedAt, roles} payload src/orchestrator.ts stamps (plus an optional redeploy build
+ * {pid, startedAt, roles} payload src/orchestrator/orchestrator.ts stamps (plus an optional redeploy build
  * record), written through writeMarker so every test agrees on where the file lives and how the
  * payload is spelled. `pid` defaults to this test process, which the alive-check reads as a live
  * harness; tests simulating a dead or foreign orchestrator pass an explicit pid. */

@@ -6,7 +6,7 @@ import { configPath } from "../paths.js";
 import type { Semaphore } from "../semaphore.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all loops,
- * polled once per poll (src/orchestrator.ts). A broken file keeps the last-known-good config and
+ * polled once per poll (src/orchestrator/orchestrator.ts). A broken file keeps the last-known-good config and
  * warns once per distinct error text; an unchanged file is served from a stat-keyed cache (one
  * stat per poll, no read). Owns all the edge-triggered bookkeeping so each crossing logs exactly
  * one event instead of once per poll: missing/reappeared, config_changed's changed keys, live
