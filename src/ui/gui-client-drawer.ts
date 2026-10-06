@@ -153,10 +153,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (view.state === "absent") return "<p class='muted'>No worktree yet — this loop has not run.</p>";
     if (view.state === "no-base") return "<p class='muted'>Main branch " + esc(view.mainBranch) + " does not exist.</p>";
     if (view.state !== "ready" || (view.ahead === 0 && dirty.length === 0)) return "<p class='muted'>No unlanded work.</p>";
-    let html = "<p class='note'>" + esc(view.branch) + " · " + esc(view.ahead === 1 ? "1 commit" : view.ahead + " commits") +
+    let html = "<p class='note'>" + esc(view.branch) + " · " + esc(plural(view.ahead, "commit")) +
       " ahead of " + esc(view.mainBranch) +
-      (dirty.length ? " · " + esc(dirty.length === 1 ? "1 uncommitted file" : dirty.length + " uncommitted files") : "") + "</p>";
-    html += commits.map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
+      (dirty.length ? " · " + esc(plural(dirty.length, "uncommitted file")) : "") + "</p>";
+    html += commitRowsHtml(commits);
     if (view.diff) html += "<pre class='mono diff'>" + esc(String(view.diff).replace(/\n+$/, "")) + "</pre>";
     if (dirty.length) {
       html += "<p class='note'>Uncommitted: " + esc(dirty.join(", ")) + "</p>";

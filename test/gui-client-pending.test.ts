@@ -15,7 +15,7 @@ test("GUI_CLIENT_JS carries the pending module verbatim", () => {
 
 test("pendingTableHtml lists every role's branch, state, commits ahead with subjects, and dirty count", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["pending-table"],
+    ["format", "pending-table"],
     ["pendingTableHtml"],
   );
   const fleet = {
@@ -47,7 +47,7 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
 
 test("pendingTableHtml degrades empty, all-no-base, and absent documents without throwing", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["pending-table"],
+    ["format", "pending-table"],
     ["pendingTableHtml"],
   );
   assert.match(pendingTableHtml(null), /No loops yet/);
@@ -62,7 +62,7 @@ test("pendingTableHtml degrades empty, all-no-base, and absent documents without
 
 test("pendingTableHtml escapes role, branch, and subject text", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["pending-table"],
+    ["format", "pending-table"],
     ["pendingTableHtml"],
   );
   const html = pendingTableHtml({

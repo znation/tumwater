@@ -20,14 +20,13 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   // dash for a degraded/empty role.
   function pendingAheadHtml(r) {
     if (r.state !== "ready" || !r.ahead) return "<span class='muted'>—</span>";
-    const commits = (r.commits || []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
-    return "<span class='num'>" + esc(r.ahead === 1 ? "1 commit" : r.ahead + " commits") + "</span>" + commits;
+    return "<span class='num'>" + esc(plural(r.ahead, "commit")) + "</span>" + commitRowsHtml(r.commits);
   }
   // One role's uncommitted cell: the dirty-file count, with the file list in its title.
   function pendingDirtyHtml(r) {
     const files = r.state === "ready" && Array.isArray(r.dirtyFiles) ? r.dirtyFiles : [];
     if (files.length === 0) return "<span class='muted'>—</span>";
-    return "<span class='num' title='" + esc(files.join(", ")) + "'>" + esc(files.length === 1 ? "1 file" : files.length + " files") + "</span>";
+    return "<span class='num' title='" + esc(files.join(", ")) + "'>" + esc(plural(files.length, "file")) + "</span>";
   }
   // The Pending roster: one clickable row per known role (the collector's config order), each
   // opening that loop's drawer. Pure — the view paints what this returns.

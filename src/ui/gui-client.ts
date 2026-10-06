@@ -116,6 +116,11 @@ const FORMAT_JS = String.raw`  // format:start
   // A cap: whole dollars stay bare ($15), fractional ones keep their cents — format.ts's usdCap.
   const fmtCap = (n) => "$" + n.toFixed(2).replace(/\.00$/, "");
   const plural = (n, one, many) => n + " " + (n === 1 ? one : many || one + "s");
+  // The unlanded-commit list both change views paint — each commit's sha and subject on its
+  // own clamped line. The Pending roster's Ahead cell and the loop drawer's Pending change
+  // section had the byte-identical map; a missing or non-array list paints nothing.
+  const commitRowsHtml = (commits) =>
+    (Array.isArray(commits) ? commits : []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
   // human-seconds-fmt:start
   // Whole-second s/m/h/d label: <60 → Ns, <3600 → rounded Nm, <86400 → rounded Nh, else
   // rounded Nd — badges.ts's humanSeconds, shared by every relative time on the page.
