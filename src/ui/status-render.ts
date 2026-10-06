@@ -1,14 +1,14 @@
 import type { LoopState } from "../loop-state.js";
 import type { StatusSnapshot } from "../status-data.js";
 import { dailyCost } from "../budget.js";
-import { readLiveProgress, type LiveProgress } from "../progress-data.js";
+import type { LiveProgress } from "../progress-data.js";
 import { clipToWidth, displayWidth } from "../text-width.js";
 import { compactTokens, usd } from "../format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../datetime.js";
 import { projectName } from "../project-name.js";
 import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
-import { progressOfTick, yieldMultiplierFor } from "./tick-progress-model.js";
+import { tickProgress, yieldMultiplierFor } from "./tick-progress-model.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
@@ -76,7 +76,7 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
   // phase ("landing <elapsed> · <stage>", with the reviewer's live detail while it reviews)
   // is returned without a work-item prefix.
   if (!s.running || s.parkedSince || s.phase === "review") return phase;
-  const p = progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live);
+  const p = tickProgress(root, s, live);
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
 }

@@ -41,12 +41,12 @@ export function inFlightLabel(s: LoopState, label: string): string {
  * such tick's baseline (BUGS.md 2026-09-30). Once the run writes, its mtime is inside the
  * tick, so quietMs can never exceed the tick's own age and the honest quiet measure survives.
  * Applied by every progress reader (workingDetail, the reviewing branch of loopPhase, the
- * token metrics, loopRowCells' precomputed tail) and by status-render's state cell via this
- * export, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
+ * token metrics, loopRowCells' precomputed tail) and by status-render's state cell via
+ * tickProgress, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
  * no recorded start (a stale `running` flag after a crash) cannot be judged and keeps the
  * tail as before. `p` may be undefined (the caller's "no tail fetched" sentinel) or null
  * ("no log"); both read as no progress. */
-export function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveProgress | null {
+function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveProgress | null {
   if (!p) return null;
   if (s.lastTickStartedAt === undefined) return p;
   const elapsed = Math.max(0, Date.now() - s.lastTickStartedAt);
@@ -94,11 +94,29 @@ export function yieldMultiplierFor(s: LoopState): number {
     : 1;
 }
 
+/** progressOfTick with the tail read folded in — the one home for the
+ * `live === undefined ? readLiveProgress(...) : live` idiom that was copied across
+ * status-render.ts's work cell, status-model.ts's reviewing branch and displayTokenMetrics,
+ * and workingDetail below. Callers holding this frame's already-fetched tail pass it as
+ * `live` (renderStatus reads once per running loop and threads it through every helper);
+ * standalone callers pass undefined and this reads the role's log itself — the author
+ * accumulator by default, the gate one via `kind`. The four converted sites are all of them:
+ * status-model.ts's staged branch keeps its raw readLiveProgress call (it feeds inFlightDetail
+ * with a freshly read tail, not a per-frame threaded one). */
+export function tickProgress(
+  root: string,
+  s: LoopState,
+  live?: LiveProgress | null,
+  kind: ProgressRunKind = "author",
+): LiveProgress | null {
+  return progressOfTick(s, live === undefined ? readLiveProgress(root, s.role, kind) : live);
+}
+
 /** The state cell for a working loop: elapsed · turns · live context · current tool. Pass
  * `live` — this frame's already-fetched tail (renderStatus reads once per running loop and
  * threads it through every helper) — to avoid re-reading the log; without it, this reads on
  * its own for standalone callers. */
 export function workingDetail(root: string, s: LoopState, live?: LiveProgress | null): string {
-  const p = progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live);
+  const p = tickProgress(root, s, live);
   return inFlightDetail(inFlightLabel(s, "working"), p);
 }

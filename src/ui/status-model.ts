@@ -11,7 +11,7 @@ import {
   inFlightDetail,
   inFlightLabel,
   progressKind,
-  progressOfTick,
+  tickProgress,
   workingDetail,
 } from "./tick-progress-model.js";
 import { landingChanges, type LandingChange, type LandingStage } from "../landing/landing-slot.js";
@@ -131,7 +131,7 @@ export function loopPhase(
     // its worktree), so read the GATE accumulator here — the author one still holds the
     // finished authoring run (BUGS.md 2026-09-22).
     if (s.phase === "review") {
-      const p = root ? progressOfTick(s, live === undefined ? readLiveProgress(root, s.role, "gate") : live) : null;
+      const p = root ? tickProgress(root, s, live, "gate") : null;
       return inFlightDetail(inFlightLabel(s, "reviewing"), p);
     }
     // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
@@ -221,7 +221,7 @@ export function loopRowCells(
   s: LoopState,
 ): { live: LiveProgress | null; generated: number; peakCtx: number; phase: string } {
   const live = s.running && !s.parkedSince
-    ? progressOfTick(s, readLiveProgress(root, s.role, progressKind(s)))
+    ? tickProgress(root, s, undefined, progressKind(s))
     : null;
   const m = displayTokenMetrics(root, s, live);
   const phase = loopPhase(
@@ -309,7 +309,7 @@ function displayTokenMetrics(
   live?: LiveProgress | null,
 ): { generated: number; peakCtx: number } {
   const p = s.running && !s.parkedSince
-    ? progressOfTick(s, live === undefined ? readLiveProgress(root, s.role) : live)
+    ? tickProgress(root, s, live)
     : null;
   return {
     generated: s.generatedTokens + (p?.outputTokens ?? 0),
