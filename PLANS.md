@@ -6,31 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed)
-
-Design: plans/model-tiers.md ("Observability").
-
-**Goal.** No model choice can be evaluated from `.tumwater/log/events.jsonl` today:
-`tick_start` carries only `tick` and `review_start` only `head`. Record the selector each run
-starts on, so outcomes, review verdicts, and spend can be compared per model.
-
-**Approach.**
-1. **src/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
-   that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
-   on the budget fallback it names the fallback).
-2. **src/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
-3. **src/events.ts / src/event-format.ts:** optional `model?: string` on both event types,
-   rendered after the existing text. Omitted when no model is configured (pi's own default),
-   and old logs without the field still read and render.
-
-**Files touched.** src/loop.ts, src/review.ts, src/events.ts, src/event-format.ts, and their tests.
-
-**Acceptance criteria.**
-- A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its
-  resolved triple; under the budget fallback it names the fallback.
-- `review_start` carries the reviewer's model.
-- With no model configured, neither event gains the field; old event logs render unchanged.
-
 ### Model tiers, part 3/8: `small` / `default` / `strong` tier maps and the built-in tier of each role and the reviewer (planned 2026-10-05 by operator; requires part 1/8 landed)
 
 Design: plans/model-tiers.md ("Config", "Which tier each seam uses").
@@ -230,7 +205,50 @@ files above, and the config-write tests.
 - No writer adds `provider` or `fallbackModel` to a config that does not already have them.
 - The docs show the single-model form before any tier example.
 
+---
+
 ## Done
+
+### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed, done 2026-10-05 by feature)
+
+**Done 2026-10-05 by feature.** As planned, with one simplification: `src/events.ts` keeps its
+`[key: string]: unknown` payload convention, so `model` is documented on the two entries' line
+comments rather than declared as a per-type optional field — a top-level `model?: string` on
+`HarnessEvent` would have claimed the field on every event type. Implemented by
+src/loop.ts (`tick_start` gains `model: formatModelSelector(...)` of the `configForRole`
+triple the tick resolved, omitted when `cfg.model` is unset — the budget-fallback path swaps
+the runner's config to the fallback pair before `tick()` reads it, so the logged string names
+the fallback), src/review.ts (`review_start` gains `model` from `reviewRunConfig(config)`,
+resolved once and reused as the run's `config`, so the event cannot disagree with the run),
+and src/event-format.ts (both lines render `on <model>` when the field is present; old logs
+render unchanged). Tests: two new integration cases in test/loop.test.ts (model present on
+both events; absent from both when no model is configured) and event-format rendering cases
+in test/event-format.test.ts. `npm run test` green.
+
+Design: plans/model-tiers.md ("Observability").
+
+**Goal.** No model choice can be evaluated from `.tumwater/log/events.jsonl` today:
+`tick_start` carries only `tick` and `review_start` only `head`. Record the selector each run
+starts on, so outcomes, review verdicts, and spend can be compared per model.
+
+**Approach.**
+1. **src/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
+   that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
+   on the budget fallback it names the fallback).
+2. **src/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
+3. **src/events.ts / src/event-format.ts:** optional `model?: string` on both event types,
+   rendered after the existing text. Omitted when no model is configured (pi's own default),
+   and old logs without the field still read and render.
+
+**Files touched.** src/loop.ts, src/review.ts, src/events.ts, src/event-format.ts, and their tests.
+
+**Acceptance criteria.**
+- A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its
+  resolved triple; under the budget fallback it names the fallback.
+- `review_start` carries the reviewer's model.
+- With no model configured, neither event gains the field; old event logs render unchanged.
+
+---
 
 ### Model tiers, part 1/8: `provider/id[:thinking]` selector strings for `model`, and `fallback` as the new name of `fallbackModel` (planned 2026-10-05 by operator, done 2026-10-05 by feature)
 

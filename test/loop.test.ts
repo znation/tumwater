@@ -49,6 +49,53 @@ test("a tick that changes files commits and merges to main", async () => {
   });
 });
 
+// Model-tiers part 2/8 (PLANS.md): the model each run starts on rides on the start events —
+// tick_start names the role's resolved config (the budget fallback included, since the gate
+// swaps the runner's config to the fallback pair) and review_start the reviewer's.
+test("tick_start and review_start record the model each run starts on", async () => {
+  const repo = await initializedRepo();
+  const script = [
+    // The review gate (enabled by default) runs after the commit: approve with zero usage so
+    // the tick's token assertions below see only the author run.
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
+    const config = defaultConfig();
+    config.model = "prov/m1";
+    config.review.model = "prov/r1";
+    const runner = makeLoopRunner(repo, "improve", config);
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued");
+    // The review gate runs in the landing slot (landHead), not inside tick().
+    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
+    const starts = eventsOfType(repo, "tick_start");
+    assert.equal(starts[starts.length - 1]!.model, "prov/m1");
+    const reviews = eventsOfType(repo, "review_start");
+    assert.equal(reviews[reviews.length - 1]!.model, "prov/r1");
+  });
+});
+
+test("tick_start and review_start omit model when none is configured (pi's own default)", async () => {
+  const repo = await initializedRepo();
+  const script = [
+    APPROVE_PI,
+    `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
+    `echo hello > hello.txt`,
+  ].join("\n");
+  await withPi(script, async () => {
+    const runner = makeLoopRunner(repo, "improve");
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "queued");
+    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    const starts = eventsOfType(repo, "tick_start");
+    assert.equal("model" in starts[starts.length - 1]!, false);
+    const reviews = eventsOfType(repo, "review_start");
+    assert.equal("model" in reviews[reviews.length - 1]!, false);
+  });
+});
+
 test("a full tick → review → merge cycle lands on a repo whose only branch is trunk (portability 2/7)", async () => {
   // The branch plumbing is parameterized end to end; this pins that nothing named "main"
   // leaks into the landing path: rename the only branch to trunk BEFORE init, so no main

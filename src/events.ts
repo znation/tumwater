@@ -31,7 +31,7 @@ export interface HarnessEvent {
   ts: number;
   loop: string;
   type:
-    | "tick_start"
+    | "tick_start" // carries tick; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "tick_end"
     | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
     | "landed" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
@@ -48,7 +48,7 @@ export interface HarnessEvent {
     | "counters_reset"
     | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume"
-    | "review_start"
+    | "review_start" // carries head; model when one is configured — the reviewer's selector string
     | "review_verdict" // approved; carries durationMs of the reviewer run
     | "review_rejected" // build pre-check or reviewer said no; durationMs when a reviewer ran
     | "review_failed"

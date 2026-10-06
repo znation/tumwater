@@ -1,6 +1,7 @@
 import type { TumwaterConfig } from "./config/config-schema.js";
 import type { LoopState } from "./loop-state.js";
 import { reviewRunConfig } from "./config/config-views.js";
+import { formatModelSelector } from "./model-selector.js";
 import { logEvent, warnEvent } from "./events.js";
 import { git } from "./git-run.js";
 import { headOf, patchId } from "./git.js";
@@ -221,7 +222,18 @@ export async function reviewAheadOfMain(
     }
   }
 
-  logEvent(root, { loop: role, type: "review_start", head });
+  // The reviewer's model selector (plans/model-tiers.md "Observability"): resolved from the
+  // same config the run below gets, so the event names what the reviewer actually runs on —
+  // the budget fallback included. Omitted when no model is configured (pi's own default).
+  const reviewCfg = reviewRunConfig(config);
+  logEvent(root, {
+    loop: role,
+    type: "review_start",
+    head,
+    ...(reviewCfg.model !== undefined
+      ? { model: formatModelSelector({ provider: reviewCfg.provider, model: reviewCfg.model, thinking: reviewCfg.thinking }) }
+      : {}),
+  });
   // Persist the phase BEFORE the run so a dashboard mid-review shows "reviewing" and a crash
   // mid-review is distinguishable from a crash mid-author-run on resume (stray edits are the
   // reviewer's then, not the author's). Cleared at tick end alongside `running`.
@@ -249,7 +261,7 @@ export async function reviewAheadOfMain(
     // tick's: a timed-out review is a FAILED run (pi.ok false), so it takes the dead-backend
     // path below — commit kept, no strike — and re-lands through the author's next tick
     // instead of holding the land queue for a whole authoring tick.
-    config: reviewRunConfig(config),
+    config: reviewCfg,
     // Fresh session every time (no --continue): the reviewer must not inherit the author's
     // context. Unique name per run — a fixed name would let pi resume an old review's
     // context; old files are cleaned by the age-based prune at orchestrator start.

@@ -121,6 +121,13 @@ test("formatEvent degrades gracefully for unknown event types", () => {
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
 });
 
+test("formatEvent renders tick_start's model after the tick number, and omits it when absent", () => {
+  const withModel = formatEvent({ ts: 0, loop: "feature", type: "tick_start", tick: 3, model: "prov/m1" } as never);
+  assert.match(withModel, /feature\s+tick #3 started on prov\/m1$/);
+  const bare = formatEvent({ ts: 0, loop: "feature", type: "tick_start", tick: 3 } as never);
+  assert.match(bare, /feature\s+tick #3 started$/);
+});
+
 test("formatEvent renders counters_reset plainly, naming all roles when several are affected", () => {
   const single = formatEvent({ ts: 0, loop: "clean", type: "counters_reset" } as never);
   assert.match(single, /clean\s+counters reset \(ticks, commits, tokens, cost\)/);
@@ -137,8 +144,15 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   const head = "0123456789abcdef"; // full hash as logged by review.ts
 
   const start = formatEvent({ ts: 0, loop: "feature", type: "review_start", head } as never);
-  assert.match(start, /feature\s+reviewing 01234567 before merge/);
+  assert.match(start, /feature\s+reviewing 01234567 before merge$/);
   assert.ok(!start.includes("89abcdef"), `full hash must not leak into the line: ${start}`);
+
+  // Model-tiers part 2/8 (PLANS.md): when the run's model is configured it renders after the
+  // existing text; an old event without the field must still read unchanged.
+  const startWithModel = formatEvent(
+    { ts: 0, loop: "feature", type: "review_start", head, model: "prov/r1:high" } as never,
+  );
+  assert.match(startWithModel, /reviewing 01234567 before merge on prov\/r1:high$/);
 
   // Approvals carry reason = verdict.reasons[0], which is undefined when the reviewer gave
   // none: the suffix must vanish, not print "— undefined".

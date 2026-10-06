@@ -12,6 +12,7 @@ import { buildConflictDiscardNote } from "./gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole } from "./config/config-views.js";
+import { formatModelSelector } from "./model-selector.js";
 import { planTickStart } from "./tick/tick-resume.js";
 import { PendingPrompt } from "./pending-prompt.js";
 import { stageTickLanding } from "./tick/tick-stage.js";
@@ -396,7 +397,18 @@ export class LoopRunner {
     const tick = s.ticks;
     const tickStartedAt = s.lastTickStartedAt;
     this.save();
-    logEvent(this.root, { loop: this.role, type: "tick_start", tick });
+    // The selector this tick's runs start on (plans/model-tiers.md "Observability"): with
+    // the budget fallback active the config already names the fallback pair, so the logged
+    // string is what the runs actually use. Omitted when no model is configured (pi's own
+    // default), so old logs and old configs render unchanged.
+    logEvent(this.root, {
+      loop: this.role,
+      type: "tick_start",
+      tick,
+      ...(cfg.model !== undefined
+        ? { model: formatModelSelector({ provider: cfg.provider, model: cfg.model, thinking: cfg.thinking }) }
+        : {}),
+    });
 
     let outcome: TickOutcome;
     try {
