@@ -122,3 +122,18 @@ test("a row's name cell tags custom loops and queued prompts, and shows today's 
   assert.ok(name.includes("3 commits · 12 ticks"));
   assert.equal(cells[3], "<div>$1.50</div><div class='sub'>$20.25 total</div>");
 });
+
+test("a loop row renders its model tier tag and selector when the payload carries them", () => {
+  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+  const named = cells({ role: "plan", phase: "sleeping", ticks: 2, commits: 1, modelTier: "strong", model: "prov-s/model-s:high" });
+  assert.match(named, /<span class='tag' title='[^']*'>strong<\/span>/);
+  assert.match(named, /prov-s\/model-s:high/);
+  // Without tier fields (no map declared) the row carries no tier tag and no selector.
+  const plain = cells({ role: "clean", phase: "sleeping", ticks: 2, commits: 1 });
+  assert.doesNotMatch(plain, /class='tag' title='[^']*'>strong</);
+  assert.doesNotMatch(plain, /model-s/);
+  // A tier tag without a resolved selector still renders, with no dangling separator.
+  const tierOnly = cells({ role: "clean", phase: "sleeping", ticks: 2, commits: 1, modelTier: "strong" });
+  assert.match(tierOnly, />strong<\/span>/);
+  assert.doesNotMatch(tierOnly, /model-s/);
+});

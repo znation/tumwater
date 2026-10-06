@@ -243,6 +243,11 @@ export function renderStatusSpans(
   // last result tones its outcome word, a backoff countdown reads yellow.
   const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
   const rows = sortLoopsByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
+    // Part 7a (model-tiers.md "Observability"): with a top-level tier map declared, the
+    // name cell appends the role's seam tier and that tier's resolved selector — the TUI
+    // row's model observability. No map keeps the name byte-identical to today's.
+    const name = (s.custom ? `${s.role}*` : s.role)
+      + (s.modelTier ? ` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})` : "");
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it
@@ -251,7 +256,7 @@ export function renderStatusSpans(
     const next = nextRunCell(s, phase, now, snap.running);
     const resultT = resultTone(s.lastResult);
     return [
-      cell(s.custom ? `${s.role}*` : s.role),
+      cell(name),
       // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
       // this role by loopPhase's `landing` argument above) rides this same phase string.
       [...stateSpans, { text: roleQueued(s.role) }],

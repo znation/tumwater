@@ -149,7 +149,7 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   assert.match(md, /- Loop: "feature" \(feature implementer\)$/m);
   assert.match(md, /- State: enabled, not paused/);
   assert.match(md, /- Scheduling tier: 0 \(work\)/);
-  assert.match(md, /- Model: prov-a\/model-a$/m);
+  assert.match(md, /- Model: prov-a\/model-a \(default tier\)/m);
   assert.match(md, /- Budget fallback: fp\/fm \(priced\)/); // no definitions file in the fixture
   assert.match(md, /- Min tick interval: 20s/);
   assert.match(md, /- Queued prompts: 1/);
@@ -174,7 +174,7 @@ test("with several prompts queued, the next-tick block discloses that only the o
 test("unset things render as explicit placeholder lines, not omissions", () => {
   const dir = root();
   const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
-  assert.match(md, /- Model: pi default$/m);
+  assert.match(md, /- Model: pi default \(default tier\)/m);
   assert.ok(!md.includes("Budget fallback")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
   assert.match(md, /_\(none — the director is driven by its queued prompts, not a find text\)_/);
@@ -228,4 +228,29 @@ test("a fenced block grows past any backtick run in the verbatim text", () => {
   writeConfig(dir, { roles: { feature: { instructions: "use ```md fences\nin docs" } } });
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /````\nuse ```md fences\nin docs\n````/); // four backticks close the block
+});
+
+test("modelTier resolves the seam tier: the catalog's assignment, then a tier-name override", () => {
+  const dir = root();
+  const p = rolePayload(dir, "plan", NO_MODELS);
+  assert.equal(p.modelTier, "strong"); // the model catalog assigns plan the strong tier
+  assert.match(renderRoleMarkdown(p), /- Model: .* \(strong tier\)/); // the renderer names it
+
+  writeConfig(dir, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
+  const mapped = rolePayload(dir, "plan", NO_MODELS);
+  assert.equal(mapped.modelTier, "strong");
+  assert.equal(mapped.model, "model-s"); // the strong tier's own map entry resolves
+  assert.equal(mapped.provider, "prov-s");
+  assert.equal(mapped.thinking, "high");
+
+  // A tier-name roles.<id>.model names the tier directly; an undeclared tier inherits
+  // the map's default entry (config-views' topTierSelector rule).
+  writeConfig(dir, {
+    model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" },
+    roles: { plan: { model: "small" } },
+  });
+  const overridden = rolePayload(dir, "plan", NO_MODELS);
+  assert.equal(overridden.modelTier, "small");
+  assert.equal(overridden.model, "model-a");
+  assert.equal(overridden.provider, "prov-a");
 });

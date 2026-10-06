@@ -517,3 +517,14 @@ test("a rendered fleet shows active rows equal to permit holders: parked waiters
   assert.equal(text.split("\n").filter((l) => /\bworking \d/.test(l)).length, 1);
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
+
+test("the loop name cell appends the seam tier and selector when a tier map is declared", () => {
+  const snap = snapshotWith([
+    { role: "plan", modelTier: "strong", model: "prov-s/model-s:high" } as never,
+    { role: "clean" },
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /plan \(strong · prov-s\/model-s:high\)/);
+  // No tier fields: the name cell stays `clean` — today's bytes.
+  assert.doesNotMatch(text, /clean \(/);
+});

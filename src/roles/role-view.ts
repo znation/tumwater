@@ -9,14 +9,14 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * fleet stopped and never throws on a torn repo. */
 
-import type { FallbackModelConfig } from "../config/config-schema.js";
+import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { configForRole, fallbackPair } from "../config/config-views.js";
+import { configForRole, fallbackPair, roleSeamTier } from "../config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
@@ -34,6 +34,11 @@ export interface RoleViewPayload {
   paused: boolean;
   /** Scheduling tier (roleTier): 0 work, 1 maintenance/observer — how fairOrder slots it. */
   tier: number;
+  /** The model seam tier (roleSeamTier) this role's pi runs resolve at: a tier-name
+   * `roles.<id>.model` names it directly, else the model catalog's assignment. Always
+   * present — the operator can see which tier a role rides even when no tier map is
+   * declared and every role rides `default`. */
+  modelTier: ModelTier;
   /** The resolved model wiring (configForRole): role overrides applied over top-level. */
   provider?: string;
   model?: string;
@@ -92,6 +97,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     enabled: enabledRoleIds(cfg).includes(role),
     paused: pausedRoles(root).includes(role),
     tier: roleTier(role),
+    modelTier: roleSeamTier(cfg, role),
     ...(effective.provider ? { provider: effective.provider } : {}),
     ...(effective.model ? { model: effective.model } : {}),
     ...(effective.thinking ? { thinking: effective.thinking } : {}),

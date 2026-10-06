@@ -2,7 +2,9 @@ import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
-import { fallbackPair, resolveTierFallbacks, roleSeamTier } from "../config/config-views.js";
+import { fallbackPair, resolveTierFallbacks, roleSeamTier, configForRole } from "../config/config-views.js";
+import type { ModelTier } from "../config/config-schema.js";
+import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { configForStatus, liveLandingMarker, loopStateForPoll, mainCheckForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
@@ -56,7 +58,17 @@ export interface StatusSnapshot {
    * source, from the same last-known-good config that produced the role list, so a transiently
    * broken tumwater.json keeps marking its customs rather than flipping them unmarked
    * mid-poll. LoopState itself stays the persisted type; this intersection is view-layer only. */
-  loops: Array<LoopState & { custom: boolean }>;
+  loops: Array<LoopState & {
+    custom: boolean;
+    /** The model seam tier (roleSeamTier) this loop's pi runs resolve at, plus the tier's
+     * resolved selector (`provider/id[:thinking]`, the configForRole view) — present only
+     * when the top-level `model` is a tier map (model-tiers.md part 7a, "Observability"):
+     * with a single string model every role rides the same pair and the rows would only
+     * repeat it, so the fields stay absent and the rows keep today's shape. Fresh per
+     * poll, like `custom`. */
+    modelTier?: ModelTier;
+    model?: string;
+  }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
    * $X/$Y today` while enabled, `· no cap` when disabled) and the editable affordance that
@@ -222,7 +234,20 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
-  const loops = roles.map((r) => ({ ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) }));
+  const loops = roles.map((r) => {
+    const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
+    // Part 7a (model-tiers.md "Observability"): with a tier map declared, each row carries
+    // its role's seam tier and that tier's resolved selector, so the dashboards show which
+    // tier a role rides and what it resolves to. A tier-name `roles.<id>.model` and a role
+    // selector override both resolve through configForRole — the same view the seam consumes.
+    if (isJsonObject(cfg.model)) {
+      const eff = configForRole(cfg, r);
+      const pair = [eff.provider, eff.model].filter(Boolean).join("/");
+      const selector = pair ? `${pair}${eff.thinking ? ":" + eff.thinking : ""}` : undefined;
+      return { ...base, modelTier: roleSeamTier(cfg, r), ...(selector ? { model: selector } : {}) };
+    }
+    return base;
+  });
   // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists
   // the directory and reads each file once): the count is the entries' length, so a prompt
   // enqueued or dequeued mid-snapshot can never make the header badge disagree with its

@@ -844,3 +844,29 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   ]);
   assert.equal(snapshot(capped).mainCheck, undefined, "past the scan cap the badge drops");
 });
+
+test("snapshot loop rows carry their seam tier and selector only when a tier map is declared", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "test project");
+
+  // No map: every role rides the same pair, so the rows keep today's shape.
+  const plain = snapshot(repo);
+  assert.equal(plain.loops[0]?.modelTier, undefined);
+  assert.equal(plain.loops[0]?.model, undefined);
+
+  // A tier map: each row carries its role's seam tier and that tier's resolved selector.
+  writeConfig(repo, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
+  const mapped = snapshot(repo);
+  const plan = mapped.loops.find((l) => l.role === "plan");
+  assert.equal(plan?.modelTier, "strong"); // the catalog assigns plan the strong tier
+  assert.equal(plan?.model, "prov-s/model-s:high");
+  const readme = mapped.loops.find((l) => l.role === "readme");
+  assert.equal(readme?.modelTier, "small");
+  assert.equal(readme?.model, "prov-a/model-a"); // an undeclared tier inherits default
+
+  // The payload ships the same fields per row — the GUI renders them beside the loop name.
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; modelTier?: string; model?: string }> };
+  const planRow = payload.loops.find((l) => l.role === "plan");
+  assert.equal(planRow?.modelTier, "strong");
+  assert.equal(planRow?.model, "prov-s/model-s:high");
+});

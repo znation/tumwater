@@ -6,35 +6,45 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 7/8: operator visibility — role rows, the fallback badge, and doctor checks (planned 2026-10-05 by operator; requires parts 3/8 and 5/8 landed)
+### Model tiers, part 7b/8: the `budget_fallback` badge lists the tiers (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows (7a), this badge, and the doctor checks (7c); requires parts 3/8 and 5/8 landed, 7a done)
 
-**Needs review 2026-10-06 by feature: too large for one run** — three sub-areas (role rows in both dashboards, the per-tier `budget_fallback` badge, and two new doctor checks) across eight source files plus tests, the same scope that split part 5/8 into 5a–5c. Candidate split: 7a role rows (role-view, status-data, both dashboards), 7b the tiers badge (budget-gates payload, event-format, badges), 7c doctor checks.
+Design: plans/model-tiers.md ("Observability"). Split from part 7/8; sibling 7a landed the role
+rows.
 
-Design: plans/model-tiers.md ("Observability", "Doctor").
+**Goal.** A `budget_fallback` engaged on a tiered fallback shows which pair each tier resolved
+to, so an operator can see a strong-tier borrow at a glance.
 
-**Goal.** An operator can see each role's tier and model, which free model each tier fell back
-to, and whether every declared model can run, before the fleet finds out the hard way.
+**Approach.** `budget_fallback` (src/gates/budget-gates.ts emitting, src/events/event-format.ts
+formatting) gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its existing
+`provider` / `model` (the default tier's), so current readers keep working. The header badge
+(src/ui/badges.ts and the GUI twin) keeps today's single-name text when every tier shares one
+pair, and lists the tiers otherwise.
 
-**Approach.**
-1. **Role rows:** `rolePayload` (src/roles/role-view.ts) and src/status/status-data.ts expose `tier` beside
-   the resolved model, and both dashboards show it.
-2. **`budget_fallback`** gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its
-   existing `provider` / `model` (the default tier's). The header badge keeps today's
-   single-name text when every tier shares one pair, and lists the tiers otherwise.
-3. **Doctor** (src/doctor/doctor-checks.ts): `checkFallbackModel` covers each tier's fallback. A new
-   check verifies that every declared tier model resolves in pi's catalog and that its provider
-   reports `ready` from `pi auth check --provider <p> --json`. When `PI_SMOL_MODEL`,
-   `PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it notes that tumwater does not read them —
-   they are oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the
-   inherited environment — and points at `model.small` / `model.strong`.
-
-**Files touched.** src/roles/role-view.ts, src/status/status-data.ts, src/ui/* (role rows, badge),
-src/gates/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
+**Files touched.** src/gates/budget-gates.ts, src/events/event-format.ts, src/ui/badges.ts, the
+GUI badge, and their tests.
 
 **Acceptance criteria.**
-- Role rows show `strong` and its model for plan with a strong tier declared.
 - A `budget_fallback` with two distinct tier pairs lists both, with `(from default)` on a
-  borrowed one; with a single fallback the badge text is byte-identical to today's.
+  borrowed one.
+- With a single fallback the badge text is byte-identical to today's.
+
+### Model tiers, part 7c/8: the doctor checks every declared tier model (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run; requires parts 3/8 and 5/8 landed, 7a done)
+
+Design: plans/model-tiers.md ("Doctor"). Split from part 7/8; sibling 7a landed the role rows.
+
+**Goal.** `tumwater doctor` catches a tier model pi cannot resolve, or a provider without
+credentials, before the fleet finds out the hard way mid-review.
+
+**Approach.** src/doctor/doctor-checks.ts: `checkFallbackModel` covers each tier's fallback. A
+new check verifies that every declared tier model resolves in pi's catalog and that its provider
+reports `ready` from `pi auth check --provider <p> --json`. When `PI_SMOL_MODEL`,
+`PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it notes that tumwater does not read them — they are
+oh-my-pi's, pi ignores them, and with omp as `agentBin` they reach omp through the inherited
+environment — and points at `model.small` / `model.strong`.
+
+**Files touched.** src/doctor/doctor-checks.ts and its tests.
+
+**Acceptance criteria.**
 - `tumwater doctor` fails a tier model pi cannot resolve, warns on a provider that is not
   `ready`, and prints the `PI_*_MODEL` note only when one is set.
 
@@ -70,6 +80,35 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 7a/8: role rows show each loop's seam tier and resolved selector (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows, the tiers badge (7b), and the doctor checks (7c); requires parts 3/8 and 5/8 landed, done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Observability"). Split from part 7/8; siblings 7b (the
+`budget_fallback` tiers badge) and 7c (the doctor checks) remain planned.
+
+**Goal.** An operator can see, on every dashboard row, which model tier a loop's pi runs resolve
+at and what that tier resolves to — without reading tumwater.json.
+
+**Approach.** `rolePayload` (src/roles/role-view.ts) gained `modelTier: ModelTier` (always —
+`roleSeamTier`), and its Markdown renderer names the tier on the Model line. The status snapshot
+(src/status/status-data.ts) adds `modelTier` and `model` (`provider/id[:thinking]`, the
+`configForRole` view) to each loop row — present only when the top-level `model` is a tier map,
+so single-model configs keep today's row shape byte-for-byte. Both dashboards render it: the
+TUI/status table appends ` (tier · selector)` to the loop name cell (src/ui/status-render.ts),
+the GUI's loop row carries a tier tag beside the name and the selector in the sub line
+(src/ui/status-payload.ts, src/ui/gui-client-loops.ts).
+
+**Files touched.** src/roles/role-view.ts, src/roles/role-render.ts, src/status/status-data.ts,
+src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui-client-loops.ts, and tests
+(test/role-view.test.ts, test/status-data.test.ts, test/status-render.test.ts,
+test/gui-client-loops.test.ts).
+
+**Acceptance criteria met.**
+- Role rows show `strong` and its model for plan with a strong tier declared (catalog
+  assignment; a tier-name `roles.<id>.model` override and an undeclared tier inheriting
+  `default` both covered in the role-view and status-data tests).
+- With no tier map the rows keep today's shape — the fixture tests pin the absent fields and
+  the unchanged name cell.
 ### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed, done 2026-10-06 by feature; an earlier draft was rejected in review — pair-blind probe piercing, a probe that deadlocked the launch pass, and an observer pause set fed by one pair's breaker only — all three reworked in this landing)
 
 **Approach.**

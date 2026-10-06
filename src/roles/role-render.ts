@@ -49,7 +49,7 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   const state = [p.enabled ? "enabled" : "disabled", p.paused ? "paused" : "not paused"].join(", ");
   lines.push(`- State: ${state}`);
   lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
-  lines.push(`- Model: ${modelLine(p)}`);
+  lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
   if (p.fallback) {
     const pair = modelPair(p.fallback.provider, p.fallback.model) || "pi default";
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
