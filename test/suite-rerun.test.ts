@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { runsFullSuite, suiteRerunWarning, type ToolCallStart } from "../src/suite-rerun.js";
+import { runsFullSuite, suiteRerunWarning, type ToolCallStart } from "../src/review/suite-rerun.js";
 
 // Pins the reviewer suite-rerun tripwire (BUGS.md 2026-09-23): the review gate warns when a
 // reviewer told the harness's pre-check passed re-runs the full suite anyway. The flagged

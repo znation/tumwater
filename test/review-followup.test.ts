@@ -14,7 +14,7 @@ import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../src/gates/gate
 import { piLogPath, reviewSessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
 import { type TumwaterConfig } from "../src/config/config-schema.js";
-import { type ToolCallStart } from "../src/suite-rerun.js";
+import { type ToolCallStart } from "../src/review/suite-rerun.js";
 import { hasResumableSession} from "../src/pi/pi.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { type ReviewContext } from "../src/review/review.js";

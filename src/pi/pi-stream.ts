@@ -216,7 +216,7 @@ export class PiStreamParser {
 
   /** `onToolCallStart` observes every tool call as it starts, with pi's tool name ("" when pi
    * omitted it) and raw args — a hook for a caller that audits what a run did (the review
-   * gate's suite-rerun tripwire, src/suite-rerun.ts) without the parser storing every call of
+   * gate's suite-rerun tripwire, src/review/suite-rerun.ts) without the parser storing every call of
    * every run. */
   constructor(private readonly onToolCallStart?: (toolName: string, args: unknown) => void) {}
 

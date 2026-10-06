@@ -21,7 +21,7 @@ import { type SleepSampler } from "../scheduling/host-sleep.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
-import { suiteRerunWarning, type ToolCallStart } from "../suite-rerun.js";
+import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "../landing/landing-slot.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 
