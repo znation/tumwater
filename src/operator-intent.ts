@@ -35,9 +35,9 @@ export function markerApplyNote(root: string): { live: boolean; when: string; ta
   };
 }
 
-/** The trailing liveness clause of a one-shot marker command's confirmation (reset-counters
- * and wake): with a live fleet, "a running fleet <verb><when>"; without one, where the marker
- * lands instead. The request* cores share this so their wording cannot drift — pause and
+/** The trailing liveness clause of a one-shot marker command's confirmation (reset-counters,
+ * wake, and restart): with a live fleet, "a running fleet <verb><when>"; without one, where
+ * the marker lands instead. The request* cores share this so their wording cannot drift — pause and
  * resume phrase their own confirmations around markerApplyNote's when/tail because their
  * sentences differ. */
 function applyClause(live: boolean, when: string, verb: string): string {
