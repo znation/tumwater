@@ -4,16 +4,16 @@ import {
   enabledRoleIds,
   loadConfig,
   loadConfigSafe,
-} from "./config/config.js";
-import { exampleConfigProblem, exampleDrift } from "./config/config-example.js";
-import { fallbackPair } from "./config/config-views.js";
-import { detectBuildCheck } from "./build-check-detect.js";
-import { fallbackModelFree, piModelsPath } from "./pi/pi-models.js";
-import type { CheckConfigSlice, TumwaterConfig } from "./config/config-schema.js";
-import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "./build-info.js";
-import { findOnPath } from "./files.js";
-import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "./version.js";
-import { GIT_MISSING_MESSAGE } from "./git-run.js";
+} from "../config/config.js";
+import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
+import { fallbackPair } from "../config/config-views.js";
+import { detectBuildCheck } from "../build-check-detect.js";
+import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
+import type { CheckConfigSlice, TumwaterConfig } from "../config/config-schema.js";
+import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build-info.js";
+import { findOnPath } from "../files.js";
+import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
+import { GIT_MISSING_MESSAGE } from "../git-run.js";
 import {
   branchExists,
   currentBranch,
@@ -22,7 +22,7 @@ import {
   isGitRepo,
   refSha,
   repoToplevel,
-} from "./git.js";
+} from "../git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -32,14 +32,14 @@ import {
   findAgentBinary,
   piMissingMessage,
   resolveAgentBin,
-} from "./readiness.js";
-import { classifyLock, readLockPid } from "./lock.js";
-import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "./paths.js";
-import { errorMessage } from "./text.js";
-import { shortSha } from "./format.js";
-import { formatTime } from "./datetime.js";
-import type { FallbackDemotion } from "./fallback-breaker.js";
-import { briefFile } from "./readme.js";
+} from "../readiness.js";
+import { classifyLock, readLockPid } from "../lock.js";
+import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
+import { errorMessage } from "../text.js";
+import { shortSha } from "../format.js";
+import { formatTime } from "../datetime.js";
+import type { FallbackDemotion } from "../fallback-breaker.js";
+import { briefFile } from "../readme.js";
 
 /** The doctor report contract and the individual pre-flight checks, split out of doctor.ts.
  * The sibling check modules (doctor-orphans.ts, launch-services.ts, doctor-backlog.ts) depend

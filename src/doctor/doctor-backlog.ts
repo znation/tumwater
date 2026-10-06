@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errorMessage, truncate } from "./text.js";
-import { duplicateHeadings, strandedPlanEntries } from "./backlog-structure.js";
-import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "./fix-claim.js";
+import { errorMessage, truncate } from "../text.js";
+import { duplicateHeadings, strandedPlanEntries } from "../backlog-structure.js";
+import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that

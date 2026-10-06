@@ -89,7 +89,7 @@ test("pidAlive reads a non-positive or fractional pid as NOT alive", () => {
   assert.equal(pidAlive(1.5), false);
 });
 
-// The process-table reader behind doctor's orphan check (checkOrphans in src/doctor.ts, where
+// The process-table reader behind doctor's orphan check (checkOrphans in src/doctor/doctor.ts, where
 // the matching is pinned against a fake table). Here: the two parsers over fixed BSD/procps
 // and lsof output, and one smoke of the real probe against this test process itself — no
 // orphan is ever spawned.

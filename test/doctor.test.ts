@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { runDoctor } from "../src/doctor.js";
-import { renderDoctor } from "../src/doctor-render.js";
+import { runDoctor } from "../src/doctor/doctor.js";
+import { renderDoctor } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/help.js";
 import { initProject } from "../src/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./repo-fixtures.js";
@@ -12,11 +12,11 @@ import { pathPrepend } from "./fake-commands.js";
 import { cli, cliWithEnv } from "./cli-harness.js";
 import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./doctor-fixtures.js";
 
-// Composition and CLI-wiring coverage for src/doctor.ts: runDoctor's fixed check order, header,
+// Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order, header,
 // verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the `tumwater
 // doctor` CLI contract pinned through main() (no readiness gate, --json payload, exit codes).
 // The individual checks' ok/fail/warn branches are unit-covered in test/doctor-checks.test.ts
-// (it pins src/doctor-checks.ts), the orphan check in test/doctor-orphans.test.ts, and the
+// (it pins src/doctor/doctor-checks.ts), the orphan check in test/doctor-orphans.test.ts, and the
 // fixtures all three files share live in test/doctor-fixtures.ts.
 test("runDoctor composes the full report — fixed check order, not-running header, ready verdict", async () => {
   const root = readyRepo();

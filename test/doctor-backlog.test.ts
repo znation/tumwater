@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "../src/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "../src/doctor/doctor-backlog.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { vanishOnReadFile } from "./fs-faults.js";
 
-// Unit coverage for the doctor's backlog-document checks (src/doctor-backlog.ts): the three
+// Unit coverage for the doctor's backlog-document checks (src/doctor/doctor-backlog.ts): the three
 // checks that read the tracked Markdown backlog rather than the environment. The environment
 // checks' own coverage lives in test/doctor-checks.test.ts; report composition, rendering, and
 // the CLI wiring (`tumwater doctor` exit codes through main()) are pinned in

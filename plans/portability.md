@@ -310,7 +310,7 @@ honest.
   hardcoded `main`; the rationale comment at lines 107–108 ("a fresh repo has no history for an
   init.defaultBranch preference to protect") is superseded by the new behavior, which
   deliberately honors `init.defaultBranch`, and must be rewritten with it.
-- src/doctor.ts — `checkRepo` reports the resolved toplevel and the branch the fleet would target,
+- src/doctor/doctor.ts — `checkRepo` reports the resolved toplevel and the branch the fleet would target,
   and fails when a configured `baseBranch` does not exist.
 - Tests: test/git.test.ts (toplevel from a subdirectory; `branchExists`), test/cli.test.ts
   (commands from a subdirectory; `--branch` overrides; an unknown `--branch` fails listing what
@@ -319,7 +319,7 @@ honest.
   fixture on a repo whose only branch is `trunk`).
 
 **Files touched.** src/git.ts, src/cli.ts, src/cli-args.ts, src/types.ts, src/config-validation.ts,
-src/orchestrator.ts, src/init.ts, src/doctor.ts, test/git.test.ts, test/cli-args.test.ts,
+src/orchestrator.ts, src/init.ts, src/doctor/doctor.ts, test/git.test.ts, test/cli-args.test.ts,
 test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts,
 test/loop.test.ts.
 
@@ -337,26 +337,26 @@ test/loop.test.ts.
 
 **Refined 2026-09-17 (plan loop) — audited against main `e76c5d5` (build clean, suite 1021/1021 per the README's stamp; this sub-plan's last audit was the 2026-09-15 series write `074e48f` against `1384eeb`, thirty-five landings back). Since then the anchor files moved in a line-shifting wave — `6322625` (wake: cli.ts gains `cmdWake` below this entry's anchors), `4bf85cc`/`bdec4f1`/`776fa0f` (orchestrator.ts' drain and slot rework — nothing this entry touches), `4dba580` (types.ts +5), `a94c1e7` (cli.ts/doctor.ts two-line `shortSha` swaps, no line shift) — while src/git.ts, src/cli-args.ts, src/init.ts, and src/config-validation.ts took zero commits. Every load-bearing claim re-verified on this tree; two in-place corrections close the questions the write left open (the flag-parsing seam, and init's hardcoded "on branch main" output).**
 
-Verified as written: src/cli.ts — `main()` still sets `root = process.cwd()` (line 335) as the single dispatch point every command's root flows through; `resolveMainBranch(root)` (line 78) still only rejects a detached HEAD ("check out your main branch first") and returns `currentBranch(root)` — the precedence and existence-validation work is still to do, as written; `requireReadyRepo(root)` (line 84) is the `isGitRepo` + tumwater.json + `hasCommits` gate, and its "not a git repository (run `git init` first)" message is exactly the misdiagnosis the root fix removes from subdirectories; the `run` case takes no flags today (`rejectUnknownArgs("run", args, [])`, line 341, `cmdRun(root)` at 342) and the `gui` case is the in-tree idiom for a valued flag (`rejectUnknownArgs` spec array, lines 350–353). src/git.ts — `readBranchHead` (line 97) is the file fast path the Problem section cites: `statSync(<root>/.git)` returns null when `.git` is absent (a subdirectory) or is a worktree-pointer file, so a subdirectory root silently degrades to a spawn per poll, as written; `isGitRepo(dir)` (line 138, `rev-parse --git-dir`) passes from any subdirectory; `currentBranch(root)` (line 178) is what both the precedence and the mid-run divergence check read; neither `repoToplevel` nor `branchExists` exists yet, so the two new exports collide with nothing. src/cli-args.ts — `parseRoleFlag(args, validIds?)` (line 44) is the template the entry names — `args.indexOf`, `fail` on a missing value, typed return — and `parsePortFlag` (line 30) is the value-side companion; `parseBranchFlag` beside them holds. src/init.ts — `git(root, "init", "-b", "main")` (line ~112) is still hardcoded with the now-superseded rationale comment at 107–108, `InitResult` (line 75) still has no branch field, and `cmdInit`'s "on branch main" output (cli.ts line 103) still hardcodes it. src/doctor.ts — `checkRepo(root)` (line 50) is the reported site. src/types.ts — `TumwaterConfig` (line 63) is where `baseBranch?: string` lands; the no-rename bullet's on-disk contracts both survive: the `main_red` TickResult (line 132) and the `build_stale` event (line 255). src/config-validation.ts — `TOP_LEVEL_KEYS` (lines 33–53, ending `"customLoops", "roles"`) is where `"baseBranch"` goes, validated non-empty beside the other top-level rules. src/orchestrator.ts — `RunOptions` already carries `mainBranch` (line 71), so the poll loop's (line 378) once-per-poll divergence check compares against the resolved base with no signature change. The Problem section's "not a problem" half holds: `mainBranch` still threads loop/orchestrator/merge/review/lander/worktree, and `ffMainTo`'s detached-primary arm is untouched. All six named test files exist (test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/loop.test.ts).
+Verified as written: src/cli.ts — `main()` still sets `root = process.cwd()` (line 335) as the single dispatch point every command's root flows through; `resolveMainBranch(root)` (line 78) still only rejects a detached HEAD ("check out your main branch first") and returns `currentBranch(root)` — the precedence and existence-validation work is still to do, as written; `requireReadyRepo(root)` (line 84) is the `isGitRepo` + tumwater.json + `hasCommits` gate, and its "not a git repository (run `git init` first)" message is exactly the misdiagnosis the root fix removes from subdirectories; the `run` case takes no flags today (`rejectUnknownArgs("run", args, [])`, line 341, `cmdRun(root)` at 342) and the `gui` case is the in-tree idiom for a valued flag (`rejectUnknownArgs` spec array, lines 350–353). src/git.ts — `readBranchHead` (line 97) is the file fast path the Problem section cites: `statSync(<root>/.git)` returns null when `.git` is absent (a subdirectory) or is a worktree-pointer file, so a subdirectory root silently degrades to a spawn per poll, as written; `isGitRepo(dir)` (line 138, `rev-parse --git-dir`) passes from any subdirectory; `currentBranch(root)` (line 178) is what both the precedence and the mid-run divergence check read; neither `repoToplevel` nor `branchExists` exists yet, so the two new exports collide with nothing. src/cli-args.ts — `parseRoleFlag(args, validIds?)` (line 44) is the template the entry names — `args.indexOf`, `fail` on a missing value, typed return — and `parsePortFlag` (line 30) is the value-side companion; `parseBranchFlag` beside them holds. src/init.ts — `git(root, "init", "-b", "main")` (line ~112) is still hardcoded with the now-superseded rationale comment at 107–108, `InitResult` (line 75) still has no branch field, and `cmdInit`'s "on branch main" output (cli.ts line 103) still hardcodes it. src/doctor/doctor.ts — `checkRepo(root)` (line 50) is the reported site. src/types.ts — `TumwaterConfig` (line 63) is where `baseBranch?: string` lands; the no-rename bullet's on-disk contracts both survive: the `main_red` TickResult (line 132) and the `build_stale` event (line 255). src/config-validation.ts — `TOP_LEVEL_KEYS` (lines 33–53, ending `"customLoops", "roles"`) is where `"baseBranch"` goes, validated non-empty beside the other top-level rules. src/orchestrator.ts — `RunOptions` already carries `mainBranch` (line 71), so the poll loop's (line 378) once-per-poll divergence check compares against the resolved base with no signature change. The Problem section's "not a problem" half holds: `mainBranch` still threads loop/orchestrator/merge/review/lander/worktree, and `ffMainTo`'s detached-primary arm is untouched. All six named test files exist (test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/loop.test.ts).
 
 Corrections (pinned in place):
 1. **The flag-parsing seam.** The write said "`run`'s flag spec gains `--branch <name>`" and "src/cli-args.ts — parseBranchFlag(args)" without saying who calls what, and its `resolveMainBranch(root, config, args)` signature left open whether `args` is raw command args or a parsed value. Pinned: `rejectUnknownArgs` validates the spelling in `main()`, `cmdRun` receives the args and calls `parseBranchFlag(args)` (the `parseRoleFlag` idiom), and `resolveMainBranch` takes the parsed value as `branchArg`.
 2. **Init's "on branch main" output.** The write's init bullet did not name `cmdInit`'s hardcoded output line, `InitResult`, or the rationale comment; an implementer could land the branch resolution and leave "initialized a new git repository on branch main" lying. Pinned: `InitResult` gains the created branch, `cmdInit` prints it, and the superseded comment is rewritten with the change.
 
-Sizing unchanged: src/git.ts ~20 lines (repoToplevel + branchExists), src/cli.ts ~25 (root resolution, precedence + existence validation, the flag, the help line, the init output), src/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~10 (the edge-triggered warning local), src/init.ts ~15, src/doctor.ts ~10, and the six test files ~150, the `trunk` end-to-end fixture in test/loop.test.ts the largest. One run. No design question remains open.
+Sizing unchanged: src/git.ts ~20 lines (repoToplevel + branchExists), src/cli.ts ~25 (root resolution, precedence + existence validation, the flag, the help line, the init output), src/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~10 (the edge-triggered warning local), src/init.ts ~15, src/doctor/doctor.ts ~10, and the six test files ~150, the `trunk` end-to-end fixture in test/loop.test.ts the largest. One run. No design question remains open.
 
 **Refined 2026-09-21 (plan loop) — 2/7 re-audited against main `423cc78`. This entry carried the series' oldest audit (`e76c5d5`, 2026-09-17, ~53 landings back), and it gates 3/7, 5/7, 6/7 and 7/7. The design holds unchanged; every load-bearing claim was re-verified, three seams the write left open are pinned (a branch-list helper, doctor's config access, and whether `init` resolves the root), two Files-touched omissions are corrected, and every drifted line anchor is re-pinned here.**
 
-Verified as written: `src/cli.ts` — `main()` still sets `const root = process.cwd()` as the single dispatch point (now **:187**, was :335); `resolveMainBranch(root)` (now **:85**, was :78) still only rejects a detached HEAD and returns `currentBranch(root)`, and it has exactly one caller, `cmdRun` at **:128**, reached right after `loadConfig(root)` at **:127** — so the planned `resolveMainBranch(root, config, branchArg)` fits with no other call site to thread. `requireReadyRepo(root)` is **:91** (was :84); the `run` case is `rejectUnknownArgs("run", args, [])` **:193** then `cmdRun(root)` **:194** (was :341/:342); the `gui` valued-flag spec is the in-tree idiom at **:202–205** (was :350–353); the start line still prints the branch at **:142** (was :135); the help block's `run` line is **:52** and `wake`'s `--role` spelling **:74** (were :49/:67); `cmdInit`'s hardcoded output is **:110** (was :103). `src/git.ts` took zero commits since the last audit: `readBranchHead` **:97**, `isGitRepo` **:138**, `currentBranch` **:178** are unchanged, and neither `repoToplevel` nor `branchExists` exists — the `branchExists` at src/worktree.ts:42 is a function-local const, not a colliding export, and its `gitTry(root, "rev-parse", "--verify", refs/heads/<branch>)` body is the idiom to copy. `src/cli-args.ts` — `parseRoleFlag` is **:47** (was :44), `parsePortFlag` **:33** (was :30); `parseBranchFlag` is still absent, with `parseInitArgs` (:115) and `parsePromptArgs` (:151) as new neighbours from unrelated extractions. `src/init.ts` — `InitResult` **:78** (was :75), `initProject` **:89**, the hardcoded `git(root, "init", "-b", "main")` **:112** with its now-superseded comment at **:110–111** (was :107–108). `src/doctor.ts` — `checkRepo` **:88** (was :50), called once at **:246**; `checkInit` **:99** already loads the config itself. `src/types.ts` — `TumwaterConfig` **:78** (was :63); the no-rename bullet's on-disk contracts both survive (`main_red` **:165**, was :132; `build_stale` **:296**, was :255). `src/config-validation.ts` — `TOP_LEVEL_KEYS` **:40–62** (was :33–53) now holds 21 keys (`landBatchMax`, `toolCallStallSeconds`, `thrashTurns`, `thrashMinutes` landed since) and still has no `baseBranch`; `checkString` (:167) is the non-empty-string validator `baseBranch` uses. `src/orchestrator.ts` — `RunOptions` **:101** with `mainBranch` **:104** (was :71); the poll loop is `while (!signal.aborted)` **:330** and computes `mainHead` at **:405**, with the one-shot per-poll locals (`prevGate`, `prevUserPaused`, `lastMaxConcurrent`, …) at **:264–292** — that is where the edge-triggered branch-divergence local belongs, read beside the `branchHead` call at :405.
+Verified as written: `src/cli.ts` — `main()` still sets `const root = process.cwd()` as the single dispatch point (now **:187**, was :335); `resolveMainBranch(root)` (now **:85**, was :78) still only rejects a detached HEAD and returns `currentBranch(root)`, and it has exactly one caller, `cmdRun` at **:128**, reached right after `loadConfig(root)` at **:127** — so the planned `resolveMainBranch(root, config, branchArg)` fits with no other call site to thread. `requireReadyRepo(root)` is **:91** (was :84); the `run` case is `rejectUnknownArgs("run", args, [])` **:193** then `cmdRun(root)` **:194** (was :341/:342); the `gui` valued-flag spec is the in-tree idiom at **:202–205** (was :350–353); the start line still prints the branch at **:142** (was :135); the help block's `run` line is **:52** and `wake`'s `--role` spelling **:74** (were :49/:67); `cmdInit`'s hardcoded output is **:110** (was :103). `src/git.ts` took zero commits since the last audit: `readBranchHead` **:97**, `isGitRepo` **:138**, `currentBranch` **:178** are unchanged, and neither `repoToplevel` nor `branchExists` exists — the `branchExists` at src/worktree.ts:42 is a function-local const, not a colliding export, and its `gitTry(root, "rev-parse", "--verify", refs/heads/<branch>)` body is the idiom to copy. `src/cli-args.ts` — `parseRoleFlag` is **:47** (was :44), `parsePortFlag` **:33** (was :30); `parseBranchFlag` is still absent, with `parseInitArgs` (:115) and `parsePromptArgs` (:151) as new neighbours from unrelated extractions. `src/init.ts` — `InitResult` **:78** (was :75), `initProject` **:89**, the hardcoded `git(root, "init", "-b", "main")` **:112** with its now-superseded comment at **:110–111** (was :107–108). `src/doctor/doctor.ts` — `checkRepo` **:88** (was :50), called once at **:246**; `checkInit` **:99** already loads the config itself. `src/types.ts` — `TumwaterConfig` **:78** (was :63); the no-rename bullet's on-disk contracts both survive (`main_red` **:165**, was :132; `build_stale` **:296**, was :255). `src/config-validation.ts` — `TOP_LEVEL_KEYS` **:40–62** (was :33–53) now holds 21 keys (`landBatchMax`, `toolCallStallSeconds`, `thrashTurns`, `thrashMinutes` landed since) and still has no `baseBranch`; `checkString` (:167) is the non-empty-string validator `baseBranch` uses. `src/orchestrator.ts` — `RunOptions` **:101** with `mainBranch` **:104** (was :71); the poll loop is `while (!signal.aborted)` **:330** and computes `mainHead` at **:405**, with the one-shot per-poll locals (`prevGate`, `prevUserPaused`, `lastMaxConcurrent`, …) at **:264–292** — that is where the edge-triggered branch-divergence local belongs, read beside the `branchHead` call at :405.
 
 Corrections (pinned in place):
 1. **A branch-list helper is needed and was unnamed.** "fails at startup listing the branches that exist" requires a git call the Approach never names. Add `listBranches(root): Promise<string[]>` to src/git.ts (`git for-each-ref --format=%(refname:short) refs/heads`), used by the `--branch`/`baseBranch` failure message, and unit-test it in test/git.test.ts.
-2. **`checkRepo`'s config seam.** `checkRepo(root)` (src/doctor.ts:88) has no config, so "fails when a configured `baseBranch` does not exist" cannot be met as written. Pinned: `checkRepo(root, config?: TumwaterConfig)` reports the resolved toplevel and the target branch and fails on a missing configured one; `runDoctor` loads the config once behind a guard (`let config: TumwaterConfig | null = null; try { config = loadConfig(root) } catch {}`) and passes it, so a malformed file is still reported by `checkInit` rather than throwing out of `checkRepo`. `run`'s `--branch` override is `run`-only, so doctor's precedence is `baseBranch → checked-out`.
+2. **`checkRepo`'s config seam.** `checkRepo(root)` (src/doctor/doctor.ts:88) has no config, so "fails when a configured `baseBranch` does not exist" cannot be met as written. Pinned: `checkRepo(root, config?: TumwaterConfig)` reports the resolved toplevel and the target branch and fails on a missing configured one; `runDoctor` loads the config once behind a guard (`let config: TumwaterConfig | null = null; try { config = loadConfig(root) } catch {}`) and passes it, so a malformed file is still reported by `checkInit` rather than throwing out of `checkRepo`. `run`'s `--branch` override is `run`-only, so doctor's precedence is `baseBranch → checked-out`.
 3. **`init` participates in root resolution (question closed).** `main()` resolves the toplevel before dispatch for every command, `init` included, so `tumwater init` from a subdirectory of an existing repo seeds that repo's root and reports "already initialized" rather than creating a nested document set; in a non-repo directory `repoToplevel` returns null and cwd is used as before. Pinned as an acceptance bullet so the behavior is deliberate, not incidental.
 4. **Files-touched omissions.** The Approach changes `checkRepo`'s signature and adds `parseBranchFlag`, but the entry omitted test/doctor.test.ts and test/cli-args.test.ts. Both are added: test/doctor.test.ts:107 currently `deepEqual`s `checkRepo(makeRepo())` to `{ level: "ok", detail: "on branch main" }` and must follow the new detail, and the new `parseBranchFlag` needs unit tests beside `parseRoleFlag`'s.
 5. **Drifted pins** are the re-pinned numbers above; the 2026-09-17 note's "six named test files" list is correct (all six exist).
 
-Sizing now: src/git.ts ~30 lines (`repoToplevel`, `branchExists`, `listBranches`), src/cli.ts ~25, src/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~12 (the edge-triggered local + check), src/init.ts ~15, src/doctor.ts ~15 (the config seam), and the test files ~180 — test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts, and the `trunk` end-to-end fixture in test/loop.test.ts. One run. No design question remains open.
+Sizing now: src/git.ts ~30 lines (`repoToplevel`, `branchExists`, `listBranches`), src/cli.ts ~25, src/cli-args.ts ~10, types/config-validation ~5, src/orchestrator.ts ~12 (the edge-triggered local + check), src/init.ts ~15, src/doctor/doctor.ts ~15 (the config seam), and the test files ~180 — test/git.test.ts, test/cli-args.test.ts, test/cli.test.ts, test/orchestrator.test.ts, test/init.test.ts, test/doctor.test.ts, and the `trunk` end-to-end fixture in test/loop.test.ts. One run. No design question remains open.
 
 ---
 
@@ -615,7 +615,7 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   (test/doctor.test.ts:221) and the valid-config detail is pinned as `"N roles enabled"`
   (test/doctor.test.ts:124), so `checkInit` keeps that detail when there is no drift and returns
   `level: "warn"` naming the drifted keys when there is (`CheckOutcome` is `ok | warn | fail`,
-  src/doctor.ts:31; a warn never affects the exit code).
+  src/doctor/doctor.ts:31; a warn never affects the exit code).
 
 **Approach.**
 - src/paths.ts — `exampleConfigPath(root)` beside `configPath` (src/paths.ts:11).
@@ -645,7 +645,7 @@ tracking until 4b/7 — untracking it needs 4b/7's landing fix first.
   untracked `tumwater.json` is seeded from (the residual of the landed 4c/7; writable only once
   this entry creates the file).
 
-**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor.ts, tumwater.example.json
+**Files touched.** src/paths.ts, src/config.ts, src/init.ts, src/doctor/doctor.ts, tumwater.example.json
 (new), README.md, test/init.test.ts, test/config.test.ts, test/doctor.test.ts. No behavior change for a
 project with no example (defaults, as today).
 
@@ -667,7 +667,7 @@ and no `tumwater.example.json` anywhere (`grep -rn` empty); `initProject` writes
 `saveConfig(root, defaultConfig())` (src/init.ts:122–128) and commits through the single `created`
 list (133–141); `.gitignore` is written by `ensureGitignore` (66–73) with its first-entry early
 return at line 70; `doctor`'s check names are pinned at test/doctor.test.ts:221 and `checkInit`
-(src/doctor.ts:90–99) is the "init" entry. Corrections: the two src/init.ts traps above (the old
+(src/doctor/doctor.ts:90–99) is the "init" entry. Corrections: the two src/init.ts traps above (the old
 text said "the config leaves the committed file list while `created` still reports it" without the
 mechanism, and missed that `git add` on an ignored path fails); doctor drift folds into the pinned
 "init" check rather than adding a check entry; and the "repo's own config is removed from
@@ -681,7 +681,7 @@ re-pinned on this tree: `ensureGitignore` (src/init.ts:69, its one-entry early r
 `created.push("tumwater.json")` (:131), the `.gitignore` push (:133), `git add -- …created` (:137)
 and the commit (:142); `configPath` (src/paths.ts:11); `defaultConfig` (src/config.ts:13),
 `loadConfig` (:77), `loadConfigSafe` (:118), `loadConfigCached` (:158, default fallback :163);
-`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10); `checkRepo` (src/doctor.ts:88), `checkInit`
+`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10); `checkRepo` (src/doctor/doctor.ts:88), `checkInit`
 (:99), and the report's check list (:243–247, `{ name: "init", … }` at :247); the CLI's `created`
 line is src/cli.ts:105–112. Test pins: `"N roles enabled"` (test/doctor.test.ts:118/125) and the
 check-name list (test/doctor.test.ts:274). Capability absence re-confirmed: `grep -rn` for
@@ -714,7 +714,7 @@ Re-pinned anchors:
 - `src/paths.ts`: `configPath` :11. `src/config.ts` (434 lines): `defaultConfig` :14,
   `loadConfig` :79, `loadConfigSafe` :120, `loadConfigCached` :160 (default fallback :165).
 - `src/readiness.ts`: `NOT_INITIALIZED_MESSAGE` :10 (unchanged).
-- `src/doctor.ts` (301 lines): `CheckOutcome` :45; `checkRepo` :101; `checkInit` :124 — the
+- `src/doctor/doctor.ts` (301 lines): `CheckOutcome` :45; `checkRepo` :101; `checkInit` :124 — the
   `NOT_INITIALIZED_MESSAGE` fail at :126 and the `` `${n} roles enabled` `` ok at :129 are the two
   details the drift fold must preserve; the checks array is :276 with `{ name: "init", … }` at
   :280; the render pads the name column with `padEnd(12)` :298.
@@ -848,14 +848,14 @@ changed. The `## Usage` line naming `tumwater.example.json` (the second criterio
 be written before that file exists, so it moved to 4a/7.
 
 **Refined 2026-09-22 (plan loop) — 4a/7 re-audited against main `4037522`, after the 3/7 landing
-(`726e3cc`) shifted every anchor in src/init.ts, src/config.ts, and src/doctor.ts.** Design is
+(`726e3cc`) shifted every anchor in src/init.ts, src/config.ts, and src/doctor/doctor.ts.** Design is
 unchanged; all line pins re-verified on this tree: `ensureGitignore` (src/init.ts:75, its
 one-entry early return now :79), `initProject` (:98), the `created` list (:145),
 `saveConfig(root, defaultConfig())` (:159) with `created.push("tumwater.json")` (:160), the
 `.gitignore` push (:162), `git add -- …created` (:166) and the commit (:171); `configPath`
 (src/paths.ts:11, unchanged); `defaultConfig` (src/config.ts:14), `loadConfig` (:79),
 `loadConfigSafe` (:120), `loadConfigCached` (:160, default fallback :165);
-`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10, unchanged); `checkRepo` (src/doctor.ts:101),
+`NOT_INITIALIZED_MESSAGE` (src/readiness.ts:10, unchanged); `checkRepo` (src/doctor/doctor.ts:101),
 `checkInit` (:124), and the report's check list (`{ name: "init", … }` at :280); the CLI's
 `created` line is src/cli.ts:132–139. Test pins: `"N roles enabled"` (test/doctor.test.ts:141
 and :148) and the check-name list (test/doctor.test.ts:298). Capability absence re-confirmed:
@@ -875,7 +875,7 @@ still :108 inside `mergeToMain` (:68) — the 4b/7 hazard analysis is otherwise 
 ## 5/7 — Make the agent binary configurable
 
 **Goal.** Stop assuming the agent CLI is a binary literally named `pi` on `PATH`. src/pi.ts spawns
-`spawn("pi", …)`, and both src/cli.ts's `cmdRun` preflight and src/doctor.ts's `checkPiBinary`
+`spawn("pi", …)`, and both src/cli.ts's `cmdRun` preflight and src/doctor/doctor.ts's `checkPiBinary`
 gate on `findOnPath("pi")` — so a non-PATH install, a wrapper script, or two pi builds side by
 side are all impossible.
 
@@ -904,7 +904,7 @@ side are all impossible.
   `spawn(resolved, …)`; the spawn-error message names it.
 - src/cli.ts — `cmdRun`'s preflight resolves through the same helper instead of
   `findOnPath("pi")`, and its failure names the resolved value and source.
-- src/doctor.ts — `checkPiBinary` becomes `checkAgentBinary`, printing the resolved path and
+- src/doctor/doctor.ts — `checkPiBinary` becomes `checkAgentBinary`, printing the resolved path and
   source; the install hint stays for the default case.
 - tumwater.example.json — a commented `agentBin` entry (4a/7 owns the template).
 - Tests: test/pi.test.ts (env beats config beats default; an absolute path bypasses PATH; the
@@ -912,7 +912,7 @@ side are all impossible.
   test/doctor.test.ts (all three sources).
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/pi.ts, src/readiness.ts, src/cli.ts,
-src/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
+src/doctor/doctor.ts, test/pi.test.ts, test/cli.test.ts, test/doctor.test.ts, test/config.test.ts; and
 `tumwater.example.json` only when 4a/7 has already created it (see correction 6 below).
 
 **Acceptance criteria.**
@@ -933,7 +933,7 @@ four load-bearing.**
 
 Verified as written: `spawn("pi", …)` is still the single pi spawn (src/pi.ts:113), the
 `SPAWN_ERROR_PREFIX` constant sits at src/pi.ts:81, and `grep -rn 'findOnPath("pi")' src/`
-returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/doctor.ts:102 in
+returns exactly the two named gates — src/cli.ts:122 in `cmdRun` and src/doctor/doctor.ts:102 in
 `checkPiBinary`. `TumwaterConfig` is src/types.ts:78 and `TOP_LEVEL_KEYS` src/config-validation.ts:27;
 `findOnPath` is src/files.ts:55. Capability absence re-confirmed: `grep -rn
 'agentBin\|TUMWATER_PI_BIN\|resolveAgentBin\|checkAgentBinary' src/ test/` is empty.
@@ -942,7 +942,7 @@ Corrections:
 
 1. **The missing-binary message is one shared constant, not a per-caller string.**
    `PI_MISSING_MESSAGE` lives in `src/readiness.ts:11` and both `src/cli.ts:24` and
-   `src/doctor.ts:14` import it; readiness.ts's own doc comment promises the two surfaces "cannot
+   `src/doctor/doctor.ts:14` import it; readiness.ts's own doc comment promises the two surfaces "cannot
    drift". Naming the resolved binary + source therefore cannot be done at the two call sites:
    add a builder (`piMissingMessage(resolved)`) beside `PI_MISSING_MESSAGE` in readiness.ts and
    add **src/readiness.ts** to Files touched. Keep the default-source text byte-identical to
@@ -968,11 +968,11 @@ Corrections:
    existing, and `loadConfig` returns defaults when the file is absent (src/config.ts:74), so the
    move is behavior-preserving on the default path. Leave the supervised early return where it is
    (one extra parse in a path that reads the config moments later).
-5. **doctor resolves the config itself, safely.** `checkPiBinary(pathEnv)` (src/doctor.ts:101)
-   takes only a PATH string and is called from `runDoctor` (src/doctor.ts:201) with no config;
+5. **doctor resolves the config itself, safely.** `checkPiBinary(pathEnv)` (src/doctor/doctor.ts:101)
+   takes only a PATH string and is called from `runDoctor` (src/doctor/doctor.ts:201) with no config;
    make it `checkAgentBinary(root, pathEnv)`, resolving through `loadConfigSafe(root)`
    (src/config.ts:113) so a malformed tumwater.json cannot throw inside a check (checkInit already
-   reports that failure separately, src/doctor.ts:87-95). **Keep the user-visible check label `pi
+   reports that failure separately, src/doctor/doctor.ts:87-95). **Keep the user-visible check label `pi
    binary`** — `test/doctor.test.ts:221,243` and `test/cli.test.ts:1121,1148` pin it, as does
    README's doctor line — and rename only the function and its detail text.
 6. **The example-config line is order-dependent.** `tumwater.example.json` does not exist on this
@@ -982,7 +982,7 @@ Corrections:
    criterion. Top-level key validation is pinned in **test/config.test.ts:383** (there is no
    `test/config-validation.test.ts`), so `agentBin`'s validation test joins that file.
 
-Sizing unchanged: src/pi.ts ~20 lines, src/readiness.ts ~8, src/cli.ts ~5, src/doctor.ts ~8,
+Sizing unchanged: src/pi.ts ~20 lines, src/readiness.ts ~8, src/cli.ts ~5, src/doctor/doctor.ts ~8,
 src/types.ts + src/config-validation.ts ~4, tests ~40. No design question remains open; landable
 after 2/7.
 
@@ -993,8 +993,8 @@ except where re-pinned here.**
 
 1. **`checkPiBinary` is now a one-line delegator, not a self-contained check.** Commit `73e4f58`
    (dry role) extracted the shared private helper `checkBinary(name, missing, pathEnv)`
-   (src/doctor.ts:74) so the git and pi checks resolve and report identically, and `checkPiBinary`
-   (now src/doctor.ts:143) just calls `checkBinary("pi", PI_MISSING_MESSAGE, pathEnv)`. Correction
+   (src/doctor/doctor.ts:74) so the git and pi checks resolve and report identically, and `checkPiBinary`
+   (now src/doctor/doctor.ts:143) just calls `checkBinary("pi", PI_MISSING_MESSAGE, pathEnv)`. Correction
    5's rename and config resolution still apply, but the resolved bin must flow through the shared
    helper, not around it: for a bare-name bin, call `checkBinary(bin, piMissingMessage(resolved),
    pathEnv)`; for a bin containing a path separator, resolve with `fs.accessSync(…, X_OK)` and
@@ -1083,7 +1083,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   (src/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
   reverifyRed?)`, config required in the 2nd position: detection needs it, and an optional
   trailing parameter would let future callers skip it) calls `detectBuildCheck(wt)` +
-  `runBuildCheck` at :146/:149; and `checkBuildCheck` (src/doctor.ts:274) calls it at :275. Add the
+  `runBuildCheck` at :146/:149; and `checkBuildCheck` (src/doctor/doctor.ts:274) calls it at :275. Add the
   config parameter to all three, plus `config: TumwaterConfig` on `MergeContext` (src/merge.ts:42,
   set beside `exemptPaths` in the object literal inside `LoopRunner.merge` — src/loop.ts:271;
   review.ts's GateContext (:90) and landing-batch.ts's BatchContext (:23) already hold it).
@@ -1093,7 +1093,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   defaultConfig()` load for its :69 call, and src/redeploy.ts's `mainIsGreen(mirrorWt, config,
   onRun?)` (:431) takes config, with the production wiring at createRedeployer (:456) reading the
   live config per call — so src/main-red.ts and src/redeploy.ts join this entry's files.
-- src/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
+- src/doctor/doctor.ts — a `project check` line: configured command, detected npm script, or the warn
   case.
 - Tests: test/build-check.test.ts (a configured command passing, failing with its tail as reasons,
   and timing out to `skipped`; `cwd` honored; npm fallback byte-identical), test/prompt.test.ts
@@ -1108,7 +1108,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check-detect.ts,
 src/build-check.ts, src/prompt.ts,
 src/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
-src/loop.ts, src/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
+src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1141,7 +1141,7 @@ Verified as written: src/prompt.ts's node_modules sentence is still lines 74–7
 walks up for `package.json` + `node_modules` and prefers test → typecheck → build via the private
 `buildCheckFrom` (line 71); `BUILD_CHECK_TIMEOUT_MS` is 300_000 (line 140); `BuildCheckOutcome`
 (line 150) keeps `passed|failed|skipped` with `skipReason: "timeout" | "no-npm" | "toolchain"`;
-src/doctor.ts:145 still calls `detectBuildCheck(root)` directly; `TOP_LEVEL_KEYS`
+src/doctor/doctor.ts:145 still calls `detectBuildCheck(root)` directly; `TOP_LEVEL_KEYS`
 (src/config-validation.ts:33) has no `check`, and `checkKnownKeys` (line 136) is the guard that
 rejects unknown keys. Capability absence re-confirmed: `grep -rn '"check"\|check:' src/types.ts
 src/config-validation.ts` finds nothing, and no prompt or template mentions a configured check.
@@ -1159,7 +1159,7 @@ Corrections (pinned; the three stale spots are already corrected in place):
    "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build-check.ts:302) now
    serves `gate` (src/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
    `BuildCheckScope`/`MERGE_SCOPES` (lines 269/281) postdate the last audit. Config must reach
-   `detectBuildCheck` at src/build-check.ts:309, src/main-baseline.ts:159, and src/doctor.ts:145.
+   `detectBuildCheck` at src/build-check.ts:309, src/main-baseline.ts:159, and src/doctor/doctor.ts:145.
    Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (review.ts and
    lander.ts already hold it; `MergeContext` does not — add `config: TumwaterConfig` to
    src/merge.ts:42 and set it beside `exemptPaths` at its construction site, src/loop.ts:230) and
@@ -1219,7 +1219,7 @@ whose internal `detectBuildCheck(wt)` is :375 and `runBuildCheck` :378. The thre
 BUILD_CHECK_TIMEOUT_MS` at :166), `landing` (src/merge.ts:151, unchanged) and `batch`
 (src/lander.ts:394, was :376). `src/prompt.ts` — COMMON_RULES (:53) still carries the
 unconditional node_modules sentence (:75–77, was 74–76) and the vague "if it has a build or test
-command" bullet (:79, was :78). `src/doctor.ts` — the direct `detectBuildCheck(root)` call now
+command" bullet (:79, was :78). `src/doctor/doctor.ts` — the direct `detectBuildCheck(root)` call now
 lives in `checkBuildCheck` (:184, was :145) at :185, and its no-check branch still returns `ok`
 (:187). `MergeContext` (src/merge.ts:42) still has no `config`; its single construction site is
 the object literal inside `LoopRunner.merge` at src/loop.ts:257–264 (`exemptPaths` at :261; was
@@ -1302,7 +1302,7 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
 - src/prompt.ts: `COMMON_RULES` :53, the node_modules sentence :75–77, and the vague "if it has
   a build or test command" wording is now the Leave-the-project-working bullet at :79
   (reworded since the audit; the sentence to replace is the same).
-- src/doctor.ts: `checkBuildCheck(root)` :209 (was :184), its `detectBuildCheck(root)` :210
+- src/doctor/doctor.ts: `checkBuildCheck(root)` :209 (was :184), its `detectBuildCheck(root)` :210
   (was :185), the no-check `ok` branch :212 (was :187) with the stale "none declared is
   informational" comment at :206–208. `runDoctor` :262 loads config once at :267 — the shape
   2/7's landed refinement pinned, so the 09-21 note's correction-2 mechanism stands.
@@ -1480,14 +1480,14 @@ only ever been pointed at repos it created itself.
 - src/roles.ts + src/prompt.ts — the readme role's instructions and the orientation rules name
   "the project brief (`TUMWATER.md`, or `README.md` in repos tumwater created)" instead of
   README.md.
-- src/doctor.ts — report which file holds the brief.
+- src/doctor/doctor.ts — report which file holds the brief.
 - Tests: test/init.test.ts (adopt against a repo with its own README and PLANS.md; `--dry-run`
   writes nothing and exits 0; a tumwater-created repo still round-trips through README.md),
   test/readme.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
 **Files touched.** src/paths.ts, src/readme.ts, src/init.ts, src/cli-args.ts, src/roles.ts,
-src/prompt.ts, src/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
+src/prompt.ts, src/doctor/doctor.ts, test/init.test.ts, test/readme.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
 **Acceptance criteria.**
@@ -1522,7 +1522,7 @@ the initial prompt block in README.md"), and is embedded by BOTH `buildTickPromp
 `buildDirectorPrompt` (221); `TickPromptInput` is at 142, `buildTickPrompt` at 163, and
 `buildDirectorPrompt(userPrompt, initialPrompt, principles)` is the shape `loop.ts:154` calls.
 `src/roles.ts`: `readme.find` names README.md and the status markers at 108; `plan.find` says
-"its initial prompt in README.md" at 94. `src/doctor.ts`: checks are an array in `runDoctor` (203)
+"its initial prompt in README.md" at 94. `src/doctor/doctor.ts`: checks are an array in `runDoctor` (203)
 with `checkInit` at 207; `renderDoctor` pads the name column to 12 (222–224). Tests:
 `test/readme.test.ts` (78 lines, every case through a `writeReadme` helper that writes README.md),
 `test/init.test.ts` (116; the refusal test at 67, the PRINCIPLES seed assertions at 32–42),
@@ -1640,7 +1640,7 @@ Verified as written:
 - `src/loop.ts` (818 lines): `readInitialPrompt(this.root)` :160 and the
   `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :169 — correction 2's
   `const brief = briefFile(this.root) ?? "README.md"` computes beside :160 and feeds both branches.
-- `src/doctor.ts` (268 lines): `checkInit` :99; `runDoctor` :237 with the checks array :243
+- `src/doctor/doctor.ts` (268 lines): `checkInit` :99; `runDoctor` :237 with the checks array :243
   (`checkInit` entry :247); the name column is `padEnd(12)` :265 — correction 8's `checkBrief`
   slot holds.
 - Tests re-pinned: `test/init.test.ts` is 166 lines; the old-failure test ("initProject refuses
@@ -1675,7 +1675,7 @@ Verified as written:
   COMMON_RULES at :180; `buildDirectorPrompt` :185 embedding at :239 (was :232).
 - `src/roles.ts` (412): `plan.find` :135 and `readme.find` :151 — both pins identical.
 - `test/readme.test.ts` (94): the `writeReadme` helper :14 — unchanged.
-- Doctor's name column is still `padEnd(12)` (src/doctor.ts:317), so correction 8's "brief" name
+- Doctor's name column is still `padEnd(12)` (src/doctor/doctor.ts:317), so correction 8's "brief" name
   fits.
 - Capability absence re-confirmed: `grep -rn 'TUMWATER\.md\|briefFile\|briefCandidate\|--adopt\|
 dryRun' src/` is empty.
@@ -1722,7 +1722,7 @@ Corrections re-pinned against the new shape:
    plumbing moved to src/loop-pi.ts): `readInitialPrompt(this.root)` :174 (was :160), the
    `buildDirectorPrompt(userPrompt, initialPrompt, principles)` call :183 (was :169) —
    correction 2's `const brief = briefFile(this.root) ?? "README.md"` computes beside :174 and
-   feeds both branches. src/doctor.ts (268→320): `checkInit` :133 (was :99), `runDoctor` :281
+   feeds both branches. src/doctor/doctor.ts (268→320): `checkInit` :133 (was :99), `runDoctor` :281
    (was :237), the checks array :295 with the `init` entry :298 — correction 8's `checkBrief`
    slots immediately after it (the array has since gained `fallback` :299 and `build` :305;
    brief sits between init and fallback). Tests: `test/init.test.ts` (166→272 — the re-seed and

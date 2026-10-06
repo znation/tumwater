@@ -1,10 +1,10 @@
-import { loadConfigSafe } from "./config/config.js";
-import { orchestratorAlive, readOrchestratorInfo } from "./fleet-state.js";
-import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
+import { loadConfigSafe } from "../config/config.js";
+import { orchestratorAlive, readOrchestratorInfo } from "../fleet-state.js";
+import { type ProcessProbe, systemProcessProbe } from "../process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
-import { checkLaunchServicesPorts } from "./launch-services.js";
-import { plural } from "./phrases.js";
-import { shortSha } from "./format.js";
+import { checkLaunchServicesPorts } from "../launch-services.js";
+import { plural } from "../phrases.js";
+import { shortSha } from "../format.js";
 import {
   checkAgentBinary,
   checkBrief,

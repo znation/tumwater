@@ -14,7 +14,7 @@ import {
   checkNodeVersion,
   checkRepo,
   checkStateDir,
-} from "../src/doctor-checks.js";
+} from "../src/doctor/doctor-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git-run.js";
 import { initProject } from "../src/init.js";
 import { loadConfig } from "../src/config/config.js";
@@ -24,12 +24,12 @@ import { makeRepo, runningAsRoot, sh, tmpdir, writeConfig, writeMalformedJson } 
 import { backdate } from "./backdate.js";
 import { fakeBins, readyRepo } from "./doctor-fixtures.js";
 
-// Unit coverage for the pre-flight environment checks (src/doctor-checks.ts): every check's
+// Unit coverage for the pre-flight environment checks (src/doctor/doctor-checks.ts): every check's
 // ok/fail/warn branches. The binary checks take an explicit PATH so the missing branch is
 // exercised by passing "" — no PATH mutation, no spawning. Report composition, rendering, and
 // the CLI wiring (`tumwater doctor` exit codes through main()) are pinned in
 // test/doctor.test.ts; the orphan check's own unit coverage lives in test/doctor-orphans.test.ts
-// (it pins src/doctor-orphans.ts), and the fixtures the three files share live in
+// (it pins src/doctor/doctor-orphans.ts), and the fixtures the three files share live in
 // test/doctor-fixtures.ts.
 test("checkNodeVersion reports this runtime as ok and warns below the declared floor", () => {
   const current = checkNodeVersion();

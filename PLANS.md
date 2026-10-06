@@ -159,7 +159,7 @@ to, and whether every declared model can run, before the fleet finds out the har
 2. **`budget_fallback`** gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its
    existing `provider` / `model` (the default tier's). The header badge keeps today's
    single-name text when every tier shares one pair, and lists the tiers otherwise.
-3. **Doctor** (src/doctor-checks.ts): `checkFallbackModel` covers each tier's fallback. A new
+3. **Doctor** (src/doctor/doctor-checks.ts): `checkFallbackModel` covers each tier's fallback. A new
    check verifies that every declared tier model resolves in pi's catalog and that its provider
    reports `ready` from `pi auth check --provider <p> --json`. When `PI_SMOL_MODEL`,
    `PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it notes that tumwater does not read them —
@@ -167,7 +167,7 @@ to, and whether every declared model can run, before the fleet finds out the har
    inherited environment — and points at `model.small` / `model.strong`.
 
 **Files touched.** src/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
-src/budget-gates.ts (event payload), src/event-format.ts, src/doctor-checks.ts, and their tests.
+src/budget-gates.ts (event payload), src/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
 
 **Acceptance criteria.**
 - Role rows show `strong` and its model for plan with a strong tier declared.

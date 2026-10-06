@@ -239,7 +239,7 @@ src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budge
 src/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review.ts, src/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events.ts, src/event-format.ts, src/fleet-hold.ts,
-src/fleet-polls.ts, src/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
+src/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,
 README.md, docs/backends.md, docs/how-it-works.md, docs/feature-model-fallback.md,
 docs/implementation-model-fallback.md, and their tests.

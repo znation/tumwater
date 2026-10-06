@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans } from "../src/doctor-orphans.js";
-import { runDoctor } from "../src/doctor.js";
+import { checkOrphans } from "../src/doctor/doctor-orphans.js";
+import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process-table.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./doctor-fixtures.js";
 
-// Unit coverage for the orphaned-worktree-process check (src/doctor-orphans.ts): every leak
+// Unit coverage for the orphaned-worktree-process check (src/doctor/doctor-orphans.ts): every leak
 // shape below is a real leak the fleet produced, driven through a fake process table — no
 // orphan is ever spawned. The real ps/lsof reader is smoked in test/process.test.ts; the
 // other doctor checks' unit coverage lives in test/doctor-checks.test.ts.
