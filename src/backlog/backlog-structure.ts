@@ -2,7 +2,7 @@ import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
-import { collapseWhitespace } from "../text/text.js";
+import { collapseWhitespace, truncate } from "../text/text.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
  * the same files loops edit and readers parse, but read here for states no reader wants: an
@@ -264,11 +264,11 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
 const INDEX_TITLE_MAX = 160;
 
 /** The index title for a `### ` heading: its stamp suffix (`(reported … 2026-…)`) removed via
- * the shared ENTRY_STAMP_META_RE and whitespace collapsed, clipped to INDEX_TITLE_MAX with a
- * trailing ellipsis. */
+ * the shared ENTRY_STAMP_META_RE and whitespace collapsed, then clipped to INDEX_TITLE_MAX
+ * through text.ts's truncate — the one ellipsis rule, so the cut cannot drift from the
+ * other trimmed labels and never splits a surrogate pair. */
 function indexTitle(heading: string): string {
-  const title = collapseWhitespace(heading.replace(ENTRY_STAMP_META_RE, ""));
-  return title.length <= INDEX_TITLE_MAX ? title : `${title.slice(0, INDEX_TITLE_MAX - 1)}…`;
+  return truncate(collapseWhitespace(heading.replace(ENTRY_STAMP_META_RE, "")), INDEX_TITLE_MAX);
 }
 
 /** The files and sections the actionable index covers, in the order loops read them: PLANS.md's

@@ -9,21 +9,26 @@ import path from "node:path";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { fencedHeadingTitle, fenceTracker } from "../backlog/backlog-md.js";
 import { openQuestionEntries } from "../backlog/backlog.js";
-import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 
+/** Cap on a question's one-line body preview, so one very long first line cannot dominate
+ * the `questions` list. */
+const BODY_PREVIEW_MAX = 100;
+
 /** The ` -- <ellipsized body>` suffix one prose list line carries for its question's first
  * body line: the `prompt --list` numbered shape, so an operator can tell two open questions
- * apart without opening the file. Omitted for a heading-only entry. */
+ * apart without opening the file. Truncated through text.ts's truncate — the one ellipsis
+ * rule — so the preview is never longer than BODY_PREVIEW_MAX and never splits a surrogate
+ * pair. Omitted for a heading-only entry. */
 function firstBodySuffix(body: string): string {
   const line = body
     .split("\n")
     .map((l) => l.trim())
     .find((l) => l !== "");
   if (line === undefined) return "";
-  const ellipsized = line.length > 100 ? `${line.slice(0, 100)}…` : line;
-  return ` — ${ellipsized}`;
+  return ` — ${truncate(line, BODY_PREVIEW_MAX)}`;
 }
 
 /** `tumwater questions` with no arguments: the open questions numbered from 1 in file order,
