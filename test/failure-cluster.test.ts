@@ -8,9 +8,9 @@ import {
   poolTimeoutKey,
   sortedRoles,
   truncateExample,
-} from "../src/failure-cluster.js";
+} from "../src/failure/failure-cluster.js";
 
-// failure-cluster.ts is the shared grouping engine behind the failure digest and the
+// src/failure/failure-cluster.ts is the shared grouping engine behind the failure digest and the
 // error-storm reducer; both count by its normalized keys, so a wrong rule here silently
 // merges two real failure modes or splits one into half-size rows. These tests pin the
 // documented contract of each rule directly instead of only through one indirect case

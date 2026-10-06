@@ -24,7 +24,7 @@ import {
 import { pollErrorStorm, pollFailureSpread, pollFleetHold } from "./fleet-polls.js";
 import { FLEET_OPEN, type FleetHold } from "./fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure-spread.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure/failure-spread.js";
 import type { LoopRunner } from "./loop.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { logEvent } from "./events.js";
@@ -250,7 +250,7 @@ export function pollFleetGates(
   // hold above there is no re-open event — the members' own recoveries tell that story.
   states.errorStorm = pollErrorStorm(root, states.errorStorm, runners);
 
-  // Fleet-wide wide-shallow storm alarm (src/failure-spread.ts): when many roles each
+  // Fleet-wide wide-shallow storm alarm (src/failure/failure-spread.ts): when many roles each
   // fail a few times on one provider failure kind, the streak bar needs one role deep,
   // the error storm needs several roles deep, and the hold needs the failures close
   // together — this counts raw failures of one kind across roles in a rolling window,

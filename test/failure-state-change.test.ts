@@ -4,7 +4,7 @@ import {
   describeStateChange,
   STATE_CHANGE_TOP,
   STATE_CHANGE_TYPES,
-} from "../src/failure-state-change.js";
+} from "../src/failure/failure-state-change.js";
 import type { HarnessEvent } from "../src/events.js";
 
 // describeStateChange is the wording half of the failure digest's Fleet state changes section:
@@ -18,7 +18,7 @@ function ev(fields: Record<string, unknown>): HarnessEvent {
 }
 
 test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP caps the section", () => {
-  // The set is the contract failure-data.ts filters the window against: every event type the
+  // The set is the contract src/failure/failure-data.ts filters the window against: every event type the
   // digest replays as a Fleet state change, and nothing else.
   for (const t of [
     "budget_paused",
@@ -278,7 +278,7 @@ test("rate_limit_hold renders backend kinds as backend holds, rate-limit as a 42
     "backend hold (server error) for 3m (relapse 1) — feature",
   );
   // A timeout hold names the timeout's own phrase, not a connection's — the digest pools
-  // plain and progressing tick timeouts under this kind (failure-cluster.ts).
+  // plain and progressing tick timeouts under this kind (src/failure/failure-cluster.ts).
   assert.equal(
     describeStateChange(ev({ type: "rate_limit_hold", kind: "timeout", holdMs: 60_000, escalation: 0, roles: ["tests"] })),
     "backend hold (request timed out) for 60s — tests",

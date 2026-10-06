@@ -105,7 +105,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
   // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
   // The tick's wall-clock span rides on tick_end too (PLANS.md, time-and-spend plan): the
-  // failure digest prices a tick by its own durationMs first (src/failure-data.ts
+  // failure digest prices a tick by its own durationMs first (src/failure/failure-data.ts
   // tickDurationMs), so the field is ALWAYS present — a tick that ends within the same
   // Date.now() millisecond it started (an instant early-abort error tick) or crosses a
   // backward clock step still attests its 0 ms, where the old omit-when-zero convention

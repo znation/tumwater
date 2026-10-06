@@ -6,12 +6,12 @@ import {
   FAILURE_SPREAD_WINDOW_MS,
   failureSpread,
   type FailureSpread,
-} from "../src/failure-spread.js";
+} from "../src/failure/failure-spread.js";
 import { pollFailureSpread, type HoldInputs } from "../src/fleet-polls.js";
 import { readEvents } from "../src/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 
-// The fleet-wide wide-shallow storm alarm (src/failure-spread.ts; BUGS.md 2026-09-30, part
+// The fleet-wide wide-shallow storm alarm (src/failure/failure-spread.ts; BUGS.md 2026-09-30, part
 // (2) of the 2026-09-29 connection-storm entry): pure policy, so every clause — the raw
 // failure count, the window, per-kind episodes, the dedupe of a re-read observation, the
 // edge trigger, the re-arm, the new-kind episode — is pinned here without a fleet, plus one

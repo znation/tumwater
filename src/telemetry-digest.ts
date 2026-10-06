@@ -1,10 +1,10 @@
 /** The `telemetry` role's tick-time evidence: the failure digest rendered over the role's own
- * one-day window. Split out of failure-render.ts — which stays the pure renderer — so every
+ * one-day window. Split out of src/failure/failure-render.ts — which stays the pure renderer — so every
  * observer role's evidence builder has its own module the way qa-coverage.ts and
  * backlog-structure.ts do, and the tick lifecycle (tick-prompt.ts) injects it from there
  * instead of reaching into a report module. */
-import { collectFailureReport } from "./failure-data.js";
-import { renderFailureMarkdown } from "./failure-render.js";
+import { collectFailureReport } from "./failure/failure-data.js";
+import { renderFailureMarkdown } from "./failure/failure-render.js";
 
 /** The `telemetry` role's own digest window, in local calendar days (plans/telemetry-role.md).
  * The CLI keeps the usage report's 14-day default; the role reads one day so a cluster

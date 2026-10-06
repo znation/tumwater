@@ -3,13 +3,13 @@
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
  * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
-import type { TickResult } from "./tick/tick-outcome.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
-import { type SpendCell } from "./time-spend.js";
-import { plural } from "./phrases.js";
-import { shortSha, usd } from "./format.js";
-import { dayKey, dayLabel, formatTime, reportWindow } from "./datetime.js";
-import { eventsRotationLabel } from "./events.js";
+import { type SpendCell } from "../time-spend.js";
+import { plural } from "../phrases.js";
+import { shortSha, usd } from "../format.js";
+import { dayKey, dayLabel, formatTime, reportWindow } from "../datetime.js";
+import { eventsRotationLabel } from "../events.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
 const ROLES_SHOWN = 4;

@@ -6,8 +6,8 @@ import { shortSha, usd } from "./format.js";
 /** The single home of each human-facing PHRASE the fleet renders — the wording fragments
  * (a pause reason's suffix, a rate-limit hold's "for 60s", a backend hold's kind, a budget
  * transition's "$x of $y", main's red-tip naming, a tool call's one-line label, the plural
- * helper) shared by the event feed (event-format.ts), the failure digest (failure-render.ts
- * and failure-state-change.ts), the status surfaces (ui/), and the CLI messages
+ * helper) shared by the event feed (event-format.ts), the failure digest (src/failure/failure-render.ts
+ * and src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
  * (operator-commands.ts, cli-run.ts), so their phrasing cannot drift per consumer. Pure
  * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
  * into words. Pure value formats — the token a number or hash renders as (compactTokens,
@@ -15,9 +15,9 @@ import { shortSha, usd } from "./format.js";
 
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
- * (datetime.ts), the failure digest's loss-cause lines (failure-render.ts), and the fleet
+ * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the fleet
  * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
- * lines' "N commit(s) ahead" (event-format.ts, failure-state-change.ts — the singular/plural
+ * lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts — the singular/plural
  * wording their tests pin, once "N commit(s)" with the old literal, now "N commits"/"1 commit")
  * all rendered
  * inline before. `many` accepts a whole replacement form (`plural(n, "loop is", "loops are")`)
@@ -62,7 +62,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
  * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
  * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-
- * change lines (failure-state-change.ts, whose hold lines cap the list and slice each role), so
+ * change lines (src/failure/failure-state-change.ts, whose hold lines cap the list and slice each role), so
  * the two surfaces cannot disagree on how an absent or malformed roles field renders. A
  * non-array falls back to `fallback`; with `max`, extra roles are dropped from the tail; with
  * `format`, each role is rendered through it (the digest passes its byte-slicing field()). */
@@ -80,7 +80,7 @@ export function rolesPhrase(
 
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of
  * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet
- * state changes lines (failure-state-change.ts), so a budget transition reads the same on both
+ * state changes lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
  * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through the
  * cents-pinned money format (usd) here. */
 export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
@@ -96,7 +96,7 @@ export function shortSpanPhrase(ms: number): string {
 
 /** The `for <duration>[ (relapse N)]` fragment the rate_limit_hold event renders — the one
  * home of that phrasing, shared by the event feed (event-format.ts) and the failure digest's
- * Fleet state changes lines (failure-state-change.ts), like budgetPhrase. The duration is shortSpanPhrase
+ * Fleet state changes lines (src/failure/failure-state-change.ts), like budgetPhrase. The duration is shortSpanPhrase
  * (seconds under two minutes, so the one-minute base hold reads `60s`); the relapse count is
  * named only when the storm resumed right after an earlier hold, the one fact that says the
  * hold doubled. Both fields arrive loosely typed on HarnessEvent, so each is coerced here. */
@@ -109,7 +109,7 @@ export function holdPhrase(holdMs: unknown, escalation: unknown): string {
 
 /** The human phrase for a fleet hold's backend-failure kind — the one home of that phrasing,
  * shared by the event feed (event-format.ts) and the failure digest's Fleet state changes
- * lines (failure-state-change.ts), like holdPhrase above. A "rate-limit" hold (or a
+ * lines (src/failure/failure-state-change.ts), like holdPhrase above. A "rate-limit" hold (or a
  * hold with no readable kind — a torn line) never renders through this: those keep the 429
  * wording, which is the shape every historical event already has. */
 export function backendKindPhrase(kind: unknown): string {

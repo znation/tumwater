@@ -3,7 +3,7 @@
  * both count by these keys, so the normalization, the two tick-timeout shapes and their
  * pooling, and the grouping engine live here rather than inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
-import { rankByCount } from "./rank.js";
+import { rankByCount } from "../rank.js";
 
 /** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
  * The digest's other caps (top-N counts, summary width) live beside their consumers in

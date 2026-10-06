@@ -1,13 +1,13 @@
 /** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each
  * one into the per-role × outcome-class table (ticks, summed wall-clock ms, cost) plus the
  * loss-cause ranking that weighs causes by agent-hours rather than tick counts. Split from
- * failure-data.ts, which owns the rest of the collection (outcome tallies, deltas, clustered
+ * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas, clustered
  * sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
- * failure-render.ts as a pure function of the collected data. */
+ * src/failure/failure-render.ts as a pure function of the collected data. */
 import type { TickResult } from "./tick/tick-outcome.js";
 import type { HarnessEvent } from "./events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js";
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure/failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";
 import { stringList } from "./json-object.js";
@@ -17,7 +17,7 @@ import { stringList } from "./json-object.js";
  * result is "error-class" — it burned agent time without landing, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
- * failure-render.ts. */
+ * src/failure/failure-render.ts. */
 const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
   changed: "landed",
   queued: "landed",

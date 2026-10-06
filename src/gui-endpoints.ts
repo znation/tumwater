@@ -6,7 +6,7 @@
  * gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond its
  * own `res`; server lifecycle, routing, the static page, and the token gate stay in gui-server.ts.
  * The domain work itself lives one layer down (transcript.ts, backlog.ts, report.ts,
- * failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
+ * src/failure/failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts) — this module only
  * adapts HTTP onto it.
  */
 import type { BacklogEntry } from "./backlog-md.js";
@@ -14,8 +14,8 @@ import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "./backl
 import { loadConfigSafe } from "./config/config.js";
 import { EDITABLE_CONFIG_KEYS } from "./config/config-editable-keys.js";
 import { collectReport } from "./report-data.js";
-import { collectFailureReport } from "./failure-data.js";
-import { renderFailureMarkdown } from "./failure-render.js";
+import { collectFailureReport } from "./failure/failure-data.js";
+import { renderFailureMarkdown } from "./failure/failure-render.js";
 import { readTranscript } from "./ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "./history-data.js";
 import { readTickDetail } from "./tick/tick-detail-data.js";

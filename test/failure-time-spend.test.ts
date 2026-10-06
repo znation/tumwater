@@ -5,8 +5,8 @@
 // time" table's semantics: time-first ranking, the queued→landed join, and pooled timeouts.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderFailureMarkdown } from "../src/failure-render.js";
-import { collectFailureReport } from "../src/failure-data.js";
+import { renderFailureMarkdown } from "../src/failure/failure-render.js";
+import { collectFailureReport } from "../src/failure/failure-data.js";
 import { atLocalTs as at } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
 import { tmpdir } from "./repo-fixtures.js";

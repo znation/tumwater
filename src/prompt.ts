@@ -199,7 +199,7 @@ interface TickPromptInput {
   initialPrompt: string;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
-  /** Rendered failure digest (see failure-render.ts); telemetry only, omitted when unreadable. */
+  /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when unreadable. */
   digest?: string;
   /** Rendered flow-coverage block (see qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
