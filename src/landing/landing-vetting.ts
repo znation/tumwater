@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { gateRoleConfig } from "../budget-gates.js";
+import { gateRoleConfig } from "../gates/budget-gates.js";
 import { LoopRunner } from "../loop.js";
 import { branchHead, isMergedInto } from "../git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";

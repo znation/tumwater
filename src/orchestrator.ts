@@ -40,7 +40,7 @@ import {
   p75TickDurationMs,
   sleepInterruptible,
 } from "./tick/tick-timing.js";
-import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gate-polls.js";
+import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "./gates/gate-polls.js";
 import { heldProviders } from "./fleet-hold.js";
 import { configForRole, reviewRunConfig } from "./config/config-views.js";
 
@@ -192,7 +192,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // settle reasons, and the quiet-poll exit rule — lives in src/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 
-  // The fleet-wide gates' and alarms' cross-poll memory (src/gate-polls.ts owns the family's
+  // The fleet-wide gates' and alarms' cross-poll memory (src/gates/gate-polls.ts owns the family's
   // wiring — budget, pause, quiet hours, failure hold, and the two storm alarms): the gates'
   // previous values for the edge-triggered events, the fallback breaker, and the hold's own
   // memory (deadline, kind, relapse count). In memory only — a restart re-trusts the
@@ -205,7 +205,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
-  // The pause gates (src/pause-gates.ts owns the concern): the operator pause's and the
+  // The pause gates (src/gates/pause-gates.ts owns the concern): the operator pause's and the
   // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
   // event instead of once per ~2s poll.
   // The primary checkout's branch, for the edge-triggered divergence warning: the fleet
@@ -290,7 +290,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       const now = Date.now();
 
-      // The fleet's gates and alarms, one poll of the family (src/gate-polls.ts): the daily
+      // The fleet's gates and alarms, one poll of the family (src/gates/gate-polls.ts): the daily
       // budget gate — with its derived-state publish and the fallback handback to the
       // primary — the operator and per-role pause gates, quiet hours, the fleet-wide failure
       // hold, and the two observational storm alarms. The family's cross-poll memory lives

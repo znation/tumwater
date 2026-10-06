@@ -1,13 +1,13 @@
 /** The per-role daily cost cap (PLANS.md 2026-09-30, part 1/2): a loop whose local-day spend
  * has reached its own `maxDailyCostUsdPerRole` entry starts no new ticks until the next local
  * day or a live config edit — so one runaway role cannot eat the fleet-wide cap and starve
- * every other loop for the rest of the day. The fleet budget gate (src/budget-gates.ts)
+ * every other loop for the rest of the day. The fleet budget gate (src/gates/budget-gates.ts)
  * bounds the SUM; this bounds each member. The stateless verdict follows that gate's own rule
  * (budgetPaused's doc: "resume is stateless, so … crossing midnight flips it on the next cycle
  * and nothing can get stuck"): the verdict is recomputed from the loop state every poll, no
  * marker is written, and local midnight lifts it by itself.
  *
- * Deliberate differences from the streak gate's shape (src/streak-gate.ts), stated in the plan
+ * Deliberate differences from the streak gate's shape (src/gates/streak-gate.ts), stated in the plan
  * so no implementer re-litigates them:
  * - This gate writes NOTHING to the shared per-role pause marker (src/fleet-state.ts's
  *   pauseRole). The marker is anonymous — after a restart across midnight the harness could
@@ -18,17 +18,17 @@
  * - An unknown role id in the caps map is a config-validation error (src/config/config-validation.ts,
  *   the `roles.<id>` idiom): explicit misconfiguration never silently no-ops a cap.
  *
- * Shape, like every gate in the family (src/gate-polls.ts): the pure verdict and the
+ * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure verdict and the
  * edge-triggered bookkeeping live here so they are unit-testable without a fleet, and this
  * module owns the only event emission — the orchestrator's poll owns only the wiring. The
  * in-memory `prev` set is the whole cross-poll memory: a restart with a still-over-cap role
  * re-logs one `role_cap_paused` on the first poll (the durable-cause honest report the
  * streak-gate doc accepts). */
 
-import type { LoopState } from "./loop-state.js";
-import { dailyCost } from "./budget.js";
-import { logEvent } from "./events/events.js";
-import { DIRECTOR_ROLE } from "./roles.js";
+import type { LoopState } from "../loop-state.js";
+import { dailyCost } from "../budget.js";
+import { logEvent } from "../events/events.js";
+import { DIRECTOR_ROLE } from "../roles.js";
 
 /** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
 type CapObservation = {

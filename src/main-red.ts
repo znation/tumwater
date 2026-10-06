@@ -5,7 +5,7 @@ import { failureHeadline } from "./build-check/build-check-report.js";
 import type { BuildCheckOutcome } from "./build-check/build-check.js";
 import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "./build-check/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
-import { buildMainRedNote } from "./gate-prompts.js";
+import { buildMainRedNote } from "./gates/gate-prompts.js";
 import { logEvent, warnEvent } from "./events/events.js";
 import type { TickOutcome } from "./tick/tick-outcome.js";
 import type { TumwaterConfig } from "./config/config-schema.js";

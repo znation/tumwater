@@ -1,5 +1,5 @@
-import type { TumwaterConfig } from "./config/config-schema.js";
-import type { BudgetGate } from "./budget.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import type { BudgetGate } from "../budget.js";
 import {
   gateRoleConfig,
   newBudgetGateState,
@@ -7,7 +7,7 @@ import {
   tickOnPair,
   type BudgetGateState,
 } from "./budget-gates.js";
-import { fallbackDemotion } from "./fallback-breaker.js";
+import { fallbackDemotion } from "../fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
@@ -20,22 +20,22 @@ import {
   pollQuietHoursGate,
   roleQuietHold,
   type QuietHoursGateState,
-} from "./quiet-hours.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "./fleet-polls.js";
-import { type FleetHold } from "./fleet-hold.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "./error-storm.js";
-import { FAILURE_SPREAD_QUIET, type FailureSpread } from "./failure/failure-spread.js";
-import type { LoopRunner } from "./loop.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import { logEvent } from "./events/events.js";
-import { writeJsonFile } from "./json-files.js";
-import type { OrchestratorInfo } from "./fleet-state.js";
-import { configForRole } from "./config/config-views.js";
+} from "../quiet-hours.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet-polls.js";
+import { type FleetHold } from "../fleet-hold.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "../error-storm.js";
+import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
+import type { LoopRunner } from "../loop.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import { logEvent } from "../events/events.js";
+import { writeJsonFile } from "../json-files.js";
+import type { OrchestratorInfo } from "../fleet-state.js";
+import { configForRole } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
  * budget gate, the operator and per-role pause gates, quiet hours, the fleet-wide failure
  * hold, and the two observational storm alarms. Each gate's reads, edge-triggered events,
- * and cross-poll bookkeeping live in its own module (src/budget-gates.ts, src/pause-gates.ts,
+ * and cross-poll bookkeeping live in its own module (src/gates/budget-gates.ts, src/gates/pause-gates.ts,
  * src/quiet-hours.ts, and the fleet-health trio in src/fleet-polls.ts); this owns the wiring
  * half — one poll advances every gate's state in place. Split out of orchestrator.ts so the
  * poll loop reads as phases (reload → requests → gates → redeploy → landings → schedule →
@@ -119,7 +119,7 @@ export function pollFleetGates(
 ): FleetGatePoll {
   const { root, runners, liveConfig, modelsPath, now, info, infoFile } = ctx;
 
-  // Daily cost budget gate (src/budget-gates.ts owns the reads, the edge-triggered
+  // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
   // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
   // owns only the wiring — the demotion publish below and the per-runner assignment at
   // the bottom of this block.
@@ -174,12 +174,12 @@ export function pollFleetGates(
     }
   }
 
-  // The pause gates (src/pause-gates.ts owns the reads, the edge-triggered pause/resume
+  // The pause gates (src/gates/pause-gates.ts owns the reads, the edge-triggered pause/resume
   // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role
   // pause's set, both read fresh per cycle so a marker change lands on the next poll.
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
-  // The error-streak circuit breaker (src/streak-gate.ts): a role past ERROR_STREAK_BREAKER
+  // The error-streak circuit breaker (src/gates/streak-gate.ts): a role past ERROR_STREAK_BREAKER
   // consecutive failed ticks is paused through the same per-role marker the operator's
   // `pause --role` writes — act-on-it where the warn bar and the storm alarms only talk. The
   // director is not exempt; a failing director cannot process prompts anyway. Roles it just
@@ -195,7 +195,7 @@ export function pollFleetGates(
   const pausedRolesNow =
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
 
-  // The per-role daily cost cap (src/role-cap-gates.ts): a loop whose local-day spend has
+  // The per-role daily cost cap (src/gates/role-cap-gates.ts): a loop whose local-day spend has
   // reached its own maxDailyCostUsdPerRole entry starts no new ticks — the stateless verdict
   // recomputed every poll, no pause marker written (the marker is anonymous; a cap pause must
   // never masquerade as an operator's), so this returns its own set beside pausedRoles and the

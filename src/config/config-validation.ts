@@ -424,7 +424,7 @@ function checkSelectorHalves(
     }
   }
 
-  // Per-role daily cost caps (src/role-cap-gates.ts): each key must name a known role —
+  // Per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a known role —
   // built-in or customLoops — because a typo'd id would silently no-op the cap, the exact
   // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
   // is fully collected by this point, so a custom loop can be capped). Each value is a

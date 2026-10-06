@@ -8,7 +8,7 @@ import { setRef } from "./git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "./worktree.js";
 import { logEvent, warnEvent } from "./events/events.js";
 import { assembleTickPrompt } from "./tick/tick-prompt.js";
-import { buildConflictDiscardNote } from "./gate-prompts.js";
+import { buildConflictDiscardNote } from "./gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole, type ResolvedModelConfig } from "./config/config-views.js";

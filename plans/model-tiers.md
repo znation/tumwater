@@ -236,7 +236,7 @@ src/config-schema.ts (types, key lists), src/config-validation.ts and src/config
 src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, `reviewConfig`,
 `fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/role-catalog.ts (`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
-src/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
+src/gates/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
 src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events/events.ts, src/events/event-format.ts, src/fleet-hold.ts,
 src/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,

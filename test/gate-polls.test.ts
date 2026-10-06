@@ -1,4 +1,4 @@
-/** pollFleetGates (src/gate-polls.ts): the wiring between the error-streak circuit breaker's
+/** pollFleetGates (src/gates/gate-polls.ts): the wiring between the error-streak circuit breaker's
  * trips and the pause gates' edge-triggered event bookkeeping. The breaker pauses through the
  * same per-role marker the operator's `pause --role` writes, so without coordination the NEXT
  * poll's pause gate sees the marker change and logs a generic role_paused on top of the
@@ -14,7 +14,7 @@ import { recordDailyCost } from "../src/budget.js";
 import { DIRECTOR_ROLE } from "../src/roles.js";
 import { LoopRunner } from "../src/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop-state.js";
-import { newFleetGateStates, pollFleetGates } from "../src/gate-polls.js";
+import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { MODELS_JSON } from "./models-fixtures.js";

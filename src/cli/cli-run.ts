@@ -17,7 +17,7 @@ import {
 import { PAUSE_FOR_MAX_MS } from "../operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
 import { isFleetPaused, orchestratorAlive, pausedRoles } from "../fleet-state.js";
-import { runStartupCheck, runStartupProblem } from "../startup-gate.js";
+import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init.js";
 import { templateCatalog } from "../init-templates.js";
 import { logEvent, subscribeEvents } from "../events/events.js";

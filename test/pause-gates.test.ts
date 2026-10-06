@@ -1,4 +1,4 @@
-/** pollPauseGates (src/pause-gates.ts): the edge-triggered event logging and gate reads the
+/** pollPauseGates (src/gates/pause-gates.ts): the edge-triggered event logging and gate reads the
  *  orchestrator's poll loop depends on. Exercises the real markers — pauseFleet/resumeFleet and
  *  pauseRole/resumeRole write exactly what the CLI writes, so the contract under test is
  *  producer-and-consumer together, not a mock of either side. */
@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { newPauseGateState, pollPauseGates } from "../src/pause-gates.js";
+import { newPauseGateState, pollPauseGates } from "../src/gates/pause-gates.js";
 import { pauseFleet, resumeFleet, pauseRole, resumeRole } from "../src/fleet-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";

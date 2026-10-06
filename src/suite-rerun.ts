@@ -1,6 +1,6 @@
 /** Detecting a reviewer run that re-ran the full suite on a tree the gate's pre-check already
  * verified — pure string logic over the bash command lines a pi run started, no subprocess or
- * file I/O. The review prompt tells such a reviewer not to (src/gate-prompts.ts), but on
+ * file I/O. The review prompt tells such a reviewer not to (src/gates/gate-prompts.ts), but on
  * 2026-09-23 two reviewers that got the instruction copied their lander worktree to /tmp and ran
  * `npm ci` and `npm test` there anyway, holding the landing slot and loading the shared host;
  * 102 of 429 retained review sessions ran a suite or `npm ci` themselves (BUGS.md 2026-09-23).

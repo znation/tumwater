@@ -63,8 +63,8 @@ export interface HarnessEvent {
     | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
-    | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/streak-gate.ts); carries role, streak, lastError when one is recorded
-    | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
+    | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
+    | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd
     | "role_cap_resumed" // the cap was raised/removed or a new local day started; that role ticks again (carries role)
     | "quiet_hours_started" // the configured quietHours window began; role loops stop starting new ticks until it ends, director exempt (carries window)
     | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)

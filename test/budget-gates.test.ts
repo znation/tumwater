@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/budget-gates.js";
+import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";
 import { BUDGET_WARNING_FRACTION, recordDailyCost } from "../src/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/fallback-breaker.js";
 import { defaultConfig } from "../src/config/config.js";

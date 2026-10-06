@@ -16,7 +16,7 @@ import {
   startFallbackProbe,
   type FallbackBreakerPolicy,
 } from "./fallback-breaker.js";
-import type { FleetGateStates } from "./gate-polls.js";
+import type { FleetGateStates } from "./gates/gate-polls.js";
 import { logEvent } from "./events/events.js";
 import type { LoopRunner } from "./loop.js";
 import { fairOrder } from "./scheduling.js";

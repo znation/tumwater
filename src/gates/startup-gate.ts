@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { loadConfigSafe } from "./config/config.js";
-import type { TumwaterConfig } from "./config/config-schema.js";
-import { findOnPath } from "./files.js";
-import { GIT_MISSING_MESSAGE } from "./git-run.js";
-import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "./git.js";
+import { loadConfigSafe } from "../config/config.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { findOnPath } from "../files.js";
+import { GIT_MISSING_MESSAGE } from "../git-run.js";
+import { branchesPhrase, branchExists, currentBranch, hasCommits, isGitRepo } from "../git.js";
 import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
@@ -13,7 +13,7 @@ import {
   findAgentBinary,
   piMissingMessage,
   resolveAgentBin,
-} from "./readiness.js";
+} from "../readiness.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has

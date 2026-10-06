@@ -18,7 +18,7 @@ import {
 } from "../src/principles.js";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
-import { buildConflictPrompt, buildReviewPrompt } from "../src/gate-prompts.js";
+import { buildConflictPrompt, buildReviewPrompt } from "../src/gates/gate-prompts.js";
 import { todayStamp } from "../src/budget.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { customRole, ROLES, roleById } from "../src/roles.js";

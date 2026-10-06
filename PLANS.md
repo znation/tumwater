@@ -29,19 +29,19 @@ tier's when its own is missing, instead of every seam collapsing onto one pair. 
    `applyFallbackModel(config, resolved)` rewrites the `model` map to those pairs, so each seam
    keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
    the `FALLBACK_REVIEW_TIMEOUT_S` floor.
-2. **src/fallback-breaker.ts / src/budget-gates.ts:** `BudgetGateState.breaker` becomes a map
+2. **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker` becomes a map
    keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
    `pairFree(...)` and `fallbackServing(...)`.
 3. **src/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
    on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
    resolved to pause (strong-tier roles with review off) is blocked beside the poll's
-   per-role `capPaused` set (src/gate-polls.ts, filled by src/role-cap-gates.ts), and its row
+   per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
    reads `budget paused`.
-4. **Budget handback** (src/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
+4. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
    matched against every resolved fallback pair, not only one.
 
-**Files touched.** src/config/config-views.ts, src/fallback-breaker.ts, src/budget-gates.ts,
-src/budget.ts, src/gate-polls.ts, src/loop.ts, and their tests.
+**Files touched.** src/config/config-views.ts, src/fallback-breaker.ts, src/gates/budget-gates.ts,
+src/budget.ts, src/gates/gate-polls.ts, src/loop.ts, and their tests.
 
 **Acceptance criteria.**
 - `{ "fallback": F }` with any `model` map puts every seam on F at the cap, matching today's
@@ -76,7 +76,7 @@ to, and whether every declared model can run, before the fleet finds out the har
    inherited environment — and points at `model.small` / `model.strong`.
 
 **Files touched.** src/role-view.ts, src/status-data.ts, src/ui/* (role rows, badge),
-src/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
+src/gates/budget-gates.ts (event payload), src/events/event-format.ts, src/doctor/doctor-checks.ts, and their tests.
 
 **Acceptance criteria.**
 - Role rows show `strong` and its model for plan with a strong tier declared.
@@ -133,7 +133,7 @@ healthy one. Hold only what the failing provider serves.
    observations count toward one storm only when both provider and kind match.
 2. `FleetHold` holds per provider: `FleetHold` itself gained the `provider` it is about, and
    `pollFleetHold` (src/fleet-polls.ts) keeps one hold PER PROVIDER in `states.fleetHold` (a
-   `Map<string | undefined, FleetHold>`, src/gate-polls.ts). A provider whose hold re-opened
+   `Map<string | undefined, FleetHold>`, src/gates/gate-polls.ts). A provider whose hold re-opened
    STAYS keyed in the map — its kind, provider, relapse count, and re-open time are the
    relapse memory — so "held" is read only through fleet-hold.ts's new `heldProviders()`
    (until non-null), never bare key presence: a lifted hold never keeps blocking. The
@@ -148,7 +148,7 @@ healthy one. Hold only what the failing provider serves.
    before); event-format names the provider and scopes "role loops on that provider / every
    provider".
 
-**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gate-polls.ts,
+**Files touched.** src/fleet-hold.ts, src/fleet-polls.ts, src/gates/gate-polls.ts,
 src/orchestrator-scheduling.ts, src/orchestrator.ts, src/events/events.ts, src/events/event-format.ts,
 test/fleet-polls.test.ts, test/orchestrator-seams.test.ts, test/event-format-fleet.test.ts,
 and the new test/orchestrator-scheduling.test.ts.
@@ -753,7 +753,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   role: string, now: Date): boolean`, that parses the role's value and returns membership
   (an absent key, a non-string, or an unparseable value reads as off here; validation is
   config-validation.ts's job, not this helper's).
-- `src/gate-polls.ts`: `pollAllGates` computes a stateless per-role hold set — for each runner
+- `src/gates/gate-polls.ts`: `pollAllGates` computes a stateless per-role hold set — for each runner
   but the director, `roleQuietHold(liveConfig.quietHoursPerRole, role, new Date(now))` — and
   returns it as `roleQuietHold: ReadonlySet<string>` beside `capPaused`. No new event type and
   no state: unlike the fleet-wide gate (which logs exactly one
@@ -777,7 +777,7 @@ The fleet-wide `quietHours` keeps working unchanged — a role is held when EITH
   status-data.ts cannot distinguish the cause without new plumbing, note that in the plan's
   Done entry rather than growing the change.
 
-**Files touched:** src/quiet-hours.ts, src/gate-polls.ts, src/orchestrator.ts,
+**Files touched:** src/quiet-hours.ts, src/gates/gate-polls.ts, src/orchestrator.ts,
 src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-example.ts, src/help.ts,
 README.md, plus tests (quiet-hours and config-validation suites).
 

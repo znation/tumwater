@@ -11,12 +11,12 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
 } from "../src/readiness.js";
-import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/startup-gate.js";
+import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
 import { pathReplace } from "./fake-commands.js";
 
-// `tumwater run`'s startup gate (src/startup-gate.ts) in-process: the one answer cmdRun fails
+// `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
 // fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with
 // (BUGS.md 2026-09-23). test/cli.test.ts pins the same failures through the CLI.
 

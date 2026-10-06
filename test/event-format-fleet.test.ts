@@ -43,7 +43,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
-  // The per-role cap transitions (src/role-cap-gates.ts) name the role, its spend vs its
+  // The per-role cap transitions (src/gates/role-cap-gates.ts) name the role, its spend vs its
   // cap, and the two lift paths; the resume states the loop ticks again. Fleet-rendering
   // siblings of the budget pause/resume above, so they live here too.
   const rolePaused = formatEvent({
@@ -211,7 +211,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   assert.match(resumed, /harness\s+role docs resumed — it ticks again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 
-  // role_streak_paused (src/streak-gate.ts): the breaker's pause IS the harness handling the
+  // role_streak_paused (src/gates/streak-gate.ts): the breaker's pause IS the harness handling the
   // failure — routine with an explanation, like rate_limit_hold, never a warning. It names
   // the streak depth and how to lift it.
   const streakPaused = formatEvent({

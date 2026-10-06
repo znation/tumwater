@@ -10,7 +10,7 @@
  * prompts anyway, and one uniform rule needs no carve-out. `tumwater resume --role <id>` (or
  * the dashboard's per-row toggle) lifts it, as today.
  *
- * Shape, like every gate in the family (src/gate-polls.ts): the pure trip bookkeeping lives
+ * Shape, like every gate in the family (src/gates/gate-polls.ts): the pure trip bookkeeping lives
  * here so it is unit-testable without a fleet, and the module owns the only event emission —
  * the orchestrator's poll owns only the wiring.
  *
@@ -32,10 +32,10 @@
  * badge explains why it is not ticking, and the role_streak_paused event tells the operator
  * why. */
 
-import { ERROR_STREAK_BREAKER } from "./tick/tick-apply.js";
-import type { LoopState } from "./loop-state.js";
-import { pauseRole } from "./fleet-state.js";
-import { logEvent } from "./events/events.js";
+import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
+import type { LoopState } from "../loop-state.js";
+import { pauseRole } from "../fleet-state.js";
+import { logEvent } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
  * (src/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */

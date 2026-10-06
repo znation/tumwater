@@ -11,7 +11,7 @@ import { piLogPath, reviewSessionDir } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop-pi.js";
 import { readPrinciples } from "../principles.js";
-import { buildReviewPrompt } from "../gate-prompts.js";
+import { buildReviewPrompt } from "../gates/gate-prompts.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";

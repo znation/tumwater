@@ -2,23 +2,23 @@
  * fallback config view it derives, as the orchestrator polls it each cycle. Extracted from
  * orchestrator.ts's poll loop: the spend check, the fallback breaker's re-key, the
  * edge-triggered budget_* events, and the fallback view derivation are one concern beside the
- * other fleet gates (src/pause-gates.ts, src/fleet-hold.ts's fleet hold) — the orchestrator
+ * other fleet gates (src/gates/pause-gates.ts, src/fleet-hold.ts's fleet hold) — the orchestrator
  * owns only the wiring (the demotion publish and the per-runner config assignment). */
 
-import type { TumwaterConfig } from "./config/config-schema.js";
-import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "./budget.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { budgetGate, budgetReached, budgetSpend, budgetWarning, type BudgetGate } from "../budget.js";
 import {
   type FallbackBreaker,
   fallbackServing,
   IDLE_FALLBACK_BREAKER,
   rekeyFallbackBreaker,
-} from "./fallback-breaker.js";
-import { applyFallbackModel, fallbackPair } from "./config/config-views.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import type { FallbackModelConfig } from "./config/config-schema.js";
-import { logEvent } from "./events/events.js";
-import { fallbackModelFree } from "./pi/pi-models.js";
-import type { LoopState } from "./loop-state.js";
+} from "../fallback-breaker.js";
+import { applyFallbackModel, fallbackPair } from "../config/config-views.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import type { FallbackModelConfig } from "../config/config-schema.js";
+import { logEvent } from "../events/events.js";
+import { fallbackModelFree } from "../pi/pi-models.js";
+import type { LoopState } from "../loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
  * the fallback breaker, and the fallback view last derived from a live config. In memory
@@ -102,7 +102,7 @@ export function tickOnPair(
 /** The config a runner runs on while the budget gate stands: the director keeps the live
  * config — an explicit human prompt outranks the autonomous-spend cap — and every other role
  * takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
- * rule, so the scheduler's per-poll assignment (src/gate-polls.ts) and a throwaway landing
+ * rule, so the scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway landing
  * author's construction (src/landing/landing-vetting.ts's resolveAuthor) cannot drift apart — say, an
  * exemption granted to one more role in one copy and not the other. */
 export function gateRoleConfig(

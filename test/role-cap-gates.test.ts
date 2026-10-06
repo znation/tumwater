@@ -1,4 +1,4 @@
-/** roleCapPaused and pollRoleCapGate (src/role-cap-gates.ts): the per-role daily cost cap's
+/** roleCapPaused and pollRoleCapGate (src/gates/role-cap-gates.ts): the per-role daily cost cap's
  * stateless verdict and its edge-triggered event bookkeeping (PLANS.md 2026-09-30, part 1/2). */
 
 import test from "node:test";
@@ -11,7 +11,7 @@ import {
   newRoleCapGateState,
   pollRoleCapGate,
   roleCapPaused,
-} from "../src/role-cap-gates.js";
+} from "../src/gates/role-cap-gates.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 

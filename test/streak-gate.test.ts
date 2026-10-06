@@ -1,4 +1,4 @@
-/** pollStreakGate (src/streak-gate.ts): the error-streak circuit breaker's trip rule and ack
+/** pollStreakGate (src/gates/streak-gate.ts): the error-streak circuit breaker's trip rule and ack
  * bookkeeping. Exercises the real pause marker — pauseRole/resumeRole write exactly what the
  * CLI and the breaker both write — so the contract under test is producer-and-consumer
  * together, not a mock of either side. */
@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { newStreakGateState, pollStreakGate } from "../src/streak-gate.js";
+import { newStreakGateState, pollStreakGate } from "../src/gates/streak-gate.js";
 import {
   applyLandingOutcome,
   applyTickOutcome,

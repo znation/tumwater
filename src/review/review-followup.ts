@@ -8,7 +8,7 @@ import { hasResumableSession } from "../pi/pi.js";
 import { reviewRunConfig } from "../config/config-views.js";
 import { warnEvent } from "../events/events.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
-import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gate-prompts.js";
+import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../gates/gate-prompts.js";
 import { type ToolCallStart } from "../suite-rerun.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 import type { ReviewContext } from "./review.js";

@@ -124,7 +124,7 @@ export async function pollRunnerReasons(
     // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
     // included (the operator named that one loop deliberately).
     if (pausedRolesSet.has(runner.role)) continue;
-    // The role's own daily cost cap (src/role-cap-gates.ts): no start-gate change — a
+    // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
     // parked waiter finishes (in-flight ticks finish, NEW ticks are gated at scheduling,
     // exactly like every per-role pause), and there is no fallback-probe exception: the
     // stop is about spend, and probing it adds noise, not signal. The lift is a live

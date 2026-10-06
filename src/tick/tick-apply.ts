@@ -33,7 +33,7 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
  * the failure is clearly not transient. */
 export const ERROR_STREAK_WARN = 3;
 
-/** Consecutive failed ticks after which the error-streak circuit breaker (src/streak-gate.ts)
+/** Consecutive failed ticks after which the error-streak circuit breaker (src/gates/streak-gate.ts)
  * auto-pauses the role through the per-role pause marker — the same act-on-it escalation the
  * budget gate and the pause gates perform, applied to a role failing on its own cause. Ten,
  * not the warn bar: at 3 the failure is diagnosed but possibly transient, and by tick 4 the
@@ -257,7 +257,7 @@ export function applyLandingOutcome(
     // A review rejection is a failure the streak must count (BUGS.md 2026-09-30): the
     // authoring tick ended `queued`, which no longer resets the streak (see applyTickOutcome),
     // so this landing outcome is the episode's accumulation point — the same field the warn,
-    // the breaker (src/streak-gate.ts), and the error-storm observation (src/fleet-polls.ts)
+    // the breaker (src/gates/streak-gate.ts), and the error-storm observation (src/fleet-polls.ts)
     // already read. No new machinery, no new constants: the warn bar and the breaker bar are
     // ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;

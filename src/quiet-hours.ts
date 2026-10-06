@@ -2,7 +2,7 @@
  * window — `"23:00-07:00"` — during which role loops start no new ticks, so an operator can
  * put the fleet on a nightly schedule once instead of typing `tumwater pause` every evening.
  * Extracted from the orchestrator's concerns the same way the pause gate is
- * (src/pause-gates.ts): the parsing, the membership decision, and the edge-triggered
+ * (src/gates/pause-gates.ts): the parsing, the membership decision, and the edge-triggered
  * quiet/awake events live here; the orchestrator owns only the wiring. The director is
  * exempt — a human steering outranks a schedule — exactly as under the budget gate and the
  * operator pause. In-flight ticks finish; the gate sits before eligibility, so a tick due
@@ -99,7 +99,7 @@ export function newQuietHoursGateState(): QuietHoursGateState {
 }
 
 /** Poll the quiet-hours gate for one orchestrator cycle — the pause gate's scheduled sibling
- * (src/pause-gates.ts pollPauseGates): parse the config value fresh (a live edit applies on
+ * (src/gates/pause-gates.ts pollPauseGates): parse the config value fresh (a live edit applies on
  * the next poll), decide membership for `now`, and log exactly one `quiet_hours_started` /
  * `quiet_hours_ended` event (`loop: "harness"`, with the effective window string) per
  * crossing. An unset/off window is simply "outside", so nothing is ever logged for it.

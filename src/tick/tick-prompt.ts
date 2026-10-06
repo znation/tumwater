@@ -7,7 +7,7 @@ import { briefFile, readInitialPrompt } from "../readme.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gate-prompts.js";
+import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
 import { detectBuildCheck } from "../build-check/build-check-detect.js";
 import { telemetryDigest } from "../telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "../qa-coverage.js";
