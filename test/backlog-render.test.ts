@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { backlogPayload } from "../src/backlog.js";
-import { renderBacklogMarkdown } from "../src/backlog-render.js";
+import { backlogPayload } from "../src/backlog/backlog.js";
+import { renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
 import { makeRepo, tmpdir } from "./repo-fixtures.js";
 import { runCli } from "./cli-harness.js";
 

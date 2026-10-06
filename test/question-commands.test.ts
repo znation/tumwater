@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { answerQuestion, openQuestionList, questionListPayload, sayAnswered } from "../src/question-commands.js";
-import { openQuestionEntries } from "../src/backlog.js";
+import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { attempt } from "./exit-capture.js";

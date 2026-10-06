@@ -11,7 +11,7 @@ import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gate-promp
 import { detectBuildCheck } from "../build-check/build-check-detect.js";
 import { telemetryDigest } from "../telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "../qa-coverage.js";
-import { renderBacklogStructureBlock } from "../backlog-structure.js";
+import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */

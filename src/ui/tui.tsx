@@ -1,6 +1,6 @@
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
-import { openQuestions } from "../backlog.js";
+import { openQuestions } from "../backlog/backlog.js";
 import { snapshot } from "../status-data.js";
 import { renderStatusSpans, type StatusLine } from "./status-render.js";
 import { fleetAlerts } from "./fleet-alerts.js";

@@ -28,7 +28,7 @@ import {
   requireReadyRepo,
 } from "./cli/cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
-import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog-write.js";
+import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog/backlog-write.js";
 
 import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git.js";

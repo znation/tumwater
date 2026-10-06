@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   entryDates,
   fenceTracker,
-} from "../src/backlog-md.js";
+} from "../src/backlog/backlog-md.js";
 import {
   openBugEntries,
   openBugs,
@@ -13,10 +13,10 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
   plannedPlans,
-} from "../src/backlog.js";
+} from "../src/backlog/backlog.js";
 import {
   parseEntryDetails,
-} from "../src/backlog-md.js";
+} from "../src/backlog/backlog-md.js";
 import { backdate } from "./backdate.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { withCountedReads } from "./fs-faults.js";

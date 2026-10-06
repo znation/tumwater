@@ -9,7 +9,7 @@ import type { StatusLine } from "./status-render.js";
 import { readTranscript } from "./transcript.js";
 import { readEvents } from "../event-read.js";
 import { formatEvent } from "../event-format.js";
-import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog.js";
+import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
 import { eventTone, toneLine, transcriptTone, type TuiView } from "./tui-frame.js";
 

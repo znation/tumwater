@@ -1,6 +1,6 @@
 import path from "node:path";
-import { readTextOrNull } from "./files.js";
-import { cachedByStat, type StatKeyedValue } from "./stat-cache.js";
+import { readTextOrNull } from "../files.js";
+import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
@@ -13,7 +13,7 @@ export type { BacklogEntry } from "./backlog-md.js";
  * re-reading and re-parsing markdown that grows without bound over the project's lifetime
  * (PLANS/BUGS are append-only durable memory). Any write invalidates it via dev/ino/mtime/size
  * (stat-cache.cachedByStat, same freshness check as tail.ts's incremental log readers). The pure
- * markdown parsing underneath lives in src/backlog-md.ts — this module owns only reading and
+ * markdown parsing underneath lives in src/backlog/backlog-md.ts — this module owns only reading and
  * caching. Each dashboard formats this data for its own surface (the TUI's lines live in
  * tui.tsx; the GUI renders HTML in gui-page.ts). The open-question count shown in the status
  * headers is just `openQuestions(root).length`, so the badge and the list always come from

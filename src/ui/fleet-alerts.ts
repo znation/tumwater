@@ -9,7 +9,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status-data.js";
-import { ENTRY_STAMP_META_RE } from "../backlog-structure.js";
+import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { agree, pauseReasonSuffix, plural } from "../phrases.js";

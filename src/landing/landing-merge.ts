@@ -1,4 +1,4 @@
-import { openQuestions } from "../backlog.js";
+import { openQuestions } from "../backlog/backlog.js";
 import { logEvent } from "../events.js";
 import { headOf } from "../git.js";
 import { aheadOfMainFiles } from "../git-diff.js";
@@ -18,7 +18,7 @@ import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build-check
 import { noteGreenBaseline } from "../main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";
-import { backlogStructureReason } from "../backlog-structure.js";
+import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { warnEvent } from "../events.js";
 import { withLock } from "../lock.js";
 import { buildConflictPrompt } from "../gate-prompts.js";

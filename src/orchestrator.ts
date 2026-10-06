@@ -10,7 +10,7 @@ import {
 import { DIRECTOR_ROLE } from "./roles.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
-import { openBugs, plannedPlans } from "./backlog.js";
+import { openBugs, plannedPlans } from "./backlog/backlog.js";
 import { LoopRunner } from "./loop.js";
 import { branchHead, currentBranch } from "./git.js";
 import { queuedLandingFiles } from "./landing/landing-queue.js";

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text.js";
-import { duplicateHeadings, strandedPlanEntries } from "../backlog-structure.js";
+import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
@@ -99,7 +99,7 @@ export function checkFixClaims(root: string): CheckOutcome {
 }
 
 /** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
- * detector, src/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
+ * detector, src/backlog/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
  * invisible to every Planned reader, and a done-dated heading still under `## Planned` invites
  * a second implementation. The clean loop repairs these when it happens to tick; this makes
  * the state visible to an operator without waiting for that tick. Reads the tree at `root` —
@@ -124,12 +124,12 @@ export function checkStrandedPlans(root: string): CheckOutcome {
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
- * check, src/backlog-structure.ts): a `## Done` a past landing or conflict resolution added
+ * check, src/backlog/backlog-structure.ts): a `## Done` a past landing or conflict resolution added
  * twice leaves every later entry after the first section invisible to the section readers, and
  * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree
  * — like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
  * environment, and a landing that adds another copy of the heading trips the gate's same
- * rule (a) — src/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an
+ * rule (a) — src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an
  * edit that leaves an existing duplicate alone passes and the duplicate itself needs a
  * deliberate removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {

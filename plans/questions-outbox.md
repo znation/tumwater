@@ -46,7 +46,7 @@ to ask.
   gui-page.ts renders it as a third section — *open questions (K)*, `(none)` when empty — in the
   same `#backlog` panel below the loop table. TUI: the Ctrl+T-cycled project-status view gains an
   open-questions list after planned features and open bugs (`backlogLines` in src/tui.ts takes it
-  as a third argument). Both reuse `parseEntries(md, "Open")` from src/backlog.ts — QUESTIONS.md's
+  as a third argument). Both reuse `parseEntries(md, "Open")` from src/backlog/backlog.ts — QUESTIONS.md's
   `## Open` section parses as-is; add an `openQuestions(root)` reader there (or in questions.ts,
   delegating to it) so the count and the list come from one parse. No new route, no panel-on-
   click. TUI: keep the highlighted line above recent activity when N > 0 — a cheap nudge that
@@ -70,7 +70,7 @@ to ask.
 
 `src/init.ts` (seed QUESTIONS.md beside PLANS/BUGS), `src/prompt.ts` (read-first list +
 ask-don't-guess bullet; director answer-routing bullet), `src/questions.ts` (new: count + entry
-parsing), `src/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
+parsing), `src/backlog/backlog.ts` (`openQuestions(root)` reader reusing `parseEntries`),
 `src/status.ts` (`StatusSnapshot.questions`, as inbox does today),
 `src/status-render.ts` (header badge in renderStatus), `src/gui.ts` (statusPayload gains a
 fresh-per-poll `questions` list beside `plans`/`bugs`), `src/gui-page.ts` (header badge + open-

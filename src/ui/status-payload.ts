@@ -1,4 +1,4 @@
-import { openBugs, openQuestions, plannedPlans } from "../backlog.js";
+import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
 import { readEvents } from "../event-read.js";
 import type { HarnessEvent } from "../events.js";
 import { eventMessage, eventResult, formatEvent } from "../event-format.js";

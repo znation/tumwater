@@ -20,7 +20,7 @@ import { shortSha } from "./format.js";
 import { type SleepSampler } from "./host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "./fix-claim.js";
-import { backlogStructureReason } from "./backlog-structure.js";
+import { backlogStructureReason } from "./backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "./landing/landing-slot.js";
 import { gateBuildPrecheck } from "./review-precheck.js";

@@ -492,7 +492,7 @@ backlog the loops actually work from. Give the operator a first-class way to fil
 plan, stamped and formatted the way loops write those entries, and wake the loop that should act.
 
 **Approach.**
-- New module `src/backlog-write.ts` (write half, mirroring the read half in `src/backlog.ts` and the
+- New module `src/backlog/backlog-write.ts` (write half, mirroring the read half in `src/backlog/backlog.ts` and the
   scan/stamp/move pattern of `src/question-commands.ts`):
   - `fileBug(root, text)` — append one `### <symptom>` entry under BUGS.md's `## Open` (creating the
     file with the `# Bugs` header + `## Open` scaffolding when absent, as `tumwater init` seeds it),
@@ -517,7 +517,7 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
   (topics derive automatically via `helpStanzas`), and document both in README.md's steering row of
   the command table.
 
-**Files touched.** `src/backlog-write.ts` (new), `src/cli.ts`, `src/help.ts`, `README.md`,
+**Files touched.** `src/backlog/backlog-write.ts` (new), `src/cli.ts`, `src/help.ts`, `README.md`,
 new `test/backlog-write.test.ts`, plus the help-topics pin and CLI smoke tests where the existing
 command tests live (`test/cli.test.ts` — extend, don't duplicate).
 

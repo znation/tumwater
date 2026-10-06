@@ -26,7 +26,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parseEntryDetails } from "./backlog-md.js";
+import { parseEntryDetails } from "./backlog/backlog-md.js";
 import { changeBaseRev, fileContentAt } from "./git.js";
 import { collapseWhitespace } from "./text.js";
 

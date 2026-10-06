@@ -7,8 +7,8 @@
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
 import { fail, say, sayJson } from "./cli/cli-output.js";
-import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
-import { openQuestionEntries } from "./backlog.js";
+import { fencedHeadingTitle, fenceTracker } from "./backlog/backlog-md.js";
+import { openQuestionEntries } from "./backlog/backlog.js";
 import { collapseWhitespace } from "./text.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";

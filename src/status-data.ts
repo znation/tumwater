@@ -1,6 +1,6 @@
 import type { LoopState } from "./loop-state.js";
 import type { BuildStatus } from "./build-info.js";
-import { openQuestions } from "./backlog.js";
+import { openQuestions } from "./backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "./config/config.js";
 import { fallbackPair } from "./config/config-views.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath } from "./pi/pi-models.js";

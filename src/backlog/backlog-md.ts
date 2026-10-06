@@ -1,6 +1,6 @@
 /** The pure markdown layer of the backlog parsers: fence-aware reading of PLANS.md / BUGS.md /
  * QUESTIONS.md text, with no filesystem access — every function here takes the markdown text as
- * an argument. Split from src/backlog.ts, which keeps the stat-cached file readers
+ * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
  * (sectionEntries and the root-based plannedPlans/openBugs/openQuestions family): consumers who
  * only parse markdown (question-commands.ts's QUESTIONS.md walks, backlog-write.ts's section
  * appends, backlog-structure.ts's stranding checks, report-data.ts's Done/Fixed date scan)
@@ -208,7 +208,7 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
  * paragraph is body, never matched). Joining with a space keeps "done\n2026-…" matchable.
  * Returns the joined text and the index of the first line NOT consumed as metadata, so a
  * walker can resume its scan there. Extracted from entryDates (its only original caller) so
- * the stranded-plan detector (src/backlog-structure.ts) matches dates against exactly the
+ * the stranded-plan detector (src/backlog/backlog-structure.ts) matches dates against exactly the
  * same joined text instead of growing a second, drifting copy of the join rule. */
 export function headingMetadata(lines: string[], start: number): { text: string; next: number } {
   const line = lines[start] ?? "";

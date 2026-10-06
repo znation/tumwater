@@ -12,7 +12,7 @@ import { landingRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
-import { openQuestions } from "../backlog.js";
+import { openQuestions } from "../backlog/backlog.js";
 import { logEvent } from "../events.js";
 import { ffMainTo } from "./landing-git.js";
 import { syncRootInstall } from "../dep-install.js";
