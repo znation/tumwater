@@ -14,6 +14,7 @@ import { fallbackModelFree, piModelsPath, readPiProviders } from "../pi/pi-model
 import { MODEL_TIERS, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
 import { findOnPath } from "../files/files.js";
+import { isJsonObject } from "../files/json-object.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import {
@@ -287,7 +288,7 @@ export async function piProviderAuth(
       clearTimeout(timer);
       try {
         const doc: unknown = JSON.parse(out);
-        const ready = doc !== null && typeof doc === "object" && (doc as { ready?: unknown }).ready;
+        const ready = isJsonObject(doc) && doc.ready;
         if (code === 0 && ready === true) resolve("ready");
         else if (code === 0 && ready === false) resolve("not-ready");
         else resolve("unknown");

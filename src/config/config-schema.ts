@@ -12,6 +12,8 @@
  * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
  * (writes). */
 
+import { isJsonObject } from "../files/json-object.js";
+
 /** The model tiers a selector map may name (plans/model-tiers.md). A tier left out of the
  * `model` map inherits `default`'s model; `fallback` map values may also be `"pause"`
  * (consulted per tier in part 5/8). */
@@ -23,17 +25,16 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
 export const TIER_MAP_KEYS: readonly string[] = MODEL_TIERS;
 
 /** The top-level `model` read as a tier map: a bare selector string means
- * `{ default: <string> }`, any other object passes through as-is, and a missing or non-object
- * model reads as an empty map. Shared by `config set model.<tier>`'s merge and
+ * `{ default: <string> }`, a plain object passes through as-is (isJsonObject owns that
+ * definition), and a missing, non-object, or array model reads as an empty map. Shared by
+ * `config set model.<tier>`'s merge and
  * `config get model.<tier>`'s lookup, so those two verbs cannot disagree about what a string
  * model means. Values are not type-checked here — validateConfig owns the shape of the merged
  * candidate. (config-views.ts keeps its own parse-aware reading: a string model there is
  * parsed under the legacy top-level provider.) */
 export function modelTierMap(model: unknown): Record<string, unknown> {
   if (typeof model === "string") return { default: model };
-  return model !== null && typeof model === "object"
-    ? (model as Record<string, unknown>)
-    : {};
+  return isJsonObject(model) ? model : {};
 }
 
 /** Per-role configuration in tumwater.json. */
