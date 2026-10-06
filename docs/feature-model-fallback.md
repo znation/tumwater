@@ -10,9 +10,11 @@ back automatically once the primary is healthy again.
   timeouts, stream severances — the transient classes already recognized by the
   harness) trip a fallback episode. One-off failures do nothing new; the existing
   retry/backoff still handles blips.
-- **Fallback model.** Configured once per project: `fallbackModel` in
-  `tumwater.json` (same provider, a different model). Absent config = feature off,
-  behavior identical to today.
+- **Fallback model.** Configured once per project: `fallback` in
+  `tumwater.json` (the legacy `fallbackModel` object still parses; same provider, a
+  different model). `fallback` is a per-tier map — a tier's own entry, else the nearest
+  other tier's own fallback (small → default → strong; default → strong → small; strong →
+  default and never small). Absent config = feature off, behavior identical to today.
 - **During an episode.** The role's ticks run on the fallback model. Tick prompts,
   resume behavior, and session handling are unchanged apart from the model id.
 - **Return policy.** After each fallback tick, the harness periodically probes the
@@ -26,7 +28,7 @@ back automatically once the primary is healthy again.
 
 ## User experience
 
-1. Operator sets `"fallbackModel": { "provider": "openai", "model": "gpt-4o-mini" }`.
+1. Operator sets `"fallback": "openai/gpt-4o-mini"`.
 2. The primary provider starts timing out for `bugfix` — after 3 straight failures,
    the dashboard shows "bugfix: on fallback model (primary failing)".
 3. Ticks keep making progress on the fallback instead of burning error-streaks.

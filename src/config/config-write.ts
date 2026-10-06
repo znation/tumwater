@@ -7,7 +7,9 @@
 import fs from "node:fs";
 import {
   ROLE_ENTRY_KEYS,
+  TIER_MAP_KEYS,
   TOP_LEVEL_KEYS,
+  type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
 import { configPath, configRequestPath } from "../paths.js";
@@ -112,6 +114,7 @@ const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const
 type ParsedConfigKey =
   | { kind: "top"; key: string }
   | { kind: "map"; map: (typeof DOTTED_MAP_KEYS)[number]; role: string }
+  | { kind: "tier"; map: "model"; tier: ModelTier }
   | { kind: "role"; id: string; field: string }
   | { kind: "error"; error: string };
 
@@ -129,6 +132,18 @@ export function parseConfigKey(key: string): ParsedConfigKey {
     return { kind: "map", map: first as (typeof DOTTED_MAP_KEYS)[number], role: second };
   if (parts.length === 3 && first === "roles" && second !== undefined && second !== "" && third !== undefined && third !== "")
     return { kind: "role", id: second, field: third };
+  // `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`
+  // names one role field, `maxDailyCostUsdPerRole.<role>` names one map entry. The tier
+  // must be a real tier: `config set model.turbo x` would otherwise write a dead map key
+  // the runtime (and doctor's checkKnownKeys) would silently never resolve.
+  if (parts.length === 2 && first === "model") {
+    if ((TIER_MAP_KEYS as readonly string[]).includes(second ?? ""))
+      return { kind: "tier", map: "model", tier: second as ModelTier };
+    return {
+      kind: "error",
+      error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)`,
+    };
+  }
   return {
     kind: "error",
     error:
@@ -174,32 +189,50 @@ export function setConfigKey(
     value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
   }
   if (parsed.kind !== "top") {
-    const validator =
-      parsed.kind === "map"
-        ? parsed.map === "maxDailyCostUsdPerRole"
-          ? checkDailyBudgetUsd
-          : checkQuietHours
-        : undefined;
-    if (validator) {
-      const problem = validator(value);
-      if (problem) return { ok: false, error: problem };
-    }
     if (parsed.kind === "role" && !(ROLE_ENTRY_KEYS as readonly string[]).includes(parsed.field)) {
       return {
         ok: false,
         error: `unknown role field "${parsed.field}" for roles.${parsed.id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${typoSuffix(parsed.field, ROLE_ENTRY_KEYS)}`,
       };
     }
+    if (parsed.kind === "map") {
+      const validator = parsed.map === "maxDailyCostUsdPerRole" ? checkDailyBudgetUsd : checkQuietHours;
+      const problem = validator(value);
+      if (problem) return { ok: false, error: problem };
+    }
+    if (parsed.kind === "tier" && (typeof value !== "string" || value === "")) {
+      return {
+        ok: false,
+        error: `model.${parsed.tier} must be a model selector string (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`,
+      };
+    }
     let oldValue: unknown;
     const result = writeConfigMutation(root, (cfg) => {
       const record = cfg as unknown as {
         roles?: Record<string, Record<string, unknown>>;
+        model?: string | Record<string, string>;
         [key: string]: unknown;
       };
       if (parsed.kind === "map") {
         const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.role];
         return { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
+      }
+      if (parsed.kind === "tier") {
+        // A string `model` is shorthand for `{ default: <string> }`, so setting a tier on
+        // one promotes it to the map form rather than overwriting the bare string — the
+        // other tiers' models survive. validateConfig in writeConfigMutation owns the
+        // type truth of the merged map, so the cast is safe: a type-invalid merge fails
+        // there and nothing is written.
+        const model = record.model;
+        const existing =
+          typeof model === "string"
+            ? { default: model }
+            : model && typeof model === "object"
+              ? model
+              : {};
+        oldValue = existing[parsed.tier];
+        return { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
       }
       const existing = record.roles?.[parsed.id] ?? {};
       oldValue = existing[parsed.field];
@@ -217,6 +250,24 @@ export function setConfigKey(
   }
   const unknown = unknownConfigKeyError(key);
   if (unknown) return { ok: false, error: unknown };
+  // Legacy `provider` / `fallbackModel` are accepted to FIX an existing value (a config
+  // that already has one keeps the old meaning), but `config set` never adds them to a
+  // config that lacks them — the new-form writers emit `model` and `fallback` only.
+  if (key === "provider" || key === "fallbackModel") {
+    const absent = (() => {
+      try {
+        const c = loadConfig(root); // fresh — bypasses the stat cache on purpose
+        return (c as unknown as Record<string, unknown>)[key] === undefined;
+      } catch {
+        return false; // a broken file fails in writeConfigMutation with its own message
+      }
+    })();
+    if (absent)
+      return {
+        ok: false,
+        error: `config set ${key}: this config has no ${key}, and a writer never adds legacy ${key} — set \`${key === "provider" ? "model" : "fallback"}\` instead`,
+      };
+  }
   const perKeyValidator = PER_KEY_VALIDATORS[key];
   if (perKeyValidator) {
     const problem = perKeyValidator(value);

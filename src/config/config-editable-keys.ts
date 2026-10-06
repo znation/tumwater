@@ -11,4 +11,4 @@
  * that first consumed it. The browser side mirrors the set for its labels
  * (ui/gui-client-settings.ts's SETTINGS_KEYS); the round-trip test pins the two together.
  */
-export const EDITABLE_CONFIG_KEYS = ["provider", "model", "maxDailyCostUsd", "quietHours", "notify"] as const;
+export const EDITABLE_CONFIG_KEYS = ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify"] as const;

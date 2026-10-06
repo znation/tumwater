@@ -27,14 +27,14 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", maxDailyCostUsd: 30, quietHours: null, notify: undefined });
-  // Exactly the five curated keys, each with its row, field, and Save button.
-  for (const key of ["provider", "model", "maxDailyCostUsd", "quietHours", "notify"]) {
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined });
+  // Exactly the six curated keys, each with its row, field, and Save button.
+  for (const key of ["provider", "model", "fallback", "maxDailyCostUsd", "quietHours", "notify"]) {
     assert.match(html, new RegExp(`data-key='${key}'`));
     assert.match(html, new RegExp(`id='set-${key}'`));
   }
-  assert.equal((html.match(/<form class='settings-row'/g) || []).length, 5);
-  assert.equal((html.match(/type='submit'/g) || []).length, 5);
+  assert.equal((html.match(/<form class='settings-row'/g) || []).length, 6);
+  assert.equal((html.match(/type='submit'/g) || []).length, 6);
   // Values are escaped; null and undefined render as an empty field.
   assert.match(html, /value='a&amp;b'/);
   assert.match(html, /id='set-model' value='gpt-5'/);

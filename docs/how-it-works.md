@@ -112,9 +112,12 @@ discards a role's in-flight landing.
   reached its cap starts no new ticks until the next local day or a live edit raises/removes
   the cap. In-flight ticks finish and the director is exempt; a per-role cap never engages the
   fallback, and the other roles, the fleet-wide cap, and its fallback demotion are untouched.
-- `fallbackModel` names a free model that role loops switch to at the cap instead of stopping.
-  Only a model pi's `models.json` prices at zero is accepted; anything else leaves the fleet
-  paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
+- `fallback` names a free model that role loops switch to at the cap instead of stopping (the
+  legacy `fallbackModel` object still parses). Each seam runs its tier's resolved fallback: the
+  tier's own entry, else the nearest other tier's own fallback (small → default → strong;
+  default → strong → small; strong → default and never small — a weak reviewer costs more than
+  a paused one). Only a model pi's `models.json` prices at zero is accepted; anything else
+  leaves the fleet paused. Free is not enough either: a fallback whose backend cannot serve (three consecutive
   role ticks failing on it) is demoted to the same pause, then retried with one probe tick after
   a cool-down of 5 minutes doubling to at most 30. When the gate reopens (the cap raised, or a
   new local day), a tick that started on the fallback is handed back to the primary: it is
@@ -200,9 +203,9 @@ while the fleet runs, and each one logs a `config_changed` event.
   across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
   opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
   and Failures views match `tumwater history`, `tumwater report`, and `tumwater report --failures`.
-  Its Settings view shows the curated top-level config keys (provider, model, the daily spend
-  cap, quiet hours, the notify hook) with inline Save buttons that write through the same path
-  `tumwater config set` uses.
+  Its Settings view shows the curated top-level config keys (provider, model, fallback, the daily
+  spend cap, quiet hours, the notify hook) with inline Save buttons that write through the same
+  path `tumwater config set` uses.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each loop's Transcript, Backlog, Usage, and Failures.
 - In the TUI, viewing a loop's transcript puts that loop's controls on the hint line: `Ctrl+P`

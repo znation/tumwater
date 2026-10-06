@@ -3,7 +3,8 @@
 ## Summary
 
 Add per-role fallback state machine (primary → fallback → probe → primary), an
-optional `fallbackModel` config, event emissions, and dashboard/CLI visibility.
+optional `fallback` config (the legacy `fallbackModel` object still parses), event
+emissions, and dashboard/CLI visibility.
 The state machine lives in its own module; the loop consults it at tick start and
 records outcomes at tick end.
 
@@ -26,8 +27,9 @@ records outcomes at tick end.
 
 ### Stage 2 — Wiring
 
-1. Config: optional `fallbackModel {provider, model}`; validation requires both
-   fields when present; absence disables the feature (state machine never trips).
+1. Config: optional `fallback` — a selector string or a per-tier map, with the legacy
+   `fallbackModel {provider, model}` object still parsed; absence disables the feature
+   (state machine never trips).
 2. Tick start: loop asks the state machine for the effective model
    (`fallback ? fallbackModel : primaryModel`) and passes it to the pi invocation.
 3. Tick end: feed the failure classifier's verdict into

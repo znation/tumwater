@@ -442,3 +442,84 @@ test("parseConfigKey rejects dotted shapes outside the per-role maps and roles e
     if (parsed.kind === "error") assert.match(parsed.error, /dotted keys/);
   }
 });
+
+// Model tiers part 8/8 — `model.<tier>` merges one entry of the tier map, the way
+// `roles.<id>.<field>` merges one role entry. A string `model` is shorthand for
+// `{ default: <string> }`, so the first dotted set promotes it without losing the string.
+test("setConfigKey merges model.<tier> into the model map, promoting a string model", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.model = "old-model";
+  saveConfig(dir, base);
+
+  let r = setConfigKey(dir, "model.strong", "strong-model");
+  assert.ok(r.ok);
+  let raw = readJson(path.join(dir, "tumwater.json")) as { model: Record<string, string> };
+  assert.deepEqual(raw.model, { default: "old-model", strong: "strong-model" });
+
+  // A second tier merges without re-typing the entries already present.
+  r = setConfigKey(dir, "model.small", "small-model");
+  assert.ok(r.ok);
+  raw = readJson(path.join(dir, "tumwater.json")) as { model: Record<string, string> };
+  assert.deepEqual(raw.model, { default: "old-model", strong: "strong-model", small: "small-model" });
+
+  // Re-setting one tier replaces only that entry.
+  r = setConfigKey(dir, "model.strong", "strong-2");
+  assert.ok(r.ok);
+  raw = readJson(path.join(dir, "tumwater.json")) as { model: Record<string, string> };
+  assert.deepEqual(raw.model, { default: "old-model", strong: "strong-2", small: "small-model" });
+});
+
+test("setConfigKey rejects an unknown tier and a non-string tier model, leaving the file untouched", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+
+  const unknown = setConfigKey(dir, "model.turbo", "x");
+  assert.equal(unknown.ok, false);
+  if (!unknown.ok) assert.match(unknown.error, /unknown model tier "turbo"/);
+
+  const notString = setConfigKey(dir, "model.strong", '""');
+  assert.equal(notString.ok, false);
+  if (!notString.ok) assert.match(notString.error, /model\.strong must be a model selector string/);
+
+  assert.equal(fs.readFileSync(file, "utf8"), before, "rejected tier sets change nothing");
+});
+
+// The new-form writers emit `model` and `fallback`; the legacy keys stay accepted to FIX an
+// existing value but are never introduced into a config that lacks them.
+test("setConfigKey never adds legacy provider or fallbackModel to a config that lacks them", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+
+  for (const key of ["provider", "fallbackModel"]) {
+    const r = setConfigKey(dir, key, "x");
+    assert.equal(r.ok, false, key);
+    if (!r.ok) assert.match(r.error, /writer never adds legacy/);
+  }
+  assert.equal(fs.readFileSync(file, "utf8"), before, "a refused legacy add changes nothing");
+});
+
+test("setConfigKey updates legacy provider on a config that already has it", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  base.provider = "old-provider";
+  saveConfig(dir, base);
+
+  const r = setConfigKey(dir, "provider", "new-provider");
+  assert.ok(r.ok);
+  const raw = readJson(path.join(dir, "tumwater.json")) as { provider: string };
+  assert.equal(raw.provider, "new-provider");
+});
+
+// parseConfigKey's new `model.<tier>` shape (the get/set key), separate from the write path.
+test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
+  assert.deepEqual(parseConfigKey("model.strong"), { kind: "tier", map: "model", tier: "strong" });
+  assert.deepEqual(parseConfigKey("model.default"), { kind: "tier", map: "model", tier: "default" });
+  const bad = parseConfigKey("model.turbo");
+  assert.equal(bad.kind, "error");
+  if (bad.kind === "error") assert.match(bad.error, /unknown model tier "turbo"/);
+});

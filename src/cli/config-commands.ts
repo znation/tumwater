@@ -46,11 +46,18 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     const value =
       parsed.kind === "map"
         ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
-        : parsed.kind === "role"
-          ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
-              parsed.field
-            ]
-          : record[k];
+        : parsed.kind === "tier"
+          ? (() => {
+              const model = record.model;
+              if (typeof model === "string") return parsed.tier === "default" ? model : undefined; // a string is shorthand for { default }
+              if (model && typeof model === "object") return (model as Record<string, unknown>)[parsed.tier];
+              return undefined;
+            })()
+          : parsed.kind === "role"
+            ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+                parsed.field
+              ]
+            : record[k];
     say(JSON.stringify(value === undefined ? null : value)); // Absent optional key → JSON null.
     return;
   }

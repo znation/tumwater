@@ -27,7 +27,9 @@ The CLI answers "what is each loop about to land" with `tumwater diff` (`--json`
 
 ---
 
-### Model tiers, part 8/8: writers emit the new form, and the docs describe tiers (planned 2026-10-05 by operator; requires parts 1/8–7/8 landed)
+## Done
+
+### Model tiers, part 8/8: writers emit the new form, and the docs describe tiers (planned 2026-10-05 by operator; requires parts 1/8–7/8 landed; done 2026-10-06 by feature)
 
 Design: plans/model-tiers.md ("Backward compatibility", "Notes for local fallbacks").
 
@@ -56,9 +58,13 @@ files above, and the config-write tests.
 - No writer adds `provider` or `fallbackModel` to a config that does not already have them.
 - The docs show the single-model form before any tier example.
 
----
-
-## Done
+**Landed 2026-10-06.** `model.<tier>` merges one map entry, promoting a string `model` to
+`{ default: <old>, <tier>: <selector> }` while keeping the other tiers; `config set` refuses to
+add legacy `provider`/`fallbackModel` to a config that lacks them but still updates one that has
+them; `fallback` joins the GUI's `EDITABLE_CONFIG_KEYS`; the docs lead with the single-selector
+form. The two failure-fallback plan docs (feature-/implementation-model-fallback.md) name the
+current `fallback` key (legacy alias noted); their failure-triggered state machine remains a
+separate, unlanded plan.
 
 ### Model tiers, part 7c/8: the doctor checks every declared tier model (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run; requires parts 3/8 and 5/8 landed, 7a done; done 2026-10-06 by feature)
 

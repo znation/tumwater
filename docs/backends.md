@@ -15,20 +15,47 @@ particular one: any OpenAI-compatible endpoint pi can reach will do.
 
 ## How the config points at it
 
-`provider`, `model`, and `thinking` in `tumwater.json` name the model every loop uses;
-`fallbackModel` names the free model role loops switch to once `maxDailyCostUsd` is spent — the
-budgeted model does the day's paid work, the free one keeps the fleet alive afterwards:
+`model` in `tumwater.json` names the model every loop uses, as one `provider/id[:thinking]`
+selector; `thinking` sets the level for any selector without a `:level` suffix. Leave `model`
+out and pi's own default applies:
 
 ```json
-"provider": "<paid-provider>", "model": "<paid-model>",
-"fallbackModel": { "provider": "<free-provider>", "model": "<free-model>" }
+"model": "huggingface/zai-org/GLM-5.3-Flash:together:low",
+"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
 ```
+
+`fallback` names the free model role loops switch to once `maxDailyCostUsd` is spent — the
+budgeted model does the day's paid work, the free one keeps the fleet alive afterwards.
+
+When different seams want different models, `model` and `fallback` each take a map listing the
+tiers you have — a tier left out of `model` inherits `default`, and a tier left out of `fallback`
+borrows another tier's own fallback (small → default → strong; default → strong → small; strong →
+default and never small, because a weak reviewer or planner costs more than a paused one):
+
+```json
+"model":    { "default": "huggingface/zai-org/GLM-5.3-Flash:together:low",
+              "strong":  "huggingface/<strong-model>:high" },
+"fallback": { "default": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp" }
+```
+
+The legacy `provider` key and `fallbackModel` object still parse for existing configs, but
+tumwater writes the selector forms above.
 
 Only a provider/model pair pi's `models.json` prices at zero is accepted as a fallback, so the
 switch cannot spend past the cap: an unknown id, a priced model, or a missing definitions file is
 refused and the fleet pauses instead. `fleetModelsFree()` reads that same catalog to decide the
 budget badge, which reads `· budget: $10.02/$10 today · fallback: <model> (cost n/a)` while the
 fallback is carrying the fleet.
+
+### Notes for local fallbacks
+
+- Distinct local fallbacks on one server must all fit in memory at once, or the server swaps
+  models per request. Usually declare only `fallback.default` and let the strong tier borrow it,
+  or reuse the same local model at a higher thinking level.
+- "Same model, more thinking" needs the level to reach the server: oMLX's Qwen ignores
+  `reasoning_effort` and honors only `thinking_budget`, which pi sends only when the model's
+  `models.json` entry sets `compat.thinkingTokenBudgetField: "thinking_budget"`; without it,
+  `:high` on that model is a no-op.
 
 ## Worked example: one machine's measurements, 2026-09
 

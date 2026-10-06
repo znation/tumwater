@@ -1,4 +1,4 @@
-/** The dashboard's Settings view, browser-side: the five curated top-level config keys
+/** The dashboard's Settings view, browser-side: the six curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
  * inline field + Save, one row per key. Values load once through GET /api/config when the
  * view is first opened — no polling loop of its own; a re-click of the tab refetches, like
@@ -13,6 +13,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   const SETTINGS_KEYS = [
     ["provider", "Provider"],
     ["model", "Model"],
+    ["fallback", "Fallback (free at the spend cap)"],
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["quietHours", "Quiet hours"],
     ["notify", "Notify hook"],

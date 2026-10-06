@@ -271,7 +271,7 @@ test("consumeRestartRequest forces the redeployer once and removes the marker", 
   assert.equal(fs.existsSync(restartRequestPath(root)), false);
 });
 
-// The Settings view's endpoints (the plan's curated five keys, 2026-10-02): GET /api/config
+// The Settings view's endpoints (the curated keys, 2026-10-02): GET /api/config
 // reads through the same load path `tumwater config get` uses; POST /api/config-set writes
 // through setConfigKey, so the browser cannot drift from the CLI's rules.
 
@@ -287,7 +287,7 @@ async function serveConfigSet(root: string, body: unknown): Promise<{ captured: 
   return { captured, data: JSON.parse(captured.body) };
 }
 
-test("handleConfig returns exactly the five curated keys, resolved values with null for unset", () => {
+test("handleConfig returns exactly the six curated keys, resolved values with null for unset", () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
   const { captured, data } = serveConfig(root);
@@ -298,10 +298,11 @@ test("handleConfig returns exactly the five curated keys, resolved values with n
   assert.equal(cfg.model, "gpt-5");
   assert.equal(cfg.quietHours, "23:00-07:00");
   assert.equal(cfg.provider, null);
+  assert.equal(cfg.fallback, null);
   // maxDailyCostUsd resolves to loadConfig's default cap (50) when the file does not set it.
   assert.equal(cfg.maxDailyCostUsd, 50);
   assert.equal(cfg.notify, null);
-  // customLoops is deliberately not served: the panel's reach is the curated five.
+  // customLoops is deliberately not served: the panel's reach is the curated set.
   assert.equal("customLoops" in cfg, false);
 });
 
@@ -340,7 +341,7 @@ test("handleBudget refuses a finite-but-unrepresentable cap with the shared scre
   assert.equal(fs.existsSync(configPath(root)), false);
 });
 
-test("handleConfigSet refuses a key outside the curated five, naming it", async () => {
+test("handleConfigSet refuses a key outside the curated set, naming it", async () => {
   const root = tmpdir();
   const unknownKey = await serveConfigSet(root, { key: "modle", value: "gpt-5" });
   assert.equal(unknownKey.captured.status, 400);

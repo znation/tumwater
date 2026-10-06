@@ -80,8 +80,10 @@ From the terminal, `tumwater config` prints the effective config as JSON, `tumwa
 key; dotted keys (`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry
 into the existing map or role entry, while bare keys replace the whole value.
 
-**Backends:** any OpenAI-compatible model pi can reach works; set `provider` and `model` in
-`tumwater.json`. See [docs/backends.md](docs/backends.md) for requirements and a worked setup.
+**Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
+one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers
+`small`/`default`/`strong`. See [docs/backends.md](docs/backends.md) for requirements and a
+worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see
 [docs/how-it-works.md](docs/how-it-works.md). For a measured comparison of tumwater's own
