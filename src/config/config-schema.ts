@@ -12,6 +12,16 @@
  * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
  * (writes). */
 
+/** The model tiers a selector map may name (plans/model-tiers.md). A tier left out of the
+ * `model` map inherits `default`'s model; `fallback` map values may also be `"pause"`
+ * (consulted per tier in part 5/8). */
+export const MODEL_TIERS = ["small", "default", "strong"] as const;
+export type ModelTier = (typeof MODEL_TIERS)[number];
+
+/** The tier-map key list validation feeds checkKnownKeys: a `model` or `fallback` map whose
+ * keys are not exactly these tiers is a typo that would silently never resolve. */
+export const TIER_MAP_KEYS: readonly string[] = MODEL_TIERS;
+
 /** Per-role configuration in tumwater.json. */
 export interface RoleConfig {
   enabled: boolean;
@@ -19,7 +29,9 @@ export interface RoleConfig {
   instructions?: string;
   /** pi provider override for this role; falls back to the top-level value. */
   provider?: string;
-  /** pi model override for this role; falls back to the top-level value. */
+  /** pi model override for this role: a selector `provider/id[:thinking]`, or a tier name
+   * (`small` / `default` / `strong`) naming that tier of the top-level `model` map (plans/
+   * model-tiers.md). Falls back to the role's catalog tier when absent. */
   model?: string;
   /** pi thinking-level override for this role; falls back to the top-level value. */
   thinking?: string;
@@ -54,8 +66,10 @@ interface ReviewConfig {
   exemptPaths: string[];
   /** pi provider override for reviewer runs; falls back to the top-level value. */
   provider?: string;
-  /** pi model override for reviewer runs — e.g. the strong model reviews what the cheap
-   * model wrote. Falls back to the top-level value. */
+  /** pi model override for reviewer runs — a selector `provider/id[:thinking]`, or a tier
+   * name (`small` / `default` / `strong`) naming that tier of the top-level `model` map
+   * (plans/model-tiers.md). Falls back to the `strong` tier when absent — the reviewer is
+   * the seam where model quality matters most. */
   model?: string;
   /** pi thinking-level override for reviewer runs; falls back to the top-level value. */
   thinking?: string;
@@ -130,8 +144,11 @@ export interface CheckConfigSlice {
 export interface TumwaterConfig {
   /** pi provider name; omitted = pi's own default. */
   provider?: string;
-  /** pi model pattern; omitted = pi's own default. */
-  model?: string;
+  /** pi model pattern; omitted = pi's own default. A string is one selector
+   * `provider/id[:thinking]` (shorthand for `{ default: <string> }`); a map names the model
+   * for each tier it has (plans/model-tiers.md) — keys are exactly `small` / `default` /
+   * `strong`, and a map-form `model` cannot coexist with the legacy top-level `provider`. */
+  model?: string | Partial<Record<ModelTier, string>>;
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
   /** The branch the fleet merges into and bases every role worktree on — the resolved
@@ -226,9 +243,11 @@ export interface TumwaterConfig {
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
   /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
-   * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"`.
-   * Setting both keys is a validation error; the map form arrives in part 3/8. */
-  fallback?: string;
+   * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —
+   * or a map by tier whose values are selectors or `"pause"` (the pause entries are consulted
+   * per tier in part 5/8; until then a map uses its `default` entry). Setting `fallback` and
+   * `fallbackModel` both is a validation error. */
+  fallback?: string | Partial<Record<ModelTier, string>>;
   fallbackModel?: FallbackModelConfig;
   /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
    * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on

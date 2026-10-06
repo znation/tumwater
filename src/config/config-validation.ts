@@ -34,6 +34,7 @@ import {
   show,
   typeName,
 } from "./config-field-checks.js";
+import { TIER_MAP_KEYS } from "./config-schema.js";
 
 /** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
  * through (config.ts's load/save, config-write.ts's budget editing and director config
@@ -120,8 +121,11 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     key: string,
     allowEmpty = true,
   ): void => checkStringField(problems, obj, prefix, key, allowEmpty);
-  const checkModelTriple = (obj: Record<string, unknown>, prefix: string): void =>
-    checkModelTripleField(problems, obj, prefix);
+  const checkModelTriple = (
+    obj: Record<string, unknown>,
+    prefix: string,
+    modelShape?: "selector" | "tier-map" | "tier-name",
+  ): void => checkModelTripleField(problems, obj, prefix, modelShape);
   const checkNumber = (
     obj: Record<string, unknown>,
     prefix: string,
@@ -135,7 +139,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
 
   const r = raw; // Narrowed to an object by isJsonObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, label, problems);
-  checkModelTriple(r, "");
+  // The top level's `model` may be a selector string or a map by tier (plans/model-tiers.md);
+  // provider/thinking validate as before. A string selector that parses to an empty provider
+  // or model half is reported separately (checkSelectorHalves).
+  checkModelTriple(r, "", "tier-map");
   checkSelectorHalves(r, "", "model", r.provider, problems);
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
@@ -248,7 +255,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
           if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
         });
       }
-      checkModelTriple(o, "review.");
+      checkModelTriple(o, "review.", "tier-name");
       checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
       checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
     }
@@ -259,10 +266,30 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // answered at run time (src/pi/pi-models.ts) rather than failing a load here. An empty object is
   // rejected: it names nothing, so it would silently never engage.
   // The selector-string shorthand `fallback` (plans/model-tiers.md) validates as one non-empty
-  // string; setting both forms is an error naming both keys, since which one wins is not a
+  // string; the map form takes per-tier entries whose values are selector strings or "pause"
+  // (the pause entries are consulted per tier in part 5/8). Setting both forms — or the map
+  // form and `fallbackModel` — is an error naming both keys, since which one wins is not a
   // question the file should ever pose.
-  checkString(r, "", "fallback", false);
-  checkSelectorHalves(r, "", "fallback", undefined, problems);
+  if ("fallback" in r && r.fallback !== undefined) {
+    const f = r.fallback;
+    if (isJsonObject(f)) {
+      checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
+      for (const [tier, v] of Object.entries(f))
+        if (typeof v !== "string" || v.trim() === "")
+          problems.push(
+            `fallback.${tier} must be a non-empty selector string or "pause" (got ${show(v)})`,
+          );
+    } else if (typeof f !== "string" || f.trim() === "") {
+      problems.push(`fallback must be a selector string or a map by tier (got ${show(f)})`);
+    } else if (f === "pause") {
+      problems.push(
+        `fallback "pause" is only valid as a tier map value — a string fallback must name a selector`,
+      );
+    } else {
+      // A selector-string fallback still parses to halves: report an empty one.
+      checkSelectorHalves({ fallback: f }, "", "fallback", undefined, problems);
+    }
+  }
   if ("fallback" in r && "fallbackModel" in r)
     problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
   if ("fallbackModel" in r) {
@@ -389,7 +416,7 @@ function checkSelectorHalves(
               "it rides into every tick's prefill",
             ),
           );
-        checkModelTriple(o, `roles.${id}.`);
+        checkModelTriple(o, `roles.${id}.`, "tier-name");
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", DURATION_NON_NEGATIVE);

@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
-import { configForRole, fallbackPair, reviewConfig } from "../config/config-views.js";
+import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { isJsonObject } from "../json-object.js";
 import { readJsonFile } from "../json-files.js";
@@ -109,8 +109,11 @@ export function fallbackModelFree(config: TumwaterConfig, modelsPath = piModelsP
 }
 
 /** True when every model the fleet could use is free: each enabled role's effective
- * provider/model (configForRole — the director included, it is a catalog role) plus the
- * reviewer's while review is on. Every pair is judged by pairFree above, so an unresolvable one
+ * provider/model (configForRole — the director included, it is a catalog role, resolved at
+ * its tier per plans/model-tiers.md) plus the reviewer's while review is on, plus the
+ * `strong` tier's own model whenever any role is enabled — the conflict resolver (part 4/8)
+ * runs on strong, so the budget must never read n/a while a priced strong model can spend.
+ * Every pair is judged by pairFree above, so an unresolvable one
  * counts as NOT free — the badge must never read n/a while spend it is tracking could still
  * reach the cap. With no enabled roles and review off there are no pairs at all, so the fleet
  * cannot spend and the answer is true. */
@@ -123,6 +126,11 @@ export function fleetModelsFree(config: TumwaterConfig, modelsPath = piModelsPat
   if (config.review.enabled) {
     const rv = reviewConfig(config);
     pairs.push([rv.provider, rv.model]);
+  }
+  // The conflict resolver's strong tier (part 4/8): priced whenever any seam can run.
+  if (pairs.length > 0) {
+    const strong = tierModel(config, "strong");
+    if (strong) pairs.push([strong.provider, strong.model]);
   }
   // No enabled roles and review off: nothing can spend, so the budget is n/a by
   // construction — no definitions file to consult.

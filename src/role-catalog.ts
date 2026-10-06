@@ -15,6 +15,7 @@ import {
   VALIDATION_GAP_TALLY,
 } from "./role-guidance.js";
 import { NOTHING_TO_DO } from "./reply-contract.js";
+import type { ModelTier } from "./config/config-schema.js";
 
 export interface Role {
   /** The loop's unique identifier — the .tumwater/state/<id>.json state file's name, the
@@ -27,6 +28,11 @@ export interface Role {
   title: string;
   /** Role-specific instructions for finding (and doing) one task. */
   find: string;
+  /** The model tier this role's pi runs resolve to when neither the top-level `model` nor
+   * `roles.<id>.model` names one (plans/model-tiers.md): `strong` where an error costs the
+   * most and runs are rare or gate everything (plan steers many ticks), `small` where the
+   * work is bounded and low-stakes (readme), `default` everywhere else. */
+  tier: ModelTier;
 }
 
 /** The opinionated role catalog. Every loop runs one role; a role's `find` text is
@@ -37,6 +43,7 @@ export interface Role {
 export const ROLES: Role[] = [
   {
     id: "feature",
+    tier: "default",
     title: "feature implementer",
     find: `Implement the SINGLE most valuable planned feature in PLANS.md that is not yet implemented.
    1. List the entries cheaply: \`grep -n '^##' PLANS.md\` gives every heading with its line number.
@@ -60,6 +67,7 @@ than forcing it.`,
   },
   {
     id: "bugfix",
+    tier: "default",
     title: "bug fixer",
     find: `Fix the SINGLE most important open bug in BUGS.md.
    1. \`grep -n '^##' BUGS.md\` lists the headings. Pick one entry under \`## Open\` and read only
@@ -88,6 +96,7 @@ within that budget, there is nothing to do.`,
   },
   {
     id: "plan",
+    tier: "strong",
     title: "feature planner",
     find: `Write ONE concrete plan for what this project needs next. Do not implement it.
    1. Check what is already waiting: \`grep -n '^##' PLANS.md\` lists every entry.
@@ -111,6 +120,7 @@ ${DECOMPOSITION_GUIDANCE}`,
   },
   {
     id: "readme",
+    tier: "small",
     title: "README maintainer",
     find: `Keep the project brief — TUMWATER.md when it exists with the tumwater:prompt markers, else
 README.md — accurate against the actual state of the project.
@@ -141,6 +151,7 @@ edit the initial prompt between the tumwater:prompt markers.`,
   },
   {
     id: "organize",
+    tier: "default",
     title: "code organizer",
     find: `Find ONE way the code could be better organized — a file that has grown too many
 responsibilities, a module in the wrong directory, a missing separation between layers, or
@@ -154,6 +165,7 @@ BUGS.md) — finds no stale reference.`,
   },
   {
     id: "coverage",
+    tier: "default",
     title: "test coverage improver",
     find: `Find ONE meaningful gap in unit test coverage — an untested module, branch, or edge case
 that could plausibly break — and close it with focused tests.
@@ -175,6 +187,7 @@ scratch analysis scripts — that is a different, much larger task.`,
   },
   {
     id: "clean",
+    tier: "default",
     title: "code cleaner",
     find: `When a \`<backlog-structure>\` block is present in your prompt, that repair is instead
 this tick's ONE task: move each listed PLANS.md entry to the section its heading's dates say it
@@ -196,6 +209,7 @@ the code — check it against the code before you end.`,
   },
   {
     id: "dry",
+    tier: "default",
     title: "repetition remover",
     find: `Find ONE instance of meaningful repetition — duplicated logic, copy-pasted blocks, or
 parallel structures that should share a helper — and factor it out.
@@ -209,6 +223,7 @@ the new helper's doc comment claims no more call sites than it has.`,
   },
   {
     id: "perf",
+    tier: "default",
     title: "performance optimizer",
     find: `Find ONE place with a CLEAR performance win and implement it: work that is redundantly
 recomputed or re-read, obviously wasteful algorithms or data structures on a hot or growing path
@@ -230,6 +245,7 @@ exists, there is nothing to do.`,
   },
   {
     id: "qa",
+    tier: "default",
     title: "product QA",
     find: `Act as a first-time user of this product: follow the README's usage instructions literally and check outputs against what the docs promise. You never edit source, tests, or docs — BUGS.md is your only write.
 
@@ -252,6 +268,7 @@ The FLOW line — required on every tick: your final reply carries one result-ca
   },
   {
     id: "telemetry",
+    tier: "default",
     title: "runtime telemetry reader",
     find: `File ONE bug in BUGS.md's ## Open section per tick, or declare nothing-to-do, from the
 <failure-digest> block in your prompt: a deterministic digest of this harness's own event log over
@@ -278,6 +295,7 @@ infrastructure weather or already filed, there is nothing to do.`,
   },
   {
     id: "improve",
+    tier: "default",
     title: "general improver",
     find: `Find ONE concrete improvement that none of the other roles would obviously make — better
 error messages, stronger types, a missing input validation, developer ergonomics, tooling — and
@@ -289,6 +307,7 @@ arguments, config files, environment), and rough edges you meet while running th
   },
   {
     id: "steward",
+    tier: "default",
     title: "project steward",
     find: `Make ONE curation move on this project's records — the most valuable one.
    1. Re-read the initial prompt, PRINCIPLES.md, PLANS.md, BUGS.md — and QUESTIONS.md if it

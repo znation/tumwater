@@ -6,46 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 3/8: `small` / `default` / `strong` tier maps and the built-in tier of each role and the reviewer (planned 2026-10-05 by operator; requires part 1/8 landed)
-
-Design: plans/model-tiers.md ("Config", "Which tier each seam uses").
-
-**Goal.** `model` may be a map by tier, catalog roles and the reviewer carry a built-in tier,
-and `roles.<id>.model` / `review.model` may name a tier. With only `default` declared, every
-seam resolves exactly as today. (`fallback` maps are parsed here but consulted per tier only
-in part 5/8; until then a map `fallback` uses its `default` entry.)
-
-**Approach.**
-1. **src/config/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
-   `fallback` become `string | Partial<Record<ModelTier, string>>`, where a string means
-   `{ default: <string> }`. `fallback` map values may also be `"pause"` (consulted in part 5/8).
-2. **src/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
-   `small`, every other catalog role (director included) → `default`; user-defined loops
-   (src/roles.ts) → `default`.
-3. **src/config/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
-   `default`'s, else none (pi's own default). `configForRole` resolves `roles.<id>.model` (a
-   tier name → that tier, a selector → itself), else the role's catalog tier. `reviewConfig`
-   resolves `review.model` the same way, else `strong`.
-4. **Validation:** map keys are exactly the three tiers; a map-form `model` with a legacy
-   top-level `provider` is an error; tier names are valid only as `roles.<id>.model` /
-   `review.model` values.
-5. **src/pi/pi-models.ts `fleetModelsFree`:** its loop over `configForRole` / `reviewConfig` now
-   sees tier models; also include `tierModel(config, "strong")` whenever any role is enabled
-   (the conflict resolver's, part 4/8), so the budget never reads n/a while a priced strong
-   model can spend.
-
-**Files touched.** src/config/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config/config-views.ts,
-src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
-
-**Acceptance criteria.**
-- With `{ "model": { "default": A, "strong": B } }`, plan and reviewer runs carry B, feature
-  and readme carry A; adding `"small": C` moves readme to C.
-- `roles.feature.model: "strong"` → B; `review.model: "default"` → A;
-  `roles.feature.model: "<provider>/<id>"` → that selector.
-- A string `model` and the equivalent `{ "default": … }` map produce identical argv for every
-  seam, and with only `default` declared the existing tests pass unchanged.
-- `fleetModelsFree` is false when any tier a seam resolves to is priced.
-
 ### Model tiers, part 4/8: the conflict resolver runs on the strong tier (planned 2026-10-05 by operator; requires part 3/8 landed and running)
 
 Design: plans/model-tiers.md ("Which tier each seam uses"). It changes how landings behave, so it
@@ -208,6 +168,47 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 3/8: `small` / `default` / `strong` tier maps and the built-in tier of each role and the reviewer (planned 2026-10-05 by operator; requires part 1/8 landed, done 2026-10-05 by feature)
+
+Design: plans/model-tiers.md ("Config", "Which tier each seam uses").
+
+**Goal.** `model` may be a map by tier, catalog roles and the reviewer carry a built-in tier,
+and `roles.<id>.model` / `review.model` may name a tier. With only `default` declared, every
+seam resolves exactly as today. (`fallback` maps are parsed here but consulted per tier only
+in part 5/8; until then a map `fallback` uses its `default` entry.)
+
+**Approach.**
+1. **src/config/config-schema.ts:** `ModelTier = "small" | "default" | "strong"`; `model` and
+   `fallback` become `string | Partial<Record<ModelTier, string>>`, where a string means
+   `{ default: <string> }`. `fallback` map values may also be `"pause"` (consulted in part 5/8).
+2. **src/role-catalog.ts:** `Role` gains `tier: ModelTier` — `plan` → `strong`, `readme` →
+   `small`, every other catalog role (director included) → `default`; user-defined loops
+   (src/roles.ts) → `default`.
+3. **src/config/config-views.ts:** `tierModel(config, tier)` returns the tier's selector, else
+   `default`'s, else none (pi's own default). `configForRole` resolves `roles.<id>.model` (a
+   tier name → that tier, a selector → itself), else the role's catalog tier. `reviewConfig`
+   resolves `review.model` the same way, else `strong`.
+4. **Validation:** map keys are exactly the three tiers; a map-form `model` with a legacy
+   top-level `provider` is an error; tier names are valid only as `roles.<id>.model` /
+   `review.model` values.
+5. **src/pi/pi-models.ts `fleetModelsFree`:** its loop over `configForRole` / `reviewConfig` now
+   sees tier models; also include `tierModel(config, "strong")` whenever any role is enabled
+   (the conflict resolver's, part 4/8), so the budget never reads n/a while a priced strong
+   model can spend.
+
+**Files touched.** src/config/config-schema.ts, src/role-catalog.ts, src/roles.ts, src/config/config-views.ts,
+src/config/config-validation.ts, src/config/config-field-checks.ts, src/pi/pi-models.ts, and their tests.
+
+**Acceptance criteria.**
+- With `{ "model": { "default": A, "strong": B } }`, plan and reviewer runs carry B, feature
+  and readme carry A; adding `"small": C` moves readme to C.
+- `roles.feature.model: "strong"` → B; `review.model: "default"` → A;
+  `roles.feature.model: "<provider>/<id>"` → that selector.
+- A string `model` and the equivalent `{ "default": … }` map produce identical argv for every
+  seam, and with only `default` declared the existing tests pass unchanged.
+- `fleetModelsFree` is false when any tier a seam resolves to is priced.
+
 
 ### Model tiers, part 2/8: record the model each pi run used on `tick_start` and `review_start` (planned 2026-10-05 by operator; requires part 1/8 landed, done 2026-10-05 by feature)
 

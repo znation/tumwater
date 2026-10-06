@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { StringDecoder } from "node:string_decoder";
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../readiness.js";
 import { terminateChild, withoutLaunchServicesCheckIn } from "../process.js";
@@ -26,7 +26,10 @@ export const TRANSIENT_PI_CRASH =
 export interface PiRunOptions {
   cwd: string;
   prompt: string;
-  config: TumwaterConfig;
+  /** The role/reviewer/fallback-resolved config view (configForRole, reviewRunConfig,
+   * applyFallbackModel): its `model` is the concrete selector id — a tier map must be
+   * resolved to the seam's tier before a run, and this type refuses to carry one. */
+  config: ResolvedModelConfig;
   sessionDir: string;
   sessionName: string;
   /** Resume the most recent session in sessionDir instead of starting fresh. Two users, both

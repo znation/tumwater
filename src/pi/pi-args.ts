@@ -5,7 +5,7 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { ResolvedModelConfig } from "../config/config-views.js";
 
 /** Paths to the bundled pi extensions, in load order, resolved from this module's own
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps
@@ -21,7 +21,10 @@ export function bundledExtensionPaths(): string[] {
  * binary. Declared standalone rather than as a Pick of PiRunOptions so this module stays
  * cycle-free from pi.ts, which imports piArgs back for the spawn. */
 interface PiArgOptions {
-  config: TumwaterConfig;
+  /** The role/reviewer/fallback-resolved config view (configForRole, reviewRunConfig,
+   * applyFallbackModel): its `model` is the concrete selector id — a tier map must be
+   * resolved to the seam's tier before a run, and this type refuses to carry one. */
+  config: ResolvedModelConfig;
   sessionDir: string;
   sessionName: string;
   continueSession?: boolean;

@@ -223,3 +223,22 @@ test("a fallback naming one field falls back to the top-level value for the othe
     "a half-resolved pair is refused",
   );
 });
+
+// --- Model tiers (plans/model-tiers.md part 3/8) --------------------------------------------
+
+test("a priced strong tier keeps the badge off even when every role runs a free model", () => {
+  const file = writeModels();
+  // Every role and the reviewer run the free model, but the strong tier names a paid one —
+  // the conflict resolver (part 4/8) runs on strong, so spend it could reach counts.
+  const cfg = fleetAt("lm-studio", "qwen3.8-27b");
+  cfg.model = { default: "lm-studio/qwen3.8-27b", strong: "paid/gpt-x" };
+  assert.equal(fleetModelsFree(cfg, file), false);
+  // A free strong tier stays free.
+  const freeStrong = fleetAt("lm-studio", "qwen3.8-27b");
+  freeStrong.model = { default: "lm-studio/qwen3.8-27b", strong: "lm-studio/zero-cost" };
+  assert.equal(fleetModelsFree(freeStrong, file), true);
+  // No strong entry: nothing extra is consulted beyond the seams themselves.
+  const noStrong = fleetAt("lm-studio", "qwen3.8-27b");
+  noStrong.model = { default: "lm-studio/qwen3.8-27b" };
+  assert.equal(fleetModelsFree(noStrong, file), true);
+});

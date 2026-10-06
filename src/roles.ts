@@ -120,7 +120,9 @@ export function unknownRoleMessage(role: string, validIds: readonly string[]): s
 
 /** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the
  * role-specific find-something-to-do text, and the title is what identifies the loop inside
- * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context. */
+ * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context.
+ * Custom loops run the `default` tier — the harness cannot judge what an arbitrary loop's
+ * work needs, so it gets the fleet's ordinary model. */
 export function customRole(name: string, task: string): Role {
-  return { id: name, title: "user-defined loop", find: task };
+  return { id: name, title: "user-defined loop", find: task, tier: "default" };
 }

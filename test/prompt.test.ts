@@ -455,7 +455,12 @@ test("a user-defined loop's tick prompt identifies it and carries its task as th
 
 test("customRole yields the pinned shape while built-in prompts keep their catalog titles", () => {
   const custom = customRole("docs-auditor", "Keep the docs current.");
-  assert.deepEqual(custom, { id: "docs-auditor", title: "user-defined loop", find: "Keep the docs current." });
+  assert.deepEqual(custom, {
+    id: "docs-auditor",
+    title: "user-defined loop",
+    find: "Keep the docs current.",
+    tier: "default",
+  });
   // Invariant: built-ins are byte-identical — the customs fallback in tickPrompt only fires
   // on a catalog miss, so a built-in's prompt is exactly what the catalog role renders.
   const feature = roleById("feature");

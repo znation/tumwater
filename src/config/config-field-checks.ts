@@ -1,8 +1,11 @@
 import {
   MODEL_TRIPLE_KEYS,
+  MODEL_TIERS,
+  TIER_MAP_KEYS,
   THINKING_LEVELS,
 } from "./config-schema.js";
 import { allRoleIds } from "../roles.js";
+import { isJsonObject } from "../json-object.js";
 import { truncate, isNonBlankString } from "../text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
@@ -118,18 +121,66 @@ export function checkStringField(
 /** Every model-override section validates the same provider/model/thinking triple the same
  * way: empty strings are rejected (see checkStringField) and thinking is value-checked —
  * pi only recognizes THINKING_LEVELS and silently drops anything else, so a typo would run
- * the loops at pi's default depth and never say so. */
+ * the loops at pi's default depth and never say so.
+ *
+ * `modelShape` widens `model` per plans/model-tiers.md: "selector" (the default, for the
+ * legacy `fallbackModel` object) keeps it a plain selector string; "tier-map" (top level)
+ * also accepts a map whose keys are exactly the three tiers and whose values are non-empty
+ * selector strings — a map cannot coexist with a legacy provider in the same section, since
+ * the provider's old meaning (the whole string is a bare id under it) has no per-tier
+ * reading; "tier-name" (roles.<id>.model, review.model) also accepts a bare tier name as a
+ * reference into the top-level map. Tier names are valid ONLY where a tier reference means
+ * something: elsewhere (top level, fallbackModel) one is rejected with the two places that
+ * accept it, so a misplaced `"model": "strong"` is an error naming its fix instead of a
+ * bare model pattern pi can never resolve. */
 export function checkModelTripleField(
   problems: string[],
   obj: Record<string, unknown>,
   prefix: string,
+  modelShape: "selector" | "tier-map" | "tier-name" = "selector",
 ): void {
-  for (const key of MODEL_TRIPLE_KEYS) checkStringField(problems, obj, prefix, key, false);
+  for (const key of MODEL_TRIPLE_KEYS)
+    if (key !== "model") checkStringField(problems, obj, prefix, key, false);
   const t = obj.thinking;
   if (isNonBlankString(t) && !THINKING_LEVELS.has(t))
     problems.push(
       `${prefix}thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`,
     );
+  const m = obj.model;
+  if (m === undefined) return;
+  if (modelShape === "tier-map" && isJsonObject(m)) {
+    checkKnownKeys(m, TIER_MAP_KEYS, `${prefix}model`, problems);
+    if (obj.provider !== undefined)
+      problems.push(
+        `${prefix}model as a map by tier cannot coexist with ${prefix ? `${prefix}` : "the legacy top-level "}provider — move the provider into each tier's selector (got provider ${show(obj.provider)})`,
+      );
+    for (const [tier, v] of Object.entries(m))
+      if (typeof v !== "string" || v.trim() === "")
+        problems.push(
+          `${prefix}model.${tier} must be a non-empty selector string (got ${show(v)})`,
+        );
+    return;
+  }
+  if (typeof m !== "string") {
+    const what =
+      modelShape === "tier-map"
+        ? "a selector string or a map by tier (small, default, strong)"
+        : modelShape === "tier-name"
+          ? "a selector string or a tier name (small, default, strong)"
+          : "a string";
+    problems.push(`${prefix}model must be ${what} (got ${show(m)})`);
+    return;
+  }
+  if (m.trim() === "") {
+    problems.push(`${prefix}model must not be empty (got ${show(m)})`);
+    return;
+  }
+  if ((MODEL_TIERS as readonly string[]).includes(m)) {
+    if (modelShape === "tier-name") return; // A valid tier reference.
+    problems.push(
+      `${prefix}model must name a selector — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
+    );
+  }
 }
 
 /** Validate one numeric field against a NumberRule when present. */

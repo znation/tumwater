@@ -3,9 +3,47 @@
  * resolves to, and which timeout a reviewer run gets. No I/O and no caching — the
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
-import type { FallbackModelConfig, TumwaterConfig } from "./config-schema.js";
+import type { FallbackModelConfig, ModelTier, TumwaterConfig } from "./config-schema.js";
+import { MODEL_TIERS } from "./config-schema.js";
 import { parseModelSelector } from "../model-selector.js";
 import type { ModelSelector } from "../model-selector.js";
+import { isJsonObject } from "../json-object.js";
+import { roleById } from "../roles.js";
+
+/** A config whose model seam has been RESOLVED — the view functions' return type: `model`
+ * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
+ * the seam's tier), so consumers of a role/reviewer/fallback view never see a map. */
+export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & { model?: string };
+
+/** True when `s` names one of the three tiers — the form `roles.<id>.model` /
+ * `review.model` may take to point at that tier of the top-level `model` map. */
+function isTierName(s: string | undefined): s is ModelTier {
+  return (MODEL_TIERS as readonly string[]).includes(s as string);
+}
+
+/** The top-level `model` resolved at one tier (plans/model-tiers.md "Which tier each seam
+ * uses"): a string form is the `default` tier's selector — parsed under the legacy
+ * top-level `provider`, the old configs' meaning; a map form takes the tier's own entry,
+ * else `default`'s (a tier left out inherits `default`), as a pure selector. Undefined
+ * leaves pi's own default in charge. Map-form + legacy provider is a validation error, so
+ * no legacy provider is in scope for a map's entries. */
+function topTierSelector(config: TumwaterConfig, tier: ModelTier): ModelSelector | undefined {
+  if (typeof config.model === "string")
+    return parseModelSelector(config.model, config.provider);
+  if (isJsonObject(config.model)) {
+    const sel = config.model[tier] ?? config.model.default;
+    return sel !== undefined ? parseModelSelector(sel) : undefined;
+  }
+  return undefined;
+}
+
+/** The selector one seam's tier resolves to at the top level — the tier's own map entry,
+ * else `default`'s, else none (pi's own default). The pricing view (fleetModelsFree) and
+ * the later tiered-fallback parts read this instead of re-deriving the resolution, so the
+ * argv builder and the budget cannot disagree about which model a tier names. */
+export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelector | undefined {
+  return topTierSelector(config, tier);
+}
 
 /** Apply a sub-config's optional provider/model/thinking overrides over the top-level
  * values — the one place that fallback lives, so adding an override field touches only
@@ -13,34 +51,58 @@ import type { ModelSelector } from "../model-selector.js";
  * (`provider/id[:thinking]`, plans/model-tiers.md): parsed into the triple piArgs consumes,
  * with a legacy provider in scope (the section's own, else the top level's) making the whole
  * string a bare id under it — the old configs' meaning. An explicit `thinking` key wins over a selector's `:level` suffix, and a
- * suffix beats the ambient top-level thinking, as the key it overrides would. */
+ * suffix beats the ambient top-level thinking, as the key it overrides would.
+ *
+ * `tier` is the seam's effective tier, already resolved by the caller from any tier-name
+ * override — so `o.model` here is always a selector string, never a tier reference. */
 function withModelOverrides(
   config: TumwaterConfig,
+  tier: ModelTier,
   o: { provider?: string; model?: string; thinking?: string },
-): TumwaterConfig {
-  // The top-level model string is itself a selector; it parses under the top level's own
-  // legacy provider. A section's own model parses under the section's provider, else the
-  // top level's — the old configs' meaning.
-  const topSel =
-    config.model !== undefined ? parseModelSelector(config.model, config.provider) : undefined;
+): ResolvedModelConfig {
+  // The top-level model resolves at the seam's tier: a string form is the default tier's
+  // selector; a map form takes the tier's entry, else `default`'s.
+  const topSel = topTierSelector(config, tier);
   const ownSel =
     o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
   return {
     ...config,
     provider: ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider),
-    model: ownSel ? ownSel.model : (topSel?.model ?? config.model),
+    model: ownSel ? ownSel.model : topSel?.model,
     thinking: o.thinking ?? ownSel?.thinking ?? topSel?.thinking ?? config.thinking,
   };
 }
 
+/** The effective tier of one role's pi runs: a tier name in `roles.<id>.model` names it
+ * explicitly, else the role's catalog tier (user-defined loops and the director, which is
+ * not in ROLES, run `default`). */
+function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
+  const m = config.roles[role]?.model;
+  if (isTierName(m)) return m;
+  return roleById(role)?.tier ?? "default";
+}
+
 /** The config as seen by one role: role-level provider/model/thinking overrides applied
  * over the top-level values, plus the per-role minTickIntervalSeconds (a slow clock for
- * roles that should act rarely) falling back to the global value when unset. */
-export function configForRole(config: TumwaterConfig, role: string): TumwaterConfig {
+ * roles that should act rarely) falling back to the global value when unset. The role's
+ * model resolves at its effective tier (roleSeamTier): a `model` map serves the tier the
+ * catalog assigns (or `roles.<id>.model` names), a string form is the default tier. */
+export function configForRole(config: TumwaterConfig, role: string): ResolvedModelConfig {
   const rc = config.roles[role];
-  if (!rc) return config;
+  const resolved = withModelOverrides(
+    config,
+    roleSeamTier(config, role),
+    rc
+      ? {
+          provider: rc.provider,
+          model: isTierName(rc.model) ? undefined : rc.model,
+          thinking: rc.thinking,
+        }
+      : {},
+  );
+  if (!rc) return resolved;
   return {
-    ...withModelOverrides(config, rc),
+    ...resolved,
     minTickIntervalSeconds: rc.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
   };
 }
@@ -49,9 +111,20 @@ export function configForRole(config: TumwaterConfig, role: string): TumwaterCon
  * optional provider/model/thinking overrides applied over the top-level values — so a
  * strong model can review what the cheap model wrote. Reads its own `review` section on
  * purpose (not via configForRole): a pseudo-role entry under `roles` would fail validation
- * (unknown role id) and, if accepted, spawn a runner with no catalog prompt. */
-export function reviewConfig(config: TumwaterConfig): TumwaterConfig {
-  return withModelOverrides(config, config.review);
+ * (unknown role id) and, if accepted, spawn a runner with no catalog prompt. The reviewer's
+ * model resolves at the `strong` tier — the seam where model quality matters most — unless
+ * `review.model` names another tier. */
+export function reviewConfig(config: TumwaterConfig): ResolvedModelConfig {
+  const rm = config.review.model;
+  return withModelOverrides(
+    config,
+    isTierName(rm) ? rm : "strong",
+    {
+      provider: config.review.provider,
+      model: isTierName(rm) ? undefined : rm,
+      thinking: config.review.thinking,
+    },
+  );
 }
 
 /** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
@@ -74,7 +147,7 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
  * the tick's. A smaller tickTimeoutSeconds still wins. */
-export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
+export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
   const cfg = reviewConfig(config);
   return {
     ...cfg,
@@ -89,12 +162,29 @@ export function reviewRunConfig(config: TumwaterConfig): TumwaterConfig {
  * carrying both, so the order only breaks ties for hand-built configs. A selector string
  * parses as a pure selector — `fallback` is a new key, so no legacy `provider` in scope
  * bends its meaning; the acceptance rule is that a `fallback` string engages exactly like the
- * equivalent `fallbackModel` object. One definition so the freeness check (src/pi/pi-models.ts), the
+ * equivalent `fallbackModel` object. The map form (plans/model-tiers.md) is consulted per
+ * tier only in part 5/8 — until then a map uses its `default` entry, and a `pause` default
+ * names no model at all. One definition so the freeness check (src/pi/pi-models.ts), the
  * dashboards' badge, and applyFallbackModel below cannot disagree about WHICH model the
  * budget gate would engage. */
 export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
-  if (config.fallback !== undefined) {
-    const sel: ModelSelector = parseModelSelector(config.fallback);
+  const fb = config.fallback;
+  if (fb !== undefined) {
+    if (fb === "pause") return null; // Rejected by validation; defensive against hand-built configs.
+    if (typeof fb !== "string") {
+      // Map form: until part 5/8 a map uses its `default` entry; a `pause` default names no
+      // model at all.
+      const sel = fb.default;
+      if (sel === undefined || sel === "pause") return null;
+      const parsed = parseModelSelector(sel);
+      const thinking = parsed.thinking ?? config.thinking;
+      return {
+        ...(parsed.provider ? { provider: parsed.provider } : {}),
+        ...(parsed.model ? { model: parsed.model } : {}),
+        ...(thinking ? { thinking } : {}),
+      };
+    }
+    const sel: ModelSelector = parseModelSelector(fb);
     const thinking = sel.thinking ?? config.thinking;
     return {
       ...(sel.provider ? { provider: sel.provider } : {}),
@@ -102,15 +192,14 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
       ...(thinking ? { thinking } : {}),
     };
   }
-  const fb = config.fallbackModel;
-  if (!fb) return null;
+  const fbo = config.fallbackModel;
+  if (!fbo) return null;
   // The top-level model is a selector too (parsed the same way withModelOverrides does), so a
   // fallback field that omits model borrows the parsed id, never the raw selector string.
-  const topSel =
-    config.model !== undefined ? parseModelSelector(config.model, config.provider) : undefined;
-  const provider = fb.provider ?? topSel?.provider ?? config.provider;
-  const model = fb.model ?? topSel?.model ?? config.model;
-  const thinking = fb.thinking ?? topSel?.thinking ?? config.thinking;
+  const topSel = topTierSelector(config, "default");
+  const provider = fbo.provider ?? topSel?.provider ?? config.provider;
+  const model = fbo.model ?? topSel?.model;
+  const thinking = fbo.thinking ?? topSel?.thinking ?? config.thinking;
   return {
     ...(provider ? { provider } : {}),
     ...(model ? { model } : {}),
