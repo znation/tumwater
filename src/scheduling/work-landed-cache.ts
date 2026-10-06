@@ -1,6 +1,6 @@
 /** The need-based deferral's cached "did qualifying work land on main since <head>?" check,
  * split out of orchestrator.ts (whose runOrchestrator had grown it as an inline closure over
- * the poll-loop state). The verdict policy itself lives in scheduling.ts (workLanded) — this
+ * the poll-loop state) — it now lives in scheduling/ next to the workLanded policy it caches. The verdict policy itself lives in scheduling.ts (workLanded) — this
  * module adds only the caching layer around it plus the one git query that feeds it.
  *
  * Caching rule (PLANS.md "Prioritize loops by need"): verdicts are cached per base head so a
@@ -13,8 +13,8 @@
  * very commit that should wake it). Both caches are bounded, so a long-running fleet cannot
  * grow them unbounded. */
 
-import { subjectsBetween } from "./git/git.js";
-import { workLanded } from "./scheduling/scheduling.js";
+import { subjectsBetween } from "../git/git.js";
+import { workLanded } from "./scheduling.js";
 
 export class WorkLandedCache {
   private readonly workLandedHeads = new Set<string>();

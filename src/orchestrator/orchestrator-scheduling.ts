@@ -7,7 +7,7 @@
  * landing drain) and the launch call itself. */
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
-import type { WorkLandedCache } from "../work-landed-cache.js";
+import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTick, isEligible } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { inboxSize } from "../inbox/inbox.js";

@@ -7,7 +7,7 @@ import { pollFleetHold } from "../src/fleet/fleet-polls.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { WorkLandedCache } from "../src/work-landed-cache.js";
+import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
 import { tmpdir } from "./repo-fixtures.js";
 
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P

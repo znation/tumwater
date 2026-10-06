@@ -35,7 +35,7 @@ import { orchestratorStatePath } from "../paths.js";
 import { type Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../launch-services.js";
 import { RetentionPruner } from "../retention.js";
-import { WorkLandedCache } from "../work-landed-cache.js";
+import { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import {
   drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
@@ -217,7 +217,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let warnedBranchDivergence = false;
 
   // Need-based deferral (PLANS.md "Prioritize loops by need"): whether qualifying work has
-  // landed since a role's last-seen main head, cached per head (see work-landed-cache.ts).
+  // landed since a role's last-seen main head, cached per head (see scheduling/work-landed-cache.ts).
   const workLandedSince = new WorkLandedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
