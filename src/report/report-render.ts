@@ -5,7 +5,7 @@
  * src/failure/failure-render.ts — the failure digest's Markdown render of the same shape — because it is
  * a pure render with no ink or UI dependency, and core modules (rank.ts, history-data.ts)
  * name it in their contracts. */
-import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
+import { type ReportData, type ReportDay, type ReportTotals, type SinceReport } from "./report-data.js";
 import { rankCountEntries } from "../failure/rank.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
@@ -44,23 +44,11 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
-/** The totals fields both renders print (both collectors' inline `totals` shapes satisfy it
- * structurally); the day report's shape adds the day-granular features/bugs cells on top. */
-type SharedTotals = {
-  tokensOut: number;
-  ticks: number;
-  commits: number;
-  costUsd: number;
-  landingRuns: number;
-  landingTokens: number;
-  landingCostUsd: number;
-};
-
 /** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
  * separators cannot drift between the day report and the --since window. `tail` carries the
  * cells only one shape has: the day report's features/bugs counts (a sub-day window cannot
  * subdivide their day-granular dates, so the --since render passes nothing). */
-function totalsLine(t: SharedTotals, tail = ""): string {
+function totalsLine(t: ReportTotals, tail = ""): string {
   return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
 }
 
@@ -69,7 +57,7 @@ function totalsLine(t: SharedTotals, tail = ""): string {
  * spend renders exactly as before (the budget charges the landing slot's runs too, so the
  * totals include them — this line says how much of the spend was reviewer + conflict
  * resolution work). */
-function landingShareLine(t: SharedTotals): string {
+function landingShareLine(t: ReportTotals): string {
   return `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
 }
 

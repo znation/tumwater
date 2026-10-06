@@ -229,22 +229,30 @@ export interface ReportDay {
   landingCostUsd?: number; // their cost, also included in costUsd above
 }
 
+/** The window totals both reports surface — output tokens (the landing share included), the
+ * tick and commit counts, cost (the landing share included), and the landing share named for
+ * itself. SinceReport carries it directly; ReportData adds the day-granular backlog tallies
+ * on top. The single home of this shape, so report-render.ts's totalsLine/landingShareLine
+ * read exactly the fields the collectors produce. */
+export interface ReportTotals {
+  tokensOut: number; // includes landing spend — the same events the daily budget charges
+  ticks: number;
+  commits: number;
+  costUsd: number; // includes landing spend, so the report and the budget agree
+  landingRuns: number; // the landing share of the above, named for itself
+  landingTokens: number;
+  landingCostUsd: number;
+}
+
 /** Fleet usage over a window of exactly `days` local calendar days ending today. */
 export interface ReportData {
   days: number;
   from: string; // day key of the oldest day in the series
   to: string; // day key of today
   series: ReportDay[]; // oldest → newest, zero-filled
-  totals: {
-    tokensOut: number; // includes landing spend — the same events the daily budget charges
-    ticks: number;
-    commits: number;
-    costUsd: number; // includes landing spend, so the report and the budget agree
+  totals: ReportTotals & {
     featuresDone: number;
     bugsFixed: number;
-    landingRuns: number; // the landing share of the above, named for itself
-    landingTokens: number;
-    landingCostUsd: number;
   };
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the window's first day, or the
@@ -264,15 +272,7 @@ export interface ReportData {
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
-  totals: {
-    tokensOut: number; // includes landing spend — the same events the daily budget charges
-    ticks: number;
-    commits: number;
-    costUsd: number; // includes landing spend, so the report and the budget agree
-    landingRuns: number; // the landing share of the above, named for itself
-    landingTokens: number;
-    landingCostUsd: number;
-  };
+  totals: ReportTotals;
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
   /** True when the report provably reflects every event the window could have contained:
