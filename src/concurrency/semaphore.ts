@@ -52,20 +52,27 @@ export class Semaphore {
     });
   }
 
+  /** Hand the next parked waiter a permit when in-use is under the cap, returning whether one
+   * was woken. The one home of the permit hand-off: release() calls it once, setCapacity()
+   * loops it to fill new headroom. It never admits past the cap, so a shrink wakes nothing
+   * until releases drain in-use under it. */
+  private grantNextWaiter(): boolean {
+    if (this.inUse >= this.capacity) return false;
+    const next = this.waiters.shift();
+    if (!next) return false;
+    this.inUse += 1;
+    next.resolve();
+    return true;
+  }
+
   /** Release a held permit. The finishing work gives back its permit first, and a queued waiter
-   * takes it over only if there is headroom: after a shrink, inUse can sit at or above the cap
-   * for a while (the in-flight work admitted before it), and no new grant may proceed until
-   * releases bring in-use under the cap. In the normal case this is exactly the classic
-   * hand-off — one release wakes one waiter, net in-use unchanged. */
+   * takes it over only if there is headroom (grantNextWaiter): after a shrink, inUse can sit at
+   * or above the cap for a while (the in-flight work admitted before it), and no new grant may
+   * proceed until releases bring in-use under the cap. In the normal case this is exactly the
+   * classic hand-off — one release wakes one waiter, net in-use unchanged. */
   release(): void {
     this.inUse -= 1;
-    if (this.inUse < this.capacity) {
-      const next = this.waiters.shift();
-      if (next) {
-        this.inUse += 1;
-        next.resolve();
-      }
-    }
+    this.grantNextWaiter();
   }
 
   /** Live-resize the cap (a mid-run tumwater.json edit). Growing admits queued waiters up to
@@ -73,11 +80,8 @@ export class Semaphore {
    * it only caps future grants until releases bring in-use under the new cap. */
   setCapacity(n: number): void {
     this.capacity = n;
-    while (this.inUse < this.capacity) {
-      const next = this.waiters.shift();
-      if (!next) break;
-      this.inUse += 1;
-      next.resolve();
+    while (this.grantNextWaiter()) {
+      // One permit per woken waiter, up to the new headroom.
     }
   }
 }
