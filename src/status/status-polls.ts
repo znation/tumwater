@@ -1,4 +1,4 @@
-import type { TestCounts } from "../build/build-check-counts.js";
+import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingInFlight } from "../landing/landing-slot.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -21,20 +21,13 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 /** The mainCheck field's shape (StatusSnapshot's contract): a runner summary block as the
  * build_check event carries it (build/build-check-events.ts spreads the outcome's counts through).
  * TestCounts is parseTestCounts's exported type, single-homed in build/build-check-counts.ts beside its
- * parser. Structurally checked on read (asCounts below): the event log is loose-typed. */
+ * parser. Structurally checked on read (asTestCounts in build/build-check-counts.ts): the event
+ * log is loose-typed. */
 export interface MainCheckStatus {
   sha?: string;
   status: "passed" | "failed" | "skipped";
   counts?: TestCounts;
   at: number;
-}
-
-function asCounts(v: unknown): TestCounts | undefined {
-  if (typeof v !== "object" || v === null) return undefined;
-  const c = v as Record<string, unknown>;
-  return typeof c.tests === "number" && typeof c.pass === "number" && typeof c.fail === "number" && typeof c.skipped === "number"
-    ? { tests: c.tests, pass: c.pass, fail: c.fail, skipped: c.skipped }
-    : undefined;
 }
 
 /** How far mainCheckForPoll may grow its event tail. The per-poll default (readEvents' 200)
@@ -99,7 +92,7 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
     (typeof landedAfter?.commit === "string" ? landedAfter.commit : undefined) ??
     readBranchHead(root, branch) ??
     (typeof landedBefore?.commit === "string" ? landedBefore.commit : undefined);
-  const counts = asCounts(check.counts);
+  const counts = asTestCounts(check.counts);
   return {
     ...(sha ? { sha } : {}),
     status: check.status as "passed" | "failed" | "skipped",

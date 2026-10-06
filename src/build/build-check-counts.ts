@@ -15,6 +15,17 @@ export interface TestCounts {
   skipped: number;
 }
 
+/** The four summary counts when `v` carries all of them as numbers, else undefined — the one
+ * structural guard for a loose-typed source: parseTestCounts's own block assembly, and the
+ * status snapshot's loose-typed event log (status/status-polls.ts). */
+export function asTestCounts(v: unknown): TestCounts | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const c = v as Record<string, unknown>;
+  return typeof c.tests === "number" && typeof c.pass === "number" && typeof c.fail === "number" && typeof c.skipped === "number"
+    ? { tests: c.tests, pass: c.pass, fail: c.fail, skipped: c.skipped }
+    : undefined;
+}
+
 /** One `ℹ <key> <number>` line of the runner's summary block whose key we carry. */
 const TEST_COUNT_LINE = /^ℹ\s+(tests|pass|fail|skipped)\s+(\d+)\s*$/;
 /** Any other `ℹ <key> <number>` line of the summary block (suites, cancelled, todo,
@@ -28,10 +39,8 @@ export function parseTestCounts(output: string): TestCounts | undefined {
   let block: Partial<TestCounts> | undefined;
   let best: TestCounts | undefined;
   const close = () => {
-    const { tests, pass, fail, skipped } = block ?? {};
-    if (typeof tests === "number" && typeof pass === "number" && typeof fail === "number" && typeof skipped === "number") {
-      best = { tests, pass, fail, skipped };
-    }
+    const counts = asTestCounts(block);
+    if (counts) best = counts; // later blocks without all four leave the last complete one standing
     block = undefined;
   };
   for (const line of output.split("\n")) {
