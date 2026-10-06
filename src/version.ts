@@ -48,7 +48,7 @@ export function packageVersion(file: string): PackageVersion {
  * null, and the gate stands down rather than blocking every command on a floor it cannot
  * evaluate (npm already warned about the mismatch at install time; a broken install is the
  * version command's story, not a runtime verdict). The read routes through readJsonFile so
- * the tolerant read/parse/no-data policy has one home; unlike packageVersion below it needs
+ * the tolerant read/parse/no-data policy has one home; unlike packageVersion above it needs
  * no distinction between the failure modes, so it needs no error of its own. */
 export function packageEnginesNode(file: string): string | null {
   const node = readJsonFile<{ engines?: { node?: unknown } }>(file)?.engines?.node;
