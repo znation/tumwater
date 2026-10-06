@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HELP, helpStanzas, helpTopic, suggestCommand } from "../src/cli/help.js";
+import { HELP, helpStanzas, helpTopic, helpTopicForArgs, suggestCommand } from "../src/cli/help.js";
 
 /** Every command the full help lists — the set a `tumwater help <command>` topic must cover. */
 const ALL_COMMANDS = [
@@ -88,4 +88,28 @@ test("reset-counters help says what is zeroed and that today's budget spend is k
   assert.match(topic, /today's budget spend is kept/);
   // The old overpromise must not come back.
   assert.doesNotMatch(topic, /Zero ticks\/commits\/tokens\/cost/);
+});
+
+test("helpTopicForArgs answers a --help flag-only invocation with the command's topic", () => {
+  assert.equal(helpTopicForArgs("status", ["--help"]), helpTopic("status"));
+  assert.equal(helpTopicForArgs("status", ["-h"]), helpTopic("status"));
+  // A valued flag's value token is plumbing, not prose: this invocation has no text.
+  assert.equal(helpTopicForArgs("prompt", ["--role", "qa", "--help"]), helpTopic("prompt"));
+  // bug admits no valued flags, so a flag-only --json rides beside --help.
+  assert.equal(helpTopicForArgs("bug", ["--json", "--help"]), helpTopic("bug"));
+});
+
+test("helpTopicForArgs stands down for a free-form command carrying prose", () => {
+  // The embedded --help is content: the command must read the text, not print a topic. prompt
+  // has a help topic, so without the prose stand-down this would answer help instead.
+  assert.equal(helpTopicForArgs("prompt", ["fix", "the", "--help", "output"]), null);
+  assert.equal(helpTopicForArgs("bug", ["the", "TUI", "mishandles", "--help", "output"]), null);
+  assert.equal(helpTopicForArgs("plan", ["Fix", "-v"]), null); // no help flag at all
+});
+
+test("helpTopicForArgs returns null when there is no help request or no topic", () => {
+  assert.equal(helpTopicForArgs("status", []), null);
+  assert.equal(helpTopicForArgs(undefined, ["--help"]), null); // bare `tumwater --help`
+  assert.equal(helpTopicForArgs("--help", []), null); // the help command case handles it
+  assert.equal(helpTopicForArgs("statu", ["--help"]), null); // no topic: dispatch names the typo
 });

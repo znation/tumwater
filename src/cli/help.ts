@@ -224,3 +224,40 @@ export function helpTopic(command: string, help: string = HELP): string | null {
   if (matches.length === 0) return null;
   return matches.map((s) => s.text).join("\n") + "\n\nSee `tumwater help` for the full command list.";
 }
+
+/** The free-form text commands and the flags that take a separate value token, for
+ * helpTopicForArgs: bug/plan admit no valued flags, so their prose check never skips a
+ * token. The value token of prompt/init's valued flags is plumbing (`prompt --role qa
+ * --help` carries no prose), never content. */
+const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
+  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
+  init: ["--branch", "--template", "--file"],
+  bug: [],
+  plan: [],
+};
+
+/** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`
+ * when the invocation asks for help and names a topic, otherwise null — not a help request,
+ * or no topic — and cli.ts dispatches normally (an unknown argument is still named).
+ * Intercepted from here because the flag must not collide with a command's real flags and
+ * every command gains the convention at once, `help` included; a free-form text command's
+ * positionals are operator prose, so a `--help` among them (`tumwater bug the TUI mishandles
+ * --help output`) is content, not a request — any non-flag token stands the interception
+ * down, while a flag-only invocation (`prompt --role qa --help`) still answers help. */
+export function helpTopicForArgs(command: string | undefined, args: readonly string[]): string | null {
+  if (command === undefined || command === "--help" || command === "-h") return null;
+  if (!args.includes("--help") && !args.includes("-h")) return null;
+  if (command in FREEFORM_VALUED_FLAGS) {
+    const valued = FREEFORM_VALUED_FLAGS[command] ?? [];
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i] ?? "";
+      if (a === "--help" || a === "-h") continue;
+      if (valued.includes(a)) {
+        i++; // the value token is plumbing, never prose
+        continue;
+      }
+      if (!a.startsWith("-")) return null; // a prose token: the command reads the text
+    }
+  }
+  return helpTopic(command);
+}
