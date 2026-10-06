@@ -117,7 +117,7 @@ single-model form first, then tiers.
 **Approach.**
 1. **`setConfigKey` / `parseConfigKey`** (src/config/config-write.ts) — the one writer behind both
    `tumwater config set` (src/config-commands.ts) and the GUI's config edits
-   (src/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts):
+   (src/gui/gui-endpoint-commands.ts) — and `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts):
    `model` takes a selector, a dotted `model.strong` merges one map entry (the way
    `roles.qa.model` already merges a role entry), and `fallback` is editable. `provider` stays
    accepted for legacy configs and is never written into a config that lacks it.

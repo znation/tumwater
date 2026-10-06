@@ -1,19 +1,19 @@
 /**
- * The request-argument validators behind the dashboard's /api endpoints (gui-endpoints.ts's
- * GET handlers and gui-endpoint-commands.ts's POST handlers call them): loop-targeting role
+ * The request-argument validators behind the dashboard's /api endpoints (gui/gui-endpoints.ts's
+ * GET handlers and gui/gui-endpoint-commands.ts's POST handlers call them): loop-targeting role
  * validation, integer query parsing, the report
  * endpoints' days window, and the body-field checks the paired operator endpoints
  * (prompt/prompt-role, pause/pause-role) must answer with identical 400 wording. Pure
  * HTTP-argument adaptation — each helper either returns the parsed value or sends the 400
  * itself and returns null/false, so a handler is one guard line per argument.
  */
-import { knownRoleIdsCached } from "./config/config.js";
-import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "./event-window.js";
-import { promptLengthProblem } from "./inbox-submit.js";
-import { DIRECTOR_ROLE } from "./roles.js";
-import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "./text.js";
-import { typoSuffix } from "./suggest.js";
-import { sendJson } from "./http-body.js";
+import { knownRoleIdsCached } from "../config/config.js";
+import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../event-window.js";
+import { promptLengthProblem } from "../inbox-submit.js";
+import { DIRECTOR_ROLE } from "../roles.js";
+import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text.js";
+import { typoSuffix } from "../suggest.js";
+import { sendJson } from "../http-body.js";
 import type http from "node:http";
 
 /** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +

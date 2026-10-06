@@ -1,12 +1,12 @@
 /** The dashboard HTTP server: routing, the shared-token gate, the static page, /api/status,
- * and the self-reload watch. Every /api endpoint's handler lives in gui-endpoints.ts (the GET
- * data endpoints) and gui-endpoint-commands.ts (the POST operator endpoints) — this
- * module owns the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives in gui-command.ts,
+ * and the self-reload watch. Every /api endpoint's handler lives in gui/gui-endpoints.ts (the GET
+ * data endpoints) and gui/gui-endpoint-commands.ts (the POST operator endpoints) — this
+ * module owns the socket, not the data. The `tumwater gui` CLI entry (cmdGui) lives in gui/gui-command.ts,
  * which imports startGui from here, so the server and the command that boots it stay adjacent. */
 import crypto from "node:crypto";
 import http from "node:http";
-import { GUI_PAGE } from "./ui/gui-page.js";
-import { statusPayload } from "./ui/status-payload.js";
+import { GUI_PAGE } from "../ui/gui-page.js";
+import { statusPayload } from "../ui/status-payload.js";
 import {
   captureStartupBuild,
   createReloadWatch,
@@ -14,8 +14,8 @@ import {
   type ReloadWatchSeams,
   type SupervisorWatchSeams,
   watchReloadSupervisor,
-} from "./self-reload.js";
-import { errorMessage } from "./text.js";
+} from "../self-reload.js";
+import { errorMessage } from "../text.js";
 import {
   handleBacklog,
   handleConfig,
@@ -37,7 +37,7 @@ import {
   handleRestart,
   handleWake,
 } from "./gui-endpoint-commands.js";
-import { sendJson } from "./http-body.js";
+import { sendJson } from "../http-body.js";
 
 /** Constant-time credential comparison for the shared-token gate: `timingSafeEqual` throws
  * on unequal lengths, so the length equality is the guard. A naive `===` string compare

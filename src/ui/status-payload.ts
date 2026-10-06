@@ -22,11 +22,11 @@ function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; r
   return { ts: e.ts, loop: String(e.loop), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
 }
 
-/** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui-server.ts)
+/** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
  * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
  * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
- * not in gui-server.ts — because it is shared data collection for observers, not part of serving HTTP:
+ * not in gui/gui-server.ts — because it is shared data collection for observers, not part of serving HTTP:
  * snapshot() supplies the core state, and the per-loop phase/metrics fields come from the same
  * status-model helpers the TUI table uses. */
 /** `now` pins the poll's clock for the budget block (see snapshot's seam of the same name) —

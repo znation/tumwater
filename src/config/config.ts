@@ -299,7 +299,7 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
 /** Every valid role id a READ-ONLY surface accepts: the catalog plus the user-defined loops,
  * read through loadConfigCached (which never throws), so a transiently broken tumwater.json
  * falls back to the built-in catalog instead of taking the view down or refusing every id.
- * The one home of that fallback rule — parseRoleScope, gui-endpoint-commands'
+ * The one home of that fallback rule — parseRoleScope, gui/gui-endpoint-commands'
  * validRoleIds, and
  * prompt-commands.ts's cmdPrompt --list mode all resolve their id set through it, so they
  * cannot drift. (Read-

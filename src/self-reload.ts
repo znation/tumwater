@@ -138,7 +138,7 @@ interface ReloadWatch {
 }
 
 /** The watch's injectable seams, re-exported as one type: a dashboard embedding the watch
- * (gui-server.ts's startGui) accepts them plus its own re-exec seam so tests can drive the wiring
+ * (gui/gui-server.ts's startGui) accepts them plus its own re-exec seam so tests can drive the wiring
  * without real timers, dist stamps, or spawned processes. */
 export type ReloadWatchSeams = Pick<ReloadWatchOptions, "readDisk" | "isSelfHostedImpl" | "intervalMs">;
 

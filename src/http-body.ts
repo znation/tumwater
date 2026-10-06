@@ -1,11 +1,11 @@
 /**
  * The dashboard's shared HTTP response/body plumbing: sendJson (every /api endpoint answers
  * through it), the request-body cap, the chunked reader that enforces it, and readJsonObject
- * (the shared front half of every /api POST handler). Extracted from gui-endpoints.ts so the
- * handlers there (and, since the POST operators moved to gui-endpoint-commands.ts, those too)
+ * (the shared front half of every /api POST handler). Extracted from gui/gui-endpoints.ts so the
+ * handlers there (and, since the POST operators moved to gui/gui-endpoint-commands.ts, those too)
  * read as endpoint logic alone — the streaming internals and the buffered-bytes
  * counter live here, one layer down from any single endpoint. Server lifecycle, routing, the
- * static page, and the token gate stay in gui-server.ts.
+ * static page, and the token gate stay in gui/gui-server.ts.
  */
 import type http from "node:http";
 import { parseJsonObject } from "./json-object.js";

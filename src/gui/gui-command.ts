@@ -1,13 +1,13 @@
 /** The `tumwater gui` CLI entry: flag parsing, the banner, and the serve-until-Ctrl+C wait.
- * The HTTP server itself (startGui) lives in gui-server.ts — this module owns the command
+ * The HTTP server itself (startGui) lives in gui/gui-server.ts — this module owns the command
  * line, not the socket. The LAN address filter and the --token wording live here because
  * only the CLI's banner and flag gate use them. */
 import os from "node:os";
 import { startGui } from "./gui-server.js";
-import { errCode } from "./errno.js";
-import { fail, say } from "./cli/cli-output.js";
-import { flagValue, parsePortFlag } from "./cli/cli-args.js";
-import { TOKEN_VALUE_ERROR } from "./cli/cli-flag-specs.js";
+import { errCode } from "../errno.js";
+import { fail, say } from "../cli/cli-output.js";
+import { flagValue, parsePortFlag } from "../cli/cli-args.js";
+import { TOKEN_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
@@ -44,7 +44,7 @@ export interface GuiSeams {
 }
 
 /** The `tumwater gui` command: parse the --port/--all-interfaces/--token flags, start the
- * server, print the banner, and serve until Ctrl+C. Lives beside startGui (gui-server.ts) so
+ * server, print the banner, and serve until Ctrl+C. Lives beside startGui (gui/gui-server.ts) so
  * the CLI's gui-specific policy (token validation, the listen-failure messages, the LAN
  * announcement) cannot drift from the server it drives. Flag-vocabulary rejection stays in
  * cli.ts with the other cases; everything gui-specific after that gate is this function's job.

@@ -330,7 +330,7 @@ test("createReloadWatch survives a failed self-hosted check: it un-latches and f
 });
 
 test("captureStartupBuild returns this process's own stamp, or null without one", () => {
-  // gui-server.ts and tui.tsx both call this at startup; its contract is a thin pass-through to
+  // gui/gui-server.ts and tui.tsx both call this at startup; its contract is a thin pass-through to
   // readBuildInfo, and the watch's whole gate keys off what it returns.
   const info = captureStartupBuild();
   if (info === null) return; // running outside a built tree is legitimate

@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     case "gui":
       rejectUnknownArgs("gui", args, GUI_FLAG_SPECS);
       await requireReadyRepo(root);
-      await (await import("./gui-command.js")).cmdGui(root, args);
+      await (await import("./gui/gui-command.js")).cmdGui(root, args);
       break;
     case "status":
       await cmdStatus(root, args);
