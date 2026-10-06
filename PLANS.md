@@ -8,6 +8,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Model tiers, part 7/8: operator visibility — role rows, the fallback badge, and doctor checks (planned 2026-10-05 by operator; requires parts 3/8 and 5/8 landed)
 
+**Needs review 2026-10-06 by feature: too large for one run** — three sub-areas (role rows in both dashboards, the per-tier `budget_fallback` badge, and two new doctor checks) across eight source files plus tests, the same scope that split part 5/8 into 5a–5c. Candidate split: 7a role rows (role-view, status-data, both dashboards), 7b the tiers badge (budget-gates payload, event-format, badges), 7c doctor checks.
+
 Design: plans/model-tiers.md ("Observability", "Doctor").
 
 **Goal.** An operator can see each role's tier and model, which free model each tier fell back
