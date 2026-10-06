@@ -88,6 +88,45 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
  * the loop — the no-`--role` command resolves across every loop, so its output must say where
  * the prompt went — while a `--role`-scoped command already names it in the user's own
  * command. One helper so the cancel and edit wordings cannot drift. */
+/** The loop order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
+ * the director first, then the remaining cached catalog ids — the per-loop sections `--list`
+ * prints, each numbered from 1. The single home of that scope, shared by the cancel and edit
+ * branches so neither can drift from what the list showed. */
+function listWideScope(root: string): string[] {
+  return [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
+}
+
+/** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
+ * rival loops, with the `--role` escape hatch) or a miss (carrying the queue count across
+ * every loop), else render the resolved outcome through sayPromptOutcome. One helper so the
+ * two verbs' handling of the miss shapes cannot drift. */
+function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number): void {
+  if (listed.status === "ambiguous") {
+    fail(`position ${position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
+  }
+  if (listed.status === "missing") {
+    fail(`no prompt at position ${position} (${listed.queued} queued across all loops)`);
+  }
+  sayPromptOutcome(position, listed.role, listed.outcome, true);
+}
+
+/** Run one loop-targeted queue verb (cancelRolePrompt/editRolePrompt) for a `--role`-scoped
+ * command: a thrown failure (a broken config, an unwritable queue) exits through fail with
+ * its message, a success returns the verb's outcome for the caller to render. One helper so
+ * the cancel and edit branches' broken-config policy cannot drift. */
+function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
+  root: string,
+  role: string,
+  position: number,
+  verb: (root: string, role: string, position: number) => O,
+): O {
+  try {
+    return verb(root, role, position);
+  } catch (err) {
+    return fail(errorMessage(err));
+  }
+}
+
 function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
   if (outcome.status === "gone") {
     say(`prompt ${position} is no longer queued — ${role} already took it`);
@@ -168,25 +207,11 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       // that scope: one loop holding the position cancels there, several are ambiguous (the
       // list itself shows two "N." lines), none is a miss. The output names the loop, since
       // the caller scoped nothing.
-      const scope = [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
-      const listed: ListedCancelOutcome = cancelListedPrompt(root, scope, parsed.position);
-      if (listed.status === "ambiguous") {
-        fail(`position ${parsed.position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
-      }
-      if (listed.status === "missing") {
-        fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
-      }
-      sayPromptOutcome(parsed.position, listed.role, listed.outcome, true);
+      sayListedOutcome(cancelListedPrompt(root, listWideScope(root), parsed.position), parsed.position);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
-    let outcome: CancelOutcome;
-    try {
-      outcome = cancelRolePrompt(root, target, parsed.position);
-    } catch (err) {
-      fail(errorMessage(err));
-    }
-    sayPromptOutcome(parsed.position, target, outcome, false);
+    sayPromptOutcome(parsed.position, target, runRolePromptCommand(root, target, parsed.position, cancelRolePrompt), false);
     return;
   }
   if (parsed.mode === "edit") {
@@ -194,25 +219,16 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // file's new content rides the same queue file (position, enqueue stamp, and a pending
     // --at deferral untouched), and a concurrent dequeue reports gone and exits clean.
     if (role === null) {
-      const scope = [DIRECTOR_ROLE, ...knownRoleIdsCached(root).filter((r) => r !== DIRECTOR_ROLE)];
-      const listed: ListedEditOutcome = editListedPrompt(root, scope, parsed.position, parsed.text);
-      if (listed.status === "ambiguous") {
-        fail(`position ${parsed.position} is queued for more than one loop (${listed.roles.join(", ")}) — name one with --role <id>`);
-      }
-      if (listed.status === "missing") {
-        fail(`no prompt at position ${parsed.position} (${listed.queued} queued across all loops)`);
-      }
-      sayPromptOutcome(parsed.position, listed.role, listed.outcome, true);
+      sayListedOutcome(editListedPrompt(root, listWideScope(root), parsed.position, parsed.text), parsed.position);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
-    let outcome: EditOutcome;
-    try {
-      outcome = editRolePrompt(root, target, parsed.position, parsed.text);
-    } catch (err) {
-      fail(errorMessage(err));
-    }
-    sayPromptOutcome(parsed.position, target, outcome, false);
+    sayPromptOutcome(
+      parsed.position,
+      target,
+      runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, parsed.text)),
+      false,
+    );
     return;
   }
   const target = role ?? DIRECTOR_ROLE;
