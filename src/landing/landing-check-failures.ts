@@ -6,7 +6,7 @@ import { unverifiedTreeOutcome } from "../build-check/build-check-events.js";
 import { checkFailureReasons } from "../build-check/build-check-report.js";
 import { mainTipVerdict } from "../main-red.js";
 import { logEvent } from "../events.js";
-import { mainRedPhrase } from "../phrases.js";
+import { mainRedNotMine } from "../phrases.js";
 import type { BuildCheckOutcome } from "../build-check/build-check.js";
 import type { BuildCheck } from "../build-check/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -145,7 +145,7 @@ export async function attributeRedCheck(
   }
   const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
   if (main.status === "red") {
-    state.lastError = `${label} failed: ${mainRedPhrase(main.sha)} — not this change's failure`;
+    state.lastError = `${label} failed: ${mainRedNotMine(main.sha)}`;
     saveLoopState(ctx.root, state);
     return "main_red";
   }

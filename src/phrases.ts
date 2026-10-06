@@ -49,6 +49,16 @@ export function mainRedPhrase(sha: unknown): string {
   return `main ${shortSha(sha)} is red`;
 }
 
+/** The main-red attribution detail — main's redness is not this change's failure — the review
+ * pre-check's reject detail (review-precheck.ts) and the landing check's lastError
+ * (landing-check-failures.ts) both build as mainRedPhrase plus the consequence suffix. One
+ * home beside mainRedPhrase so the two attribution surfaces cannot drift over the wording
+ * their tests pin. The other mainRedPhrase callers keep their own consequences: main-red.ts
+ * names the failing script and its action, redeployer.ts holds the restart. */
+export function mainRedNotMine(sha: unknown): string {
+  return `${mainRedPhrase(sha)} — not this change's failure`;
+}
+
 /** The ` — "<reason>"` suffix the operator's pause reason (`pause --reason <text>`) rides on —
  * one home so the CLI's confirmation line (operator-commands.ts), the status header's pause
  * badge (ui/badges.ts), and the paused alert's title (ui/fleet-alerts.ts) cannot drift on the

@@ -14,7 +14,7 @@ import { checkFailureReasons, describeCheck, failureHeadline } from "./build-che
 import { sleptPhrase, unverifiedTreeOutcome } from "./build-check/build-check-events.js";
 import { sampleSleepClock } from "./host-sleep.js";
 import { recordReview } from "./tick/tick-apply.js";
-import { mainRedPhrase } from "./phrases.js";
+import { mainRedNotMine } from "./phrases.js";
 import { shortSha } from "./format.js";
 import { checkWaitStage, setLandingStage } from "./landing/landing-slot.js";
 import { mainTipVerdict } from "./main-red.js";
@@ -121,7 +121,7 @@ export async function gateBuildPrecheck(
         // do not advance the discard counter — the transport-failure rule (BUGS.md 2026-09-20):
         // nothing judged this diff. main-red.ts's gate and the bugfix handoff own the repair,
         // and the author's next tick re-lands the change once main is green again.
-        const detail = `${mainRedPhrase(main.sha)} — not this change's failure`;
+        const detail = mainRedNotMine(main.sha);
         recordReview(state, "failed", [detail], head);
         warnEvent(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
         return { resolved: { decision: "failed", detail, mainRed: true } };
