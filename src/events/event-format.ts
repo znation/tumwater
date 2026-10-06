@@ -176,10 +176,25 @@ export function eventMessage(e: HarnessEvent): string {
           : "";
       return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
     }
-    case "budget_fallback":
+    case "budget_fallback": {
       // The cap is spent but the fleet keeps working: name the free model it switched to, the
-      // one fact that distinguishes this from a pause.
+      // one fact that distinguishes this from a pause. When the event carries the per-tier
+      // map (tiers, part 7b/8 — only emitted when the tiers resolve to two or more distinct
+      // pairs), list each tier's pair and let the borrowed ones' `(from …)` suffixes show a
+      // strong-tier borrow at a glance; a tier-free event keeps today's single-pair text.
+      const tiers =
+        typeof e.tiers === "object" && e.tiers !== null && !Array.isArray(e.tiers)
+          ? (e.tiers as Record<string, unknown>)
+          : undefined;
+      const tierEntries = tiers
+        ? ["small", "default", "strong"]
+            .filter((t) => typeof tiers[t] === "string")
+            .map((t) => `${t}: ${tiers[t]}`)
+        : [];
+      if (tierEntries.length >= 2)
+        return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${tierEntries.join(", ")} (cost n/a)`;
       return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${e.provider ?? "pi's default provider"}/${e.model ?? "pi's default model"} (cost n/a)`;
+    }
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
     case "budget_handback": {

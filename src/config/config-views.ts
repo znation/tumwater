@@ -8,6 +8,7 @@ import { MODEL_TIERS } from "./config-schema.js";
 import { parseModelSelector } from "../model-selector.js";
 import type { ModelSelector } from "../model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
+import { modelPairName } from "../budget/budget.js";
 import { formatModelSelector } from "../model-selector.js";
 import { roleById } from "../roles/roles.js";
 
@@ -301,6 +302,34 @@ export function resolveTierFallbacks(
     return { pair: null, from: null };
   };
   return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };
+}
+
+/** The per-tier fallback labels the observability surfaces render (part 7b/8): tier →
+ * `provider/model[ (from <tier>)]` for every tier the resolution gives a pair, in tier order.
+ * The `(from …)` suffix marks a borrowed pair — a strong-tier borrow is the fact an operator
+ * reading the feed or the badge can act on. Tiers resolved to pause are left out: the badge
+ * and the event name the pairs that RUN, the pause story lives on the pause events and the
+ * per-role rows. */
+export function tierFallbackLabels(resolved: TierFallbackMap): Partial<Record<ModelTier, string>> {
+  const out: Partial<Record<ModelTier, string>> = {};
+  for (const tier of MODEL_TIERS) {
+    const r = resolved[tier];
+    if (r.pair !== null)
+      out[tier] = modelPairName(r.pair) + (r.from !== null ? ` (from ${r.from})` : "");
+  }
+  return out;
+}
+
+/** True when the resolution hands out two or more DISTINCT pairs — the condition under which
+ * the tiered surfaces (the budget_fallback event, the header badge) switch from today's
+ * single-pair text to the tier list: a single fallback whose pair the other tiers borrow
+ * resolves every tier to the same pair, and that stays on the single-pair text, byte
+ * identical to the pre-tier surfaces. */
+export function tiersResolveDistinctPairs(resolved: TierFallbackMap): boolean {
+  const pairs = MODEL_TIERS.map((t) => resolved[t].pair)
+    .filter((p) => p !== null)
+    .map((p) => modelPairName(p));
+  return new Set(pairs).size >= 2;
 }
 
 /** The config as seen by a role loop running on the free fallback model

@@ -6,28 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 7b/8: the `budget_fallback` badge lists the tiers (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows (7a), this badge, and the doctor checks (7c); requires parts 3/8 and 5/8 landed, 7a done)
-
-Design: plans/model-tiers.md ("Observability"). Split from part 7/8; sibling 7a landed the role
-rows.
-
-**Goal.** A `budget_fallback` engaged on a tiered fallback shows which pair each tier resolved
-to, so an operator can see a strong-tier borrow at a glance.
-
-**Approach.** `budget_fallback` (src/gates/budget-gates.ts emitting, src/events/event-format.ts
-formatting) gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its existing
-`provider` / `model` (the default tier's), so current readers keep working. The header badge
-(src/ui/badges.ts and the GUI twin) keeps today's single-name text when every tier shares one
-pair, and lists the tiers otherwise.
-
-**Files touched.** src/gates/budget-gates.ts, src/events/event-format.ts, src/ui/badges.ts, the
-GUI badge, and their tests.
-
-**Acceptance criteria.**
-- A `budget_fallback` with two distinct tier pairs lists both, with `(from default)` on a
-  borrowed one.
-- With a single fallback the badge text is byte-identical to today's.
-
 ### Model tiers, part 7c/8: the doctor checks every declared tier model (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run; requires parts 3/8 and 5/8 landed, 7a done)
 
 Design: plans/model-tiers.md ("Doctor"). Split from part 7/8; sibling 7a landed the role rows.
@@ -80,6 +58,28 @@ files above, and the config-write tests.
 ---
 
 ## Done
+
+### Model tiers, part 7b/8: the `budget_fallback` badge lists the tiers (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows (7a), this badge, and the doctor checks (7c); requires parts 3/8 and 5/8 landed, 7a done; done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Observability"). Split from part 7/8; sibling 7a landed the role
+rows.
+
+**Goal.** A `budget_fallback` engaged on a tiered fallback shows which pair each tier resolved
+to, so an operator can see a strong-tier borrow at a glance.
+
+**Approach.** `budget_fallback` (src/gates/budget-gates.ts emitting, src/events/event-format.ts
+formatting) gains `tiers: { <tier>: "<selector>[ (from <tier>)]" }` beside its existing
+`provider` / `model` (the default tier's), so current readers keep working. The header badge
+(src/ui/badges.ts and the GUI twin) keeps today's single-name text when every tier shares one
+pair, and lists the tiers otherwise.
+
+**Files touched.** src/gates/budget-gates.ts, src/events/event-format.ts, src/ui/badges.ts, the
+GUI badge, and their tests.
+
+**Acceptance criteria.**
+- A `budget_fallback` with two distinct tier pairs lists both, with `(from default)` on a
+  borrowed one.
+- With a single fallback the badge text is byte-identical to today's.
 
 ### Model tiers, part 7a/8: role rows show each loop's seam tier and resolved selector (planned 2026-10-05 by operator; split 2026-10-06 by feature from part 7/8 — too large for one run — into role rows, the tiers badge (7b), and the doctor checks (7c); requires parts 3/8 and 5/8 landed, done 2026-10-06 by feature)
 

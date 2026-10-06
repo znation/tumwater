@@ -46,6 +46,29 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
   );
 });
 
+test("budgetBadge lists the tiers when the fallback resolves to two or more distinct pairs", () => {
+  // Part 7b/8: the snapshot's tier map stands exactly in that state, and the badge lists
+  // each tier's pair in tier order, borrowed ones marked by their `(from …)` suffix.
+  const tiers = { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" };
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers }),
+    " · budget: $50.00/$50 today · fallback: small: free/qwen-free (from default), default: free/qwen-free, strong: free/llama-free (cost n/a)",
+    "a strong-tier borrow must be visible at a glance",
+  );
+  // A one-entry map (a torn snapshot — never emitted by status-data, which requires two
+  // distinct pairs) falls back to the single-pair text, exactly like an absent map.
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers: { default: "free/qwen-free" } }),
+    " · budget: $50.00/$50 today · fallback: qwen-free (cost n/a)",
+  );
+  // Without the map — the single-fallback state the pre-tier badge saw — the single-pair
+  // text stands byte-identical.
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" }, tiers: null }),
+    " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
+  );
+});
+
 test("budgetBadge appends the burn-rate forecast as · ~cap at HH:MM and stays byte-identical without one", () => {
   // A forecast stands: wall-clock local, hours and minutes only (formatTime's seconds are
   // noise for a forecast), zero-padded on both sides — 14:05, not 14:5.

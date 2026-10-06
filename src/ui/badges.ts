@@ -118,11 +118,22 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   // Only while the fallback is actually carrying the fleet (plans/fallback-model.md): the cap
   // is spent, so the dollar figure alone would read like a stopped fleet. Naming the model
   // answers the operator's next question — what is it running on now? Its cost is n/a by
-  // construction (the gate engages nothing else), so no second figure is shown. Off-gate the
-  // badge is byte-identical to before.
+  // construction (the gate engages nothing else), so no second figure is shown. When the
+  // snapshot carries the per-tier map (tiers, part 7b/8 — non-null exactly when the tiers
+  // resolve to two or more distinct pairs), list each tier's pair instead, borrowed ones
+  // marked, so a strong-tier borrow is visible at a glance; a tier-free snapshot keeps the
+  // single-pair text byte-identical to the pre-tier badge. Off-gate the badge is byte-
+  // identical to before either way.
+  const tierEntries = budget.tiers
+    ? (["small", "default", "strong"] as const)
+        .filter((t) => budget.tiers![t] !== undefined)
+        .map((t) => `${t}: ${budget.tiers![t]}`)
+    : [];
   const fallback =
     fleetBudgetGate(budget) === "fallback"
-      ? ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
+      ? tierEntries.length >= 2
+        ? ` · fallback: ${tierEntries.join(", ")} (cost n/a)`
+        : ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? "pi default"} (cost n/a)`
       : "";
   const forecast =
     budget.capHitAt !== null

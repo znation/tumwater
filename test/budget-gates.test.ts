@@ -93,6 +93,9 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   assert.equal(ev.loop, "harness");
   assert.equal(ev.provider, "free");
   assert.equal(ev.model, "qwen-free");
+  // One fallback pair resolves every tier to it (small and strong borrow default's own), so
+  // the event stays tier-free (part 7b/8): today's single-pair readers keep today's text.
+  assert.equal(ev.tiers, undefined);
   assert.equal(ev.capUsd, 10);
   assert.ok(typeof ev.spentUsd === "number" && ev.spentUsd >= 10);
 
@@ -103,6 +106,30 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   assert.equal(p2.onFallback, true);
   assert.equal(p2.roleConfig, state.fallbackConfig); // still the one derived view
   assert.equal(readEvents(root).length, 1); // edge-triggered: no second budget_fallback
+});
+
+test("a tiered fallback with two distinct pairs carries the per-tier map on the event", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModels(root, MODELS_JSON);
+  const cfg = configWith(10);
+  // Part 7b/8: default runs its own pair and strong declares a DIFFERENT free one — the two
+  // distinct pairs the badge and the feed list. Small borrows default's (its own tier
+  // declares nothing), so its label carries the `(from default)` suffix.
+  cfg.fallback = { default: "free/qwen-free", strong: "free/llama-free" };
+  const state = newBudgetGateState(cfg);
+
+  const p = poll(root, state, cfg, models, [spent(10)]);
+  assert.equal(p.gate, "fallback");
+  const events = readEvents(root);
+  assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
+  const ev = events[0]!;
+  assert.equal(ev.provider, "free");
+  assert.equal(ev.model, "qwen-free"); // the default tier's pair, as before
+  assert.deepEqual(ev.tiers, {
+    small: "free/qwen-free (from default)",
+    default: "free/qwen-free",
+    strong: "free/llama-free",
+  });
 });
 
 test("raising the cap resumes the gate: one budget_resumed event and the live config again", () => {

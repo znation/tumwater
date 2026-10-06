@@ -39,6 +39,16 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   assert.match(onFallback[0]?.detail ?? "", /^small-model carries them/);
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free fleet has no cap to hit");
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
+
+  // Tiered fallback (part 7b/8): with the snapshot's tier map standing (two or more distinct
+  // pairs), the detail lists each tier's pair, borrowed ones marked, instead of naming just
+  // the default tier's.
+  const tiered = fleetAlerts(
+    { ...spent, budget: { ...spent.budget, fallback: { provider: "free", model: "qwen-free" }, tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" } } },
+    [], [], Date.now(),
+  );
+  assert.equal(tiered[0]?.key, "fallback");
+  assert.match(tiered[0]?.detail ?? "", /^small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free carry them/);
 });
 
 // Quiet hours 2/2: the schedule holding the fleet informs rather than asks (blue, no

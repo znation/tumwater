@@ -23,6 +23,8 @@ import {
   applyFallbackModel,
   fallbackPair,
   resolveTierFallbacks,
+  tierFallbackLabels,
+  tiersResolveDistinctPairs,
   type TierFallbackMap,
 } from "../config/config-views.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -243,7 +245,19 @@ export function pollBudgetGate(
       // this and not the other one": which free pair took over, which configured pair was
       // refused because pi's definitions do not price it at zero, or which free pair the
       // breaker demoted after its ticks kept failing (and after how many).
-      ...(gate === "fallback" ? { provider: pair?.provider, model: pair?.model } : {}),
+      ...(gate === "fallback"
+        ? {
+            provider: pair?.provider,
+            model: pair?.model,
+            // The per-tier story (part 7b/8): which pair each tier resolved to, borrowed
+            // ones marked. Carried only when the tiers resolve to two or more distinct
+            // pairs — a single fallback (its pair borrowed by the other tiers) keeps the
+            // event tier-free, so today's single-pair readers keep today's text.
+            ...(tiersResolveDistinctPairs(servingResolved)
+              ? { tiers: tierFallbackLabels(servingResolved) }
+              : {}),
+          }
+        : {}),
       // The pause's cause, named by the pair story that produced it: the default tier's own
       // pair demoted or refused (the legacy single-pair story), or — with review on — the
       // strong tier's price-resolved pair demoted (nothing could land), which is its own

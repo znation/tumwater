@@ -472,6 +472,29 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
     `absent backend must read as pi's defaults: ${fallbackBare}`,
   );
 
+  // With the per-tier map (part 7b/8, carried only for two or more distinct pairs), each
+  // tier's pair is listed in tier order and the borrowed one carries its `(from …)` suffix.
+  const fallbackTiers = formatEvent({
+    ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10,
+    tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
+  } as never);
+  assert.match(
+    fallbackTiers,
+    /budget fallback — \$10\.50 of \$10\.00 daily cost reached; role loops continue on small: free\/qwen-free \(from default\), default: free\/qwen-free, strong: free\/llama-free \(cost n\/a\)$/,
+    `the tier map must list every tier's pair: ${fallbackTiers}`,
+  );
+  // A torn line's non-map or partial tiers fall back to the single-pair sentence.
+  assert.match(
+    formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: "garbage" } as never),
+    /continue on pi's default provider\/pi's default model/,
+    "a torn tiers field must not break the line",
+  );
+  assert.match(
+    formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: { default: "free/qwen-free" } } as never),
+    /continue on pi's default provider\/pi's default model/,
+    "a one-entry tiers field (never emitted) keeps the single-pair text",
+  );
+
   // A demoted fallback whose failure count was lost still reads — the "?" says a field is
   // missing, not that nothing failed.
   const demotedBare = formatEvent({

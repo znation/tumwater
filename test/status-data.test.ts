@@ -187,7 +187,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   let snap = snapshot(repo, undefined, now.getTime());
   // No provider/model is configured (pi's own default), so the fleet cannot be verified as
   // free — the dollar badge stays.
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, capHitAt: null, free: false, fallback: null });
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 50, capHitAt: null, free: false, fallback: null, tiers: null });
 
   // Disabling the cap (0) keeps the budget object — spend is still reported and the badge
   // is the affordance for setting a cap again; only its display changes (`· no cap`).
@@ -195,7 +195,7 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   snap = snapshot(repo, undefined, now.getTime());
-  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, capHitAt: null, free: false, fallback: null });
+  assert.deepEqual(snap.budget, { spentUsd: 2, capUsd: 0, capHitAt: null, free: false, fallback: null, tiers: null });
 });
 
 test("snapshot carries the cap-hit projection for the same spend the badge renders", async () => {

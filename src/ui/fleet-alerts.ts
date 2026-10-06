@@ -77,7 +77,16 @@ export function fleetAlerts(
             key: "fallback",
             tone: "blue",
             title: "Today's budget is spent — the loops switched to the free fallback model",
-            detail: `${b.fallback.model ?? b.fallback.provider ?? "The fallback"} carries them at no cost until midnight.`,
+            // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
+            // tiers resolve to two or more distinct pairs, so list them and let the borrowed
+            // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
+            // single-pair sentence.
+            detail: b.tiers
+              ? `${(["small", "default", "strong"] as const)
+                  .filter((t) => b.tiers![t] !== undefined)
+                  .map((t) => `${t}: ${b.tiers![t]}`)
+                  .join(", ")} carry them at no cost until midnight.`
+              : `${b.fallback.model ?? b.fallback.provider ?? "The fallback"} carries them at no cost until midnight.`,
             actions: [{ label: "Raise the cap", act: "budget" }],
           }
         : {

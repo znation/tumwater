@@ -2,7 +2,14 @@ import type { LoopState } from "../loop/loop-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
-import { fallbackPair, resolveTierFallbacks, roleSeamTier, configForRole } from "../config/config-views.js";
+import {
+  fallbackPair,
+  resolveTierFallbacks,
+  roleSeamTier,
+  configForRole,
+  tierFallbackLabels,
+  tiersResolveDistinctPairs,
+} from "../config/config-views.js";
 import type { ModelTier } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
@@ -98,6 +105,15 @@ export interface StatusSnapshot {
     capHitAt: number | null;
     free: boolean;
     fallback: { provider?: string; model?: string } | null;
+    /** The per-tier fallback labels (part 7b/8): tier → `provider/model[ (from <tier>)]` —
+     * non-null ONLY while the cap is reached and the tiers resolve to two or more distinct
+     * pairs, the badge's tier-list state; a single fallback (the other tiers borrowing its
+     * pair) leaves it undefined so the badge keeps today's single-pair text byte-identical.
+     * Optional so literal budget blocks in the tests stand. The labels come from the same
+     * resolution (resolveTierFallbacks over the published demotions) the per-role pause set
+     * above reads, so the badge and the loop rows cannot disagree about which pair a tier
+     * runs on. */
+    tiers?: Partial<Record<string, string>> | null;
   };
   /** True while the operator has paused the fleet (`tumwater pause` marker present): every
    * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
@@ -364,6 +380,10 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
       fallback:
         fallbackModelFree(cfg, modelsPath) && !(running && info?.fallbackDemoted)
           ? (fallbackPair(cfg) ?? null)
+          : null,
+      tiers:
+        budgetReachedNow && tiersResolveDistinctPairs(servingResolved)
+          ? tierFallbackLabels(servingResolved)
           : null,
     },
     paused: fleetPause !== null,
