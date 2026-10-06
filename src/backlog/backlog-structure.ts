@@ -50,23 +50,22 @@ const DONE_DATE = /\bdone \d{4}-\d{2}-\d{2}/;
  * but no `done YYYY-MM-DD` — written as plans, never stamped done, and invisible to every
  * Planned reader (`plannedPlanEntries` reads only `## Planned`); and (b) entries under
  * `## Planned` whose heading already carries `done YYYY-MM-DD` — finished and never moved,
- * so the feature loop may implement them again. Fence-aware through backlog.ts's shared
+ * so the feature loop may implement them again. Fence-aware through backlog-md.ts's shared
  * machinery: a `### `/`## ` line inside a fenced code block is quoted content, not structure,
  * and heading dates are matched against the same joined metadata entryDates matches against.
  * BUGS.md and QUESTIONS.md are deliberately out of scope — their Fixed-section headings do
  * not all carry a date suffix, so the same rule would misfire there. */
 export function strandedPlanEntries(md: string): StrandedPlanEntry[] {
   const stranded: StrandedPlanEntry[] = [];
-  // Each `## ` section is walked through backlog-md.ts's sectionLines — the single home of
-  // "where a section starts and ends", shared with entryDates' readers — so this scanner and
-  // the entry readers can never disagree about the boundary. Walking the section titles in
-  // file order (each occurrence once) keeps the output in document order, the same order the
-  // whole-document walk it replaced produced. Inside a section, the fence filter matches
-  // entryDates': a fenced `### ` line is quoted content, never an entry.
+  // Each `## ` section's body is read through backlog-md.ts's sectionBodyLines — which walks
+  // sectionLines, the single home of "where a section starts and ends", shared with
+  // entryDates' readers — so this scanner and the entry readers can never disagree about the
+  // boundary. Walking the section titles in file order (each occurrence once) keeps the output
+  // in document order, the same order the whole-document walk it replaced produced.
   for (const section of sectionTitles(md)) {
     if (section !== "Planned" && section !== "Done") continue;
-    // Inside a section, the fence filter matches entryDates': a fenced `### ` line is quoted
-    // content, never an entry — the shared sectionBodyLines walk (backlog.ts).
+    // The shared sectionBodyLines walk (backlog-md.ts) drops fenced lines, matching
+    // entryDates': a fenced `### ` line is quoted content, never an entry.
     const lines = sectionBodyLines(md, section);
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i] ?? "";
