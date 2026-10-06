@@ -7,12 +7,12 @@
  * (src/report/report-data.ts, history-data.ts, status-data.ts); the terminal rendering of these views is
  * change-render.ts's half. */
 
-import { knownRoleIdsCached, loadConfigSafe } from "./config/config.js";
-import { aheadOfMain, branchExists, currentBranch, targetBranch } from "./git.js";
-import { gitTry } from "./git-run.js";
-import { aheadOfMainDiff, changedFiles } from "./git-diff.js";
-import { branchName, worktreePath } from "./paths.js";
-import { isUsableWorktree } from "./worktree.js";
+import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
+import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git.js";
+import { gitTry } from "../git-run.js";
+import { aheadOfMainDiff, changedFiles } from "../git-diff.js";
+import { branchName, worktreePath } from "../paths.js";
+import { isUsableWorktree } from "../worktree.js";
 
 /** One unlanded commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {

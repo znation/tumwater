@@ -2,13 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectFleetChanges, collectRoleChange } from "../src/change-data.js";
+import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 
-// `tumwater diff`'s collector (src/change-data.ts), called directly: the cli-diff tests reach
+// `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach
 // it through child-process CLI runs, whose coverage node --test never sees, and the collector
 // edges they do not exercise at all — a configured base branch that does not exist, a branch
 // that is fully merged while the worktree stays dirty, and a commit with an empty subject —

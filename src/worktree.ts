@@ -15,7 +15,7 @@ import { branchName, worktreePath } from "./paths.js";
  * a directory that fails it (pointer lost, or admin-side registration under <root>/.git/
  * worktrees/ pruned by outside git maintenance) is rebuilt from scratch instead of failing
  * every tick. Also exported for read-only viewers that must classify a worktree as absent
- * rather than fail (change-data.ts's collectRoleChange), so the probe's exact
+ * rather than fail (change/change-data.ts's collectRoleChange), so the probe's exact
  * conditions live in one place. */
 export async function isUsableWorktree(dir: string): Promise<boolean> {
   return fs.existsSync(dir) && (await gitTry(dir, "rev-parse", "--git-dir")) !== null;

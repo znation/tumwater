@@ -70,7 +70,7 @@ test("a tick's baseline check shows no previous run's detail and no false quiet 
   const file = writePiLog(root, "clean", [
     SESSION,
     assistantLine("the earlier tick's work", { tokens: 44_200 }),
-    toolStart("read", { path: "src/change-render.ts" }),
+    toolStart("read", { path: "src/change/change-render.ts" }),
   ]);
   backdate(file, 29 * 60_000);
   // A new tick started 99s ago and is still in its baseline check: pi has written nothing yet.
