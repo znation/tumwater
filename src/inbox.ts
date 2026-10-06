@@ -7,6 +7,7 @@ import { roleInboxDir } from "./paths.js";
 import { DIRECTOR_ROLE } from "./roles.js";
 import { truncate } from "./text.js";
 import { errCode } from "./errno.js";
+import { PROMPT_IMAGE_EXTENSIONS } from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
@@ -255,9 +256,12 @@ export function takeQueuedFile(file: string): string | null {
 }
 
 /** Remove the image files a queued prompt's [image attached: …] lines pointed at — the
- * same-stem siblings savePromptImages wrote beside the queue file (a name starting with the
- * .md's stem whose next character is "." or "-" — an extension or a same-extension suffix;
- * a sibling prompt's file differs before the stem ends, so it never matches). ENOENT-tolerant
+ * same-stem siblings savePromptImages wrote beside the queue file — the exact shapes it
+ * produces: `<stem>.<image extension>` and the same-extension dedup suffix `<stem>-<n>.<ext>`
+ * (n a digit run), checked against inbox-attachments.ts's PROMPT_IMAGE_EXTENSIONS. A bare
+ * prefix match is never enough: a hand-placed sibling prompt's file may share the stem followed
+ * by a hyphen (`a-notes.md` beside `a.md`), and deleting it would take another prompt with
+ * this one — files like that are left alone. ENOENT-tolerant
  * through removeQueueFile, and a queue directory that is already gone leaves nothing to
  * clean. Called by takeQueuedFile, so both dequeue and cancel take the attachments with the
  * prompt — an image never outlives the prompt that referenced it. */
@@ -272,8 +276,12 @@ function removeSameStemSiblings(file: string): void {
   }
   for (const entry of entries) {
     if (entry === path.basename(file) || !entry.startsWith(stem)) continue;
-    const next = entry.charAt(stem.length);
-    if (next === "." || next === "-") removeQueueFile(path.join(dir, entry));
+    const rest = entry.slice(stem.length);
+    if (rest.startsWith(".") && PROMPT_IMAGE_EXTENSIONS.includes(rest.toLowerCase())) {
+      removeQueueFile(path.join(dir, entry));
+    } else if (/^-\d+\./.test(rest) && PROMPT_IMAGE_EXTENSIONS.includes(rest.slice(rest.indexOf(".")).toLowerCase())) {
+      removeQueueFile(path.join(dir, entry));
+    }
   }
 }
 

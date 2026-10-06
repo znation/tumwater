@@ -11,8 +11,10 @@ import { agree } from "./phrases.js";
  * tool. Validation lives here once; every surface (the GUI endpoints through submitRolePrompt,
  * the requeue policy through stripVanishedImageReferences) shares it. */
 
-/** The image extensions pi's read tool renders — exactly what an attachment may carry. */
-const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
+/** The image extensions pi's read tool renders — exactly what an attachment may carry.
+ * Exported for src/inbox.ts's same-stem sibling cleanup, which must recognize the exact
+ * `<stem>-<n>.<ext>` shape savePromptImages writes and nothing else. */
+export const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
 
 /** Per-image decoded-size cap. */
 const PROMPT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;

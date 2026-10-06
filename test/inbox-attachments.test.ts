@@ -148,6 +148,27 @@ test("dequeuing and cancelling a prompt remove its same-stem image files", () =>
   assert.ok(!fs.existsSync(saved2.paths[0]!), "cancel removed the image with the prompt");
 });
 
+test("cancelling a prompt does not delete a hyphen-named sibling prompt's queue file", () => {
+  const root = tmpdir();
+  const dir = roleInboxDir(root, "qa");
+  // Hand-placed queue files are supported (queueFileStamp reads them as unstamped), and a
+  // hand-placed name may embed a hyphen: cancelling `a.md` must not destroy `a-notes.md` —
+  // a different prompt whose file merely starts with a.md's stem followed by a hyphen.
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "a.md"), "cancel me");
+  fs.writeFileSync(path.join(dir, "a-notes.md"), "a different prompt");
+  const outcome = cancelQueuedFile(root, "qa", "a.md");
+  assert.equal(outcome.status, "cancelled");
+  assert.ok(fs.existsSync(path.join(dir, "a-notes.md")), "the sibling prompt survives");
+  // But the same-stem image-suffix shape savePromptImages writes (`<stem>-<n>.<image ext>`)
+  // is still taken with the prompt.
+  fs.writeFileSync(path.join(dir, "a-2.png"), PNG);
+  fs.writeFileSync(path.join(dir, "a.md"), "cancel me again");
+  const outcome2 = cancelQueuedFile(root, "qa", "a.md");
+  assert.equal(outcome2.status, "cancelled");
+  assert.ok(!fs.existsSync(path.join(dir, "a-2.png")), "the image suffix is removed");
+});
+
 test("a vanished image sibling is tolerated at dequeue", () => {
   const root = tmpdir();
   const file = enqueueRolePrompt(root, "qa", "look");
