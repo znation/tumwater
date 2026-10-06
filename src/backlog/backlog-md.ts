@@ -1,9 +1,9 @@
 /** The pure markdown layer of the backlog parsers: fence-aware reading of PLANS.md / BUGS.md /
  * QUESTIONS.md text, with no filesystem access — every function here takes the markdown text as
  * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
- * (sectionEntries and the root-based plannedPlans/openBugs/openQuestions family): consumers who
- * only parse markdown (question-commands.ts's QUESTIONS.md walks, backlog-write.ts's section
- * appends, backlog-structure.ts's stranding checks, src/report/report-data.ts's Done/Fixed date scan)
+ * (sectionEntries, the root-based plannedPlans/openBugs/openQuestions family, and the
+ * Done/Fixed date scan): consumers who only parse markdown (question-commands.ts's QUESTIONS.md
+ * walks, backlog-write.ts's section appends, backlog-structure.ts's stranding checks)
  * import from here without reaching the file/cache layer, and a caller who parses a string never
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
  * never disagree about what is body content. */

@@ -6,14 +6,13 @@
  * (window math, aggregation, bounds) apart from "how it prints" (bars, cell wording), which
  * change for different reasons — and keeps core data collection out of the presentation
  * layer, so a core consumer (as /api/report already is) never forces a core→ui import. */
-import path from "node:path";
-import { readTextOrNull, statOrNull } from "../files/files.js";
+import { statOrNull } from "../files/files.js";
 import { eventWindowCovers, readWindowEvents, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
-import { entryDates } from "../backlog/backlog-md.js";
+import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
@@ -340,11 +339,6 @@ export function collectReportSince(root: string, sinceMs: number): SinceReport {
   };
 }
 
-/** A file's text, or "" when missing/unreadable — a report degrades to zeros, never throws. */
-function readMarkdown(file: string): string {
-  return readTextOrNull(file) ?? "";
-}
-
 /** Aggregate fleet usage over exactly `days` local calendar days ending today, from the event
  * log (tick_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
 export function collectReport(root: string, days: number): ReportData {
@@ -394,7 +388,7 @@ export function collectReport(root: string, days: number): ReportData {
     const day = byDate.get(date);
     if (day) day[field] += 1; // Out-of-window dates drop out here.
   };
-  for (const d of entryDates(readMarkdown(path.join(root, "PLANS.md")), "Done", /done (\d{4}-\d{2}-\d{2})/))
+  for (const d of sectionCompletionDates(root, "PLANS.md", "Done", /done (\d{4}-\d{2}-\d{2})/))
     countOn(d, "featuresDone");
   // The completion verbs track the phrasing the harness's own loops actually write: the
   // bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
@@ -402,7 +396,7 @@ export function collectReport(root: string, days: number): ReportData {
   // completion the report must count (a rejected landing is not a fix, the re-land is).
   // Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
   // stays out: headings mention sibling landings, and a sibling's date is not this entry's.
-  for (const d of entryDates(readMarkdown(path.join(root, "BUGS.md")), "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
+  for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
     countOn(d, "bugsFixed");
 
   const totals = {

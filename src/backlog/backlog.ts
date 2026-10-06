@@ -1,7 +1,7 @@
 import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { entryDates, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -40,6 +40,35 @@ function sectionEntries(root: string, fileName: string, sectionTitle: string): B
         return md === null ? null : parseEntryDetails(md, sectionTitle);
       },
       (entries) => entries.map((e) => ({ ...e })), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
+/** Completion dates of an entry section (PLANS.md `## Done`, BUGS.md `## Fixed`), stat-cached
+ * like sectionEntries above. The usage report scans these sections on every /api/report fetch,
+ * but the files change only when a loop lands an edit — serving an unchanged file from the
+ * cache makes that cost one stat instead of a full read plus an O(size) markdown walk of
+ * append-only documents that grow without bound. The date regex is part of the cache key
+ * (each section's completion verbs differ); a missing or unreadable file yields []. */
+const dateCache = new Map<string, StatKeyedValue<string[]>>();
+
+export function sectionCompletionDates(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  dateRe: RegExp,
+): string[] {
+  const file = path.join(root, fileName);
+  return (
+    cachedByStat(
+      dateCache,
+      `${file}\u0000${sectionTitle}\u0000${dateRe.source}\u0000${dateRe.flags}`,
+      file,
+      () => {
+        const md = readTextOrNull(file); // Missing or unreadable — no data.
+        return md === null ? null : entryDates(md, sectionTitle, dateRe);
+      },
+      (dates) => dates.slice(), // A copy: callers may treat the result as their own.
     ) ?? []
   );
 }
