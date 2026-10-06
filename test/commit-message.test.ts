@@ -10,7 +10,7 @@ import {
   formatCommitBody,
   hasFrictionTrailer,
   parseCommitMetadata,
-} from "../src/commit-message.js";
+} from "../src/git/commit-message.js";
 
 test("extractSummary finds the SUMMARY line anywhere in the reply", () => {
   assert.equal(extractSummary("did stuff\nSUMMARY: add foo helper\n"), "add foo helper");

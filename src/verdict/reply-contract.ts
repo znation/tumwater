@@ -57,14 +57,14 @@ export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
  * closing contract, shared verbatim by REPLY_ENDINGS (tick, director, and resume prompts) and
  * prompt-followup.ts's buildSummaryRequestPrompt (the follow-up that recovers a missing block),
  * so they cannot drift (sibling of the NOTHING_TO_DO sentinel below, and parsed field-by-field
- * by commit-message.ts's labeledLine). */
+ * by git/commit-message.ts's labeledLine). */
 export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
   VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "the project's check; repro script showed X before, Y after" — write none when nothing was run>`;
 
 /** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
- * exact SUMMARY/WHY/RISK/VERIFIED block commit-message.ts parses into the commit message as the
+ * exact SUMMARY/WHY/RISK/VERIFIED block git/commit-message.ts parses into the commit message as the
  * last one. Shared by the tick and director rules (prompt.ts's commonRules) and
  * prompt-followup.ts's resume bridge, so a resumed run ends under the same contract as a fresh
  * one. Written as an either/or list because, stated as separate rules, models filled in every
@@ -85,7 +85,7 @@ ${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 
 /** The trimmed remainder of the first line that starts with `<label>:` (leading whitespace on
  * the line allowed); null when no such line carries content. Shared by every parser that pulls a
- * labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in commit-message.ts and the
+ * labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in git/commit-message.ts and the
  * TUMWATER_REFUSED reason here — so the anchored-line shape lives in one place instead of drifting. */
 export function labeledLine(text: string, label: string): string | null {
   const match = text.match(new RegExp(`^\\s*${label}:\\s*(.+)\\s*$`, "m"));

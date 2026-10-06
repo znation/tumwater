@@ -1,5 +1,5 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "./git/git.js";
-import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
+import { parseCommitMetadata, type CommitMetadata } from "./git/commit-message.js";
 import { logEvent, warnEvent } from "./events/events.js";
 import { enqueueLanding, queuedLandings } from "./landing/landing-queue.js";
 import { landingRefName } from "./paths.js";

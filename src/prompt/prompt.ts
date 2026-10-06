@@ -14,7 +14,7 @@ import { worktreePath } from "../paths.js";
  * session back up — the resume bridge, the missing-summary recovery, and the fresh-tick cut-off
  * note — live in prompt-followup.ts. The landing gate's pi runs (conflict resolution, build fix,
  * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit
- * message lives in commit-message.ts.
+ * message lives in git/commit-message.ts.
  *
  * The prose is tuned for the fleet's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
  * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow

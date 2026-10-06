@@ -12,7 +12,7 @@ import {
   fallbackSummary,
   formatCommitBody,
   stampedSubject,
-} from "../commit-message.js";
+} from "../git/commit-message.js";
 import { logEvent } from "../events/events.js";
 import { enqueueLanding } from "../landing/landing-queue.js";
 import { recordFlow } from "./qa-coverage.js";

@@ -1696,7 +1696,7 @@ The steward later found the first phantom record and diagnosed it as a tick that
 00:28:41 PDT (09-22)  cwd=…/worktrees/director        10 turns  → reset to 1, then 11
 ```
 
-Two resets in 2 min 18 s. The counter is only half of it: between 00:27:20 and 00:28:41 the cell's `turn`, `ctx` and tool label all described the **landing** run while the label said `working` and the elapsed time counted the authoring tick — the row was reporting one run's progress under another run's heading. The harness's own accounting is unaffected: the commit trailer and the friction check read `PiRunResult.turns`, which is per-run and correct (`src/commit-message.ts:74`).
+Two resets in 2 min 18 s. The counter is only half of it: between 00:27:20 and 00:28:41 the cell's `turn`, `ctx` and tool label all described the **landing** run while the label said `working` and the elapsed time counted the authoring tick — the row was reporting one run's progress under another run's heading. The harness's own accounting is unaffected: the commit trailer and the friction check read `PiRunResult.turns`, which is per-run and correct (`src/git/commit-message.ts:74`).
 
 **Repro:** Deterministic, no fleet. The old reader over a line array holding a run's `message_end`s, then a `session` line, then two more `message_end`s returned `turns: 2` — the documented behavior, with nothing distinguishing whose session it was; live, `grep '"session"' .tumwater/log/<role>.pi.jsonl | jq -r '[.timestamp, .cwd] | @tsv'` on any role that has landed recently shows `worktrees/<role>` and `worktrees/_land-<role>` sessions interleaved in the one file.
 

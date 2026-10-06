@@ -169,7 +169,7 @@ embeds `${DECOMPOSITION_GUIDANCE}` at line 81, and `plan.find` embeds `${PLAN_SI
 exact one-line form is at line 244 and whose no-commit clause is at line 254. src/init/init-templates.ts's
 `BUGS_TEMPLATE` (line 130) has its guidance line at line 134, and no test pins its content.
 `highFriction` exists as the problem statement says (src/loop.ts:693, stamped by
-commit-message.ts:84) and attaches to the commit, not the bug.
+git/commit-message.ts:84) and attaches to the commit, not the bug.
 
 **Corrections (pinned in place).**
 

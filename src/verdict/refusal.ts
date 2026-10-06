@@ -1,7 +1,7 @@
 import { commitPathsAndDiscardRest } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { buildCommitMessage, commitTrailer, stampedSubject } from "../commit-message.js";
+import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
 import { labeledLine } from "./reply-contract.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";

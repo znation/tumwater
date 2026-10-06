@@ -1,6 +1,6 @@
-import { truncate } from "./text/text.js";
-import { compactTokens } from "./text/format.js";
-import { labeledLine } from "./verdict/reply-contract.js";
+import { truncate } from "../text/text.js";
+import { compactTokens } from "../text/format.js";
+import { labeledLine } from "../verdict/reply-contract.js";
 
 /** Assembling tick commit messages from pi's final reply: the SUMMARY line becomes the
  * subject, the WHY/RISK/VERIFIED block becomes the body, and the harness stamps a trailer
