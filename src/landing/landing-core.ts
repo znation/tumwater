@@ -1,4 +1,4 @@
-import { deleteRef, headOf, setRef } from "../git.js";
+import { deleteRef, headOf, removeLandWorktree, setRef } from "../git.js";
 import { landWorktreePath, landingRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../worktree.js";
 import { mergeToMain } from "./landing-merge.js";
@@ -172,6 +172,7 @@ export async function reviewPinnedChange(
   if (gate.decision === "rejected") {
     // The gate already reset this worktree to main; the verdict is final for this sha.
     await deleteRef(root, ref);
+    await removeLandWorktree(root, wt);
     return { kind: "result", result: "rejected" };
   }
 
@@ -190,6 +191,7 @@ export async function reviewPinnedChange(
     // reviews.
     if (gate.discarded) {
       await deleteRef(root, ref);
+      await removeLandWorktree(root, wt);
       return { kind: "result", result: "review_error", discarded: true };
     }
     return { kind: "result", result: "review_error" };
@@ -292,6 +294,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
         }
         if (gate.decision === "rejected") {
           await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin
+          await removeLandWorktree(ctx.root, resolvedWt);
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
           return { verdict: "rejected" };
         }
@@ -301,6 +304,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
         ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
         if (gate.discarded) {
           await deleteRef(ctx.root, landingRefName(req.role));
+          await removeLandWorktree(ctx.root, resolvedWt);
           return { verdict: "rejected" };
         }
         return { verdict: "retry" };
@@ -312,6 +316,7 @@ export async function landApprovedChange(ctx: LanderContext, req: LandRequest): 
   );
   if (result === "changed") {
     await deleteRef(ctx.root, landingRefName(req.role)); // landed: the pin has done its job
+    await removeLandWorktree(ctx.root, wt);
     return result;
   }
   if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);

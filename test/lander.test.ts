@@ -261,11 +261,9 @@ test("a resolution the re-review rejects deletes the pin and lands nothing", asy
     assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
     // The resolution run went through the wiring stub; the re-review was a real gate run.
     assert.equal(calls.length, 1);
-    // The reject path reset the landing worktree to main, discarding the resolution.
-    assert.equal(
-      fs.readFileSync(path.join(landWorktreePath(root, ROLE), "seed.txt"), "utf8"),
-      "main\n",
-    );
+    // Terminal rejection removes the disposable lander worktree with the pin — the resolution
+    // is discarded with it, nothing of it survives to the next tick.
+    assert.equal(fs.existsSync(landWorktreePath(root, ROLE)), false, "_land-<role> is removed on rejection");
   } finally {
     restore();
   }
@@ -379,20 +377,26 @@ test("a synced rebase moves the landing ref so a failed gate keeps the tree that
   }
 });
 
-test("the lander worktree is per-role and detached at the pinned sha", async () => {
+test("the lander worktree is per-role, kept detached at a non-terminal outcome, and removed at a terminal one", async () => {
   const restore = fakePi(
     reviewerPi("VERDICT: approve"),
   );
   try {
     const { root, sha } = await pinnedFixture();
+    // Main moves after the pin so the in-lock rebase rewrites the tree and the landing check
+    // runs; the first red is non-terminal (kept), the second hits the failure limit and is
+    // attributed against main's own (green) verdict, so it rejects terminally.
+    const tip = advanceMain(root, `main-per-role-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+    noteGreenBaseline(tip);
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
-
-    assert.equal(await vetAndLand(ctx, request(sha)), "changed");
-
+    ctx.config = { ...ctx.config, check: { command: "echo 'error: planted landing failure'; exit 1" } };
     const landWt = landWorktreePath(root, ROLE);
-    assert.ok(fs.existsSync(landWt), "_land-<role> exists after a landing");
-    assert.equal(sh(landWt, "git", "rev-parse", "HEAD"), sha, "it holds the landed tree");
+
+    // Non-terminal: the first red keeps the pin and the disposable worktree for a re-land.
+    assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
+    assert.equal(await refSha(root, REF), sha, "the pin names the original pinned sha");
+    assert.ok(fs.existsSync(landWt), "_land-<role> exists after a non-terminal outcome");
     // Detached: no branch ref is checked out there — rebasing it never moves a role branch.
     let detached = false;
     try {
@@ -400,7 +404,14 @@ test("the lander worktree is per-role and detached at the pinned sha", async () 
     } catch {
       detached = true; // a detached HEAD makes symbolic-ref exit nonzero
     }
-    assert.ok(detached, "_land-<role> is detached at the pinned sha");
+    assert.ok(detached, "_land-<role> is detached (rebasing never moves a role branch)");
+
+    // Terminal: at the failure limit a green main rejects the change — the pin and the
+    // disposable worktree are removed together.
+    assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "at the failure limit a green main rejects");
+    assert.equal(await refSha(root, REF), null, "the pin is gone on rejection");
+    assert.ok(!fs.existsSync(landWt), "_land-<role> is removed at the terminal rejection");
+    assert.equal(mainSha(root), tip, "nothing landed");
   } finally {
     restore();
   }

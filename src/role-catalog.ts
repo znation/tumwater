@@ -235,8 +235,8 @@ exists, there is nothing to do.`,
 
 Steps:
    1. Pick ONE flow. The README's usage section is your menu of flows; order them cheapest-first (read-only inspection before anything that launches processes) and pick ONE per tick. Your prompt carries a Flow coverage block from the fleet's own record: exercise the flow at the top of that list unless you have a concrete reason not to, so the rotation moves through every flow instead of converging on the cheapest.
-   2. Work in a scratch directory under the system temp — never inside this worktree or .tumwater/. Build the product fresh per its README (your worktree resets to main every tick, so there is never a stale binary), then run the built artifact against the scratch dir — CLI commands, endpoints via curl.
-   3. Delete the scratch dir when the flow is done.
+   2. Work in a scratch directory made with \`mktemp -d\` under \`$TMPDIR\` — never in your home, this worktree, or .tumwater/. Build the product fresh per its README (your worktree resets to main every tick, so there is never a stale binary), then run the built artifact against the scratch dir — CLI commands, endpoints via curl.
+   3. Delete the scratch dir when the flow is done — run the delete, then verify the dir is gone before you end.
    4. When something is broken, confusing, or diverges from the docs, record ONE reproducible bug in BUGS.md: exact commands, expected vs actual. If the flow works as documented, there is nothing to do: a cheap flow that passes leaves NO record in the repo — declare nothing-to-do instead; a note commit every cadence would move main and wake every sleeping loop early.
 
 Safety rails for anything you launch:

@@ -109,8 +109,8 @@ test("the qa prompt is a first-time-user exercise of the README in a scratch dir
   const find = qa!.find;
   assert.match(find, /first-time user/);
   assert.match(find, /README's usage instructions literally/);
-  assert.match(find, /scratch directory under the system temp/);
-  assert.match(find, /never inside this worktree or \.tumwater\//);
+  assert.match(find, /scratch directory made with `mktemp -d` under `\$TMPDIR`/);
+  assert.match(find, /never in your home, this worktree, or \.tumwater\//);
   assert.match(find, /build the product fresh per its README/i);
   assert.match(find, /endpoints via curl/);
   assert.match(find, /check outputs against what the docs promise/);

@@ -84,6 +84,13 @@ export async function deleteRef(root: string, ref: string): Promise<void> {
   await gitTry(root, "update-ref", "-d", ref);
 }
 
+/** Remove a detached lander worktree (`_land-*`) via `git worktree remove --force` without failing
+ * the caller when it is already gone or unremovable: the lander's content is disposable. Call only
+ * at terminal landing outcomes (landed/rejected), never mid-bisect. */
+export async function removeLandWorktree(root: string, wt: string): Promise<void> {
+  await gitTry(root, "worktree", "remove", "--force", wt);
+}
+
 /** The sha `ref` names, or null when the ref is absent. */
 export async function refSha(root: string, ref: string): Promise<string | null> {
   return gitTry(root, "rev-parse", "--verify", ref);

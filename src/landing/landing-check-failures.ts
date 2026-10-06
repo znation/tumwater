@@ -1,4 +1,4 @@
-import { deleteRef, headOf, patchId } from "../git.js";
+import { deleteRef, headOf, patchId, removeLandWorktree } from "../git.js";
 import { landingRefName } from "../paths.js";
 import { recordReview } from "../tick-apply.js";
 import { saveLoopState } from "../loop-state.js";
@@ -67,7 +67,7 @@ export async function landingCheckRed(
     ctx.state.lastError = `merge failed: merge_blocked — ${checkFailureReasons(red.check, red.outcome)[0]}`;
     return "merge_blocked";
   }
-  return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state);
+  return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state, wt);
 }
 
 /** A landing blocked by a deterministic cross-check (onLandingBlocked's fix-claim or
@@ -95,6 +95,7 @@ export async function landingBlocked(
   ctx.state.unreviewFailures = 0;
   saveLoopState(ctx.root, ctx.state);
   await deleteRef(ctx.root, landingRefName(role));
+  await removeLandWorktree(ctx.root, wt);
   logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
   return "rejected";
 }
@@ -116,6 +117,7 @@ export async function attributeRedCheck(
   label: "batch check" | "landing check",
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
   state: LoopState,
+  wt?: string,
 ): Promise<TickResult> {
   // An unverified red — a run that spanned a host sleep, the tree never judged — is not the
   // change's failure and not a strike: keep the ref for recovery's re-land and name the sleep
@@ -140,6 +142,9 @@ export async function attributeRedCheck(
   state.unreviewFailures = 0;
   saveLoopState(ctx.root, state);
   await deleteRef(ctx.root, landingRefName(role));
+  // Terminal rejection: release the disposable lander worktree too, matching the other
+  // rejected/discarded sinks (reviewPinnedChange, landApprovedChange, landingBlocked).
+  if (wt) await removeLandWorktree(ctx.root, wt);
   logEvent(ctx.root, { loop: role, type: "review_rejected", head, reasons });
   return "rejected";
 }

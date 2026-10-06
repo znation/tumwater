@@ -1,9 +1,9 @@
 import type { LoopRunner } from "../loop.js";
 import type { Semaphore } from "../semaphore.js";
 import type { TumwaterConfig } from "../config-schema.js";
-import { deleteRef } from "../git.js";
+import { deleteRef, removeLandWorktree } from "../git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
-import { landingRefName } from "../paths.js";
+import { landingRefName, landWorktreePath } from "../paths.js";
 import type { AbortableLanding } from "../operator-requests.js";
 import type { LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick-outcome.js";
@@ -157,6 +157,8 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
     } catch {
       /* already gone */
     }
+    // Terminal outcome: the pinned ref is gone and its disposable worktree may go too.
+    await removeLandWorktree(root, landWorktreePath(root, role));
   }
 }
 

@@ -7,6 +7,7 @@
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
 import { ensureDetachedWorktree } from "../worktree.js";
+import { removeLandWorktree } from "../git.js";
 import { landWorktreePath } from "../paths.js";
 import {
   landApprovedChange,
@@ -219,7 +220,7 @@ export async function landVetted(
         // after it unattempted for the next drain.
         const { state } = wiringFor(entries[front]!.role);
         const entry = entries[front]!;
-        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state);
+        results[front] = await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state, wtPath);
         report(front, "done");
         break;
       }
@@ -239,6 +240,8 @@ export async function landVetted(
         report(s, "done");
       }
       landedCount += size;
+      // Terminal outcome once the whole stack is on main: release the shared lander worktree.
+      if (front + size === entries.length) await removeLandWorktree(ctx.root, wtPath);
       // What broke the red run is still in its remainder, unless this prefix WAS that run —
       // then the red did not reproduce, and the rest are tried together.
       suspect = suspect !== null && suspect > size ? suspect - size : null;

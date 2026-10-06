@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { git, gitTry } from "./git-run.js";
 import { branchExists, resolveGitDir } from "./git.js";
-import { removeTree } from "./files.js";
+import { pruneOldDirectory, removeTree } from "./files.js";
 import { branchName, worktreePath } from "./paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
@@ -34,6 +34,10 @@ async function clearStaleWorktree(root: string, dir: string): Promise<void> {
     await gitTry(root, "worktree", "prune"); // drop any registration left pointing at it
   }
 }
+
+/** Age past which a stale `target/` build dir inside a worktree is pruned (see pruneOldDirectory).
+ * `git clean -fd` leaves gitignored dirs like `target/` behind, so they are reaped by age. */
+const TARGET_PRUNE_DAYS = 7;
 
 /** The tail of each repository's queue of worktree setups (serializeSetup). */
 const setupQueues = new Map<string, Promise<unknown>>();
@@ -132,6 +136,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
   await git(dir, "checkout", "--detach", ref);
   await git(dir, "reset", "--hard", ref);
   await git(dir, "clean", "-fd");
+  await pruneOldDirectory(dir, TARGET_PRUNE_DAYS);
   return dir;
 }
 
@@ -182,4 +187,5 @@ export async function resetWorktreeToMain(wt: string, mainBranch: string): Promi
   await abortSync(wt);
   await git(wt, "reset", "--hard", mainBranch);
   await git(wt, "clean", "-fd");
+  await pruneOldDirectory(wt, TARGET_PRUNE_DAYS);
 }
