@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { timeAndSpend } from "../src/time-spend.js";
+import { timeAndSpend } from "../src/failure/time-spend.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 // The failure digest's time-and-spend fold: how the window's tick_ends price into the

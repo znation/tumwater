@@ -3,7 +3,7 @@
  * both count by these keys, so the normalization, the two tick-timeout shapes and their
  * pooling, and the grouping engine live here rather than inside either consumer. Pure string
  * and grouping logic — no event reads, no clock. */
-import { rankByCount } from "../rank.js";
+import { rankByCount } from "./rank.js";
 
 /** The verbatim example's trim bound, shared by the normalized key and each cluster's example.
  * The digest's other caps (top-N counts, summary width) live beside their consumers in
@@ -87,7 +87,7 @@ const TICK_TIMEOUT_PROGRESSING_REVIEW_KEY =
 /** The cluster key a normalized error clusters under: the two tick-timeout shapes pool into
  * the plain one (a mixed fleet of plain and progressing kills is one cause's agent-hours on
  * one knob, not two half-size rows the top-N cut can drop — the same pooling the error-storm
- * reducer applies, src/error-storm.ts), and every other cause stands as normalizeClusterKey
+ * reducer applies, src/failure/error-storm.ts), and every other cause stands as normalizeClusterKey
  * rendered it. */
 export function poolTimeoutKey(key: string): string {
   return key === TICK_TIMEOUT_PROGRESSING_KEY || key === TICK_TIMEOUT_PROGRESSING_REVIEW_KEY

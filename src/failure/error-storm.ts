@@ -9,9 +9,9 @@
  * event). Like the hold it has memory — which storm is active is a fact about the past
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
-import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure/failure-cluster.js";
+import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
-import { ERROR_STREAK_WARN } from "./tick/tick-apply.js";
+import { ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
  * storm warning. Three, matching the per-role warn bar (ERROR_STREAK_WARN, src/tick/tick-apply.ts):

@@ -23,7 +23,7 @@ import {
 } from "../scheduling/quiet-hours.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
 import { type FleetHold } from "../fleet/fleet-hold.js";
-import { ERROR_STORM_QUIET, type ErrorStorm } from "../error-storm.js";
+import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -262,7 +262,7 @@ export function pollFleetGates(
   // permit after a later poll sees that poll's world.
   states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(liveConfig, runners), now);
 
-  // Fleet-wide error-storm warning (src/error-storm.ts): when several roles' tick streaks
+  // Fleet-wide error-storm warning (src/failure/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
   // warning still fires alone — this adds the one fleet-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rankCountEntries } from "../src/rank.js";
+import { rankCountEntries } from "../src/failure/rank.js";
 
 // rank.ts is the single home of the "count descending, then key ascending" ranking rule the
 // usage report's per-role lines and the fleet warnings' strongest-cause picks share. These

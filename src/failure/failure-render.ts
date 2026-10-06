@@ -5,7 +5,7 @@
  * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_DAYS) lives in telemetry-digest.ts. */
 import type { TickResult } from "../tick/tick-outcome.js";
 import { type ClusterSection, type FailureReportData, type OutcomeRow } from "./failure-data.js";
-import { type SpendCell } from "../time-spend.js";
+import { type SpendCell } from "./time-spend.js";
 import { plural } from "../phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "../text/datetime.js";

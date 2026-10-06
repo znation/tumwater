@@ -6,7 +6,7 @@
  * a pure render with no ink or UI dependency, and core modules (rank.ts, history-data.ts)
  * name it in their contracts. */
 import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
-import { rankCountEntries } from "../rank.js";
+import { rankCountEntries } from "../failure/rank.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatTimestamp, reportWindow } from "../text/datetime.js";

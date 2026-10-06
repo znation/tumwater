@@ -1,6 +1,6 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
  * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the
- * fleet-wide storm alarms (src/error-storm.ts, src/failure/failure-spread.ts), but both only talk —
+ * fleet-wide storm alarms (src/failure/error-storm.ts, src/failure/failure-spread.ts), but both only talk —
  * the role keeps ticking on the error ladder's 600 s max backoff forever, burning a model
  * slot and spend on a loop that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed
  * ticks this gate pauses the role through the same per-role pause marker the operator's

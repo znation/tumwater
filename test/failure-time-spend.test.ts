@@ -1,7 +1,7 @@
 // The failure digest's time-and-spend accounting and the loss-cause ranking it feeds — moved
 // out of failure-render.test.ts (2026-10-01) so that file holds the digest's collection,
 // rendering, and CLI-shell tests while this one owns the per-role × outcome-class pricing
-// (src/time-spend.ts, folded in through collectFailureReport) and the "Top loss causes by
+// (src/failure/time-spend.ts, folded in through collectFailureReport) and the "Top loss causes by
 // time" table's semantics: time-first ranking, the queued→landed join, and pooled timeouts.
 import test from "node:test";
 import assert from "node:assert/strict";
