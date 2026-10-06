@@ -6,7 +6,11 @@
  * queued prompts in execution order. It is the browser twin of the rules status-model.ts
  * computes server-side; test/gui-client.test.ts pins the copies against each other. Spliced
  * into gui-client.ts's script, reaching its helpers (esc, isActivePhase) through that
- * concatenation. */
+ * concatenation. The stamp-metadata pattern is interpolated from backlog-structure.ts's
+ * ENTRY_STAMP_META_SOURCE — String.raw interpolates substitutions normally — so the
+ * browser regex cannot drift from the server twin the tests pin it against. */
+import { ENTRY_STAMP_META_SOURCE } from "../backlog-structure.js";
+
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for
   // its pill, whether it is live work, and the detail the label carried after its first word.
@@ -120,9 +124,13 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (ROUTINE_EVENTS.includes(item.type)) return "routine";
     return "info";
   }
-  // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata.
+  // A backlog title's trailing "(planned 2026-09-29)"-style note, split off as metadata —
+  // the pattern is backlog-structure.ts's ENTRY_STAMP_META_SOURCE (interpolated at module
+  // load, compiled once here), the same regex fleet-alerts.ts's entryTitle strips with, so
+  // a new stamp verb reaches both dashboards from one edit.
+  const ENTRY_STAMP_RE = new RegExp(${JSON.stringify(ENTRY_STAMP_META_SOURCE)}, "i");
   function splitTitle(t) {
-    const m = /\s*\(((?:planned|reported|found|refined|asked|posted|filed|opened|done)\b[^)]*)\)\s*$/i.exec(String(t));
+    const m = ENTRY_STAMP_RE.exec(String(t));
     return m ? { title: String(t).slice(0, m.index), meta: m[1] } : { title: String(t), meta: "" };
   }
   // Queued prompts in execution order — the director's first, then each loop's — each with the

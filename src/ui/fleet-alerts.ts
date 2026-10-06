@@ -9,6 +9,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status-data.js";
+import { ENTRY_STAMP_META_RE } from "../backlog-structure.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { agree, pauseReasonSuffix, plural } from "../phrases.js";
@@ -45,9 +46,10 @@ function listRoles(loops: readonly AlertLoop[]): string {
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
-/** A backlog title without its trailing `(planned 2026-09-29)`-style note. */
+/** A backlog title without its trailing `(planned 2026-09-29)`-style note — the shared
+ * stamp-metadata regex backlog-structure.ts homes for both dashboards. */
 function entryTitle(title: string): string {
-  return title.replace(/\s*\((?:planned|reported|found|refined|asked|posted|filed|opened|done)\b[^)]*\)\s*$/i, "");
+  return title.replace(ENTRY_STAMP_META_RE, "");
 }
 
 /** ISO instants in server text (a restart cooldown's deadline) in local time. */
