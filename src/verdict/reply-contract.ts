@@ -83,6 +83,17 @@ export const REPLY_ENDINGS = `- End with exactly ONE of these three endings:
   3. You made changes: end your reply with this block, one line each:
 ${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 
+/** The review gate's closing rule as stated to pi: the two accepted verdict forms and the
+ * numbered-reasons line that must follow them. buildReviewPrompt (gate-prompts.ts) ends its
+ * rules list with this, and the gate's two same-session follow-ups (buildVerdictRequestPrompt,
+ * buildNoRerunPrompt) re-state it — one home, so the advertised pair is edited in one place
+ * instead of drifting between the three prompts. Indentation is the caller's: the review prompt
+ * indents both lines, the two follow-ups indent only the VERDICT line. The machine detector for
+ * these forms lives beside it (VERDICT_LINE_SOURCE below); gate-prompts.test.ts pins the forms
+ * buildReviewPrompt advertises against what parseVerdict accepts. */
+export const VERDICT_ENDING = `VERDICT: approve   or   VERDICT: reject
+followed by numbered reasons (for an approval, state what you checked and why it holds).`;
+
 /** The trimmed remainder of the first line that starts with `<label>:` (leading whitespace on
  * the line allowed); null when no such line carries content. Shared by every parser that pulls a
  * labeled field out of pi's final reply — SUMMARY/WHY/RISK/VERIFIED in git/commit-message.ts and the

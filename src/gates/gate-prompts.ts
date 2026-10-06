@@ -3,6 +3,7 @@ import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { VERDICT_ENDING } from "../verdict/reply-contract.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -158,8 +159,7 @@ Rules for this run:
 ${TEST_RUNNER_RULE}
 - Weigh the change against its stated purpose; do not approve work you did not actually check.
 - End your reply with exactly one line in this form:
-  VERDICT: approve   or   VERDICT: reject
-  followed by numbered reasons (for an approval, state what you checked and why it holds).`,
+  ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`,
   );
   return parts.join("\n\n");
 }
@@ -169,14 +169,13 @@ ${TEST_RUNNER_RULE}
  * prompt-followup.ts's buildSummaryRequestPrompt. The session already holds the full review, so one
  * short reply recovers the verdict the gate needs without paying a second full review run;
  * the caller bounds the run tightly and counts the strike against the HEAD only when this
- * too yields nothing (BUGS.md 2026-09-29). Like the review prompt's closing rule it names
- * both accepted forms, so the reply contract cannot drift between the two prompts. */
+ * too yields nothing (BUGS.md 2026-09-29). It shares the review prompt's closing rule
+ * (reply-contract.ts's VERDICT_ENDING), so the accepted forms cannot drift between the prompts. */
 export function buildVerdictRequestPrompt(): string {
   return `Your review reply above did not include the verdict line the harness parses, so
 your judgment was lost. Reply now with ONLY the closing block — no tool calls, no other text:
 one line in this form:
-  VERDICT: approve   or   VERDICT: reject
-followed by numbered reasons (for an approval, state what you checked and why it holds).`;
+  ${VERDICT_ENDING}`;
 }
 
 /** The no-re-run nudge (BUGS.md 2026-10-02): the reviewer broke the prompt's no-re-run rule
@@ -189,8 +188,7 @@ export function buildNoRerunPrompt(rerun: string): string {
 The full check passed at this exact tree before your review began. Do not re-run it — not in
 this worktree, not in a scratch copy. Finish the review now from what you have already read:
 reply with ONLY the closing block — no tool calls, no other text — one line in this form:
-  VERDICT: approve   or   VERDICT: reject
-followed by numbered reasons (for an approval, state what you checked and why it holds).`;
+  ${VERDICT_ENDING}`;
 }
 
 /** The note injected into a role's next tick prompt after its previous change was rejected in
