@@ -13,6 +13,7 @@ Reproduce: on unmodified main (commit 8391e528, before the per-tier budget-gate 
 that change. Suspected cause: unknown — `consumeWakeRequest` runs unconditionally every poll
 (src/orchestrator/orchestrator.ts), so something earlier in the poll wedges or kills the loop
 only in this test's setup.
+### The deterministic coverage table permanently flags cli.ts lines its passing tests already cover, and one it never can: the table's V8-dump mapper only counts dumps whose script URLs resolve under the checkout's `dist/src/` (coverage.cjs's PREFIX), but version.test.ts's compiled-CLI broken-install test copies `dist/` to a temp dir before spawning it, so those child dumps never count — cli.ts's `fail(problem ?? …)` line is reported uncovered though the test `the compiled CLI fails 'version' with the reason on a broken install` passes through it; the same blind spot shadows every spawnCli child a test SIGKILLs (no dump on kill), and cli.ts's `version === undefined` fallback operand is unreachable outright because version.ts returns a problem for every missing or non-string version, so the table's residual `src/cli.js` misses (3 lines, 6 branches in the 2026-10-06 deterministic table) can never be closed by any test (found by coverage loop 2026-10-06 by mapping `npm run test:coverage`'s own NODE_V8_COVERAGE dumps with docs/code-metrics/coverage.cjs: cli.ts uncovered lines 136, 141, 330, while grep shows `tumwater gui`/`tui` dispatch, their unknown-args gates, `bug` with no arguments, and both `help` arities each driven by a passing test)
 
 ## Fixed
 
