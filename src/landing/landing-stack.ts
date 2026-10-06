@@ -9,7 +9,7 @@
 import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
 import { deleteRef, gitLines, headOf } from "../git/git.js";
 import { landingRefName } from "../paths.js";
-import { ensureDetachedWorktree } from "../worktree.js";
+import { ensureDetachedWorktree } from "../git/worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";

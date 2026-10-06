@@ -5,7 +5,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { reviewAheadOfMain } from "../src/review/review.js";
 import { runPi } from "../src/pi/pi.js";
 import { headOf } from "../src/git/git.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh } from "./repo-fixtures.js";
 
 /** Shared scaffolding for the review-gate orchestration tests — the "Gate orchestration"

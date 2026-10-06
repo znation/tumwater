@@ -446,7 +446,7 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   (worktree present? branch present? `aheadOfMain` count, dirty flag, enabled-in-config flag)
   and `retireRole(root, role, { force })` performing the removal. Reuse the existing pieces:
   `worktreePath`/`branchName` from `src/paths.ts`, `aheadOfMain`/`isDirty`/`deleteRef` from
-  `src/git/git.ts`, and a new `removeWorktree(root, role)` in `src/worktree.ts` that unlocks the
+  `src/git/git.ts`, and a new `removeWorktree(root, role)` in `src/git/worktree.ts` that unlocks the
   worktree's `locked` file (see `ensureWorktree`'s comment on the `locked` race) before
   `git worktree remove --force`, falling back to `git worktree prune` for a dead registration —
   the same recovery `isUsableWorktree` already classifies.
@@ -460,7 +460,7 @@ to clean up a retired loop's workspace. Give the operator one command that does 
   skipped: []}`, a help entry in `src/cli/help.ts`, and a `tumwater help retire` shape test in the
   style of `test/command-shape.test.ts`. Doctor stays read-only — out of scope.
 
-**Files touched.** `src/retire.ts` (new), `src/worktree.ts`, `src/cli.ts`, `src/cli/cli-args.ts`,
+**Files touched.** `src/retire.ts` (new), `src/git/worktree.ts`, `src/cli.ts`, `src/cli/cli-args.ts`,
 `src/cli/help.ts`, `test/retire.test.ts` (new), `test/cli-operators.test.ts` (command-shape rows).
 
 **Acceptance criteria.**

@@ -5,7 +5,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { setRef } from "../git/git.js";
-import { abortSync, ensureWorktree, resetWorktreeToMain } from "../worktree.js";
+import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "../gates/gate-prompts.js";

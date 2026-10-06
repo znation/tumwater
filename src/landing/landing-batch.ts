@@ -6,7 +6,7 @@
  * beside it in landing-stack.ts. The shared review gate (reviewPinnedChange) and the
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
-import { ensureDetachedWorktree } from "../worktree.js";
+import { ensureDetachedWorktree } from "../git/worktree.js";
 import { removeLandWorktree } from "../git/git.js";
 import { landWorktreePath } from "../paths.js";
 import {

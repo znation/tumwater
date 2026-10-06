@@ -8,12 +8,12 @@ import {
   ensureDetachedWorktree,
   ensureWorktree,
   resetWorktreeToMain,
-} from "../src/worktree.js";
+} from "../src/git/worktree.js";
 import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing/landing-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { assertClean, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
 
-// The worktree helpers (src/worktree.ts): role worktrees, the mirror's detached checkout,
+// The worktree helpers (src/git/worktree.ts): role worktrees, the mirror's detached checkout,
 // reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
 // from test/redeployer.test.ts, where it was filed with the redeployer instead of beside the
 // module it tests; the ensureWorktree/resetWorktreeToMain/abortSync cluster moved here from

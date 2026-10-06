@@ -1,6 +1,6 @@
 import { deleteRef, headOf, removeLandWorktree, setRef } from "../git/git.js";
 import { landWorktreePath, landingRefName } from "../paths.js";
-import { ensureDetachedWorktree } from "../worktree.js";
+import { ensureDetachedWorktree } from "../git/worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";

@@ -7,7 +7,7 @@ import { CHECK_TIER, withCheckPermit } from "../src/concurrency/check-permit.js"
 import { checkMainBaseline, mainIsGreen, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture, runsOf } from "./loop-fixtures.js";
-import { ensureDetachedWorktree } from "../src/worktree.js";
+import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { mirrorWorktreePath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./repo-fixtures.js";

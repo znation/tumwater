@@ -28,7 +28,7 @@ import {
   targetBranch,
 } from "../src/git/git.js";
 import { runGit } from "../src/git/git-run.js";
-import { ensureWorktree, resetWorktreeToMain } from "../src/worktree.js";
+import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
 // The landing-flow git helpers live in landing-git.ts — moved there from landing-merge.ts (which
 // got them from git.ts in the bugfix that completed the half-finished organize tick 78 move)
 // once the lander and the batch lander started calling them directly.

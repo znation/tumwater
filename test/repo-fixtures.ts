@@ -15,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { pathPrepend, projManifest, writeScript } from "./fake-commands.js";
 

@@ -12,7 +12,7 @@ import {
 import { errorMessage } from "./text/text.js";
 import { loadLoopState } from "./loop/loop-state.js";
 import { branchName, landingRefName, worktreePath } from "./paths.js";
-import { isUsableWorktree, removeWorktree } from "./worktree.js";
+import { isUsableWorktree, removeWorktree } from "./git/worktree.js";
 import { resumeRole } from "./fleet/fleet-state.js";
 import { git } from "./git/git-run.js";
 

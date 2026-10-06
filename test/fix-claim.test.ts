@@ -14,7 +14,7 @@ import {
 } from "../src/verdict/fix-claim.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, runningAsRoot, sh } from "./repo-fixtures.js";
 import { reviewGate, ROLE } from "./gate-fixtures.js";
 import { fakePi, piRanMarker } from "./fake-pi.js";

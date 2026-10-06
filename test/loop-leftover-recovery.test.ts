@@ -19,7 +19,7 @@ import { setRef } from "../src/git/git.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
 import { ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./log-fixtures.js";

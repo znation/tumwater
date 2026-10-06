@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { readBuildInfo } from "../src/build/build-info.js";
 import { compileStaged, pruneStaleStagings, swapDist, STAGED_PRUNE_AFTER_MS } from "../src/build/build-stage.js";
-import { ensureDetachedWorktree } from "../src/worktree.js";
+import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { mirrorWorktreePath, stagingDir, stagingRootDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 

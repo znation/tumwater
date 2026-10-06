@@ -24,7 +24,7 @@ import {
   settle,
 } from "./redeploy-fixtures.js";
 import { autoRestartStampPath, mirrorWorktreePath } from "../src/paths.js";
-import { ensureDetachedWorktree } from "../src/worktree.js";
+import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { projManifest } from "./fake-commands.js";
 test("a non-self-hosted harness never acts, whatever main does", async () => {

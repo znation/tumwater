@@ -5,7 +5,7 @@ import path from "node:path";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh, writeConfig } from "./repo-fixtures.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests reach

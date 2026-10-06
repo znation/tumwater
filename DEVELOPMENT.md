@@ -101,7 +101,7 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/build/build-info.ts`: the build stamp (dist/build-info.json), beside the staged compile
   (`build-stage.ts`) and the deterministic pre-check (`build-check.ts` and its plumbing,
   `build-check-*.ts`).
-- `src/worktree.ts`: the persistent worktree lifecycle.
+- `src/git/worktree.ts`: the persistent worktree lifecycle.
 - `src/text/`: the shared human-facing text-shaping family — `text.ts` (whitespace,
   truncation, integer parsing) beside the single-format homes split from it: `format.ts`
   (number, money, and hash formats), `datetime.ts` (local date/time and day math), and

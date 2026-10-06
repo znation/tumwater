@@ -6,7 +6,7 @@ import { logEvent, warnEvent } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles } from "../git/git-diff.js";
-import { resetWorktreeToMain } from "../worktree.js";
+import { resetWorktreeToMain } from "../git/worktree.js";
 import { piLogPath, reviewSessionDir } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";

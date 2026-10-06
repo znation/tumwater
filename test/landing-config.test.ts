@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/landing/landing-git.js";
 import { loadConfig } from "../src/config/config.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { assertClean, commitIn, makeRepo, sh } from "./repo-fixtures.js";
 
 /** landing-git.ts's config write-back across a landing that untracks tumwater.json, split out

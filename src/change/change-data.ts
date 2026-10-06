@@ -12,7 +12,7 @@ import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git/g
 import { gitTry } from "../git/git-run.js";
 import { aheadOfMainDiff, changedFiles } from "../git/git-diff.js";
 import { branchName, worktreePath } from "../paths.js";
-import { isUsableWorktree } from "../worktree.js";
+import { isUsableWorktree } from "../git/worktree.js";
 
 /** One unlanded commit: its abbreviated sha and subject, from `git log --oneline`. */
 interface RoleChangeCommit {

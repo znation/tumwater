@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { git, gitTry } from "./git/git-run.js";
-import { branchExists, resolveGitDir } from "./git/git.js";
-import { pruneOldDirectory, removeTree } from "./files/files.js";
-import { branchName, worktreePath } from "./paths.js";
+import { git, gitTry } from "./git-run.js";
+import { branchExists, resolveGitDir } from "./git.js";
+import { pruneOldDirectory, removeTree } from "../files/files.js";
+import { branchName, worktreePath } from "../paths.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per loop, reset to main
  * on every fresh tick) and the detached mirror worktree redeploy.ts verifies and compiles.

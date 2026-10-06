@@ -10,7 +10,7 @@ import {
   renderBacklogStructureBlock,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
-import { ensureWorktree } from "../src/worktree.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part 3/4):

@@ -13,7 +13,7 @@ import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../text/phrases.js";
 import { gitTry } from "../git/git-run.js";
 import { gateMainWorktreePath } from "../paths.js";
-import { ensureDetachedWorktree } from "../worktree.js";
+import { ensureDetachedWorktree } from "../git/worktree.js";
 
 /** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"):
  * before an authoring run is spent on top of pristine main, verify that MAIN ITSELF is green —

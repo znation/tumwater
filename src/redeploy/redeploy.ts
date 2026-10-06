@@ -6,7 +6,7 @@ import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../baseli
 import { compileStaged, swapDist } from "../build/build-stage.js";
 import { readJsonFile, writeJsonFile } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
-import { ensureDetachedWorktree } from "../worktree.js";
+import { ensureDetachedWorktree } from "../git/worktree.js";
 import { autoRestartStampPath, mirrorWorktreePath, witnessWorktreePath } from "../paths.js";
 import { type AutoRestartRecord, type RedeployDeps, RESTART_DRAIN_MAX_MS } from "./redeploy-policy.js";
 import { type RedeployEvent, Redeployer } from "./redeployer.js";
