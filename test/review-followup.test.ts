@@ -1,4 +1,4 @@
-/** Tests for src/review-followup.ts — the review gate's bounded follow-up turns on the
+/** Tests for src/review/review-followup.ts — the review gate's bounded follow-up turns on the
  * reviewer's own session. The gate-level tests (review.test.ts) exercise requestVerdict
  * through the whole review pipeline with a fake pi; these unit tests pin the seam directly
  * with a fake runGatePi: the no-session bail-out, the budget caps, the --continue wiring,
@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { requestNoRerun, requestVerdict } from "../src/review-followup.js";
+import { requestNoRerun, requestVerdict } from "../src/review/review-followup.js";
 import { buildNoRerunPrompt, buildVerdictRequestPrompt } from "../src/gate-prompts.js";
 import { piLogPath, reviewSessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -17,7 +17,7 @@ import { type TumwaterConfig } from "../src/config/config-schema.js";
 import { type ToolCallStart } from "../src/suite-rerun.js";
 import { hasResumableSession} from "../src/pi/pi.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { type ReviewContext } from "../src/review.js";
+import { type ReviewContext } from "../src/review/review.js";
 
 import type { PiRunOptions } from "../src/pi/pi.js";
 

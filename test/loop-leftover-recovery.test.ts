@@ -371,7 +371,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
   const m1 = path.join(tmpdir(), "streak-phase1");
   // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the backend is down, so
   // pi exits nonzero with no reply. That is a FAILED run, not a strike against the HEAD, so the
-  // pin is kept indefinitely (src/review.ts) — the "dead reviewer backend" of the bug. Phase 1
+  // pin is kept indefinitely (src/review/review.ts) — the "dead reviewer backend" of the bug. Phase 1
   // (tick 1): commit and pin. Every later tick ends on leftover recovery, which re-queues the
   // pin. Before the fix the streak reset on each recovery tick and nothing ever named the
   // wedged pin (BUGS.md 2026-09-21).

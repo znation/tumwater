@@ -6,18 +6,18 @@
  * rejection never shows as "reviewing" on the dashboards and consumes no reviewer budget. */
 
 import type { ReviewContext, GateResult } from "./review.js";
-import type { LoopState } from "./loop-state.js";
-import { warnEvent } from "./events.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "./build-check/build-check-detect.js";
-import { runScopedBuildCheck } from "./build-check/build-check-scoped.js";
-import { checkFailureReasons, describeCheck, failureHeadline } from "./build-check/build-check-report.js";
-import { sleptPhrase, unverifiedTreeOutcome } from "./build-check/build-check-events.js";
-import { sampleSleepClock } from "./host-sleep.js";
-import { recordReview } from "./tick/tick-apply.js";
-import { mainRedNotMine } from "./phrases.js";
-import { shortSha } from "./format.js";
-import { checkWaitStage, setLandingStage } from "./landing/landing-slot.js";
-import { mainTipVerdict } from "./main-red.js";
+import type { LoopState } from "../loop-state.js";
+import { warnEvent } from "../events.js";
+import { BUILD_CHECK_TIMEOUT_MS } from "../build-check/build-check-detect.js";
+import { runScopedBuildCheck } from "../build-check/build-check-scoped.js";
+import { checkFailureReasons, describeCheck, failureHeadline } from "../build-check/build-check-report.js";
+import { sleptPhrase, unverifiedTreeOutcome } from "../build-check/build-check-events.js";
+import { sampleSleepClock } from "../host-sleep.js";
+import { recordReview } from "../tick/tick-apply.js";
+import { mainRedNotMine } from "../phrases.js";
+import { shortSha } from "../format.js";
+import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
+import { mainTipVerdict } from "../main-red.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
  * (`resolved` — a deterministic rejection, failure, or unverified tree) or the tree passed

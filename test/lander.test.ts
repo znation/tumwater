@@ -417,7 +417,7 @@ test("the lander worktree is per-role, kept detached at a non-terminal outcome, 
   }
 });
 // A gate pre-check failure that survives its one re-run is attributed through main's own
-// baseline verdict (src/review.ts), and the landing's ref lifecycle follows the two outcomes: a
+// baseline verdict (src/review/review.ts), and the landing's ref lifecycle follows the two outcomes: a
 // green main's reject deletes the pin, a red main's no-strike failure keeps it for the next
 // re-land. Neither spends a pi run. makeRepo's seed commit is byte-identical across tests run in
 // the same second and the baseline cache is keyed by SHA, so the red case moves main to a commit

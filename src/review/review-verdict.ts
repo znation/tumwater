@@ -4,8 +4,8 @@
  * gate knows what to do about one. It depends only on the reply contract and build-check-report's
  * clipReason (the shared per-line cap for persisted machine text). */
 
-import { verdictLines, type VerdictMatch } from "./reply-contract.js";
-import { clipReason } from "./build-check/build-check-report.js";
+import { verdictLines, type VerdictMatch } from "../reply-contract.js";
+import { clipReason } from "../build-check/build-check-report.js";
 
 /** A parsed reviewer verdict with its reasons (numbered lines after the VERDICT line; any
  * other non-empty prose as a fallback). */

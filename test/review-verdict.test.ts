@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseVerdict } from "../src/review-verdict.js";
+import { parseVerdict } from "../src/review/review-verdict.js";
 
 // The review gate's fail-closed rule (review-verdict.ts): a reply with no parseable verdict
 // is a FAILED review, never an approval — a model that forgets the VERDICT line must not have

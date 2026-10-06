@@ -1077,7 +1077,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
   sentence.
 - Threading config to `detectBuildCheck` reaches three call sites, not two: `runScopedBuildCheck(root,
   role, scope, wt, config, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` (build-check/build-check.ts:359) calls
-  `detectBuildCheck(wt)` itself (:366) and serves the `gate` (src/review.ts:216 and the post-fix
+  `detectBuildCheck(wt)` itself (:366) and serves the `gate` (src/review/review.ts:216 and the post-fix
   recheck :267), `landing` (src/merge.ts:155) and `batch` (src/landing-batch.ts:229) scopes;
   `checkMainBaseline`
   (src/main-baseline.ts:123 — its signature grows to `checkMainBaseline(wt, config, onRun?,
@@ -1107,7 +1107,7 @@ redeploy's `mainGreen` all degrade to "no check" — an entire safety layer sile
 
 **Files touched.** src/types.ts, src/config-validation.ts, src/build-check/build-check-detect.ts,
 src/build-check/build-check.ts, src/prompt/prompt.ts,
-src/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
+src/review/review.ts, src/merge.ts, src/landing-batch.ts, src/main-baseline.ts, src/main-red.ts, src/redeploy.ts,
 src/loop.ts, src/doctor/doctor.ts, test/build-check.test.ts, test/prompt.test.ts, test/review.test.ts,
 test/main-baseline.test.ts, test/redeployer.test.ts, test/doctor.test.ts.
 
@@ -1157,7 +1157,7 @@ Corrections (pinned; the three stale spots are already corrected in place):
    `test/main-red.test.ts`.
 2. **The threading surface is three `detectBuildCheck` sites plus a new `batch` scope, not
    "two".** `runScopedBuildCheck(root, role, scope, wt, timeoutMs)` (src/build-check/build-check.ts:302) now
-   serves `gate` (src/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
+   serves `gate` (src/review/review.ts:157), `landing` (src/merge.ts:151) and `batch` (src/lander.ts:376);
    `BuildCheckScope`/`MERGE_SCOPES` (lines 269/281) postdate the last audit. Config must reach
    `detectBuildCheck` at src/build-check/build-check.ts:309, src/main-baseline.ts:159, and src/doctor/doctor.ts:145.
    Pinned mechanism: add `config` as an explicit parameter to `runScopedBuildCheck` (review.ts and
@@ -1172,7 +1172,7 @@ Corrections (pinned; the three stale spots are already corrected in place):
    `detectBuildCheck(startDir, config?, maxLevels = WALK_UP_LEVELS)` and update those four call
    sites to `(dir, undefined, N)`.
 4. **Configured timeout precedence was unnamed.** `runScopedBuildCheck` takes an explicit
-   `timeoutMs`, and src/review.ts:157 passes `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS`
+   `timeoutMs`, and src/review/review.ts:157 passes `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS`
    — which would override a configured `check.timeoutSeconds`. Pin the order: explicit per-scope
    argument > `check.timeoutSeconds * 1000` > `BUILD_CHECK_TIMEOUT_MS`; `runScopedBuildCheck`'s
    default and main-baseline.ts's `runBuildCheck(wt, check)` call both read the configured value,
@@ -1215,7 +1215,7 @@ three states and the same timeout-remap policy, `clipBuildTail` :235, `failureHe
 `runBuildCheck(wt, check, timeoutMs = BUILD_CHECK_TIMEOUT_MS)` :269, `BuildCheckScope` :320 /
 `SCOPE_WORDS` :325 / `MERGE_SCOPES` :337 (were :269/:281), `runScopedBuildCheck` :368 (was :302)
 whose internal `detectBuildCheck(wt)` is :375 and `runBuildCheck` :378. The three scopes serve
-`gate` (src/review.ts:161, was :157, still passing `ctx.buildCheckTimeoutMs ??
+`gate` (src/review/review.ts:161, was :157, still passing `ctx.buildCheckTimeoutMs ??
 BUILD_CHECK_TIMEOUT_MS` at :166), `landing` (src/merge.ts:151, unchanged) and `batch`
 (src/lander.ts:394, was :376). `src/prompt/prompt.ts` — COMMON_RULES (:53) still carries the
 unconditional node_modules sentence (:75–77, was 74–76) and the vague "if it has a build or test
@@ -1292,10 +1292,10 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
   (was :368) whose internal `detectBuildCheck(wt)` is :476 and `runBuildCheck` :479 (were
   :375/:378). The timeout-remap policy (`MERGE_SCOPES.has(scope)` at :486, the "tree is
   unverified" reason :487) is unchanged, as is `clipBuildTail`'s message-line retention.
-- The three scopes serve gate (src/review.ts:205, was :161, with the
+- The three scopes serve gate (src/review/review.ts:205, was :161, with the
   `ctx.buildCheckTimeoutMs ?? BUILD_CHECK_TIMEOUT_MS` expression at :210), landing
   (src/merge.ts:151, unchanged), batch (src/lander.ts:447, was :394).
-- NEW gate call site (post-audit feature): the recheck after a spent fix run, src/review.ts:256
+- NEW gate call site (post-audit feature): the recheck after a spent fix run, src/review/review.ts:256
   with the same timeout expression at :261. Both gate sites sit inside `reviewBuild` where
   `config` is already destructured (:158), so they need no extra threading — but the fix prompt
   they spawn does (correction 1).
@@ -1323,9 +1323,9 @@ src/config-validation.ts` still finds no `check` key. Re-pinned anchors (old →
 Correction (pinned in place):
 1. **The gate's build-fix prompt is an npm assumption the 09-23 fix-on-the-spot feature added.**
    `buildBuildFixPrompt(roleId, script, reasons)` (src/prompt/prompt.ts:346) interpolates
-   `` `npm run ${script}` `` twice into its text, and src/review.ts:235 calls it with
+   `` `npm run ${script}` `` twice into its text, and src/review/review.ts:235 calls it with
    `check.script` — a field the configured-command variant of the `BuildCheck` union does not
-   have. The rejection reasons are equally npm-shaped: the headline at src/review.ts:226–227
+   have. The rejection reasons are equally npm-shaped: the headline at src/review/review.ts:226–227
    reads `build check failed (${check.script}): …`. Pin: both take the check's human
    description instead of a script name — one `describeCheck(check)` string (e.g. "verify with
    `pytest -q`") replaces `npm run ${script}` in the prompt (including its "Re-run …" rule) and
@@ -1372,7 +1372,7 @@ Re-pinned anchors (09-24 note's terms → today):
   internal `detectBuildCheck(wt)` :366 and `runBuildCheck` :369. `describeCheck` is pinned into
   build-check/build-check-detect.ts (pure text beside the union it describes; the module boundary 3261751's
   header states is "pure filesystem concern" — human-facing text of the check belongs with it).
-- **Gate sites:** src/review.ts:216 (pre-check, `ctx.buildCheckTimeoutMs ??
+- **Gate sites:** src/review/review.ts:216 (pre-check, `ctx.buildCheckTimeoutMs ??
   BUILD_CHECK_TIMEOUT_MS` at :221) and :267 (post-fix recheck, :272), both inside reviewBuild
   where ctx already destructures config (GateContext :90).
 - **Landing:** src/merge.ts:155 (was :151). `MergeContext` :42 still has no config; `exemptPaths`
@@ -1409,7 +1409,7 @@ Correction (extends the 09-24 note's correction 1, pinned in place):
    added — the 09-24 audit caught the fix prompt but missed these.** `verifiedByHarness` (the
    line named in the reviewer's prompt when the pre-check ran green) interpolates
    `` `npm run ${check.script}` (the project's declared check) passed `` at BOTH sites:
-   src/review.ts:284 (post-fix recheck path) and :296 (first-try path). Pin: same substitution as
+   src/review/review.ts:284 (post-fix recheck path) and :296 (first-try path). Pin: same substitution as
    the failure side — `describeCheck(check)` replaces the `npm run ${check.script}` fragment
    (e.g. "`pytest -q` (the project's declared check) passed") at both sites; review.ts needs no
    extra threading (describeCheck imports from build-check-detect.js).

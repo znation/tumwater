@@ -89,7 +89,7 @@ Comment share is comment lines divided by comment plus code lines.
   - `eventMessage`: 72, mostly one flat switch ([src/event-format.ts](../src/event-format.ts)).
   - The TUI key handler: 60 ([src/ui/tui-keys.ts](../src/ui/tui-keys.ts)).
   - `main`: 57 ([src/cli.ts](../src/cli.ts)).
-  - `reviewAheadOfMain`: 50 ([src/review.ts](../src/review.ts)).
+  - `reviewAheadOfMain`: 50 ([src/review/review.ts](../src/review/review.ts)).
 - **File sizes:** median 94 code lines, largest 474 (`src/ui/gui-styles.ts`), none over 500.
 
 ESLint's own `complexity` rule, run over `src/` as a cross-check, agrees closely: 1,517 functions

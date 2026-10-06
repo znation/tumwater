@@ -11,7 +11,7 @@ import {
   buildRejectedReviewNote,
   buildReviewPrompt,
 } from "../src/gate-prompts.js";
-import { parseVerdict } from "../src/review-verdict.js";
+import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";
 import { oneLine } from "./oracles.js";
@@ -156,7 +156,7 @@ test("buildMainRedNote degrades when the script or headline is absent", () => {
 });
 
 
-// Prompt contract for the review gate (src/review.ts): the reviewer is told to end with
+// Prompt contract for the review gate (src/review/review.ts): the reviewer is told to end with
 // exactly one VERDICT line, and a reply without a parseable line fails the review closed —
 // three such failures discard the commit. If the form the prompt advertises ever drifts from
 // what parseVerdict accepts, every real merge starts failing; no e2e test can catch it because

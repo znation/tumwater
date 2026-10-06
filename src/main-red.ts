@@ -159,7 +159,7 @@ type MainTipVerdict =
 let gateMainQueue: Promise<unknown> = Promise.resolve();
 
 /** Main's baseline verdict at its current tip, for attributing a gate check that failed twice
- * (src/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked through
+ * (src/review/review.ts): gateMainWorktreePath is re-pointed at `mainBranch`'s tip and asked through
  * checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every landing
  * seeds green for the SHA it moved main to, so the common case is a cache hit. A miss (or a
  * provisional red from another worktree) runs the declared check once here, bounded by its

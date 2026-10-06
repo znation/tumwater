@@ -37,7 +37,7 @@ are in test/prompt.test.ts.
 `withLock`) but untested — two fake-pi loops, one under review while the other merges.
 (c) The `reviewing <elapsed>` state cell has no test in status-render.test.ts.
 (d) Landed since this audit: feature tick 54 (`93d14f5`, audited by the plan loop 2026-08-29 at
-`fda67b8`) implemented the full design in src/review.ts — `detectBuildCheck` (walk-up to the
+`fda67b8`) implemented the full design in src/review/review.ts — `detectBuildCheck` (walk-up to the
 nearest package.json + node_modules, typecheck preferred over build, total and never-throwing),
 `runBuildCheck` (execFile `npm run <script>` with cwd = worktree; 300 s cap exposed as the
 buildCheckTimeoutMs test seam on ReviewContext), and outcome routing in reviewAheadOfMain exactly
@@ -133,12 +133,12 @@ without review; a diff with even one non-exempt file gets the full pass.
 (Refusal notes and QA bug reports are md-only, so they stay cheap by construction.)
 
 **Exemption semantics** (small pure helper, e.g. `isExemptPath(relPath, patterns)` in
-`src/review.ts`, unit-tested): a pattern containing no `/` matches the file's **basename** at any
+`src/review/review.ts`, unit-tested): a pattern containing no `/` matches the file's **basename** at any
 depth (`*.md` exempts `docs/notes.md` too); a pattern containing `/` matches the full repo-relative
 path, where `*` matches within one path segment and `**` across segments (`docs/**` = everything
 under `docs/`). Exemption is per-diff: *every* changed file in the commit must match some pattern.
 
-### Deterministic build pre-check (`src/review.ts`) — refined 2026-08-28
+### Deterministic build pre-check (`src/review/review.ts`) — refined 2026-08-28
 
 The gate as built can only judge what it can see, and its reviewer is forbidden from running any
 state-changing command ("no writes anywhere") — but `npm run build` *is* exactly that
@@ -266,7 +266,7 @@ lives in src/events.ts).
 ## Files touched
 
 `src/loop.ts`, `src/prompt/prompt.ts`, `src/types.ts`, `src/config.ts` (review section + validation + model-override accessor),
-`src/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
+`src/review/review.ts` (new: exemption matcher, verdict parsing, build pre-check + detection,
 review-run orchestration shared by the tick and recoverLeftover paths), `src/status-render.ts` (`loopPhase`/`workingDetail` reviewing
 state — not src/status.ts), `src/event-format.ts` (review event rendering — formatEvent no longer
 lives in src/events.ts), `tumwater.json` (dogfood: top-level `review` section with the strong-model override),

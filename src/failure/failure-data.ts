@@ -153,7 +153,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   for (const ev of events) {
     // Ticks are tick_end events; a rejection is now recorded by the landing slot, AFTER the
     // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
-    // the one event every reject path logs exactly once (src/review.ts), so it — not a
+    // the one event every reject path logs exactly once (src/review/review.ts), so it — not a
     // tick_end result no production path emits — is the rejection source.
     if (ev.type === "tick_end") {
       const stats = statsFor(eventRole(ev));

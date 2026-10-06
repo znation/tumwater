@@ -16,7 +16,7 @@ doc comment reserves refusal routing; the parser turn counter feeding `PiRunResu
 non-persisted `tickTurns` (reset at tick start, folded in `foldUsage`) so the trailer holds main
 + transient-retry runs while conflict-resolution runs — folded inside `merge()`, after
 `commitAll` — are excluded. The review prompt consumes the body ("check these claims against the
-diff") via src/review.ts. One deviation: unit tests landed in test/prompt.test.ts rather than a
+diff") via src/review/review.ts. One deviation: unit tests landed in test/prompt.test.ts rather than a
 new test/commit-bodies.test.ts (coverage tick `0f73491`) — same coverage, different file.
 Remaining — two test gaps against the acceptance criteria, nothing structural: (a) no tick-level
 e2e asserting real commit content (compliant reply → body + trailer; SUMMARY-only → subject +

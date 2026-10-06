@@ -116,7 +116,7 @@ test("suiteRerunWarning names the first full-suite run and counts the rest; filt
       bash("git diff main --stat"),
       bash("npm test gui 2>&1 | tail -15"),
       bash("node dist/test/test-runner.js review"),
-      { toolName: "read", args: { path: "src/review.ts" } },
+      { toolName: "read", args: { path: "src/review/review.ts" } },
       // A non-bash tool whose args happen to carry a command string is not a shell run.
       { toolName: "grep", args: { command: "npm test" } },
     ]),

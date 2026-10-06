@@ -101,7 +101,7 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
 | Author ticks — feature, bugfix, organize, coverage, clean, dry, perf, qa, telemetry, improve, steward, director, user-defined loops | default | src/loop-pi.ts via `configForRole` |
 | plan role | strong | same |
 | readme role | small | same |
-| Reviewer, plus its VERDICT and no-rerun follow-up turns | strong | src/review.ts, src/review-followup.ts via `reviewRunConfig` |
+| Reviewer, plus its VERDICT and no-rerun follow-up turns | strong | src/review/review.ts, src/review/review-followup.ts via `reviewRunConfig` |
 | Conflict resolver | strong | src/landing/landing-merge.ts `resolveConflict` (today: the authoring loop's own config) |
 | SUMMARY follow-up, transient retry, resume-on-restart | the tick's own model | continuations stay on the session's model; switching would lose the prompt cache |
 
@@ -237,7 +237,7 @@ src/model-selector.ts (parse and format), src/config-views.ts (`configForRole`, 
 `fallbackPair`, `applyFallbackModel` by tier, plus a resolver view), src/role-catalog.ts (`tier`),
 src/pi/pi-models.ts (`fallbackModelFree` per tier, `fleetModelsFree`), src/budget.ts,
 src/budget-gates.ts, src/fallback-breaker.ts, src/landing/landing-merge.ts and
-src/landing/landing-core.ts (resolver on strong), src/review.ts, src/review-followup.ts,
+src/landing/landing-core.ts (resolver on strong), src/review/review.ts, src/review/review-followup.ts,
 src/loop.ts (`tick_start` model), src/events.ts, src/event-format.ts, src/fleet-hold.ts,
 src/fleet-polls.ts, src/doctor/doctor-checks.ts, src/role-view.ts, src/status-data.ts, src/ui/*,
 src/config-editable-keys.ts, src/config-write.ts, src/init-templates.ts, src/config-example.ts,

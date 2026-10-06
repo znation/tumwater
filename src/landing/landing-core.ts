@@ -4,7 +4,7 @@ import { ensureDetachedWorktree } from "../worktree.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
-import { reviewAheadOfMain, type GateResult } from "../review.js";
+import { reviewAheadOfMain, type GateResult } from "../review/review.js";
 import type { GateRunsPi } from "../loop-pi.js";
 import { saveLoopState } from "../loop-state.js";
 import { setLandingStage } from "./landing-slot.js";

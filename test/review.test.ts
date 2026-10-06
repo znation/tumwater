@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review.js";
-import { parseVerdict } from "../src/review-verdict.js";
+import { reviewAheadOfMain, REVIEW_FAILURE_LIMIT } from "../src/review/review.js";
+import { parseVerdict } from "../src/review/review-verdict.js";
 import { buildRejectedReviewNote } from "../src/gate-prompts.js";
 import { aheadOfMain } from "../src/git.js";
 import { ensureWorktree } from "../src/worktree.js";
@@ -18,7 +18,7 @@ import { waitForLogLines, watchdogClock } from "./wait.js";
 import { assistantLine } from "./pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./gate-fixtures.js";
 
-// Regression coverage for the 2026-08-27 build break (BUGS.md): src/review.ts shipped with a
+// Regression coverage for the 2026-08-27 build break (BUGS.md): src/review/review.ts shipped with a
 // syntax error and latent type errors and had zero tests, so nothing caught it. The pure
 // functions below pin parsing — importing review.js also fails `npm test` if this file ever
 // stops compiling again (exemption matching moved to exemptions.test.ts with its module).

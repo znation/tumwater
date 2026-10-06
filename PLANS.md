@@ -231,7 +231,7 @@ comments rather than declared as a per-type optional field — a top-level `mode
 src/loop.ts (`tick_start` gains `model: formatModelSelector(...)` of the `configForRole`
 triple the tick resolved, omitted when `cfg.model` is unset — the budget-fallback path swaps
 the runner's config to the fallback pair before `tick()` reads it, so the logged string names
-the fallback), src/review.ts (`review_start` gains `model` from `reviewRunConfig(config)`,
+the fallback), src/review/review.ts (`review_start` gains `model` from `reviewRunConfig(config)`,
 resolved once and reused as the run's `config`, so the event cannot disagree with the run),
 and src/event-format.ts (both lines render `on <model>` when the field is present; old logs
 render unchanged). Tests: two new integration cases in test/loop.test.ts (model present on
@@ -248,12 +248,12 @@ starts on, so outcomes, review verdicts, and spend can be compared per model.
 1. **src/loop.ts:** the `tick_start` event gains `model: formatModelSelector(...)` of the `cfg`
    that `tick()` already resolves with `configForRole` (the same config `tickPair` captures, so
    on the budget fallback it names the fallback).
-2. **src/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
+2. **src/review/review.ts:** `review_start` gains `model` from `reviewRunConfig`.
 3. **src/events.ts / src/event-format.ts:** optional `model?: string` on both event types,
    rendered after the existing text. Omitted when no model is configured (pi's own default),
    and old logs without the field still read and render.
 
-**Files touched.** src/loop.ts, src/review.ts, src/events.ts, src/event-format.ts, and their tests.
+**Files touched.** src/loop.ts, src/review/review.ts, src/events.ts, src/event-format.ts, and their tests.
 
 **Acceptance criteria.**
 - A tick on a configured model logs `tick_start` whose `model` is `formatModelSelector` of its

@@ -55,7 +55,7 @@ interface CustomLoop {
   task: string;
 }
 
-/** Top-level review-gate config in tumwater.json (see src/review.ts). */
+/** Top-level review-gate config in tumwater.json (see src/review/review.ts). */
 interface ReviewConfig {
   /** Enable the adversarial pre-merge review gate (default true). */
   enabled: boolean;
@@ -263,7 +263,7 @@ export interface TumwaterConfig {
    * the running build and main is green, rebuild, drain, and restart onto the new code (default
    * true). Off, the dashboards still flag the build as stale but nothing restarts. */
   autoRestart: boolean;
-  /** Adversarial pre-merge review gate (see src/review.ts). */
+  /** Adversarial pre-merge review gate (see src/review/review.ts). */
   review: ReviewConfig;
   /** User-defined loops (plans/user-defined-loops.md): each entry is merged into `roles` at
    * load time as `{ enabled: true }`, appended after the built-ins in array order — that single
