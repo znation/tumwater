@@ -54,6 +54,18 @@ function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveP
   return { ...p, quietMs: Math.min(p.quietMs, elapsed) };
 }
 
+/** The stall phrases a phase label can carry — inFlightDetail appends "tool call stalled:
+ * <tool>" and "no pi output for <duration>" to the head — as a regex SOURCE string plus the
+ * compiled matcher, single-homed beside the code that renders those phrases. Every consumer
+ * that must recognize a stall inside a rendered phase label goes through these two, so the
+ * server-side alert (fleet-alerts.ts) and the dashboard's browser twin (gui-client-model.ts,
+ * interpolating the source into its String.raw script) cannot drift from the wording the cell
+ * actually renders. */
+export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no pi output for [^·]*`;
+
+/** STALL_SOURCE compiled — the server-side matcher (fleet-alerts.ts's stuck alert). */
+export const STALL_RE = new RegExp(STALL_SOURCE);
+
 /** The shared parts assembly for an in-flight state cell: `head` (the phase label with its
  * own elapsed — inFlightLabel for a tick, the landing branch's own for a landing) plus turn,
  * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is

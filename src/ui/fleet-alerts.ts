@@ -13,6 +13,7 @@ import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { agree, pauseReasonSuffix, plural } from "../phrases.js";
+import { STALL_RE } from "./tick-progress-model.js";
 import { usd, usdCap } from "../format.js";
 import { formatTimestamp } from "../datetime.js";
 
@@ -37,9 +38,6 @@ export interface AlertLoop {
   inFlight: boolean;
   lastError?: string | null;
 }
-
-/** A stalled tool call or a long silence, as inFlightDetail names them in a phase label. */
-const STALL = /tool call stalled[^·]*|no pi output for [^·]*/;
 
 function listRoles(loops: readonly AlertLoop[]): string {
   const names = loops.map((l) => l.role);
@@ -113,13 +111,13 @@ export function fleetAlerts(
       actions: failing.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });
   }
-  const stuck = loops.filter((l) => l.inFlight && STALL.test(l.phase));
+  const stuck = loops.filter((l) => l.inFlight && STALL_RE.test(l.phase));
   if (stuck.length) {
     out.push({
       key: "stuck",
       tone: "amber",
       title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
-      detail: stuck.map((l) => `${l.role}: ${(STALL.exec(l.phase)?.[0] ?? "").trim()}`).join(" · "),
+      detail: stuck.map((l) => `${l.role}: ${(STALL_RE.exec(l.phase)?.[0] ?? "").trim()}`).join(" · "),
       actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });
   }

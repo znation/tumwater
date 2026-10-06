@@ -10,6 +10,7 @@
  * ENTRY_STAMP_META_SOURCE — String.raw interpolates substitutions normally — so the
  * browser regex cannot drift from the server twin the tests pin it against. */
 import { ENTRY_STAMP_META_SOURCE } from "../backlog/backlog-structure.js";
+import { STALL_SOURCE } from "./tick-progress-model.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for
@@ -34,8 +35,10 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
   // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
-  // inFlightDetail) — the cue that a working loop may be stuck.
-  const STALL = /tool call stalled[^·]*|no pi output for [^·]*/;
+  // inFlightDetail) — the cue that a working loop may be stuck. The pattern is that module's
+  // STALL_SOURCE (interpolated at module build), shared with fleet-alerts.ts's server-side
+  // matcher so the two cannot drift from the wording the cell renders.
+  const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
   // A tick result (tick-outcome.ts TickResult) in words, with the tone of its outcome.
   const RESULTS = {
     changed: ["Landed", "green"],
