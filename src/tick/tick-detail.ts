@@ -19,11 +19,6 @@ import { shortSha } from "../text/format.js";
  * when the command's shape changes. */
 export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--json]";
 
-/** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
- * stdout line and the GUI /api/tick endpoint's 404 JSON error, one template so the CLI's prose
- * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
- * can act on: the tick number, the loop, and that the scanned window (not the world) is what
- * came up empty. */
 /** The shared not-found frame both wordings complete — what the scan looked for, the loop,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
  * the not-found wordings below (the numbered form's exported message and the --last form's
@@ -32,6 +27,11 @@ function tickNotFoundPhrase(role: string, what: string): string {
   return `no ${what} for ${role} in the scanned window (the retained log may have rotated past it)`;
 }
 
+/** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
+ * stdout line and the GUI /api/tick endpoint's 404 JSON error, one template so the CLI's prose
+ * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
+ * can act on: the tick number, the loop, and that the scanned window (not the world) is what
+ * came up empty. */
 export function tickNotFoundMessage(role: string, tick: number): string {
   return tickNotFoundPhrase(role, `tick #${tick}`);
 }
