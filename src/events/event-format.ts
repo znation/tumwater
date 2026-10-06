@@ -39,6 +39,20 @@ function elapsed(ms: unknown): string {
   return ` (in ${shortSpanPhrase(n)})`;
 }
 
+/** The backend a hold event names, rendered as " at <provider>" when one is configured
+ * (pollFleetHold omits it for pi's default) and "" otherwise, so a multi-provider fleet can
+ * tell WHICH backend the storm was at. Shared by the hold and resumed lines. */
+function providerAt(e: HarnessEvent): string {
+  return typeof e.provider === "string" ? ` at ${e.provider}` : "";
+}
+
+/** How a hold line scopes the roles it stops: "that provider" when the event names one, or
+ * "every provider" when it does not (pi's default, or a hold that hit the only configured
+ * backend). Shared by the hold and resumed lines so the scope cannot drift between them. */
+function providerScope(e: HarnessEvent): string {
+  return typeof e.provider === "string" ? "that provider" : "every provider";
+}
+
 /** An event's outcome string — a tick's `result`, or a landing's or build check's `status`,
  * whichever the event carries; undefined when neither does. The activity feeds' tone and
  * filter key (tone.ts's eventKind takes it beside the event type), also shipped as the
@@ -232,23 +246,17 @@ export function eventMessage(e: HarnessEvent): string {
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = rolesPhrase(e.roles, "several roles");
-      // The provider rides the event when one is configured (pollFleetHold omits it for pi's
-      // default), so a multi-provider fleet can tell WHICH backend the storm was at.
-      const at = typeof e.provider === "string" ? ` at ${e.provider}` : "";
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold (${backendKindPhrase(e.kind)})${at} — ${roles} hit backend failures; role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
-      return `429 hold${at} — ${roles} rate-limited by the provider; role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+        return `backend hold (${backendKindPhrase(e.kind)})${providerAt(e)} — ${roles} hit backend failures; role loops on ${providerScope(e)} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+      return `429 hold${providerAt(e)} — ${roles} rate-limited by the provider; role loops on ${providerScope(e)} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
     case "rate_limit_resumed": {
       // The ended hold's kind rides the resumed event (pollFleetHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
-      // The provider rides the event when one is configured (pollFleetHold omits it for pi's
-      // default), so a multi-provider fleet can tell WHICH backend the storm was at.
-      const at = typeof e.provider === "string" ? ` at ${e.provider}` : "";
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold lifted (${backendKindPhrase(e.kind)})${at} — role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} tick again`;
-      return `429 hold lifted${at} — role loops on ${typeof e.provider === "string" ? "that provider" : "every provider"} tick again`;
+        return `backend hold lifted (${backendKindPhrase(e.kind)})${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
+      return `429 hold lifted${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
     }
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
