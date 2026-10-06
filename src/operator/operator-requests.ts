@@ -66,9 +66,14 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
  * reason, so the fleet's early ticks read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   const markerFile = wakeRequestPath(root);
+  if (!fs.existsSync(markerFile)) return;
   const marker = readJsonFile<{ notBeforeMs?: unknown }>(markerFile);
-  if (marker === null) return;
-  const notBefore = typeof marker.notBeforeMs === "number" ? marker.notBeforeMs : undefined;
+  // A null marker on an existing file is a corrupt marker: `tumwater wake` already cleared the
+  // state files and the marker is consumed unconditionally, so wake every runner (the same
+  // superset `roleRequestTargets` gives corrupt markers) and remove it — an early return here
+  // would leave the wedge in place forever, since nothing else ever deletes the marker.
+  const notBefore =
+    marker === null ? undefined : typeof marker.notBeforeMs === "number" ? marker.notBeforeMs : undefined;
   if (notBefore !== undefined && notBefore > Date.now()) return;
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;

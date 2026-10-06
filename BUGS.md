@@ -5,7 +5,11 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A corrupt wake marker is never consumed: the poll loop wedges before reading it (found by feature loop 2026-10-06)
+_None yet._
+
+## Fixed
+
+### A corrupt wake marker is never consumed: the poll loop wedges before reading it (found by feature loop 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: the test `a corrupt wake marker wakes every runner and is still consumed`
 (test/orchestrator-2.e2e.test.ts) times out waiting for the marker file to disappear.
 Reproduce: on unmodified main (commit 8391e528, before the per-tier budget-gate work),
@@ -13,9 +17,16 @@ Reproduce: on unmodified main (commit 8391e528, before the per-tier budget-gate 
 that change. Suspected cause: unknown — `consumeWakeRequest` runs unconditionally every poll
 (src/orchestrator/orchestrator.ts), so something earlier in the poll wedges or kills the loop
 only in this test's setup.
-### The deterministic coverage table permanently flags cli.ts lines its passing tests already cover, and one it never can: the table's V8-dump mapper only counts dumps whose script URLs resolve under the checkout's `dist/src/` (coverage.cjs's PREFIX), but version.test.ts's compiled-CLI broken-install test copies `dist/` to a temp dir before spawning it, so those child dumps never count — cli.ts's `fail(problem ?? …)` line is reported uncovered though the test `the compiled CLI fails 'version' with the reason on a broken install` passes through it; the same blind spot shadows every spawnCli child a test SIGKILLs (no dump on kill), and cli.ts's `version === undefined` fallback operand is unreachable outright because version.ts returns a problem for every missing or non-string version, so the table's residual `src/cli.js` misses (3 lines, 6 branches in the 2026-10-06 deterministic table) can never be closed by any test (found by coverage loop 2026-10-06 by mapping `npm run test:coverage`'s own NODE_V8_COVERAGE dumps with docs/code-metrics/coverage.cjs: cli.ts uncovered lines 136, 141, 330, while grep shows `tumwater gui`/`tui` dispatch, their unknown-args gates, `bug` with no arguments, and both `help` arities each driven by a passing test)
+Cause found: `consumeWakeRequest` (src/operator/operator-requests.ts) read the marker with
+`readJsonFile`, which returns null both for a missing file and for an unparseable one, and the
+null-check early-returned on both — so a corrupt marker was never removed and every later poll
+saw it again; `roleRequestTargets` already maps a corrupt marker to every runner, so the fix
+keeps that superset and only stops conflating missing with corrupt.
+- **Validation gap:** no-fake — the wake consumer's corrupt-marker path was only exercised by
+this end-to-end test, which could not name the wedging call until the marker reader's
+missing-vs-corrupt conflation was traced by hand; the same test now pins the fix.
 
-## Fixed
+### The deterministic coverage table permanently flags cli.ts lines its passing tests already cover, and one it never can: the table's V8-dump mapper only counts dumps whose script URLs resolve under the checkout's `dist/src/` (coverage.cjs's PREFIX), but version.test.ts's compiled-CLI broken-install test copies `dist/` to a temp dir before spawning it, so those child dumps never count — cli.ts's `fail(problem ?? …)` line is reported uncovered though the test `the compiled CLI fails 'version' with the reason on a broken install` passes through it; the same blind spot shadows every spawnCli child a test SIGKILLs (no dump on kill), and cli.ts's `version === undefined` fallback operand is unreachable outright because version.ts returns a problem for every missing or non-string version, so the table's residual `src/cli.js` misses (3 lines, 6 branches in the 2026-10-06 deterministic table) can never be closed by any test (found by coverage loop 2026-10-06 by mapping `npm run test:coverage`'s own NODE_V8_COVERAGE dumps with docs/code-metrics/coverage.cjs: cli.ts uncovered lines 136, 141, 330, while grep shows `tumwater gui`/`tui` dispatch, their unknown-args gates, `bug` with no arguments, and both `help` arities each driven by a passing test)
 
 ### A fallback probe admitted right before the budget gate reopened wedged the demoted fallback: the launch pass admits the probe on the pair's breaker entry (it reads only the entry, not `engaged`), but a tick parked at its permit while the gate reopened — the cap raised, or midnight reset spend — starts with `engaged` null and folds no evidence, so the entry's `probing` flag stayed true forever: `fallbackProbeDuePair` and `startFallbackProbeAt` both skip a probing entry and only a rekey (pair or cap change) clears it, so when the cap was reached again the fallback stayed demoted past a probe that was due, with no probe ever admitted (repro: the `a probe whose tick starts after the gate reopened has its claim handed back` test in test/orchestrator-launch.test.ts — with `engaged` null at tick start and a `probePair` admitted, `probing` stayed true; the turn-away path had its own abandon, but this started-then-unfolded path did not) (found by bugfix loop 2026-10-06 latent-bug hunt over the same day's breaker-map commit 251fb9a3, fixed 2026-10-06 by bugfix loop)
 - **Validation gap:** no-fake — the wedge needs a probe in flight across a gate reopen at tick start, and no test drove launchDueTicks with an engaged pair that goes null between admission and the tick callback; the new test supplies it.
