@@ -48,6 +48,27 @@ export function mainCountsFragment(counts: TestCounts | undefined): string {
   return `${counts.pass}/${counts.tests}${notes.length > 0 ? ` (${notes.join(" · ")})` : ""}`;
 }
 
+/** One home for the main-check status → display mapping the observer surfaces share:
+ * passed→green (check glyph), failed→red (fail glyph), and a skipped/unverified check reads
+ * its raw status word with `fallbackTone` for color — callers pick the tone their palette
+ * uses (the TUI's status header renders yellow, the GUI sidebar amber). The verdict word
+ * never reads green for an unverified tree. Readers: mainCheckBadge (below) and the header
+ * badge tone in status-render.ts. The GUI sidebar's status row (gui-client-fleet.ts) ships
+ * its own copy of the mapping — it is browser-side JS spliced into gui-client.ts and cannot
+ * import this module; its three-line ternary block is deliberately left as is. */
+export function mainCheckVerdict(
+  status: string,
+  fallbackTone: string = status,
+): { word: string; tone: string; glyph: string } {
+  const passed = status === "passed";
+  const failed = status === "failed";
+  return {
+    word: passed ? "green" : failed ? "red" : status,
+    tone: passed ? "green" : failed ? "red" : fallbackTone,
+    glyph: passed ? "check" : failed ? "fail" : "info",
+  };
+}
+
 /** Main's newest merge-scope check as a header badge (PLANS.md "Retire the README freshness
  * stamp"): `· main <sha>: green · N/N (N skipped)` — the live replacement for the committed
  * README stamp the readme role used to maintain. Empty when the snapshot carries no check
@@ -57,7 +78,7 @@ export function mainCountsFragment(counts: TestCounts | undefined): string {
  * omits parentheticals for zero counts, matching the stamp wording the README carried. */
 export function mainCheckBadge(mainCheck: StatusSnapshot["mainCheck"]): string {
   if (!mainCheck) return "";
-  const verdict = mainCheck.status === "passed" ? "green" : mainCheck.status === "failed" ? "red" : mainCheck.status;
+  const verdict = mainCheckVerdict(mainCheck.status).word;
   const fragment = mainCountsFragment(mainCheck.counts);
   const counts = fragment ? ` · ${fragment}` : "";
   const sha = mainCheck.sha ? `${shortSha(mainCheck.sha)}: ` : "";

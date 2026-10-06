@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text-width.js";
 import { compactTokens, usd } from "../format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../datetime.js";
 import { projectName } from "../project-name.js";
-import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, pauseBadge, quietBadge } from "./badges.js";
+import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
 import { progressOfTick, yieldMultiplierFor } from "./tick-progress-model.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
@@ -189,7 +189,11 @@ export function renderStatusSpans(
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
     ...badgeSpans(budgetBadge(snap.budget), budgetTone(snap.budget)),
-    ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck ? (snap.mainCheck.status === "passed" ? "green" : snap.mainCheck.status === "failed" ? "red" : "yellow") : undefined),
+    ...badgeSpans(mainCheckBadge(snap.mainCheck), snap.mainCheck
+      // The helper's tone is string (the GUI's palette differs); with a Tone fallback here
+      // every branch is a Tone, so the cast cannot widen the value.
+      ? mainCheckVerdict(snap.mainCheck.status, "yellow").tone as Tone
+      : undefined),
     ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it
     // is configured, the yellow `quiet until <end>` reading while the hold is on — the same
