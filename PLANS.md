@@ -8,6 +8,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Model tiers, part 5/8: the budget fallback switches each tier to its own free model (planned 2026-10-05 by operator; requires part 3/8 landed)
 
+**Needs review 2026-10-06 by feature: too large for one run** — the breaker-map change alone
+ripples through fallback-breaker.ts, budget-gates.ts, budget.ts, orchestrator.ts,
+orchestrator-launch.ts, and gate-polls.ts plus the dashboards' demotion readers and their test
+files, on top of the per-tier resolution engine and the gate-semantics rewrite. Split it into
+smaller sub-plans (resolution engine first, then the breaker map, then the gate/poll wiring).
+
 Design: plans/model-tiers.md ("Budget fallback by tier").
 
 **Goal.** At the daily cap each seam runs on its own tier's free model, borrowing another
