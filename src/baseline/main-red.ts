@@ -11,7 +11,7 @@ import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../text/phrases.js";
-import { gitTry } from "../git/git-run.js";
+import { branchHead } from "../git/git.js";
 import { gateMainWorktreePath } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
@@ -184,7 +184,7 @@ async function verdictAtMainTip(
   config: TumwaterConfig,
 ): Promise<MainTipVerdict> {
   try {
-    const tip = await gitTry(root, "rev-parse", mainBranch);
+    const tip = await branchHead(root, mainBranch);
     if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
     const wt = await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip);
     const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));

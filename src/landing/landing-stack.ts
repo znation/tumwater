@@ -7,7 +7,7 @@
  * landing-batch.ts) drives this file's landStack one prefix at a time. */
 
 import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
-import { deleteRef, gitLines, headOf } from "../git/git.js";
+import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
 import { landingRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
@@ -69,7 +69,7 @@ async function assembleStack(
   // created (the common single-batch case) the picks reconstruct the same tree and the ff
   // lands the same tip. Every entry — the head included — carries its captured post-pick sha
   // into the ff and the per-change merged events.
-  const base = await gitTry(root, "rev-parse", mainBranch);
+  const base = await branchHead(root, mainBranch);
   if (base === null) return null; // main unreadable: cannot stack
   // One idempotent ensure at the fresh base covers the worktree-a-moment-ago case (the
   // change's vet, or the previous attempt's assembly).

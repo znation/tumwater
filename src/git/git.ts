@@ -50,8 +50,9 @@ export function readBranchHead(root: string, branch: string): string | null {
 /** Resolve a branch's head without paying for a spawn when the ref files suffice:
  * readBranchHead (microsecond-scale) first, then `git rev-parse` as the fallback that covers
  * what file reads cannot (a worktree-pointer .git, anything unusual). Returns null when
- * neither resolves it. Shared by the orchestrator's per-poll main watch and each tick's
- * end-of-tick head update, so the file-first/spawn-fallback strategy lives in one place. */
+ * neither resolves it. Shared by the orchestrator's per-poll main watch, each tick's
+ * end-of-tick head update, the red-main baseline check, and the stack lander, so the
+ * file-first/spawn-fallback strategy lives in one place. */
 export async function branchHead(root: string, branch: string): Promise<string | null> {
   return readBranchHead(root, branch) ?? (await gitTry(root, "rev-parse", branch));
 }
