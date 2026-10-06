@@ -9,7 +9,7 @@
  * concatenation. */
 export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
   // view-routing:start
-  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", settings: "settings-view" };
+  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" };
   function switchView(v) {
     if (!VIEWS[v]) v = "fleet";
     activeView = v;
@@ -24,6 +24,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
     if (v === "history") fetchHistory();
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
+    if (v === "pending") fetchPending();
     if (v === "settings") fetchSettings();
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open

@@ -417,6 +417,9 @@ export const GUI_STYLES = String.raw`
   .transcript .l-tool { color: var(--accent); }
   .transcript .l-think { color: var(--text-4); font-style: italic; }
   .transcript .l-warn { color: var(--amber); }
+  .diff { max-height: 340px; margin: 8px 0 0; padding: 10px 12px; overflow: auto; border-radius: 8px;
+          border: 1px solid var(--line); background: var(--surface-2); font-size: 12px; white-space: pre; }
+  table.pending .c-dirty { width: 130px; }
 
   /* ---- toast ---- */
   .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; max-width: min(460px, calc(100vw - 40px));

@@ -6,28 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### GUI Pending view: show each loop's unlanded change in the dashboard (planned 2026-10-06 by plan loop)
+_None yet._
+
+---
+
+## Done
+
+### GUI Pending view: show each loop's unlanded change in the dashboard (planned 2026-10-06 by plan loop; done 2026-10-06 by feature)
 
 The CLI answers "what is each loop about to land" with `tumwater diff` (`--json`, `--role <id>`), but the browser dashboard — the operator's primary observer surface — has no way to see a loop's pending unlanded work: Fleet/History/Usage/Failures/Settings all render state and history, and the loop drawer shows status and transcript only. The data already exists and is shared: `collectFleetChanges` / `collectRoleChange` (src/change/change-data.ts) produce the exact `FleetChangeView` / `RoleChangeView` documents `tumwater diff --json` prints, so the GUI reuses them unchanged.
 
 **Goal.** Add a Pending view to the dashboard that lists each role's unlanded work (branch, state, ahead count with commit subjects, dirty-file count) and opens a role's full diff, powered by the existing change collectors.
 
-**Approach.**
-1. **`src/gui/gui-server.ts`** — route `GET /api/diff` to a new `handleDiff(target, res, root)`: no `role` param → `sendJson(collectFleetChanges(root))` (the same payload `tumwater diff --json` prints); `?role=<id>` → `collectRoleChange(root, <id>)` (the full patch view, as `tumwater diff --role <id> --json` prints).
-2. **`src/ui/gui-page.ts`** — add a `Pending` tab to `viewnav` (after Failures) and a `<section id="pending" class="view" aria-label="Pending" hidden>` container, mirroring the Failures section.
-3. **`src/ui/gui-client-boot.ts`** — register `pending` in `VIEWS` (mapping to `"pending"`) and call `fetchPending()` in `switchView`, alongside `fetchHistory`/`fetchReport`/`fetchFailures`.
-4. **`src/ui/gui-client-pending.ts`** (new section, spliced into gui-client.ts like its siblings) — `fetchPending` loads `/api/diff`, `renderPending` draws a roster (loop, branch, state, ahead count with commit subjects, dirty-file count; `ready` with no work shows idle; `absent`/`no-base` show their degraded line), and each row opens the loop drawer and fetches `/api/diff?role=<id>` for the full patch. Keep the roster renderer pure so it is unit-testable without a server, per the existing gui-client-*.test.ts pattern.
+**Approach.** The landed change follows the plan; where the anchors named the wrong module it was corrected in place rather than refused.
+1. **`src/gui/gui-endpoints.ts`** — the `async handleDiff(q, res, root)` handler: no `role` param → `sendJson(res, 200, await collectFleetChanges(root))` (the same payload `tumwater diff --json` prints); `?role=<id>` → `rejectBadRole` first (the same target validation and 400 wording as `/api/transcript` and `/api/tick`, so a traversal-shaped id never reaches the collector) and then `collectRoleChange(root, <id>)` (the full patch view, as `tumwater diff --role <id> --json` prints). Every /api handler lives in this module by its own contract, so the plan's `gui-server.ts` handler note was corrected; **`src/gui/gui-server.ts`** routes `GET /api/diff` to it.
+2. **`src/ui/gui-page.ts`** — a `Pending` tab in `viewnav` (after Failures) and a `<section id="pending" class="view" aria-label="Pending" hidden>` container, mirroring the Failures section.
+3. **`src/ui/gui-client-boot.ts`** — `pending` registered in `VIEWS` and `fetchPending()` called from `switchView`, alongside `fetchHistory`/`fetchReport`/`fetchFailures`.
+4. **`src/ui/gui-client-pending.ts`** (new section, spliced into gui-client.ts like its siblings) — `fetchPending` loads `/api/diff`; `renderPending` paints a pure roster (loop, branch, state, ahead count with commit subjects, dirty-file count; `ready` with no work shows idle; `absent`/`no-base` show their degraded line), and each row opens the loop drawer. **`src/ui/gui-client-drawer.ts`** adds the drawer's "Pending change" section — it fetches `/api/diff?role=<id>` once on open and renders the full patch (commits, ahead-of-main diff, uncommitted files and diff), and it renders even for a role absent from `statusPayload.loops` (a disabled loop), so those roster rows can show their patch too. **`src/ui/gui-styles.ts`** styles the scrollable diff. The roster renderer stays pure so it is unit-testable without a server.
 
-**Files touched.** src/gui/gui-server.ts, src/ui/gui-page.ts, src/ui/gui-client-boot.ts, src/ui/gui-client-pending.ts (new), test/gui-endpoints.test.ts, test/gui-client-pending.test.ts (new).
+**Files touched.** src/gui/gui-endpoints.ts, src/gui/gui-server.ts, src/ui/gui-page.ts, src/ui/gui-client.ts, src/ui/gui-client-boot.ts, src/ui/gui-client-pending.ts (new), src/ui/gui-client-drawer.ts, src/ui/gui-styles.ts, test/gui-endpoints.test.ts, test/gui-client-pending.test.ts (new), test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, docs/how-it-works.md.
 
 **Acceptance criteria.**
 - `GET /api/diff` returns a document matching `tumwater diff --json` for the same tree (same `mainBranch` and `roles` arrays, no per-role patch fields); `GET /api/diff?role=<id>` matches `tumwater diff --role <id> --json` for a role holding work and for an absent/no-base role.
 - The viewnav shows Pending; the Pending view lists every role's branch, state, ahead count with commit subjects, and dirty-file count; a role holding no unlanded work renders its idle state; opening a role row shows its full diff in the drawer.
 - The existing five views render unchanged; the new endpoint degrades on a fresh or incomplete repo the way the change collectors do, without throwing.
-
----
-
-## Done
 
 ### Model tiers, part 8/8: writers emit the new form, and the docs describe tiers (planned 2026-10-05 by operator; requires parts 1/8–7/8 landed; done 2026-10-06 by feature)
 

@@ -202,7 +202,9 @@ while the fleet runs, and each one logs a `config_changed` event.
   needs-you alert also plays a short Web Audio cue, with a sidebar speaker toggle persisted
   across reloads; the Queued tab lists each queued prompt and how long it has waited. Clicking a loop
   opens its details and live transcript (`#loop/<name>` links straight to it). Its History, Usage,
-  and Failures views match `tumwater history`, `tumwater report`, and `tumwater report --failures`.
+  Failures, and Pending views match `tumwater history`, `tumwater report`, `tumwater report
+  --failures`, and `tumwater diff`; the Pending view also shows a loop's full unlanded patch in
+  its drawer.
   Its Settings view shows the curated top-level config keys (provider, model, fallback, the daily
   spend cap, quiet hours, the notify hook) with inline Save buttons that write through the same
   path `tumwater config set` uses.

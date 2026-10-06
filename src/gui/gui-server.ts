@@ -19,6 +19,7 @@ import { errorMessage } from "../text/text.js";
 import {
   handleBacklog,
   handleConfig,
+  handleDiff,
   handleFailures,
   handleReport,
   handleHistory,
@@ -160,6 +161,8 @@ export function startGui(
         handleTranscript(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/tick") {
         handleTick(target!.searchParams, res, root);
+      } else if (req.method === "GET" && pathname === "/api/diff") {
+        await handleDiff(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/backlog") {
         handleBacklog(target!.searchParams, res, root);
       } else if (req.method === "GET" && pathname === "/api/config") {

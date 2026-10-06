@@ -24,7 +24,7 @@ function fakeEl(log: string[], tag: string) {
  * assertions read the elements' final state. */
 function bootScope(inject: Record<string, unknown>, log: string[]) {
   const els: Record<string, ReturnType<typeof fakeEl>> = {};
-  for (const id of ["fleet-view", "history", "report", "failures", "settings-view", "tab-fleet", "tab-history", "tab-usage", "tab-failures", "tab-settings"]) {
+  for (const id of ["fleet-view", "history", "report", "failures", "pending", "settings-view", "tab-fleet", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
     els[id] = fakeEl(log, id);
   }
   return clientScope<{ switchView(v: string): void; route(): void; openLoopRole(): string | null }>(
@@ -42,6 +42,7 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
     fetchHistory: () => calls.push("fetchHistory"),
     fetchReport: () => calls.push("fetchReport"),
     fetchFailures: () => calls.push("fetchFailures"),
+    fetchPending: () => calls.push("fetchPending"),
   }, log);
 
   scope.switchView("history");
@@ -60,6 +61,14 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   scope.switchView("usage");
   assert.equal(log.filter((l) => l.startsWith("report ")).join("|"), "report hidden=false");
   assert.deepEqual(calls, ["fetchReport"]);
+
+  // The Pending view routes like its siblings and marks its own tab.
+  calls.length = 0;
+  log.length = 0;
+  scope.switchView("pending");
+  assert.equal(log.filter((l) => l.startsWith("pending ")).join("|"), "pending hidden=false");
+  assert.equal(log.filter((l) => l.startsWith("tab-pending ")).join("|"), "tab-pending active+|tab-pending aria-current=page");
+  assert.deepEqual(calls, ["fetchPending"]);
 });
 
 test("switchView falls back to fleet for an unknown view and repaints fleet from the last status", () => {

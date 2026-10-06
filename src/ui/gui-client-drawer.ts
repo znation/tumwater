@@ -11,6 +11,7 @@
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } while open
   let drawerTicks = null; // the open loop's recent history rows (null until fetched)
   let drawerTicksAt = 0;
+  let drawerChange = null; // the open loop's unlanded change: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
   const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null);
 
@@ -26,6 +27,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawer = null;
     if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
     drawerTicks = null;
+    drawerChange = null;
     $("drawer").hidden = true;
     $("scrim").hidden = true;
     $("drawerhead").innerHTML = "";
@@ -40,6 +42,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (location.hash !== hash) history.replaceState(null, "", hash);
     drawerTicks = null;
     drawerTicksAt = 0;
+    drawerChange = null;
     showDrawer("<div id='draweractions' class='drawer-actions'></div><div id='drawermeta'></div><section class='transcript-sec'><div class='sec-head'><h3>Live transcript</h3>" +
       "<span class='muted' style='margin-left:auto;font-size:13px'>last 200 lines</span></div>" +
       "<pre id='transcript' class='transcript'><span class='muted'>Loading…</span></pre></section>");
@@ -48,6 +51,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       renderFleet(lastStatus);
     }
     loadLoopTicks(true);
+    loadDrawerChange(role);
     refreshTranscript(true);
   }
   function toggleLoop(role) {
@@ -80,7 +84,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       paintPanel("drawerhead", "<div class='kicker'>Loop</div><h2 id='drawertitle' class='mono'>" + esc(role) +
         "</h2><span class='muted'>This loop is no longer part of the fleet.</span>");
       paintPanel("draweractions", "");
-      paintPanel("drawermeta", "");
+      paintPanel("drawermeta", drawerChangeSection());
       return;
     }
     const info = phaseInfo(l.phase);
@@ -133,7 +137,53 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : "<p class='muted'>No completed ticks in the log yet.</p>";
     paintPanel("draweractions", actions);
     paintPanel("drawermeta", now + last + stats +
-      "<section><div class='sec-head'><h3>Recent ticks</h3></div>" + ticks + "</section>");
+      "<section><div class='sec-head'><h3>Recent ticks</h3></div>" + ticks + "</section>" + drawerChangeSection());
+  }
+
+  // The open loop's unlanded change, as /api/diff?role serves it: the full patch the CLI's
+  // tumwater diff --role prints. Degrades like the collector — a missing worktree, a missing
+  // base branch, or no work each get a plain statement, and an unreadable payload says so
+  // rather than rendering a half-view. Pure of side effects; the view paints what it returns.
+  function drawerChangeHtml(view) {
+    if (!view || typeof view !== "object") return "<p class='muted'>Pending change unavailable.</p>";
+    const commits = Array.isArray(view.commits) ? view.commits : [];
+    const dirty = Array.isArray(view.dirtyFiles) ? view.dirtyFiles : [];
+    if (view.state === "absent") return "<p class='muted'>No worktree yet — this loop has not run.</p>";
+    if (view.state === "no-base") return "<p class='muted'>Main branch " + esc(view.mainBranch) + " does not exist.</p>";
+    if (view.state !== "ready" || (view.ahead === 0 && dirty.length === 0)) return "<p class='muted'>No unlanded work.</p>";
+    let html = "<p class='note'>" + esc(view.branch) + " · " + esc(view.ahead === 1 ? "1 commit" : view.ahead + " commits") +
+      " ahead of " + esc(view.mainBranch) +
+      (dirty.length ? " · " + esc(dirty.length === 1 ? "1 uncommitted file" : dirty.length + " uncommitted files") : "") + "</p>";
+    html += commits.map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
+    if (view.diff) html += "<pre class='mono diff'>" + esc(String(view.diff).replace(/\n+$/, "")) + "</pre>";
+    if (dirty.length) {
+      html += "<p class='note'>Uncommitted: " + esc(dirty.join(", ")) + "</p>";
+      if (view.uncommittedDiff) html += "<pre class='mono diff'>" + esc(String(view.uncommittedDiff).replace(/\n+$/, "")) + "</pre>";
+    }
+    return html;
+  }
+  function drawerChangeSection() {
+    const c = drawerChange;
+    let body;
+    if (!c || c.state === "loading") body = "<p class='muted'>Loading…</p>";
+    else if (c.state === "error") body = "<p class='muted'>" + esc(c.message || "Pending change unavailable") + "</p>";
+    else body = drawerChangeHtml(c.view);
+    return "<section><div class='sec-head'><h3>Pending change</h3></div>" + body + "</section>";
+  }
+  // Fetch the open loop's unlanded change once when the drawer opens. A stale answer (the
+  // drawer moved to another loop) is dropped; later status polls repaint from the stored view.
+  async function loadDrawerChange(role) {
+    if (!role) return;
+    drawerChange = { role, state: "loading" };
+    try {
+      const d = await getJson("/api/diff?role=" + encodeURIComponent(role), pollSignal());
+      if (openLoopRole() !== role) return;
+      drawerChange = { role, state: "ok", view: d };
+    } catch (e) {
+      if (openLoopRole() !== role) return;
+      drawerChange = { role, state: "error", message: e && e.message ? e.message : "Pending change unavailable" };
+    }
+    if (lastStatus) renderLoopDrawer(lastStatus);
   }
 
   async function loadLoopTicks(force) {

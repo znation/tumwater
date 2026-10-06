@@ -6,7 +6,7 @@
  * controls: today's spend against the cap, and pause. The main column shows one view: Fleet
  * (alerts for whatever needs a human, the composer that steers the director or one loop,
  * today's progress, every loop grouped by what it is doing, the backlog, and the notable
- * activity), History, Usage, or Failures. A drawer opens
+ * activity), History, Usage, Failures, or Pending. A drawer opens
  * any loop's detail and live transcript, or any backlog entry in full. Kept apart from gui/gui-server.ts
  * so the server module stays about serving. */
 import { GUI_CLIENT_JS } from "./gui-client.js";
@@ -46,6 +46,7 @@ export const GUI_PAGE = `<!doctype html>
     <a href="#history" id="tab-history" class="tab">${iconSvg("list")}<span>History</span></a>
     <a href="#usage" id="tab-usage" class="tab">${iconSvg("bars")}<span>Usage</span></a>
     <a href="#failures" id="tab-failures" class="tab">${iconSvg("alert")}<span>Failures</span></a>
+    <a href="#pending" id="tab-pending" class="tab">${iconSvg("merge")}<span>Pending</span></a>
     <a href="#settings" id="tab-settings" class="tab">${iconSvg("settings")}<span>Settings</span></a>
   </nav>
   <div class="side-controls">
@@ -109,6 +110,7 @@ export const GUI_PAGE = `<!doctype html>
   <section id="history" class="view" aria-label="History" hidden></section>
   <section id="report" class="view" aria-label="Usage" hidden></section>
   <section id="failures" class="view" aria-label="Failures" hidden></section>
+  <section id="pending" class="view" aria-label="Pending" hidden></section>
   <section id="settings-view" class="view" aria-label="Settings" hidden></section>
 </main>
 </div>

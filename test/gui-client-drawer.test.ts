@@ -28,6 +28,7 @@ type DrawerScope = {
   toggleLoop(role: string): void;
   toggleEntry(file: string, index: number): void;
   renderLoopDrawer(d: object): void;
+  drawerChangeHtml(view: unknown): string;
   landingSummary(d: object, role: string): string;
   transcriptHtml(lines: string[]): string;
   loadLoopTicks(force: boolean): Promise<void>;
@@ -160,12 +161,22 @@ test("switching roles while a loop drawer is open moves it without closing", () 
   assert.equal(t.scope.openLoopRole(), "bugfix");
 });
 
-test("the loop drawer for a role the fleet no longer has says so and paints no actions", () => {
-  const t = openDrawer(["toggleLoop"], { status: { loops: [] } });
+test("the loop drawer for a role the fleet no longer has says so, paints no actions, and still renders its pending change", async () => {
+  const t = openDrawer(["toggleLoop"], {
+    status: { loops: [] },
+    responses: { "/api/diff?role=gone": { state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff: "diff --git a/x b/x\n", dirtyFiles: [] } },
+  });
   t.scope.toggleLoop("gone");
   assert.match(t.paintedFor("drawerhead"), /no longer part of the fleet/);
   assert.equal(t.paintedFor("draweractions"), "");
-  assert.equal(t.paintedFor("drawermeta"), "");
+  // The change section renders for a role absent from statusPayload.loops, so a disabled
+  // loop's unlanded patch is still visible in its drawer.
+  assert.match(t.paintedFor("drawermeta"), /Pending change/);
+  await flush();
+  const meta = t.paintedFor("drawermeta");
+  assert.match(meta, /tumwater\/gone/);
+  assert.match(meta, /deadbee unlanded/);
+  assert.match(meta, /<pre class='mono diff'>diff --git a\/x b\/x/);
 });
 
 test("the loop drawer paints a working loop's actions, metrics, ticks, and transcript with the real formatters", async () => {
@@ -299,6 +310,30 @@ test("landingSummary picks the held change for a role, in both in-flight shapes,
   assert.equal(t.scope.landingSummary(batch, "c"), "");
   assert.equal(t.scope.landingSummary({}, "a"), "");
   assert.equal(t.scope.landingSummary({ landQueue: { inFlight: { changes: [{ role: "a", summary: "" }] } } }, "a"), "");
+});
+
+test("drawerChangeHtml renders the full patch for a ready view and degrades the rest", () => {
+  const t = openDrawer(["drawerChangeHtml"]);
+  const ready = {
+    state: "ready", branch: "tumwater/feature", mainBranch: "main", ahead: 1,
+    commits: [{ sha: "abc12345", subject: "add the thing" }],
+    diff: "diff --git a/x b/x\n+line\n",
+    dirtyFiles: ["x"],
+    uncommittedDiff: "diff --git a/y b/y\n",
+  };
+  const html = t.scope.drawerChangeHtml(ready);
+  assert.match(html, /tumwater\/feature/);
+  assert.match(html, /1 commit/);
+  assert.match(html, /abc12345 add the thing/);
+  assert.match(html, /<pre class='mono diff'>diff --git a\/x b\/x/);
+  assert.match(html, /Uncommitted: x/);
+  assert.match(html, /diff --git a\/y b\/y/);
+  // Degraded states name their situation; a malformed payload never renders a half-view.
+  assert.match(t.scope.drawerChangeHtml({ state: "absent" }), /No worktree yet/);
+  assert.match(t.scope.drawerChangeHtml({ state: "no-base", mainBranch: "ghost" }), /Main branch ghost/);
+  assert.match(t.scope.drawerChangeHtml({ state: "ready", ahead: 0, commits: [], dirtyFiles: [] }), /No unlanded work/);
+  assert.match(t.scope.drawerChangeHtml(null), /unavailable/);
+  assert.match(t.scope.drawerChangeHtml({}), /No unlanded work/);
 });
 
 test("transcriptHtml classifies run separators, tool calls, thinking, and warnings, escaping each line", () => {

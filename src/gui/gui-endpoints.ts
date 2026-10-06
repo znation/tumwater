@@ -1,6 +1,6 @@
 /**
  * The dashboard's GET data endpoint handlers (src/gui/gui-server.ts routes to them): transcript,
- * backlog, report, failures, history, tick, config — the read-only surface. The POST
+ * backlog, report, failures, history, tick, diff, config — the read-only surface. The POST
  * operator endpoints (prompt, prompt-cancel, budget, config-set, pause,
  * wake, restart, abort, pause-role) and their body-discipline helpers live in
  * gui/gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond its
@@ -16,6 +16,7 @@ import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { collectReport } from "../report/report-data.js";
 import { collectFailureReport } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
+import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows } from "../history/history-data.js";
 import { readTickDetail } from "../tick/tick-detail-data.js";
@@ -67,6 +68,26 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body });
+}
+
+/** Handle GET /api/diff[?role=<id>]: the unlanded-change view the CLI prints from the same
+ * collectors — no `role` → collectFleetChanges (exactly `tumwater diff --json`'s document:
+ * `{ mainBranch, roles }`, no per-role patch halves); `?role=<id>` → collectRoleChange (the
+ * full per-role view with `diff`/`uncommittedDiff`, `tumwater diff --role <id> --json`). The
+ * role is a target, not a filter, so it validates through rejectBadRole exactly like
+ * /api/transcript and /api/tick (unknown/missing → 400 naming the valid ids) — the same ids
+ * `parseRoleFlag` accepts on the CLI, including disabled and user-defined loops. The
+ * collectors degrade absent worktrees and missing base branches to their `state` instead of
+ * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
+ * it works whether or not the fleet is running. */
+export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
+  const role = q.get("role");
+  if (role === null) {
+    sendJson(res, 200, await collectFleetChanges(root));
+    return;
+  }
+  if (rejectBadRole(root, res, role)) return;
+  sendJson(res, 200, await collectRoleChange(root, role));
 }
 
 /** Handle GET /api/report?days=N: the usage report data (collectReport's ReportData) as

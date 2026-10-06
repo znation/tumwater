@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { handleConfig, handleReport, handleFailures, handleTick } from "../src/gui/gui-endpoints.js";
+import { handleConfig, handleDiff, handleReport, handleFailures, handleTick } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBudget, handleConfigSet, handleRestart } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -16,8 +16,11 @@ import { orchestratorStatePath, restartRequestPath } from "../src/paths.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../src/events/event-window.js";
 import { atLocalTs as at, dayKey } from "./oracles.js";
 import { writeEvents } from "./log-fixtures.js";
-import { tmpdir, writeBacklogFile } from "./repo-fixtures.js";
+import { tmpdir, commitIn, makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 import { startLocalGui } from "./gui-fixtures.js";
+import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
+import { initProject } from "../src/init/init.js";
+import { ensureWorktree } from "../src/git/worktree.js";
 import { fakeRes, type Captured } from "./fake-res.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
@@ -362,4 +365,87 @@ test("handleConfigSet refuses a bad value through setConfigKey's validator, nami
   const onDisk = JSON.parse(fs.readFileSync(configPath(root), "utf8"));
   assert.equal(onDisk.quietHours, "23:00-07:00");
   assert.equal(onDisk.model, undefined);
+});
+
+// ---- GET /api/diff: the Pending view's collector surface ----
+// The handler only adapts HTTP onto change-data.ts's collectors, so these tests pin that the
+// fleet document matches collectFleetChanges (same mainBranch/roles, no per-role patch fields)
+// and the role document matches collectRoleChange — the documents `tumwater diff --json` and
+// `tumwater diff --role <id> --json` print. The role is a target, so an unknown id is a 400.
+async function serveDiff(root: string, query = ""): Promise<{ captured: Captured; data: unknown }> {
+  const { res, captured } = fakeRes();
+  await handleDiff(new URLSearchParams(query), res, root);
+  return { captured, data: JSON.parse(captured.body) };
+}
+
+test("handleDiff serves the fleet roster with no patch fields, matching collectFleetChanges", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff fleet");
+  fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
+  commitIn(root, "seed notes.txt");
+  const wt = await ensureWorktree(root, "feature", "main");
+  fs.writeFileSync(path.join(wt, "feature.md"), "work\n");
+  commitIn(wt, "feature work");
+  fs.appendFileSync(path.join(wt, "notes.txt"), "uncommitted\n");
+
+  const { captured, data } = await serveDiff(root);
+  assert.equal(captured.status, 200);
+  assert.equal(captured.contentType, "application/json");
+  assert.deepEqual(data, await collectFleetChanges(root), "the endpoint serves the collector document unchanged");
+  const feature = (data as unknown as { roles: Array<Record<string, unknown>> }).roles.find((r) => r.role === "feature")!;
+  assert.equal(feature.ahead, 1);
+  const commits = feature.commits as Array<{ sha: string; subject: string }>;
+  assert.equal(commits.length, 1);
+  assert.match(commits[0]!.sha, /^[0-9a-f]+$/);
+  assert.equal(commits[0]!.subject, "feature work");
+  assert.deepEqual(feature.dirtyFiles, ["notes.txt"]);
+  assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the fleet roster drops both patch halves");
+});
+
+test("handleDiff with ?role serves the full per-role view, matching collectRoleChange", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff role");
+  fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
+  commitIn(root, "seed notes.txt");
+  const wt = await ensureWorktree(root, "feature", "main");
+  fs.writeFileSync(path.join(wt, "feature.md"), "work\n");
+  commitIn(wt, "feature work");
+
+  const { captured, data } = await serveDiff(root, "?role=feature");
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, await collectRoleChange(root, "feature"));
+  const view = data as { state: string; branch: string; diff: string };
+  assert.equal(view.state, "ready");
+  assert.match(view.branch, /feature/);
+  assert.match(view.diff, /feature\.md/);
+});
+
+test("handleDiff degrades an absent worktree and a fresh repo without throwing", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff absent");
+  // qa is a valid id (rejectBadRole accepts it) whose worktree has never been created.
+  const absent = await serveDiff(root, "?role=qa");
+  assert.equal(absent.captured.status, 200);
+  assert.equal((absent.data as { state: string }).state, "absent");
+
+  // A directory that was never initialized has no git repo and no config: every role's entry
+  // is no-base, and the fleet query still answers 200 rather than throwing.
+  const fresh = tmpdir();
+  const fleet = await serveDiff(fresh);
+  assert.equal(fleet.captured.status, 200);
+  const doc = fleet.data as { mainBranch: string; roles: Array<{ state: string }> };
+  assert.ok(doc.roles.length > 0);
+  assert.ok(doc.roles.every((r) => r.state === "no-base"));
+});
+
+test("handleDiff refuses an unknown role through rejectBadRole's 400", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff badrole");
+  const bad = await serveDiff(root, "?role=ghost");
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /unknown role "ghost"/);
+  // The 400 names the valid ids, and no traversal-shaped string reaches the collector.
+  assert.match((bad.data as { error: string }).error, /valid ids:/);
+  const traversal = await serveDiff(root, "?role=" + encodeURIComponent("../../../etc"));
+  assert.equal(traversal.captured.status, 400);
 });
