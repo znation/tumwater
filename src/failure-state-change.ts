@@ -7,6 +7,7 @@
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
+import { stringList } from "./json-object.js";
 import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "./phrases.js";
 import { shortSha } from "./format.js";
@@ -126,7 +127,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       // the edit with no marker. Keys are dropped from the tail until the line — plus the
       // marker naming the drop — fits the section cap, so the final STATE_CHANGE_MAX pass
       // below can never cut the marker or a key mid-word.
-      const keys = Array.isArray(ev.keys) ? (ev.keys as unknown[]).map(field) : [];
+      const keys = stringList(ev.keys).map(field);
       text = keys.length > 0 ? `config changed: ${keys.join(", ")}` : "config changed";
       let hidden = 0;
       while (text.length > STATE_CHANGE_MAX) {

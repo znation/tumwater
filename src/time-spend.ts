@@ -10,6 +10,7 @@ import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "./event-read.js
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "./history-data.js";
+import { stringList } from "./json-object.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
@@ -196,7 +197,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       const rej = (rejectedByLoop.get(role) ?? [])
         .filter((r) => String(r.head ?? "") === resolvedOutcome!.sha)
         .at(-1);
-      const reasons = rej && Array.isArray(rej.reasons) ? (rej.reasons as string[]) : [];
+      const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
     }
     if (key === null) continue;

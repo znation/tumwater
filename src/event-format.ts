@@ -4,6 +4,7 @@ import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, short
 import { compactTokens, shortSha, usd } from "./format.js";
 import { padToWidth } from "./text-width.js";
 import { formatTimestamp } from "./datetime.js";
+import { stringList } from "./json-object.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
  * (tick_end, landed): the usage numbers arrive via eventUsage (the loose-typing coercion
@@ -132,7 +133,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "review_verdict":
       return `review approved ${shortSha(e.head)}${e.reason ? ` — ${e.reason}` : ""}${elapsed(e.durationMs)}`;
     case "review_rejected": {
-      const reasons = Array.isArray(e.reasons) ? (e.reasons as string[]) : [];
+      const reasons = stringList(e.reasons);
       // Only the first reason renders; when more exist, say so instead of letting the
       // one-liner read as the complete verdict — the full list rides in state.lastReview
       // into the author's next tick prompt, and this line is the operator's pointer to it.
@@ -155,7 +156,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "dep_install": {
       // The root checkout's install catching up with a landed lockfile change — routine on
       // success; a failure also rides its own warning, which says what happens meanwhile.
-      const pkgs = Array.isArray(e.packages) ? (e.packages as string[]).join(", ") : "";
+      const pkgs = stringList(e.packages).join(", ");
       return `root install (${pkgs}) ${e.status}${e.error ? ` — ${e.error}` : ""}${elapsed(e.durationMs)}`;
     }
     case "budget_warning":
@@ -239,7 +240,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "config_changed": {
       // Routine state change, like its maxConcurrent/retention siblings — no warning prefix.
       // A bare/empty keys array (a torn or hand-edited line) still renders.
-      const keys = Array.isArray(e.keys) ? (e.keys as unknown[]).join(", ") : "";
+      const keys = stringList(e.keys).join(", ");
       return `config changed${keys ? `: ${keys}` : ""}`;
     }
     case "build_stale":
