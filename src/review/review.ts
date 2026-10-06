@@ -19,7 +19,7 @@ import { saveLoopState } from "../loop/loop-state.js";
 import { shortSha } from "../text/format.js";
 import { type SleepSampler } from "../scheduling/host-sleep.js";
 import { isExemptDiff } from "../exemptions.js";
-import { falseFixReason } from "../fix-claim.js";
+import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "../suite-rerun.js";
 import { setLandingStage } from "../landing/landing-slot.js";

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/refusal.js";
+import { handleRefusal, refusalContradiction, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";

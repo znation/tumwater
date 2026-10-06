@@ -24,7 +24,7 @@ import { recoverLeftover, type LeftoverRecovery } from "../leftover.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
-import { extractFlow, type FlowResult } from "../reply-contract.js";
+import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
 import { landingRefName } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
@@ -248,7 +248,7 @@ export class LoopRunner {
   /** Land the worktree branch on main (see src/landing/landing-merge.ts for the rebase → verify → ff-merge →
    * conflict-retry flow): delegates with this loop's identity, tick number, and shared pi wiring
    * so a conflict-resolution run folds into this tick's counters like any other pi run. Since
-   * merge queue 2/5 only the refusal-note landing (src/refusal.ts) still uses it — reviewed
+   * merge queue 2/5 only the refusal-note landing (src/verdict/refusal.ts) still uses it — reviewed
    * changes land through the lander in _land-<role> instead; md-only notes are review-exempt by
    * construction, so they keep this branch path (plans/merge-queue.md 2/5). */
   private async merge(wt: string, summary: string): Promise<TickResult> {

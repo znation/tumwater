@@ -26,9 +26,9 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parseEntryDetails } from "./backlog/backlog-md.js";
-import { changeBaseRev, fileContentAt } from "./git/git.js";
-import { collapseWhitespace } from "./text/text.js";
+import { parseEntryDetails } from "../backlog/backlog-md.js";
+import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { collapseWhitespace } from "../text/text.js";
 
 /** Strip the provenance parentheticals and the `, fixed <date>` suffix a bugfix tick appends
  * when it moves an entry, so a heading compares equal across the Open→Fixed move. The

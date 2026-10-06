@@ -149,7 +149,7 @@ a passing check would still grow monotonically until the cap intervened. This pl
 - `src/scheduling/scheduling.ts` — no change needed beyond `DEFERRABLE_ROLES` shrinking, which `deferTick`
   already reads. Note `deferTick` now takes a fifth argument, `now: number` (`704139c`), so the
   new "returns false for every observer" tests must pass it.
-- `src/reply-contract.ts` — `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
+- `src/verdict/reply-contract.ts` — `extractFlow(text): { flow: string; result: "passed" | "bug" } | null`,
   built on the existing `labeledLine` helper that already serves
   `SUMMARY`/`WHY`/`RISK`/`VERIFIED` and `TUMWATER_REFUSED`. The line is
   `FLOW: <name> — <passed|bug>`; a bare `FLOW: <name>` is tolerated as `passed`. The result token
@@ -294,7 +294,7 @@ role texts.
 
 Verified on this tree:
 
-- `src/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the helper
+- `src/verdict/reply-contract.ts` (75 lines) — `labeledLine(text, label)` at line 28 is exactly the helper
   the plan assumes: `^\s*<label>:\s*(.+)\s*$` with the `m` flag, returning the trimmed remainder
   or null. `extractRefusal` (line 37) is the precedent for a thin wrapper. The `FLOW` label is
   literal text, so there is no regex-escaping concern.
@@ -343,7 +343,7 @@ Pinned (open questions closed):
    record nothing, so an interrupted check never advances the ledger.
 
 Sizing: `src/qa-coverage.ts` ~110 lines (schema, read/record/render, age, `QA_FLOWS`);
-`src/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
+`src/verdict/reply-contract.ts` ~10 (`extractFlow`); `src/paths.ts` ~4; `src/prompt/prompt.ts` ~3;
 `src/loop.ts` ~8; `src/roles/roles.ts` ~4; tests ~120 across `test/qa-coverage.test.ts` (new),
 `test/reply-contract.test.ts`, `test/prompt.test.ts`, `test/paths.test.ts`, `test/loop.test.ts`.
 One run. No design question remains open.

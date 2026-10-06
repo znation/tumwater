@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildCutOffNote, buildSummaryRequestPrompt } from "../src/prompt/prompt-followup.js";
-import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 
 // The follow-up prompts (src/prompt/prompt-followup.ts): the missing-summary recovery and the
 // cut-off note, extracted from test/prompt.test.ts. The resume bridge's own suite — the

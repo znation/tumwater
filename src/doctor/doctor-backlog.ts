@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
-import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../fix-claim.js";
+import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the three checks that
@@ -57,7 +57,7 @@ function readDocChecked(p: string, file: string, missingDetail: string): { doc: 
   return read;
 }
 
-/** Fix claims — the standalone half of the landing gate's false-fix check (src/fix-claim.ts):
+/** Fix claims — the standalone half of the landing gate's false-fix check (src/verdict/fix-claim.ts):
  * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix
  * that reached main any other way (landed before the gate existed, or through a path it never
  * sees) was visible only to a human reading raw history. This re-verifies the newest Fixed

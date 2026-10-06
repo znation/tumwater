@@ -86,7 +86,7 @@ test("a fix-claim block in the landing's exempt arm warns, names the reason to t
   const { root, wt } = await initializedWorktree();
   // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its
   // body names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
-  // (falseFixReason, src/fix-claim.ts) must block the landing — and, per BUGS.md 2026-10-02,
+  // (falseFixReason, src/verdict/fix-claim.ts) must block the landing — and, per BUGS.md 2026-10-02,
   // say so on the feed and to the lander instead of failing silently.
   fs.appendFileSync(
     wt + "/BUGS.md",

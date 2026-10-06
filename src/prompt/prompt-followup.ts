@@ -1,5 +1,5 @@
 import { CONTEXT_BUDGET_RULE } from "./prompt.js";
-import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../reply-contract.js";
+import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-contract.js";
 
 /** The prompts that pick a pi session back up where prompt.ts's builders start one: the resume
  * bridge sent into the SAME pi session as an interrupted tick, the summary-recovery follow-up

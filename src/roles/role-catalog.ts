@@ -14,7 +14,7 @@ import {
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TALLY,
 } from "./role-guidance.js";
-import { NOTHING_TO_DO } from "../reply-contract.js";
+import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import type { ModelTier } from "../config/config-schema.js";
 
 export interface Role {

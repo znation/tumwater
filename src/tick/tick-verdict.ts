@@ -8,13 +8,13 @@
 import type { LoopState } from "../loop/loop-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TickOutcome } from "./tick-outcome.js";
-import type { FlowResult } from "../reply-contract.js";
+import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-write.js";
-import { diagnoseNoChange } from "../no-change.js";
-import { handleRefusal, refusalContradiction } from "../refusal.js";
+import { diagnoseNoChange } from "../verdict/no-change.js";
+import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../commit-message.js";
 import { recordFlow } from "../qa-coverage.js";
 
@@ -97,7 +97,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
 
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
-  // and any note it left are the run's verdict — classify what it left behind (src/refusal.ts).
+  // and any note it left are the run's verdict — classify what it left behind (src/verdict/refusal.ts).
   if (pi.refused) {
     // A refusal contradicted by its own reply — a SUMMARY beside non-markdown work — is
     // surfaced, not obeyed: the work is finished output a discard would destroy, so the
@@ -134,7 +134,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
   if (!changed) {
     // No sentinel anywhere in the reply is either non-compliance or truncation —
-    // diagnoseNoChange (src/no-change.ts) tells which, so the warning event below is
+    // diagnoseNoChange (src/verdict/no-change.ts) tells which, so the warning event below is
     // diagnosable on its own.
     const diagnosis = diagnoseNoChange(pi);
     if (!pi.nothingToDo) {

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
-import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { oneLine } from "./oracles.js";
 
 // The resume bridge (src/prompt/prompt-followup.ts buildResumePrompt): the prompt sent into the SAME pi

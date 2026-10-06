@@ -17,7 +17,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
 import { isExemptDiff } from "../exemptions.js";
-import { falseFixReason } from "../fix-claim.js";
+import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { warnEvent } from "../events/events.js";
 import { withLock } from "../concurrency/lock.js";

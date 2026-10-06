@@ -11,7 +11,7 @@ import {
   normalizeFixedHeading,
   sourceHaystack,
   unbackedSymbols,
-} from "../src/fix-claim.js";
+} from "../src/verdict/fix-claim.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/worktree.js";

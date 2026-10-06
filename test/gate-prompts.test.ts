@@ -12,7 +12,7 @@ import {
   buildReviewPrompt,
 } from "../src/gates/gate-prompts.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
-import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";
 import { oneLine } from "./oracles.js";
 

@@ -13,7 +13,7 @@ import { vanishOnReadFile } from "./fs-faults.js";
 // test/doctor.test.ts, and the fixtures those files share live in test/doctor-fixtures.ts.
 
 // checkFixClaims — the standalone false-fix detector: the newest Fixed records of BUGS.md are
-// re-verified against the tree with src/fix-claim.ts's parsing (the document shapes below
+// re-verified against the tree with src/verdict/fix-claim.ts's parsing (the document shapes below
 // follow test/fix-claim.test.ts). A record warns only when every symbol its Fix paragraph
 // names is absent; the gate-strength rule (any missing symbol) belongs to md-only landings.
 

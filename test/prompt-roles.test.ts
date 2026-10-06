@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
-import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/reply-contract.js";
+import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
 import { NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance.js";
 import { oneLine } from "./oracles.js";

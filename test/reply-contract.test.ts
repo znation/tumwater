@@ -10,7 +10,7 @@ import {
   isNothingToDo,
   labeledLine,
   verdictLines,
-} from "../src/reply-contract.js";
+} from "../src/verdict/reply-contract.js";
 
 test("isNothingToDo detects the sentinel", () => {
   assert.ok(isNothingToDo(`some reasoning\n${NOTHING_TO_DO}`));

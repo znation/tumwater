@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   REPLY_ENDINGS,
   CLAIMS_RULE,
-} from "../src/reply-contract.js";
+} from "../src/verdict/reply-contract.js";
 import {
   ROOT_FROM_WORKTREE,
   TEST_RUNNER_RULE,
@@ -20,7 +20,7 @@ import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
 import { worktreePath } from "../src/paths.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/gates/gate-prompts.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { NOTHING_TO_DO } from "../src/reply-contract.js";
+import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { customRole, ROLES, roleById } from "../src/roles/roles.js";
 import { searchGuidance } from "../src/roles/role-guidance.js";
 import { oneLine } from "./oracles.js";

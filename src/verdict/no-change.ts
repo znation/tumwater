@@ -1,4 +1,4 @@
-import type { PiRunResult } from "./pi/pi-run-result.js";
+import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Diagnosis of a pi run that ended without worktree changes: whether the generation was cut
  * off at the context ceiling (real work, unfulfilled) and the diagnostic notes for the warning
