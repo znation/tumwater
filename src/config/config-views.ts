@@ -8,6 +8,7 @@ import { MODEL_TIERS } from "./config-schema.js";
 import { parseModelSelector } from "../model-selector.js";
 import type { ModelSelector } from "../model-selector.js";
 import { isJsonObject } from "../json-object.js";
+import { formatModelSelector } from "../model-selector.js";
 import { roleById } from "../roles/roles.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
@@ -217,6 +218,86 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
   };
 }
 
+/** One tier's budget-fallback resolution (plans/model-tiers.md "Budget fallback by tier"):
+ * `pair` is the free pair the tier runs on at the cap, or null when the tier pauses; `from`
+ * is the tier whose OWN fallback supplied the pair, or null when the tier runs its own. */
+export interface TierFallback {
+  pair: FallbackModelConfig | null;
+  from: ModelTier | null;
+}
+
+/** The resolution of all three tiers, keyed by tier name. */
+export type TierFallbackMap = Record<ModelTier, TierFallback>;
+
+/** The order a tier borrows other tiers' own fallbacks in, after trying its own: small
+ * climbs (small → default → strong), default keeps near itself (default → strong → small),
+ * and strong never drops to a small model (strong → default → pause) — a weak reviewer or
+ * planner does more harm than a paused one. */
+const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
+  small: ["small", "default", "strong"],
+  default: ["default", "strong", "small"],
+  strong: ["strong", "default"],
+};
+
+/** A tier's OWN fallback pair — what the `fallback` key declares at that tier's map entry,
+ * or (default only) the string form of `fallback` or the legacy `fallbackModel` object — or
+ * undefined when the tier declares nothing or declares `"pause"` (an explicit opt-out, which
+ * also makes it unborrowable: a tier with no own fallback offers nothing to borrow). Parsed
+ * like fallbackPair: a pure selector, with the ambient top-level thinking when the selector
+ * carries none. */
+function tierOwnFallback(config: TumwaterConfig, tier: ModelTier): FallbackModelConfig | undefined {
+  const fb = config.fallback;
+  let selector: string | undefined;
+  if (fb !== undefined) {
+    if (typeof fb === "string") selector = tier === "default" ? fb : undefined;
+    else {
+      const raw = fb[tier];
+      if (raw !== undefined && raw !== "pause") selector = raw;
+    }
+  } else if (tier === "default" && config.fallback === undefined) {
+    // The legacy object (fallbackPair) resolves the default tier's own fallback, with its
+    // provider/thinking fields and the top-level borrow precedence.
+    return fallbackPair(config) ?? undefined;
+  }
+  if (selector === undefined) return undefined;
+  const parsed = parseModelSelector(selector);
+  const thinking = parsed.thinking ?? config.thinking;
+  return {
+    ...(parsed.provider ? { provider: parsed.provider } : {}),
+    ...(parsed.model ? { model: parsed.model } : {}),
+    ...(thinking ? { thinking } : {}),
+  };
+}
+
+/** Which free pair each tier runs on at the daily cap (plans/model-tiers.md "Budget fallback
+ * by tier", part 5a/8). A tier runs its own declared fallback when `usable(pair)`; otherwise
+ * it borrows another tier's OWN fallback — never one that tier itself borrowed — in
+ * BORROW_ORDER's order; otherwise it pauses (`pair: null`). The engine is pure: the caller
+ * supplies `usable` (part 5b/8 wires it to pair pricing and the fallback breaker), so the
+ * same rules are testable with a stub and the gates cannot disagree with each other. A
+ * config with no fallback at all resolves every tier to pause, and a single `fallback: F`
+ * reads as default's own pair, which small and strong then borrow — today's behavior. */
+export function resolveTierFallbacks(
+  config: TumwaterConfig,
+  usable: (pair: FallbackModelConfig) => boolean,
+): TierFallbackMap {
+  const own = (tier: ModelTier) => {
+    const pair = tierOwnFallback(config, tier);
+    return pair !== undefined && usable(pair) ? pair : undefined;
+  };
+  const resolve = (tier: ModelTier): TierFallback => {
+    const mine = own(tier);
+    if (mine) return { pair: mine, from: null };
+    for (const t of BORROW_ORDER[tier]) {
+      if (t === tier) continue;
+      const theirs = own(t);
+      if (theirs) return { pair: theirs, from: t };
+    }
+    return { pair: null, from: null };
+  };
+  return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };
+}
+
 /** The config as seen by a role loop running on the free fallback model
  * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
@@ -227,15 +308,51 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
  * budgeted model's turns times out every review on a slower free one (a configured
  * `review.timeoutSeconds` above the floor stands, and reviewRunConfig still caps it at
  * tickTimeoutSeconds). Everything else (intervals, thresholds, exempt paths, the cap itself) is
- * untouched, so the gate keeps re-evaluating against the same numbers. Returns `config`
- * unchanged when no fallback is configured. */
-export function applyFallbackModel(config: TumwaterConfig): TumwaterConfig {
-  const pair = fallbackPair(config);
-  if (!pair) return config;
+ * unchanged when no fallback is configured. With a per-tier `resolved` map (resolveTierFallbacks,
+ * part 5a/8) the model map is rewritten to the resolved pairs instead — each seam keeps its
+ * tier: `model[tier]` becomes the tier's pair as a selector string, a tier resolved to pause
+ * is left out (it inherits default's entry, harmless because the gate holds its roles), raw
+ * per-role selector overrides are dropped so a paid pin cannot keep spending, and tier-name
+ * role overrides (`roles.<id>.model: "strong"`) are kept since the map now serves the tier
+ * itself. The director's exemption lives in the gates (roleForConfig), not here. */
+export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallbackMap): TumwaterConfig {
   const stripModel = <T extends { provider?: string; model?: string; thinking?: string }>(o: T): T => {
     const { provider: _p, model: _m, thinking: _t, ...rest } = o;
     return rest as T;
   };
+  if (resolved) {
+    const selectorOf = (f: TierFallback) =>
+      f.pair
+        ? formatModelSelector({
+            provider: f.pair.provider,
+            model: f.pair.model ?? "",
+            thinking: f.pair.thinking,
+          })
+        : undefined;
+    const model: Partial<Record<ModelTier, string>> = {};
+    for (const tier of MODEL_TIERS) {
+      const sel = selectorOf(resolved[tier]);
+      if (sel !== undefined) model[tier] = sel;
+    }
+    return {
+      ...config,
+      provider: undefined,
+      model,
+      thinking: undefined,
+      review: {
+        ...stripModel(config.review),
+        timeoutSeconds: Math.max(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S),
+      },
+      roles: Object.fromEntries(
+        Object.entries(config.roles).map(([id, rc]) => [
+          id,
+          isTierName(rc?.model) ? rc : stripModel(rc),
+        ]),
+      ),
+    };
+  }
+  const pair = fallbackPair(config);
+  if (!pair) return config;
   return {
     ...config,
     provider: pair.provider,

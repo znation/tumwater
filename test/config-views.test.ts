@@ -8,9 +8,12 @@ import {
   FALLBACK_REVIEW_TIMEOUT_S,
   fallbackPair,
   reviewConfig,
+  resolveTierFallbacks,
   reviewRunConfig,
   REVIEW_TIMEOUT_S,
   tierModel,
+  type TierFallback,
+  type TierFallbackMap,
 } from "../src/config/config-views.js";
 
 // config-views.ts's derived views over a loaded config: how the role, review, and fallback
@@ -272,4 +275,106 @@ test("a map-form fallback engages its default entry until part 5/8 tiers it", ()
   assert.equal(pair?.thinking, "low");
   // A pause default names no model at all.
   assert.equal(fallbackPair({ ...config, fallback: { default: "pause" } }), null);
+});
+
+// Part 5a/8: the per-tier budget-fallback resolution engine.
+
+test("resolveTierFallbacks with a single fallback: every tier lands on it, default own", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.fallback = "omlx/free";
+  const r = resolveTierFallbacks(config, () => true);
+  assert.deepEqual(r.default, { pair: { provider: "omlx", model: "free" }, from: null });
+  assert.deepEqual(r.small, { pair: { provider: "omlx", model: "free" }, from: "default" });
+  assert.deepEqual(r.strong, { pair: { provider: "omlx", model: "free" }, from: "default" });
+  // No fallback configured: every tier pauses.
+  const none = resolveTierFallbacks(defaultConfig(), () => true);
+  for (const tier of ["small", "default", "strong"] as const)
+    assert.deepEqual(none[tier], { pair: null, from: null });
+});
+
+test("resolveTierFallbacks borrows per tier in the declared order, strong never small", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.fallback = { default: "omlx/d", strong: "omlx/s" };
+  const r = resolveTierFallbacks(config, () => true);
+  assert.deepEqual(r.default, { pair: { provider: "omlx", model: "d" }, from: null });
+  assert.deepEqual(r.strong, { pair: { provider: "omlx", model: "s" }, from: null });
+  assert.deepEqual(r.small, { pair: { provider: "omlx", model: "d" }, from: "default" });
+  // Without a strong entry, strong borrows default's.
+  const noStrong = resolveTierFallbacks({ ...config, fallback: { default: "omlx/d" } }, () => true);
+  assert.deepEqual(noStrong.strong, { pair: { provider: "omlx", model: "d" }, from: "default" });
+  // Without a default entry, default borrows strong's and small borrows strong's.
+  const onlySmall = resolveTierFallbacks({ ...config, fallback: { small: "omlx/m" } }, () => true);
+  assert.deepEqual(onlySmall.small, { pair: { provider: "omlx", model: "m" }, from: null });
+  assert.deepEqual(onlySmall.default, { pair: { provider: "omlx", model: "m" }, from: "small" });
+  assert.deepEqual(onlySmall.strong, { pair: null, from: null });
+});
+
+test("resolveTierFallbacks honors usable() and explicit pause", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.fallback = { default: "omlx/d", small: "omlx/m", strong: "omlx/s" };
+  // Only the strong pair is usable: strong keeps it, the others borrow it.
+  const r = resolveTierFallbacks(config, (p) => p.model === "s");
+  assert.deepEqual(r.strong, { pair: { provider: "omlx", model: "s" }, from: null });
+  assert.deepEqual(r.default, { pair: { provider: "omlx", model: "s" }, from: "strong" });
+  assert.deepEqual(r.small, { pair: { provider: "omlx", model: "s" }, from: "strong" });
+  // An explicit pause opts a tier out and makes it unborrowable.
+  const paused: TumwaterConfig = defaultConfig();
+  paused.fallback = { default: "pause", small: "omlx/m", strong: "omlx/s" };
+  const rp = resolveTierFallbacks(paused, () => true);
+  assert.deepEqual(rp.default, { pair: { provider: "omlx", model: "s" }, from: "strong" });
+  // Nothing usable anywhere: every tier pauses.
+  const dead = resolveTierFallbacks(config, () => false);
+  for (const tier of ["small", "default", "strong"] as const)
+    assert.deepEqual(dead[tier], { pair: null, from: null });
+  // The legacy fallbackModel object is default's own fallback.
+  const legacy: TumwaterConfig = defaultConfig();
+  legacy.fallbackModel = { provider: "omlx", model: "free" };
+  const rl = resolveTierFallbacks(legacy, () => true);
+  assert.deepEqual(rl.default, { pair: { provider: "omlx", model: "free" }, from: null });
+  assert.deepEqual(rl.strong, { pair: { provider: "omlx", model: "free" }, from: "default" });
+});
+
+test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "paid/a", strong: "paid/b" };
+  config.thinking = "high";
+  config.provider = "legacy";
+  config.review = { ...config.review, model: "paid/reviewer" };
+  config.roles.feature = { enabled: true, model: "paid/pin" };
+  config.roles.plan = { enabled: true, model: "strong" };
+  const resolved: TierFallbackMap = resolveTierFallbacks(
+    { ...config, fallback: { default: "omlx/d:low", strong: "omlx/s" } },
+    () => true,
+  );
+  const out = applyFallbackModel(config, resolved);
+  assert.deepEqual(out.model, {
+    small: "omlx/d:low",
+    default: "omlx/d:low",
+    strong: "omlx/s:high",
+  });
+  assert.equal(out.provider, undefined);
+  assert.equal(out.thinking, undefined);
+  // Raw per-role selector overrides are dropped; tier-name ones kept.
+  assert.equal(out.roles.feature?.model, undefined);
+  assert.equal(out.roles.plan?.model, "strong");
+  assert.equal(out.review.model, undefined);
+  // The reviewer's time budget still rises to the fallback floor.
+  assert.equal(
+    reviewRunConfig(out).tickTimeoutSeconds,
+    FALLBACK_REVIEW_TIMEOUT_S,
+  );
+  // A paused tier is left out of the map (it inherits default's entry).
+  const pausedStrong: TierFallback = { pair: null, from: null };
+  const half = applyFallbackModel(config, { ...resolved, strong: pausedStrong });
+  assert.deepEqual(half.model, { small: "omlx/d:low", default: "omlx/d:low" });
+});
+
+test("applyFallbackModel without a resolved map is unchanged", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "paid/a", strong: "paid/b" };
+  config.fallback = "free/f";
+  const out = applyFallbackModel(config);
+  assert.equal(out.provider, "free");
+  assert.equal(out.model, "f");
+  assert.equal(out.roles.feature?.model, undefined);
 });

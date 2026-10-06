@@ -6,49 +6,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model tiers, part 5/8: the budget fallback switches each tier to its own free model (planned 2026-10-05 by operator; requires part 3/8 landed)
+### Model tiers, part 5b/8: the fallback breaker becomes a map keyed by pair (planned 2026-10-06 by feature, split from part 5/8; requires part 5a/8 landed)
 
-**Needs review 2026-10-06 by feature: too large for one run** — the breaker-map change alone
-ripples through fallback-breaker.ts, budget-gates.ts, budget.ts, orchestrator.ts,
-orchestrator-launch.ts, and gate-polls.ts plus the dashboards' demotion readers and their test
-files, on top of the per-tier resolution engine and the gate-semantics rewrite. Split it into
-smaller sub-plans (resolution engine first, then the breaker map, then the gate/poll wiring).
+**Approach.** **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker`
+becomes a map keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
+`pairFree(...)` and `fallbackServing(...)`. Tiers sharing a fallback pair share a breaker, and a
+demoted pair re-resolves only the tiers that use it.
 
-Design: plans/model-tiers.md ("Budget fallback by tier").
+**Files touched.** src/fallback-breaker.ts, src/gates/budget-gates.ts, and their tests.
 
-**Goal.** At the daily cap each seam runs on its own tier's free model, borrowing another
-tier's when its own is missing, instead of every seam collapsing onto one pair. A single
-`fallback` (or legacy `fallbackModel`) behaves exactly as today.
+### Model tiers, part 5c/8: budgetGate semantics, the per-role pause set, and handback by resolved pair (planned 2026-10-06 by feature, split from part 5/8; requires parts 5a/8 and 5b/8 landed)
 
 **Approach.**
-1. **src/config/config-views.ts:** `resolveTierFallbacks(config, usable)` returns, per tier, the pair
-   it runs on plus the tier it was borrowed `from`, or `"pause"`. A tier uses its own fallback
-   when `usable(pair)`; otherwise it borrows another tier's own fallback (never a borrowed one)
-   in the order small → default → strong, default → strong → small, and
-   strong → default → pause, never small. An explicit `"pause"` value opts a tier out.
-   `applyFallbackModel(config, resolved)` rewrites the `model` map to those pairs, so each seam
-   keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
-   the `FALLBACK_REVIEW_TIMEOUT_S` floor.
-2. **src/fallback-breaker.ts / src/gates/budget-gates.ts:** `BudgetGateState.breaker` becomes a map
-   keyed by pair name, `rekeyFallbackBreaker` runs per pair, and `usable(pair)` =
-   `pairFree(...)` and `fallbackServing(...)`.
-3. **src/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
+1. **src/budget.ts `budgetGate`:** `paused` when `default` resolves to pause, or when review is
    on and `strong` does (nothing could land); `fallback` otherwise. A role whose own tier
    resolved to pause (strong-tier roles with review off) is blocked beside the poll's
    per-role `capPaused` set (src/gates/gate-polls.ts, filled by src/gates/role-cap-gates.ts), and its row
    reads `budget paused`.
-4. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
+2. **Budget handback** (src/gates/gate-polls.ts): the running tick's `tickPair` (src/loop.ts) is
    matched against every resolved fallback pair, not only one.
 
-**Files touched.** src/config/config-views.ts, src/fallback-breaker.ts, src/gates/budget-gates.ts,
-src/budget.ts, src/gates/gate-polls.ts, src/loop.ts, and their tests.
+**Files touched.** src/budget.ts, src/gates/gate-polls.ts, src/gates/role-cap-gates.ts, src/loop.ts,
+and their tests.
 
 **Acceptance criteria.**
-- `{ "fallback": F }` with any `model` map puts every seam on F at the cap, matching today's
-  argv and events.
-- With `fallback: { default: D, strong: S }`, reviewer, plan, and resolver runs carry S and
-  authors carry D; without `S`, strong-tier seams carry D; without `D` but with `small: M`,
-  authors carry M and strong-tier seams pause.
 - With review on and strong unresolvable, the gate is `budget_paused`; with review off, only
   the plan role is held.
 - A breaker-demoted pair re-resolves only the tiers using it.
@@ -117,6 +98,41 @@ files above, and the config-write tests.
 ---
 
 ## Done
+### Model tiers, part 5a/8: the per-tier budget-fallback resolution engine (planned 2026-10-05 by operator; split 2026-10-06 by feature from the original part 5/8 — too large for one run — into the resolution engine, the breaker map, and the gate wiring, done 2026-10-06 by feature)
+
+Design: plans/model-tiers.md ("Budget fallback by tier").
+
+**Goal.** The pure resolution layer for per-tier fallbacks: given a config and a
+`usable(pair)` predicate, say which free pair each tier runs on at the cap and which tier
+it was borrowed from, and rewrite a config's model map to those pairs. A single `fallback`
+(or legacy `fallbackModel`) behaves exactly as today.
+
+**Approach.**
+1. **src/config/config-views.ts:** `resolveTierFallbacks(config, usable)` returns, per tier, the pair
+   it runs on plus the tier it was borrowed `from`, or `"pause"`. A tier uses its own fallback
+   when `usable(pair)`; otherwise it borrows another tier's own fallback (never a borrowed one)
+   in the order small → default → strong, default → strong → small, and
+   strong → default → pause, never small. An explicit `"pause"` value opts a tier out.
+   `applyFallbackModel(config, resolved)` rewrites the `model` map to those pairs, so each seam
+   keeps its tier; drops raw per-seam selector overrides while keeping tier-name ones; and keeps
+   the `FALLBACK_REVIEW_TIMEOUT_S` floor.
+2. **src/fallback-breaker.ts / src/gates/budget-gates.ts (part 5b/8), src/budget.ts,
+   src/gates/gate-polls.ts, src/loop.ts (part 5c/8):** later ticks wire the engine into the
+   gates.
+
+**Files touched.** src/config/config-views.ts and its tests.
+
+**Acceptance criteria.**
+- `{ "fallback": F }` resolves every tier to F, default own and the others borrowed from
+  default, when `usable(F)`.
+- With `fallback: { default: D, strong: S }` and both usable, default and strong run their own
+  pairs and small borrows D; without `S`, strong borrows D; without `D` but with `small: M`,
+  small runs M, default borrows M, and strong pauses (never borrows small).
+- An explicit `"pause"` on a tier opts it out, and other tiers do not borrow it.
+- `applyFallbackModel(config, resolved)` writes the per-tier selector map, drops raw per-role
+  selector overrides, keeps tier-name ones, and raises the reviewer's timeout floor.
+- Calling `applyFallbackModel(config)` with no `resolved` keeps today's single-fallback
+  behavior byte for byte.
 
 ### Model tiers, part 6/8: the fleet-wide backend hold keys storms by provider (planned 2026-10-05 by operator; requires part 3/8 landed, done 2026-10-06 by feature)
 
