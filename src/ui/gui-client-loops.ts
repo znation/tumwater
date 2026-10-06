@@ -79,7 +79,9 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const b = (action, ic, title, cls) => "<button type='button' class='icon-btn rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +
       "' data-role='" + esc(l.role) + "' title='" + esc(title) + "' aria-label='" + esc(title) + "'>" + icon(ic) + "</button>";
     let actions = b("prompt", "chat", "Prompt " + l.role);
-    if (l.inFlight) {
+    // The running set (info.live), not the permit-holder inFlight: the exempt running director
+    // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
+    if (info.live) {
       actions += abortConfirming(l.role)
         ? "<button type='button' class='icon-btn rowaction confirming' data-action='abort' data-role='" + esc(l.role) + "' title='Click again to abort the running tick'>" + icon("stop") + "Abort?</button>"
         : b("abort", "stop", "Abort " + l.role + "'s running tick", "danger");

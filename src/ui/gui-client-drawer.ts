@@ -97,7 +97,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const btn = (action, ic, label, cls) => "<button type='button' class='btn btn-sm rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +
       "' data-role='" + esc(l.role) + "'>" + icon(ic) + esc(label) + "</button>";
     let actions = btn("prompt", "chat", "Prompt this loop");
-    if (l.inFlight) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to abort", "btn-danger confirming") : btn("abort", "stop", "Abort this tick", "btn-danger");
+    // The running set (info.live), not the permit-holder inFlight: the exempt running director
+    // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
+    if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to abort", "btn-danger confirming") : btn("abort", "stop", "Abort this tick", "btn-danger");
     else actions += btn("wake", "bolt", "Wake now");
     actions += paused ? btn("resume", "play", "Resume") : btn("pause", "pause", "Pause");
 
@@ -119,7 +121,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : next === "now" || next.startsWith("now ") ? next
       : next.startsWith("backoff ") ? "in " + next.slice(8) + " (backoff)"
       : "in " + next;
-    const tickWord = l.inFlight ? "this tick" : "last tick";
+    const tickWord = info.live ? "this tick" : "last tick";
     const stats = "<dl class='kv'>" + kv("Commits", String(l.commits)) + kv("Ticks", String(l.ticks)) +
       kv("Tokens, " + tickWord, fmtTokens(l.generated)) + kv("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
       kv("Spent today", fmtUsd(l.todayUsd)) + kv("Spent in total", fmtUsd(l.costUsd)) +

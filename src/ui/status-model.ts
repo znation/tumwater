@@ -124,6 +124,14 @@ export function loopPhase(
     // so the operator can count active rows against the cap — a landing visibly counts, a
     // parked waiter visibly does not (BUGS.md 2026-09-24).
     if (s.parkedSince) return `awaiting slot ${duration(Date.now() - s.parkedSince)}`;
+    // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight tick
+    // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
+    // excludes while still carrying the live detail, so its work stays visible without
+    // counting as a permit holder (BUGS.md 2026-10-06). The bare label matches the working
+    // branch's no-root shape.
+    if (s.role === DIRECTOR_ROLE) {
+      return root ? inFlightDetail(inFlightLabel(s, "director working"), tickProgress(root, s, live)) : "director working";
+    }
     // The tick's work is committed and under adversarial review: the raw log tail now
     // describes the reviewer run — show its live progress with a "reviewing" label. The
     // reviewer's run writes the same role log as the author's (each `session` event names
@@ -250,18 +258,24 @@ export function loopRowCells(
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
 
-/** Is this phase one of the in-flight states? The three labels come from loopPhase:
- * `working …`, `reviewing …`, and the marker-driven `landing …` (merge queue 4/5) — a vetted
- * change waiting for the merge slot (`vetted, awaiting merge`) runs nothing, so it is not in
- * flight. Named once so the two rendered tables and their lockstep
- * test share the rule instead of restating the prefixes — and statusPayload reuses it for each
- * loop row's `inFlight` flag, so the GUI's row actions never re-derive the three phase
- * prefixes client-side. */
+/** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
+ * against maxConcurrent? The three labels come from loopPhase: `working …`, `reviewing …`,
+ * and the marker-driven `landing …` (merge queue 4/5) — a vetted change waiting for the merge
+ * slot (`vetted, awaiting merge`) runs nothing, so it is not in flight. The running director's
+ * `director working …` label is deliberately outside the set: the director never calls
+ * `semaphore.acquire`, so the cap-mirroring rows are exactly the permit holders (BUGS.md
+ * 2026-10-06). Named once so the two rendered tables and their lockstep test share the rule
+ * instead of restating the prefixes — and statusPayload reuses it for each loop row's
+ * `inFlight` flag, the cap count every surface reads. The row ACTIONS (abort vs wake) instead
+ * key off the running set, which also includes the director: the GUI derives it from the
+ * rendered phase (gui-client-loops.ts/drawer's phaseInfo.live). */
 export function isActivePhase(phase: string): boolean {
   return phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
 }
 
-/** A loop's rank in the rendered tables, from its phase label (loopPhase): 0 live work —
+/** A loop's rank in the rendered tables, from its phase label (loopPhase): -1 a RUNNING
+ * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
+ * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
  * working, reviewing, landing (isActivePhase); 1 work waiting in the pipeline — a vetted change
  * awaiting the merge slot, or a tick parked awaiting a permit; 2 needs attention — failing, or
  * blocked by a red main; 3 paused — by the operator, by the budget, or by the loop's own
@@ -269,6 +283,7 @@ export function isActivePhase(phase: string): boolean {
  * stopped fleet). The dashboard groups its loop table by these ranks; the TUI/status table
  * orders by them. */
 export function loopRank(phase: string): number {
+  if (phase.startsWith("director working")) return -1;
   if (isActivePhase(phase)) return 0;
   if (phase.startsWith("vetted") || phase.startsWith("awaiting slot")) return 1;
   if (phase === "failing" || phase === "main red") return 2;

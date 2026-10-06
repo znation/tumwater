@@ -161,6 +161,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     todayLoading = false;
     if (lastStatus && activeView === "fleet") renderStats(lastStatus);
   }
+  // stats:start
   function statTile(t) {
     const open = t.act ? "<button type='button' class='stat' data-act='" + t.act + "'" + (t.arg ? " data-arg='" + esc(t.arg) + "'" : "") + (t.hint ? " title='" + esc(t.hint) + "'" : "") + ">" : "<div class='stat'>";
     return open + "<span class='stat-label'>" + icon(t.icon) + esc(t.label) + "</span><span class='stat-value'>" + t.value + "</span>" +
@@ -168,7 +169,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   }
   function renderStats(d) {
     const loops = d.loops || [];
-    const live = loops.filter((l) => l.inFlight);
+    // The running set (phaseInfo.live), not the permit-holder inFlight: the exempt running
+    // director is genuinely in flight, so the tile must count it even though it holds no
+    // maxConcurrent permit (BUGS.md 2026-10-06).
+    const live = loops.filter((l) => phaseInfo(l.phase).live);
     const kinds = {};
     for (const l of live) { const k = phaseInfo(l.phase).key; kinds[k] = (kinds[k] || 0) + 1; }
     const liveSub = live.length
@@ -190,6 +194,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         sub: esc(plural(plans, "plan") + " · " + plural(bugs, "bug") + (qs ? " · " + plural(qs, "question") : "")) },
     ].map(statTile).join(""));
   }
+  // stats:end
 
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
@@ -283,7 +288,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
 
   function renderFleet(d) {
     const loops = d.loops || [];
-    const sub = plural(loops.length, "loop") + " · " + (d.running ? loops.filter((l) => l.inFlight).length + " in flight" : "the fleet is stopped") +
+    const sub = plural(loops.length, "loop") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the fleet is stopped") +
       (d.paused ? " · paused" : "");
     if ($("fleetsub").textContent !== sub) $("fleetsub").textContent = sub;
     renderStats(d);

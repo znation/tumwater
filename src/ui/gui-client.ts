@@ -122,8 +122,11 @@ const FORMAT_JS = String.raw`  // format:start
   const humanSeconds = (sec) => (sec < 60 ? sec + "s" : sec < 3600 ? Math.round(sec / 60) + "m" : sec < 86400 ? Math.round(sec / 3600) + "h" : Math.round(sec / 86400) + "d");
   // human-seconds-fmt:end
   // active-phase-fmt:start
-  // A loop in flight — status-model.ts's isActivePhase: its phase starts with working,
-  // reviewing, or landing. One home for the three prefixes fmtNextRun and loopRank share.
+  // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase: its phase starts with
+  // working, reviewing, or landing. One home for the three prefixes fmtNextRun and loopRank
+  // share; the exempt running director's own director-working label is checked beside it
+  // (fmtNextRun and loopRank) rather than folded in, because it holds no permit (BUGS.md
+  // 2026-10-06).
   const isActivePhase = (phase) => phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
   // active-phase-fmt:end
   // last-tick-fmt:start
@@ -150,7 +153,7 @@ const FORMAT_JS = String.raw`  // format:start
   // when due; otherwise the remaining time, prefixed "backoff " while backing off. A yield-scaled
   // clock rides as a " ×N" suffix: a quiet role's effective gap is longer than the countdown.
   const fmtNextRun = (l, fleetRunning) => {
-    const active = isActivePhase(l.phase) || l.phase.startsWith("awaiting slot");
+    const active = isActivePhase(l.phase) || l.phase.startsWith("awaiting slot") || l.phase.startsWith("director working");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";

@@ -113,8 +113,10 @@ test("status payload carries the land queue depth and the in-flight landing", as
   );
   assert.equal(p.landQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
   assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "queued", "other roles keep their normal phase");
-  // The row-level inFlight flag (isActivePhase over the rendered phase) is what the GUI's
-  // row actions key off: the landing role is in flight, every other row is not.
+  // The row-level inFlight flag (isActivePhase over the rendered phase) is the permit-holder
+  // cap set the payload exports: the landing role is in flight, every other row is not. (The
+  // GUI's row actions read their own live flag from the phase, which also includes the exempt
+  // running director — BUGS.md 2026-10-06.)
   assert.equal(p.loops.find((l) => l.role === "clean")!.inFlight, true, "the landing row is in flight");
   assert.equal(p.loops.find((l) => l.role === "bugfix")!.inFlight, false, "idle rows are not");
 });

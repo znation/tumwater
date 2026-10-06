@@ -120,7 +120,10 @@ export function fleetAlerts(
       actions: failing.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });
   }
-  const stuck = loops.filter((l) => l.inFlight && STALL_RE.test(l.phase));
+  // A stall marker rides only a running label. The director is excluded from `inFlight` (it
+  // holds no maxConcurrent permit), so its own running phase is accepted too — otherwise a
+  // stalled director would go unalerted (BUGS.md 2026-10-06).
+  const stuck = loops.filter((l) => (l.inFlight || l.phase.startsWith("director working")) && STALL_RE.test(l.phase));
   if (stuck.length) {
     out.push({
       key: "stuck",

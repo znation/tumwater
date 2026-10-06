@@ -24,9 +24,10 @@ type Model = {
   eventKind(item: { type: string; result?: string }): string;
   splitTitle(t: string): { title: string; meta: string };
   queuedPrompts(d: object): Array<{ role: string; preview: string; file: string; queuedAtMs: number | null }>;
+  LOOP_GROUPS: Array<Array<string | number>>;
 };
 const model = clientScope<Model>(["format", "view-model"],
-  ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts"]);
+  ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS"]);
 
 test("every phase label loopPhase renders maps to a known status on the page", () => {
   const now = Date.now();
@@ -34,6 +35,7 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   const cases: Array<[string, string, boolean]> = [
     [loopPhase(at({}), false), "stopped", false],
     [loopPhase(at({ running: true, lastTickStartedAt: now - 90_000 }), true), "working", true],
+    [loopPhase(at({ running: true, lastTickStartedAt: now - 90_000 }, "director"), true), "working", true],
     [loopPhase(at({ running: true, phase: "review", lastTickStartedAt: now - 30_000 }), true), "reviewing", true],
     [loopPhase(at({}), true, undefined, false, null, false, { status: "landing", startedAt: now - 60_000, stage: "build-check" }), "landing", true],
     [loopPhase(at({}), true, undefined, false, null, false, { status: "vetted", startedAt: now }), "vetted", false],
@@ -73,6 +75,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "reviewing-a", phase: "reviewing 1m", lastTickEndedAt: null },
     { role: "queued-z", phase: "queued", lastTickEndedAt: t(5) },
     { role: "landing-x", phase: "landing 2m · merging", lastTickEndedAt: t(0) },
+    { role: "director", phase: "director working 1m", lastTickEndedAt: t(7) },
     { role: "vetted-v", phase: "vetted, awaiting merge", lastTickEndedAt: t(4) },
     { role: "parked-p", phase: "awaiting slot 10s", lastTickEndedAt: t(6) },
     { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
@@ -84,6 +87,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
   ];
   const order = model.sortLoops(loops).map((l) => l.role);
   assert.deepEqual(order, [
+    "director", // its own live work, outside the permit-holder group
     "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
     "parked-p", "vetted-v", // waiting in the pipeline
     "broken", "main-red", // needs attention
@@ -100,6 +104,20 @@ test("the page's loop order is status-model's, rank by rank", () => {
   ];
   assert.deepEqual(model.sortLoops(tied).map((l) => l.role), ["alpha", "zeta"]);
   assert.deepEqual(tied.map((l) => l.role), ["zeta", "alpha"], "sortLoops returns a new array");
+});
+
+// The running director buckets into its own group so it does not join the In-progress rows an
+// operator scans against maxConcurrent (BUGS.md 2026-10-06). In progress still holds the
+// pipeline waiters (rank 1), which the page labels `Waiting for a slot`.
+test("the running director buckets outside the In-progress group", () => {
+  const groupOf = (phase: string): string | number | undefined => {
+    const rank = model.loopRank(phase);
+    return model.LOOP_GROUPS[model.LOOP_GROUPS.findIndex((g) => g.slice(1).includes(rank))]?.[0];
+  };
+  assert.equal(groupOf("director working 1m"), "Director");
+  assert.equal(groupOf("working 5s"), "In progress");
+  assert.equal(groupOf("landing 5s"), "In progress");
+  assert.equal(groupOf("awaiting slot 5s"), "In progress");
 });
 
 test("tick results read as words with the tone of their outcome", () => {

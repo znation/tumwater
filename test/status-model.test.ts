@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { backdate } from "./backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
-import { loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
+import { isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
@@ -602,6 +602,50 @@ test("a parked waiter renders `awaiting slot` and stays out of the active set", 
     { role: "bugfix", phase: "landing 5s" },
   ]);
   assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
+});
+
+// BUGS.md 2026-10-06 — the director bypasses maxConcurrent (`usesSlot` is false for it), so a
+// running director must not render as a permit-holder `working` row or inflate the active set
+// an operator counts against the cap. It gets a phase of its own that isActivePhase excludes,
+// ranks ahead of the permit holders (rank -1), and keeps its live work visible.
+test("a running director renders its own phase, outside the cap's active set", () => {
+  const d = freshLoopState("director");
+  d.running = true;
+  assert.equal(loopPhase(d, true), "director working");
+  assert.equal(loopPhase(freshLoopState("director"), true), "waiting for prompts", "an idle director keeps its exempt label");
+  const root = tmpdir();
+  d.lastTickStartedAt = Date.now() - 90_000;
+  assert.match(loopPhase(d, true, root), /^director working 1m(29|30|31)s$/);
+  // Its own label is not a permit-holder phase: the active set against the cap is permit holders.
+  assert.equal(isActivePhase(loopPhase(d, true)), false);
+  assert.equal(isActivePhase("working 5s"), true);
+  assert.equal(isActivePhase("landing 5s"), true);
+  // It ranks and sorts ahead of the permit holders (rank -1), so its work stays visible.
+  assert.equal(loopRank("director working 1m"), -1);
+  assert.equal(loopRank("working 5s"), 0);
+  const sorted = sortLoopsByState([
+    { role: "clean", phase: "queued" },
+    { role: "director", phase: "director working 1m" },
+    { role: "feature", phase: "working 5s" },
+  ]);
+  assert.deepEqual(sorted.map((r) => r.role), ["director", "feature", "clean"]);
+});
+
+// The inFlight flag excludes the running director, so the stuck alert must accept its own
+// running phase too, or a stalled director would go unalerted (BUGS.md 2026-10-06).
+test("a stalled running director still raises the stuck alert", () => {
+  const snap = snapshotWith([{ role: "director" }]);
+  const stalled = [{ role: "director", phase: "director working 6m · tool call stalled: bash find /", inFlight: false }];
+  assert.ok(
+    fleetAlerts(snap, [], stalled, Date.now()).some((a) => a.key === "stuck"),
+    "a stalled director is stuck even though it holds no permit",
+  );
+  const idle = [{ role: "director", phase: "waiting for prompts", inFlight: false }];
+  assert.equal(
+    fleetAlerts(snap, [], idle, Date.now()).some((a) => a.key === "stuck"),
+    false,
+    "an idle director raises nothing",
+  );
 });
 
 // Per-role quiet hours (PLANS.md quietHoursPerRole): an idle loop inside its own window

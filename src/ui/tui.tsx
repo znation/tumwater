@@ -122,10 +122,15 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const width = stdout.columns || 120;
     const snap = snapshot(root);
     const status = renderStatusSpans(root, snap, width);
-    // The director row's in-flight flag is Ctrl+C's interrupt gate (tui-keys.ts): the render
-    // already computes the per-loop rows, so it feeds the flag back rather than re-deriving it.
+    // Whether the director has work in flight is Ctrl+C's interrupt gate (tui-keys.ts): the
+    // render already computes the per-loop rows, so it feeds them back rather than re-deriving.
+    // The row's `inFlight` flag is the permit-holder set, which deliberately excludes the
+    // exempt director's own `director working` tick (BUGS.md 2026-10-06), so accept that phase
+    // too — the same live set the GUI's row actions read. A director landing still carries
+    // `landing …` (inFlight true) because loopPhase checks the landing marker first.
+    const director = status.loops.find((r) => r.role === "director");
     keys.syncSnapshot(snap.budget.capUsd, snap.budget.free, snap.loops.map((l) => l.role),
-      status.loops.find((r) => r.role === "director")?.inFlight === true);
+      director?.inFlight === true || director?.phase.startsWith("director working") === true);
     const s = keys.state(); // the handler's state this frame renders
     const roleIds = s.roleIds;
     const view = s.view;

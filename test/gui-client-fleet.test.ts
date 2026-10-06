@@ -61,3 +61,30 @@ test("the other backlog tabs render unchanged alongside the queued age", () => {
   assert.match(html, /<i:question>/);
   assert.doesNotMatch(html, /· queued/);
 });
+
+// The "In flight" stat tile counts the running set, not just the permit holders: a running
+// director is genuinely in flight though it holds no maxConcurrent permit, so the tile must
+// not read 0 beside a live Director row (BUGS.md 2026-10-06).
+function statsScope() {
+  const panels: Record<string, string> = {};
+  const scope = clientScope<{ renderStats(d: object): void }>(["format", "view-model", "stats"], ["renderStats"], {
+    today: null,
+    paintPanel: (id: string, html: string) => { panels[id] = html; },
+    icon: iconStub,
+  });
+  return { scope, panels };
+}
+
+test("the In flight tile counts a running director even though it holds no permit", () => {
+  const { scope, panels } = statsScope();
+  scope.renderStats({
+    running: true,
+    loops: [
+      { role: "director", phase: "director working 1m", inFlight: false },
+      { role: "feature", phase: "working 5s", inFlight: true },
+    ],
+  });
+  const html = panels["stats"] ?? "";
+  assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 loops<\/small>/, "the tile counts both live loops");
+  assert.match(html, />2 working</, "the subtitle names both as working");
+});

@@ -18,6 +18,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   function phaseInfo(phase) {
     const p = String(phase || "");
     const after = (n) => p.slice(n).replace(/^[\s·,]+/, "");
+    if (p.startsWith("director working")) return { key: "working", label: "Working (director)", tone: "blue", live: true, detail: after(16) };
     if (p.startsWith("working")) return { key: "working", label: "Working", tone: "blue", live: true, detail: after(7) };
     if (p.startsWith("reviewing")) return { key: "reviewing", label: "Reviewing", tone: "violet", live: true, detail: after(9) };
     if (p.startsWith("landing")) return { key: "landing", label: "Landing", tone: "orange", live: true, detail: after(7) };
@@ -65,12 +66,15 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // last error the loop recorded.
   const resultWhy = (l) => l.lastSummary || (PROBLEM_RESULTS.includes(l.lastResult) || l.phase === "failing" ? l.lastError || "" : "");
   // loop-sort:start
-  // Loop order — status-model.ts's loopRank/sortLoopsByState, the TUI's order too: live work
-  // (working, reviewing, landing), then work waiting in the pipeline (approved, awaiting a
-  // slot), then loops that need attention (failing, main red), then paused, then idle; within a
-  // rank the most recent tick first, a never-ticked loop last, ties by name.
+  // Loop order — status-model.ts's loopRank/sortLoopsByState, the TUI's order too: the running
+  // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
+  // 2026-10-06), then live work (working, reviewing, landing), then work waiting in the pipe
+  // line (approved, awaiting a slot), then loops that need attention (failing, main red), then
+  // paused, then idle; within a rank the most recent tick first, a never-ticked loop last, ties
+  // by name.
   function loopRank(phase) {
     const p = String(phase || "");
+    if (p.startsWith("director working")) return -1;
     if (isActivePhase(p)) return 0;
     if (p.startsWith("vetted") || p.startsWith("awaiting slot")) return 1;
     if (p === "failing" || p === "main red") return 2;
@@ -89,8 +93,11 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     });
   }
   // loop-sort:end
-  // The fleet table's section for each rank.
-  const LOOP_GROUPS = [["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
+  // The fleet table's section for each rank. The running director has its own section so it
+  // does not join the In-progress rows an operator scans against maxConcurrent; the permit
+  // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting for a slot") keep
+  // sharing In progress (BUGS.md 2026-10-06).
+  const LOOP_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
   // The payload's alerts (fleet-alerts.ts fleetAlerts — the TUI's attention lines use the same
   // list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",

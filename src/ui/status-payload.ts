@@ -54,9 +54,11 @@ export function statusPayload(root: string, now = Date.now()): object {
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
       phase,
-      // In-flight flag derived from the same rendered phase (isActivePhase's three
-      // prefixes: working/reviewing/landing) — the GUI shows `abort` on a row only when
-      // this is true, without re-deriving the prefixes client-side.
+      // In-flight flag derived from the same rendered phase (isActivePhase's
+      // permit-holder prefixes: working/reviewing/landing). The running director is excluded
+      // (it holds no maxConcurrent permit), so this is the cap count, not the abort set — the
+      // GUI's row actions derive their own live flag from the phase instead (BUGS.md
+      // 2026-10-06).
       inFlight: isActivePhase(phase),
       // What a working loop is doing right now (first assistant text of the in-flight run).
       // Null when idle — never show a stale item from a finished tick.
