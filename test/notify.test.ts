@@ -10,7 +10,7 @@ import { validateConfig } from "../src/config/config-validation.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
-import { errorMessage } from "../src/text.js";
+import { errorMessage } from "../src/text/text.js";
 
 // Tests for src/notify.ts — the operator notify hook: the `notify` shell command the
 // orchestrator runs on the four allowlisted notable events. The command is real (a shell

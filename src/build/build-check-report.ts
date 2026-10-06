@@ -13,7 +13,7 @@
 
 import type { BuildCheck } from "./build-check-detect.js";
 import type { BuildCheckOutcome } from "./build-check.js";
-import { truncate } from "../text.js";
+import { truncate } from "../text/text.js";
 
 /** Per-reason length cap with ellipsis — bounds one line of machine-generated or reviewer
  * text so it cannot bloat persisted state (shared by clipBuildTail here and parseVerdict in

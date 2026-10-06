@@ -17,7 +17,7 @@ import {
   type LanderContext,
 } from "./landing-core.js";
 import { attributeRedCheck } from "./landing-check-failures.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { type LandingChangeStatus } from "./landing-slot.js";
 import { landStack, type StackEntry, type StackOutcome } from "./landing-stack.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

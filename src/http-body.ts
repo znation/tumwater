@@ -9,7 +9,7 @@
  */
 import type http from "node:http";
 import { parseJsonObject } from "./json-object.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "./text/text.js";
 
 /** Send a JSON response with the given status code and body. Every /api endpoint answers
  * this way (errors included), so the content-type header lives in exactly one place. */

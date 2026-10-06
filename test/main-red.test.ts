@@ -5,7 +5,7 @@ import path from "node:path";
 import { bugfixMainRedNote, mainRedGate, mainTipVerdict } from "../src/baseline/main-red.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
-import { shortSha } from "../src/format.js";
+import { shortSha } from "../src/text/format.js";
 import { eventsOfType, harnessWarnings } from "./log-fixtures.js";
 import { baselineFixture, fakeNpm, runsOf } from "./loop-fixtures.js";
 import { pathReplace } from "./fake-commands.js";

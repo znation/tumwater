@@ -20,7 +20,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadRole, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
 import { readJsonObject, sendJson } from "../http-body.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
-import { gotSuffix } from "../text.js";
+import { gotSuffix } from "../text/text.js";
 import type http from "node:http";
 
 /** Every POST handler's shared opening: readJsonObject reads the body and — when it is

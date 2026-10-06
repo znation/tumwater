@@ -4,7 +4,7 @@ import {
   plannedPlanEntries,
   type BacklogEntry,
 } from "../backlog/backlog.js";
-import { clipToWidth } from "../text-width.js";
+import { clipToWidth } from "../text/text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui.tsx): the three-section backlog body
  * (`backlogLines`) and the entry browser — selection movement and the entry body's scroll

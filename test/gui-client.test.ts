@@ -4,7 +4,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui-client.js";
-import { shortSha as tsShortSha } from "../src/format.js";
+import { shortSha as tsShortSha } from "../src/text/format.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
 // pure view model that turns a status payload into what the page shows, the Markdown

@@ -167,7 +167,7 @@ the bottom of the page:
    normal, while "4% → 16% since Tuesday" names a cause. A role absent from the prior window is
    reported as new, not as an infinite increase. **One scan, not two**: read the 2× window once —
    `readWindowEvents(root, formatDate(dayAt(2 * days - 1)))`, the same local-midnight `dayAt`
-   idiom (`setDate` arithmetic) and `formatDate` (src/text.ts) `collectReport` uses — and
+   idiom (`setDate` arithmetic) and `formatDate` (src/text/text.ts) `collectReport` uses — and
    partition in memory by local date: the current window is `date >= formatDate(dayAt(days - 1))`,
    the preceding window is the earlier dates in that same read. A second call would double the
    tail I/O invariant 3 exists to bound.

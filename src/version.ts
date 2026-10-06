@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { readJsonFile } from "./json-files.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "./text/text.js";
 
 /** The running harness's own version, read from its package.json — the one bare JSON read
  * the CLI dispatches through. Split out of cli.ts so the failure shapes are unit-testable:

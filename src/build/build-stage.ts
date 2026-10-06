@@ -6,8 +6,8 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "../files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
-import { errorMessage } from "../text.js";
-import { shortSha } from "../format.js";
+import { errorMessage } from "../text/text.js";
+import { shortSha } from "../text/format.js";
 
 /** Producing and swapping the compiled tree behind a self-redeploy (redeploy.ts): compile a
  * head's mirror checkout into a staging dir under .tumwater/build, then move that tree into

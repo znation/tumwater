@@ -81,7 +81,7 @@ Comment share is comment lines divided by comment plus code lines.
   an explicit user decision (2026-10-01, per PRINCIPLES.md); five dev dependencies.
 - **Tests:** the unit tier runs 2,427 tests. The e2e tier is separate and isn't counted here.
 - **Imports:** 162 modules with 785 import edges and no runtime import cycles (three cycles are
-  type-only). The most-imported module is `src/text.ts`, with 52 importers.
+  type-only). The most-imported module is `src/text/text.ts` (grouped with its format siblings under `src/text/`), with 52 importers.
 - **Functions in `src/`:** 1,456, with mean McCabe complexity 3.50, median 2, 90th percentile 7,
   and 76 functions (5.2%) above 10.
 - **Most complex functions:**

@@ -15,7 +15,7 @@ import { sleptPhrase, unverifiedTreeOutcome } from "../build/build-check-events.
 import { sampleSleepClock } from "../host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../phrases.js";
-import { shortSha } from "../format.js";
+import { shortSha } from "../text/format.js";
 import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 

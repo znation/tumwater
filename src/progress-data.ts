@@ -1,7 +1,7 @@
 import { applyToolExecutionEvent, parsePiEventLine, toolCallCommand, type OpenToolCall } from "./pi/pi-event-line.js";
 import { commandBuffersOutput } from "./command-shape.js";
 import { describeToolCall } from "./phrases.js";
-import { squash } from "./text.js";
+import { squash } from "./text/text.js";
 import { defaultConfig, liveConfig } from "./config/config.js";
 import { landWorktreePath } from "./paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "./tail.js";

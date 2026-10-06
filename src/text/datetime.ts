@@ -7,8 +7,8 @@
  * arithmetic (dayAt's midnight truncation, month/year edges) is a different concern from
  * string cutting, with its own tests. Presentation only: depends on node built-ins alone. */
 
-import { plural } from "./phrases.js";
-import { EVENTS_LOG_BASENAME } from "./paths.js";
+import { plural } from "../phrases.js";
+import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-

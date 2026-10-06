@@ -17,7 +17,7 @@
  * that slips through either way is cheap. */
 
 import path from "node:path";
-import { squash } from "./text.js";
+import { squash } from "./text/text.js";
 
 /** One tool call as pi started it (a `tool_execution_start` event): the tool's name — empty
  * when pi omitted it — and its raw args (bash: `{ command }`). */

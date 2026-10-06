@@ -24,10 +24,10 @@ import {
 } from "../inbox/inbox-edit.js";
 import { promptPreview, queuedRolePromptRecords } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
-import { humanSeconds, secondsSince, secondsUntil } from "../datetime.js";
+import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";

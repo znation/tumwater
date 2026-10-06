@@ -8,7 +8,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { enqueueLanding, queuedLandings } from "../src/landing/landing-queue.js";
 import { landQueueDir, landingRefName } from "../src/paths.js";
-import { shortSha } from "../src/format.js";
+import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/worktree.js";
 import { eventsOfType, warningMessages } from "./log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";

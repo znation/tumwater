@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "../json-object.js";
 import { readJsonFile } from "../json-files.js";
-import { isNonBlankString } from "../text.js";
+import { isNonBlankString } from "../text/text.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 
 /** Detection of a project's declared deterministic build check: where the check lives (the

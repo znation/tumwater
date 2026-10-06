@@ -4,7 +4,7 @@ import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { isJsonObject } from "../json-object.js";
 import { writeJsonAtomic } from "../json-files.js";
 import { validateConfig } from "./config-validation.js";

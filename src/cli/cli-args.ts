@@ -2,7 +2,7 @@ import { fail } from "./cli-output.js";
 import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
-import { gotSuffix, parsePositiveInt } from "../text.js";
+import { gotSuffix, parsePositiveInt } from "../text/text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable

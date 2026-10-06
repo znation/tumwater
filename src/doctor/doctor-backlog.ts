@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { errorMessage, truncate } from "../text.js";
+import { errorMessage, truncate } from "../text/text.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";

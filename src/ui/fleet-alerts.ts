@@ -14,8 +14,8 @@ import { quietWindowEnd } from "../quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { agree, pauseReasonSuffix, plural } from "../phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";
-import { usd, usdCap } from "../format.js";
-import { formatTimestamp } from "../datetime.js";
+import { usd, usdCap } from "../text/format.js";
+import { formatTimestamp } from "../text/datetime.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status

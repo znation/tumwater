@@ -26,8 +26,8 @@ import { mergeToMain } from "../landing/landing-merge.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
 import { extractFlow, type FlowResult } from "../reply-contract.js";
 import { landingRefName } from "../paths.js";
-import { errorMessage } from "../text.js";
-import { shortSha } from "../format.js";
+import { errorMessage } from "../text/text.js";
+import { shortSha } from "../text/format.js";
 
 /** One role loop: owns a persistent worktree + branch and runs one tick at a time. */
 export class LoopRunner {

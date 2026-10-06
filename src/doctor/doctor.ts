@@ -4,7 +4,7 @@ import { type ProcessProbe, systemProcessProbe } from "../process/process-table.
 import { checkOrphans } from "./doctor-orphans.js";
 import { checkLaunchServicesPorts } from "../launch-services.js";
 import { plural } from "../phrases.js";
-import { shortSha } from "../format.js";
+import { shortSha } from "../text/format.js";
 import {
   checkAgentBinary,
   checkBrief,

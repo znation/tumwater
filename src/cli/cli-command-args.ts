@@ -19,7 +19,7 @@ import {
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
 import { templateIds, unknownTemplateError } from "../init/init-templates.js";
-import { errorMessage, gotSuffix, parsePositiveInt } from "../text.js";
+import { errorMessage, gotSuffix, parsePositiveInt } from "../text/text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands

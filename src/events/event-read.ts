@@ -1,4 +1,4 @@
-import { dayKey } from "../datetime.js";
+import { dayKey } from "../text/datetime.js";
 import { finiteNumber, parseJsonObject } from "../json-object.js";
 import { eventsLogPath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../stat-cache.js";

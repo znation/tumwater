@@ -15,7 +15,7 @@ import {
   type SupervisorWatchSeams,
   watchReloadSupervisor,
 } from "../self-reload.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import {
   handleBacklog,
   handleConfig,

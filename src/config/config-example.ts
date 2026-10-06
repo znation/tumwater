@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { TumwaterConfig } from "./config-schema.js";
 import { defaultConfig, overlayDefaults, parseJsonConfig } from "./config.js";
 import { CONFIG_BASENAME, configPath, EXAMPLE_CONFIG_BASENAME, exampleConfigPath } from "../paths.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { isJsonObject } from "../json-object.js";
 import { validateConfig } from "./config-validation.js";
 

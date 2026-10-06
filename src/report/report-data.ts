@@ -14,7 +14,7 @@ import { readCompleteLines } from "../tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { entryDates } from "../backlog/backlog-md.js";
-import { dayAt, dayKey, dayWindow, formatDate } from "../datetime.js";
+import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window

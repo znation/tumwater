@@ -11,9 +11,9 @@
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "../files.js";
-import { formatDate } from "../datetime.js";
+import { formatDate } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text.js";
+import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-query-commands.js";

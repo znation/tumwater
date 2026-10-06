@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { unlinkAllMissingTolerant } from "../files.js";
 import { roleInboxDir } from "../paths.js";
-import { isNonBlankString } from "../text.js";
+import { isNonBlankString } from "../text/text.js";
 import { agree } from "../phrases.js";
 
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image

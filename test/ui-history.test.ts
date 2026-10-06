@@ -4,7 +4,7 @@ import { cmdHistory } from "../src/history/history.js";
 import { logEvent } from "../src/events/events.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { expectFailAsync, expectOkAsync } from "./exit-capture.js";
-import { displayWidth } from "../src/text-width.js";
+import { displayWidth } from "../src/text/text-width.js";
 
 // The rendering half of `tumwater history` (history.ts) had no direct tests: the
 // history-data.test.ts slice covers the row collector, and gui-endpoints covers its JSON

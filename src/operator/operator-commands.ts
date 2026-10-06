@@ -1,7 +1,7 @@
 import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "../retire.js";
 import { agree, pauseReasonSuffix } from "../phrases.js";

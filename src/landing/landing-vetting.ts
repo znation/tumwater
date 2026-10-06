@@ -6,7 +6,7 @@ import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { dropLanding, queuedLandingFiles, staleHeadFile } from "./landing-queue.js";
 import { warnEvent } from "../events/events.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import type { LandingEntry } from "./landing-queue.js";
 import { vetRequest, type VetVerdict } from "./landing-batch.js";
 import {

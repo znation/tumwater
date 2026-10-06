@@ -5,7 +5,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.j
 import { readLiveProgress, type LiveProgress } from "../progress-data.js";
 import { fleetBudgetGate } from "./badges.js";
 import { quietWindowEnd } from "../quiet-hours.js";
-import { humanSeconds, secondsUntil } from "../datetime.js";
+import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import {
   duration,
   inFlightDetail,

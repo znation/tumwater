@@ -19,7 +19,7 @@ import { configForRole } from "../src/config/config-views.js";
 import { exampleConfigPath } from "../src/paths.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { errorMessage } from "../src/text.js";
+import { errorMessage } from "../src/text/text.js";
 import { backdate } from "./backdate.js";
 import { withCountedReads } from "./fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./repo-fixtures.js";

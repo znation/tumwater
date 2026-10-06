@@ -9,7 +9,7 @@ import { flagValue, parseRoleFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
 import { repoNotReady } from "../gates/startup-gate.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { parsePositiveInt } from "../text.js";
+import { parsePositiveInt } from "../text/text.js";
 import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";

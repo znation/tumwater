@@ -11,7 +11,7 @@
  * pass a `new URL("…", import.meta.url)` without a fileURLToPath detour. */
 import fs from "node:fs";
 
-import { errorMessage } from "../src/text.js";
+import { errorMessage } from "../src/text/text.js";
 
 export function readJson<T = unknown>(file: string | URL): T {
   let raw: string;

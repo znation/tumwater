@@ -6,7 +6,7 @@ import {
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../json-object.js";
-import { truncate, isNonBlankString } from "../text.js";
+import { truncate, isNonBlankString } from "../text/text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
  * message rendering (show, typeName), the unknown-key and known-role guards, the NumberRule

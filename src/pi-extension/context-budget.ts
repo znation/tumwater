@@ -21,7 +21,7 @@
  * harness's one token format (text.ts imports nothing, so pi can load it beside this file).
  */
 
-import { compactTokens } from "../format.js";
+import { compactTokens } from "../text/format.js";
 
 /** Context-usage percentages at which the model is told where it stands. */
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];

@@ -9,7 +9,7 @@ import { buildMainRedNote } from "../gates/gate-prompts.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../phrases.js";
 import { gitTry } from "../git/git-run.js";
 import { gateMainWorktreePath } from "../paths.js";

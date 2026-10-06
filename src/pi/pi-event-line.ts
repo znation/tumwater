@@ -7,7 +7,7 @@
  * sentinel/verdict text. */
 
 import { isJsonObject, parseJsonObject } from "../json-object.js";
-import { isNonBlankString } from "../text.js";
+import { isNonBlankString } from "../text/text.js";
 
 /** The `type` value of one pi event line in pi's compact type-first serialization
  * (`{"type":"<event>",…}` — 100% of lines in observed logs), or null when the line does not

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactTokens, shortSha, usd, usdCap } from "../src/format.js";
+import { compactTokens, shortSha, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin

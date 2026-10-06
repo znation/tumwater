@@ -16,7 +16,7 @@ import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { saveLoopState } from "../loop/loop-state.js";
-import { shortSha } from "../format.js";
+import { shortSha } from "../text/format.js";
 import { type SleepSampler } from "../host-sleep.js";
 import { isExemptDiff } from "../exemptions.js";
 import { falseFixReason } from "../fix-claim.js";

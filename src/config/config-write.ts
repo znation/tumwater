@@ -11,7 +11,7 @@ import {
   type TumwaterConfig,
 } from "./config-schema.js";
 import { configPath, configRequestPath } from "../paths.js";
-import { errorMessage } from "../text.js";
+import { errorMessage } from "../text/text.js";
 import { typoSuffix } from "../suggest.js";
 import { writeJsonAtomic } from "../json-files.js";
 import { isJsonObject } from "../json-object.js";

@@ -547,7 +547,7 @@ plan, stamped and formatted the way loops write those entries, and wake the loop
   scan/stamp/move pattern of `src/cli/question-commands.ts`):
   - `fileBug(root, text)` — append one `### <symptom>` entry under BUGS.md's `## Open` (creating the
     file with the `# Bugs` header + `## Open` scaffolding when absent, as `tumwater init` seeds it),
-    stamped `(reported by the operator YYYY-MM-DD)` using `datetime.ts`'s local-date helpers; entries
+    stamped `(reported by the operator YYYY-MM-DD)` using `src/text/datetime.ts`'s local-date helpers; entries
     are appended after the last existing Open entry, before `## Fixed`, using `backlog-md.ts`'s
     `fenceTracker()` so fenced blocks are never mistaken for the section boundary.
   - `filePlan(root, title, body)` — same for PLANS.md's `## Planned`, entry `### <title>` with the

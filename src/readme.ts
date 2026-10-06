@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { briefCandidates } from "./paths.js";
-import { errorMessage, truncateWithNote } from "./text.js";
+import { errorMessage, truncateWithNote } from "./text/text.js";
 
 /** The managed sections of the project brief (TUMWATER.md, with README.md as the
  * compatibility path — plans/portability.md §7a/7): marker constants, the templates a fresh

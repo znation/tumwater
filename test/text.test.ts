@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, truncate } from "../src/text.js";
+import { collapseWhitespace, parseNonNegativeInt, parsePositiveInt, truncate } from "../src/text/text.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
 // (live progress work items, transcript lines/thinking/errors, tool-call descriptions)

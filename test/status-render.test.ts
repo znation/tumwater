@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { renderStatus } from "../src/ui/status-render.js";
-import { displayWidth } from "../src/text-width.js";
+import { displayWidth } from "../src/text/text-width.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";

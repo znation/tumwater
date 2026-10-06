@@ -3,7 +3,7 @@ import { parseCommitMetadata, type CommitMetadata } from "./commit-message.js";
 import { logEvent, warnEvent } from "./events/events.js";
 import { enqueueLanding, queuedLandings } from "./landing/landing-queue.js";
 import { landingRefName } from "./paths.js";
-import { shortSha } from "./format.js";
+import { shortSha } from "./text/format.js";
 import type { LandingEntry } from "./landing/landing-queue.js";
 import type { LoopState } from "./loop/loop-state.js";
 

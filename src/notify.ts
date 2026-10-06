@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "./config/config-schema.js";
 import { subscribeEvents, warnEvent, type HarnessEvent } from "./events/events.js";
 import { formatEvent } from "./events/event-format.js";
-import { errorMessage } from "./text.js";
+import { errorMessage } from "./text/text.js";
 
 /** The operator notify hook (PLANS.md "Operator notify hook"): one configured shell command
  * (tumwater.json's `notify`) that the orchestrator runs whenever a notable event fires — the

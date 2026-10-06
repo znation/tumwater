@@ -1,5 +1,5 @@
-import { cutSplitsSurrogatePair, gotSuffix } from "../text.js";
-import { displayWidth } from "../text-width.js";
+import { cutSplitsSurrogatePair, gotSuffix } from "../text/text.js";
+import { displayWidth } from "../text/text-width.js";
 
 /** Pure prompt-line editing for the TUI (src/ui/tui.tsx): the line editor, its display window,
  * the daily-budget input parser, and the terminal guard message runTui throws at startup.

@@ -7,9 +7,9 @@
  * name it in their contracts. */
 import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
 import { rankCountEntries } from "../rank.js";
-import { compactTokens, usd } from "../format.js";
+import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { formatTimestamp, reportWindow } from "../datetime.js";
+import { formatTimestamp, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 

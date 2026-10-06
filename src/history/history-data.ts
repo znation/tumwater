@@ -9,8 +9,8 @@
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
-import { formatTimestamp } from "../datetime.js";
-import { squash } from "../text.js";
+import { formatTimestamp } from "../text/datetime.js";
+import { squash } from "../text/text.js";
 import { usageText } from "../events/event-format.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet

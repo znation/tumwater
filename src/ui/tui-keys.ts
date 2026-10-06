@@ -13,8 +13,8 @@ import {
   roleResumeMessage,
   submitRolePromptAndWake,
 } from "../operator/operator-intent.js";
-import { errorMessage } from "../text.js";
-import { usdCap } from "../format.js";
+import { errorMessage } from "../text/text.js";
+import { usdCap } from "../text/format.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import {
   applyKey,

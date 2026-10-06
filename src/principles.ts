@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "./files.js";
-import { truncateWithNote } from "./text.js";
+import { truncateWithNote } from "./text/text.js";
 
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
  * each tick's prefill. */

@@ -102,6 +102,10 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
   (`build-stage.ts`) and the deterministic pre-check (`build-check.ts` and its plumbing,
   `build-check-*.ts`).
 - `src/worktree.ts`: the persistent worktree lifecycle.
+- `src/text/`: the shared human-facing text-shaping family — `text.ts` (whitespace,
+  truncation, integer parsing) beside the single-format homes split from it: `format.ts`
+  (number, money, and hash formats), `datetime.ts` (local date/time and day math), and
+  `text-width.ts` (terminal-column geometry). Presentation only; imported by every layer.
 - `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow, on top of
   the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection, fast-forward).
 - `src/tick/`: the per-tick pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,

@@ -7,7 +7,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { initProject } from "../src/init/init.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { runTui } from "../src/ui/tui.js";
-import { formatDate } from "../src/datetime.js";
+import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./repo-fixtures.js";
 import { cli } from "./cli-harness.js";

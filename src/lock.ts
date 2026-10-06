@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "./process/process.js";
-import { errorMessage, parsePositiveInt } from "./text.js";
+import { errorMessage, parsePositiveInt } from "./text/text.js";
 import { removeTree } from "./files.js";
 import { errCode } from "./errno.js";
 
