@@ -111,6 +111,6 @@ new spawn site that starts npm, pi or other title-setting Node programs in bulk 
 - `src/history.ts`, `src/tick/tick-detail.ts`, `src/report.ts`: the `history`, `tick`, and `report`
   CLI command bodies, beside the collector modules (`history-data.ts`, `src/tick/tick-detail-data.ts`,
   `report-data.ts`) whose payloads they print, `src/log-commands.ts` (the `logs` command body),
-  and `src/cli-query-commands.ts` (the other
+  and `src/cli/cli-query-commands.ts` (the other
   read-only command bodies).
 - `test/`: unit tests.

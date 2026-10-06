@@ -2,7 +2,7 @@
  * modules: the one home of how a tumwater CLI command writes to the user (stdout lines,
  * `--json` documents, and the uniform failure exit) so the write targets and exit
  * convention cannot drift per call site. Argument parsing lives beside it in
- * cli-args.ts — a parser that fails calls fail() from this module. */
+ * cli/cli-args.ts — a parser that fails calls fail() from this module. */
 
 /** Write one line to stdout — the `say(text)` idiom every CLI command's user-facing output
  * renders through (status lines, confirmations, report bodies, log events), the stdout twin
@@ -29,7 +29,7 @@ export function sayJson(value: unknown): void {
  * whose Markdown view is its own collection of the same files): the `--json` branch is chosen
  * FIRST, then the payload is resolved exactly once inside the branch that consumes it — a
  * thunk never runs for a discarded result, so the human path never gathers the JSON document
- * and vice versa. (status --json stays hand-rolled in cli-query-commands.ts: its JSON
+ * and vice versa. (status --json stays hand-rolled in cli/cli-query-commands.ts: its JSON
  * document and human table collect different data, so neither branch can feed the other.) */
 export function sayJsonOrRender<T>(args: string[], payload: T | (() => T), render: (payload: T) => string): void {
   const resolve = () => (typeof payload === "function" ? (payload as () => T)() : payload);

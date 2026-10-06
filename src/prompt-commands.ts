@@ -6,10 +6,10 @@
  * queues (src/inbox.ts) directly, each with its own broken-config policy — so the command
  * lives beside the queue module it drives. The fleet-side half (the dequeues a loop performs)
  * is inbox.ts and pending-prompt.ts. */
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "./cli/cli-output.js";
 import fs from "node:fs";
 import path from "node:path";
-import { parsePromptArgs } from "./cli-command-args.js";
+import { parsePromptArgs } from "./cli/cli-command-args.js";
 import {
   type CancelOutcome,
   type ListedCancelOutcome,
@@ -25,7 +25,7 @@ import {
 import { promptPreview, queuedRolePromptRecords } from "./inbox.js";
 import { stripNotBeforeMarker } from "./prompt-not-before.js";
 import { humanSeconds, secondsSince, secondsUntil } from "./datetime.js";
-import { durationLabel } from "./cli-args.js";
+import { durationLabel } from "./cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "./config/config.js";
 import { errorMessage } from "./text.js";
 import { promptImagesProblem, type PromptImageInput } from "./inbox-attachments.js";

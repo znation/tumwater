@@ -7,7 +7,7 @@ import {
 } from "./cli-flag-specs.js";
 import type { FlagSpec } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-query-commands.js";
-import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "./operator-commands.js";
+import { cmdAbort, cmdPause, cmdResetCounters, cmdResume, cmdWake } from "../operator-commands.js";
 
 /** The marker commands that share runMarkerCommand's guard+dispatch shape below. */
 export type MarkerCommand = "reset-counters" | "wake" | "abort" | "pause" | "resume";

@@ -8,7 +8,7 @@ import {
   parseDurationFlag,
   parsePortFlag,
   parseRoleFlag,
-} from "../src/cli-args.js";
+} from "../src/cli/cli-args.js";
 import {
   rejectUnknownArgs,
   durationFlagSpec,
@@ -16,11 +16,11 @@ import {
   ROLE_VALUE_ERROR,
   RUN_FLAG_SPECS,
   WAKE_IN_FLAG,
-} from "../src/cli-flag-specs.js";
+} from "../src/cli/cli-flag-specs.js";
 import { allRoleIds } from "../src/roles.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 
-// src/cli-args.ts's shared parsers, driven in-process (like test/cli-command-args.test.ts
+// cli/cli-args.ts's shared parsers, driven in-process (like test/cli-command-args.test.ts
 // drives the command parsers) to cover branches the e2e path never exercises — duplicate
 // flags (rejected with "may only be given once"), trailing valued flags (now a gate-level
 // "needs a value" error), and the bare `--` token.

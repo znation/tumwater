@@ -6,8 +6,8 @@ import { collectReport, collectReportSince } from "./report-data.js";
 import { collectFailureReport } from "./failure/failure-data.js";
 import { renderFailureMarkdown } from "./failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
-import { say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli-args.js";
+import { say, sayJson, sayJsonOrRender } from "./cli/cli-output.js";
+import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "./cli/cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "./event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags,

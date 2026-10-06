@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sayJsonOrRender } from "../src/cli-output.js";
+import { sayJsonOrRender } from "../src/cli/cli-output.js";
 import { attempt } from "./exit-capture.js";
 
-// src/cli-output.ts's --json/human-text convention, driven in-process like
+// cli/cli-output.ts's --json/human-text convention, driven in-process like
 // test/cli-args.test.ts drives the parsers, so both output branches and the
 // thunk-once guarantee are assertable without going through a child process.
 

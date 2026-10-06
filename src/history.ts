@@ -1,5 +1,5 @@
-import { say, sayJson } from "./cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
+import { say, sayJson } from "./cli/cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli/cli-args.js";
 import { displayWidth, padToWidth } from "./text-width.js";
 import { shortSpanPhrase } from "./phrases.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, type TickRow } from "./history-data.js";
@@ -99,7 +99,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // both observing views answer substring questions the same way. The flag scan itself — the
   // value lookup, the `rest` construction that keeps a flag-shaped pattern (`history --grep
   // --since` greps for the text "--since") from impersonating a rival flag, and the
-  // empty-value fail — is cli-args.ts's parseGrepFlag, the one home shared with logs. With no
+  // empty-value fail — is cli/cli-args.ts's parseGrepFlag, the one home shared with logs. With no
   // --grep, rest is args.
   const { rest, pattern: grepPattern } = parseGrepFlag(args, HISTORY_GREP_VALUE_ERROR);
   const nRaw = flagValue(rest, "-n");

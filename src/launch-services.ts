@@ -71,7 +71,7 @@ export function nextLaunchServicesWarning(
  * is already leaking says so right away — and logs a harness warning per
  * nextLaunchServicesWarning. The sample runs in the background: a poll never waits on `top`.
  * In memory only: a restarted fleet warns again on its first sample if the count is still high,
- * the right default for a condition only a reboot clears. cli-run.ts builds one for a daemon
+ * the right default for a condition only a reboot clears. cli/cli-run.ts builds one for a daemon
  * `tumwater run` only — a `--once` round and in-process tests run without it. */
 export class LaunchServicesWatch {
   private nextSampleAt = 0;

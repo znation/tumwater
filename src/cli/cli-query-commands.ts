@@ -7,19 +7,19 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseRoleFlag } from "./cli-args.js";
 import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG } from "./cli-flag-specs.js";
-import { repoNotReady } from "./startup-gate.js";
-import { knownRoleIdsCached } from "./config/config.js";
-import { parsePositiveInt } from "./text.js";
-import { snapshot } from "./status-data.js";
-import { statusPayload } from "./ui/status-payload.js";
-import { renderStatus } from "./ui/status-render.js";
-import { backlogPayload } from "./backlog.js";
-import { renderBacklogMarkdown } from "./backlog-render.js";
-import { collectFleetChanges, collectRoleChange } from "./change-data.js";
-import { renderFleetChange, renderRoleChange } from "./change-render.js";
-import { rolePayload } from "./role-view.js";
-import { renderRoleMarkdown } from "./role-render.js";
-import { answerQuestion, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { repoNotReady } from "../startup-gate.js";
+import { knownRoleIdsCached } from "../config/config.js";
+import { parsePositiveInt } from "../text.js";
+import { snapshot } from "../status-data.js";
+import { statusPayload } from "../ui/status-payload.js";
+import { renderStatus } from "../ui/status-render.js";
+import { backlogPayload } from "../backlog.js";
+import { renderBacklogMarkdown } from "../backlog-render.js";
+import { collectFleetChanges, collectRoleChange } from "../change-data.js";
+import { renderFleetChange, renderRoleChange } from "../change-render.js";
+import { rolePayload } from "../role-view.js";
+import { renderRoleMarkdown } from "../role-render.js";
+import { answerQuestion, sayAnswered, sayQuestionList } from "../question-commands.js";
 
 /** Fail fast on the first unmet repo precondition (startup-gate.ts's repoNotReady — the repo
  * half of `tumwater run`'s startup gate, shared by every repo-bound command). */

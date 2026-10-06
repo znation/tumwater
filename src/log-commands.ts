@@ -1,5 +1,5 @@
-import { fail, say } from "./cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
+import { fail, say } from "./cli/cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli/cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -17,7 +17,7 @@ import { eventsLogPath, piLogPath } from "./paths.js";
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table.
  * Unlike operator-commands.ts these write nothing but stdout — they only read the event log
  * and each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
- * cli-query-commands.ts, operator-commands.ts), which may import the ui/ rendering layer they
+ * cli/cli-query-commands.ts, operator-commands.ts), which may import the ui/ rendering layer they
  * drive — here the event formatter and the transcript renderer — while src/ui/ itself stays
  * off src/ module boundaries it does not own. */
 
@@ -58,7 +58,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags. The flag scan itself
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
-  // impersonating a rival flag, and the empty-value fail) is cli-args.ts's parseGrepFlag,
+  // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
   // the one home shared with history's identical preamble.
   const { rest, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();

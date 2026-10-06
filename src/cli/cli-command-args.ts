@@ -1,11 +1,11 @@
 /** The free-form-prompt commands' bespoke argument parsers: `tumwater init` and
  * `tumwater prompt`, whose positionals are prompt TEXT rather than a token list. Every
- * shared helper in cli-args.ts assumes flags claim their tokens and rejects whatever is
+ * shared helper in cli/cli-args.ts assumes flags claim their tokens and rejects whatever is
  * left over — exactly wrong here, where a misspelled flag must fail instead of being
  * silently baked into the prompt that every loop then ticks from. Both parsers therefore
  * hand-roll the same discipline (a double-dash token must be a known flag, given at most
  * once; single-dash tokens are content) and share failStrayArg, so they live together
- * apart from cli-args.ts's generic machinery — which also keeps that module, minus these
+ * apart from cli/cli-args.ts's generic machinery — which also keeps that module, minus these
  * two, free of I/O: --file's readFileSync is the one read in the CLI's arg layer. */
 
 import fs from "node:fs";
@@ -18,8 +18,8 @@ import {
   rejectUnknownDoubleDash,
 } from "./cli-flag-specs.js";
 import { fail } from "./cli-output.js";
-import { templateIds, unknownTemplateError } from "./init-templates.js";
-import { errorMessage, gotSuffix, parsePositiveInt } from "./text.js";
+import { templateIds, unknownTemplateError } from "../init-templates.js";
+import { errorMessage, gotSuffix, parsePositiveInt } from "../text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands

@@ -14,7 +14,7 @@ import { type RedeployEvent, Redeployer } from "./redeployer.js";
  * production RedeployDeps bound to one repo — the mirror worktree both the green check and the
  * compile run in, the baseline check that reads the live config per call, the staged compile,
  * and the dist swap — plus the completed-restart record's small state file and the
- * createRedeployer composition the run boot (cli-run.ts) builds. */
+ * createRedeployer composition the run boot (cli/cli-run.ts) builds. */
 
 /** The production AutoRestartRecord: one JSON file under .tumwater/state/. A missing or torn
  * file reads as "no completed restart yet" — the same no-data policy as every other state reader. */
@@ -85,7 +85,7 @@ export function redeployDeps(
 export async function createRedeployer(
   root: string,
   log: (event: RedeployEvent) => void,
-  /** The successor's startup gate (RedeployDeps.bootProblem) — cli-run.ts binds
+  /** The successor's startup gate (RedeployDeps.bootProblem) — cli/cli-run.ts binds
    * runStartupProblem to the invocation's own flags, the ones the supervisor forwards to every
    * generation. */
   bootProblem: () => Promise<string | null>,

@@ -12,11 +12,11 @@ import path from "node:path";
 import { fencedHeadingTitle, fenceTracker } from "./backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "./files.js";
 import { formatDate } from "./datetime.js";
-import { fail, say, sayJson } from "./cli-output.js";
+import { fail, say, sayJson } from "./cli/cli-output.js";
 import { collapseWhitespace } from "./text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "./init.js";
-import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";
-import { requireReadyRepo } from "./cli-query-commands.js";
+import { JSON_FLAG, rejectUnknownArgs } from "./cli/cli-flag-specs.js";
+import { requireReadyRepo } from "./cli/cli-query-commands.js";
 import { submitRolePromptAndWake } from "./operator-intent.js";
 import { promptLengthProblem } from "./inbox-submit.js";
 

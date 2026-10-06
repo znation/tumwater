@@ -1,5 +1,5 @@
 import { orchestratorAlive, isFleetPaused, readOrchestratorInfo } from "./fleet-state.js";
-import { durationLabel } from "./cli-args.js";
+import { durationLabel } from "./cli/cli-args.js";
 import { formatDate, formatTime } from "./datetime.js";
 import { submitRolePrompt } from "./inbox-submit.js";
 import type { PromptImageInput } from "./inbox-attachments.js";

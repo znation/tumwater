@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli-run.js";
+import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop-state.js";
 import { pauseFleet } from "../src/fleet-state.js";
 import type { LoopState } from "../src/loop-state.js";
 import { makeRepo } from "./repo-fixtures.js";
 
-// Unit seam for cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
+// Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
 // log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
 // deferred included) is pinned end to end by test/orchestrator-once.e2e.test.ts; these tests
 // pin the summary's own accounting at unit level: tick counting against the pre-round

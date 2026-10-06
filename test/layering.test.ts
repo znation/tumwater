@@ -11,11 +11,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
- * dispatcher): the read-only command bodies (cli-query-commands.ts, log-commands.ts) and the
+ * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, log-commands.ts) and the
  * `tumwater gui` HTTP server layer (gui-server.ts, gui-endpoints.ts) that gui-command.ts
  * delegates to. Anything else importing src/ui/ is a layering bug. */
 const COMMAND_LAYER = new Set([
-  "cli-query-commands.ts",
+  "cli/cli-query-commands.ts",
   "log-commands.ts",
   "gui-server.ts",
   "gui-endpoints.ts",

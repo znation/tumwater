@@ -5,9 +5,9 @@
 import os from "node:os";
 import { startGui } from "./gui-server.js";
 import { errCode } from "./errno.js";
-import { fail, say } from "./cli-output.js";
-import { flagValue, parsePortFlag } from "./cli-args.js";
-import { TOKEN_VALUE_ERROR } from "./cli-flag-specs.js";
+import { fail, say } from "./cli/cli-output.js";
+import { flagValue, parsePortFlag } from "./cli/cli-args.js";
+import { TOKEN_VALUE_ERROR } from "./cli/cli-flag-specs.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are

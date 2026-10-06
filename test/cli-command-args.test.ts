@@ -1,4 +1,4 @@
-/** Tests for src/cli-command-args.ts — the free-form-prompt command parsers
+/** Tests for cli/cli-command-args.ts — the free-form-prompt command parsers
  * (parseInitArgs, parsePromptArgs). Driven in-process (like test/cli-args.test.ts drives
  * the shared parsers) so branches the spawned-CLI e2e path never reaches are covered:
  * duplicate flags, stray positionals beside a flag, --file validation, and the
@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { parseInitArgs, parsePromptArgs } from "../src/cli-command-args.js";
+import { parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 

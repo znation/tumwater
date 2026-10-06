@@ -1,8 +1,8 @@
 import { fail } from "./cli-output.js";
 import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
-import { knownRoleIdsCached } from "./config/config.js";
-import { allRoleIds, unknownRoleMessage } from "./roles.js";
-import { gotSuffix, parsePositiveInt } from "./text.js";
+import { knownRoleIdsCached } from "../config/config.js";
+import { allRoleIds, unknownRoleMessage } from "../roles.js";
+import { gotSuffix, parsePositiveInt } from "../text.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -10,13 +10,13 @@ import { gotSuffix, parsePositiveInt } from "./text.js";
  * integer core (parsePositiveInt/parseNonNegativeInt) lives in text.ts — shared by these flags
  * and gui-args.ts's query-param validation, so one definition of a valid count/position covers both
  * input surfaces without the UI layer importing this module. The two commands whose positionals
- * are free-form prompt text (`init`, `prompt`) parse their own args in cli-command-args.ts —
+ * are free-form prompt text (`init`, `prompt`) parse their own args in cli/cli-command-args.ts —
  * their rules contradict this module's reject-everything-left-over contract, and `--file`'s
  * readFileSync would be this module's only I/O. The declarative flag-vocabulary layer — the
  * FlagSpec shape, the per-flag specs, and the unknown-argument gate — lives in
- * cli-flag-specs.ts; this module keeps the imperative single-flag parsers its specs re-run.
+ * cli/cli-flag-specs.ts; this module keeps the imperative single-flag parsers its specs re-run.
  * Terminal output and the failure exit live in
- * cli-output.ts — this module's parsers fail through fail() from there, but they do not
+ * cli/cli-output.ts — this module's parsers fail through fail() from there, but they do not
  * write output of their own. */
 
 /** The raw value token that follows a valued flag in `args`: null when the flag is absent,

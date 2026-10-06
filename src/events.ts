@@ -200,5 +200,5 @@ function terminateTornTail(file: string, st: { size: number } | null): boolean {
 // and its own stat-keyed cache. Human-facing formatting of events lives in event-format.ts;
 // the windowed reader in event-window.ts; both beside this module because each is used by
 // both display surfaces (src/ui/) and core consumers (the `run` banner's live stream,
-// src/cli-run.ts), and src/ui/ is imported only by itself and the CLI command layer that
+// cli/cli-run.ts), and src/ui/ is imported only by itself and the CLI command layer that
 // drives it (cli.ts and the src/ command bodies — DEVELOPMENT.md Layout).

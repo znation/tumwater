@@ -8,7 +8,7 @@
 import { type ReportData, type ReportDay, type SinceReport } from "./report-data.js";
 import { rankCountEntries } from "./rank.js";
 import { compactTokens, usd } from "./format.js";
-import { durationLabel } from "./cli-args.js";
+import { durationLabel } from "./cli/cli-args.js";
 import { formatTimestamp, reportWindow } from "./datetime.js";
 import { eventsRotationLabel } from "./events.js";
 import { SPARSE_WINDOW_NOTE } from "./event-window.js";

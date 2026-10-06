@@ -1,7 +1,7 @@
 /** The declarative flag-vocabulary layer shared by every command's argument gate: the
  * FlagSpec shape, the per-flag specs (ROLE_FLAG, durationFlagSpec, REASON_FLAG, sinceFlagSpec,
  * N_FLAG, JSON_FLAG, grepFlagSpec, RUN_FLAG_SPECS), and the unknown-argument gate
- * (rejectUnknownArgs, with rejectEqualsForm). Split from cli-args.ts, whose imperative
+ * (rejectUnknownArgs, with rejectEqualsForm). Split from cli/cli-args.ts, whose imperative
  * single-flag parsers (flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, ...)
  * stay there — one module per layer, so the vocabulary a command accepts and the parsers
  * its body re-runs are related by import rather than mixed in one file. The gate runs in
@@ -10,7 +10,7 @@
  * actionable message instead of the command silently running with default behavior. */
 import { fail } from "./cli-output.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag } from "./cli-args.js";
-import { PAUSE_FOR_MAX_MS } from "./operator-intent.js";
+import { PAUSE_FOR_MAX_MS } from "../operator-intent.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
   names: string[];
@@ -103,7 +103,7 @@ export function rejectEqualsForm(
 /** The missing-value error parseRoleFlag and parsePromptArgs share with ROLE_FLAG's trailing
  * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
 export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
-/** The missing-or-flag-shaped-value error parseBranchFlag (cli-args.ts) shares with
+/** The missing-or-flag-shaped-value error parseBranchFlag (cli/cli-args.ts) shares with
  * RUN_FLAG_SPECS' --branch entry, for the same no-drift reason. */
 export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
 
@@ -287,7 +287,7 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [
  * here, with the spec's missingValue wording: cli.ts runs this gate before the ready-repo gate
  * and the command bodies, so a missing value must be named before any environment check ("not
  * a git repository") can mask it from an operator typing `tumwater pause --role` outside an
- * initialized repo. A repeated flag fails: the parsers in cli-args.ts read flags with indexOf, so a second occurrence used to be silently dropped and the
+ * initialized repo. A repeated flag fails: the parsers in cli/cli-args.ts read flags with indexOf, so a second occurrence used to be silently dropped and the
  * operator's later value (gui --port 8000 --port 9000, logs -n 5 -n 10) never took effect —
  * the same "may only be given once" rule parseInitArgs and parsePromptArgs apply to their
  * own flags. The check is keyed by spec, so alias spellings (-f and --follow) count as one

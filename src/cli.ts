@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {
   parseCountFlag,
-} from "./cli-args.js";
+} from "./cli/cli-args.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -13,9 +13,9 @@ import {
   RUN_FLAG_SPECS,
   sinceFlagSpec,
   FORCE_FLAG,
-} from "./cli-flag-specs.js";
-import { fail, say, sayJsonOrRender } from "./cli-output.js";
-import { parsePromptArgs, peelPositionals } from "./cli-command-args.js";
+} from "./cli/cli-flag-specs.js";
+import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
+import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { cmdConfig, CONFIG_USAGE } from "./config-commands.js";
 import { cmdRetire, cmdStop } from "./operator-commands.js";
 import { cmdPrompt } from "./prompt-commands.js";
@@ -26,11 +26,11 @@ import {
   cmdRole,
   cmdStatus,
   requireReadyRepo,
-} from "./cli-query-commands.js";
+} from "./cli/cli-query-commands.js";
 import { cmdLogs, GREP_VALUE_ERROR } from "./log-commands.js";
 import { bugTitleOf, fileBug, filePlan, fileAndAnnounce, planTitleOf } from "./backlog-write.js";
 
-import { runMarkerCommand, type MarkerCommand } from "./cli-marker-commands.js";
+import { runMarkerCommand, type MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git.js";
 import { runDoctor } from "./doctor/doctor.js";
 import { renderDoctor } from "./doctor/doctor-render.js";
@@ -116,15 +116,15 @@ async function main(): Promise<void> {
   const root = (await repoToplevel(process.cwd())) ?? process.cwd();
   switch (command) {
     case "init":
-      // Imported lazily: cli-run pulls the whole fleet-booting subgraph (orchestrator,
+      // Imported lazily: cli/cli-run.ts pulls the whole fleet-booting subgraph (orchestrator,
       // supervisor, redeploy, launch-services — the run path's machinery), and every other
       // command's spawn pays module compilation for it unless the dispatch defers that load
       // to the commands that actually boot or serve a fleet.
-      await (await import("./cli-run.js")).cmdInit(root, args);
+      await (await import("./cli/cli-run.js")).cmdInit(root, args);
       break;
     case "run":
       rejectUnknownArgs("run", args, RUN_FLAG_SPECS);
-      await (await import("./cli-run.js")).cmdRun(root, args);
+      await (await import("./cli/cli-run.js")).cmdRun(root, args);
       break;
     case "tui":
       rejectUnknownArgs("tui", args, []);
@@ -282,7 +282,7 @@ async function main(): Promise<void> {
       // the same masking every other command's spec-based missing-value check avoids.
       // cmdPrompt re-running the parse below cannot drift from what this pre-parse accepted,
       // and --file's reads are idempotent across the two parses (a file is re-read; the
-      // stdin read is memoized in cli-command-args.ts, so a drained pipe is not re-read
+      // stdin read is memoized in cli/cli-command-args.ts, so a drained pipe is not re-read
       // as an empty prompt).
       parsePromptArgs(args);
       await requireReadyRepo(root);

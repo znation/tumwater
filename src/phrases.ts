@@ -8,13 +8,13 @@ import { shortSha, usd } from "./format.js";
  * transition's "$x of $y", main's red-tip naming, a tool call's one-line label, the plural
  * helper) shared by the event feed (event-format.ts), the failure digest (src/failure/failure-render.ts
  * and src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
- * (operator-commands.ts, cli-run.ts), so their phrasing cannot drift per consumer. Pure
+ * (operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer. Pure
  * presentation: every phrase composes the shared formats format.ts pins (shortSha, usd, squash)
  * into words. Pure value formats — the token a number or hash renders as (compactTokens,
  * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
 
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
- * the singular/plural selection the CLI's once summary (cli-run.ts), the day window's day label
+ * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the fleet
  * alerts' banner titles (ui/fleet-alerts.ts, whose local copy this replaces), and the build_stale
  * lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts — the singular/plural

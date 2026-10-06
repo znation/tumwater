@@ -29,11 +29,11 @@ export function errorMessage(err: unknown): string {
 /** The error message's " (got …)" value suffix, spelled one way everywhere: JSON.stringify for
  * the value's debug form, wrapped in the established parenthetical. The human-facing
  * validation errors that echo back a rejected value with this suffix — the CLI flag
- * parsers (cli-args, cli-command-args), the GUI's request validators (gui-args,
+ * parsers (cli/cli-args, cli/cli-command-args), the GUI's request validators (gui-args,
  * gui-endpoint-commands), quiet-hours' window checks, and the TUI's budget input — append
  * this one helper, so the "got" wording and its quoting cannot drift between surfaces.
  * (Deliberately different suffixes: config-field-checks's show() truncates long config values
- * before the parenthetical, and cli-args's duration cap renders the value through
+ * before the parenthetical, and cli/cli-args.ts's duration cap renders the value through
  * durationLabel — neither fits a plain stringify.) Undefined values are the
  * caller's call: append the suffix only for a value that is actually present (see
  * gui-args's string/boolean validators), since ` (got undefined)` would name a field the

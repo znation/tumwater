@@ -17,7 +17,7 @@ import {
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
- * three askers and they must get one answer: cmdRun (cli-run.ts) fails fast on it at startup, the
+ * three askers and they must get one answer: cmdRun (cli/cli-run.ts) fails fast on it at startup, the
  * self-redeploy (redeployer.ts) asks it before it holds the fleet and again right before its swap,
  * and the supervisor (supervisor.ts) asks it to name why a generation died. On 2026-09-22 only the first
  * existed: a redeploy swapped onto a build whose child found tumwater.json missing, exited "not
@@ -32,7 +32,7 @@ import {
  * invisible to it until that build runs. */
 
 /** The repo-level preconditions every repo-bound command shares (requireReadyRepo in
- * cli-query-commands.ts): git
+ * cli/cli-query-commands.ts): git
  * on PATH, a repository, tumwater.json present, at least one commit. The first unmet one's
  * message, or null when the repo is ready. A missing tumwater.json is "not initialized" here,
  * never "use defaults": starting a fleet is the moment an operator's config must exist. */
