@@ -185,7 +185,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
     if (!parsed.ok) problems.push(parsed.error);
   }
 
-  // The operator notify hook (src/notify.ts): absent or empty string means off, otherwise the
+  // The operator notify hook (src/events/notify.ts): absent or empty string means off, otherwise the
   // value is the shell command the orchestrator runs on notable events — so it must be a
   // string when present, and an empty string stays valid (it is how `config set notify ""`
   // clears the hook).

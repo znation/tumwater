@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier } from "../src/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier } from "../src/events/notify.js";
 import { logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -12,7 +12,7 @@ import { tmpdir, writeConfig } from "./repo-fixtures.js";
 import { sleep, waitFor } from "./wait.js";
 import { errorMessage } from "../src/text/text.js";
 
-// Tests for src/notify.ts — the operator notify hook: the `notify` shell command the
+// Tests for src/events/notify.ts — the operator notify hook: the `notify` shell command the
 // orchestrator runs on the four allowlisted notable events. The command is real (a shell
 // echo appending its env to a temp file), so the spawn path, its env vars, the per-type
 // throttle, and the live-update path are all exercised end to end; nothing here calls a model.

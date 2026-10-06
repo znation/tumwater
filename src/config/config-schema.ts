@@ -230,7 +230,7 @@ export interface TumwaterConfig {
   quietHoursPerRole?: Record<string, string>;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
-   * fleet or one of its changes is stopped and only a human can act; src/notify.ts owns the
+   * fleet or one of its changes is stopped and only a human can act; src/events/notify.ts owns the
    * allowlist and the per-type one-minute throttle). The command runs detached with
    * TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE (the line
    * `tumwater logs` renders) in its environment. Absent or an empty string disables. */

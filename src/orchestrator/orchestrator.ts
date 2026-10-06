@@ -22,7 +22,7 @@ import { logEvent, warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { writeJsonFile } from "../files/json-files.js";
 import { OnceRound } from "../scheduling/once-round.js";
-import { newNotifier } from "../notify.js";
+import { newNotifier } from "../events/notify.js";
 import {
   consumeAbortRequests,
   consumeRestartRequest,
@@ -235,7 +235,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // so another fleet-wide hold on new ticks can close the same gate point.
   const tickStartHeld = () => holdForRestart || restart;
 
-  // The operator notify hook (src/notify.ts owns the whole concern): one configured shell
+  // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
   // command run on notable events (budget_paused, role_streak_paused, land_failed,
   // restart_blocked). Subscribed here so it sees every event this process logs from start;
   // disposed beside the orchestrator_stop event below.
@@ -246,7 +246,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // Live-reload tumwater.json — the single reload point shared by all loops (src/config/config-live.ts
       // owns the last-known-good retention and the edge-triggered warnings/events around it).
       const liveConfig = liveReload.poll();
-      // The notify command rides the same last-known-good reload (src/notify.ts): a live
+      // The notify command rides the same last-known-good reload (src/events/notify.ts): a live
       // `config set notify` edit takes effect on the next poll, no restart.
       notifier.update(liveConfig);
 
