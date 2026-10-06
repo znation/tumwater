@@ -194,15 +194,21 @@ export async function initProject(
 
   const created: string[] = [];
   const leftAlone: string[] = [];
-  const write = (name: string, content: string) => {
-    const file = path.join(root, name);
-    if (fs.existsSync(file)) {
+  /** Record a template path this run either created (via `make`, under a real run only) or
+   * found already present and left alone — the exists → leftAlone / create → created /
+   * dryRun → no-op discipline every seeded path below follows, shared by the file and empty-
+   * directory writers so their bookkeeping cannot drift. (The brief, adopted-README, config,
+   * and .gitignore cases keep their bespoke pushes: each has its own existence rule.) */
+  const claim = (name: string, full: string, make: () => void) => {
+    if (fs.existsSync(full)) {
       leftAlone.push(name);
       return;
     }
-    if (!dryRun) fs.writeFileSync(file, content);
+    if (!dryRun) make();
     created.push(name);
   };
+  const write = (name: string, content: string) =>
+    claim(name, path.join(root, name), () => fs.writeFileSync(path.join(root, name), content));
 
   // README.md is the brief only when none exists yet and there is no README to adopt (a fresh
   // repo): with TUMWATER.md owning the managed sections, a created README.md would carry a
@@ -238,13 +244,7 @@ export async function initProject(
   // The template's starter directories: empty ones only, before the first tick — the fleet's
   // own ticks write any code. Existing directories are left alone, like existing files above.
   for (const dir of tpl.starterDirs) {
-    const full = path.join(root, dir);
-    if (fs.existsSync(full)) {
-      leftAlone.push(dir);
-      continue;
-    }
-    if (!dryRun) fs.mkdirSync(full, { recursive: true });
-    created.push(dir);
+    claim(dir, path.join(root, dir), () => fs.mkdirSync(path.join(root, dir), { recursive: true }));
   }
 
   // The config stays out of the commit pathspec: `git add -- tumwater.json` fails on a path
