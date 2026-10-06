@@ -200,3 +200,24 @@ export function buildCheckEvent(
       : {}),
   };
 }
+
+/** One baseline check run as checkMainBaseline's onRun hook reports it: the outcome that ran
+ * and its wall-clock. Named once so the hook signatures that take it — main-baseline.ts's
+ * checkMainBaseline and mainIsGreen and main-red.ts's baselineCheckLogger — cannot drift apart
+ * from the logger below. */
+export interface BaselineCheckRun {
+  outcome: BuildCheckOutcome;
+  durationMs: number;
+}
+
+/** The onRun hook that logs one baseline check's build_check event through `log` under `loop`:
+ * main-red.ts's gate logger (logEvent) and redeploy.ts's green-check and witness hooks all turn
+ * the same run shape into the same baseline event, so that mapping lives here once instead of as
+ * three hand-rolled closures. `log` receives the event alone; a caller binds its root (logEvent)
+ * or its RedeployEvent sink. */
+export function baselineCheckEventLogger(
+  loop: string,
+  log: (event: HarnessEventInput) => void,
+): (run: BaselineCheckRun) => void {
+  return ({ outcome, durationMs }) => log(buildCheckEvent(loop, "baseline", outcome, durationMs));
+}

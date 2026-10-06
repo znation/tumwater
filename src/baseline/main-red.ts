@@ -2,8 +2,7 @@ import { BASELINE_BLOCKED_ROLES } from "../roles/roles.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { failureHeadline } from "../build/build-check-report.js";
-import type { BuildCheckOutcome } from "../build/build-check.js";
-import { buildCheckEvent, buildCheckSkipWarning, sleptPhrase } from "../build/build-check-events.js";
+import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../gates/gate-prompts.js";
 import { logEvent, warnEvent } from "../events/events.js";
@@ -58,8 +57,8 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
 function baselineCheckLogger(
   root: string,
   role: string,
-): (run: { outcome: BuildCheckOutcome; durationMs: number }) => void {
-  return ({ outcome, durationMs }) => logEvent(root, buildCheckEvent(role, "baseline", outcome, durationMs));
+): (run: BaselineCheckRun) => void {
+  return baselineCheckEventLogger(role, (event) => logEvent(root, event));
 }
 
 /** Red-main handoff for the `bugfix` healer (PLANS.md "Red-main handoff"): mainRedGate exempts

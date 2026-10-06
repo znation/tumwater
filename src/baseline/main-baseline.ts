@@ -1,10 +1,9 @@
 import {
-  type BuildCheckOutcome,
   type BuildCheckRun,
   type BuildSkipReason,
   runBuildCheck,
 } from "../build/build-check.js";
-import { SLEEP_SPAN_TOLERANCE_MS } from "../build/build-check-events.js";
+import { SLEEP_SPAN_TOLERANCE_MS, type BaselineCheckRun } from "../build/build-check-events.js";
 import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
@@ -162,7 +161,7 @@ export async function checkMainBaseline(
   config: CheckConfigSlice,
   /** Called once per actual script run (never for cache hits or deduped waiters) with what ran
    * and how long it took — the caller's hook for a build_check event. */
-  onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
+  onRun?: (run: BaselineCheckRun) => void,
   /** Ignore a cached RED verdict and run the suite here instead (a cached green still short-
    * circuits — see baselineCache). For the caller whose false block is expensive enough to pay
    * one extra run: the redeploy gate, where trusting another worktree's environmental red
@@ -254,7 +253,7 @@ export async function mainIsGreen(
   config: CheckConfigSlice,
   /** Hook for the build_check event — this run is a minute of the fleet's time and belongs in
    * the feed like the role loops' own baseline checks. */
-  onRun?: (run: { outcome: BuildCheckOutcome; durationMs: number }) => void,
+  onRun?: (run: BaselineCheckRun) => void,
 ): Promise<boolean> {
   const check = await checkMainBaseline(mirrorWt, config, onRun, true);
   return check.baseline ? check.baseline.status === "green" : true;

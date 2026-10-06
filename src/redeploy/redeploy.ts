@@ -1,6 +1,5 @@
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build/build-info.js";
-import { buildCheckEvent } from "../build/build-check-events.js";
-import type { BuildCheckOutcome } from "../build/build-check.js";
+import { baselineCheckEventLogger } from "../build/build-check-events.js";
 import { liveConfig } from "../config/config.js";
 import { cachedBaselineVerdict, checkMainBaseline, mainIsGreen } from "../baseline/main-baseline.js";
 import { compileStaged, swapDist } from "../build/build-stage.js";
@@ -52,7 +51,7 @@ export function redeployDeps(
       mainIsGreen(
         await mirror(mainHead),
         liveConfig(root),
-        ({ outcome, durationMs }) => log(buildCheckEvent("harness", "baseline", outcome, durationMs)),
+        baselineCheckEventLogger("harness", log),
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
@@ -69,8 +68,7 @@ export function redeployDeps(
       const cached = cachedBaselineVerdict(buildSha);
       if (cached !== undefined) return cached === "red";
       const witness = await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha);
-      const onRun = ({ outcome, durationMs }: { outcome: BuildCheckOutcome; durationMs: number }) =>
-        log(buildCheckEvent("harness", "baseline", outcome, durationMs));
+      const onRun = baselineCheckEventLogger("harness", log);
       const baseline = await checkMainBaseline(witness, liveConfig(root), onRun);
       if (!baseline.baseline || baseline.baseline.status !== "red") {
         return baseline.baseline ? false : null;
