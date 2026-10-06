@@ -3,7 +3,7 @@
  * (resolved provider/model, the budget fallback pair), what it CARRIES (the instructions
  * override and the role's own find text verbatim), and what its NEXT tick's prompt will
  * read like, assembled through the preview seam so nothing queued is consumed. Split out
- * of cli.ts like backlogPayload/status/status-data.ts's snapshot so the collector is testable
+ * of cli.ts like backlogPayload and status/status-data.ts's snapshot so the collector is testable
  * without the CLI and one renderer consumes exactly this shape. Every read degrades like
  * backlogPayload does — a missing tumwater.json is the defaults, a missing state file a
  * fresh state, a missing queue directory an empty inbox — so the command works with the
@@ -64,7 +64,7 @@ export interface RoleViewPayload {
 }
 
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions
- * location — a test seam, like status/status/status-data.ts's snapshot — consulted only when a fallback
+ * location — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback
  * pair is configured (the freeness verdict needs the definitions; nothing else does). */
 export function rolePayload(root: string, role: string, modelsPath = piModelsPath()): RoleViewPayload {
   // loadConfigSafe (not loadConfigCached's hold-last-good machinery — this is a one-shot
