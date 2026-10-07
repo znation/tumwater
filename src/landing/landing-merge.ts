@@ -12,6 +12,7 @@ import {
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "./landing-git.js";
+import { resolveBacklogInsertConflicts } from "./backlog-conflicts.js";
 import { abortSync } from "../git/worktree.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
@@ -294,13 +295,30 @@ async function verifyLanding(
   return true;
 }
 
-/** Re-run the conflicting rebase leaving markers in place, let pi resolve them, and continue
- * the rebase. Returns true when the branch now sits cleanly on top of main. */
+/** Re-run the conflicting rebase leaving markers in place, settle insert-only backlog
+ * conflicts deterministically, hand the rest to pi, and continue the rebase. Returns true
+ * when the branch now sits cleanly on top of main. */
 async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: string): Promise<boolean> {
   const state = await rebaseOntoMainLeaveConflicts(wt, ctx.mainBranch);
   if (state === "clean") return true;
   if (state === "failed") return false;
   const files = await conflictedFiles(wt);
+  // Deterministic first pass (plans/parallel-work-instances.md, part 3/7): insert-only
+  // conflicts in the backlog markdown — two landings pasting different entries as the first
+  // under ## Done — carry no authored bytes, so they are settled without a model run. Only the
+  // files it could not resolve (code, or a same-entry edit) reach the resolver below.
+  const remaining = await resolveBacklogInsertConflicts(wt, files);
+  if (remaining.length === 0) {
+    try {
+      await continueRebase(wt);
+    } catch {
+      // The rebase stopped again — a second conflict, only possible when the branch holds more
+      // than the one insert-only commit. One attempt per tick.
+      await abortSync(wt);
+      return false;
+    }
+    return true;
+  }
   // The prompt names the project's own check, detected the way the in-lock re-check detects it,
   // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
@@ -309,17 +327,17 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
   // alone never said why either side made the edit.
   const since = await changeBaseRev(wt, ctx.mainBranch, preMergeHead);
   const change = (await commitMessage(wt, preMergeHead)) ?? "";
-  const { commits, omitted } = await mainCommitsTouching(wt, since, ctx.mainBranch, files);
+  const { commits, omitted } = await mainCommitsTouching(wt, since, ctx.mainBranch, remaining);
   const pi = await ctx.runPi(
     wt,
-    buildConflictPrompt(ctx.role, files, check, { change, main: commits, mainOmitted: omitted }),
+    buildConflictPrompt(ctx.role, remaining, check, { change, main: commits, mainOmitted: omitted }),
     `tumwater-${ctx.role}-${ctx.tick}-conflict`,
     // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
     // tolerant of latency, and edits code inside landing. Its spend still folds into the
     // authoring role's usage — the fold belongs to the loop's wiring, not to the config.
     resolverConfig(ctx.config),
   );
-  if (!pi.ok || hasConflictMarkers(wt, files)) {
+  if (!pi.ok || hasConflictMarkers(wt, remaining)) {
     await abortSync(wt);
     return false;
   }

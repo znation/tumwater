@@ -88,8 +88,11 @@ async function attemptRebase(
   mainBranch: string,
 ): Promise<"rebased" | "conflict" | "other"> {
   try {
-    // The -c ident is needed for the rewritten committer identity.
-    await runGit(wt, [...COMMIT_IDENT, "rebase", mainBranch]);
+    // The -c ident is needed for the rewritten committer identity. diff3 carries the base
+    // section of every conflict, which the deterministic backlog resolver reads
+    // (plans/parallel-work-instances.md, part 3/7); rebaseOntoMain aborts on conflict, so the
+    // marker style only matters to its leave-conflicts sibling.
+    await runGit(wt, [...COMMIT_IDENT, "-c", "merge.conflictStyle=diff3", "rebase", mainBranch]);
     return "rebased";
   } catch {
     return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";

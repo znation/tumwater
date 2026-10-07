@@ -448,48 +448,6 @@ plus cases in the backlog-index test.
 - **Unparsed clauses.** A clause like "land that plan first" blocks nothing.
 - `npm run test` green.
 
-### Parallel work instances, part 3/7: insert-only conflicts in PLANS.md, BUGS.md and QUESTIONS.md resolve without a model run (planned 2026-10-07 by operator)
-
-Design: plans/parallel-work-instances.md ("Insert-only backlog conflicts").
-
-Context: the move guidance (`backlogMoveGuidance`, src/roles/role-guidance.ts) pastes every
-finished entry as the first one under `## Done` or `## Fixed`. Two landings off the same base
-therefore conflict at that line, and the second one pays a strong-tier resolver run
-(`resolveConflict`, src/landing/landing-merge.ts). This already happens between bugfix and the
-director on BUGS.md. With several feature instances it would happen on nearly every landing.
-Keeping both inserted sides adds no authored bytes, so no model is needed.
-
-**Approach.**
-1. **Diff3.** `rebaseOntoMainLeaveConflicts` (src/landing/landing-git.ts) runs the rebase
-   with `-c merge.conflictStyle=diff3`.
-2. **Resolver.** New src/landing/backlog-conflicts.ts: `resolveBacklogInsertConflicts(wt,
-   files)`. For each conflicted `PLANS.md`, `BUGS.md` or `QUESTIONS.md` at the repo root, it
-   parses the `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` hunks.
-   - **A hunk with an empty base section and two non-empty sides** is replaced by the change's
-     lines, then one blank line if neither side supplies a separator, then main's lines.
-   - **Any other hunk** leaves that file untouched.
-   - Files resolved entirely are written and `git add`ed. It returns the files still
-     conflicted.
-3. **Wiring.** In `resolveConflict`, call it first.
-   - With none left, `continueRebase` runs without a pi run.
-   - Otherwise `buildConflictPrompt` lists only the remaining files.
-   - The existing `resolvedDiffDiverges` and `verifyLanding` checks run unchanged.
-
-**Files touched.** src/landing/backlog-conflicts.ts (new), src/landing/landing-git.ts,
-src/landing/landing-merge.ts. Tests: test/backlog-conflicts.test.ts (new), plus a
-landing-merge case using two real branches that each move a different plan to `## Done`.
-
-**Acceptance criteria.**
-- **Insert-only.** Two changes that each move a different `## Planned` entry to the top of
-  `## Done` land back to back with no conflict-resolution pi run. The later one's entry sits
-  first, both entries are present once, and no re-review runs.
-- **Same entry.** Two changes editing the same entry's body still go to the pi resolver.
-- **Mixed.** With a code conflict next to an insert-only PLANS.md conflict, the resolver
-  prompt names only the code file.
-- **Structure.** The resolved PLANS.md passes `backlogStructureReason` and
-  `duplicateHeadings`.
-- `npm run test` green.
-
 ### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed)
 
 Design: plans/parallel-work-instances.md ("Claims").
@@ -688,6 +646,48 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Parallel work instances, part 3/7: insert-only conflicts in PLANS.md, BUGS.md and QUESTIONS.md resolve without a model run (planned 2026-10-07 by operator; done 2026-10-07 by feature)
+
+Design: plans/parallel-work-instances.md ("Insert-only backlog conflicts").
+
+Context: the move guidance (`backlogMoveGuidance`, src/roles/role-guidance.ts) pastes every
+finished entry as the first one under `## Done` or `## Fixed`. Two landings off the same base
+therefore conflict at that line, and the second one pays a strong-tier resolver run
+(`resolveConflict`, src/landing/landing-merge.ts). This already happens between bugfix and the
+director on BUGS.md. With several feature instances it would happen on nearly every landing.
+Keeping both inserted sides adds no authored bytes, so no model is needed.
+
+**Approach.**
+1. **Diff3.** `rebaseOntoMainLeaveConflicts` (src/landing/landing-git.ts) runs the rebase
+   with `-c merge.conflictStyle=diff3`.
+2. **Resolver.** New src/landing/backlog-conflicts.ts: `resolveBacklogInsertConflicts(wt,
+   files)`. For each conflicted `PLANS.md`, `BUGS.md` or `QUESTIONS.md` at the repo root, it
+   parses the `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` hunks.
+   - **A hunk with an empty base section and two non-empty sides** is replaced by the change's
+     lines, then one blank line if neither side supplies a separator, then main's lines.
+   - **Any other hunk** leaves that file untouched.
+   - Files resolved entirely are written and `git add`ed. It returns the files still
+     conflicted.
+3. **Wiring.** In `resolveConflict`, call it first.
+   - With none left, `continueRebase` runs without a pi run.
+   - Otherwise `buildConflictPrompt` lists only the remaining files.
+   - The existing `resolvedDiffDiverges` and `verifyLanding` checks run unchanged.
+
+**Files touched.** src/landing/backlog-conflicts.ts (new), src/landing/landing-git.ts,
+src/landing/landing-merge.ts. Tests: test/backlog-conflicts.test.ts (new), plus a
+landing-merge case using two real branches that each move a different plan to `## Done`.
+
+**Acceptance criteria.**
+- **Insert-only.** Two changes that each move a different `## Planned` entry to the top of
+  `## Done` land back to back with no conflict-resolution pi run. The later one's entry sits
+  first, both entries are present once, and no re-review runs.
+- **Same entry.** Two changes editing the same entry's body still go to the pi resolver.
+- **Mixed.** With a code conflict next to an insert-only PLANS.md conflict, the resolver
+  prompt names only the code file.
+- **Structure.** The resolved PLANS.md passes `backlogStructureReason` and
+  `duplicateHeadings`.
+- `npm run test` green.
 
 ### `tumwater run --gui`: boot the engine and the browser dashboard from one command (planned 2026-10-07 by operator; done 2026-10-07 by feature)
 

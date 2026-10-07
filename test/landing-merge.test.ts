@@ -808,3 +808,78 @@ test("diffLineMultiset counts hunk content lines that carry header-like prefixes
   assert.deepEqual(del, ["-keep", "--", "old"], "the deleted markdown rule --- is content, not a header");
   assert.deepEqual(add, ["--gone", "new", "old2"]);
 });
+
+/** A PLANS.md with the named entries under ## Planned and ## Done — the shape two parallel
+ * landings stand on when each moves a different entry to the top of ## Done. */
+function plansDoc(planned: string[], done: string[]): string {
+  const entry = (name: string, isDone: boolean) =>
+    `### Entry ${name} (planned 2026-10-07${isDone ? ", done 2026-10-07" : ""})\n\n**Goal.** ${name}.`;
+  return ["# Plans", "", "## Planned", "", ...planned.map((n) => `${entry(n, false)}\n`), "## Done", "", ...done.map((n) => `${entry(n, true)}\n`)].join("\n");
+}
+
+function occurrences(text: string, needle: string): number {
+  return text.split(needle).length - 1;
+}
+
+test("two changes each moving a different plan to Done land with no conflict-resolution pi run", async () => {
+  // plans/parallel-work-instances.md part 3/7: with A and C apart in the file, the diff3 conflict
+  // is the insert-only hunk at the top of ## Done (empty base, both sides non-empty). The
+  // deterministic pass settles it; no model run, and the later landing (A) stays first.
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "PLANS.md"), plansDoc(["A", "B", "C", "D", "E"], ["Z"]));
+  commitIn(root, "seed the backlog");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "PLANS.md"), plansDoc(["B", "C", "D", "E"], ["A", "Z"]));
+  commitIn(wt, "A moves to Done");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plansDoc(["A", "B", "D", "E"], ["C", "Z"]));
+  commitIn(root, "C moves to Done");
+
+  let rechecks = 0;
+  const { ctx, calls } = makeCtx(root);
+  ctx.recheckResolved = async () => {
+    rechecks++;
+    return { verdict: "approved" as const };
+  };
+
+  const result = await mergeToMain(ctx, wt, "A moves to Done");
+
+  assert.equal(result, "changed");
+  assert.equal(calls.length, 0, "insert-only backlog conflict needs no model resolver run");
+  assert.equal(rechecks, 0, "the resolution adds no bytes outside the reviewed change — no re-review");
+  const text = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const a = "### Entry A (planned 2026-10-07, done 2026-10-07)";
+  const c = "### Entry C (planned 2026-10-07, done 2026-10-07)";
+  assert.equal(occurrences(text, a), 1, "the change's entry landed once");
+  assert.equal(occurrences(text, c), 1, "main's entry is present once");
+  assert.ok(text.indexOf(a) < text.indexOf(c), "the later landing (A) sits first under ## Done");
+  assert.equal(eventsOfType(root, "merged").length, 1);
+});
+
+test("a code conflict beside an insert-only PLANS.md conflict sends only the code file to pi", async () => {
+  // The deterministic pass settles PLANS.md and hands the remaining conflict (code.txt) to the
+  // resolver; the prompt must name only what pi still has to resolve.
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "PLANS.md"), plansDoc(["A", "B", "C", "D", "E"], ["Z"]));
+  fs.writeFileSync(path.join(root, "code.txt"), "base\n");
+  commitIn(root, "seed the backlog");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "PLANS.md"), plansDoc(["B", "C", "D", "E"], ["A", "Z"]));
+  fs.writeFileSync(path.join(wt, "code.txt"), "branch\n");
+  commitIn(wt, "A moves and code changes");
+  fs.writeFileSync(path.join(root, "PLANS.md"), plansDoc(["A", "B", "D", "E"], ["C", "Z"]));
+  fs.writeFileSync(path.join(root, "code.txt"), "main\n");
+  commitIn(root, "C moves and code changes");
+
+  const { ctx, calls } = makeCtx(root, async (w) => {
+    fs.writeFileSync(path.join(w, "code.txt"), "resolved\n");
+    return piResult();
+  });
+
+  const result = await mergeToMain(ctx, wt, "A moves and code changes");
+
+  assert.equal(result, "changed");
+  assert.equal(calls.length, 1, "the code conflict still needs one resolver run");
+  assert.match(calls[0]!.prompt, /code\.txt/, "the prompt names the unresolved code file");
+  assert.doesNotMatch(calls[0]!.prompt, /- PLANS\.md/, "the settled backlog file is not listed as conflicted");
+  assert.equal(fs.readFileSync(path.join(root, "code.txt"), "utf8"), "resolved\n");
+});
