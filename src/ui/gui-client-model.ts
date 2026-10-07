@@ -11,6 +11,7 @@
  * browser regex cannot drift from the server twin the tests pin it against. */
 import { ENTRY_STAMP_META_SOURCE } from "../backlog/backlog-structure.js";
 import { STALL_SOURCE } from "./tick-progress-model.js";
+import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_EVENTS } from "./tone.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for
@@ -61,7 +62,9 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     const r = RESULTS[result];
     return r ? { label: r[0], tone: r[1] } : { label: String(result || "—").replace(/_/g, " "), tone: "gray" };
   }
-  const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"];
+  // The problem results and the named event sets are tone.ts's lists, interpolated at module
+  // build (like STALL above) so the page cannot drift from the server's eventKind.
+  const PROBLEM_RESULTS = ${JSON.stringify(PROBLEM_RESULTS)};
   // What explains a loop's last result: its summary, or — for a problem that carries none — the
   // last error the loop recorded.
   const resultWhy = (l) => l.lastSummary || (PROBLEM_RESULTS.includes(l.lastResult) || l.phase === "failing" ? l.lastError || "" : "");
@@ -123,8 +126,8 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   };
   // needs-you:end
   // An activity item's kind — its icon and tone, and whether the Notable filter keeps it.
-  const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"];
-  const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];
+  const ROUTINE_EVENTS = ${JSON.stringify(ROUTINE_EVENTS)};
+  const PROBLEM_EVENTS = ${JSON.stringify(PROBLEM_EVENTS)};
   function eventKind(item) {
     if (item.type === "merged") return "landing";
     if (item.type === "question_posted") return "attention";

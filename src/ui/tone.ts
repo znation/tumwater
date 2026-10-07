@@ -6,7 +6,8 @@ import { loopRank } from "./status-model.js";
  * event is for the activity feeds. Kept apart from the renderers (status-render.ts,
  * tui-frame.ts) so "what color is this" lives in one place while "how a terminal draws it"
  * stays with the layout. The dashboard draws the same families in its own tones
- * (gui-client-model.ts phaseInfo/resultInfo/eventKind; test/gui-client.test.ts and
+ * (gui-client-model.ts phaseInfo/resultInfo; its eventKind is generated from this file's
+ * PROBLEM_RESULTS/ROUTINE_EVENTS/PROBLEM_EVENTS lists; test/gui-client.test.ts and
  * test/tui-frame.test.ts keep the copies aligned): in-progress work blue, a loop that needs
  * attention red, a held loop yellow, a landed change green, a change on its way to landing
  * cyan; idle states and neutral outcomes stay uncolored. */
@@ -53,9 +54,25 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
  * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */
 type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
 
-const PROBLEM_RESULTS = new Set(["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"]);
-const ROUTINE_EVENTS = new Set(["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]);
-const PROBLEM_EVENTS = new Set(["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"]);
+/** The tick results that make a `tick_end` a problem — one home of the list, also fed to the
+ * dashboard's browser twin (gui-client-model.ts interpolates it into its script, both for
+ * eventKind and for resultWhy's "does this result carry an error" check), so a newly problem
+ * result cannot be classified on one surface and not the other. */
+export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_conflict", "merge_blocked", "error", "aborted", "quiet_killed", "main_red"];
+
+/** The named event types that are routine bookkeeping — one home of the list, interpolated into
+ * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
+export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"];
+
+/** The named event types that are problems — one home of the list, interpolated into
+ * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
+export const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];
+
+// The set forms for the server-side matcher; the lists above stay the exported source the
+// browser twin is generated from.
+const PROBLEM_RESULT_SET = new Set(PROBLEM_RESULTS);
+const ROUTINE_EVENT_SET = new Set(ROUTINE_EVENTS);
+const PROBLEM_EVENT_SET = new Set(PROBLEM_EVENTS);
 
 /** Which EventKind one event is, checked in precedence order: the two hard-coded news types
  * first (merged, question_posted), then the result-carrying types by their result — a tick_end
@@ -65,9 +82,9 @@ const PROBLEM_EVENTS = new Set(["land_failed", "review_rejected", "review_failed
 export function eventKind(type: string, result?: string): EventKind {
   if (type === "merged") return "landing";
   if (type === "question_posted") return "attention";
-  if (type === "tick_end") return result !== undefined && PROBLEM_RESULTS.has(result) ? "problem" : "routine";
+  if (type === "tick_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";
   if (type === "build_check") return result === "passed" || result === "skipped" ? "routine" : "problem";
-  if (PROBLEM_EVENTS.has(type)) return "problem";
-  if (ROUTINE_EVENTS.has(type)) return "routine";
+  if (PROBLEM_EVENT_SET.has(type)) return "problem";
+  if (ROUTINE_EVENT_SET.has(type)) return "routine";
   return "info";
 }
