@@ -1,7 +1,13 @@
-import { loadConfigSafe } from "../config/config.js";
+import { loadConfigSafe, knownRoleIds } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { setConfigKey, parseConfigKey, unknownConfigKeyError } from "../config/config-write.js";
+import {
+  setConfigKey,
+  parseConfigKey,
+  unknownConfigKeyError,
+  unknownRoleFieldError,
+} from "../config/config-write.js";
 import { modelTierMap } from "../config/config-schema.js";
+import { unknownRoleMessage } from "../roles/roles.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which holds
  * only the operator-intent marker commands): with no arguments, print the effective merged
@@ -43,6 +49,21 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     if (unknown) fail(unknown);
     const { config, error } = loadConfigSafe(root);
     if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
+    // A dotted key naming a role the catalog (plus customLoops) does not know can never
+    // resolve: printing `null` for it would read as "this role has no entry" when the
+    // operator misspelled the id. The role field is checked the same way setConfigKey checks
+    // it, so the two verbs agree on what a valid dotted role key is and a typo'd field cannot
+    // silently return null either. (An unknown role id in the FILE is already a validation
+    // error — this is the same rule at the CLI boundary.)
+    if (parsed.kind === "map" || parsed.kind === "role") {
+      const id = parsed.kind === "map" ? parsed.role : parsed.id;
+      const ids = knownRoleIds(config);
+      if (!ids.includes(id)) fail(unknownRoleMessage(id, ids));
+      if (parsed.kind === "role") {
+        const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
+        if (fieldError) fail(fieldError);
+      }
+    }
     const record = config as unknown as Record<string, unknown>;
     const value =
       parsed.kind === "map"

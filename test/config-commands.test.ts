@@ -164,6 +164,25 @@ test("get resolves a dotted key: map entry, role field, and absent-key null", as
   assert.equal(miss.stdout, "null\n", "an unset role prints JSON null, like a bare absent key");
 });
 
+test("get of a dotted key naming an unknown role or role field fails, not null", async () => {
+  const root = makeRepo();
+  writeConfig(root, { maxDailyCostUsdPerRole: { qa: 2 }, roles: { qa: { model: "m-qa" } } });
+  // A role the catalog does not know can never resolve: null would read as an unset entry.
+  const badMapRole = await attemptAsync(() => cmdConfig(root, ["get", "maxDailyCostUsdPerRole.featur"]));
+  assert.ok(badMapRole.exited && badMapRole.code === 1);
+  assert.match(badMapRole.stderr, /unknown role: featur/);
+  assert.match(badMapRole.stderr, /did you mean `feature`/);
+  const badRoleEntry = await attemptAsync(() => cmdConfig(root, ["get", "roles.qqq.model"]));
+  assert.ok(badRoleEntry.exited && badRoleEntry.code === 1);
+  assert.match(badRoleEntry.stderr, /unknown role: qqq/);
+  // The role field is refused with the same wording setConfigKey uses, not a silent null.
+  const badField = await attemptAsync(() => cmdConfig(root, ["get", "roles.qa.colour"]));
+  assert.ok(badField.exited && badField.code === 1);
+  assert.match(badField.stderr, /unknown role field "colour" for roles\.qa/);
+  assert.match(badField.stderr, /valid fields:/);
+  assert.equal(badField.stdout, "", "a failed get prints no JSON");
+});
+
 test("get rejects a dotted key outside the supported shapes", async () => {
   const root = makeRepo();
   const out = await attemptAsync(() => cmdConfig(root, ["get", "review.enabled"]));

@@ -161,6 +161,15 @@ export function unknownConfigKeyError(key: string): string | null {
   return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${typoSuffix(key, TOP_LEVEL_KEYS as readonly string[])}`;
 }
 
+/** The error for a dotted role key naming a field ROLE_ENTRY_KEYS does not hold — the one
+ * home of the wording `config set` and `config get` both surface, so a typo'd `roles.qa.colour`
+ * reads the same whichever verb names it (both refuse it; a silent `null` from get would look
+ * like a real unset value). Null when the field is a known role-entry key. */
+export function unknownRoleFieldError(id: string, field: string): string | null {
+  if ((ROLE_ENTRY_KEYS as readonly string[]).includes(field)) return null;
+  return `unknown role field "${field}" for roles.${id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${typoSuffix(field, ROLE_ENTRY_KEYS)}`;
+}
+
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys
  * gives the file itself, so `config set modle x` cannot write a dead key the runtime would
@@ -190,12 +199,8 @@ export function setConfigKey(
     value = rawValue; // not JSON: the literal string, so `set model gpt-5` needs no quotes
   }
   if (parsed.kind !== "top") {
-    if (parsed.kind === "role" && !(ROLE_ENTRY_KEYS as readonly string[]).includes(parsed.field)) {
-      return {
-        ok: false,
-        error: `unknown role field "${parsed.field}" for roles.${parsed.id} (valid fields: ${ROLE_ENTRY_KEYS.join(", ")})${typoSuffix(parsed.field, ROLE_ENTRY_KEYS)}`,
-      };
-    }
+    const fieldError = parsed.kind === "role" ? unknownRoleFieldError(parsed.id, parsed.field) : null;
+    if (fieldError) return { ok: false, error: fieldError };
     if (parsed.kind === "map") {
       const validator = parsed.map === "maxDailyCostUsdPerRole" ? checkDailyBudgetUsd : checkQuietHours;
       const problem = validator(value);
