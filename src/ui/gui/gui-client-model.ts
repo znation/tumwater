@@ -12,6 +12,7 @@
 import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
 import { STALL_SOURCE } from "../tick-progress-model.js";
 import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_EVENTS } from "../tone.js";
+import { LOOP_RANK_RULES } from "../status-model.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for
@@ -74,14 +75,16 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // 2026-10-06), then live work (working, reviewing, landing), then work waiting in the pipe
   // line (approved, awaiting a slot), then loops that need attention (failing, main red), then
   // paused, then idle; within a rank the most recent tick first, a never-ticked loop last, ties
-  // by name.
+  // by name. The phase → rank rules are status-model.ts's LOOP_RANK_RULES (interpolated at
+  // module build, like STALL/PROBLEM_RESULTS above), so the literals cannot drift from the
+  // server's copy.
+  const LOOP_RANK_RULES = ${JSON.stringify(LOOP_RANK_RULES)};
   function loopRank(phase) {
     const p = String(phase || "");
-    if (p.startsWith("director working")) return -1;
-    if (isActivePhase(p)) return 0;
-    if (p.startsWith("vetted") || p.startsWith("awaiting slot")) return 1;
-    if (p === "failing" || p === "main red") return 2;
-    if (p === "paused" || p === "budget paused" || p === "cap paused") return 3;
+    for (const r of LOOP_RANK_RULES) {
+      if (r.active ? isActivePhase(p) : (r.phases || []).includes(p) || (r.prefixes || []).some((x) => p.startsWith(x)))
+        return r.rank;
+    }
     return 4;
   }
   function sortLoops(loops) {

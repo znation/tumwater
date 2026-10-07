@@ -281,13 +281,34 @@ export function isActivePhase(phase: string): boolean {
  * blocked by a red main; 3 paused — by the operator, by the budget, or by the loop's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
  * stopped fleet). The dashboard groups its loop table by these ranks; the TUI/status table
- * orders by them. */
+ * orders by them.
+ *
+ * The rank → phase mapping is LOOP_RANK_RULES, one home for the phase literals so the
+ * dashboard's browser twin (gui-client-model.ts loopRank, which interpolates the list) cannot
+ * drift; a rule matches by `active` (isActivePhase), `phases` (exact equality), or `prefixes`
+ * (startsWith), and the first match wins. */
+export const LOOP_RANK_RULES: ReadonlyArray<{
+  rank: number;
+  active?: boolean;
+  phases?: readonly string[];
+  prefixes?: readonly string[];
+}> = [
+  { rank: -1, prefixes: ["director working"] },
+  { rank: 0, active: true },
+  { rank: 1, prefixes: ["vetted", "awaiting slot"] },
+  { rank: 2, phases: ["failing", "main red"] },
+  { rank: 3, phases: ["paused", "budget paused", "cap paused"] },
+];
+
 export function loopRank(phase: string): number {
-  if (phase.startsWith("director working")) return -1;
-  if (isActivePhase(phase)) return 0;
-  if (phase.startsWith("vetted") || phase.startsWith("awaiting slot")) return 1;
-  if (phase === "failing" || phase === "main red") return 2;
-  if (phase === "paused" || phase === "budget paused" || phase === "cap paused") return 3;
+  for (const rule of LOOP_RANK_RULES) {
+    if (
+      rule.active
+        ? isActivePhase(phase)
+        : rule.phases?.includes(phase) || rule.prefixes?.some((p) => phase.startsWith(p))
+    )
+      return rule.rank;
+  }
   return 4;
 }
 

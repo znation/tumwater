@@ -128,10 +128,10 @@ const FORMAT_JS = String.raw`  // format:start
   // human-seconds-fmt:end
   // active-phase-fmt:start
   // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase: its phase starts with
-  // working, reviewing, or landing. One home for the three prefixes fmtNextRun and loopRank
-  // share; the exempt running director's own director-working label is checked beside it
-  // (fmtNextRun and loopRank) rather than folded in, because it holds no permit (BUGS.md
-  // 2026-10-06).
+  // working, reviewing, or landing. One home for the three prefixes fmtNextRun shares with the
+  // shared loop-rank rules (status-model.ts's LOOP_RANK_RULES, whose rank-0 rule tests this
+  // predicate); the running director's own director-working label is checked beside it rather
+  // than folded in, because it holds no permit (BUGS.md 2026-10-06).
   const isActivePhase = (phase) => phase.startsWith("working") || phase.startsWith("reviewing") || phase.startsWith("landing");
   // active-phase-fmt:end
   // last-tick-fmt:start
