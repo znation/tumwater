@@ -5,6 +5,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { ensureParentDir, removeQuiet } from "../files/files.js";
 import { pidAlive } from "../process/process.js";
 import { withSyncLock } from "../concurrency/lock.js";
+import { truncate } from "../text/text.js";
 import { orchestratorStatePath, pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
 
 /** The fleet pause marker read once as the standing pause it represents: non-null while the
@@ -67,9 +68,7 @@ function standingMarker(path: string): PauseMarker | null {
   if (!m || typeof m.at !== "number") return null;
   if (m.until !== undefined && m.until <= Date.now()) return null;
   const folded =
-    typeof m.reason === "string"
-      ? normalizePauseReason(m.reason)?.slice(0, PAUSE_REASON_MAX)
-      : undefined;
+    typeof m.reason === "string" ? normalizePauseReason(m.reason) : undefined;
   if (folded) m.reason = folded;
   else delete m.reason;
   return m;
@@ -96,18 +95,22 @@ export function pausedReason(root: string): string | undefined {
 /** Fold an operator pause reason to the one line every pause surface renders (the marker
  * doc's "one-line reason", the status header's badge, the alerts title, the CLI's
  * confirmation): whitespace runs — newlines, tabs — collapse to single spaces and the ends
- * trim, undefined when nothing but whitespace remains. One home beside pauseFleet so the
- * CLI path and any later GUI writer cannot drift on the shape the marker stores; the
- * PAUSE_REASON_MAX cap stays in pauseFleet, applied after the fold. */
+ * trim, undefined when nothing but whitespace remains. The result is capped at
+ * PAUSE_REASON_MAX here, through text.ts's surrogate-safe truncate (which backs off a cut
+ * that would split an astral character and marks the cut with an ellipsis), so the CLI
+ * confirmation, the marker, and every read side quote the same bounded line — a cap applied
+ * only at the writer let `pause --reason <over-cap text>` print a note longer than the one
+ * persisted. One home beside pauseFleet so the CLI path and any later GUI writer cannot
+ * drift on the shape the marker stores. */
 export function normalizePauseReason(reason: string | undefined): string | undefined {
   const oneLine = reason?.replace(/\s+/g, " ").trim();
-  return oneLine ? oneLine : undefined;
+  return oneLine ? truncate(oneLine, PAUSE_REASON_MAX) : undefined;
 }
 
 /** Pause the fleet by writing its marker, the writer half of isFleetPaused's contract; the
  * marker format ({ at: number }, pretty-printed JSON) is the one `tumwater pause` has always
  * written. `reason` is the operator's one-line why (`tumwater pause --reason <text>`):
- * folded to one line (normalizePauseReason) and capped at PAUSE_REASON_MAX here — the
+ * folded to one line and capped at PAUSE_REASON_MAX (both normalizePauseReason) — the
  * single shape every writer shares — and persisted only when non-empty, so a pause written
  * without one clears a stale reason (the same last-write-wins rule as `until`: a fresh
  * pause write carries its own note). Returns whether this call changed state: false when an
@@ -123,7 +126,7 @@ export function pauseFleet(root: string, untilMs?: number, reason?: string): boo
   // pause after expiry reports a fresh pause, never the stale "already paused".
   const standing = standingMarker(marker);
   if (standing && untilMs === undefined) return false;
-  const trimmed = normalizePauseReason(reason)?.slice(0, PAUSE_REASON_MAX);
+  const trimmed = normalizePauseReason(reason);
   const body: PauseMarker =
     untilMs === undefined ? { at: Date.now() } : { at: Date.now(), until: untilMs };
   if (trimmed) body.reason = trimmed;

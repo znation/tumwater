@@ -358,6 +358,25 @@ test("pauseFleet carries the operator reason: trimmed, capped, last-write-wins, 
   assert.equal(pausedReason(root), undefined, "a fresh reasonless pause clears the stale reason");
 });
 
+// The cap goes through text.ts's surrogate-safe truncate: a naive slice at PAUSE_REASON_MAX
+// whose boundary lands between an astral character's two code units would store a lone high
+// surrogate, which every pause surface renders as a replacement box. The cut also carries an
+// ellipsis, so a truncated note reads as truncated rather than complete.
+test("an over-cap pause reason never stores a lone surrogate", () => {
+  const root = tmpdir();
+  // The high surrogate sits exactly at index PAUSE_REASON_MAX - 1, so a slice(0, MAX)
+  // keeps it and drops its low half.
+  const reason = "x".repeat(PAUSE_REASON_MAX - 1) + "😀" + "tail";
+  assert.equal(pauseFleet(root, undefined, reason), true);
+  const stored = pausedReason(root) ?? "";
+  assert.ok(stored.length <= PAUSE_REASON_MAX, "the cap holds");
+  assert.ok(stored.endsWith("…"), "the cut is marked with an ellipsis");
+  assert.ok(
+    !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(stored),
+    "no lone surrogate survives the cut",
+  );
+});
+
 // The one-line shape is the read side's contract too: a marker left on disk by a build
 // predating the write-side fold (or a hand edit) can still carry the raw newline, and every
 // consumer — the status header's badge, the alerts title — reads it through standingMarker,

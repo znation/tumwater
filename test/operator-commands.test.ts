@@ -15,6 +15,7 @@ import {
 } from "../src/operator/operator-commands.js";
 import { pidAlive } from "../src/process/process.js";
 import { defaultConfig } from "../src/config/config.js";
+import { PAUSE_REASON_MAX } from "../src/fleet/fleet-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
@@ -408,6 +409,21 @@ test("cmdPause --reason quotes the why in the confirmation and the marker", asyn
   assert.match(multiline.stdout, /fleet paused — "deploying the new build tonight" — role loops/);
   const foldedMarker = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(foldedMarker.reason, "deploying the new build tonight", "the marker carries the folded line");
+});
+
+// An over-cap note reads the same on every surface: the confirmation used to quote the
+// operator's full folded text while the marker stored only the first PAUSE_REASON_MAX
+// characters, so the CLI claimed a reason the rest of the harness never saw. Both go through
+// normalizePauseReason's one cap now, ellipsis included.
+test("cmdPause --reason caps the confirmation and the marker to the same line", async () => {
+  const root = tmpdir();
+  const long = "x".repeat(PAUSE_REASON_MAX + 50);
+  const { stdout } = await expectOk(() => cmdPause(root, ["--reason", long]));
+  const marker = readJson(pausedPath(root)) as { reason?: string };
+  assert.equal(marker.reason?.length, PAUSE_REASON_MAX, "the marker is capped");
+  assert.ok(marker.reason?.endsWith("…"), "the cap is visible");
+  assert.ok(stdout.includes(marker.reason ?? ""), "the confirmation quotes exactly the stored line");
+  assert.ok(!stdout.includes(long), "the confirmation does not quote the over-cap note");
 });
 
 test("cmdPause --reason on a standing pause stays the no-op and keeps the standing reason", async () => {
