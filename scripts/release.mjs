@@ -153,7 +153,11 @@ if (statusOnly) {
   const remoteMainProbe = probe("ls-remote", "origin", "refs/heads/main");
   const remoteReachable = remoteMainProbe !== null;
   const remoteMain = remoteMainProbe ? remoteMainProbe.split(/\s+/)[0] : null;
-  const ahead = remoteMain ? Number(sh("rev-list", "--count", `${remoteMain}..HEAD`)) : "?";
+  // The remote ref's object is absent locally whenever origin is ahead and this clone has not
+  // fetched it; a strict `rev-list` would then die on git's raw fatal, the very leak this
+  // read-only report exists to avoid. A failed count is reported, not fatal, like every other
+  // probe here.
+  const aheadProbe = remoteMain ? probe("rev-list", "--count", `${remoteMain}..HEAD`) : null;
   const ci = remoteReachable
     ? ghSoft(["run", "list", "--workflow", "CI", "--commit", head(), "--json", "databaseId,status,conclusion"])
     : { error: "origin unavailable" };
@@ -169,7 +173,15 @@ if (statusOnly) {
           ? "local state only (remote tag probe failed)"
           : "not yet created";
   console.log(`version ${version} → tag ${tag} @ ${head().slice(0, 8)} on ${branch}${dirty ? " (dirty!)" : ""}`);
-  console.log(`origin/main: ${remoteMain ? `${ahead} commit(s) to push` : "unavailable (no origin remote, or unreachable)"}`);
+  console.log(
+    `origin/main: ${
+      remoteMain
+        ? aheadProbe === null
+          ? "unavailable (remote main not fetched locally)"
+          : `${Number(aheadProbe)} commit(s) to push`
+        : "unavailable (no origin remote, or unreachable)"
+    }`,
+  );
   console.log(`CI: ${ci.error ? ci.error : ci.run ? `run ${ci.run.databaseId}: ${ci.run.status} ${ci.run.conclusion ?? ""}` : "no run yet for HEAD"}`);
   console.log(`tag: ${tagLine}`);
   process.exit(0);

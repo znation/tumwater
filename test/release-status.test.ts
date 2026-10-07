@@ -55,6 +55,29 @@ test("--status names the missing gh instead of dying when origin answers but gh 
   }
 });
 
+test("--status reports an origin/main it cannot count instead of leaking a git fatal", () => {
+  const root = makeRepo();
+  seedPackage(root, "0.1.0");
+  const origin = tmpdir("release-origin-");
+  sh(origin, "git", "init", "--bare");
+  sh(root, "git", "remote", "add", "origin", origin);
+  sh(root, "git", "push", "origin", "main");
+  // A second clone advances origin's main; `root` never fetches the new commit, so its
+  // object is absent locally and a strict `rev-list <remote>..HEAD` cannot run.
+  const other = tmpdir("release-other-");
+  sh(origin, "git", "clone", "-b", "main", origin, other);
+  fs.writeFileSync(path.join(other, "advanced.txt"), "advanced\n");
+  sh(other, "git", "add", "-A");
+  sh(other, "git", "commit", "-m", "advance origin main");
+  sh(other, "git", "push", "origin", "main");
+
+  const r = status(root);
+
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /origin\/main: unavailable \(remote main not fetched locally\)/);
+  assert.doesNotMatch(r.stderr, /fatal:/, "no raw git fatal line leaks beside the report");
+});
+
 test("the release path still refuses to act offline rather than treating the tag as free", () => {
   const root = makeRepo();
   seedPackage(root, "0.1.0");
