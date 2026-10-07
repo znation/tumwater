@@ -128,8 +128,9 @@ function scanQuestions(lines: string[]): { openIdx: number; answeredIdx: number;
  * its `_None yet._` placeholder; a file with no
  * `## Answered` section gains one. An out-of-range position fails with the
  * `prompt --cancel` wording and exits 1. Returns the answered question's title for the
- * confirmation line. */
-export function answerQuestion(root: string, n: number, rawDecision: string): { title: string } {
+ * confirmation line, plus the collapsed decision that actually landed in the file so callers
+ * report what was written rather than the caller's raw whitespace. */
+export function answerQuestion(root: string, n: number, rawDecision: string): { title: string; decision: string } {
   const decision = collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");
   const md = readTextOrNull(file);
@@ -186,7 +187,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
     if (out !== "" && !out.endsWith("\n")) out += "\n";
     out += `\n## Answered\n\n${answerLines.join("\n")}`;
     writeTextAtomic(file, out);
-    return { title: block.title };
+    return { title: block.title, decision };
   }
   const fenced2 = fenceTracker();
   let answeredAt = -1;
@@ -226,7 +227,7 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
   trimLeadingBlankLines(tail);
   const result = head.concat("", answerLines, tail);
   writeTextAtomic(file, result.join("\n"));
-  return { title: block.title };
+  return { title: block.title, decision };
 }
 
 /** The one confirmation line `questions answer` prints in prose mode: which position was

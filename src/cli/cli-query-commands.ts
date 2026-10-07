@@ -158,8 +158,10 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   const decision = words.slice(2).join(" ").trim();
   if (decision === "")
     fail('questions answer needs a decision: questions answer <n> "<decision>"');
-  const { title } = answerQuestion(root, n, decision);
-  sayAnswered(n, title, jsonFlag, decision);
+  // answerQuestion collapses the free-form decision to one line before writing it; report
+  // that landed text in the --json payload so it matches the file, not the caller's spacing.
+  const { title, decision: landedDecision } = answerQuestion(root, n, decision);
+  sayAnswered(n, title, jsonFlag, landedDecision);
 }
 
 /** `tumwater role <id>`: one loop's standing prompt and next tick's assembled prompt. */

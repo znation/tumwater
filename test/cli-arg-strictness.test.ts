@@ -93,6 +93,26 @@ test("questions answer keeps a decision token spelled --json as prose", async ()
   assert.match(bad.stderr, /unknown argument: --rol/);
 });
 
+test("questions answer --json reports the decision as written, with whitespace collapsed", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions json collapsed");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Cap the spend?\n\nbody\n\n## Answered\n\n_None._\n",
+  );
+
+  // The file gets the collapsed decision (a stamp paragraph is one line) but the payload
+  // used to echo the caller's raw spacing, so --json and the file disagreed about what
+  // landed. --json before the number is the flag; the decision is one argv token holding
+  // runs of spaces.
+  const r = await cli(repo, "questions", "answer", "--json", "1", "a   b");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { decision: string };
+  assert.equal(payload.decision, "a b");
+  const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
+  assert.match(md, /\*\*Answered .* by operator:\*\* a b\n/);
+});
+
 test("questions lists the open questions, in prose and as JSON", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli questions list");
