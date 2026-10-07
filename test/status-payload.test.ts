@@ -12,6 +12,7 @@ import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
@@ -368,4 +369,25 @@ test("the status payload carries capPaused; a held idle loop's phase reads cap p
   assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "cap paused");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
+});
+
+// The disk floor's published block (plans/disk-floor.md, part 4/4): the payload ships the raw
+// facts for `status --json` and the preformatted badge the dashboard renders — the same string
+// the TUI/status header builds — so both surfaces say the same thing.
+test("status payload ships the disk block and its preformatted badge", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload disk test");
+  const at = Date.now() - 300_000;
+  writeJsonFile(orchestratorStatePath(repo), {
+    pid: process.pid,
+    startedAt: at,
+    roles: [],
+    disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: { at, mode: "pressure", freedGB: 3.24 } },
+  });
+  const payload = statusPayload(repo, at + 300_000) as { disk?: object; diskBadge: string };
+  assert.deepEqual(payload.disk, {
+    freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true,
+    lastReclaim: { at, mode: "pressure", freedGB: 3.24 },
+  });
+  assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago");
 });

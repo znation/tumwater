@@ -177,38 +177,6 @@ test/reclaim.test.ts, plus config and CLI cases.
   With no fleet running, it cleans directly.
 - `npm run test` green.
 
-### Disk floor, part 4/4: show free space, the disk hold and the last reclaim on status, TUI and GUI (planned 2026-10-06 by operator; requires parts 1/4 and 2/4 landed)
-
-Design: plans/disk-floor.md ("Surfaces").
-
-**Goal.** An operator sees why the fleet stopped, without reading events. The status, TUI and
-GUI processes cannot call statfs on the orchestrator's behalf in a consistent way, so the
-orchestrator publishes what it measured.
-
-**Approach.**
-1. **Publish.** Add `disk?: { freeGB, holdGB, reclaimGB, held, lastReclaim?: { at, mode,
-   freedGB } }` to `OrchestratorInfo` (src/fleet/fleet-state.ts). `pollFleetGates`
-   (src/gates/gate-polls.ts) writes it only when it changes, like `budget`, rounding `freeGB`
-   to one decimal.
-2. **Header badge.** Add `diskBadge` to src/ui/badges.ts, after `budgetBadge`/`quietBadge`. It
-   is shown while the fleet holds, or while free space is below `reclaimGB`, e.g.
-   "disk 8.2 GB free — holding new work".
-3. **Alert.** Add a `disk` alert in src/ui/fleet-alerts.ts while the fleet holds.
-4. **Loop phase.** A held loop's phase reads "disk hold" in src/ui/status-model.ts, ranked
-   like "budget paused".
-5. **Status.** `tumwater status` (src/status/status-data.ts) shows the same facts.
-
-**Files touched.** src/fleet/fleet-state.ts, src/gates/gate-polls.ts, src/ui/badges.ts,
-src/ui/fleet-alerts.ts, src/ui/status-model.ts, src/status/status-data.ts. Tests: cases in the
-existing badge, fleet-alert, status-model and status tests.
-
-**Acceptance criteria.**
-- **Held.** A published `disk.held: true` shows the badge, the alert and the "disk hold" phase
-  on held loops.
-- **Low but not held.** Free space below `reclaimGB` while not held shows the badge only.
-- **Missing.** No `disk` field, as with an older orchestrator, renders exactly as today.
-- `npm run test` green.
-
 ### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
 
 Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
@@ -778,6 +746,49 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Disk floor, part 4/4: show free space, the disk hold and the last reclaim on status, TUI and GUI (planned 2026-10-06 by operator; done 2026-10-07 by feature)
+
+Design: plans/disk-floor.md ("Surfaces").
+
+**Goal.** An operator sees why the fleet stopped, without reading events. The status, TUI and
+GUI processes cannot call statfs on the orchestrator's behalf in a consistent way, so the
+orchestrator publishes what it measured.
+
+**Approach.**
+1. **Publish.** Add `disk?: { freeGB, holdGB, reclaimGB, held, lastReclaim?: { at, mode,
+   freedGB } }` to `OrchestratorInfo` (src/fleet/fleet-state.ts); `ReclaimController`
+   (src/fleet/reclaim.ts) records the most recent pass that cleaned anything. `pollFleetGates`
+   (src/gates/gate-polls.ts) writes it only when it changes, like `budget`, rounding `freeGB`
+   to one decimal.
+2. **Header badge.** Add `diskBadge` to src/ui/badges.ts, after `budgetBadge`/`quietBadge`. It
+   shows the free space and the hold ("disk 8.2 GB free — holding new work") while the fleet
+   holds, or the bare reading while free space is below `reclaimGB`; a recorded reclaim appends
+   its freed size and age, so the last reclaim stands on the header and the GUI sidebar even
+   after space recovers.
+3. **Alert.** Add a `disk` alert in src/ui/fleet-alerts.ts while the fleet holds.
+4. **Loop phase.** A held loop's phase reads "disk hold" in src/ui/status-model.ts, ranked
+   like "budget paused".
+5. **Status.** `tumwater status` (src/status/status-data.ts) shows the same facts in the
+   header, the payload ships the raw block and the preformatted badge (src/ui/status-payload.ts,
+   src/ui/status-render.ts), and the GUI sidebar renders that badge (src/ui/gui/gui-client-fleet.ts,
+   src/ui/gui/gui-client-model.ts).
+
+**Files touched.** src/fleet/fleet-state.ts, src/fleet/reclaim.ts, src/gates/gate-polls.ts,
+src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/status-model.ts, src/status/status-data.ts,
+src/ui/status-render.ts, src/ui/status-payload.ts, src/ui/gui/gui-client-fleet.ts,
+src/ui/gui/gui-client-model.ts. Tests: cases in the existing badge, fleet-alert, status-model,
+status-header, status-render, status-payload, gui-client-sidebar, gate-polls and status-data
+tests.
+
+**Acceptance criteria.**
+- **Held.** A published `disk.held: true` shows the badge, the alert and the "disk hold" phase
+  on held loops.
+- **Low but not held.** Free space below `reclaimGB` while not held shows the badge only.
+- **Last reclaim.** A published `disk.lastReclaim` names its freed size and age on the header
+  and the GUI sidebar, held or after space recovers.
+- **Missing.** No `disk` field, as with an older orchestrator, renders exactly as today.
+- `npm run test` green.
 
 ### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator; done 2026-10-07 by feature)
 

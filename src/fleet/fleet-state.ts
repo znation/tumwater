@@ -256,6 +256,20 @@ export function resumeRole(root: string, role: string): boolean {
   });
 }
 
+/** The disk floor's published state (plans/disk-floor.md, part 4/4): what the orchestrator
+ * measured on its most recent poll, so observers (status, TUI, GUI) show the same facts
+ * without calling statfs themselves. `freeGB` is rounded to one decimal; `held` is the hold's
+ * verdict; `lastReclaim` names the most recent pressure pass that cleaned anything, absent
+ * until one has. Published only when it changes; absent when statfs cannot measure the volume
+ * or on an older orchestrator. */
+export interface DiskStatus {
+  freeGB: number;
+  holdGB: number;
+  reclaimGB: number;
+  held: boolean;
+  lastReclaim?: { at: number; mode: "pressure" | "idle" | "manual"; freedGB: number };
+}
+
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving
  * the fleet, since when, and with which roles. Written by runOrchestrator; read here so
  * observers (status, TUI, GUI) never depend on the scheduler module itself. */
@@ -286,6 +300,11 @@ export interface OrchestratorInfo {
    * running orchestrator means no published figure exists and the persisted sum is final.
    * Written by the orchestrator whenever the pair changes; absent otherwise. */
   budget?: { spentUsd: number; capUsd: number };
+  /** The disk floor's most recent measurement (plans/disk-floor.md, part 4/4): free space,
+   * the configured floor and reclaim threshold, whether the hold is on, and the last reclaim
+   * pass. Written by the orchestrator's poll whenever it changes; absent when statfs cannot
+   * measure the volume or on an older orchestrator, which renders exactly as before. */
+  disk?: DiskStatus;
 }
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.

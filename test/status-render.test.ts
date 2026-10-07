@@ -20,6 +20,7 @@ import { assistantLine } from "./pi-events.js";
 import {
   DEFAULT_BUDGET,
   headerOf,
+  rowOf,
   SESSION,
   snapshotWith,
   tableCells,
@@ -549,4 +550,16 @@ test("the loop name cell appends a lone selector when no tier map is declared", 
   assert.match(text, /clean \(prov-a\/model-a\)/);
   // No model resolved: the name cell stays `plan` — today's bytes.
   assert.doesNotMatch(text, /plan \(/);
+});
+
+// The disk floor (plans/disk-floor.md, part 4/4): a published hold reads in the header badge
+// AND in each idle loop's state cell, so the rendered table explains the stopped fleet
+// itself.
+test("renderStatus shows a disk hold in the header and the loop's state cell", () => {
+  const held = snapshotWith([{ role: "clean" }]);
+  held.running = true;
+  held.disk = { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true };
+  const text = renderStatus(tmpdir(), held);
+  assert.match(headerOf(text), /· disk 8\.2 GB free — holding new work$/);
+  assert.match(rowOf(text, "clean"), /disk hold/);
 });

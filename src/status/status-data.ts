@@ -26,6 +26,7 @@ import {
   pausedRoles,
   readOrchestratorInfo,
   standingFleetPause,
+  type DiskStatus,
 } from "../fleet/fleet-state.js";
 import { readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
 import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
@@ -245,6 +246,12 @@ export interface StatusSnapshot {
    * either source — no landing yet and no readable ref — drops the field. Absent entirely
    * before any merge-scope check has run (and in tests that assemble snapshots by hand). */
   mainCheck?: MainCheckStatus;
+  /** The disk floor's measured state (plans/disk-floor.md, part 4/4), read from the running
+   * orchestrator's published info file: free space (one decimal), the configured floor and
+   * reclaim threshold, whether the hold is on, and the last reclaim pass. Absent when no
+   * orchestrator runs, its build predates the field, or statfs could not measure the volume —
+   * every surface then renders exactly as before. */
+  disk?: DiskStatus;
 }
 
 /** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
@@ -423,5 +430,10 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     inQuietHours: quiet.inWindow,
     landQueue,
     mainCheck: mainCheckForPoll(root, cfg),
+    // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
+    // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
+    // must not speak for a stopped fleet — and only when the last poll could measure the
+    // volume. Absent otherwise, so the surfaces render exactly as before.
+    disk: running && info?.disk ? info.disk : undefined,
   };
 }

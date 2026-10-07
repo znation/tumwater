@@ -198,6 +198,9 @@ export class ReclaimController {
   private wasLow = false;
   /** True once the armed pass has settled while still below `reclaimGB`. */
   private settled = false;
+  /** The most recent pressure pass that cleaned at least one worktree, for the published
+   * disk status (plans/disk-floor.md, part 4/4). null until one runs. */
+  lastReclaim: { at: number; mode: "pressure" | "idle" | "manual"; freedGB: number } | null = null;
 
   constructor(
     private readonly root: string,
@@ -231,7 +234,8 @@ export class ReclaimController {
 
   private async run(reclaimGB: number): Promise<void> {
     try {
-      await reclaimPass(this.root, "pressure", { reclaimGB, sample: this.sample });
+      const result = await reclaimPass(this.root, "pressure", { reclaimGB, sample: this.sample });
+      if (result) this.lastReclaim = { at: Date.now(), mode: "pressure", freedGB: result.freedGB };
     } catch {
       // Reclaim is opportunistic; it must never crash the orchestrator's poll loop.
     } finally {

@@ -5,7 +5,7 @@ import { eventMessage, eventResult, formatEvent } from "../events/event-format.j
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { snapshot } from "../status/status-data.js";
-import { buildBadge, budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
+import { buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge } from "./badges.js";
 import { isActivePhase, loopRowCells } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -110,6 +110,12 @@ export function statusPayload(root: string, now = Date.now()): object {
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
     budgetBadge: budgetBadge(snap.budget),
+    // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
+    // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
+    // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
+    // has published one — the same omit-undefined idiom as pausedUntil.
+    ...(snap.disk ? { disk: snap.disk } : {}),
+    diskBadge: diskBadge(snap.disk, now),
     // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge

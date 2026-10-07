@@ -105,3 +105,30 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
   assert.match(panels.statuschips!, /Build <span class='mono'>aaaaaaaa<\/span>(?! · \d+ behind)/,
     "the fresh row keeps its text and shows no behind-count");
 });
+
+// The disk floor (plans/disk-floor.md, part 4/4): the sidebar renders the payload's
+// preformatted diskBadge — the same string the TUI/status header carries — so the hold and the
+// last reclaim read the same on both dashboards. An empty badge (no disk block, or comfortable
+// space with no reclaim on record) leaves the sidebar untouched.
+test("the sidebar's disk row mirrors the header badge, hold and last reclaim named", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: { at: Date.now() - 300_000, mode: "pressure", freedGB: 3.24 } },
+    diskBadge: " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago",
+  });
+  assert.match(panels.statuschips!, /Disk 8\.2 GB free — holding new work · last reclaim freed 3\.2 GB 5m ago/,
+    "the hold and the reclaim ride the row");
+
+  renderSidebar({
+    running: true,
+    pid: 123,
+    disk: { freeGB: 30, holdGB: 10, reclaimGB: 40, held: false },
+    diskBadge: " · disk 30.0 GB free",
+  });
+  assert.match(panels.statuschips!, /Disk 30\.0 GB free/, "below the reclaim threshold still informs");
+
+  renderSidebar({ running: true, pid: 123, diskBadge: "" });
+  assert.doesNotMatch(panels.statuschips!, /Disk /, "an empty badge leaves the sidebar unchanged");
+});

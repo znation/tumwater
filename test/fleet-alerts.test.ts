@@ -172,7 +172,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
   }>(["format", "view-model"], ["phaseInfo", "resultInfo"]);
   const family: Record<string, string | undefined> = { blue: "blue", violet: "blue", orange: "blue", indigo: "blue", red: "red", amber: "yellow", gray: undefined };
   for (const phase of ["working 1m", "reviewing 2m", "landing 1m · merging", "vetted, awaiting merge", "awaiting slot 5s", "failing", "main red",
-    "paused", "budget paused", "sleeping (for 5m)", "queued", "waiting for prompts", "stopped"]) {
+    "paused", "budget paused", "cap paused", "disk hold", "sleeping (for 5m)", "queued", "waiting for prompts", "stopped"]) {
     const page = phaseInfo(phase).tone;
     // Awaiting a slot is pipeline work (blue) in the terminal; the page draws it quietly gray.
     if (phase.startsWith("awaiting slot")) continue;
@@ -183,4 +183,24 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
     "aborted", "quiet_killed", "user_aborted", "main_red", "skipped"]) {
     assert.equal(resultTone(result), resultFamily[resultInfo(result).tone], result);
   }
+});
+
+// The disk floor (plans/disk-floor.md, part 4/4): a hold raises one amber alert naming the
+// reading and the floor. Below the reclaim threshold but not held is the header badge's
+// quieter business, so it raises no alert; no disk block raises nothing.
+test("a disk hold raises one amber alert naming the free space and the floor", () => {
+  const held = fleetAlerts(
+    { ...base, disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true } },
+    [], [], Date.now(),
+  );
+  const [disk] = held.filter((a) => a.key === "disk");
+  assert.equal(disk?.tone, "amber");
+  assert.match(disk?.title ?? "", /8\.2 GB free/);
+  assert.match(disk?.detail ?? "", /10 GB floor/);
+  assert.deepEqual(
+    fleetAlerts({ ...base, disk: { freeGB: 30, holdGB: 10, reclaimGB: 40, held: false } }, [], [], Date.now()).filter((a) => a.key === "disk"),
+    [],
+    "low but not held: no alert",
+  );
+  assert.deepEqual(fleetAlerts(base, [], [], Date.now()), [], "no disk block: nothing new");
 });

@@ -62,7 +62,7 @@ function localizeInstants(text: string): string {
 export function fleetAlerts(
   snap: Pick<
     StatusSnapshot,
-    "running" | "budget" | "build" | "paused" | "pausedUntil" | "pauseReason" | "quietHours" | "inQuietHours"
+    "running" | "budget" | "build" | "paused" | "pausedUntil" | "pauseReason" | "quietHours" | "inQuietHours" | "disk"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -94,6 +94,20 @@ export function fleetAlerts(
             actions: [{ label: "Raise the cap", act: "budget" }],
           },
     );
+  }
+  // The disk floor holding new work (plans/disk-floor.md, part 4/4): the header badge and the
+  // loop rows say what is happening, but the banner names the threshold and the way out, so an
+  // operator hitting a full volume does not have to read events. An amber ask — the fleet is
+  // stopped and needs room, not merely informed. Only while the hold is on; below the reclaim
+  // threshold but not yet held is the badge's quieter business.
+  if (snap.disk?.held) {
+    out.push({
+      key: "disk",
+      tone: "amber",
+      title: `Disk space is low — the fleet is holding new work at ${snap.disk.freeGB.toFixed(1)} GB free`,
+      detail: `Free space is below the ${snap.disk.holdGB} GB floor. Build outputs are reclaimed first; new work starts again once space recovers.`,
+      actions: [],
+    });
   }
   const red = loops.filter((l) => l.phase === "main red");
   if (red.length) {

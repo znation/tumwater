@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
+import { budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown } from "../src/ui/badges.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
   // One home for the badge string (renderStatus's header and the payload's preformatted
@@ -162,4 +162,33 @@ test("mainCheckBadge renders the shared counts fragment", () => {
     " · main aaaaaaaa: green · 9/10 (1 skipped)",
   );
   assert.equal(mainCheckBadge(undefined), "", "no check: no badge");
+});
+
+// The disk floor's header fragment (plans/disk-floor.md, part 4/4): the hold names itself,
+// below the reclaim threshold renders the bare reading, and every other state is empty so the
+// header stays byte-identical. A disk block absent (an older orchestrator, an unmeasurable
+// volume) renders nothing, exactly as before the field existed. A recorded reclaim rides the
+// fragment whenever it has run, so its size and age stand even after space recovers.
+test("diskBadge shows the hold or low space and stays empty otherwise", () => {
+  assert.equal(diskBadge(undefined), "", "no disk block: header unchanged");
+  assert.equal(diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false }), "", "comfortable space: no badge");
+  assert.equal(diskBadge({ freeGB: 30, holdGB: 10, reclaimGB: 40, held: false }), " · disk 30.0 GB free", "below the reclaim threshold informs");
+  assert.equal(diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true }), " · disk 8.2 GB free — holding new work", "the hold names itself");
+  assert.equal(diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 0, held: false }), "", "reclaim disabled means no low badge");
+});
+
+test("diskBadge names the last reclaim's size and age, held or recovered", () => {
+  const at = Date.UTC(2026, 9, 7, 12, 0, 0);
+  const now = at + 5 * 60_000;
+  const reclaimed = { at, mode: "pressure" as const, freedGB: 3.24 };
+  assert.equal(
+    diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: reclaimed }, now),
+    " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago",
+    "a held fleet also names the reclaim that ran",
+  );
+  assert.equal(
+    diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: reclaimed }, now),
+    " · last reclaim freed 3.2 GB 5m ago",
+    "the reclaim stands on its own after space recovers",
+  );
 });

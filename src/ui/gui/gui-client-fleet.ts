@@ -56,6 +56,21 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         rows += row(tone, icon(glyph),
           "Main " + word + esc(counts), ((d.mainCheckBadge || "").replace(/^ · /, "") + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
+      // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
+      // preformatted diskBadge (upcased for the row's label style) — the same facts the
+      // TUI/status header carries, so the two surfaces cannot drift — and names the free space,
+      // the hold and the last reclaim there.
+      if (d.diskBadge) {
+        const held = !!(d.disk && d.disk.held);
+        const low = !!(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
+        rows += row(held ? "amber" : "blue", icon("info"),
+          esc(String(d.diskBadge).replace(/^ · /, "").replace(/^./, (c) => c.toUpperCase())),
+          held
+            ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the fleet starts no new work until it recovers. Build outputs are reclaimed first."
+            : low
+              ? "Free space is below the " + esc(String(d.disk.reclaimGB)) + " GB reclaim threshold; idle build outputs are being cleaned."
+              : "The last build-output reclaim freed space on the worktrees volume.");
+      }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
       // inside/outside wording the TUI/status header's quietBadge carries, derived from the

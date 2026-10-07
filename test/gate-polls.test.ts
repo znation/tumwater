@@ -418,3 +418,31 @@ test("pollFleetGates: a low disk holds new work; recovery and a live floor edit 
     ["disk_low", "disk_ok", "disk_low", "disk_ok"],
   );
 });
+
+// Part 4/4: the same poll publishes what it measured, so observers (status, TUI, GUI) do not
+// call statfs themselves. One decimal for freeGB, the configured knobs, the hold verdict; an
+// unmeasurable sample publishes nothing so the surfaces render exactly as before.
+test("pollFleetGates publishes the measured disk state for observers", () => {
+  const root = tmpdir("gate-polls-disk-publish-");
+  const config = defaultConfig();
+  config.diskHoldGB = 10;
+  config.diskReclaimGB = 40;
+  const ctx = {
+    root,
+    runners: [],
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: [] } satisfies OrchestratorInfo,
+    infoFile: path.join(root, "orchestrator.json"),
+    sampleFree: () => 9 * BYTES_PER_GB,
+  };
+  const states = newFleetGateStates(config);
+  const readDisk = () => JSON.parse(fs.readFileSync(ctx.infoFile, "utf8")).disk;
+  pollFleetGates(states, ctx);
+  assert.deepEqual(readDisk(), { freeGB: 9, holdGB: 10, reclaimGB: 40, held: true });
+  pollFleetGates(states, { ...ctx, sampleFree: () => 100 * BYTES_PER_GB });
+  assert.deepEqual(readDisk(), { freeGB: 100, holdGB: 10, reclaimGB: 40, held: false });
+  pollFleetGates(states, { ...ctx, sampleFree: () => null });
+  assert.equal(readDisk(), undefined, "an unmeasurable volume publishes nothing");
+});

@@ -101,6 +101,7 @@ export function loopPhase(
   mainCheck?: StatusSnapshot["mainCheck"],
   capPaused = false,
   quietHold?: string,
+  diskHeld = false,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -156,6 +157,11 @@ export function loopPhase(
   // specific than either.
   if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
   if (budgetPaused) return "budget paused";
+  // The disk floor (plans/disk-floor.md, part 4/4): the fleet starts no new work below the
+  // floor, so an idle loop reads "disk hold" — the fleet-wide gate's own wording, ranked with
+  // the budget pause (LOOP_RANK_RULES). In-flight ticks keep their live detail above, exactly
+  // as under every autonomous gate.
+  if (diskHeld) return "disk hold";
   // Main's own suite is known red at this loop's last tick: code-producing loops are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
   // because it explains why the loop keeps waking and landing nothing; self-correcting, since
@@ -253,6 +259,9 @@ export function loopRowCells(
     // The per-role quiet window's verdict (status/status-data.ts roleQuietPaused): an idle loop
     // inside its own window reads `quiet until <end>` — the fleet badge's wording, scoped.
     snap.roleQuietPaused?.[s.role],
+    // The disk floor's verdict (status/status-data.ts disk): an idle loop while the hold is on
+    // reads `disk hold` — the fleet-wide gate, ranked with the budget pause.
+    snap.disk?.held === true,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -296,7 +305,7 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
   { rank: 0, active: true },
   { rank: 1, prefixes: ["vetted", "awaiting slot"] },
   { rank: 2, phases: ["failing", "main red"] },
-  { rank: 3, phases: ["paused", "budget paused", "cap paused"] },
+  { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold"] },
 ];
 
 export function loopRank(phase: string): number {

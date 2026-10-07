@@ -22,6 +22,7 @@ import {
   type QuietHoursGateState,
 } from "../scheduling/quiet-hours.js";
 import {
+  BYTES_PER_GB,
   newDiskGateState,
   pollDiskGate,
   sampleFreeBytes,
@@ -317,6 +318,24 @@ export function pollFleetGates(
     states.disk,
     waitForReclaim,
   );
+  // Publish the disk floor's measured state (plans/disk-floor.md, part 4/4): observers cannot
+  // call statfs in step with this poll, so the orchestrator writes what it measured. Rewritten
+  // only when it changes, like the budget block; freeGB rounds to one decimal. A null sample
+  // publishes nothing, so an unmeasurable volume renders exactly as before.
+  const disk: OrchestratorInfo["disk"] =
+    freeBytes === null
+      ? undefined
+      : {
+          freeGB: Math.round((freeBytes / BYTES_PER_GB) * 10) / 10,
+          holdGB: liveConfig.diskHoldGB,
+          reclaimGB: liveConfig.diskReclaimGB,
+          held: diskHeld,
+          ...(ctx.reclaim?.lastReclaim ? { lastReclaim: ctx.reclaim.lastReclaim } : {}),
+        };
+  if (JSON.stringify(disk) !== JSON.stringify(info.disk)) {
+    info.disk = disk;
+    writeJsonFile(infoFile, info);
+  }
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier

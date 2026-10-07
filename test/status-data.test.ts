@@ -902,3 +902,16 @@ test("snapshot rows carry the active model-fallback episode", async () => {
   saveLoopState(repo, state);
   assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
 });
+
+// Part 4/4: the snapshot carries the running orchestrator's published disk state, and only
+// while it runs — a stale block beside a dead pid speaks for no fleet.
+test("snapshot carries the running orchestrator's published disk state", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "published disk test");
+  const disk = { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true };
+  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: Date.now(), roles: [], disk });
+  assert.deepEqual(snapshot(repo).disk, disk);
+  writeJsonFile(orchestratorStatePath(repo), { pid: 2_000_000_000, startedAt: Date.now(), roles: [], disk });
+  assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
+  assert.equal(snapshot(repo).disk, undefined);
+});

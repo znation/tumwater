@@ -676,3 +676,19 @@ test("loopPhase reads quiet until <end> for idle loops held by their own quietHo
     "working",
   );
 });
+
+// The disk floor (plans/disk-floor.md, part 4/4): an idle role loop reads `disk hold` while the
+// gate holds — the fleet-wide verdict, ranked with the budget pause. In-flight ticks keep
+// their detail, the director keeps its prompt label, and a stopped orchestrator still reads
+// stopped.
+test("loopPhase reads disk hold for idle role loops while the disk floor holds", () => {
+  const s = freshLoopState("feature");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "queued");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "disk hold");
+  const d = freshLoopState("director");
+  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "waiting for prompts");
+  const running = freshLoopState("feature");
+  running.running = true;
+  assert.equal(loopPhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "working");
+  assert.equal(loopPhase(s, false, undefined, false, null, false, undefined, undefined, false, undefined, true), "stopped");
+});
