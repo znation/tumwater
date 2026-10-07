@@ -154,19 +154,28 @@ test("a check killed by an external signal is skipped as killed, naming the sign
 test("a deadline the host slept through is reported as when it really fired, on the event and in the warning (regression)", async (t) => {
   const { root } = buildCheckFixture();
   const wt = tmpdir();
-  const marker = path.join(wt, "started");
+  const first = path.join(wt, "first-attempt");
+  const second = path.join(wt, "second-attempt");
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const pending = runScopedBuildCheck(root, ROLE, "gate", wt, {
-    check: { command: "touch started; sleep 30", timeoutSeconds: 2 },
+    check: {
+      command: "if [ -f first-attempt ]; then touch second-attempt; sleep 30; else touch first-attempt; sleep 30; fi",
+      timeoutSeconds: 2,
+    },
   });
-  await waitFor(() => fs.existsSync(marker), "the check's started marker", 10_000);
-  assert.ok(fs.existsSync(marker), "the check spawned before the deadline");
+  await waitFor(() => fs.existsSync(first), "the first attempt's marker", 10_000);
+  assert.ok(fs.existsSync(first), "the check spawned before the deadline");
   t.mock.timers.tick(412_000); // the host sleeps 412 s through the 2 s deadline
+  // The gate owes one retry after a late-deadline timeout; drive it through its own late fire.
+  await waitFor(() => fs.existsSync(second), "the retry's marker", 10_000);
+  t.mock.timers.tick(412_000);
   const result = await pending;
   assert.equal(result!.outcome.skipReason, "timeout");
   assert.equal(result!.outcome.run?.deadlineLateMs, 410_000, "the deadline fired 410 s past its 2 s bound");
   const events = readEvents(root);
-  const check = events.find((e) => e.type === "build_check");
+  const checks = events.filter((e) => e.type === "build_check");
+  assert.equal(checks.length, 2, "the first late attempt and its retry each logged a build_check event");
+  const check = checks[0];
   assert.equal(check?.durationMs, 412_000);
   assert.equal(check?.timeoutMs, 2_000, "the event names the bound that was armed");
   assert.equal(check?.deadlineLateMs, 410_000, "and how late it actually fired");
@@ -267,6 +276,26 @@ test("a merge-scope timeout the host slept through is retried once, and the clea
   // while the real deadline timer keeps its schedule — so the timer fires minutes late.
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const pending = runScopedBuildCheck(root, ROLE, "landing", wt, {
+    check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
+  });
+  await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);
+  t.mock.timers.tick(10_000); // the host sleeps 10 s through the 2 s deadline
+  const result = await pending;
+  assert.equal(result!.outcome.status, "passed", "the clean retry's verdict stands");
+  const events = eventsOfType(root, "build_check");
+  assert.equal(events.length, 2, "each attempt is priced as its own build_check event");
+  assert.equal(events[0]?.status, "skipped");
+  assert.equal(events[1]?.status, "passed");
+});
+
+// The gate earns the same retry as a merge scope: the lateness is the harness's own evidence the
+// host slept, so the check says nothing about the tree there either, and the gate's reviewer
+// would otherwise judge the change unverified. The gate stays fail-open — a retry that also
+// times out is still skipped — so the clean retry's verdict stands. BUGS.md 2026-10-07.
+test("a gate-scope timeout the host slept through is retried once, and the clean retry's verdict stands", async (t) => {
+  const { root, wt } = buildCheckFixture();
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const pending = runScopedBuildCheck(root, ROLE, "gate", wt, {
     check: { command: "if [ -f retried ]; then exit 0; else touch retried; sleep 30; fi", timeoutSeconds: 2 },
   });
   await waitFor(() => fs.existsSync(path.join(wt, "retried")), "the first attempt's retried marker", 10_000);

@@ -48,7 +48,9 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * at a merge scope is remapped to a deterministic "failed" — the tree is unverified, so it
  * must not land. A check killed by a signal the harness did not send is retried once at any
  * scope — the first run's death says nothing about the tree (it is another run's `pkill`), so
- * one verdict from a clean attempt is owed before the skip is honoured; each attempt is priced
+ * one verdict from a clean attempt is owed before the skip is honoured; a timeout whose deadline
+ * demonstrably fired late (the harness's own host-sleep evidence) earns that same one retry at
+ * any scope, and a failed run the host slept through does too; each attempt is priced
  * as its own build_check event, carrying when the check itself ran (buildCheckRunFields).
  * A configured `check.gateCommand` replaces the command at scope "gate" only (same cwd and
  * timeout); the landing and batch scopes — and the red-main baseline, which detects on its
@@ -86,18 +88,17 @@ export async function runScopedBuildCheck(
       const first = await runBuildCheck(wt, check, timeoutMs, undefined, sampleSleep, install);
       durationMs = Date.now() - startedAt;
       // A check the harness did not stop itself says nothing about the tree — its death is
-      // another run's doing. At a merge scope, a timeout whose deadline demonstrably fired
-      // late is the same weather: the harness's own evidence (run.deadlineLateMs, the
-      // measurement BUGS.md 2026-09-21 added) says the deadline passed while the host slept or
-      // the harness stalled, so the check ran seconds and was killed at a wake — it made no
-      // verdict about the tree and was not a slow suite. Both owe one retry from a clean
+      // another run's doing. A timeout whose deadline demonstrably fired late is the same
+      // weather: the harness's own evidence (run.deadlineLateMs, the measurement BUGS.md
+      // 2026-09-21 added) says the deadline passed while the host slept or the harness
+      // stalled, so the check ran seconds and was killed at a wake — it made no verdict about
+      // the tree and was not a slow suite. At every scope it owes one retry from a clean
       // attempt; the second attempt's outcome stands. The verdict-less first attempt is priced
       // as its own event (the feed must answer how long a check took), then the final event
       // below records the retry's classified outcome.
       const lateDeadlineTimeout =
         first.status === "skipped" &&
         first.skipReason === "timeout" &&
-        MERGE_SCOPES.has(scope) &&
         (first.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS;
       // A FAILED run the host slept through is the same weather seen from the other side: the
       // sleep expired a test's own wall-clock wait at the wake, the suite exited 1 inside the
