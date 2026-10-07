@@ -1,5 +1,5 @@
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
-import { readEvents } from "../events/event-read.js";
+import { eventRole, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMessage, eventResult, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -19,7 +19,9 @@ const RECENT_EVENTS = 80;
  * landing's result, or a build check's status — whichever string the event carries. */
 function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; result?: string; message: string } {
   const result = eventResult(e);
-  return { ts: e.ts, loop: String(e.loop), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
+  // eventRole renders a missing/empty loop as "?" like the reports, so a torn or hand-edited
+  // event never shows a literal "undefined" loop chip in the dashboard's activity feed.
+  return { ts: e.ts, loop: eventRole(e), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
 }
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)

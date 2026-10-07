@@ -34,6 +34,17 @@ test("formatEvent renders a corrupt event ts as the em dash, never NaN", () => {
   }
 });
 
+test("formatEvent renders a corrupt event's loop as ? like the reports", () => {
+  // The event log is read without a filter, so a torn or hand-edited event with no loop (or
+  // an empty one) reaches this renderer. String(undefined) printed the literal "undefined" in
+  // the loop column; eventRole's "?" is the rule the usage report and failure digest apply.
+  for (const loop of [undefined, ""]) {
+    const line = formatEvent({ ts: 0, loop, type: "wake", reason: "main moved" } as never);
+    assert.ok(line.includes("?"), `corrupt loop must render ?: ${line}`);
+    assert.ok(!line.includes("undefined"), `corrupt loop must not render undefined: ${line}`);
+  }
+});
+
 test("formatEvent keeps the loop column aligned when a loop name holds a wide character", () => {
   // The loop column is padded so every line's message starts at the same display column.
   // A custom loop name carrying a wide character (CJK, emoji) is one UTF-16 code unit but

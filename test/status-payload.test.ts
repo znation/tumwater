@@ -15,7 +15,7 @@ import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
-import { writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
+import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./log-fixtures.js";
 import { makeRepo, writeBacklogFile } from "./repo-fixtures.js";
 import { assistantLine } from "./pi-events.js";
 
@@ -299,6 +299,17 @@ test("the status payload names the project and carries the recent events as data
   }
   assert.equal(tail[1]!.message, `merged aaaaaaaa to main — Escape backlog bodies`);
   assert.equal(formatEvent({ ts: tail[1]!.ts, loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" }), payload.events.at(-2));
+});
+
+test("the status payload renders a corrupt event's loop as ? like the reports", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui corrupt loop test");
+  // A torn or hand-edited line parses (readEvents pushes any parsed object), so an event with
+  // no loop reaches eventItem; String(undefined) shipped the literal "undefined" as the feed's
+  // loop chip. eventRole's "?" is the rule the usage report and failure digest apply.
+  writeEvents(repo, [{ ts: 123, type: "wake", reason: "main moved" }]);
+  const payload = statusPayload(repo) as { eventItems: Array<{ loop: string }> };
+  assert.equal(payload.eventItems.at(-1)?.loop, "?");
 });
 
 test("the status payload carries each loop's last error for the rows that failed", async () => {

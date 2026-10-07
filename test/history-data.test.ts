@@ -28,6 +28,14 @@ function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;
 }
 
+test("a corrupt event's loop renders as ? like the reports", () => {
+  // eventRole's "?" rule (the usage report and failure digest already apply it); the row
+  // used to carry String(undefined)'s literal "undefined", which the history table and the
+  // GUI's /api/history rows printed.
+  const rows = tickRows([{ ts: 1, type: "tick_end", tick: 1, result: "changed" } as never], 10, null);
+  assert.equal(rows[0]!.loop, "?");
+});
+
 test("a missing or empty log reads as no rows over a covered window", () => {
   const missing = tmpdir();
   assert.deepEqual(readTickRowsSince(missing, TWO_HOURS, null), { rows: [], covered: true });

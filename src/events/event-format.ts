@@ -1,4 +1,4 @@
-import { eventUsage } from "./event-read.js";
+import { eventRole, eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
@@ -90,8 +90,10 @@ export function formatEvent(e: HarnessEvent): string {
   // Padded in terminal display columns (padToWidth), not String#padEnd's UTF-16 code units:
   // a custom loop name holding a wide character (CJK, emoji) counts one code unit but two
   // display columns, so a padEnd cell rendered wider than its column and the message column
-  // sat right of every ASCII row's (the same unit mistake the aligned tables shed).
-  const loop = padToWidth(String(e.loop), 9);
+  // sat right of every ASCII row's (the same unit mistake the aligned tables shed). The loop
+  // itself goes through eventRole, so a torn or hand-edited event with no loop shows "?" like
+  // the usage report and failure digest, never String(undefined)'s literal "undefined".
+  const loop = padToWidth(eventRole(e), 9);
   return `${time} ${loop} ${eventMessage(e)}`;
 }
 
