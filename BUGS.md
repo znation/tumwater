@@ -19,14 +19,16 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Cause (suspected):** the test starts concurrent cross-process `pauseRole` writers against the paused-roles marker; a loaded host widens the interleaving the test lets pass.
 - **Expected:** the test's cross-process writers are ordered by an explicit completion signal, or the marker's read-modify-write is serialized, so the loaded host cannot change the outcome.
 
-### `doctor --json prints the collector's own payload, matching the plain render` flaked once on the loaded gate host; this file attributes it to a leaked process rather than a timing race (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`)
+## Fixed
+
+### `doctor --json prints the collector's own payload, matching the plain render` flaked once on the loaded gate host; this file attributes it to a leaked process rather than a timing race (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`; fixed 2026-10-07 by bugfix loop — the nondeterminism was the host `top` sample, not a leak)
 
 - **Symptom:** the 2026-10-07 digest carries `clean — gate check failed then passed on retry — flaky: ✖ doctor --json prints the collector's own payload`; the gate's one re-run passed.
 - **Reproduce:** `node dist/test/test-runner.js 'doctor#doctor --json prints'` under the fleet's own load.
 - **Cause (suspected):** the collector's process-table read sees a process leaked by an earlier test — the 2026-09-30 orphan-leak entry under `## Fixed` records this same test as its casualty — so the leak, not the collector, is the likely bug.
 - **Expected:** the leaked process is reaped by its own test's teardown (or the collector's report ignores unrelated same-user processes), so the payload matches the plain render under load.
-
-## Fixed
+**Fix:** this test's orphan read was already hermetic — the 2026-09-30 fake `ps` touches `psRan` and prints an empty table, so a real leak cannot reach it — but its mach-ports line still read the host's live `top -l 1` sample while masking only the count. Under load the two back-to-back `doctor` invocations could see different counts or one could exceed the probe's 10 s timeout, so `maskVolatile(renderDoctor(report))` and `maskVolatile(plain.stdout)` disagreed on the port line. `test/doctor-fixtures.ts`'s `hermeticHostBins` now also installs a fake `top` that prints a canned `launchservicesd` row and touches `${psRan}-top`, so both invocations read the same sample; the test drops the mach-count mask (only the free-disk figure stays masked) and both wiring tests assert the fake `top` ran on darwin, catching a fall-through to the host.
+**Validation gap:** no-repro — the loaded-host flake never reproduced on demand, so the fix was confirmed by removing the host `top` read and watching the new fake-`top` marker assertion fail without the fixture and pass with it, not by reproducing the original failure.
 
 ### A load flake this file declares closed flaked again six days later, so the Fixed entry's verdict is stale and the gate merged a change on the re-run's pass (found by telemetry loop 2026-10-07 from the failure digest's warning cluster `gate check failed then passed on retry — flaky: ✖ a second Ctrl+C forces the orchestrator generation out at once — …` — coverage, 1×, `10-07 → 10-07`; correlated with the 2026-10-01 hardening commit 55de47d8, whose entry sits under `## Fixed` at "Three more suite tests failed under fleet load on 2026-09-30 …", fixed 2026-10-07 by bugfix loop)
 

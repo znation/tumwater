@@ -209,6 +209,7 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
   // this suite, naming an unrelated commit as the cause (BUGS.md 2026-09-30). The marker file
   // pins the hermeticity below — a revert to the host probe fails here, not at the next leak.
   const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const topRan = `${psRan}-top`;
   const restore = pathPrepend(hermeticHostBins(psRan));
   try {
     const r = await cli(repo, "doctor");
@@ -232,6 +233,11 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
       fs.existsSync(psRan),
       "the orphan scan never ran the fake ps — the CLI probe fell through to the host's real process table",
     );
+    if (process.platform === "darwin")
+      assert.ok(
+        fs.existsSync(topRan),
+        "the port check never ran the fake top — the CLI fell through to the host's live top sample",
+      );
   } finally {
     restore();
   }
@@ -244,6 +250,7 @@ test("doctor --json prints the collector's own payload, matching the plain rende
   // Same hermetic PATH as the plain-render wiring test above: the orphan scan reads the fake
   // empty table (psRan marks that it ran), never the host's real one (BUGS.md 2026-09-30).
   const psRan = path.join(tmpdir("doctor-ps-"), "ran");
+  const topRan = `${psRan}-top`;
   const restore = pathPrepend(hermeticHostBins(psRan));
   try {
     const plain = await cli(repo, "doctor");
@@ -267,15 +274,17 @@ test("doctor --json prints the collector's own payload, matching the plain rende
     // The two forms cannot drift: the JSON tuples equal, in order, the check lines the
     // plain render prints for the same fixture — rendering the parsed payload must match
     // the plain run's prose byte-for-byte (header, every check line in order, verdict),
-    // with say()'s final newline added. Two details are host-volatile between two back-to-back
-    // invocations — the mach-port count and the free-disk-space figure — so both are masked
-    // before the comparison; every other byte must agree, the harness build stamp included: no
-    // test writes the running checkout's dist/build-info.json any more (the gui-reload test
-    // used to swap it mid-suite; BUGS.md 2026-09-29). The disk figure is read fresh by each
-    // `doctor` invocation, so on a busy host the second run can see 0.1 GB less free than the
-    // first and the byte comparison flakes without this mask.
-    const maskVolatile = (text: string): string =>
-      text.replace(/holds \d+/g, "holds <n>").replace(/\d+\.\d+ GB free/g, "<n> GB free");
+    // with say()'s final newline added. One detail is host-volatile between two back-to-back
+    // invocations — the free-disk-space figure — so it is masked before the comparison; every
+    // other byte must agree, the harness build stamp included: no test writes the running
+    // checkout's dist/build-info.json any more (the gui-reload test used to swap it mid-suite;
+    // BUGS.md 2026-09-29). The disk figure is read fresh by each `doctor` invocation, so on a
+    // busy host the second run can see 0.1 GB less free than the first and the byte comparison
+    // flakes without this mask. The mach-port count needs no mask: the fake `top` on the
+    // hermetic PATH answers both invocations with the same canned sample, so the port line is
+    // part of the byte comparison and can no longer time out under load in one run and not the
+    // other (BUGS.md 2026-10-07).
+    const maskVolatile = (text: string): string => text.replace(/\d+\.\d+ GB free/g, "<n> GB free");
     assert.equal(maskVolatile(renderDoctor(report) + "\n"), maskVolatile(plain.stdout));
 
     // The help topic derives from the same stanza and names the new flag.
@@ -284,6 +293,11 @@ test("doctor --json prints the collector's own payload, matching the plain rende
       fs.existsSync(psRan),
       "the orphan scan never ran the fake ps — the CLI probe fell through to the host's real process table",
     );
+    if (process.platform === "darwin")
+      assert.ok(
+        fs.existsSync(topRan),
+        "the port check never ran the fake top — the CLI fell through to the host's live top sample",
+      );
   } finally {
     restore();
   }
