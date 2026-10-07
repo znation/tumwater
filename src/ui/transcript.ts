@@ -21,15 +21,22 @@ type ContentBlock = {
   arguments?: unknown;
 };
 
+/** The content blocks of one message, each null-coalesced to an object: a `content` that is
+ * not an array (absent or torn) reads as no blocks, and a null/undefined entry reads as an
+ * empty block so its `type` is safely undefined. The one home of the untrusted-content guard
+ * both renderers below open with (renderAssistantMessage and renderUserPrompt). */
+function contentBlocks(content: unknown): ContentBlock[] {
+  if (!Array.isArray(content)) return [];
+  return content.map((raw) => (raw ?? {}) as ContentBlock);
+}
+
 /** Render one completed assistant message into transcript lines: abbreviated thinking,
  * indented text (capped), and labeled tool calls — in the order they appear. */
 function renderAssistantMessage(content: unknown): string[] {
   const out: string[] = [];
-  if (!Array.isArray(content)) return out;
   let textShown = 0;
   let textOverflowMarked = false;
-  for (const raw of content) {
-    const block = (raw ?? {}) as ContentBlock;
+  for (const block of contentBlocks(content)) {
     switch (block.type) {
       case "thinking": {
         const thinking = collapseWhitespace(String(block.thinking ?? ""));
@@ -65,9 +72,7 @@ function renderAssistantMessage(content: unknown): string[] {
  * prompts; empty or non-text content renders nothing, leaving the run separator on its own. */
 function renderUserPrompt(content: unknown): string[] {
   const out: string[] = [];
-  if (!Array.isArray(content)) return out;
-  for (const raw of content) {
-    const block = (raw ?? {}) as ContentBlock;
+  for (const block of contentBlocks(content)) {
     if (block.type !== "text") continue;
     for (const line of String(block.text ?? "").split("\n")) out.push(line);
   }
