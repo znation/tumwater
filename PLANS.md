@@ -357,6 +357,181 @@ pool, event-format, status and doctor tests.
 ---
 
 
+### Replan a plan whose change used up its review rounds, instead of re-authoring the same plan from scratch (planned 2026-10-07 by operator)
+
+Context: when a change is rejected after its last revision round (`REVISION_LIMIT` = 2,
+src/loop/revision.ts), `recordRejectedChange` (src/landing/landing-core.ts) logs `revision`
+`exhausted`. `buildRejectedReviewNote` (src/gates/gate-prompts.ts) then tells the author to
+"re-author it from current main". The plan text never changes, so the next attempt starts from
+the same plan the reviewer kept objecting to. Over the 14 days before 2026-10-07 this produced
+long rejection runs before a landing:
+- feature: 8 rejections in a row over 66 h (the timed-pause plan, from 09-25);
+- feature: 6 in a row over 4.4 h (ink TUI part 1/3, 10-01);
+- feature: 4 and 3 in a row on four other plans.
+
+Those runs predate revise-rejected. Revisions shorten them, but on exhaustion nothing feeds the
+reviewer's objections back into the plan. The only plan-changing path today is the author's
+**Needs review … too large for one run** note, which the plan loop splits.
+
+**Approach.**
+1. **Note.** In src/roles/role-guidance.ts, add `NEEDS_REPLAN_NOTE =
+   "**Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds**"`. Add it to the
+   date-stamp list in src/prompt/prompt.ts beside `NEEDS_REVIEW_NOTE`.
+2. **Author on exhaustion.** `buildRejectedReviewNote` gains an optional `role`. When
+   `exhausted` is true and the role is `feature`, the finality sentence becomes:
+   - if the rejected change implemented a PLANS.md entry, do not re-author it;
+   - append the `NEEDS_REPLAN_NOTE` under that entry's heading, followed by the reviewer's
+     numbered objections, quoted;
+   - land that markdown-only change and nothing else.
+
+   Pass the role from both call sites, src/tick/tick-prompt.ts and src/loop/loop.ts. Other roles
+   keep today's sentence.
+3. **Feature skips it.** Step 2 of the feature charter (src/roles/role-catalog.ts) skips entries
+   carrying a Needs-replan note, as it skips Needs-review ones.
+4. **Plan loop owns it.** In step 1 of the plan charter, a Needs-replan entry outranks adding a
+   plan, alongside Needs-review. The task:
+   - read the quoted objections and the code they name;
+   - rewrite the plan so an implementation following it would answer them. That can mean
+     correcting the approach or the anchors, tightening the acceptance criteria, splitting the
+     plan per PLAN_SIZING, or refusing the plan with the objection recorded when it should not
+     be done;
+   - then remove the note and the quoted objections.
+
+   The plan loop runs on the strong tier, which is the right seat for this judgment.
+5. **Index.** `renderBacklogIndexBlock` (src/backlog/backlog-structure.ts) marks such an entry
+   ` [needs replan]`, so both loops see it without reading the body.
+
+**Files touched.** src/roles/role-guidance.ts, src/roles/role-catalog.ts,
+src/gates/gate-prompts.ts, src/tick/tick-prompt.ts, src/loop/loop.ts, src/prompt/prompt.ts,
+src/backlog/backlog-structure.ts. Tests: cases in the gate-prompts, tick-prompt,
+role-catalog and backlog-index tests.
+
+**Acceptance criteria.**
+- **Feature, exhausted.** A feature tick whose `lastReview.exhausted` is true gets the
+  replan instruction naming `NEEDS_REPLAN_NOTE`, not "re-author it from current main".
+- **Other roles.** A bugfix or clean tick in the same state gets today's sentence unchanged.
+- **Charters.** The feature charter tells feature to skip Needs-replan entries, and the plan
+  charter ranks them with Needs-review entries above writing a new plan.
+- **Index.** The backlog index marks a Needs-replan entry `[needs replan]`.
+- `npm run test` green.
+
+### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator)
+
+Context: when a rebase onto main conflicts, `resolveConflict` (src/landing/landing-merge.ts)
+gives a strong-tier pi run `buildConflictPrompt(roleId, files, check)`
+(src/gates/gate-prompts.ts). That prompt lists the conflicted files and says to "combine the
+intent of BOTH sides", but it states neither side's intent:
+- the change's own commit message (subject, WHY body, and the backlog entry it implements);
+- the main commits that touched the conflicted files since the change's merge-base.
+
+Conflicts are rare today: 2 `merge_conflict` landings against 916 merges in the 7 days before
+2026-10-07. Parallel work instances (plans/parallel-work-instances.md) will make overlapping
+landings routine, so the resolver needs that context before they ship.
+
+**Approach.**
+1. **Gather.** In `resolveConflict`, before the pi run:
+   - **The change's side:** its full commit message, `git log --format=%B -1 <preMergeHead>`.
+     The harness stamps that message, so it carries the subject, the WHY body and the trailer.
+   - **Main's side:** for each conflicted file, the commits on main since the merge-base that
+     touched it, from `git log --format='%h %s%n%b' <merge-base>..<main> -- <file>`. Cap each
+     body at 20 lines and the whole list at 15 commits, newest first, and say so when it is
+     cut.
+
+   Keep the git calls in a small helper in src/landing/landing-git.ts.
+2. **Prompt.** `buildConflictPrompt` gains an optional `intent: { change: string; main:
+   Array<{ sha; subject; body }> }`. The prompt renders it as two short blocks, "This branch's
+   change" and "What main changed in these files". Both are labelled as data, and the existing
+   rules stay as they are. The rule that "a deliberate removal on main wins" now cites the main
+   block.
+3. **Divergence.** No change to `resolvedDiffDiverges` or the re-review: a resolution that
+   leaves the reviewed lines still gets re-gated.
+
+**Files touched.** src/landing/landing-merge.ts, src/landing/landing-git.ts,
+src/gates/gate-prompts.ts. Tests: cases in the gate-prompts test and a landing-merge test using
+two real branches.
+
+**Acceptance criteria.**
+- **Both sides shown.** A conflicted landing's resolver prompt contains the change's commit
+  subject and WHY body, plus the subject of each main commit since the merge-base that touched
+  a conflicted file.
+- **Only relevant commits.** Main commits that touched no conflicted file are not listed.
+- **Caps.** The caps hold, with a "(N more not shown)" line when the list is cut.
+- **No intent supplied.** The prompt is byte-identical to today's when no intent is passed.
+- `npm run test` green.
+
+### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed)
+
+Context: today two paths throw an approved change away over a merge conflict:
+- **Repeated landing conflicts.** A pinned change whose landing conflicts and whose single
+  resolver run fails ends `merge_conflict` and is re-queued. After `MERGE_CONFLICT_LIMIT` (3)
+  such landings, `recoverLeftover` (src/loop/leftover.ts) deletes the pin ("discarding leftover
+  … unresolved merge conflicts with main"), and the author starts over with nothing.
+- **Revision re-apply.** `applyRevision` (src/loop/revision.ts) aborts a revision's re-apply on
+  any conflict, then falls back to the plain rejection note.
+
+In both cases the loop best placed to resolve the conflict, the author, never sees it. The
+author knows what its change was for and can read main's side, and its result goes through the
+full review gate again.
+
+**Approach.**
+1. **Hand-back state.** `LoopState.conflictHandback?: { sha; at; reason: "landing" |
+   "revision"; round?: number }` (src/loop/loop-state.ts).
+2. **Landing path.** In `recoverLeftover`, at `MERGE_CONFLICT_LIMIT`, set `conflictHandback`
+   from the pin instead of discarding it, and keep the landing ref until the author's tick has
+   applied it. Then lower the limit from 3 to 2: the resolver gets a second try in case main
+   moves again, then the author takes over. Log `conflict_handback` `queued`.
+3. **Apply with markers.** New `applyWithConflicts(wt, mainBranch, sha)` in
+   src/loop/revision.ts. It runs `git cherry-pick --no-commit <merge-base>..<sha>`. On a
+   conflict it does NOT abort:
+   - it records the conflicted paths;
+   - it runs `git reset` to drop the index state, so the markers stay as ordinary uncommitted
+     edits and the author's tick can commit normally;
+   - it returns `{ applied: true, conflicted: string[] }`.
+
+   A missing object or other non-conflict failure still resets to main and returns
+   `{ applied: false }`. `applyRevision` keeps its current contract for callers outside the
+   hand-back.
+4. **Revision path.** In loop.ts's revision branch (around `applyRevision`), when the clean
+   re-apply fails, try `applyWithConflicts`. If it applies with conflicts, the tick gets the
+   revision note plus the conflict note below. Only an `applied: false` falls back to the plain
+   rejection note.
+5. **Author's tick.** At tick start (loop.ts, beside the revision branch), a `conflictHandback`
+   applies its sha with `applyWithConflicts`. The prompt gets `buildConflictHandbackNote`
+   (src/gates/gate-prompts.ts), which:
+   - lists the conflicted files;
+   - includes the same "What main changed in these files" block as part 1/2;
+   - says the change was approved (landing) or was being revised (revision) and that main
+     moved under it;
+   - asks the author to resolve every marker, keeping the intent of both sides and respecting
+     main's deliberate removals, and to re-run the check.
+
+   Clear `conflictHandback` and delete the landing ref once the edits are applied. The tick then
+   commits and queues as usual: it is new bytes, so the gate reviews it in full. A hand-back
+   uses no revision round.
+6. **Bound.** A change handed back once and conflicting again at the cap is discarded as today,
+   with a warning naming both attempts. `conflictHandback` carries a `count`, and the limit is
+   one hand-back per change.
+7. **Stage check.** The pre-queue stage check (src/tick/stage-check.ts) flags any conflict
+   marker (`<<<<<<<`, `>>>>>>>`, a `=======` line between them) left in a staged file. The
+   author gets one fix-up turn.
+
+**Files touched.** src/loop/loop-state.ts, src/loop/leftover.ts, src/loop/revision.ts,
+src/loop/loop.ts, src/gates/gate-prompts.ts, src/tick/stage-check.ts, src/events/events.ts,
+src/events/event-format.ts. Tests: cases in the leftover, revision, loop and stage-check tests,
+plus one with real branches: a pinned change and a main commit that edit the same lines.
+
+**Acceptance criteria.**
+- **Landing hand-back.** A pin whose landings end `merge_conflict` twice is not discarded. The
+  author's next tick starts with its diff applied over current main, markers in the conflicted
+  files, and a prompt naming those files and main's commits for them.
+- **Revision hand-back.** A rejected change whose re-apply conflicts reaches its author as a
+  revision with markers in place, not as a plain rejection note.
+- **Normal landing.** The author's resolved commit queues and is reviewed like any fresh
+  change.
+- **Leftover markers.** A staged file still holding a conflict marker is flagged before queuing.
+- **Bound.** A change that conflicts again after one hand-back is discarded with the warning.
+- `npm run test` green.
+
 ### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator)
 
 Design: plans/parallel-work-instances.md ("Identity: loop id vs. base role").
@@ -449,12 +624,12 @@ entries was unblocked.
      - A bare ref means the entry's own series.
      - An unparseable clause gives `[]`.
    - `entryHold(entry, planned)`: `"refused"` when the body has a `**Refused ` line;
-     `"needs-review"` for the `NEEDS_REVIEW_NOTE` prefix; `{ blockedBy: string[] }` when a
+     `"needs-review"` for the `NEEDS_REVIEW_NOTE` prefix; `"needs-replan"` for the
+     `NEEDS_REPLAN_NOTE` prefix (once the replan entry has landed); `{ blockedBy: string[] }` when a
      required `(series, part)` is still among `planned`; else `null`.
    - `eligibleEntries(root, role)`: from `plannedPlanEntries` for feature or `openBugEntries`
-     for bugfix (src/backlog/backlog.ts), each with its key, title, line range (via
-     `actionableEntryRanges`) and the `src/…`-style paths found in its **Files touched**
-     paragraph. It keeps only entries whose `entryHold` is null.
+     for bugfix (src/backlog/backlog.ts), each with its key, title and line range (via
+     `actionableEntryRanges`), in file order. It keeps only entries whose `entryHold` is null.
 2. **Index.** `renderBacklogIndexBlock` appends ` [blocked: requires <Series i/n>, …]`,
    ` [refused]` or ` [needs review]` to held entries.
 3. **Charter.** The feature charter's step 2 (src/roles/role-catalog.ts) says to skip entries
@@ -535,8 +710,8 @@ and the fleet is unchanged until part 5/7.
    "assigned" | "staged" }` (src/loop/loop-state.ts).
 2. **Module.** New src/scheduling/claims.ts:
    - `heldKeys(runners, eligibleKeys, listedKeys)`;
-   - `assignNext(free, heldPaths)`: file order, preferring no overlap with **Files touched**
-     paths;
+   - `assignNext(free)`: the first free entry in file order. Overlap between claimed entries'
+     files is allowed: conflicts are settled at landing (Robust conflict landing 1/2–2/2);
    - `claimReleaseReason(runner, ctx)`: one of `left` (key no longer listed), `ineligible`,
      `disabled` (not `loopEnabled`, idle, no queued landing, no `revision`), `stale` (older
      than `CLAIM_IDLE_MAX_MS` = 24 h, and the runner is idle with no queued landing, no
@@ -583,8 +758,9 @@ the orchestrator-scheduling, tick-prompt, tick-stage and tick-finalize tests.
   `nextRunAt` and `backoffSeconds` are untouched.
 - **Blocked entries** are never assigned.
 - **Held through.** The claim survives `queued`, a rejection with a revision (the revision tick
-  re-applies on the same instance and keeps the claim), a crash and resume, and an exhausted
-  revision.
+  re-applies on the same instance and keeps the claim), a conflict hand-back, and a crash and
+  resume. An exhausted revision ends in a Needs-replan note, which makes the entry ineligible
+  and releases the claim.
 - **Released by** the entry landing into `## Done` (next poll), a `no_change` tick, a Refused
   note, and the 24 h idle stale rule (with a warning).
 - **Staging.** An unassigned primary that moves plan X gets `claim` X with source `staged`. An
@@ -592,7 +768,7 @@ the orchestrator-scheduling, tick-prompt, tick-stage and tick-finalize tests.
 - **Single runner.** With one runner per role, prompts and scheduling are unchanged.
 - `npm run test` green.
 
-### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7 and Worktree pool 4/5 landed)
+### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7, Robust conflict landing 2/2 and Worktree pool 4/5 landed)
 
 Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
 ahead").

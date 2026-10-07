@@ -175,9 +175,9 @@ markdown.
   - **A runner already holding a claim** keeps it. This covers its revision, resume, error
     retry, and a fresh retry after an exhausted revision. No new assignment is made.
   - **Otherwise, when the reason is not `inbox` or `resume`** and `free` is non-empty, the
-    runner gets the first entry of `free` and removes it. The order is file order, preferring an
-    entry whose **Files touched** paths do not overlap the paths of any held entry. A `claim`
-    `assigned` event is logged.
+    runner gets the first entry of `free` in file order and removes it. A `claim` `assigned`
+    event is logged. Two claimed entries may touch the same files: overlap is settled at
+    landing, not avoided at assignment (see "Conflicts are settled at landing").
   - **Extra instances (index ≥ 2) with no claim and an empty `free`** are skipped this poll.
     This is the scaling rule: active extras = min(N − 1, unclaimed eligible entries). An idle
     extra runs no tick and climbs no backoff ladder.
@@ -219,6 +219,26 @@ markdown.
   exhausted revision, the instance keeps the claim and its next fresh tick re-attempts the same
   entry with the plain rejection note. That matches today's single feature loop re-picking a
   rejected plan, and keeps the reasons with the entry.
+- **Exhausted revisions change the plan.** On its final rejection the feature author does not
+  re-attempt the same plan text. It appends a `NEEDS_REPLAN_NOTE` with the reviewer's
+  objections to the entry. That entry is then ineligible, the claim is released (`ineligible`),
+  and the plan loop rewrites the plan against the objections or refuses it. See PLANS.md
+  "Replan a plan whose change used up its review rounds".
+
+### Conflicts are settled at landing
+
+Instances may work on overlapping files. The merge path has to absorb that, rather than
+assignment avoiding it. Two independent PLANS.md series make the merge path robust enough, and
+part 5/7 requires them:
+- **Robust conflict landing 1/2.** The strong-tier resolver sees both sides' intent: the change's
+  commit message, and main's commits that touched the conflicted files.
+- **Robust conflict landing 2/2.** A conflict the resolver cannot settle, or a revision that no
+  longer applies, goes back to its author with the markers in place. Today it is discarded
+  after three failed landings. The author resolves it with full knowledge of its own change,
+  and the result is reviewed again.
+
+Together with part 3/7's deterministic backlog-insert merge, no approved change is thrown away
+because another instance landed first.
 
 ### Spawning instances and keeping the plan loop ahead (part 5/7)
 
@@ -270,10 +290,12 @@ markdown.
 
 ## Limits
 
-- Assignment uses file order, with only the file-overlap preference on top. When N > 1, the
-  feature loop's "most valuable" judgment applies only on the primary's unassigned ticks.
-- Two plans can still conflict in code. The overlap preference is a heuristic from **Files
-  touched**, and a real conflict still goes to the resolver.
+- Assignment uses plain file order (operator decision, 2026-10-07). When N > 1, the feature
+  loop's "most valuable" judgment applies only on the primary's unassigned ticks.
+- Two plans can conflict in code. That is settled at landing by the resolver, then the author
+  hand-back, at the cost of extra resolver and review runs.
+- The per-role daily cost cap covers all instances of a role combined (operator decision,
+  2026-10-07).
 - The director never has instances. Maintenance roles never have instances.
 - A heading renamed by its author changes its key, which releases the claim. The stage-time
   claim covers the common case, a rename made while landing the entry. A rename by another
@@ -287,7 +309,8 @@ markdown.
 4. **4/7: claims: the harness assigns each multi-instance loop one entry and holds it through
    landing.** Requires 1/7 and 2/7.
 5. **5/7: `roles.<id>.instances` spawns instances that run only while unclaimed work exists,
-   and the plan target scales.** Requires 3/7, 4/7 and Worktree pool 4/5.
+   and the plan target scales.** Requires 3/7, 4/7, Robust conflict landing 2/2 and Worktree
+   pool 4/5.
 6. **6/7: claims and instances on status, TUI, GUI, doctor and docs.** Requires 5/7.
 7. **7/7: the work tier keeps permit headroom while it has work to take.** Requires 5/7.
 
