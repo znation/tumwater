@@ -7,8 +7,9 @@ import type { BacklogPayload } from "./backlog.js";
  * backlog.ts entry readers with their cache behavior, placeholder skipping, and Done/Fixed
  * exclusion the dashboards rely on — so the terminal view cannot drift from the dashboard
  * view (one parser, two surfaces) and the CLI's --json/human branches share one collection
- * (sayJsonOrRender's thunk) instead of each reading the entry files afresh. Entries render verbatim — heading text with its `(planned …)`/`(reported …)`
- * suffix, body lines indented two spaces under it — because these are markdown the loops
+ * (sayJsonOrRender's thunk) instead of each reading the entry files afresh. Entries render
+ * verbatim — heading text with its `(planned …)`/`(reported …)` suffix, body lines
+ * indented two spaces under it — because these are markdown the loops
  * wrote, including their Goal/Approach/Acceptance-criteria structure; reflowing them here
  * would make this command a worse reader of its own backlog than the files it summarizes. An
  * empty section renders a single `_(none)_` line rather than disappearing, so an all-clear
