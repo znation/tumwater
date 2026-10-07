@@ -8,6 +8,7 @@ import { printCoverageTable } from "./coverage-table.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
+import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 
 /** Run the compiled unit tests with node:test — the target of package.json's `test` script.
  * With no arguments it runs every dist/test/*.test.js EXCEPT the `*.e2e.test.js` tier — the
@@ -243,14 +244,23 @@ function whichOnPath(name: string, pathVar: string): string | undefined {
  * instead. Any other git — Linux, Homebrew — is left alone.
  *
  * The harness's variables: a fleet's build checks and pi tool calls run with the harness's own
- * environment, so a suite they start inherits what the operator exported and the supervisor
- * set, while a suite run by hand does not. Two of those change what the tests exercise:
+ * environment, so a suite they start inherits what the operator exported, the supervisor set,
+ * and the tick's own run exported, while a suite run by hand does not. Each one the harness
+ * resolves out of the environment is dropped here, so a suite a tick starts exercises exactly
+ * what a hand-run suite does:
  * - TUMWATER_PI_BIN outranks PATH in resolveAgentBin, so an operator's override (a wrapper
  *   around the real pi, plans/portability.md) displaced every fake pi the suite puts on PATH:
  *   the fake-pi tests ran the agent it named (BUGS.md 2026-09-28). Tests of the variable set it
  *   themselves; test/fake-pi.ts drops it too, for a file run directly with `node --test`.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
  *   supervisor half. test/cli-harness.ts also drops it from every CLI child it starts.
+ * - TUMWATER_NOTES_PATH makes the bundled role-notes extension register the `role_notes` tool,
+ *   so a non-authoring run that inherited a tick's notebook path would carry a tool the run's
+ *   own contract says it must not have (test/loop-pi.test.ts pins the empty env line).
+ * - TUMWATER_RUN names the outer run a nested run's stamp is appended to (run-marker.ts), so an
+ *   inherited mark made a spawned run's sweep read the suite's own process tree.
+ * - DASHBOARD_CHILD_ENV makes reexecSelf exit its restart code instead of supervising, so an
+ *   inherited mark changed the reload tests' branch through the ambient environment.
  * NODE_OPTIONS is kept: the LaunchServices preload the harness adds there only changes where
  * process.title is stored (the suite's assertions about it hold either way), and it carries the
  * operator's own Node flags. */
@@ -258,6 +268,9 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   const env = suiteGitEnv(base);
   delete env.TUMWATER_PI_BIN;
   delete env[SUPERVISED_ENV];
+  delete env.TUMWATER_NOTES_PATH;
+  delete env.TUMWATER_RUN;
+  delete env[DASHBOARD_CHILD_ENV];
   const templates = path.join(scratch, "git-templates");
   fs.mkdirSync(templates);
   env.GIT_TEMPLATE_DIR = templates;

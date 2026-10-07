@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
+import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
 import { readJson } from "./json-read.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
@@ -238,14 +239,18 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
   assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
 });
 
-test("suiteEnv drops the harness's own variables, so an operator's TUMWATER_PI_BIN cannot displace the suite's fake pis", () => {
+test("suiteEnv drops every variable the harness resolves, so a fleet-started suite matches a hand-run one", () => {
   // BUGS.md 2026-09-28: resolveAgentBin prefers TUMWATER_PI_BIN to PATH, and a fleet's build
   // checks and pi tool calls inherit the operator's export, so every fake-pi test spawned the
-  // binary it named instead of the shim the test had put on PATH.
+  // binary it named instead of the shim the test had put on PATH. The same leak applies to the
+  // other harness-resolved variables, so suiteEnv clears them too.
   const base: NodeJS.ProcessEnv = {
     PATH: "/no/such/dir", // no git on it, so the macOS shim workaround leaves PATH alone
     TUMWATER_PI_BIN: "/opt/pi-wrapper/pi",
     [SUPERVISED_ENV]: "1",
+    TUMWATER_NOTES_PATH: "/state/notes/feature.md",
+    TUMWATER_RUN: "4242-abcdef",
+    [DASHBOARD_CHILD_ENV]: "4242",
     NODE_OPTIONS: "--max-old-space-size=4096",
     HOME: "/home/operator",
   };
@@ -253,6 +258,9 @@ test("suiteEnv drops the harness's own variables, so an operator's TUMWATER_PI_B
   const env = suiteEnv(scratch, base);
   assert.equal("TUMWATER_PI_BIN" in env, false, "resolveAgentBin must fall through to the fakes on PATH");
   assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
+  assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a notebook");
+  assert.equal("TUMWATER_RUN" in env, false, "a spawned run must start its marker from scratch");
+  assert.equal(DASHBOARD_CHILD_ENV in env, false, "a reload must take the supervisor branch");
 
   // Everything else rides through, NODE_OPTIONS included (it carries the harness's LaunchServices
   // preload and the operator's own flags), alongside what the suite adds for git.
@@ -264,6 +272,9 @@ test("suiteEnv drops the harness's own variables, so an operator's TUMWATER_PI_B
   // main() hands in process.env itself, so the result is a copy.
   assert.equal(base.TUMWATER_PI_BIN, "/opt/pi-wrapper/pi");
   assert.equal(base[SUPERVISED_ENV], "1");
+  assert.equal(base.TUMWATER_NOTES_PATH, "/state/notes/feature.md");
+  assert.equal(base.TUMWATER_RUN, "4242-abcdef");
+  assert.equal(base[DASHBOARD_CHILD_ENV], "4242");
 });
 
 /** The compiled entry point, as a developer's `npm test <filter>` spawns it. */
