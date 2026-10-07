@@ -422,6 +422,40 @@ export function tiersResolveDistinctPairs(resolved: TierFallbackMap): boolean {
   return new Set(pairs).size >= 2;
 }
 
+/** Drop a model-override seam's provider/model/thinking fields — the one rule the fallback
+ * view's role and reviewer strips share, so a field on that triple cannot be dropped from one
+ * and left on the other (where it would reach a priced model after the cap). */
+function stripModel<T extends { provider?: string; model?: string; thinking?: string }>(o: T): T {
+  const { provider: _p, model: _m, thinking: _t, ...rest } = o;
+  return rest as T;
+}
+
+/** The reviewer config as the fallback view sees it: model seam stripped, and its time budget
+ * raised to at least FALLBACK_REVIEW_TIMEOUT_S (a budget sized for the budgeted model's turns
+ * times out every review on a slower free one; a configured value above the floor stands). The
+ * one home of that rule, shared by both fallback branches. */
+function fallbackReview(review: TumwaterConfig["review"]): TumwaterConfig["review"] {
+  return {
+    ...stripModel(review),
+    timeoutSeconds: Math.max(review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S),
+  };
+}
+
+/** Every `roles.<id>` entry with its model seam stripped. With `keepTierNames`, an entry whose
+ * model is a tier name is left untouched: the resolved tier map now serves that tier itself, so
+ * the reference stays valid (stripping it would lose the role's tier). */
+function stripRoleModels(
+  roles: TumwaterConfig["roles"],
+  keepTierNames: boolean,
+): TumwaterConfig["roles"] {
+  return Object.fromEntries(
+    Object.entries(roles).map(([id, rc]) => [
+      id,
+      keepTierNames && isTierName(rc?.model) ? rc : stripModel(rc),
+    ]),
+  );
+}
+
 /** The config as seen by a role loop running on the free fallback model
  * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
@@ -440,10 +474,6 @@ export function tiersResolveDistinctPairs(resolved: TierFallbackMap): boolean {
  * role overrides (`roles.<id>.model: "strong"`) are kept since the map now serves the tier
  * itself. The director's exemption lives in the gates (roleForConfig), not here. */
 export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallbackMap): TumwaterConfig {
-  const stripModel = <T extends { provider?: string; model?: string; thinking?: string }>(o: T): T => {
-    const { provider: _p, model: _m, thinking: _t, ...rest } = o;
-    return rest as T;
-  };
   if (resolved) {
     const selectorOf = (f: TierFallback) =>
       f.pair
@@ -463,16 +493,8 @@ export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallba
       provider: undefined,
       model,
       thinking: undefined,
-      review: {
-        ...stripModel(config.review),
-        timeoutSeconds: Math.max(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S),
-      },
-      roles: Object.fromEntries(
-        Object.entries(config.roles).map(([id, rc]) => [
-          id,
-          isTierName(rc?.model) ? rc : stripModel(rc),
-        ]),
-      ),
+      review: fallbackReview(config.review),
+      roles: stripRoleModels(config.roles, true),
     };
   }
   const pair = fallbackPair(config);
@@ -482,10 +504,7 @@ export function applyFallbackModel(config: TumwaterConfig, resolved?: TierFallba
     provider: pair.provider,
     model: pair.model,
     thinking: pair.thinking,
-    review: {
-      ...stripModel(config.review),
-      timeoutSeconds: Math.max(config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S, FALLBACK_REVIEW_TIMEOUT_S),
-    },
-    roles: Object.fromEntries(Object.entries(config.roles).map(([id, rc]) => [id, stripModel(rc)])),
+    review: fallbackReview(config.review),
+    roles: stripRoleModels(config.roles, false),
   };
 }
