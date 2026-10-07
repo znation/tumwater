@@ -1,5 +1,5 @@
-import { fail, say } from "../cli/cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
+import { fail, say } from "./cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,

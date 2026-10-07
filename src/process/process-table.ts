@@ -12,7 +12,7 @@
 import fs from "node:fs";
 
 import { execFileAsync } from "./process.js";
-import { psEnvironTable, readProcEnvironEntries, runMarkersInEnviron, runMarkersInPs } from "../process/run-marker.js";
+import { psEnvironTable, readProcEnvironEntries, runMarkersInEnviron, runMarkersInPs } from "./run-marker.js";
 
 /** One row of the host's process table. `etime` (wall-clock since start) and `time`
  * (cumulative CPU) stay ps's own strings: BSD and procps format them differently, and the one

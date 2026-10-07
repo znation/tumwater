@@ -6,7 +6,7 @@
  * a missing `## Answered` section with the file's documented skeleton, so the loop→human→loop
  * round trip never corrupts the file the loops read at their next tick. */
 import path from "node:path";
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import { fencedHeadingTitle, fenceTracker } from "../backlog/backlog-md.js";
 import { openQuestionEntries } from "../backlog/backlog.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";

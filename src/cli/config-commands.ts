@@ -1,5 +1,5 @@
 import { loadConfigSafe, knownRoleIds } from "../config/config.js";
-import { fail, say, sayJson } from "../cli/cli-output.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import {
   setConfigKey,
   parseConfigKey,
