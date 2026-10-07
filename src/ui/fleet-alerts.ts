@@ -11,6 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import { ENTRY_STAMP_META_RE } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
+import { fallbackTierEntries } from "../budget/budget.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";
 import { usd, usdCap } from "../text/format.js";
@@ -81,10 +82,7 @@ export function fleetAlerts(
             // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
             // single-pair sentence.
             detail: b.tiers
-              ? `${(["small", "default", "strong"] as const)
-                  .filter((t) => b.tiers![t] !== undefined)
-                  .map((t) => `${t}: ${b.tiers![t]}`)
-                  .join(", ")} carry them at no cost until midnight.`
+              ? `${fallbackTierEntries(b.tiers).join(", ")} carry them at no cost until midnight.`
               : `${b.fallback.model ?? b.fallback.provider ?? "The fallback"} carries them at no cost until midnight.`,
             actions: [{ label: "Raise the cap", act: "budget" }],
           }

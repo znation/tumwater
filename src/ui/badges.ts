@@ -1,6 +1,6 @@
 import type { TestCounts } from "../build/build-check-counts.js";
 import type { StatusSnapshot } from "../status/status-data.js";
-import { budgetGate, budgetReached, type BudgetGate } from "../budget/budget.js";
+import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { pauseReasonSuffix } from "../text/phrases.js";
@@ -124,11 +124,7 @@ export function budgetBadge(budget: StatusSnapshot["budget"]): string {
   // marked, so a strong-tier borrow is visible at a glance; a tier-free snapshot keeps the
   // single-pair text byte-identical to the pre-tier badge. Off-gate the badge is byte-
   // identical to before either way.
-  const tierEntries = budget.tiers
-    ? (["small", "default", "strong"] as const)
-        .filter((t) => budget.tiers![t] !== undefined)
-        .map((t) => `${t}: ${budget.tiers![t]}`)
-    : [];
+  const tierEntries = fallbackTierEntries(budget.tiers);
   const fallback =
     fleetBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
