@@ -11,6 +11,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
 import { formatModelSelector } from "./model-selector.js";
 import { roleById } from "../roles/roles.js";
+import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
  * is the concrete selector id piArgs consumes (the tier map, if any, has been resolved to
@@ -176,8 +177,8 @@ export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
  * (empty) field left out so the result carries only what was resolved — the one home of that
  * assembly. Four call sites build a triple this way and follow the same rule:
  * fallbackSelectorFields (shared by fallbackPair's map and string branches and
- * tierOwnFallback), fallbackPair's legacy-object branch, and role-view's RoleViewPayload
- * (its model fields and its model-fallback episode pair) — an absent or empty value is
+ * tierOwnFallback), fallbackPair's legacy-object branch, role-view's RoleViewPayload (its
+ * model fields), and modelFallbackView (the episode pair) — an absent or empty value is
  * omitted rather than written as undefined/"" (an empty selector field would read as
  * "override present," so it must not appear). */
 export function resolvedModelFields(
@@ -360,6 +361,39 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
       thinking: pair.thinking,
     }),
     minTickIntervalSeconds: rc?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+  };
+}
+
+/** The active model-fallback episode (LoopState.modelFallback) resolved for display: the
+ * pair the role's ticks run on, when the episode began, and the provider-class failure that
+ * tripped it. */
+export interface ModelFallbackView {
+  provider?: string;
+  model?: string;
+  thinking?: string;
+  since: number;
+  reason: string;
+}
+
+/** Build a ModelFallbackView for an episode, or null while the episode is not running the
+ * fallback (no episode, or a due probe on the primary). role-view.ts's
+ * RoleViewPayload.modelFallback and status/status-data.ts's per-loop row both build this
+ * shape, so one function keeps the two surfaces from disagreeing about the pair, its start,
+ * and its reason. `now` is the caller's clock (the status snapshot passes its own poll
+ * clock), so a row and its poll agree on what "active" means. */
+export function modelFallbackView(
+  episode: ModelFallbackState | undefined,
+  config: TumwaterConfig,
+  role: string,
+  now = Date.now(),
+): ModelFallbackView | null {
+  if (episode === undefined || !modelFallbackActive(episode, now)) return null;
+  const episodeConfig = fallbackRoleConfig(config, role);
+  if (episodeConfig === null) return null;
+  return {
+    ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
+    since: episode.since,
+    reason: episode.reason,
   };
 }
 

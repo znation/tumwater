@@ -4,15 +4,15 @@ import { openQuestions } from "../backlog/backlog.js";
 import { enabledRoleIds, isCustomRole } from "../config/config.js";
 import {
   fallbackPair,
-  fallbackRoleConfig,
+  modelFallbackView,
   modelSelectorField,
   resolveTierFallbacks,
   roleSeamTier,
   configForRole,
   tierFallbackLabels,
   tiersResolveDistinctPairs,
+  type ModelFallbackView,
 } from "../config/config-views.js";
-import { modelFallbackActive } from "../loop/model-fallback.js";
 import type { ModelTier } from "../config/config-schema.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, pairFree, piModelsPath, readPiProviders } from "../pi/pi-models.js";
@@ -83,7 +83,7 @@ export interface StatusSnapshot {
      * provider-class failure that tripped it. Absent while the episode is not running the
      * fallback (no episode, or a due probe on the primary), so the common row shape is
      * unchanged. */
-    fallback?: { provider?: string; model?: string; thinking?: string; since: number; reason: string };
+    fallback?: ModelFallbackView;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
@@ -271,25 +271,12 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
     // every row agrees on what "active" means.
-    const episodeConfig =
-      base.modelFallback !== undefined && modelFallbackActive(base.modelFallback, now)
-        ? fallbackRoleConfig(cfg, r)
-        : null;
+    const episode = modelFallbackView(base.modelFallback, cfg, r, now);
     return {
       ...base,
       ...modelSelectorField(eff),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
-      ...(episodeConfig !== null && base.modelFallback !== undefined
-        ? {
-            fallback: {
-              ...(episodeConfig.provider ? { provider: episodeConfig.provider } : {}),
-              ...(episodeConfig.model ? { model: episodeConfig.model } : {}),
-              ...(episodeConfig.thinking ? { thinking: episodeConfig.thinking } : {}),
-              since: base.modelFallback.since,
-              reason: base.modelFallback.reason,
-            },
-          }
-        : {}),
+      ...(episode !== null ? { fallback: episode } : {}),
     };
   });
   // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists

@@ -17,22 +17,16 @@ import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { configForRole, fallbackPair, fallbackRoleConfig, resolvedModelFields, roleSeamTier } from "../config/config-views.js";
-import { modelFallbackActive } from "../loop/model-fallback.js";
+import {
+  configForRole,
+  fallbackPair,
+  modelFallbackView,
+  resolvedModelFields,
+  roleSeamTier,
+  type ModelFallbackView,
+} from "../config/config-views.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
 import { roleNotesPath } from "../paths.js";
-
-/** The active model-fallback episode (LoopState.modelFallback) resolved for display: the
- * fallback pair the role's ticks run on, when the episode began, and the provider-class
- * failure that tripped it. Distinct from RoleViewPayload.fallback, which is the budget
- * gate's free pair. */
-interface ModelFallbackEpisodeView {
-  provider?: string;
-  model?: string;
-  thinking?: string;
-  since: number;
-  reason: string;
-}
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -65,7 +59,7 @@ export interface RoleViewPayload {
   fallbackFree: boolean;
   /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
    * the role's ticks are not running off-model. */
-  modelFallback: ModelFallbackEpisodeView | null;
+  modelFallback: ModelFallbackView | null;
   /** The effective min-tick interval: the role's override or the global value. */
   minTickIntervalSeconds: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
@@ -125,8 +119,6 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
       note = null;
     }
   }
-  const episodeConfig =
-    episode !== undefined && modelFallbackActive(episode, Date.now()) ? fallbackRoleConfig(cfg, role) : null;
   return {
     id: role,
     title: resolved.title,
@@ -138,14 +130,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
     fallback,
     fallbackFree: fallback ? fallbackModelFree(cfg, modelsPath) : false,
-    modelFallback:
-      episode !== undefined && episodeConfig !== null
-        ? {
-            ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
-            since: episode.since,
-            reason: episode.reason,
-          }
-        : null,
+    modelFallback: modelFallbackView(episode, cfg, role),
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
