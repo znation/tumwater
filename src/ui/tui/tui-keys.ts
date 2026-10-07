@@ -35,16 +35,7 @@ import { arrowDir, pageDir } from "./tui-keymap.js";
 /** How long a TUI flash notice stays visible (ms). */
 const FLASH_MS = 3000;
 
-/** The framework-free owner of the TUI's keypress handling (extracted from runTui, and fed
- * by ink's `useInput` through tui-keymap.ts's inkKeyToReadline adapter): the factory owns every mutable local the
- * keypress dispatch used to keep in runTui's closure — the prompt line, budget-edit and
- * role-prompt modes, the session history, the flash notice, the view/selection/scroll state,
- * and the line budgets render feeds back. It takes only the seams it cannot own itself: the
- * repo root the disk actions run against, the quit callback (Ctrl+D), a render request callback
- * (every branch that painted a frame), and an injectable clock so the flash expiry is
- * testable without waiting the real 3 s. Rendering (src/ui/tui/tui.tsx) stays the caller: it
- * syncs snapshot data and line budgets in, and reads the resulting state out to compose the
- * frame — the same data flow, one module boundary added. */
+/** The seams `createTuiKeys` cannot own itself (the factory's doc names each). */
 interface TuiKeysDeps {
   root: string;
   /** Ctrl+D: the caller resolves its main loop (and tears down the terminal) here. */
@@ -91,6 +82,16 @@ export interface TuiKeys {
   state(): TuiKeysState;
 }
 
+/** The framework-free owner of the TUI's keypress handling (extracted from runTui, and fed
+ * by ink's `useInput` through tui-keymap.ts's inkKeyToReadline adapter): the factory owns every mutable local the
+ * keypress dispatch used to keep in runTui's closure — the prompt line, budget-edit and
+ * role-prompt modes, the session history, the flash notice, the view/selection/scroll state,
+ * and the line budgets render feeds back. It takes only the seams it cannot own itself: the
+ * repo root the disk actions run against, the quit callback (Ctrl+D), a render request callback
+ * (every branch that painted a frame), and an injectable clock so the flash expiry is
+ * testable without waiting the real 3 s. Rendering (src/ui/tui/tui.tsx) stays the caller: it
+ * syncs snapshot data and line budgets in, and reads the resulting state out to compose the
+ * frame — the same data flow, one module boundary added. */
 export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
