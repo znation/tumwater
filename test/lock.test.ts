@@ -236,18 +236,17 @@ test("withLock fails fast on a filesystem error that waiting cannot fix", async 
   assert.ok(!fs.existsSync(lock), "no lock dir is left behind");
 });
 
-test("withLock removes its own lock dir when the pid write fails", async () => {
+test("withLock removes its own temp dir when the pid write fails", async () => {
   const lock = path.join(tmpdir(), "pid-fail.lock");
 
-  // The window between mkdir and the pid write is real: a wedged fs (ENOSPC, EACCES, …) can
-  // fail the write after the dir exists. The acquire must rethrow AND take its own dir with
-  // it — an orphan dir the dead holder owns would wedge every future acquirer (fresh locks
-  // with no readable pid are only broken after the no-pid grace, and never while a pid
-  // probe lies) until the 10-minute stale timeout.
+  // A wedged fs (ENOSPC, EACCES, …) can fail the pid write after the temp dir exists. The
+  // acquire must rethrow AND take its own temp dir with it — a remnant the dead holder owns
+  // would be swept only after the 10-minute stale timeout, and if it had been published, an
+  // orphan lock dir would wedge every future acquirer until that same timeout.
   const orig = fs.writeFileSync.bind(fs);
   let hit = false;
   (fs as Record<string, unknown>).writeFileSync = (p: unknown, ...rest: unknown[]) => {
-    if (!hit && p === path.join(lock, "pid")) {
+    if (!hit && String(p).startsWith(lock) && String(p).endsWith("/pid")) {
       hit = true;
       throw errnoError("EACCES", "simulated pid write failure");
     }
@@ -270,7 +269,12 @@ test("withLock removes its own lock dir when the pid write fails", async () => {
   }
   assert.ok(hit, "the pid write was attempted once");
   assert.ok(!ran, "never entered the critical section");
-  assert.ok(!fs.existsSync(lock), "the failed acquire left no orphan lock dir behind");
+  assert.ok(!fs.existsSync(lock), "the failed acquire left no published lock dir behind");
+  const prefix = `${path.basename(lock)}.acquiring-`;
+  assert.ok(
+    !fs.readdirSync(path.dirname(lock)).some((n) => n.startsWith(prefix)),
+    "the failed acquire left no temp dir behind",
+  );
 });
 
 test("withLock times out instead of breaking a fresh lock held by a live pid", async () => {
@@ -356,6 +360,70 @@ test("withSyncLock waits out a live holder in another process and then proceeds"
   } finally {
     await childExit;
   }
+});
+
+test("a creator starved before publishing its pid is waited for, not stolen", async () => {
+  // Regression (BUGS.md 2026-10-07): the acquire used to mkdir the lock path and write its
+  // pid in a second call. A loaded host can starve the creator between the two past
+  // NO_PID_GRACE_MS; a waiter then read the pid-less dir as a crashed writer's remnant, broke
+  // it, and both writers ran the guarded section at once — one read-modify-write lost. The
+  // hook below freezes exactly that pid write, so the old protocol lets the waiter steal and
+  // overlap with certainty; the rename-published dir is never visible without its pid, so the
+  // waiter waits it out instead.
+  const root = tmpdir();
+  const lock = path.join(root, "slow-publish.lock");
+  const inside = path.join(root, "inside");
+  const overlap = path.join(root, "overlap");
+  const module = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const section = `() => {
+      const fs = require("node:fs");
+      if (fs.existsSync(${JSON.stringify(inside)})) fs.writeFileSync(${JSON.stringify(overlap)}, String(process.pid));
+      fs.writeFileSync(${JSON.stringify(inside)}, String(process.pid));
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2400);
+      fs.rmSync(${JSON.stringify(inside)}, { force: true });
+    }`;
+  const slow = spawn(
+    process.execPath,
+    [
+      "-e",
+      `const fs = require("node:fs");
+      const lock = ${JSON.stringify(lock)};
+      const realWrite = fs.writeFileSync;
+      let delayed = false;
+      fs.writeFileSync = function (p, ...rest) {
+        if (!delayed && String(p).startsWith(lock) && String(p).endsWith("/pid")) {
+          delayed = true;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 6000);
+        }
+        return realWrite.call(fs, p, ...rest);
+      };
+      import(${JSON.stringify(module)}).then(({ withSyncLock }) =>
+        withSyncLock(lock, ${section}, 20000));`,
+    ],
+  );
+  slow.stderr?.resume();
+  const slowExit = new Promise((resolve) => slow.on("exit", resolve));
+  // Wait until the creator has made its lock dir or its atomic-publish temp, i.e. it is
+  // inside the frozen pid window; only then race the waiter.
+  const tempPrefix = `${path.basename(lock)}.acquiring-`;
+  for (let i = 0; !fs.existsSync(lock) && !fs.readdirSync(root).some((n) => n.startsWith(tempPrefix)); i++) {
+    if (i > 500) throw new Error("the slow creator never reached its pid write");
+    await sleep(10);
+  }
+  const waiter = spawn(
+    process.execPath,
+    [
+      "-e",
+      `import(${JSON.stringify(module)}).then(({ withSyncLock }) =>
+        withSyncLock(${JSON.stringify(lock)}, ${section}, 20000));`,
+    ],
+  );
+  waiter.stderr?.resume();
+  const waiterExit = new Promise((resolve) => waiter.on("exit", resolve));
+  await Promise.all([slowExit, waiterExit]);
+  assert.ok(!fs.existsSync(overlap), "the waiter never entered while the creator was inside");
+  assert.ok(!fs.existsSync(inside), "both sections cleaned up after themselves");
+  assert.ok(!fs.existsSync(lock), "the lock is released after both writers");
 });
 
 test("withSyncLock steals a crashed writer's lock: a dead pid, or an empty pid past the grace", () => {
