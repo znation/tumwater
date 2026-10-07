@@ -5,12 +5,12 @@ import { errCode } from "../errno.js";
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
  * PATH lookup for the pi-installation preflight, size-based rotation, recursive directory
- * creation before file writes, quiet
- * deletes after marker consumption, and age-based pruning of pi session files. The JSON
- * state-file convention (tolerant reads of possibly-torn writes, pretty-printed overwrites)
- * lives in src/files/json-files.ts; stat-keyed caching of polled values in src/files/stat-cache.ts; incremental
- * consumption of the append-only logs (complete-line tail reading, the backwards chunk scan
- * readTailText behind it, tail-state folding, byte-offset following) in files/tail.ts. */
+ * creation before file writes, quiet deletes after marker consumption, and age-based pruning
+ * of pi session files. The JSON state-file convention (tolerant reads of possibly-torn
+ * writes, pretty-printed overwrites) lives in src/files/json-files.ts; stat-keyed caching of
+ * polled values in src/files/stat-cache.ts; incremental consumption of the append-only logs
+ * (complete-line tail reading, the backwards chunk scan readTailText behind it, tail-state
+ * folding, byte-offset following) in files/tail.ts. */
 
 /** Stat a file, returning null when it does not exist (or cannot be read). The harness's
  * log readers all treat a missing log as "no data yet" rather than an error — this is the
@@ -181,11 +181,10 @@ export function pruneOldFiles(dir: string, days: number): number {
   return pruned;
 }
 
-/** Remove `dir` entirely when the directory itself is older than `days` days (its own mtime, not
- * its children's). Worktree builds leave a gitignored `dist/` dir that `git clean -fd` does not
- * drop; this
- * prunes it at the next tick, bounded by the same age rule. Returns true when the directory was
- * removed. Mirrors pruneOldFiles' vanish-tolerant style. */
+/** Remove `dir` entirely when the directory itself is older than `days` days (its own mtime,
+ * not its children's). Worktree builds leave a gitignored `dist/` dir that `git clean -fd`
+ * does not drop; this prunes it at the next tick, bounded by the same age rule. Returns true
+ * when the directory was removed. Mirrors pruneOldFiles' vanish-tolerant style. */
 export function pruneOldDirectory(dir: string, days: number): boolean {
   if (!fs.existsSync(dir)) return false;
   let pruned = false;
