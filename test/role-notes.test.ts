@@ -116,3 +116,31 @@ test("executing role_notes replaces the note and rejects an oversized one withou
     else process.env.TUMWATER_NOTES_PATH = prev;
   }
 });
+
+test("executing role_notes without a text argument rejects instead of clearing the note", async () => {
+  // pi does not guarantee it enforced the tool's schema, so a call carrying no `text` at all
+  // (no params object, or one without the field) must hit the same reject path as `{ text: 123 }`
+  // rather than coercing to "" and wiping the continuity the notebook exists to keep.
+  const dir = tmpdir();
+  const notes = path.join(dir, "missing.md");
+  const prev = process.env.TUMWATER_NOTES_PATH;
+  process.env.TUMWATER_NOTES_PATH = notes;
+  try {
+    const tool = registerTool();
+    writeRoleNote(notes, "keep me");
+    for (const [id, params] of [
+      ["call-no-params", undefined],
+      ["call-empty-params", {}],
+    ] as const) {
+      await assert.rejects(
+        async () => tool.execute(id, params as unknown as { text?: unknown }),
+        /requires a string "text" — pass the full replacement note, or "" to clear it/,
+        id,
+      );
+    }
+    assert.equal(fs.readFileSync(notes, "utf8"), "keep me", "a missing-text call leaves the note intact");
+  } finally {
+    if (prev === undefined) delete process.env.TUMWATER_NOTES_PATH;
+    else process.env.TUMWATER_NOTES_PATH = prev;
+  }
+});
