@@ -55,8 +55,9 @@ export function didYouMean(suggestion: string | null): string {
 
 /** suggestClosest and didYouMean composed: the " — did you mean `x`?" suffix for a mistyped
  * `input` against `candidates`, the empty string when nothing is close enough to suggest. The
- * four unknown-X error sites (roles.ts's unknownRoleMessage, config-write.ts's
- * unknownConfigKeyError and its role-field error, gui/gui-args.ts's rejectBadRole) render the hint
+ * unknown-X error sites (roles.ts's unknownRoleMessage, config-write.ts's
+ * unknownConfigKeyError and its role-field error, gui/gui-args.ts's rejectBadRole,
+ * init-templates.ts's unknownTemplateError) render the hint
  * through this one composition so the two-step pairing cannot drift; callers still print the
  * full valid list themselves — a suggestion only annotates it. (cli.ts's unknown-command and
  * no-help-topic errors stay on the bare halves: their suggestion arrives from help.ts's

@@ -4,6 +4,8 @@
  * directory layout — never code scaffolds, since the fleet's own first ticks write any code.
  * `blank` is the default and reproduces today's init output byte-identically. */
 
+import { typoSuffix } from "../text/suggest.js";
+
 interface InitTemplate {
   id: string;
   /** One-line description, shown by `--list-templates`. */
@@ -99,11 +101,15 @@ export function getTemplate(id: string): InitTemplate | null {
 }
 
 /** The error message for a typo'd or unknown `--template` id: the id, every valid template id,
- * catalog order. Exactly two call sites today: the CLI parser (cli/cli-command-args.ts, which fails
- * before initProject runs any side effect) and initProject itself (which re-checks for its direct
- * callers) — one renderer, so the two refusals can never drift apart. */
+ * catalog order, and — like the unknown-role and unknown-config-key errors — a did-you-mean
+ * hint when the id is a near miss (text/suggest.ts's typoSuffix), so `--template pythn-cli`
+ * names its fix instead of only the catalog. Exactly two call sites today: the CLI parser
+ * (cli/cli-command-args.ts, which fails before initProject runs any side effect) and
+ * initProject itself (which re-checks for its direct callers) — one renderer, so the two
+ * refusals can never drift apart. */
 export function unknownTemplateError(template: string): string {
-  return `unknown template ${JSON.stringify(template)} — valid templates: ${templateIds().join(", ")}`;
+  const ids = templateIds();
+  return `unknown template ${JSON.stringify(template)} — valid templates: ${ids.join(", ")}${typoSuffix(template, ids)}`;
 }
 
 /** The catalog as id + description pairs, for `--list-templates`. */

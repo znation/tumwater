@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { cmdInit } from "../src/cli/cli-run.js";
-import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds } from "../src/init/init-templates.js";
+import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds, unknownTemplateError } from "../src/init/init-templates.js";
 import { parseEntryDetails } from "../src/backlog/backlog-md.js";
 import { parseInitArgs } from "../src/cli/cli-command-args.js";
 import { INITIAL_PROMPT_MAX_CHARS, readInitialPrompt } from "../src/brief.js";
@@ -161,4 +161,10 @@ test("parseInitArgs rejects an unknown --template id with the catalog listed", (
   const r = expectFail(() => parseInitArgs(["--template", "nope", "Build a thing."]));
   assert.match(r.stderr, /unknown template "nope"/);
   assert.match(r.stderr, /blank, python-cli, node-cli, static-site/);
+});
+
+test("a near-miss --template id gets the did-you-mean hint, a far one does not", () => {
+  assert.match(unknownTemplateError("pythn-cli"), / — did you mean `python-cli`\?$/);
+  // "nope" is a real word, not a typo of any id: the suggestion threshold stays off.
+  assert.doesNotMatch(unknownTemplateError("nope"), /did you mean/);
 });
