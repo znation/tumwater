@@ -18,6 +18,8 @@ export interface PromptHistory {
   draftCursor: number;
 }
 
+/** A fresh, empty history: no entries and recall at the live draft — the neutral state a
+ * session starts from before any prompt is submitted. */
 export function newPromptHistory(): PromptHistory {
   return { items: [], index: 0, draft: "", draftCursor: 0 };
 }
