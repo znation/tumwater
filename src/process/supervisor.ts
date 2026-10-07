@@ -162,18 +162,41 @@ export function fleetDownEvent(down: FleetDown, diagnosis: string | null): Harne
  * same branch) — stdio shared (the child's event stream is what the operator sees), and
  * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again. */
 export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = []): Promise<ChildExit> {
+  return spawnSupervised(["run", ...extraArgs], signal, { [SUPERVISED_ENV]: "1" });
+}
+
+/** The production dashboard spawner for `run --gui`: a `tumwater gui` child on its defaults,
+ * stdio shared so a terminal Ctrl+C reaches it exactly as it reaches the orchestrator child.
+ * `env` carries the caller's mark — in production DASHBOARD_CHILD_ENV naming this supervisor's
+ * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
+ * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor
+ * dies outright (SIGKILL, a crash), freeing the dashboard port. Deliberately not SUPERVISED_ENV:
+ * the child must run `gui`, not supervise a fleet. Resolves like spawnRunChild — a failed spawn
+ * is `{ code: 1, signal: null }` — so an EMFILE/ENOMEM here cannot throw an unhandled 'error'. */
+export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}): Promise<ChildExit> {
+  return spawnSupervised(["gui"], signal, env);
+}
+
+/** Spawn one supervised child (`commandArgs` after the cli.js script path) and resolve on its
+ * exit, with the abort signal wiring and spawn-failure handling shared by spawnRunChild and
+ * spawnGuiChild: the signal's abort sends SIGTERM, and a spawn that never starts resolves as a
+ * failed exit instead of emitting an unhandled 'error'. */
+function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS.ProcessEnv): Promise<ChildExit> {
   return new Promise((resolve) => {
     const script = process.argv[1];
     if (!script) {
       resolve({ code: 1, signal: null });
       return;
     }
-    const child = spawn(process.execPath, [script, "run", ...extraArgs], {
+    const child = spawn(process.execPath, [script, ...commandArgs], {
       stdio: "inherit",
-      env: { ...process.env, [SUPERVISED_ENV]: "1" },
+      env: { ...process.env, ...env },
     });
     const onAbort = () => child.kill("SIGTERM");
     signal.addEventListener("abort", onAbort, { once: true });
+    // Close the register/abort race: if the signal aborted before the listener was attached it
+    // will never fire, so kill the child now (the dashboard must not start after a stop).
+    if (signal.aborted) onAbort();
     child.on("error", () => {
       signal.removeEventListener("abort", onAbort);
       resolve({ code: 1, signal: null });

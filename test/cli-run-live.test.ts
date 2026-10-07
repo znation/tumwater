@@ -2,6 +2,8 @@ import test from "node:test";
 import { readJson } from "./json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
+import net from "node:net";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -96,6 +98,60 @@ function onlyCleanRole(repo: string, mutate?: (cfg: TumwaterConfig) => void): vo
   for (const [id, role] of Object.entries(cfg.roles)) if (id !== "clean") role.enabled = false;
   mutate?.(cfg);
   writeConfig(repo, cfg);
+}
+
+/** `run --gui`'s default dashboard port. The live test skips when it is already taken, because
+ * a second binder would fail to bind and prove nothing about `run --gui`. */
+const DASHBOARD_PORT = 7180;
+
+/** True when nothing is listening on `port` on loopback — the live test can then let `run --gui`
+ * bind it and can confirm it is free again after teardown. */
+function portFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => server.close(() => resolve(true)));
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+/** One GET of a dashboard path, resolved once the body is fully read; a connection error or a
+ * stalled response rejects so the caller fails instead of hanging. */
+function getDashboardBody(port: number, path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = http.get({ host: "127.0.0.1", port, path, timeout: 5_000 }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => (body += chunk));
+      res.on("end", () => resolve(body));
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("dashboard request timed out")));
+  });
+}
+
+/** Poll `GET /` until the dashboard answers or the deadline passes, so a boot that printed its
+ * banner but has not bound yet does not fail the test on the first try. */
+async function waitForDashboard(port: number, ms = 30_000): Promise<string> {
+  const deadline = performance.now() + ms;
+  for (;;) {
+    try {
+      return await getDashboardBody(port, "/");
+    } catch {
+      if (performance.now() > deadline) throw new Error(`dashboard on port ${port} never answered`);
+      await sleep(200);
+    }
+  }
+}
+
+/** Poll until `port` is bindable again, or the deadline passes. */
+async function waitForPortFree(port: number, ms = 15_000): Promise<boolean> {
+  const deadline = performance.now() + ms;
+  while (performance.now() <= deadline) {
+    if (await portFree(port)) return true;
+    await sleep(200);
+  }
+  return false;
 }
 
 /** The shape every spawned `run` lifecycle test shares: start the fleet against `restore`'s
@@ -263,6 +319,59 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
       `a deadline stop must not be recorded as a fleet death:\n${JSON.stringify(readEvents(repo))}`);
   } finally {
     s.kill();
+    restore();
+  }
+});
+
+// `run --gui`: one command boots the fleet and serves the browser dashboard (the `tumwater gui`
+// server on its defaults) from the supervisor, so the dashboard outlives orchestrator
+// generations and dies with the fleet. This is the only test that exercises the wiring end to
+// end, so it skips cleanly (t.skip, not an early return that would read as a pass) when port 7180
+// is already taken by another dashboard.
+test("run --gui serves the dashboard from the supervisor and frees the port on SIGTERM", async (t) => {
+  if (!(await portFree(DASHBOARD_PORT))) {
+    t.skip(`port ${DASHBOARD_PORT} is already in use; skipping the live run --gui test`);
+    return;
+  }
+  const repo = makeRepo();
+  await initProject(repo, "cli run gui");
+  onlyCleanRole(repo);
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run", "--gui"]);
+  try {
+    await s.waitFor(
+      (out) =>
+        out.includes("tumwater running on branch main") &&
+        out.includes(`tumwater gui at http://127.0.0.1:${DASHBOARD_PORT}`),
+      "the run banner and the dashboard banner",
+    );
+    const body = await waitForDashboard(DASHBOARD_PORT);
+    assert.match(body, /tumwater/i, `GET / serves the tumwater page; body starts: ${body.slice(0, 120)}`);
+
+    // SIGTERM reaches the supervisor alone; it forwards to the orchestrator generation and
+    // aborts the dashboard, and both must be gone when the supervisor exits.
+    s.child.kill("SIGTERM");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected a clean supervisor exit after SIGTERM; output so far:\n${s.out()}`);
+    assert.ok(
+      await waitForPortFree(DASHBOARD_PORT),
+      `the dashboard port must be free after the supervisor exits; output so far:\n${s.out()}`,
+    );
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
+test("run --gui --once fails before boot with the rival-shapes message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run gui once");
+  const restore = fakePi("exit 0");
+  try {
+    const r = await cli(repo, "run", "--gui", "--once");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--gui cannot be combined with --once/);
+  } finally {
     restore();
   }
 });

@@ -91,6 +91,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // half runs it too, so a start that cannot boot fails before any child spawns. The flag
   // vocabulary is validated by the dispatcher (cli.ts, from the same RUN_FLAG_SPECS).
   const once = args.includes("--once");
+  // The dashboard cannot serve a run that is about to stop: a --once round drains and exits
+  // within the same invocation, so the two shapes are refused together before any boot. --for
+  // stays allowed — the dashboard serves for the window.
+  if (once && args.includes("--gui"))
+    failRivalShapes("--gui", "--once", "a one-round run cannot serve a dashboard it is about to kill");
   const forMs = parseRunWindow(args, once);
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
@@ -291,6 +296,32 @@ export function onceSummary(
   return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
+/** Split `run`'s args for `run --gui`: whether the supervisor should also start the dashboard,
+ * and the args the supervised orchestrator generation gets with `--gui` stripped so the
+ * generation's own cmdRun never tries to supervise a second dashboard. Exported so the unit
+ * tests pin the stripping that removing the spawn wiring would otherwise silently drop. */
+export function guiChildPlan(runArgs: string[]): { spawnGui: boolean; orchestratorArgs: string[] } {
+  return {
+    spawnGui: runArgs.includes("--gui"),
+    orchestratorArgs: runArgs.filter((arg) => arg !== "--gui"),
+  };
+}
+
+/** The dashboard half of `run --gui`: keep a `tumwater gui` child alive across its own
+ * self-reloads. The child is marked with DASHBOARD_CHILD_ENV naming this supervisor, so its
+ * reload watch (src/redeploy/self-reload.ts) exits RESTART_EXIT_CODE for a fresh sibling on a
+ * redeploy and exits on its own if this supervisor dies outright (SIGKILL, a crash) — a killed
+ * supervisor never leaves a dashboard holding its port. Any other dashboard exit (a failed bind
+ * prints its own message and exits) ends this loop and leaves the fleet running. */
+async function superviseDashboard(signal: AbortSignal): Promise<void> {
+  const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
+  const { spawnGuiChild } = await import("../process/supervisor.js");
+  for (;;) {
+    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) });
+    if (signal.aborted || exit.code !== RESTART_EXIT_CODE) return;
+  }
+}
+
 /** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a
  * child generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself.
  * Ctrl+C reaches the child directly from the terminal, so only SIGTERM is forwarded; the
@@ -301,7 +332,12 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
   // that never boots the fleet never compiles it.
   const { fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
+  const plan = guiChildPlan(runArgs);
   const controller = new AbortController();
+  // The dashboard lives beside the orchestrator generations rather than inside one: it must
+  // outlive every generation a redeploy swaps out. Its own abort stops the current dashboard
+  // child, which spawnGuiChild's abort wiring SIGTERMs.
+  const guiController = new AbortController();
   let stopping = false;
   process.on("SIGINT", () => {
     stopping = true; // The child got the same SIGINT from the terminal and stops on its own.
@@ -309,10 +345,12 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   process.on("SIGTERM", () => {
     stopping = true;
     controller.abort(); // Not delivered to the child by the kernel — forward it.
+    guiController.abort();
   });
+  const gui = plan.spawnGui ? superviseDashboard(guiController.signal) : Promise.resolve();
   const code = await superviseRun(
     {
-      spawnChild: (signal) => spawnRunChild(signal, runArgs),
+      spawnChild: (signal) => spawnRunChild(signal, plan.orchestratorArgs),
       stopping: () => stopping,
       onRespawn: (generation) =>
         say(`\nrestarting on the new build (generation ${generation})\n`),
@@ -328,5 +366,10 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
     },
     controller.signal,
   );
+  // The orchestrator is gone; take the dashboard with it so a stopped fleet never leaves a
+  // dashboard holding its port. abort() SIGTERMs the current gui child; await lets the spawn
+  // loop observe the abort before this process exits.
+  guiController.abort();
+  await gui;
   process.exit(code);
 }

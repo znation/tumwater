@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { armDeadlineTimer, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
+import { armDeadlineTimer, guiChildPlan, onceSummary, parseRunWindow } from "../src/cli/cli-run.js";
 import { expectFail, expectOk } from "./exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { pauseFleet } from "../src/fleet/fleet-state.js";
@@ -47,6 +47,23 @@ test("parseRunWindow rejects --for together with --once", () => {
 test("parseRunWindow enforces pause --for's 90-day cap", () => {
   const r = expectFail(() => parseRunWindow(["--for", "200d"], false));
   assert.match(r.stderr, /--for is capped at 90d \(got 200d\)/);
+});
+
+// --- guiChildPlan: the run --gui arg split the supervisor spawns from ---
+
+// `run --gui` strips --gui before handing the args to the supervised orchestrator generation
+// (whose cmdRun would otherwise supervise a second dashboard), and reports whether the
+// supervisor should start one. Pinned here so the stripping cannot silently drop.
+test("guiChildPlan strips --gui and reports it, leaving other args untouched", () => {
+  assert.deepEqual(guiChildPlan(["--gui"]), { spawnGui: true, orchestratorArgs: [] });
+  assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--for", "2h"]), {
+    spawnGui: true,
+    orchestratorArgs: ["--branch", "x", "--for", "2h"],
+  });
+  assert.deepEqual(guiChildPlan(["--once", "--role", "clean"]), {
+    spawnGui: false,
+    orchestratorArgs: ["--once", "--role", "clean"],
+  });
 });
 
 // --- armDeadlineTimer: the deadline timer cmdRun arms for `run --for` ---

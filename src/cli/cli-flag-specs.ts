@@ -251,14 +251,21 @@ export function grepFlagSpec(missingValue: string): FlagSpec {
 }
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
- * parseBranchFlag), `--once` (one full round of ticks, then exit), and `--role <id>`
- * (scope a --once round to one loop, parsed by parseRoleFlag). Exported so the
- * caller's rejectUnknownArgs check and its tests share one definition of what `run`
+ * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
+ * (scope a --once round to one loop, parsed by parseRoleFlag), and `--gui` (also serve the
+ * browser dashboard on its defaults; port/token selection stays on `tumwater gui`). Exported
+ * so the caller's rejectUnknownArgs check and its tests share one definition of what `run`
  * accepts — before this vocabulary existed, run parsed --branch and silently ignored
  * every other flag, so a typo'd option ran the daemon with default behavior. */
 export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
+  // `run --gui` is the one-command form of the dashboard: it boots the fleet and serves the
+  // browser dashboard at its defaults, loopback on port 7180. The dashboard's own --port,
+  // --all-interfaces, and --token stay on `tumwater gui`; widening them here would mean two
+  // flag vocabularies to keep in step. `run --gui --once` is refused in cmdRun beside the
+  // timer it arms.
+  { names: ["--gui"] },
   // `run --for <duration>` (the windowed run): the same spec `pause --for` passes, so the
   // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
   // 90-day cap is the spec's own validate (shared with pause), and the --once rival rule
