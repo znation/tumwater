@@ -26,10 +26,11 @@ function eventItem(e: HarnessEvent): { ts: number; loop: string; type: string; r
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
  * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
  * other field is shared, so the dashboard and the CLI can never drift apart. Assembled here —
- * not in gui/gui-server.ts — because it is shared data collection for observers, not part of serving HTTP:
- * snapshot() supplies the core state, and the per-loop phase/metrics fields come from the same
- * status-model helpers the TUI table uses. */
-/** `now` pins the poll's clock for the budget block (see snapshot's seam of the same name) —
+ * not in gui/gui-server.ts — because it is shared data collection for observers, not part of
+ * serving HTTP: snapshot() supplies the core state, and the per-loop phase/metrics fields come
+ * from the same status-model helpers the TUI table uses.
+ *
+ * `now` pins the poll's clock for the budget block (see snapshot's seam of the same name) —
  * one instant for spend stamp-check and burn-rate projection alike, so a test's expected badge
  * cannot race the payload's own Date.now(). */
 export function statusPayload(root: string, now = Date.now()): object {
