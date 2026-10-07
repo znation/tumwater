@@ -43,9 +43,10 @@ interface ScriptGroupResult {
 }
 
 /** True while any process in the group led by `pid` still exists: a signal-0 probe of the
- * group, where EPERM still means a member exists. Local to runScriptGroup, whose timed-out
- * run settles on the whole group being gone, never on the leader's close alone. */
-function groupAlive(pid: number | undefined): boolean {
+ * group, where EPERM still means a member exists. Shared by the two detached-process-group
+ * runners — runScriptGroup and git-run's execGitBounded — whose timed-out runs settle on the
+ * whole group being gone, never on the leader's close alone. */
+export function groupAlive(pid: number | undefined): boolean {
   if (pid == null) return false;
   try {
     process.kill(-pid, 0);
@@ -58,8 +59,8 @@ function groupAlive(pid: number | undefined): boolean {
 /** How often a timed-out run re-probes its process group between the deadline's SIGTERM and
  * the grace's SIGKILL. Nothing else wakes the check when the last member goes: a grandchild
  * that finishes a SIGTERM handler after the leader closed, or one launchd has not yet reaped,
- * has no event of its own. */
-const GROUP_POLL_MS = 50;
+ * has no event of its own. Shared with execGitBounded's identical poll. */
+export const GROUP_POLL_MS = 50;
 
 /** Run `cmd args` detached — its own process group, exactly like pi — and settle exactly once.
  * The timeout is enforced GROUP-WIDE, never against the direct child alone: execFileAsync's

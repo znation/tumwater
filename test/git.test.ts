@@ -41,8 +41,10 @@ import {
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
 import { branchName } from "../src/paths.js";
+import { pidAlive } from "../src/process/process.js";
 import { pathPrepend, pathReplace, writeScript } from "./fake-commands.js";
 import { mainSha, makeRepo, seedCommit, seedConflict, sh, tmpdir } from "./repo-fixtures.js";
+import { sleep } from "./wait.js";
 
 test("isGitRepo and hasCommits", async () => {
   const repo = makeRepo();
@@ -432,6 +434,61 @@ test("runGit keeps git's stderr on a noisy nonzero exit (format unchanged)", asy
     (err: unknown) =>
       err instanceof Error && /^git rev-parse --verify no-such-ref failed \(128\): fatal: /.test(err.message),
   );
+});
+
+test("runGit times out a hung git and names the deadline instead of stalling forever", async () => {
+  const dir = tmpdir("hung-git-");
+  // `exec` so the sourced shim becomes the sleeper: our SIGTERM reaches it directly, leaving
+  // no orphaned child behind to keep the suite alive.
+  writeScript(path.join(dir, "git"), "exec sleep 30");
+  const restorePath = pathPrepend(dir);
+  try {
+    await assert.rejects(
+      runGit(dir, ["status"], undefined, 200),
+      (err: unknown) =>
+        err instanceof Error && err.message === "git status failed: timed out after 200ms",
+    );
+  } finally {
+    restorePath();
+  }
+});
+
+test("runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it", async () => {
+  const dir = tmpdir("stubborn-git-");
+  const pidFile = path.join(dir, "grand.pid");
+  // The fake git spawns a grandchild, records its pid, then ignores SIGTERM and waits. The
+  // shim and the grandchild both inherit SIG_IGN, so only the group-wide SIGKILL ends them;
+  // the call must settle at deadline + grace, not wait out the sleeps. This pins the detached
+  // process group: if the child were not its own group leader (execFile drops `detached`), the
+  // negative-pid kill would fall back to the direct child alone and orphan the grandchild.
+  writeScript(path.join(dir, "git"), `trap '' TERM\nsleep 30 &\necho $! > "${pidFile}"\nwait`);
+  const restorePath = pathPrepend(dir);
+  const started = Date.now();
+  let grand: number | undefined;
+  try {
+    await assert.rejects(
+      runGit(dir, ["status"], undefined, 200, 300),
+      (err: unknown) =>
+        err instanceof Error && err.message === "git status failed: timed out after 200ms",
+    );
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 5_000, `settled in ${elapsed}ms, not after the 30s sleeps`);
+    grand = Number(fs.readFileSync(pidFile, "utf8").trim());
+    assert.ok(Number.isInteger(grand) && grand > 0, `recorded grandchild pid: ${grand}`);
+    // The grandchild must not outlive its group: a single-PID teardown would orphan it.
+    const deadline = Date.now() + 2_000;
+    while (pidAlive(grand) && Date.now() < deadline) await sleep(10);
+    assert.equal(pidAlive(grand), false, "the grandchild died with its group");
+  } finally {
+    restorePath();
+    if (grand !== undefined && pidAlive(grand)) {
+      try {
+        process.kill(grand, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+  }
 });
 
 test("subjectsBetween lists main's subjects since a head, newest first; null for an unknown base", async () => {

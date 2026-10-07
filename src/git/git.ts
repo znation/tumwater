@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { execFileAsync } from "../process/process.js";
-import { COMMIT_IDENT, git, gitTry, resolvedGitBin } from "./git-run.js";
+import { COMMIT_IDENT, GIT_TIMEOUT_MS, execGitBounded, git, gitTry } from "./git-run.js";
 
 /** A valid object id (SHA-1 or SHA-256). */
 function isSha(s: string): boolean {
@@ -296,13 +295,14 @@ export async function aheadOfMain(wt: string, mainBranch: string): Promise<numbe
  * as "no match", never an error. */
 export async function patchId(wt: string, base: string, head: string): Promise<string | null> {
   try {
-    const { stdout: diff } = await execFileAsync(
-      resolvedGitBin(),
+    // Both children run through execGitBounded, so a hung diff or patch-id is SIGTERMed
+    // group-wide and SIGKILLed after the grace instead of stalling landing's approval check.
+    const { stdout: diff } = await execGitBounded(
       ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--binary", `${base}...${head}`],
-      { cwd: wt },
+      { cwd: wt, timeoutMs: GIT_TIMEOUT_MS },
     );
     if (diff === "") return null;
-    const run = execFileAsync(resolvedGitBin(), ["patch-id", "--verbatim"], { cwd: wt });
+    const run = execGitBounded(["patch-id", "--verbatim"], { cwd: wt, timeoutMs: GIT_TIMEOUT_MS });
     // A patch-id that dies before reading its input must not surface as an unhandled EPIPE.
     run.child.stdin?.on("error", () => {});
     run.child.stdin?.end(diff);
