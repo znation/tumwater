@@ -1,3 +1,4 @@
+import { increment } from "../collections.js";
 import { gitTry } from "../git/git-run.js";
 
 /** The landing-scope DIFF COMPARISON (see landing-merge.ts for the merge flow that consults
@@ -47,7 +48,7 @@ export function diffLineMultiset(diff: string): { add: string[]; del: string[] }
 /** Whether every element of `small` (counting duplicates) appears in `big`. */
 function subsetOf(small: string[], big: string[]): boolean {
   const counts = new Map<string, number>();
-  for (const line of big) counts.set(line, (counts.get(line) ?? 0) + 1);
+  for (const line of big) increment(counts, line);
   for (const line of small) {
     const left = counts.get(line) ?? 0;
     if (left === 0) return false;

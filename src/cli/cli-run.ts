@@ -3,6 +3,7 @@
  * command it dispatches already delegates to a module (operator/operator-commands.ts, prompt-commands.ts,
  * config-commands.ts, log-commands.ts,
  * doctor.ts, …), and these three were the only implementations living in the dispatcher itself. */
+import { increment } from "../collections.js";
 import { enabledRoleIds } from "../config/config.js";
 import { fail, say } from "./cli-output.js";
 import {
@@ -275,7 +276,7 @@ export function onceSummary(
     if (ran > 0) {
       ticks += ran;
       const key = s.lastResult ?? "no_change";
-      outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
+      increment(outcomes, key);
     } else {
       const reason =
         settled?.get(role) ??

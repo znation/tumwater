@@ -14,6 +14,7 @@
  * which failures still sit inside the window is a fact about the past no single poll's inputs
  * carry — so it is a reducer rather than a stateless predicate. */
 
+import { increment } from "../collections.js";
 import type { HoldKind, HoldObservation } from "../fleet/fleet-hold.js";
 import { rankCountEntries } from "./rank.js";
 
@@ -76,7 +77,7 @@ export function failureSpread(
     recent.push({ role: o.role, kind: o.kind, at: o.at });
   }
   const counts = new Map<HoldKind, number>();
-  for (const o of recent) counts.set(o.kind, (counts.get(o.kind) ?? 0) + 1);
+  for (const o of recent) increment(counts, o.kind);
   const top = rankCountEntries(counts)[0];
   if (!top || top[1] < FAILURE_SPREAD_COUNT) {
     return { recent, active: false, kind: prev.kind };

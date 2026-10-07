@@ -17,3 +17,12 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
   }
   return groups;
 }
+
+/** Increment a Map counter, seeding a missing key at 1 — the single home of the
+ * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
+ * (failure-spread.ts), the diff multiset's line tally (landing/landing-diff.ts), the
+ * section-title tally (backlog/backlog-structure.ts), and the once-summary outcome tally
+ * (cli/cli-run.ts), so those sites cannot drift on how a missing key is seeded. */
+export function increment<K>(map: Map<K, number>, key: K): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}

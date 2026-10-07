@@ -1,4 +1,5 @@
 import path from "node:path";
+import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
 import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
@@ -113,7 +114,7 @@ function sectionTitles(md: string): string[] {
  * files, so the three sites count sections through one helper and cannot drift apart. */
 function sectionTitleCounts(md: string): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const title of sectionTitles(md)) counts.set(title, (counts.get(title) ?? 0) + 1);
+  for (const title of sectionTitles(md)) increment(counts, title);
   return counts;
 }
 
