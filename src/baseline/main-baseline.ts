@@ -11,9 +11,9 @@ import { refSha } from "../git/git.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
- * machinery that produces it. Split out of build/build-check.ts — which keeps running and classifying
- * the project's declared check — because a verdict ABOUT a specific SHA is a different concern
- * from the mechanics of running one: this module owns the cache, the in-flight dedup, the
+ * machinery that produces it. Split out of build/build-check.ts — which keeps running and
+ * classifying the project's declared check — because a verdict ABOUT a specific SHA is a different
+ * concern from the mechanics of running one: this module owns the cache, the in-flight dedup, the
  * re-verification policy that keeps one worktree's environmental red from blocking the fleet.
  * main-red.ts's gate consumes it; landing-merge.ts seeds a green here after a post-rebase re-check;
  * redeploy.ts re-verifies a red here before it strands the fleet on a stale build. */
@@ -33,9 +33,9 @@ interface MainBaseline {
   sha: string;
   /** Red only: the script that failed. */
   script?: string;
-  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build/build-check-report.ts) picks the
-   * line that goes into the warning event so an operator sees what broke without opening a
-   * transcript. */
+  /** Red only: clipped failure tail (clipBuildTail) — failureHeadline (build/build-check-report.ts)
+   * picks the line that goes into the warning event so an operator sees what broke without opening
+   * a transcript. */
   outputTail?: string[];
   /** Red only: the worktrees that have independently observed this red. A red seen in ONE
    * worktree is provisional evidence about the environment as much as the tree, so it is
@@ -44,11 +44,11 @@ interface MainBaseline {
   redFrom?: string[];
 }
 
-/** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no
- * declared build check at all (nothing to verify → nothing to block on, consistent with the
- * gate skipping its pre-check) or an environmental skip (`skipReason` set — timeout/external
- * signal kill/no-npm/broken toolchain), which the caller warns about and proceeds with, exactly like the gate's
- * pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
+/** checkMainBaseline's result. `baseline` is null when nothing blocks authoring: either no declared
+ * build check at all (nothing to verify → nothing to block on, consistent with the gate skipping
+ * its pre-check) or an environmental skip (`skipReason` set — timeout/external signal
+ * kill/no-npm/broken toolchain), which the caller warns about and proceeds with, exactly like the
+ * gate's pre-check. Skips are never cached red: a hung script — or a broken toolchain (BUGS.md
  * 2026-09-15) — must not wedge authoring, or the fleet's restart, for the life of the process. */
 interface MainBaselineCheck {
   baseline: MainBaseline | null;
@@ -66,12 +66,12 @@ interface MainBaselineCheck {
   unverified?: boolean;
 }
 
-/** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is
- * cold and one re-check per red SHA happens — cheap and deterministic, mirroring the budget
- * gate's stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
- * noteGreenBaseline seeding a green verdict for a SHA that just became main (src/landing/landing-merge.ts:
- * either its in-lock post-rebase re-check passed on exactly that tree, or the rebase was a
- * no-op so the review gate's pre-check had already run green on it).
+/** Fleet-shared verdict cache, keyed by main SHA. In-memory only: after a restart the cache is cold
+ * and one re-check per red SHA happens — cheap and deterministic, mirroring the budget gate's
+ * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
+ * noteGreenBaseline seeding a green verdict for a SHA that just became main
+ * (src/landing/landing-merge.ts: either its in-lock post-rebase re-check passed on exactly that
+ * tree, or the rebase was a no-op so the review gate's pre-check had already run green on it).
  *
  * The two verdicts are not equally trustworthy, and the cache is written accordingly. A GREEN
  * is authoritative wherever it was observed — the suite ran on this immutable tree and passed —
@@ -113,24 +113,24 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
   return seen.length < 2 && !seen.includes(wt);
 }
 
-/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the
- * landing path (src/landing/landing-merge.ts's verifyLanding) and the stack lander (src/landing/landing-stack.ts' landStack) —
- * both call it only after their fast-forward SUCCEEDED, with the exact SHA that just became
- * main: verifyLanding with the POST-rebase head in two cases — its own in-lock re-check just ran
- * this project's declared check green on that tree, or the rebase was a no-op so the review
- * gate's pre-check (which runs outside the merge lock) had already run green on exactly this
- * tree — and landStack with the stacked tip when a scope-`batch` check ran green on exactly
- * it (a skipped check seeds nothing, and neither does a merge_blocked stack or a doc-only
- * re-stack that landed without a check of its own).
- * Seeding here means that once the merge lands — main now points at this very SHA — the next
- * fresh tick's checkMainBaseline is a cache hit instead of re-running the full suite on an
- * already-verified tree: for tumwater itself that saves one redundant `npm test` (~1 min) per
- * merged code tick, plus every other role waking on "main moved" stalling behind that in-flight
- * run. Never seed a pre-rebase head: whenever main moved under the review, that SHA never
- * becomes main and the entry would silently miss (BUGS.md 2026-09-08). Safe because git trees
- * are immutable — a SHA's content cannot change under a cached verdict, the same staleness
- * semantics checkMainBaseline already has for its own entries. Only a directly observed pass
- * may seed this; skips and failures leave the baseline unknown (the caller decides). */
+/** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the landing
+ * path (src/landing/landing-merge.ts's verifyLanding) and the stack lander
+ * (src/landing/landing-stack.ts' landStack) — both call it only after their fast-forward SUCCEEDED,
+ * with the exact SHA that just became main: verifyLanding with the POST-rebase head in two cases —
+ * its own in-lock re-check just ran this project's declared check green on that tree, or the rebase
+ * was a no-op so the review gate's pre-check (which runs outside the merge lock) had already run
+ * green on exactly this tree — and landStack with the stacked tip when a scope-`batch` check ran
+ * green on exactly it (a skipped check seeds nothing, and neither does a merge_blocked stack or a
+ * doc-only re-stack that landed without a check of its own). Seeding here means that once the merge
+ * lands — main now points at this very SHA — the next fresh tick's checkMainBaseline is a cache hit
+ * instead of re-running the full suite on an already-verified tree: for tumwater itself that saves
+ * one redundant `npm test` (~1 min) per merged code tick, plus every other role waking on "main
+ * moved" stalling behind that in-flight run. Never seed a pre-rebase head: whenever main moved
+ * under the review, that SHA never becomes main and the entry would silently miss (BUGS.md
+ * 2026-09-08). Safe because git trees are immutable — a SHA's content cannot change under a cached
+ * verdict, the same staleness semantics checkMainBaseline already has for its own entries. Only a
+ * directly observed pass may seed this; skips and failures leave the baseline unknown (the caller
+ * decides). */
 export function noteGreenBaseline(sha: string): void {
   baselineCache.set(sha, { status: "green", sha });
 }
