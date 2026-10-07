@@ -6,38 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Model failure fallback, part 2/2: show the episode on every surface (planned 2026-10-06 by plan loop; requires part 1/2 landed)
-
-**Goal.** An operator can see which loops are running off-model, and why, on `tumwater status`,
-the TUI, and the dashboard without reading the event log.
-
-**Approach.**
-1. **`src/status/status-data.ts`** — add the active fallback (resolved pair, `since`, reason) to
-   each loop row from `LoopState.modelFallback`; absent leaves the row shape byte-identical.
-2. **`src/ui/status-payload.ts`, `src/ui/status-render.ts`, `src/ui/gui-client-loops.ts`** — a
-   `fallback` tag on the loop row (status/TUI cell and GUI row) while an episode is active.
-3. **`src/roles/role-view.ts` + `src/roles/role-render.ts`** — `tumwater role <id>` names the
-   effective fallback pair and "on fallback since <time> (primary failing: <reason>)".
-4. **Docs** — README's Backends/Status note and docs/how-it-works.md describe the shipped
-   trigger and return policy; docs/feature-model-fallback.md and
-   docs/implementation-model-fallback.md are corrected to match (the probe is a real tick on the
-   primary, not a separate canary request); plans/fallback-model.md's "Out of scope" line no
-   longer calls failure fallback out of scope.
-
-**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/status-render.ts,
-src/ui/gui-client-loops.ts, src/roles/role-view.ts, src/roles/role-render.ts, README.md,
-docs/how-it-works.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md,
-plans/fallback-model.md, and their tests.
-
-**Acceptance criteria.**
-- `tumwater status --json` carries the fallback field for a role mid-episode and omits it
-  otherwise; existing row snapshots are unchanged when no episode is active.
-- The status/TUI loop cell and the GUI loop row show the fallback tag while active, and nothing
-  otherwise.
-- `tumwater role <id>` names the fallback pair and the episode's start and reason.
-- The docs state the shipped trigger (3 consecutive provider-class failures), the tier-resolved
-  pair, the probe tick, and the return policy; no doc still calls failure fallback out of scope.
-
 ### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first)
 
 Context: the 2026-10-06 analysis recorded a decision to keep a fresh pi session per tick, for
@@ -483,6 +451,38 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Model failure fallback, part 2/2: show the episode on every surface (planned 2026-10-06 by plan loop; requires part 1/2 landed; done 2026-10-06 by feature)
+
+**Goal.** An operator can see which loops are running off-model, and why, on `tumwater status`,
+the TUI, and the dashboard without reading the event log.
+
+**Approach.**
+1. **`src/status/status-data.ts`** — add the active fallback (resolved pair, `since`, reason) to
+   each loop row from `LoopState.modelFallback`; absent leaves the row shape byte-identical.
+2. **`src/ui/status-payload.ts`, `src/ui/status-render.ts`, `src/ui/gui-client-loops.ts`** — a
+   `fallback` tag on the loop row (status/TUI cell and GUI row) while an episode is active.
+3. **`src/roles/role-view.ts` + `src/roles/role-render.ts`** — `tumwater role <id>` names the
+   effective fallback pair and "on fallback since <time> (primary failing: <reason>)".
+4. **Docs** — README's Backends/Status note and docs/how-it-works.md describe the shipped
+   trigger and return policy; docs/feature-model-fallback.md and
+   docs/implementation-model-fallback.md are corrected to match (the probe is a real tick on the
+   primary, not a separate canary request); plans/fallback-model.md's "Out of scope" line no
+   longer calls failure fallback out of scope.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-payload.ts, src/ui/status-render.ts,
+src/ui/gui-client-loops.ts, src/roles/role-view.ts, src/roles/role-render.ts, README.md,
+docs/how-it-works.md, docs/feature-model-fallback.md, docs/implementation-model-fallback.md,
+plans/fallback-model.md, and their tests.
+
+**Acceptance criteria.**
+- `tumwater status --json` carries the fallback field for a role mid-episode and omits it
+  otherwise; existing row snapshots are unchanged when no episode is active.
+- The status/TUI loop cell and the GUI loop row show the fallback tag while active, and nothing
+  otherwise.
+- `tumwater role <id>` names the fallback pair and the episode's start and reason.
+- The docs state the shipped trigger (3 consecutive provider-class failures), the tier-resolved
+  pair, the probe tick, and the return policy; no doc still calls failure fallback out of scope.
 
 ### Model failure fallback, part 1/2: run a failing role's ticks on its tier fallback (planned 2026-10-06 by plan loop; done 2026-10-06 by feature)
 

@@ -252,7 +252,10 @@ export function renderStatusSpans(
       : s.model
         ? ` (${s.model})`
         : "";
-    const name = (s.custom ? `${s.role}*` : s.role) + modelSuffix;
+    // Model failure fallback, part 2/2: while the loop runs off-model its name cell says so,
+    // so the operator can see which loops the fallback pair is carrying without reading logs.
+    const fallbackSuffix = s.fallback ? " (on fallback)" : "";
+    const name = (s.custom ? `${s.role}*` : s.role) + modelSuffix + fallbackSuffix;
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it

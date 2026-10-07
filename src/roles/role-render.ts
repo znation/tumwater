@@ -1,4 +1,5 @@
 import { agree } from "../text/phrases.js";
+import { formatTimestamp } from "../text/datetime.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
@@ -51,6 +52,14 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   lines.push(`- State: ${state}`);
   lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
+  // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
+  // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
+  if (p.modelFallback) {
+    const pair = modelPair(p.modelFallback.provider, p.modelFallback.model) || "pi default";
+    lines.push(
+      `- Model fallback: ${pair} — on fallback since ${formatTimestamp(p.modelFallback.since)} (primary failing: ${p.modelFallback.reason})`,
+    );
+  }
   if (p.fallback) {
     const pair = modelPair(p.fallback.provider, p.fallback.model) || "pi default";
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);

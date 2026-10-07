@@ -61,6 +61,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const name = "<div class='loop-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(l.role) + "'>" + esc(l.role) + "</button>" +
       (l.custom ? "<span class='tag' title='A user-defined loop from tumwater.json'>custom</span>" : "") +
       (l.modelTier ? "<span class='tag' title='The tier of the top-level model map this loop resolves at'>" + esc(l.modelTier) + "</span>" : "") +
+      (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
       (queued ? "<span class='tag t-indigo' title='" + esc(plural(queued, "prompt") + " queued for this loop") + "'>" + icon("chat") + queued + "</span>" : "") +
       "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.ticks, "tick")) + (l.model ? " · " + esc(l.model) : "") + "</div>";
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");

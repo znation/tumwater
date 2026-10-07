@@ -124,5 +124,4 @@ src/ui/status-payload.ts, src/events/event-format.ts, README.md, and their tests
 ## Out of scope
 
 Chains of more than one fallback; a paid-but-cheaper fallback (the cap could then still be
-exceeded — raise the cap instead); falling back on anything other than spend (rate limits,
-provider outages); moving the director onto the fallback.
+exceeded — raise the cap instead); moving the director onto the fallback.

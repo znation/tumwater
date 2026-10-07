@@ -123,6 +123,14 @@ discards a role's in-flight landing.
   new local day), a tick that started on the fallback is handed back to the primary: it is
   interrupted resumably — session and worktree edits kept — and its next tick continues the
   same session on the budgeted model (`budget_handback` in the feed).
+- Model failure fallback is separate from the budget gate above, triggered by health rather
+  than spend: when one role's ticks fail with provider-class errors (429s, and connection,
+  timeout, server, model-load, and stream-severed backend failures) three times in a row, its
+  next ticks run on its tier's resolved `fallback` pair while the primary is probed. Once the
+  5-minute cooldown elapses, the next tick runs the primary as the probe — a real tick, not a
+  separate canary request — and an answering probe returns the role to the primary. The episode
+  is per role and never moves the director; `tumwater status`, the TUI, the dashboard, and
+  `tumwater role <id>` name the off-model pair, its start, and the tripping reason.
 - `quietHours` (default off; absent or empty) is a daily local-time window, `"HH:MM-HH:MM"`,
   during which role loops start no new ticks — a tick due inside the window starts at window
   end, and a window may wrap midnight (`"23:00-07:00"`). The director is exempt, exactly as

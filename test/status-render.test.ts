@@ -73,6 +73,21 @@ test("status table marks user-defined loops with an asterisk and a footnote", ()
   assert.match((plain.split("\n") as string[]).at(-1) ?? "", /^total\b/);
 });
 
+// Model failure fallback, part 2/2: a loop whose episode is active is tagged on its name
+// cell, and only that loop — the common table stays byte-identical.
+
+test("status table tags the loops running on a model-fallback episode", () => {
+  const snap = snapshotWith([
+    { role: "feature", fallback: { provider: "prov-fb", model: "model-fb", since: 1, reason: "Request timed out." } },
+    { role: "clean" },
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /feature \(on fallback\)/);
+  assert.doesNotMatch(text, /clean \(on fallback\)/);
+  // No episode: the suffix is absent everywhere, so the table is unchanged.
+  assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /\(on fallback\)/);
+});
+
 test("narrow-width clipping still holds when a custom loop is marked", () => {
   const snap = snapshotWith([
     { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), ticks: 7 },

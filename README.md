@@ -82,7 +82,11 @@ into the existing map or role entry, while bare keys replace the whole value.
 
 **Backends:** any OpenAI-compatible model pi can reach works; set `model` in `tumwater.json` to
 one `provider/id[:thinking]` selector (plus `fallback` to a free selector), or a map of tiers
-`small`/`default`/`strong`. See [docs/backends.md](docs/backends.md) for requirements and a
+`small`/`default`/`strong`. A role whose primary keeps failing with provider-class errors
+(three consecutive 429s or backend failures) runs its next ticks on its tier's resolved
+`fallback` pair and probes the primary once the 5-minute cooldown elapses, returning to it
+when a probe answers; `tumwater status`, the TUI, the dashboard, and `tumwater role <id>` name
+the off-model episode. See [docs/backends.md](docs/backends.md) for requirements and a
 worked setup.
 
 For how the loops, review gate, scheduling, and self-redeploy work, see

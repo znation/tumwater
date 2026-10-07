@@ -137,3 +137,13 @@ test("a loop row renders its model tier tag and selector when the payload carrie
   assert.match(tierOnly, />strong<\/span>/);
   assert.doesNotMatch(tierOnly, /model-s/);
 });
+
+// Model failure fallback, part 2/2: a loop row carries a fallback tag only while the
+// payload's active-episode field is present.
+test("a loop row tags an active model-fallback episode", () => {
+  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+  const tagged = cells({ role: "feature", phase: "working 3m", fallback: { provider: "p", model: "m", since: 1, reason: "boom" } });
+  assert.match(tagged, /<span class='tag t-amber' title='[^']*'>fallback<\/span>/);
+  // No episode: no fallback tag.
+  assert.doesNotMatch(cells({ role: "clean", phase: "sleeping" }), /fallback<\/span>/);
+});

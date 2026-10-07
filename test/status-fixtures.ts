@@ -45,7 +45,16 @@ export const DEFAULT_BUDGET: StatusSnapshot["budget"] = {
 };
 
 export function snapshotWith(
-  loops: Array<Partial<ReturnType<typeof freshLoopState>> & { role: string; custom?: boolean }>,
+  loops: Array<
+    Partial<ReturnType<typeof freshLoopState>> & {
+      role: string;
+      custom?: boolean;
+      /** The model-fallback episode tag (status-data's active-episode row field), which a
+       * literal LoopState does not carry — a test passes it to exercise the `on fallback`
+       * name-cell suffix. */
+      fallback?: StatusSnapshot["loops"][number]["fallback"];
+    }
+  >,
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
   paused = false,
   pausedRoles: string[] = [],

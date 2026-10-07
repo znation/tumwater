@@ -54,6 +54,9 @@ export function statusPayload(root: string, now = Date.now()): object {
       // the loop name and the selector in the sub line.
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
+      // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
+      // while the loop's ticks run off-model, so the common row shape is unchanged.
+      ...(s.fallback ? { fallback: s.fallback } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
       // permit-holder prefixes: working/reviewing/landing). The running director is excluded

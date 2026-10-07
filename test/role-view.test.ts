@@ -12,6 +12,7 @@ import { rolePayload } from "../src/roles/role-view.js";
 import { renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath } from "../src/paths.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/readme.js";
 import { writeConfig, tmpdir } from "./repo-fixtures.js";
 
@@ -253,4 +254,33 @@ test("modelTier resolves the seam tier: the catalog's assignment, then a tier-na
   assert.equal(overridden.modelTier, "small");
   assert.equal(overridden.model, "model-a");
   assert.equal(overridden.provider, "prov-a");
+});
+
+// Model failure fallback, part 2/2: the inspector names the off-model pair, the episode's
+// start, and the failure that tripped it, and says nothing while the role runs its primary.
+test("an active model-fallback episode is reported with its pair and reason", () => {
+  const dir = root();
+  writeConfig(dir, { model: "prov-a/model-a", fallbackModel: { provider: "fp", model: "fm" } });
+  const state = freshLoopState("feature");
+  const since = Date.now() - 120_000;
+  state.modelFallback = {
+    failures: 0,
+    since,
+    probeAt: Date.now() + 600_000,
+    cooldownMs: 300_000,
+    reason: "Request timed out.",
+  };
+  saveLoopState(dir, state);
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.deepEqual(p.modelFallback, { provider: "fp", model: "fm", since, reason: "Request timed out." });
+  assert.match(
+    renderRoleMarkdown(p),
+    /- Model fallback: fp\/fm — on fallback since .* \(primary failing: Request timed out\.\)/,
+  );
+
+  // A probe is due: the next tick runs the primary, so the episode line is gone.
+  state.modelFallback.probeAt = Date.now() - 1;
+  saveLoopState(dir, state);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).modelFallback, null);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Model fallback:/);
 });

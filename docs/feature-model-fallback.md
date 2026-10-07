@@ -6,10 +6,10 @@ When a role's primary model keeps failing, the harness temporarily runs that rol
 ticks on a fallback model, keeps trying the primary in the background, and switches
 back automatically once the primary is healthy again.
 
-- **Trigger.** Per role, N consecutive provider-level failures (connection errors,
-  timeouts, stream severances — the transient classes already recognized by the
-  harness) trip a fallback episode. One-off failures do nothing new; the existing
-  retry/backoff still handles blips.
+- **Trigger.** Per role, three consecutive provider-level failures (connection errors,
+  timeouts, 429 rate limits, server and stream severances — the transient classes already
+  recognized by the harness) trip a fallback episode. One-off failures do nothing new; the
+  existing retry/backoff still handles blips.
 - **Fallback model.** Configured once per project: `fallback` in
   `tumwater.json` (the legacy `fallbackModel` object still parses; same provider, a
   different model). `fallback` is a per-tier map — a tier's own entry, else the nearest
@@ -17,9 +17,10 @@ back automatically once the primary is healthy again.
   default and never small). Absent config = feature off, behavior identical to today.
 - **During an episode.** The role's ticks run on the fallback model. Tick prompts,
   resume behavior, and session handling are unchanged apart from the model id.
-- **Return policy.** After each fallback tick, the harness periodically probes the
-  primary with a cheap canary request. Once a probe succeeds (and optionally one
-  confirmation), the role switches back and a `model_fallback_ended` event records it.
+- **Return policy.** While the episode runs, a cooldown clock (5 minutes, doubling to at
+  most 30 after each failed probe) schedules the next probe. When it elapses, the next tick
+  runs the primary itself — a real tick, not a separate canary request — and an answering
+  probe switches the role back and records a `model_fallback_ended` event.
 - **Observability.** Episode start/end is logged as events (`model_fallback_started`,
   `model_fallback_ended`) with the reason string that tripped it, so dashboards,
   history, and the failure digest show exactly when and why a role was off-model.
@@ -32,8 +33,8 @@ back automatically once the primary is healthy again.
 2. The primary provider starts timing out for `bugfix` — after 3 straight failures,
    the dashboard shows "bugfix: on fallback model (primary failing)".
 3. Ticks keep making progress on the fallback instead of burning error-streaks.
-4. Primary recovers; next canary probe succeeds; the role flips back and history
-   shows the episode start/end times.
+4. Primary recovers; the next probe tick on the primary answers without a provider
+   failure; the role flips back and history shows the episode start/end times.
 
 ## Rationale
 

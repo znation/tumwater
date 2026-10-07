@@ -14,14 +14,15 @@ records outcomes at tick end.
 
 1. New module `model-fallback` owning per-role state:
    - `recordFailure(role, failureClass)` / `recordSuccess(role)`
-   - Trip rule: N consecutive `provider-level` failures (reuse the existing
+   - Trip rule: three consecutive `provider-level` failures (reuse the existing
      transient/backend-kind classifier so definitions never drift) →
      state = `fallback`.
    - While in `fallback`: success of a fallback tick does NOT return the role to
-     primary; only a successful canary probe does.
-   - Probe scheduler: `probeDue(role, now)` with a modest interval (e.g., every
-     10 min), jittered; `recordProbeResult(role, ok)` — after `confirmCount`
-     consecutive successful probes (default 1), state returns to `primary`.
+     primary; only a probe tick on the primary that answers without a provider
+     failure does.
+   - Probe scheduler: a cooldown (`probeAt`, 5 minutes doubling to at most 30
+     after a failed probe); the tick after it elapses runs the primary as the
+     probe, and an answering probe returns to `primary`.
    - Pure and clock-injectable, matching house patterns (no `Date.now()` reads
      buried inside).
 
@@ -34,9 +35,10 @@ records outcomes at tick end.
    (`fallback ? fallbackModel : primaryModel`) and passes it to the pi invocation.
 3. Tick end: feed the failure classifier's verdict into
    `recordFailure/recordSuccess`.
-4. Canary probe: on `probeDue`, run a minimal model call (tiny prompt, low max
-   tokens) through the existing invocation path; a completed call = success, a
-   provider-class failure = failure probe. Content of the reply is irrelevant.
+4. Probe on the primary: the next tick after the cooldown runs the role's primary model
+   itself as the probe (a real tick, not a separate canary request); a completed tick
+   without a provider-class failure is a successful probe, a provider-class failure counts
+   as a failed probe and doubles the cooldown (capped at 30 minutes).
 5. Events: emit `model_fallback_started` (with tripping reason) and
    `model_fallback_ended` (with episode duration) — these flow into the existing
    feed, so dashboards, history, and the failure digest pick them up without new
@@ -52,7 +54,7 @@ records outcomes at tick end.
 ## Test plan
 
 - Unit tests for the state machine: trip threshold boundary (N-1 vs N), probe
-  scheduling, confirm-count return, content-failures-never-trip rule, disabled-when-
+  scheduling, answering-probe return, content-failures-never-trip rule, disabled-when-
   unconfigured.
 - Integration-style: scripted loop where primary fails 3× → ticks run on fallback →
   probe succeeds → next tick runs on primary; assert events emitted in order.
@@ -60,10 +62,11 @@ records outcomes at tick end.
 
 ## Risks and mitigations
 
-- **Flapping** (primary half-broken) → confirm-count and probe interval make return
-  conservative; only providers-class failures trip, so partial failures that still
-  complete ticks never trip at all.
-- **Canary cost** → tiny token ceiling, infrequent interval; negligible next to ticks.
+- **Flapping** (primary half-broken) → the probe cooldown and the primary probe tick
+  make return conservative; only providers-class failures trip, so partial failures that
+  still complete ticks never trip at all.
+- **Probe cost** → the probe is one ordinary tick on the primary, so it costs no more
+  than the tick the role would have run anyway; there is no separate request.
 - **Fallback model quality drop** → badge on dashboards keeps it visible; feature is
   opt-in via config; documented that fallback sees the same prompts.
 - **Interaction with error-streak breaker** → failures on fallback still count

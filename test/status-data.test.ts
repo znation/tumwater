@@ -876,3 +876,43 @@ test("snapshot loop rows carry the resolved selector always and the seam tier on
   assert.equal(planRow?.modelTier, "strong");
   assert.equal(planRow?.model, "prov-s/model-s:high");
 });
+
+// Model failure fallback, part 2/2: the snapshot's loop row carries the resolved fallback
+// pair, the episode's start, and the tripping reason only while the episode is active (its
+// ticks run off-model); a due probe runs the primary, so the field is absent then.
+test("snapshot rows carry the active model-fallback episode", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "model fallback rows");
+  writeConfig(repo, { model: "prov-a/model-a", fallbackModel: { provider: "prov-fb", model: "model-fb" } });
+  const now = Date.now();
+  const state = freshLoopState("feature");
+  state.modelFallback = {
+    failures: 0,
+    since: now - 60_000,
+    probeAt: now + 300_000,
+    cooldownMs: 300_000,
+    reason: "Request timed out.",
+  };
+  saveLoopState(repo, state);
+  const active = snapshot(repo, undefined, now).loops.find((l) => l.role === "feature");
+  assert.deepEqual(active?.fallback, {
+    provider: "prov-fb",
+    model: "model-fb",
+    since: now - 60_000,
+    reason: "Request timed out.",
+  });
+  // The payload ships the same field for the dashboard row tag.
+  const payload = statusPayload(repo, now) as { loops: Array<{ role: string; fallback?: unknown }> };
+  assert.deepEqual(payload.loops.find((l) => l.role === "feature")?.fallback, active?.fallback);
+
+  // Probe due: this tick runs the primary, so the row stops naming the fallback.
+  state.modelFallback.probeAt = now - 1;
+  saveLoopState(repo, state);
+  assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
+
+  // No fallback configured: an active episode cannot advertise a pair.
+  writeConfig(repo, { model: "prov-a/model-a" });
+  state.modelFallback.probeAt = now + 300_000;
+  saveLoopState(repo, state);
+  assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
+});

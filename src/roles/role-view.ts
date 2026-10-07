@@ -16,8 +16,21 @@ import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
-import { configForRole, fallbackPair, resolvedModelFields, roleSeamTier } from "../config/config-views.js";
+import { configForRole, fallbackPair, fallbackRoleConfig, resolvedModelFields, roleSeamTier } from "../config/config-views.js";
+import { modelFallbackActive } from "../loop/model-fallback.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
+
+/** The active model-fallback episode (LoopState.modelFallback) resolved for display: the
+ * fallback pair the role's ticks run on, when the episode began, and the provider-class
+ * failure that tripped it. Distinct from RoleViewPayload.fallback, which is the budget
+ * gate's free pair. */
+interface ModelFallbackEpisodeView {
+  provider?: string;
+  model?: string;
+  thinking?: string;
+  since: number;
+  reason: string;
+}
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -48,6 +61,9 @@ export interface RoleViewPayload {
   /** Whether that fallback is actually free in pi's definitions — what makes the gate
    * willing to engage it. Meaningful only when `fallback` is non-null. */
   fallbackFree: boolean;
+  /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
+   * the role's ticks are not running off-model. */
+  modelFallback: ModelFallbackEpisodeView | null;
   /** The effective min-tick interval: the role's override or the global value. */
   minTickIntervalSeconds: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
@@ -90,6 +106,11 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   }
   const effective = configForRole(cfg, role);
   const fallback = fallbackPair(cfg);
+  // One state read serves both the model-fallback episode and the next-tick preview below.
+  const state = loadLoopState(root, role);
+  const episode = state.modelFallback;
+  const episodeConfig =
+    episode !== undefined && modelFallbackActive(episode, Date.now()) ? fallbackRoleConfig(cfg, role) : null;
   return {
     id: role,
     title: resolved.title,
@@ -101,6 +122,14 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
     fallback,
     fallbackFree: fallback ? fallbackModelFree(cfg, modelsPath) : false,
+    modelFallback:
+      episode !== undefined && episodeConfig !== null
+        ? {
+            ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
+            since: episode.since,
+            reason: episode.reason,
+          }
+        : null,
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
@@ -112,7 +141,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
         root,
         config: cfg,
         role,
-        state: loadLoopState(root, role),
+        state,
         preview: true,
       })?.prompt ?? null,
   };
