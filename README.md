@@ -69,7 +69,9 @@ cap starts no new ticks until the next local day or a live edit), a nightly `qui
 (e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), with optional per-role windows
 `quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
-fleet-wide window covers now — user-defined `customLoops`, and an
+fleet-wide window covers now — a `diskHoldGB` free-space floor (default 10; when the volume
+holding the worktrees drops below it, no new work starts until free space recovers 5 GB above it;
+0 disables) — user-defined `customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
 breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER_EVENT_TYPE`,
