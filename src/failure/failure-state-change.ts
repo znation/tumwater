@@ -12,6 +12,7 @@ import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
+import { deferredReasonText } from "../events/event-format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/fleet gates and the fleet hold, live-config edits, self-hosted redeploys, need-based
@@ -163,7 +164,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `restart blocked — ${field(ev.reason)}; staying on build ${shortSha(ev.from)}`;
       break;
     case "tick_deferred":
-      text = "deferred — no work landed since last tick";
+      text = `deferred — ${deferredReasonText(ev)}`;
       break;
     case "orchestrator_start":
       text = `orchestrator started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;

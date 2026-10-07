@@ -39,7 +39,7 @@ export interface HarnessEvent {
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "wake"
-    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred (no feature/bugfix/director/human commit landed since its last no_change tick); one per deferral episode
+    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) or "no-work" (no feature/bugfix/director/human commit since its last no_change tick); one per deferral episode
     | "orchestrator_start"
     | "orchestrator_stop"
     | "prompt_enqueued"

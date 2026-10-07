@@ -189,6 +189,10 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
 test("tick_deferred, orchestrator lifecycle, and supervisor_exit render their payloads", () => {
   assert.equal(describeStateChange(ev({ type: "tick_deferred" })), "deferred — no work landed since last tick");
   assert.equal(
+    describeStateChange(ev({ type: "tick_deferred", reason: "backlog" })),
+    "deferred — feature/bugfix backlog open",
+  );
+  assert.equal(
     describeStateChange(ev({ type: "orchestrator_start", pid: 4242, build: "abcdef1234567890" })),
     "orchestrator started (pid 4242, build abcdef12)",
   );

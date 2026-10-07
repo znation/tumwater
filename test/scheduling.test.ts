@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFER_MAX_MS, deferTick, fairOrder, isEligible, workLanded } from "../src/scheduling/scheduling.js";
+import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workLanded } from "../src/scheduling/scheduling.js";
 import { configForRole } from "../src/config/config-views.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
@@ -392,6 +392,30 @@ test("deferTick: an open backlog defers idle maintenance even when work landed; 
   for (const role of ["feature", "plan", "director", "my-custom-loop"]) {
     assert.equal(deferTick(base, role, true, true, false, NOW), false);
   }
+});
+
+test("deferTickReason: names the clause that deferred — open backlog, else no work landed", () => {
+  const NOW = Date.now();
+  const base = freshLoopState("organize");
+  base.lastResult = "no_change";
+  base.lastMainHead = "abc123";
+  // Backlog open → "backlog", with or without work landed (the caller short-circuits the query).
+  assert.equal(deferTickReason(base, "organize", true, true, false, NOW), "backlog");
+  assert.equal(deferTickReason(base, "organize", false, true, false, NOW), "backlog");
+  // No backlog: the clause is the work-landed verdict — no work → "no-work", work → admitted.
+  assert.equal(deferTickReason(base, "organize", false, false, false, NOW), "no-work");
+  assert.equal(deferTickReason(base, "organize", true, false, false, NOW), null);
+  // bugfix in search mode drops the backlog clause, so open plans still read "no-work".
+  const search = freshLoopState("bugfix");
+  search.lastResult = "no_change";
+  search.lastMainHead = "abc123";
+  assert.equal(deferTickReason(search, "bugfix", false, true, false, NOW), "no-work");
+  assert.equal(deferTickReason(search, "bugfix", true, true, false, NOW), null);
+  // Not a deferral at all → null (no clause to report).
+  assert.equal(
+    deferTickReason({ ...base, lastResult: "changed" as const }, "organize", false, true, false, NOW),
+    null,
+  );
 });
 
 test("deferTick: bugfix with no open bugs defers like a maintenance role", () => {

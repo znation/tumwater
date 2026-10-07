@@ -364,14 +364,28 @@ test("formatEvent renders tick_aborted plainly under the role's loop", () => {
 // Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its last
 // tick did nothing and no work has landed since. Routine state, not a warning — but the line
 // must name the loop and its cause, since it is the only signal that a role is being deferred.
-test("formatEvent renders tick_deferred plainly with the no-work reason", () => {
-  const line = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred" } as never);
+test("formatEvent renders tick_deferred with the clause that deferred it", () => {
+  const backlog = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred", reason: "backlog" } as never);
   assert.match(
-    line,
-    /clean\s+deferred — no work landed since last tick$/,
-    `the deferral must name the loop and its cause: ${line}`,
+    backlog,
+    /clean\s+deferred — feature\/bugfix backlog open$/,
+    `a backlog deferral must say so: ${backlog}`,
   );
-  assert.ok(!line.includes("warning"), `a deferral is routine, not a warning: ${line}`);
+  const noWork = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred", reason: "no-work" } as never);
+  assert.match(
+    noWork,
+    /clean\s+deferred — no work landed since last tick$/,
+    `a no-work deferral must say so: ${noWork}`,
+  );
+  // A torn line or a pre-field event has no clause recorded: fall back to the old spelling.
+  const legacy = formatEvent({ ts: 0, loop: "clean", type: "tick_deferred" } as never);
+  assert.match(
+    legacy,
+    /clean\s+deferred — no work landed since last tick$/,
+    `a reason-less deferral falls back to no-work: ${legacy}`,
+  );
+  for (const line of [backlog, noWork, legacy])
+    assert.ok(!line.includes("warning"), `a deferral is routine, not a warning: ${line}`);
 });
 
 test("formatEvent renders a user_aborted tick_end with its result verbatim", () => {

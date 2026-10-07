@@ -190,6 +190,39 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * landing is exactly the kind of change that creates bugs, so it wakes the search). With one or
  * more open bugs it has real work and never defers, today's behavior.
  */
+/** Which clause deferred a due tick: the open feature/bugfix backlog ("backlog"), or no
+ * feature/bugfix/director/human commit having landed since its last no-change tick
+ * ("no-work"). The `tick_deferred` event carries it, so the feed and the failure digest name
+ * the clause that actually held the role back instead of spelling the no-work case over a
+ * need-based deferral. */
+export type DeferReason = "backlog" | "no-work";
+
+/** The deferral verdict as its clause, or null when the tick is admitted. The one home of the
+ * predicate (deferTick is this function's null test) and of the clause order: a deferrable
+ * maintenance role with the backlog open reports "backlog" even when work also landed — the
+ * backlog clause stands in for the landing verdict, which the caller short-circuits — while the
+ * bugfix-in-search-mode branch ignores the backlog and reports "no-work". */
+export function deferTickReason(
+  s: LoopState,
+  role: string,
+  workLandedSinceLast: boolean,
+  workBacklogOpen: boolean,
+  openBugsNow: boolean,
+  now: number,
+): DeferReason | null {
+  const searchBugfix = role === BUGFIX_ROLE && !openBugsNow;
+  const due =
+    !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
+    (DEFERRABLE_ROLES.has(role) || searchBugfix) &&
+    s.lastResult === "no_change" &&
+    s.lastMainHead !== "" &&
+    !deferralExpired(s, now);
+  if (!due) return null;
+  if (!searchBugfix && workBacklogOpen) return "backlog";
+  return workLandedSinceLast ? null : "no-work";
+}
+
+/** The boolean projection of deferTickReason: does this due maintenance tick defer? */
 export function deferTick(
   s: LoopState,
   role: string,
@@ -198,13 +231,5 @@ export function deferTick(
   openBugsNow: boolean,
   now: number,
 ): boolean {
-  const searchBugfix = role === BUGFIX_ROLE && !openBugsNow;
-  return (
-    !(s.wokenAt !== undefined && s.wokenAt > (s.lastTickEndedAt ?? 0)) &&
-    (DEFERRABLE_ROLES.has(role) || searchBugfix) &&
-    s.lastResult === "no_change" &&
-    s.lastMainHead !== "" &&
-    (searchBugfix ? !workLandedSinceLast : workBacklogOpen || !workLandedSinceLast) &&
-    !deferralExpired(s, now)
-  );
+  return deferTickReason(s, role, workLandedSinceLast, workBacklogOpen, openBugsNow, now) !== null;
 }

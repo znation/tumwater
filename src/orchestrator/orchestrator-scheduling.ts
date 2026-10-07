@@ -8,7 +8,7 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
-import { deferTick, isEligible } from "../scheduling/scheduling.js";
+import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingFiles } from "../landing/landing-queue.js";
@@ -207,10 +207,17 @@ export async function pollRunnerReasons(
         (!workBacklogOpen || searchBugfix) && s.lastMainHead !== ""
           ? await workLandedSince.since(s.lastMainHead, mainHead)
           : true;
-      const deferredNow = deferTick(s, runner.role, landed, workBacklogOpen, openBugsNow, now);
+      const deferral: DeferReason | null = deferTickReason(
+        s,
+        runner.role,
+        landed,
+        workBacklogOpen,
+        openBugsNow,
+        now,
+      );
+      const deferredNow = deferral !== null;
       if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
-        if (deferredNow)
-          logEvent(root, { loop: runner.role, type: "tick_deferred" });
+        if (deferral) logEvent(root, { loop: runner.role, type: "tick_deferred", reason: deferral });
         deferredDue.set(runner.role, deferredNow);
       }
       if (deferredNow) {
