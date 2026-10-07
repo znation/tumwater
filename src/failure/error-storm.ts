@@ -9,6 +9,7 @@
  * event). Like the hold it has memory — which storm is active is a fact about the past
  * no single poll's inputs carry — so it is a reducer rather than a stateless predicate. */
 
+import { getOrCreate } from "../collections.js";
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { ERROR_STREAK_WARN } from "../tick/tick-apply.js";
@@ -73,9 +74,7 @@ export function errorStorm(prev: ErrorStorm, observations: readonly ErrorStormOb
     if ((consecutiveErrors ?? 0) < ERROR_STREAK_WARN || !lastError) continue;
     const key = poolTimeoutKey(normalizeClusterKey(lastError));
     if (!key) continue;
-    const roles = rolesByKey.get(key) ?? new Set<string>();
-    roles.add(role);
-    rolesByKey.set(key, roles);
+    getOrCreate(rolesByKey, key, () => new Set<string>()).add(role);
   }
   const storms = rankByCount(
     [...rolesByKey].filter(([, roles]) => roles.size >= ERROR_STORM_ROLES),

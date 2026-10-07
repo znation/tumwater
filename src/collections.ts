@@ -10,12 +10,25 @@
 export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> {
   const groups = new Map<K, T[]>();
   for (const item of items) {
-    const k = key(item);
-    const list = groups.get(k) ?? [];
-    list.push(item);
-    groups.set(k, list);
+    getOrCreate(groups, key(item), () => []).push(item);
   }
   return groups;
+}
+
+/** Return `map`'s value for `key`, creating and storing `make()`'s result first when the key
+ * is absent — the single home of the `map.get(key) ?? fresh; …; map.set(key, value)` step,
+ * shared by the failure digest's per-role stats, outcome, and prompt-token accumulators
+ * (failure-data.ts), its time-and-spend per-role row (time-spend.ts), the fleet hold's
+ * provider+kind grouping (fleet-hold.ts), the error-storm reducer's roles-by-key set
+ * (error-storm.ts), and `groupBy` above, so those sites cannot drift on how a missing key is
+ * seeded. `make` runs only when the key is absent. A stored value of `undefined` reads as
+ * absent, matching the `??` idiom this replaces; the callers above never store one. */
+export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
+  const existing = map.get(key);
+  if (existing !== undefined) return existing;
+  const created = make();
+  map.set(key, created);
+  return created;
 }
 
 /** Increment a Map counter, seeding a missing key at 1 — the single home of the

@@ -11,7 +11,7 @@ import { normalizeClusterKey, poolTimeoutKey, sortedRoles, NO_ERROR_TEXT, trunca
 import { rankByCount } from "./rank.js";
 import { resolveQueuedResult, bucketLandingEvents } from "../history/history-data.js";
 import { stringList } from "../files/json-object.js";
-import { groupBy } from "../collections.js";
+import { getOrCreate, groupBy } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing (PLANS.md, time-and-spend plan):
  * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
@@ -170,8 +170,11 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     const role = eventRole(ev);
     const usage = eventUsage(ev);
     const durationMs = tickDurationMs(ev, starts);
-    const row = byRole.get(role) ?? { landed: emptyCell(), no_change: emptyCell(), error: emptyCell() };
-    byRole.set(role, row);
+    const row = getOrCreate(byRole, role, () => ({
+      landed: emptyCell(),
+      no_change: emptyCell(),
+      error: emptyCell(),
+    }));
     tally(row[cls], durationMs, usage);
 
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and

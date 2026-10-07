@@ -27,6 +27,7 @@
  * perf 18 s apart on 09-22 05:50) had two roles in the window as often as three, while the six
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */
+import { getOrCreate } from "../collections.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import type { BackendFailureKind } from "../pi/pi-stream.js";
 
@@ -178,9 +179,7 @@ export function fleetHold(
   const byProviderKind = new Map<string, { provider: string | undefined; kind: HoldKind; group: HoldObservation[] }>();
   for (const o of recent) {
     const key = `${o.provider ?? ""}\n${o.kind}`;
-    const entry = byProviderKind.get(key) ?? { provider: o.provider, kind: o.kind, group: [] };
-    if (entry.group.length === 0) byProviderKind.set(key, entry);
-    entry.group.push(o);
+    getOrCreate(byProviderKind, key, () => ({ provider: o.provider, kind: o.kind, group: [] })).group.push(o);
   }
   let storm: HoldObservation[] = [];
   let kind: HoldKind | null = null;

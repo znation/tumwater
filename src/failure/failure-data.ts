@@ -17,7 +17,7 @@ import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, NO_ERROR_TEXT, truncateExample, type Cluster } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
-import { addTo } from "../collections.js";
+import { addTo, getOrCreate } from "../collections.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -158,11 +158,8 @@ interface RoleStats {
 
 function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const byRole = new Map<string, RoleStats>();
-  const statsFor = (role: string): RoleStats => {
-    const stats = byRole.get(role) ?? { ticks: 0, errors: 0, quietKills: 0, rejections: 0 };
-    byRole.set(role, stats);
-    return stats;
-  };
+  const statsFor = (role: string): RoleStats =>
+    getOrCreate(byRole, role, () => ({ ticks: 0, errors: 0, quietKills: 0, rejections: 0 }));
   for (const ev of events) {
     // Ticks are tick_end events; a rejection is now recorded by the landing slot, AFTER the
     // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
@@ -204,10 +201,9 @@ export function collectFailureReport(root: string, days: number): FailureReportD
   const outcomeMap = new Map<string, Partial<Record<TickResult, number>>>();
   for (const ev of tickEvents) {
     const role = eventRole(ev);
-    const counts = outcomeMap.get(role) ?? {};
+    const counts = getOrCreate(outcomeMap, role, () => ({}));
     const result = ev.result as TickResult;
     addTo(counts, result, 1);
-    outcomeMap.set(role, counts);
   }
   // rankByCount orders strongest role first with the ascending-key tiebreak. The old
   // sort-ascending-then-reverse idiom accidentally flipped equal-total ties into
@@ -395,13 +391,12 @@ function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
         : 0;
     if (prompt === 0 && preEdit === 0) continue;
     const role = eventRole(ev);
-    const acc = byRole.get(role) ?? { prompts: [], promptSum: 0, preEditSum: 0 };
+    const acc = getOrCreate(byRole, role, () => ({ prompts: [], promptSum: 0, preEditSum: 0 }));
     if (prompt > 0) {
       acc.prompts.push(prompt);
       acc.promptSum += prompt;
     }
     acc.preEditSum += preEdit;
-    byRole.set(role, acc);
   }
   return [...byRole.entries()]
     .filter(([, acc]) => acc.promptSum > 0)
