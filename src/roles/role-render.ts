@@ -1,3 +1,4 @@
+import { agree } from "../text/phrases.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
@@ -72,7 +73,7 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
     const more = p.inboxCount - 1;
     lines.push(
-      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${more === 1 ? "waits" : "wait"})_`,
+      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${agree(more, "waits", "wait")})_`,
     );
   }
   return lines.join("\n").trimEnd();

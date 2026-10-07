@@ -16,6 +16,7 @@ import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBui
 import { findOnPath } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
+import { agree } from "../text/phrases.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
 import {
   branchExists,
@@ -347,7 +348,7 @@ export async function checkTierModels(
   const ompNote =
     ompVars.length === 0
       ? ""
-      : ` — ${ompVars.join(" and ")} ${ompVars.length === 1 ? "is" : "are"} set: tumwater does not read ${ompVars.length === 1 ? "it" : "them"} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
+      : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
   if (pairs.size === 0)
     return { level: ompVars.length === 0 ? "ok" : "warn", detail: `no models declared — every seam uses pi's own default${ompNote}` };
   const providers = readPiProviders(modelsPath);
@@ -386,7 +387,7 @@ export async function checkTierModels(
   const found = [...fails, ...warns].join("; ");
   const base =
     fails.length === 0 && warns.length === 0
-      ? `${pairs.size} declared ${pairs.size === 1 ? "model" : "models"} resolve${readyProviders.size > 0 ? ` and ${readyProviders.size === 1 ? "provider" : "all providers"} ${[...readyProviders].sort().join(", ")} report ready` : ""}`
+      ? `${pairs.size} declared ${agree(pairs.size, "model", "models")} resolve${readyProviders.size > 0 ? ` and ${agree(readyProviders.size, "provider", "all providers")} ${[...readyProviders].sort().join(", ")} report ready` : ""}`
       : found;
   if (fails.length > 0) return { level: "fail", detail: `${base}${ompNote}` };
   return { level: warns.length > 0 || ompVars.length > 0 ? "warn" : "ok", detail: `${base}${ompNote}` };

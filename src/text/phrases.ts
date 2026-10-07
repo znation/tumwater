@@ -28,13 +28,17 @@ export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** A count's verb form, without the count — `agree(1, "is", "are")` → `is` — the companion to
- * plural for the verb-only slots plural's count-plus-noun shape cannot fill: a subject that
- * already carries its own phrasing (listRoles's role list, a joined role list, a count printed
- * earlier in the sentence) still needs its verb to agree. The fleet alerts' banner titles
- * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator/operator-commands.ts), and
- * the dropped-attachment note (inbox-attachments.ts) all rendered the same `=== 1 ? … : …`
- * selection inline before, so the singular/plural decision now has one home beside plural's. */
+/** The number form of a word that agrees with `n`, without the count — `agree(1, "is", "are")`
+ * → `is`, `agree(2, "cause", "causes")` → `causes` — the companion to plural for the slots
+ * plural's count-plus-noun shape cannot fill: a subject or noun whose count is printed
+ * elsewhere in the sentence (a subject phrase such as listRoles's role list, a count named
+ * earlier) still needs the right number form. The fleet alerts' banner titles
+ * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator/operator-commands.ts),
+ * the dropped-attachment note (inbox-attachments.ts), the failure digest's loss-cause and
+ * cluster remainders (failure/failure-render.ts), the doctor's oh-my-pi and model notes
+ * (doctor/doctor-checks.ts), and `tumwater role`'s queued-prompt remainder (roles/role-render.ts)
+ * all rendered the same `=== 1 ? … : …` selection inline before, so the singular/plural
+ * decision now has one home beside plural's. */
 export function agree(n: number, one: string, many: string): string {
   return n === 1 ? one : many;
 }

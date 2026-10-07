@@ -7,7 +7,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";
 import type { ColumnAlign } from "../text/markdown.js";
-import { plural } from "../text/phrases.js";
+import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
@@ -187,7 +187,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
       // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
       if (data.lossCausesHidden > 0) {
-        const noun = data.lossCausesHidden === 1 ? "cause" : "causes";
+        const noun = agree(data.lossCausesHidden, "cause", "causes");
         lines.push(`_+${data.lossCausesHidden} more loss ${noun} by time not listed_`);
       }
     }
@@ -272,8 +272,8 @@ function renderClusters(lines: string[], title: string, section: ClusterSection,
   const itemized = section.clusters.reduce((n, c) => n + c.count, 0);
   if (section.total > itemized) {
     const remaining = section.total - itemized;
-    const clusters = section.hiddenClusters === 1 ? "cluster" : "clusters";
-    const noun1 = remaining === 1 ? noun.replace(/s$/, "") : noun;
+    const clusters = agree(section.hiddenClusters, "cluster", "clusters");
+    const noun1 = agree(remaining, noun.replace(/s$/, ""), noun);
     lines.push(`_+${section.hiddenClusters} more ${clusters} holding ${remaining} ${noun1}_`);
   }
 }
