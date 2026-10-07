@@ -129,7 +129,6 @@ export function stampOf(ts: number): string {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-
 export function toolStart(toolName: string, args: unknown): string {
   return JSON.stringify({ type: "tool_execution_start", toolCallId: "c1", toolName, args });
 }
@@ -142,7 +141,6 @@ export function rowOf(out: string, role: string): string {
   assert.ok(row, `a row for ${role}`);
   return row.trimEnd();
 }
-
 
 export function pendingFeature(): ReturnType<typeof freshLoopState> {
   const s = freshLoopState("feature");

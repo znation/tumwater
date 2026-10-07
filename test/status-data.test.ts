@@ -73,7 +73,6 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
   assert.equal(fromDefaults.inQuietHours, false);
 });
 
-
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -106,7 +105,6 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 
-
 test("snapshot serves unchanged loop state from the stat-keyed cache without re-reading", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -137,7 +135,6 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
 });
 
-
 test("snapshot reads the orchestrator info file once per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -157,7 +154,6 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   );
   assert.equal(reads, 1); // one read serves both — not two
 });
-
 
 test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {
   const repo = makeRepo();
@@ -223,7 +219,6 @@ test("snapshot carries the cap-hit projection for the same spend the badge rende
   assert.equal(snapshot(repo, undefined, now).budget.capHitAt, null);
 });
 
-
 test("snapshot prefers the running orchestrator's published budget over the persisted sum", async () => {
   const repo = makeRepo();
   await initProject(repo, "published budget test"); // seeds tumwater.json with maxDailyCostUsd: 50
@@ -263,7 +258,6 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   assert.equal(snapshot(repo).running, false, "a dead pid is not a running orchestrator");
   assert.equal(snapshot(repo).budget.spentUsd, 1);
 });
-
 
 // The free-fleet case (BUGS.md: budget badge on local LLM fleets): when every model the
 // fleet could use resolves to an unpriced or zero-cost entry in pi's models.json, spend can
@@ -390,7 +384,6 @@ test("snapshot marks the budget free when every fleet model is unpriced", async 
   assert.equal(snap.budget?.free, false, "one paid model keeps the dollar figure");
 });
 
-
 // The cost n/a fallback model (plans/fallback-model.md): the snapshot carries it only when the
 // budget gate could actually engage it, so the dashboards' three-valued gate matches the
 // scheduler's — advertising a fallback the scheduler would refuse would be a lie about what
@@ -456,7 +449,6 @@ test("snapshot carries the fallback model only when pi prices it at zero", async
   assert.deepEqual(snapshot(repo, modelsFile).budget.fallback, { provider: "local", model: "local-free" });
 });
 
-
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
   const repo = makeRepo();
   await initProject(repo, "inbox snapshot test");
@@ -492,7 +484,6 @@ test("snapshot carries queued director prompts as truncated previews, fresh per 
   assert.deepEqual(snap.inboxPrompts, [preview, "third"]);
 });
 
-
 // The `custom` flag marks user-defined loops (tumwater.json's customLoops) for the
 // dashboards' asterisk. It is computed in snapshot from the same last-known-good config that
 // produced the role list — so a transiently broken file keeps marking its customs rather than
@@ -517,7 +508,6 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   snap = snapshot(repo);
   assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom === true), "broken file keeps last-known-good customs");
 });
-
 
 // Merge queue 4/5 — the snapshot's landQueue: depth from the queue files, and inFlight only
 // when the 4/5 marker, a matching queue entry, and a live orchestrator all agree. The
@@ -617,7 +607,6 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.entries, undefined);
 });
 
-
 // The marker carries one record per change the landing pipeline holds, and the snapshot
 // cross-checks each against its still-queued entry: every row then reads its OWN change's
 // state, and a change the merge is done with shows nothing (BUGS.md 2026-09-23 — a head-only
@@ -672,7 +661,6 @@ test("the marker is cross-checked per change and each row reads its own change's
   fs.rmSync(orchestratorStatePath(repo));
 });
 
-
 test("snapshot counts each role's own prompt queue and leaves the director to inbox", async () => {
   const repo = makeRepo();
   await initProject(repo, "roleInbox snapshot test");
@@ -699,7 +687,6 @@ test("snapshot counts each role's own prompt queue and leaves the director to in
   ]);
   assert.ok(!("director" in snap.roleInboxPrompts), "the director's rows ride inboxFiles, not roleInboxPrompts");
 });
-
 
 // --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---
 
@@ -754,7 +741,6 @@ test("pauseReason carries only a standing fleet pause's operator reason", async 
   fs.writeFileSync(pausedPath(repo), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000, reason: "stale why" }));
   assert.equal(snapshot(repo).pauseReason, undefined, "an expired pause's reason is absent");
 });
-
 
 test("snapshot carries mainCheck from the newest merge-scope build_check event", () => {
   const repo = makeRepo();

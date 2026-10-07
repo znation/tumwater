@@ -715,7 +715,6 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   }
 });
 
-
 test("the primary checkout moving branches mid-run logs exactly one warning (portability 2/7)", async () => {
   const repo = await makeFastRepo("branch divergence test", ["clean"]);
   const { restore, orch } = startIdleOrchestrator(repo);

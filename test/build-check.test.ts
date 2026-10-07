@@ -145,7 +145,6 @@ test("a check killed by an external signal is skipped as killed, naming the sign
   assert.equal(outcome.killedBy, "SIGKILL");
 });
 
-
 // The measured cause of BUGS.md 2026-09-21: the host slept through the deadline. libuv's clock
 // on macOS counts sleep, so the timer fires at the first wake — minutes past the bound, often
 // after seconds of real work — and the warning still said "timed out after 300s". A Date-only

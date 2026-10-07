@@ -28,7 +28,6 @@ function makeRoot(): string {
   return root;
 }
 
-
 function dirOf(root: string, role: string): string {
   return roleInboxDir(root, role);
 }

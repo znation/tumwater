@@ -65,7 +65,6 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   }
 });
 
-
 test("resume falls back to a fresh tick when there is no session to continue", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");

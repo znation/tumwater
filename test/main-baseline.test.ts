@@ -31,7 +31,6 @@ const CFG = defaultConfig();
 // at the real location (.tumwater/worktrees/<role>): the helper keys its verdict by the
 // worktree's HEAD, which must be pristine main.
 
-
 test("a red in one worktree is re-verified by the next, and a green there promotes the SHA", async () => {
   const counter = path.join(tmpdir(), "runs");
   // Fails only where an untracked marker sits: identical tree, different environment.

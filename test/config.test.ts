@@ -634,7 +634,6 @@ test("changedConfigKeys skips maxConcurrent and sessionRetentionDays, which have
   assert.deepEqual(changedConfigKeys(prev, next), []);
 });
 
-
 test("seedConfig overlays a valid tumwater.example.json on the defaults", () => {
   const root = tmpdir();
   fs.writeFileSync(

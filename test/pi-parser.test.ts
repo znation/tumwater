@@ -388,7 +388,6 @@ test("message updates are skipped before parsing even in the old cumulative shap
   assert.equal(parser.progressCount, 0);
 });
 
-
 test("parser tracks open tool calls across start, update, and end", () => {
   const parser = new PiStreamParser();
   assert.equal(parser.openToolCalls.length, 0);
@@ -448,7 +447,6 @@ test("a start without toolName still names the command (or 'tool') in the open-c
   parser.feed(JSON.stringify({ type: "tool_execution_start", toolCallId: "c2", args: {} }) + "\n");
   assert.deepEqual(parser.openToolCalls.map((c) => c.label), ["sleep 999", "tool"]);
 });
-
 
 test("parser flags context-exceeded errors surfaced in retry events", () => {
   const parser = new PiStreamParser();
@@ -542,7 +540,6 @@ test("onToolCallStart observes each tool call once, at its start, with pi's name
   // The hook only observes: the parser's own open-call tracking runs exactly as without it.
   assert.deepEqual(parser.openToolCalls.map((c) => c.id), ["c2"]);
 });
-
 
 // The backend-failure classification (PLANS.md 2026-09-29): the non-429 provider-wide
 // failures — connection errors, request timeouts, 5xx status texts, model-load failures —

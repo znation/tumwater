@@ -313,7 +313,6 @@ test("the status payload carries each loop's last error for the rows that failed
   assert.equal(payload.loops.find((l) => l.role === "clean")?.lastError, null);
 });
 
-
 test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload schedule test");

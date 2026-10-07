@@ -581,7 +581,6 @@ test("loopPhase describes each loop state", () => {
   assert.equal(loopPhase(d, true), "waiting for prompts");
 });
 
-
 // BUGS.md 2026-09-24 — the display must mirror the concurrency cap: a tick parked in the
 // semaphore queue holds no permit, so it renders its true state (`awaiting slot`) and stays
 // out of the active set an operator counts against maxConcurrent.

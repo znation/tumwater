@@ -307,7 +307,6 @@ test("every run carries the context-budget rule", () => {
   assert.match(buildResumePrompt("clean"), /context window is finite/);
 });
 
-
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
 // the fleet's transcripts showed roles with no backlog reading the codebase file by file (30+
 // whole-file reads, ~300 KB of tool output per tick, 277 whole-file reads against 6 ranged ones)

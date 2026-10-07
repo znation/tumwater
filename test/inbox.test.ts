@@ -353,8 +353,6 @@ test("submitRolePrompt and cancelRolePrompt log their events under the named loo
   assert.throws(() => cancelRolePrompt(dir, "docs", 1), /no prompt at position 1/);
 });
 
-
-
 test("a deferred prompt is not dequeued before its time and is the first popped after it", (t) => {
   const dir = tmpdir();
   const clock = mockTimersForInbox(t);

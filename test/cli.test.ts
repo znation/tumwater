@@ -434,7 +434,6 @@ test("init rejects unknown flags and stray positionals instead of baking them in
   assert.equal(readInitialPrompt(bare2), "- Build A - Build B");
 });
 
-
 // --- `status --json` through the real CLI entry point: the machine-readable fleet state --
 // the same document GET /api/status serves, printed with no server. The CLI runs as a child
 // process, so the deep-equal below compares its parsed stdout against statusPayload(root)

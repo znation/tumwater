@@ -400,8 +400,6 @@ test("ffMainTo lands a bare sha from a detached worktree while root is on main",
   assert.ok(fs.existsSync(path.join(repo, "new.txt")));
 });
 
-
-
 test("ffMainTo lands a bare sha via ref push when root is on another branch", async () => {
   const repo = makeRepo();
   sh(repo, "git", "checkout", "-b", "scratch");

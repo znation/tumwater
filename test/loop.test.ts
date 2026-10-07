@@ -21,7 +21,6 @@ import { withPi, withIdlePi, logFlagsTo, TOUCH_SESSION } from "./fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./wait.js";
 import { APPROVE_PI, assistantLine, thinkingOnlyLine } from "./pi-events.js";
 
-
 test("a tick that changes files commits and merges to main", async () => {
   const repo = await initializedRepo();
   const script = [

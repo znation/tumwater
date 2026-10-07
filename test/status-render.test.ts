@@ -263,7 +263,6 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
   assert.match(out, /bugfix\s+queued/);
 });
 
-
 test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
   const root = tmpdir();
   // Spend below the cap: ordinary labels.
@@ -469,7 +468,6 @@ test("a loop with queued prompts carries a p:N marker on its state cell", () => 
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
 
-
 test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
@@ -491,7 +489,6 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
   }
 });
 
-
 test("no rendered line carries trailing padding, blank trailing cells included", () => {
   // The totals row ends in three blank cells; before the span-wise trim popped blank-cell
   // spans it broke on the first empty span ("".trimEnd() === "") and the row rendered with
@@ -507,7 +504,6 @@ test("no rendered line carries trailing padding, blank trailing cells included",
   const t = tableCells(renderStatus(tmpdir(), snap));
   assert.equal(t.cellAt(t.lines[t.lines.length - 1] ?? "", 7), "$0.00");
 });
-
 
 test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
   const repo = makeRepo();

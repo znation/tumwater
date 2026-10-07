@@ -155,7 +155,6 @@ test("buildMainRedNote degrades when the script or headline is absent", () => {
   assert.ok(neither.includes("the project's declared check"), "falls back to a readable phrase");
 });
 
-
 // Prompt contract for the review gate (src/review/review.ts): the reviewer is told to end with
 // exactly one VERDICT line, and a reply without a parseable line fails the review closed —
 // three such failures discard the commit. If the form the prompt advertises ever drifts from
@@ -224,7 +223,6 @@ test("the review prompt carries the fan-out rule in its reading budget and still
   // The verdict contract is untouched: exactly the two advertised forms, nothing else.
   assert.equal([...prompt.matchAll(/VERDICT:/g)].length, 2);
 });
-
 
 test("buildReviewPrompt carries the reviewer checklist and a reading budget", () => {
   const prompt = oneLine(buildReviewPrompt("diff body"));

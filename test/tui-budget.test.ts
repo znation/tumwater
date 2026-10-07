@@ -124,7 +124,6 @@ test("Ctrl+B again exits budget-edit mode, restoring the draft byte-for-byte", a
   });
 });
 
-
 // Enter in budget-edit mode saves through setDailyBudgetUsd, which reads the config FRESH
 // (bypassing the display's last-known-good fallback). A broken file therefore fails the
 // save while the TUI keeps rendering: the error flashes, the mode stays open so the value

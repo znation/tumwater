@@ -308,7 +308,6 @@ test("pause and resume accept --role to gate one loop, with per-role wording and
   assert.ok(!fs.existsSync(marker));
 });
 
-
 // --- role <id>: one loop's standing prompt and resolved settings (read-only) ---
 // Like backlog, the command gates on nothing: its collector degrades to empty answers on a
 // missing read, so it works with the fleet stopped. The queue-survival assertion here is the

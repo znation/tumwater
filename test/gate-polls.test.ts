@@ -66,7 +66,6 @@ test("pollFleetGates: a breaker trip logs role_streak_paused once — no duplica
   );
 });
 
-
 /** A minimal runner stand-in: pollFleetGates only reads a runner's role and state,
  * assigns its config, and — on a budget reopen — matches tickModel() against the
  * fallback pair and calls handBackTick(). Recorded handbacks stand in for the real

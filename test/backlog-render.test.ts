@@ -91,7 +91,6 @@ test("renderBacklogMarkdown renders three explicit empties on a bare root", () =
   }
 });
 
-
 test("tumwater backlog prints the backlog and rejects flags; works outside a ready repo", async () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);

@@ -56,7 +56,6 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
 });
 // --- reset-counters ---
 
-
 test("reset-counters zeroes counters in every role's state file and writes the fleet marker", async () => {
   const repo = makeRepo();
   await initProject(repo, "reset counters test");

@@ -560,7 +560,6 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   assert.match(healthy.detail, /template drift/);
 });
 
-
 // --- checkTierModels (plans/model-tiers.md "Doctor", part 7c/8) ---
 
 // Every pair the config can put on a seam is checked once: the `auth` stub records which
