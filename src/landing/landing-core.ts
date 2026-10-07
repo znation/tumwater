@@ -69,7 +69,8 @@ export interface LanderContext extends PiRunWiring {
 }
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be landed
- * (`sha` is the head to land — the pin as the gate judged it), `result` when it is already terminal (aborted, rejected, or review_error).
+ * (`sha` is the head to land — the pin as the gate judged it), `result` when it is already
+ * terminal (aborted, rejected, or review_error).
  * `discarded` tells a strike-cap review_error (ref deleted — as final as a rejection) from an
  * under-cap one (ref kept for recovery). */
 type GateOutcome =
