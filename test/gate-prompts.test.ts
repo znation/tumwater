@@ -10,6 +10,7 @@ import {
   buildMainRedNote,
   buildRejectedReviewNote,
   buildReviewPrompt,
+  buildStageFixPrompt,
 } from "../src/gates/gate-prompts.js";
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
@@ -308,4 +309,19 @@ test("buildConflictPrompt bounds reading to the conflicted files", () => {
   const p = oneLine(buildConflictPrompt("dry", ["src/a.ts"]));
   assert.match(p, /Read only the conflicted files and what they directly reference/);
   assert.match(p, /`grep -n '<<<<<<<' FILE`/);
+});
+
+// The pre-queue self-check's fix-up prompt (PLANS.md "Pre-queue self-check, part 1/2"): one
+// bounded turn on the author's own session to fix the deterministic faults the landing gate
+// would reject, before the change commits. The fake pi ignores prompt text, so its contract
+// is pinned here.
+test("buildStageFixPrompt lists every finding, forbids git state changes, and asks for the closing block", () => {
+  const p = buildStageFixPrompt(["first fault", "second fault"]);
+  assert.match(p, /1\. first fault/);
+  assert.match(p, /2\. second fault/);
+  assert.match(p, /landing gate rejects deterministically/);
+  assert.match(p, /no add, commit, reset, checkout/);
+  assert.match(p, /SUMMARY:/);
+  assert.match(p, /RISK:/);
+  assert.match(p, /closing block again/);
 });

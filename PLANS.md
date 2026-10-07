@@ -186,74 +186,6 @@ test/tick-stage.test.ts, and a new test/revision-interdiff.test.ts.
 - **Recovery.** A recovery landing of a revision is reviewed without the prior block.
 - `npm run test` green.
 
-### Pre-queue self-check, part 1/2: run the gate's deterministic backlog checks before a tick queues, with one fix-up turn on the author's session (planned 2026-10-06 by operator)
-
-Context: the gate's two deterministic backlog checks only run at landing time:
-`falseFixReason` (src/verdict/fix-claim.ts) and `backlogStructureReason`
-(src/backlog/backlog-structure.ts). By then the author's session is over, and a finding costs a
-queue slot, a vet, and a rejection that discards the work.
-- On 2026-09-23, bugfix got the same rejection seven times between 05:52 and 15:52, each a full
-  author, queue and vet cycle. The reason each time was `md-only BUGS.md edit moves "Any reply
-  that merely mentions TUMWATER_REFUSED…" to Fixed, but none of the symbols…`.
-- From 09-23 to 10-02 the gate caught 13 of these phantom-fix moves.
-
-Both checks read the worktree and the change's merge-base, so they can run at staging time. At
-that point the authoring session can still be continued; `requestSummary` already uses that
-moment to recover a missing SUMMARY.
-
-**Goal.** Before a changed tick commits, the harness runs the gate's deterministic checks. If
-any finding comes back, the author gets one bounded follow-up turn on its own session to fix it.
-The change then commits and queues as it does today, and the gate still has the final say.
-
-**Approach.**
-1. **`src/tick/stage-check.ts` (new).** Add
-   `stageCheckFindings(wt, mainBranch, exemptPaths): Promise<string[]>`.
-   - `files = changedFiles(wt)`: the uncommitted changes, untracked files included.
-   - It returns `backlogStructureReason(wt, mainBranch, files)` when that is set.
-   - It returns `falseFixReason(wt, mainBranch, files)` when `isExemptDiff(files, exemptPaths)`
-     holds, the same scope the gate applies it in.
-   - It never throws; a check that fails yields no finding.
-2. **`src/gates/gate-prompts.ts`.** Add `buildStageFixPrompt(findings)`:
-   - it lists the findings as what the landing gate will reject;
-   - it asks the author to fix them in the worktree and reply with the closing
-     SUMMARY/WHY/RISK/VERIFIED block again, or to say in RISK why a finding is wrong;
-   - it carries the tick prompt's no-git rule.
-3. **`src/loop/loop-pi.ts`.** Add `requestStageFix(wt, findings)`, a sibling of
-   `requestSummary`.
-   - It runs `--continue` on the authoring session.
-   - It has its own caps, e.g. a 600 s timeout with `SUMMARY_REQUEST_QUIET_S` quiet, and the
-     shared transient retry.
-   - It returns null when no resumable session exists.
-4. **`src/tick/tick-stage.ts`.** In `stageTickLanding`, after the SUMMARY recovery and before
-   `commitAll`, run `stageCheckFindings`. When it returns findings:
-   - run one `requestStageFix`; an aborted run goes to `finishAbortedTick`;
-   - re-extract the SUMMARY and body from the follow-up's reply when it has them, and re-run the
-     check;
-   - warn once with the counts before and after, e.g. `stage self-check: 1 finding — fixed by
-     the follow-up turn` or `…; 1 still open, queued for the gate`;
-   - commit and queue either way.
-
-   `TickStageContext` gains `stageCheck` and `requestStageFix` callbacks, wired in
-   src/loop/loop.ts the same way as `requestSummary`.
-
-**Files touched.** src/tick/stage-check.ts (new), src/tick/tick-stage.ts, src/loop/loop-pi.ts,
-src/loop/loop.ts, src/gates/gate-prompts.ts. Tests: test/stage-check.test.ts (new),
-test/tick-stage.test.ts, test/gate-prompts.test.ts.
-
-**Acceptance criteria.**
-- **False fix.** An uncommitted md-only BUGS.md edit that moves an entry to Fixed and names a
-  symbol absent from the tree yields one finding. The same edit with the symbol present yields
-  none.
-- **Structure.** A PLANS.md edit that duplicates `## Done` yields the structure finding.
-- **Follow-up (tick-stage tests with fake pi).**
-  - A finding triggers exactly one follow-up run. When that run fixes it, the change queues
-    with only the "fixed" warning.
-  - A finding the run leaves unfixed still queues, with the "still open" warning.
-  - No findings means no follow-up run.
-- **Abort.** An aborted follow-up finishes through `finishAbortedTick`, as the summary
-  follow-up does.
-- `npm run test` green.
-
 ### Pre-queue self-check, part 2/2: flag stale path references, nonexistent paths, and lost final newlines (planned 2026-10-06 by operator; requires part 1/2 landed)
 
 Context: path drift is the organize loop's main rejection cause. In organize's 11 rejections from
@@ -314,6 +246,79 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Pre-queue self-check, part 1/2: run the gate's deterministic backlog checks before a tick queues, with one fix-up turn on the author's session (planned 2026-10-06 by operator; done 2026-10-06 by feature)
+
+Context: the gate's two deterministic backlog checks only run at landing time:
+`falseFixReason` (src/verdict/fix-claim.ts) and `backlogStructureReason`
+(src/backlog/backlog-structure.ts). By then the author's session is over, and a finding costs a
+queue slot, a vet, and a rejection that discards the work.
+- On 2026-09-23, bugfix got the same rejection seven times between 05:52 and 15:52, each a full
+  author, queue and vet cycle. The reason each time was `md-only BUGS.md edit moves "Any reply
+  that merely mentions TUMWATER_REFUSED…" to Fixed, but none of the symbols…`.
+- From 09-23 to 10-02 the gate caught 13 of these phantom-fix moves.
+
+Both checks read the worktree and the change's merge-base, so they can run at staging time. At
+that point the authoring session can still be continued; `requestSummary` already uses that
+moment to recover a missing SUMMARY.
+
+**Goal.** Before a changed tick commits, the harness runs the gate's deterministic checks. If
+any finding comes back, the author gets one bounded follow-up turn on its own session to fix it.
+The change then commits and queues as it does today, and the gate still has the final say.
+
+**Approach.**
+1. **`src/tick/stage-check.ts` (new).** Add
+   `stageCheckFindings(wt, mainBranch, exemptPaths): Promise<string[]>`.
+   - `files = changedFiles(wt)`: the uncommitted changes, untracked files included.
+   - It returns `backlogStructureReason(wt, mainBranch, files)` when that is set.
+   - It returns `falseFixReason(wt, mainBranch, files)` when `isExemptDiff(files, exemptPaths)`
+     holds, the same scope the gate applies it in.
+   - It never throws; a check that fails yields no finding.
+2. **`src/gates/gate-prompts.ts`.** Add `buildStageFixPrompt(findings)`:
+   - it lists the findings as what the landing gate will reject;
+   - it asks the author to fix them in the worktree and reply with the closing
+     SUMMARY/WHY/RISK/VERIFIED block again, or to say in RISK why a finding is wrong;
+   - it carries the tick prompt's no-git rule.
+3. **`src/loop/loop-pi.ts`.** Add `requestStageFix(wt, findings)`, a sibling of
+   `requestSummary`.
+   - It runs `--continue` on the authoring session.
+   - It has its own caps, e.g. a 600 s timeout with `SUMMARY_REQUEST_QUIET_S` quiet, and the
+     shared transient retry.
+   - It returns null when no resumable session exists.
+4. **`src/tick/tick-stage.ts`.** In `stageTickLanding`, after the SUMMARY recovery and before
+   `commitAll`, run `stageCheckFindings`. When it returns findings:
+   - run one `requestStageFix`; an aborted run goes to `finishAbortedTick`;
+   - re-extract the SUMMARY and body from the follow-up's reply when it has them, and re-run the
+     check;
+   - warn once with the counts before and after, e.g. `stage self-check: 1 finding — fixed by
+     the follow-up turn` or `…; 1 still open, queued for the gate`;
+   - commit and queue either way.
+
+   `TickStageContext` gains `stageCheck` and `requestStageFix` callbacks, wired in
+   src/loop/loop.ts the same way as `requestSummary`.
+
+**Files touched.** src/tick/stage-check.ts (new), src/tick/tick-stage.ts, src/loop/loop-pi.ts,
+src/loop/loop.ts, src/gates/gate-prompts.ts, src/git/commit-message.ts. Tests:
+test/stage-check.test.ts (new), test/tick-stage.test.ts, test/gate-prompts.test.ts,
+test/commit-message.test.ts.
+
+**Acceptance criteria.**
+- **False fix.** An uncommitted md-only BUGS.md edit that moves an entry to Fixed and names a
+  symbol absent from the tree yields one finding. The same edit with the symbol present yields
+  none.
+- **Structure.** A PLANS.md edit that duplicates `## Done` yields the structure finding.
+- **Follow-up (tick-stage tests with fake pi).**
+  - A finding triggers exactly one follow-up run. When that run fixes it, the change queues
+    with only the "fixed" warning.
+  - A finding the run leaves unfixed still queues, with the "still open" warning.
+  - No findings means no follow-up run.
+- **Body merge.** A fix-up reply that restates only some of WHY/RISK/VERIFIED overrides those
+  fields and keeps the authoring run's other fields (a partial reply never drops them).
+- **Dropped change.** A fix-up that reverts the whole change leaves a clean worktree, so the
+  tick ends `no_change` with no commit, no pin, and nothing queued.
+- **Abort.** An aborted follow-up finishes through `finishAbortedTick`, as the summary
+  follow-up does.
+- `npm run test` green.
 
 ### Fallback-window shake: reclaim old tool output instead of only warning when a small-window model fills (planned 2026-10-06 by operator; matters once roles run on a fallback model with a ~127k–258k window; done 2026-10-06 by feature)
 

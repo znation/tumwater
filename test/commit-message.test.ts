@@ -9,6 +9,7 @@ import {
   commitSubject,
   formatCommitBody,
   hasFrictionTrailer,
+  mergeCommitBody,
   parseCommitMetadata,
 } from "../src/git/commit-message.js";
 
@@ -89,6 +90,24 @@ test("formatCommitBody orders WHY, RISK, VERIFIED and skips missing fields", () 
   // A partial body must not leave blank lines in the commit message.
   assert.equal(formatCommitBody({ why: "a", verified: "c" }), "WHY: a\nVERIFIED: c");
   assert.equal(formatCommitBody({}), "");
+});
+
+test("mergeCommitBody overrides only the fields the update restates", () => {
+  const base = { why: "original why", risk: "original risk", verified: "original verified" };
+  // A follow-up that restates one field must not drop the authoring run's other fields.
+  assert.deepEqual(mergeCommitBody(base, { why: "revised why" }), {
+    why: "revised why",
+    risk: "original risk",
+    verified: "original verified",
+  });
+  // An update with no fields at all leaves the base untouched; a null base passes through.
+  assert.deepEqual(mergeCommitBody(base, null), base);
+  assert.deepEqual(mergeCommitBody(null, { risk: "only risk" }), {
+    why: undefined,
+    risk: "only risk",
+    verified: undefined,
+  });
+  assert.equal(mergeCommitBody(null, null), null);
 });
 
 test("commitTrailer compacts context at 10k and below", () => {

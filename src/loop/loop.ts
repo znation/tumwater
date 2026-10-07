@@ -15,6 +15,7 @@ import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig,
 import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
+import { stageCheckFindings } from "../tick/stage-check.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
 import {
   modelFallbackActive,
@@ -714,6 +715,8 @@ export class LoopRunner {
       piStartedAt,
       warn: (message) => this.warn(message),
       requestSummary: (w) => this.pi.requestSummary(w, cfg),
+      stageCheck: (w) => stageCheckFindings(w, this.mainBranch, this.config.review.exemptPaths),
+      requestStageFix: (w, findings) => this.pi.requestStageFix(w, findings, cfg),
       pinAndReset: (w, sha) => this.pinAndReset(w, sha),
       finishAbortedTick: () => this.finishAbortedTick(userPrompt, wt),
     });

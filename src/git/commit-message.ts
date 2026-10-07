@@ -62,6 +62,20 @@ export function extractCommitBody(finalText: string): CommitBody | null {
   return body.why || body.risk || body.verified ? body : null;
 }
 
+/** Merge a follow-up reply's body over the tick's original body, field by field: a follow-up that
+ * restates only some of WHY/RISK/VERIFIED overrides those fields and leaves the others intact.
+ * A wholesale replacement would silently drop the fields a partial reply did not restate, losing
+ * the authoring run's recorded reasoning; returns `base` unchanged when `update` carries no field. */
+export function mergeCommitBody(base: CommitBody | null, update: CommitBody | null): CommitBody | null {
+  if (!update) return base;
+  const merged: CommitBody = {
+    why: update.why ?? base?.why,
+    risk: update.risk ?? base?.risk,
+    verified: update.verified ?? base?.verified,
+  };
+  return merged.why || merged.risk || merged.verified ? merged : null;
+}
+
 /** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is empty. */
 export function formatCommitBody(body: CommitBody): string {
   return [

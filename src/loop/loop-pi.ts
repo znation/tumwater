@@ -5,6 +5,7 @@ import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
+import { buildStageFixPrompt } from "../gates/gate-prompts.js";
 import { piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
@@ -297,6 +298,11 @@ export class LoopPi {
   private static readonly SUMMARY_REQUEST_TIMEOUT_S = 900;
   private static readonly SUMMARY_REQUEST_QUIET_S = 300;
 
+  /** Hard cap on the stage self-check's fix-up turn: one correction on a warm session, never
+   * the authoring run's budget. The quiet watchdog shares the SUMMARY follow-up's value — both
+   * are short replies to a session that already holds the work. */
+  private static readonly STAGE_FIX_TIMEOUT_S = 600;
+
   /** Ask the tick's own pi session (--continue) for the missing SUMMARY block: one tightly
    * bounded turn, folded into the tick's usage like every other run. Null when there is no
    * session to continue (pi never wrote one) — the caller then derives a subject itself. The
@@ -323,6 +329,31 @@ export class LoopPi {
       config: {
         ...cfg,
         ...cappedRequestTimeouts(cfg, LoopPi.SUMMARY_REQUEST_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
+      },
+    });
+  }
+
+  /** Ask the tick's own pi session (--continue) to fix the pre-queue self-check's findings:
+   * one bounded turn, folded into the tick's usage like every other run. Null when there is no
+   * session to continue — the caller then warns and lets the gate judge. The run is returned
+   * even when it failed so the caller can honor a shutdown abort. */
+  async requestStageFix(
+    wt: string,
+    findings: string[],
+    config?: ResolvedModelConfig,
+  ): Promise<PiRunResult | null> {
+    if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
+    const cfg = config ?? configForRole(this.host.config(), this.host.role);
+    return this.runWithTransientRetry({
+      ...this.loopPiOpts(
+        wt,
+        buildStageFixPrompt(findings),
+        `tumwater-${this.host.role}-${this.host.tickNumber()}-stagefix`,
+        true,
+      ),
+      config: {
+        ...cfg,
+        ...cappedRequestTimeouts(cfg, LoopPi.STAGE_FIX_TIMEOUT_S, LoopPi.SUMMARY_REQUEST_QUIET_S),
       },
     });
   }

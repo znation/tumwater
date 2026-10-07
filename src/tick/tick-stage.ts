@@ -11,6 +11,7 @@ import {
   extractSummary,
   fallbackSummary,
   formatCommitBody,
+  mergeCommitBody,
   stampedSubject,
 } from "../git/commit-message.js";
 import { logEvent } from "../events/events.js";
@@ -26,8 +27,9 @@ interface TickFlow {
 
 /** The shared loop wiring a changed worktree's staging needs (src/loop/loop.ts): the per-tick
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
- * the summary follow-up run, the landing-ref pin, and the abort finalizer. Mirrors the
- * context-object shapes of leftover.ts, refusal.ts, and landing-core.ts. */
+ * the summary follow-up run, the pre-queue self-check with its fix-up run, the landing-ref pin,
+ * and the abort finalizer. Mirrors the context-object shapes of leftover.ts, refusal.ts, and
+ * landing-core.ts. */
 interface TickStageContext {
   root: string;
   role: string;
@@ -49,6 +51,10 @@ interface TickStageContext {
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string): Promise<PiRunResult | null>;
+  /** The landing gate's deterministic backlog checks over the uncommitted change. */
+  stageCheck(wt: string): Promise<string[]>;
+  /** One bounded follow-up turn in the still-open session, to fix the self-check's findings. */
+  requestStageFix(wt: string, findings: string[]): Promise<PiRunResult | null>;
   /** Pin the commit by the role's landing ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   /** Finalize an aborted follow-up run through the loop (requeue + worktree reset). */
@@ -88,6 +94,37 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
             : followUp
               ? `follow-up gave none; subject derived from the changed files: "${summary}"`
               : `no follow-up session was available; subject derived from the changed files: "${summary}"`),
+    );
+  }
+
+  // The gate's deterministic backlog checks run here, before the commit, while the authoring
+  // session can still be continued: a finding that reaches review costs a queue slot, a vet,
+  // and a rejection that discards the work. One bounded follow-up turn on the author's own
+  // session gets to fix them; the gate still has the final say, and the change commits and
+  // queues either way.
+  const findings = await ctx.stageCheck(ctx.wt);
+  if (findings.length > 0) {
+    const before = findings.length;
+    const fixUp = await ctx.requestStageFix(ctx.wt, findings);
+    if (fixUp?.aborted) return ctx.finishAbortedTick();
+    if (fixUp) {
+      summary = extractSummary(fixUp.finalText) ?? summary;
+      // Field-by-field: a fix-up reply need only restate the fields it changed, so the
+      // authoring run's other WHY/RISK/VERIFIED lines survive it.
+      body = mergeCommitBody(body, extractCommitBody(fixUp.finalText));
+    }
+    // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
+    // in the worktree there is nothing to commit or queue: end the tick no_change here instead
+    // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
+    if ((await changedFiles(ctx.wt)).length === 0) {
+      ctx.warn("stage self-check: the follow-up turn left no change; nothing to land");
+      return { result: "no_change" };
+    }
+    const remaining = await ctx.stageCheck(ctx.wt);
+    ctx.warn(
+      remaining.length === 0
+        ? `stage self-check: ${before} finding${before === 1 ? "" : "s"} — fixed by the follow-up turn`
+        : `stage self-check: ${before} finding${before === 1 ? "" : "s"}; ${remaining.length} still open, queued for the gate`,
     );
   }
 

@@ -35,6 +35,12 @@ interface CtxOverrides {
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
   followUp?: PiRunResult | null;
+  /** Successive stageCheck results; the last one repeats. Defaults to a clean check. */
+  stageChecks?: string[][];
+  stageFix?: PiRunResult | null;
+  /** When true, requestStageFix deletes the tick's only changed file, so the fix-up leaves a
+   * clean worktree. */
+  stageFixDrops?: boolean;
   pinResult?: boolean;
   abortedOutcome?: TickOutcome;
 }
@@ -42,6 +48,8 @@ interface CtxOverrides {
 interface CtxCalls {
   warnings: string[];
   summaryRequests: string[];
+  stageChecks: string[];
+  stageFixRequests: { wt: string; findings: string[] }[];
   pins: { wt: string; sha: string }[];
   abortedFinalized: number;
 }
@@ -54,7 +62,14 @@ function makeCtx(
   state: LoopState,
   over: CtxOverrides = {},
 ): { ctx: ReturnType<typeof buildCtx>; calls: CtxCalls } {
-  const calls: CtxCalls = { warnings: [], summaryRequests: [], pins: [], abortedFinalized: 0 };
+  const calls: CtxCalls = {
+    warnings: [],
+    summaryRequests: [],
+    stageChecks: [],
+    stageFixRequests: [],
+    pins: [],
+    abortedFinalized: 0,
+  };
   const config = defaultConfig();
   config.thrashTurns = 100;
   config.thrashMinutes = 1_000;
@@ -86,6 +101,19 @@ function buildCtx(
     requestSummary: async (requestWt: string) => {
       calls.summaryRequests.push(requestWt);
       return over.followUp ?? null;
+    },
+    stageCheck: async (checkWt: string) => {
+      const results = over.stageChecks ?? [[]];
+      const result = results[Math.min(calls.stageChecks.length, results.length - 1)] ?? [];
+      calls.stageChecks.push(checkWt);
+      return result;
+    },
+    requestStageFix: async (fixWt: string, findings: string[]) => {
+      calls.stageFixRequests.push({ wt: fixWt, findings });
+      if (over.stageFixDrops) {
+        fs.rmSync(path.join(fixWt, "feature.ts"), { force: true });
+      }
+      return over.stageFix ?? null;
     },
     pinAndReset: async (pinWt: string, sha: string) => {
       calls.pins.push({ wt: pinWt, sha });
@@ -319,4 +347,137 @@ test("a passed qa flow records no summary", async () => {
     lastRunAt: coverage["unit tests"]!.lastRunAt,
     result: "passed",
   });
+});
+
+// ── The pre-queue self-check follow-up (PLANS.md "Pre-queue self-check, part 1/2") ──
+// A changed tick's deterministic gate faults get one bounded follow-up turn on the author's
+// own session before the commit; the change commits and queues either way.
+
+test("a self-check finding triggers one follow-up and queues with the fixed warning", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["md-only BUGS.md edit moves X to Fixed, but none of its symbols exist"], []],
+    stageFix: okPi({ finalText: "SUMMARY: add the feature\nWHY: fixed the symbol claim\n" }),
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageChecks.length, 2, "the check runs before and after the fix-up");
+  assert.equal(calls.stageFixRequests.length, 1, "exactly one follow-up run");
+  assert.equal(calls.stageFixRequests[0]!.wt, wt);
+  assert.deepEqual(calls.stageFixRequests[0]!.findings, [
+    "md-only BUGS.md edit moves X to Fixed, but none of its symbols exist",
+  ]);
+  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding — fixed by the follow-up turn"]);
+  assert.equal(queuedLandings(root)[0]!.summary, "add the feature");
+});
+
+test("a partial fix-up body keeps the fields it did not restate", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx } = makeCtx(root, wt, state, {
+    finalText:
+      "SUMMARY: add the feature\nWHY: original why\nRISK: original risk\nVERIFIED: original verified\n",
+    stageChecks: [["a finding"], []],
+    stageFix: okPi({ finalText: "WHY: revised why\n" }),
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  const body = sh(wt, "git", "log", "-1", "--format=%b");
+  assert.match(body, /WHY: revised why/);
+  assert.match(body, /RISK: original risk/, "the authoring run's RISK survives a partial reply");
+  assert.match(body, /VERIFIED: original verified/, "the authoring run's VERIFIED survives too");
+});
+
+test("a finding the follow-up leaves unfixed still queues, with the still-open warning", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["a finding"], ["a finding"]],
+    stageFix: okPi({ finalText: "RISK: the finding is wrong\n" }),
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageChecks.length, 2);
+  assert.equal(calls.stageFixRequests.length, 1);
+  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding; 1 still open, queued for the gate"]);
+  assert.equal(queueDepth(root), 1, "the change queues regardless");
+});
+
+test("a clean self-check runs no follow-up turn", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageChecks.length, 1);
+  assert.equal(calls.stageFixRequests.length, 0);
+  assert.deepEqual(calls.warnings, []);
+});
+
+test("no follow-up session leaves the finding for the gate and still queues", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["a finding"], ["a finding"]],
+    stageFix: null,
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(calls.stageFixRequests.length, 1, "the fix-up was attempted once");
+  assert.deepEqual(calls.warnings, ["stage self-check: 1 finding; 1 still open, queued for the gate"]);
+});
+
+test("an aborted self-check follow-up finalizes through the loop and queues nothing", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["a finding"]],
+    stageFix: okPi({ aborted: true }),
+    abortedOutcome: { result: "aborted", summary: "aborted mid-fix" },
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-fix" });
+  assert.equal(calls.abortedFinalized, 1, "the loop's abort finalizer ran");
+  assert.equal(calls.pins.length, 0, "nothing was pinned");
+  assert.equal(queueDepth(root), 0);
+});
+
+test("a fix-up that reverts the whole change ends no_change with nothing queued", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["a finding"]],
+    stageFix: okPi({ finalText: "RISK: the change should not exist; reverted\n" }),
+    stageFixDrops: true,
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "no_change");
+  assert.equal(calls.stageFixRequests.length, 1);
+  assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
+  assert.equal(queueDepth(root), 0, "nothing is queued");
+  assert.deepEqual(calls.warnings, [
+    "stage self-check: the follow-up turn left no change; nothing to land",
+  ]);
 });

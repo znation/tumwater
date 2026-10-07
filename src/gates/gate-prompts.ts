@@ -3,7 +3,7 @@ import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { VERDICT_ENDING } from "../verdict/reply-contract.js";
+import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
@@ -203,6 +203,25 @@ The full check passed at this exact tree before your review began. Do not re-run
 this worktree, not in a scratch copy. Finish the review now from what you have already read:
 reply with ONLY the closing block — no tool calls, no other text — one line in this form:
   ${VERDICT_ENDING}`;
+}
+
+/** The one-turn follow-up sent into a tick's OWN session (--continue) when the harness's
+ * pre-queue self-check found deterministic faults the landing gate would reject. The session
+ * still holds everything the run did, so the author fixes the faults before the change commits
+ * and queues — the gate keeps its final say, and the fix costs one bounded turn instead of a
+ * rejection cycle. A finding the author believes is wrong is answered in RISK rather than
+ * forced away; the reply re-states the closing block because the harness re-derives the commit
+ * message from it. Carries the tick prompt's no-git rule (the harness commits). */
+export function buildStageFixPrompt(findings: string[]): string {
+  return `Your change is about to commit, but the harness's pre-queue self-check found faults the
+landing gate rejects deterministically:
+${findings.map((f, i) => `${i + 1}. ${f}`).join("\n")}
+Fix each one in the worktree now with the smallest edit that resolves it, and keep everything else
+as it is. When a finding is wrong, say why in your RISK line instead of forcing a change that
+does not help. Do not run any git command that changes state (no add, commit, reset, checkout) —
+the harness commits for you.
+When done, reply with ONLY the closing block again — no tool calls, no other text, one line each:
+${SUMMARY_BLOCK}`;
 }
 
 /** The note injected into a role's next tick prompt after its previous change was rejected in
