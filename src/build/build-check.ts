@@ -164,8 +164,9 @@ function toolchainErrorInOutput(output: string): boolean {
 
 /** The timeout a check actually runs under: a configured command carries its own
  * (check.timeoutSeconds → detectBuildCheck's timeoutMs), an npm check takes the caller's.
- * One resolution so the run, the event, and the skip warning cannot disagree. */
-/** checkTimeoutMs and checkScriptName are shared with build-check-scoped.ts's
+ * One resolution so the run, the event, and the skip warning cannot disagree.
+ *
+ * checkTimeoutMs and checkScriptName are both shared with build-check-scoped.ts's
  * runScopedBuildCheck, whose reason text and event must agree with what runBuildCheck
  * enforced and ran. */
 export function checkTimeoutMs(check: BuildCheck, fallbackMs: number): number {
