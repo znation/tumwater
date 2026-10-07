@@ -24,6 +24,7 @@
  */
 
 import { compactTokens } from "../text/format.js";
+import { readContextUsage } from "./context-usage.js";
 
 /** Context-usage percentages at which the model is told where it stands. */
 export const CONTEXT_THRESHOLDS: readonly number[] = [50, 70, 85];
@@ -86,12 +87,7 @@ export default function contextBudget(pi: PiExtensionApi): void {
   let lastWarned = 0;
   pi.on("tool_result", (event, ctx) => {
     if (lastWarned >= lastThreshold) return undefined;
-    let usage: ContextUsage | undefined;
-    try {
-      usage = ctx?.getContextUsage?.();
-    } catch {
-      return undefined;
-    }
+    const usage = readContextUsage(ctx);
     if (!usage) return undefined;
     const note = contextNote(usage.percent, usage.tokens, usage.contextWindow, lastWarned);
     if (!note) return undefined;

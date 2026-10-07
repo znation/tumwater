@@ -22,6 +22,7 @@
 
 import { compactTokens } from "../text/format.js";
 import { writeFullOutput } from "./bounded-output.js";
+import { readContextUsage } from "./context-usage.js";
 
 /** The fill percentage at which the first shake pass runs. */
 export const SHAKE_PERCENT = 70;
@@ -296,12 +297,7 @@ export default function contextShake(pi: PiExtensionApi): void {
   let pendingNote: string | null = null;
 
   pi.on("turn_end", (event, ctx) => {
-    let usage: ShakeUsage | undefined;
-    try {
-      usage = ctx?.getContextUsage?.();
-    } catch {
-      return undefined;
-    }
+    const usage = readContextUsage(ctx);
     if (!usage) return undefined;
     const percent = percentOf(usage);
     if (percent === null) return undefined;
