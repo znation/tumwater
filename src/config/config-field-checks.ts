@@ -54,6 +54,19 @@ export function checkKnownKeys(
   }
 }
 
+/** Read an optional field once and hand it to `check` — the rule every per-field checker and
+ * checkObjectSection share: a key absent from the raw file is not validated here (its type's
+ * default fills it later), while a present one is read and checked exactly once. One home of
+ * that guard, so no checker can drift into reporting a missing key as a wrong value. */
+function whenPresent(
+  obj: Record<string, unknown>,
+  key: string,
+  check: (value: unknown) => void,
+): void {
+  if (!(key in obj)) return;
+  check(obj[key]);
+}
+
 /** Run a section's rule body only when its optional key is a plain JSON object: an absent key
  * leaves everything alone, present-but-not-an-object reports the one type problem against the
  * key (through show) and skips the body, and an object hands off to `validate` — so a
@@ -66,13 +79,13 @@ export function checkObjectSection(
   problems: string[],
   validate: (obj: Record<string, unknown>) => void,
 ): void {
-  if (!(key in root)) return;
-  const value = root[key];
-  if (!isJsonObject(value)) {
-    problems.push(`${key} must be an object (got ${show(value)})`);
-    return;
-  }
-  validate(value);
+  whenPresent(root, key, (value) => {
+    if (!isJsonObject(value)) {
+      problems.push(`${key} must be an object (got ${show(value)})`);
+      return;
+    }
+    validate(value);
+  });
 }
 
 /** The numeric shapes a tumwater.json field must satisfy, each bundled with the wording its
@@ -132,11 +145,11 @@ export function checkStringField(
   key: string,
   allowEmpty = true,
 ): void {
-  if (!(key in obj)) return;
-  const v = obj[key];
-  if (typeof v !== "string") problems.push(`${prefix}${key} must be a string (got ${show(v)})`);
-  else if (!allowEmpty && v.trim() === "")
-    problems.push(`${prefix}${key} must not be empty (got ${show(v)})`);
+  whenPresent(obj, key, (v) => {
+    if (typeof v !== "string") problems.push(`${prefix}${key} must be a string (got ${show(v)})`);
+    else if (!allowEmpty && v.trim() === "")
+      problems.push(`${prefix}${key} must not be empty (got ${show(v)})`);
+  });
 }
 
 /** Every model-override section validates the same provider/model/thinking triple the same
@@ -212,10 +225,10 @@ export function checkNumberField(
   key: string,
   rule: NumberRule,
 ): void {
-  if (!(key in obj)) return;
-  const v = obj[key];
-  if (typeof v !== "number" || !Number.isFinite(v) || !rule.ok(v))
-    problems.push(`${prefix}${key} must be ${rule.what} (got ${show(v)})`);
+  whenPresent(obj, key, (v) => {
+    if (typeof v !== "number" || !Number.isFinite(v) || !rule.ok(v))
+      problems.push(`${prefix}${key} must be ${rule.what} (got ${show(v)})`);
+  });
 }
 
 /** Validate one boolean field when present. */
@@ -225,10 +238,10 @@ export function checkBooleanField(
   prefix: string,
   key: string,
 ): void {
-  if (!(key in obj)) return;
-  const v = obj[key];
-  if (typeof v !== "boolean")
-    problems.push(`${prefix}${key} must be true or false (got ${show(v)})`);
+  whenPresent(obj, key, (v) => {
+    if (typeof v !== "boolean")
+      problems.push(`${prefix}${key} must be true or false (got ${show(v)})`);
+  });
 }
 
 /** Validate one array-of-strings field when present. A blank entry has no valid meaning and
@@ -243,14 +256,14 @@ export function checkStringArrayField(
   prefix: string,
   key: string,
 ): void {
-  if (!(key in obj)) return;
-  const v = obj[key];
-  if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) {
-    problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
-    return;
-  }
-  const arr = v as string[];
-  const blankAt = arr.findIndex((s) => s.trim() === "");
-  if (blankAt >= 0)
-    problems.push(`${prefix}${key}[${blankAt}] must not be blank (got ${show(arr[blankAt])})`);
+  whenPresent(obj, key, (v) => {
+    if (!Array.isArray(v) || !v.every((s) => typeof s === "string")) {
+      problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
+      return;
+    }
+    const arr = v as string[];
+    const blankAt = arr.findIndex((s) => s.trim() === "");
+    if (blankAt >= 0)
+      problems.push(`${prefix}${key}[${blankAt}] must not be blank (got ${show(arr[blankAt])})`);
+  });
 }
