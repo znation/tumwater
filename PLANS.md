@@ -6,68 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback-window shake: reclaim old tool output instead of only warning when a small-window model fills (planned 2026-10-06 by operator; matters once roles run on a fallback model with a ~127k–258k window)
-
-Context: when a run fills its window, two things happen today.
-- The context-budget extension (src/pi-extension/context-budget.ts) tells the model its fill
-  level at 50/70/85% and asks it to wrap up.
-- Past the window minus 16,384, pi compacts with an LLM summary that loses the run's reads.
-
-On the 1M-window primaries neither fires: the largest fleet tick from Oct 2–6 reached 140k.
-The oMLX fallback models have 127k and 258k windows, though, and the model-fallback plans
-above will route roles there on provider failures. omp's `shake` compaction method reclaims
-context without a model call: it replaces old tool results with recoverable references and
-keeps the recent window intact. pi 1.0.0 has the primitive to do the same from an extension:
-a `turn_end` handler can append persisted `context_edit` entries (pi docs: extensions.md,
-session-format.md).
-
-**Goal.** When a run crosses 70% of its window, its old bulky tool results are replaced with
-short pointers the model can follow. The run can then finish its task instead of stopping
-early or being summarized.
-
-**Approach.**
-1. **`src/pi-extension/context-shake.ts`** (new bundled extension, loaded after
-   bounded-output and before context-budget) with a pure planner `shakePlan(messages, usage)`.
-   - At or above 70% usage, it selects `read` and `bash` tool results that are older than
-     the newest 20,000 estimated tokens and longer than 2,000 chars.
-   - A bash result is replaced by `[elided by tumwater: N chars; full output in <path>]`. It
-     reuses `details.fullOutputPath`, or else writes the full text with bounded-output's
-     `writeFullOutput`.
-   - A read result is replaced by `[elided by tumwater: N chars of <path>:<start>-<end>;
-     re-read the range if you still need it]`.
-   - It never selects edit or write results, error results, or the user prompt.
-   - It returns an empty plan when it would reclaim fewer than 10,000 estimated tokens.
-2. **Apply** — through a `turn_end` handler that returns `context_edit` replacement entries.
-   These are persisted, so a `--continue` resume rebuilds the same context. First check the
-   exact return shape against pi's exported `extensions/types.ts`. If `turn_end` cannot
-   propose edits, apply the same deterministic plan in the request-local `context` event
-   instead.
-3. **Once per crossing** — shake at 70%, and again at 85% only if the first pass did not bring
-   the run back under 70%. Already-elided results are never re-elided. Append one line to the
-   next tool result, as context-budget does: "[tumwater: elided N old tool results (~K
-   tokens); each pointer says where the full text is]".
-4. **`src/pi-extension/context-budget.ts`** — refresh its header, which still describes pi
-   0.87. Keep its 85% stop-reading note as the backstop.
-
-**Files touched.** src/pi-extension/context-shake.ts (new), src/pi/pi-args.ts
-(`bundledExtensionPaths`), src/pi-extension/context-budget.ts, test/context-shake.test.ts (new),
-test/pi-args.test.ts.
-
-**Acceptance criteria.**
-- Planner tests:
-  - Below 70%, the plan is empty.
-  - At 70%, only results outside the newest 20k tokens and over 2,000 chars are selected.
-  - Edit, write and error results are never selected.
-  - A plan that reclaims under 10k tokens is empty.
-  - An already-elided result is not selected again.
-- A bash replacement names a full-output path, and a bash result without
-  `details.fullOutputPath` gets one written. A read replacement names the range.
-- With `contextWindow` 1,048,575 and fleet-sized contexts (≤140k), the extension plans
-  nothing.
-- `bundledExtensionPaths()` lists the extensions in the order bounded-output, context-shake,
-  context-budget, followed by the role-notes extension once that plan lands.
-- `npm run test` green.
-
 ### Revise rejected changes, part 1/2: a rejected change goes back to its author as uncommitted edits instead of being discarded (planned 2026-10-06 by operator)
 
 Context: a 2026-10-06 audit of the review gate covered events.jsonl since 2026-09-22.
@@ -376,6 +314,68 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Fallback-window shake: reclaim old tool output instead of only warning when a small-window model fills (planned 2026-10-06 by operator; matters once roles run on a fallback model with a ~127k–258k window; done 2026-10-06 by feature)
+
+Context: when a run fills its window, two things happen today.
+- The context-budget extension (src/pi-extension/context-budget.ts) tells the model its fill
+  level at 50/70/85% and asks it to wrap up.
+- Past the window minus 16,384, pi compacts with an LLM summary that loses the run's reads.
+
+On the 1M-window primaries neither fires: the largest fleet tick from Oct 2–6 reached 140k.
+The oMLX fallback models have 127k and 258k windows, though, and the model-fallback plans
+above will route roles there on provider failures. omp's `shake` compaction method reclaims
+context without a model call: it replaces old tool results with recoverable references and
+keeps the recent window intact. pi 1.0.0 has the primitive to do the same from an extension:
+a `turn_end` handler can append persisted `context_edit` entries (pi docs: extensions.md,
+session-format.md).
+
+**Goal.** When a run crosses 70% of its window, its old bulky tool results are replaced with
+short pointers the model can follow. The run can then finish its task instead of stopping
+early or being summarized.
+
+**Approach.**
+1. **`src/pi-extension/context-shake.ts`** (new bundled extension, loaded after
+   bounded-output and before context-budget) with a pure planner `shakePlan(messages, usage)`.
+   - At or above 70% usage, it selects `read` and `bash` tool results that are older than
+     the newest 20,000 estimated tokens and longer than 2,000 chars.
+   - A bash result is replaced by `[elided by tumwater: N chars; full output in <path>]`. It
+     reuses `details.fullOutputPath`, or else writes the full text with bounded-output's
+     `writeFullOutput`.
+   - A read result is replaced by `[elided by tumwater: N chars of <path>:<start>-<end>;
+     re-read the range if you still need it]`.
+   - It never selects edit or write results, error results, or the user prompt.
+   - It returns an empty plan when it would reclaim fewer than 10,000 estimated tokens.
+2. **Apply** — through a `turn_end` handler that returns `context_edit` replacement entries.
+   These are persisted, so a `--continue` resume rebuilds the same context. First check the
+   exact return shape against pi's exported `extensions/types.ts`. If `turn_end` cannot
+   propose edits, apply the same deterministic plan in the request-local `context` event
+   instead.
+3. **Once per crossing** — shake at 70%, and again at 85% only if the first pass did not bring
+   the run back under 70%. Already-elided results are never re-elided. Append one line to the
+   next tool result, as context-budget does: "[tumwater: elided N old tool results (~K
+   tokens); each pointer says where the full text is]".
+4. **`src/pi-extension/context-budget.ts`** — refresh its header, which still describes pi
+   0.87. Keep its 85% stop-reading note as the backstop.
+
+**Files touched.** src/pi-extension/context-shake.ts (new), src/pi/pi-args.ts
+(`bundledExtensionPaths`), src/pi-extension/context-budget.ts, test/context-shake.test.ts (new),
+test/pi-args.test.ts.
+
+**Acceptance criteria.**
+- Planner tests:
+  - Below 70%, the plan is empty.
+  - At 70%, only results outside the newest 20k tokens and over 2,000 chars are selected.
+  - Edit, write and error results are never selected.
+  - A plan that reclaims under 10k tokens is empty.
+  - An already-elided result is not selected again.
+- A bash replacement names a full-output path, and a bash result without
+  `details.fullOutputPath` gets one written. A read replacement names the range.
+- With `contextWindow` 1,048,575 and fleet-sized contexts (≤140k), the extension plans
+  nothing.
+- `bundledExtensionPaths()` lists the extensions in the order bounded-output, context-shake,
+  context-budget, followed by the role-notes extension once that plan lands.
+- `npm run test` green.
 
 ### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first; done 2026-10-06 by feature)
 
