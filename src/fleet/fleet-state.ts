@@ -163,9 +163,9 @@ export function pausedRoles(root: string): string[] {
  * (the CLI's pause/resume --role and the dashboard's per-row toggle are separate processes),
  * and writeJsonAtomic's last-writer-wins policy — correct for overwrite-style state — silently
  * drops one caller's pause when two whole-set writes race. These writers therefore serialize
- * through withSyncLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses, so the
- * crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are the
- * tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
+ * through withSyncLock (src/concurrency/lock.ts), the same mkdir-and-pid mutex the merge path uses,
+ * so the crash-recovery rules (dead pid, no-pid grace, age) and the ownership-checked release are
+ * the tested ones rather than a second hand-rolled lockfile protocol. A lock that cannot be
  * acquired within PAUSED_ROLES_LOCK_TIMEOUT_MS throws rather than writing unlocked — a pause
  * that silently fails to hold is worse than a pause that reports an error. The bound is long
  * enough to out-wait the no-pid grace that recovers a creator crashed mid-acquire, short
@@ -277,13 +277,14 @@ export interface OrchestratorInfo {
   pid: number;
   startedAt: number;
   roles: string[];
-  /** The running build's stamp and staleness (src/build/build-info.ts); absent when dist/ carries no
-   * stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
+  /** The running build's stamp and staleness (src/build/build-info.ts); absent when dist/ carries
+   * no stamp. Written at start and refreshed by the orchestrator whenever main moves, so observers
    * read one file instead of running git themselves. */
   build?: BuildStatus;
-  /** Present while the budget gate's fallback breaker (src/budget/fallback-breaker.ts) holds the configured free
-   * fallback demoted: the cap is reached and the pair is priced at zero, but its backend failed
-   * the breaker's failureLimit consecutive role ticks, so the scheduler reads the gate as
+  /** Present while the budget gate's fallback breaker (src/budget/fallback-breaker.ts) holds the
+   * configured free fallback demoted: the cap is reached and the pair is priced at zero, but its
+   * backend failed the breaker's failureLimit consecutive role ticks, so the scheduler reads the
+   * gate as
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.
    * Written by the orchestrator whenever the demotion changes; absent otherwise. */
   fallbackDemoted?: FallbackDemotion;
@@ -292,10 +293,11 @@ export interface OrchestratorInfo {
    * must show the tier's roles held exactly while the scheduler holds them. Written whenever
    * any breaker's demotion changes; absent when none stands. */
   fallbackDemotions?: Record<string, FallbackDemotion>;
-  /** The daily cost budget gate's own figures from the most recent poll (src/gates/budget-gates.ts):
-   * today's spend summed over the runners' LIVE in-memory states — charged run-by-run as each
-   * pi run folds, not only at the tick-end save — against the cap it was evaluated under.
-   * Published whenever it changes so observers (src/status/status-data.ts) can show what the scheduler
+  /** The daily cost budget gate's own figures from the most recent poll
+   * (src/gates/budget-gates.ts): today's spend summed over the runners' LIVE in-memory states —
+   * charged run-by-run as each pi run folds, not only at the tick-end save — against the cap it was
+   * evaluated under. Published whenever it changes so observers (src/status/status-data.ts) can
+   * show what the scheduler
    * is actually enforcing; a stopped fleet removes this file at exit, so the absence of a
    * running orchestrator means no published figure exists and the persisted sum is final.
    * Written by the orchestrator whenever the pair changes; absent otherwise. */
