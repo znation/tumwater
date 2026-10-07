@@ -4,7 +4,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
-import { shortSha as tsShortSha } from "../src/text/format.js";
+import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
 // pure view model that turns a status payload into what the page shows, the Markdown
@@ -397,5 +397,17 @@ test("the page's shortSha abbreviates like format.ts's 8-character rule", () => 
 
   for (const sha of ["abcdef1234567890", "abc", 12345678901234, null, undefined]) {
     assert.equal(shortSha(sha), tsShortSha(sha), `sha ${String(sha)}`);
+  }
+});
+
+test("the page's money formatters match format.ts's usd/usdCap rules", () => {
+  // The usage report and the fleet tiles render money through the page's fmtUsd/fmtCap; the
+  // browser runtime cannot import text/format.ts, so the copies must stay byte-identical to
+  // the TypeScript single home they mirror.
+  const { fmtUsd, fmtCap } = clientScope<{ fmtUsd(n: number): string; fmtCap(n: number): string }>(["format"], ["fmtUsd", "fmtCap"]);
+
+  for (const n of [0, 12.34, 50, 12.5, 12.999, 1_000_000, -3, NaN]) {
+    assert.equal(fmtUsd(n), tsUsd(n), `usd on ${String(n)}`);
+    assert.equal(fmtCap(n), tsUsdCap(n), `usdCap on ${String(n)}`);
   }
 });
