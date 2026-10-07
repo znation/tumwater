@@ -113,15 +113,7 @@ function acquireStep(dir: string, timeoutMs: number, waitedMs: number): AcquireS
   // An existing path is a held lock to wait on (and maybe break); publishLockDir is only for
   // an absent path, so a read-only parent that already holds a stale lock reports contention
   // and waits instead of failing on a temp dir it cannot create.
-  if (fs.existsSync(dir)) {
-    tryBreakStale(dir);
-    // Report the wait budget and the holder: this surfaces as a tick's lastError, and
-    // "gave up after 120s waiting on pid 999" is what distinguishes a slow holder from a
-    // wedged one (and names which process to look at).
-    if (waitedMs > timeoutMs)
-      throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
-    return "retry";
-  }
+  if (fs.existsSync(dir)) return retryOrTimeout(dir, timeoutMs, waitedMs);
   try {
     publishLockDir(dir);
   } catch (err) {
@@ -133,12 +125,21 @@ function acquireStep(dir: string, timeoutMs: number, waitedMs: number): AcquireS
     if (code !== "ENOTEMPTY" && code !== "EEXIST" && code !== "ENOTDIR") {
       throw new Error(`cannot acquire lock ${dir}: ${errorMessage(err)}`);
     }
-    tryBreakStale(dir);
-    if (waitedMs > timeoutMs)
-      throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
-    return "retry";
+    return retryOrTimeout(dir, timeoutMs, waitedMs);
   }
   return "acquired";
+}
+
+/** The tail every wait-step in acquireStep shares once a lock is held (or was lost in the
+ * publish race): break it if stale, then hand back "retry" for another pass — or throw the one
+ * timeout error once the wait budget is spent. That error surfaces as a tick's lastError, and
+ * naming the holder is what distinguishes a slow holder from a wedged one (and says which
+ * process to look at). Single-homed so the held path and the lost-race path cannot drift. */
+function retryOrTimeout(dir: string, timeoutMs: number, waitedMs: number): AcquireStep {
+  tryBreakStale(dir);
+  if (waitedMs > timeoutMs)
+    throw new Error(`timed out after ${timeoutMs / 1000}s waiting for lock ${dir}${lockHolderNote(dir)}`);
+  return "retry";
 }
 
 /** Create the lock with its holder pid already inside, published atomically by rename. The
