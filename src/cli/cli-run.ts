@@ -16,7 +16,12 @@ import {
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
-import { isFleetPaused, orchestratorAlive, pausedRoles } from "../fleet/fleet-state.js";
+import {
+  isFleetPaused,
+  orchestratorAlive,
+  pausedRoles,
+  readOrchestratorInfo,
+} from "../fleet/fleet-state.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";
@@ -99,7 +104,15 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // `run --role` stays an error: scoping is a once-round concept.
   const roleFilter = parseRoleFlag(args, enabledRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
-  if (orchestratorAlive(root)) fail("an orchestrator is already running for this repo");
+  // The refusal an operator hits by trying to start a second fleet in one repo: name the
+  // running pid and the two ways to stop it, so the fix is in the message instead of a
+  // separate `tumwater status`/help lookup. The info file is read once and reused for the
+  // liveness check, like snapshot's own poll.
+  const running = readOrchestratorInfo(root);
+  if (running !== null && orchestratorAlive(root, running))
+    fail(
+      `an orchestrator is already running for this repo (pid ${running.pid}) — stop it with \`tumwater stop\` from another terminal, or press Ctrl+C in the terminal that started it`,
+    );
   // The fleet-booting machinery loads only once a run actually boots: the orchestrator's
   // module graph (with its landing pipeline, review gate, and scheduler) is the CLI's heaviest
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them

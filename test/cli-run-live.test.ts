@@ -52,6 +52,10 @@ test("run refuses to start while another orchestrator is alive", async () => {
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
     assert.match(r.stderr, /an orchestrator is already running/);
+    // The message names the running pid and the fix (`tumwater stop` / Ctrl+C), so the
+    // operator who just tried to start a second fleet does not have to go looking.
+    assert.match(r.stderr, new RegExp(`pid ${process.pid}`));
+    assert.match(r.stderr, /tumwater stop/);
   } finally {
     fs.rmSync(orchestratorStatePath(repo), { force: true });
     restore();
