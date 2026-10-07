@@ -37,7 +37,7 @@ const MAX_MISSING_PATHS = 10;
 const MAX_NEWLINE_FILES = 10;
 
 /** The deterministic findings the landing gate would reject this uncommitted change for, or an
- * empty list when it is clean. `files` are the worktree's changed paths (untracked included);
+ * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
  * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
  *
  * Never throws: a check that fails yields no finding, so a git hiccup at staging time defers to
