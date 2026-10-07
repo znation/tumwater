@@ -12,6 +12,7 @@ import { openQuestionEntries } from "../backlog/backlog.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
+import { numberedList } from "../text/markdown.js";
 
 /** Cap on a question's one-line body preview, so one very long first line cannot dominate
  * the `questions` list. */
@@ -38,9 +39,7 @@ function firstBodySuffix(body: string): string {
 export function openQuestionList(root: string): string {
   const questions = openQuestionEntries(root);
   if (questions.length === 0) return "no open questions";
-  return questions
-    .map((q, i) => `${i + 1}. ${q.title}${firstBodySuffix(q.body)}`)
-    .join("\n");
+  return numberedList(questions.map((q) => `${q.title}${firstBodySuffix(q.body)}`));
 }
 
 /** The same list as data for `--json` (the backlog --json pattern: a JSON document in every

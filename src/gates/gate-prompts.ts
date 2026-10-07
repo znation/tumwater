@@ -3,6 +3,7 @@ import { TEST_RUNNER_RULE, dateLine } from "../prompt/prompt.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-contract.js";
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
@@ -11,6 +12,11 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
  * verdicts back to the loop that authored the change (loop.ts, main-red.ts). The
  * machine-detectable half of the gate's reply contract — verdict constants and detection for
  * parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
+
+/** The listed-reasons placeholder the review and revision notes share when a rejection recorded
+ * none: one home so a revision round's note and the next rejection's note cannot disagree on
+ * how an empty objection list reads. */
+const NO_REASONS = "(no reasons recorded)";
 
 /** The prompt for resolving merge conflicts left in a loop's worktree. `check` — the project's
  * resolved check, as the tick prompt threads it — names the command that keeps the tests passing:
@@ -108,10 +114,7 @@ not just whether it is correct.`,
       `The author's commit body (claimed motivation, risk, verification — check these claims against the diff):\n${commitBody}`,
     );
   if (priorReview) {
-    const list =
-      priorReview.reasons.length > 0
-        ? priorReview.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
-        : "(no reasons recorded)";
+    const list = numberedList(priorReview.reasons, NO_REASONS);
     parts.push(
       `This change is revision ${priorReview.round} of one previously rejected in review. Check each
 of the prior review's numbered objections FIRST — an unresolved one is a rejection on its own —
@@ -238,7 +241,7 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
 export function buildStageFixPrompt(findings: string[]): string {
   return `Your change is about to commit, but the harness's pre-queue self-check found faults the
 landing gate rejects deterministically:
-${findings.map((f, i) => `${i + 1}. ${f}`).join("\n")}
+${numberedList(findings)}
 Fix each one in the worktree now with the smallest edit that resolves it, and keep everything else
 as it is. When a finding is wrong, say why in your RISK line instead of forcing a change that
 does not help. Do not run any git command that changes state (no add, commit, reset, checkout) —
@@ -260,10 +263,7 @@ export function buildRejectedReviewNote(review: {
    * the note must not read as an invitation to revise it again. */
   exhausted?: boolean;
 }): string {
-  const list =
-    review.reasons.length > 0
-      ? review.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
-      : "(no reasons recorded)";
+  const list = numberedList(review.reasons, NO_REASONS);
   let context = "";
   if (review.at !== undefined) {
     context = ` (${formatTimestamp(review.at)}`;
@@ -286,10 +286,7 @@ export function buildRevisionNote(
   round: number,
   limit: number,
 ): string {
-  const list =
-    review.reasons.length > 0
-      ? review.reasons.map((r, i) => `${i + 1}. ${r}`).join("\n")
-      : "(no reasons recorded)";
+  const list = numberedList(review.reasons, NO_REASONS);
   return `Your previously rejected change is already in the worktree as uncommitted edits — this
 is revision ${round} of ${limit}. This tick's ONE task is to revise it; do not author anything else.
 The review objections were:\n${list}
