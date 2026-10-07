@@ -15,6 +15,14 @@ import { shortSha, usd } from "./format.js";
 
 const NO_REASONS_GIVEN = "no reasons given";
 
+/** The reason an over-long prompt or config field carries: the text rides into a tick's
+ * prefill, so a longer value bloats every tick's context. The single home of that tail,
+ * shared by init's seed check (init/init.ts) and config-validation's customLoops task and
+ * roles-instructions caps (config/config-validation.ts), so the three cannot drift on the
+ * wording. inbox-submit's promptLengthProblem renders a role-scoped variant ("it rides into
+ * the <role> tick's prefill") and keeps its own wording. */
+export const PREFILL_REASON = "it rides into every tick's prefill";
+
 /** The reason a review rejection leads with — its first listed reason, or `no reasons given`
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned

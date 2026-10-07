@@ -17,6 +17,7 @@ import {
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";
+import { PREFILL_REASON } from "../text/phrases.js";
 import {
   getTemplate,
   BUGS_TEMPLATE,
@@ -106,7 +107,7 @@ export async function initProject(
         `the initial prompt with the ${tpl.id} template's preamble`,
         combinedPrompt.length,
         INITIAL_PROMPT_MAX_CHARS,
-        "it rides into every tick's prefill",
+        PREFILL_REASON,
       ),
     );
   }

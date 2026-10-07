@@ -15,6 +15,7 @@ import {
 import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
+import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { parseModelSelector } from "./model-selector.js";
 import {
@@ -375,7 +376,7 @@ function checkSelectorHalves(
               `${where}.task`,
               task.length,
               CUSTOM_TASK_MAX_CHARS,
-              "it rides into every tick's prefill",
+              PREFILL_REASON,
             ),
           );
         }
@@ -408,7 +409,7 @@ function checkSelectorHalves(
               `roles.${id}.instructions`,
               instructions.length,
               ROLE_INSTRUCTIONS_MAX_CHARS,
-              "it rides into every tick's prefill",
+              PREFILL_REASON,
             ),
           );
         checkModelTriple(o, `roles.${id}.`, "tier-name");
