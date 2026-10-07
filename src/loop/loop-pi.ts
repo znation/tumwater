@@ -112,7 +112,8 @@ export class LoopPi {
    * tick, so `tumwater abort --role` (which targets a tick's per-tick abort controller) must
    * never reach it, and the stale per-tick controller of a finished tick must not abort it
    * either. Session naming is the caller's (the reviewer composes its own from
-   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through LanderContext.runPi).
+   * ReviewContext.tick; landing-merge.ts keeps its conflict-resolver naming through
+   * LanderContext.runPi).
    */
   async runLandingPi(
     wt: string,
@@ -144,19 +145,18 @@ export class LoopPi {
   }
 
   /** The one bounded transient-failure retry shared by EVERY pi run this loop makes
-   * (runRolePi, runLandingPi, and runGatePi): two transient failures of the world (not of the session)
-   * earn exactly one retry that continues the same session — the model server timing out an
-   * idle predict stream, the provider severing that stream outright (undici's bare
-   * "terminated", the stream-severed backend kind), the provider accepting a request and
-   * then failing to answer it in time (its own "Request timed out.", the timeout backend
+   * (runRolePi, runLandingPi, and runGatePi): two transient failures of the world (not of
+   * the session) earn exactly one retry that continues the same session — the model server
+   * timing out an idle predict stream, the provider severing that stream outright (undici's
+   * bare "terminated", the stream-severed backend kind), the provider accepting a request
+   * and then failing to answer it in time (its own "Request timed out.", the timeout backend
    * kind), pi itself crashing on a torn server chunk (a JSON.parse failure on its stderr),
-   * and the provider rate-limiting the request with
-   * HTTP 429 (where the
-   * provider's Retry-After hint, when sent, is waited out first — capped, so one provider's
-   * generosity cannot eat the tick's own run budget). A harness-killed or quiet-killed run
-   * never takes the transient-retry path:
-   * its session is intact but resuming it would just re-hit whatever hung, burning another
-   * full quiet timeout. Extracted verbatim from runRolePi so the rule lives in one place
+   * and the provider rate-limiting the request with HTTP 429 (where the provider's
+   * Retry-After hint, when sent, is waited out first — capped, so one provider's generosity
+   * cannot eat the tick's own run budget). A harness-killed or quiet-killed run never takes
+   * the transient-retry path: its session is intact but resuming it would just re-hit
+   * whatever hung, burning another full quiet timeout. Extracted verbatim from runRolePi so
+   * the rule lives in one place
    * (574a14c's loopPiOpts move was the wiring half of the same single-source-of-truth).
    */
   private async runWithTransientRetry(
@@ -379,9 +379,9 @@ export class LoopPi {
 
 /** The loop's shared pi wiring as landing code reaches it, split into the two halves the
  * landing contexts need. `RunsPi` is one pi run in `wt` through the loop's shared wiring
- * (role config, session dir, raw log, transient-failure retry — src/loop/loop-pi.ts); `FoldsUsage`
- * adds one run's spend to the owning loop's counters exactly once (the reviewer and
- * conflict-resolution runs charge to the authoring role). Declared once here so the contract
+ * (role config, session dir, raw log, transient-failure retry — src/loop/loop-pi.ts);
+ * `FoldsUsage` adds one run's spend to the owning loop's counters exactly once (the reviewer
+ * and conflict-resolution runs charge to the authoring role). Declared once here so the contract
  * — and its wording — cannot drift apart across the four contexts that restate it:
  * LanderContext and BatchRoleWiring carry all three halves (PiRunWiring), MergeContext only
  * the resolver's runner (its runPi folds usage internally), and VettedLanding only the fold.
