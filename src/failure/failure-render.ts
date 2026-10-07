@@ -88,20 +88,21 @@ function hoursPhrase(ms: number): string {
   return `${(ms / 3_600_000).toFixed(1)} h`;
 }
 
-/** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only
- * with the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed
- * by src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed
- * by the cut), and every free string is capped — cluster examples at 120 chars (plus a
- * `… (+N chars)` cut marker when truncated, so a marked cut can never read as a complete
- * message — BUGS.md 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4 names plus a remainder count, and any loop id
- * sliced to 32 chars (config validation already refuses longer custom-loop ids, so the slice is
- * a guard rather than the real bound). Cluster counts are capped at top-N, and the Fleet state
- * changes section is capped at STATE_CHANGE_TOP lines with each payload at STATE_CHANGE_MAX and
- * each free field at STATE_CHANGE_FIELD_MAX; the landed list at LANDED_TOP lines, each capped
- * section closing with one remainder line when its cut dropped anything. Nothing here grows with how bad the window was:
- * measured 6,017 bytes at the CLI's default 14 days on the live fleet, and the worst-case
- * byte-bound fixture in test/failure-render.test.ts covers transition events too. Pure function
- * of FailureReportData: no I/O, no clock reads. */
+/** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only with
+ * the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed by
+ * src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
+ * the cut), and every free string is capped — cluster examples at 120 chars (plus a `… (+N chars)`
+ * cut marker when truncated, so a marked cut can never read as a complete message — BUGS.md
+ * 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4 names plus a
+ * remainder count, and any loop id sliced to 32 chars (config validation already refuses longer
+ * custom-loop ids, so the slice is a guard rather than the real bound). Cluster counts are capped
+ * at top-N, and the Fleet state changes section is capped at STATE_CHANGE_TOP lines with each
+ * payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the landed list at
+ * LANDED_TOP lines, each capped section closing with one remainder line when its cut dropped
+ * anything. Nothing here grows with how bad the window was: measured 6,017 bytes at the CLI's
+ * default 14 days on the live fleet, and the worst-case byte-bound fixture in
+ * test/failure-render.test.ts covers transition events too. Pure function of FailureReportData: no
+ * I/O, no clock reads. */
 export function renderFailureMarkdown(data: FailureReportData): string {
   const lines: string[] = [];
   lines.push("# tumwater failure digest");
