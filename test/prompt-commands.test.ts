@@ -376,3 +376,17 @@ test("prompt --attach fails on a nonexistent path, an unsupported extension, and
   assert.match(size, /at most 5242880 \(5 MiB\) per image/);
   assert.equal(inboxSize(root), 0, "none of the refused shapes queued anything");
 });
+
+test("prompt --attach refuses the path list's cheap rules before reading any file", async () => {
+  const root = makeRoot();
+  // Five paths that do not exist: only a check that runs before the reads can answer with the
+  // count cap instead of the first path's read failure.
+  const fivePaths = Array.from({ length: 5 }, (_, i) => ["--attach", path.join(root, `nope${i}.png`)]).flat();
+  const over = await expectFailAsync(() => cmdPrompt(root, [...fivePaths, "note"]));
+  assert.match(over, /at most 4 images per prompt \(got 5\)/);
+  // A non-image extension on a path that does not exist: the extension rule fires before the
+  // stat and the read, so the missing file is never named.
+  const ext = await expectFailAsync(() => cmdPrompt(root, ["--attach", path.join(root, "nope.txt"), "note"]));
+  assert.match(ext, /unsupported image type "\*\.txt"/);
+  assert.equal(inboxSize(root), 0, "nothing was queued");
+});

@@ -28,7 +28,13 @@ import { humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
-import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
+import {
+  promptImageExtensionProblem,
+  promptImageSizeProblem,
+  promptImagesCountProblem,
+  promptImagesProblem,
+  type PromptImageInput,
+} from "../inbox/inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 
@@ -137,6 +143,27 @@ function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome
   say(labelRole ? `${outcome.status} (${role}): ${promptPreview(text)}` : `${outcome.status}: ${promptPreview(text)}`);
 }
 
+/** Refuse an `--attach` path list from what the paths alone reveal, before any file is read:
+ * the shared image-count cap first (so a glob that expanded past it is rejected without
+ * reading or base64-encoding dozens of files), then each path's extension and on-disk size.
+ * A path that cannot be statted is left for the read below to report with its own
+ * missing-file wording. Returns the first problem, or null when every path survives. */
+function attachPathsProblem(paths: readonly string[]): string | null {
+  const countProblem = promptImagesCountProblem(paths.length);
+  if (countProblem !== null) return countProblem;
+  for (const p of paths) {
+    const extProblem = promptImageExtensionProblem(p);
+    if (extProblem !== null) return extProblem;
+    try {
+      const sizeProblem = promptImageSizeProblem(path.basename(p), fs.statSync(p).size);
+      if (sizeProblem !== null) return sizeProblem;
+    } catch {
+      // Missing or unreadable: the read below names it.
+    }
+  }
+  return null;
+}
+
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
  * director (default) or one role's queue, list what is queued with per-loop position
  * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
@@ -235,13 +262,16 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // `--at <duration>` is a delay, not an epoch: the marker's not-before time is now + the
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
   const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
-  // `--attach <path>`: read each file whole and fail naming the path before anything is
-  // queued, then re-run the GUI endpoint's validation client-side (promptImagesProblem) so
+  // `--attach <path>`: refuse what the paths alone reveal before reading anything
+  // (attachPathsProblem above — count, extension, on-disk size), then read each surviving
+  // file whole and re-run the GUI endpoint's validation client-side (promptImagesProblem) so
   // the CLI's error names the broken rule — extension list, per-image cap, image-count cap —
   // with the same wording the dashboard answers 400 with, instead of deferring to
   // savePromptImages's post-enqueue rejection.
   let images: PromptImageInput[] | undefined;
   if (parsed.attachPaths.length > 0) {
+    const pathProblem = attachPathsProblem(parsed.attachPaths);
+    if (pathProblem !== null) fail(pathProblem);
     images = parsed.attachPaths.map((p) => {
       let bytes: Buffer;
       try {

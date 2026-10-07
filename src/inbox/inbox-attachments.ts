@@ -33,35 +33,60 @@ export interface PromptImageInput {
 const IMAGE_REF_LINE = /^\[image attached: (.+)\]$/;
 const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
 
+/** The image-count rule: at most PROMPT_IMAGES_MAX_COUNT entries. Split out of
+ * promptImagesProblem so a surface holding the raw path list can refuse an over-long
+ * `--attach` list before reading or encoding a single file, with the count wording still the
+ * one definition both call sites render. Null when the count is acceptable. */
+export function promptImagesCountProblem(count: number): string | null {
+  return count > PROMPT_IMAGES_MAX_COUNT
+    ? `at most ${PROMPT_IMAGES_MAX_COUNT} images per prompt (got ${count})`
+    : null;
+}
+
+/** The image-extension rule: a name whose lowercased extension is one pi's read tool renders.
+ * A name with no extension is echoed whole (there is no `*` part to show), otherwise the
+ * `*<ext>` shape. Split out so an `--attach` path can be refused before it is read. */
+export function promptImageExtensionProblem(name: string): string | null {
+  const ext = path.extname(name).toLowerCase();
+  if (PROMPT_IMAGE_EXTENSIONS.includes(ext)) return null;
+  return `unsupported image type ${JSON.stringify(ext === "" ? name : `*${ext}`)} — expected one of ${PROMPT_IMAGE_EXTENSIONS.join(" ")}`;
+}
+
+/** The per-image size rule, in decoded bytes: at most PROMPT_IMAGE_MAX_BYTES. Split out so a
+ * surface holding an on-disk path can stat it and refuse an oversized file before reading it
+ * into memory. */
+export function promptImageSizeProblem(name: string, bytes: number): string | null {
+  return bytes > PROMPT_IMAGE_MAX_BYTES
+    ? `image ${JSON.stringify(name)} is ${bytes} bytes — at most ${PROMPT_IMAGE_MAX_BYTES} (${PROMPT_IMAGE_MAX_BYTES / (1024 * 1024)} MiB) per image`
+    : null;
+}
+
 /** Validate an `images` body field before anything is written: an array of at most
  * PROMPT_IMAGES_MAX_COUNT entries, each an object whose name carries an image extension and
  * whose dataBase64 is valid base64 decoding to at most PROMPT_IMAGE_MAX_BYTES. Returns the
  * first rule broken, phrased for the 400 the GUI endpoint answers with, or null when the
- * images are acceptable. */
+ * images are acceptable. The count, extension, and size rules are the exported helpers
+ * above — the CLI's pre-read check of an `--attach` path list refuses those same three with
+ * the same wording. */
 export function promptImagesProblem(images: unknown): string | null {
   if (!Array.isArray(images)) return "images must be an array of { name, dataBase64 }";
-  if (images.length > PROMPT_IMAGES_MAX_COUNT) {
-    return `at most ${PROMPT_IMAGES_MAX_COUNT} images per prompt (got ${images.length})`;
-  }
+  const countProblem = promptImagesCountProblem(images.length);
+  if (countProblem !== null) return countProblem;
   for (const image of images) {
     if (!isJsonObject(image)) {
       return "each image must be { name, dataBase64 }";
     }
     const { name, dataBase64 } = image;
     if (!isNonBlankString(name)) return "each image needs a file name";
-    const ext = path.extname(name).toLowerCase();
-    if (!PROMPT_IMAGE_EXTENSIONS.includes(ext)) {
-      return `unsupported image type ${JSON.stringify(ext === "" ? name : `*${ext}`)} — expected one of ${PROMPT_IMAGE_EXTENSIONS.join(" ")}`;
-    }
+    const extProblem = promptImageExtensionProblem(name);
+    if (extProblem !== null) return extProblem;
     if (typeof dataBase64 !== "string") return `image ${JSON.stringify(name)}: dataBase64 must be a base64 string`;
     const b64 = dataBase64.replace(/\s+/g, "");
     if (b64.length === 0 || b64.length % 4 !== 0 || !BASE64_RE.test(b64)) {
       return `image ${JSON.stringify(name)}: dataBase64 must be valid base64`;
     }
-    const bytes = Buffer.from(b64, "base64").byteLength;
-    if (bytes > PROMPT_IMAGE_MAX_BYTES) {
-      return `image ${JSON.stringify(name)} is ${bytes} bytes — at most ${PROMPT_IMAGE_MAX_BYTES} (${PROMPT_IMAGE_MAX_BYTES / (1024 * 1024)} MiB) per image`;
-    }
+    const sizeProblem = promptImageSizeProblem(name, Buffer.from(b64, "base64").byteLength);
+    if (sizeProblem !== null) return sizeProblem;
   }
   return null;
 }
