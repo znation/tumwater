@@ -15,8 +15,11 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
+import { heldProviders } from "../src/fleet/fleet-hold.js";
+import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
+import { piRunResult } from "./fake-pi.js";
 import { MODELS_JSON } from "./models-fixtures.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import type { OrchestratorInfo } from "../src/fleet/fleet-state.js";
@@ -73,10 +76,12 @@ function fakeRunner(
   state: LoopState,
   tickPair: { provider?: string; model?: string } | null,
   handbacks: string[],
+  provider = "paid",
 ): LoopRunner {
   const runner = {
     role,
     state,
+    runProvider: () => provider,
     tickModel: () => (state.running ? tickPair : null),
     handBackTick: () => {
       handbacks.push(role);
@@ -154,6 +159,60 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   assert.deepEqual(handoff[0]!.roles, ["feature"]);
   assert.equal(handoff[0]!.provider, "free");
   assert.equal(handoff[0]!.model, "qwen-free");
+});
+
+// The per-provider failure hold keys on the provider each role's NEXT tick will run on
+// (PLANS.md "Model failure fallback, part 1/2"): a role mid-episode reports its fallback
+// pair, so a storm on that pair forms its own hold while the abandoned primary stays clear —
+// and a healthy role still on the primary is not gated by the fallback hold.
+test("pollFleetGates: a fallback episode's failures key the hold on the fallback provider", () => {
+  const root = tmpdir("gate-polls-fallback-hold-");
+  fs.mkdirSync(root, { recursive: true });
+  const modelsPath = path.join(root, "models.json");
+  fs.writeFileSync(modelsPath, MODELS_JSON);
+  const config = defaultConfig();
+  config.provider = "paid";
+  config.model = "gpt-x";
+  config.fallbackModel = { provider: "free", model: "qwen-free" };
+  const now = Date.now();
+  const episode = (): ModelFallbackState => ({
+    failures: 0,
+    since: now - 1000,
+    probeAt: now + 60_000,
+    cooldownMs: 5 * 60_000,
+    reason: "rate-limit",
+  });
+  const feature = new LoopRunner(root, "feature", config, "main");
+  const docs = new LoopRunner(root, "docs", config, "main");
+  const perf = new LoopRunner(root, "perf", config, "main");
+  for (const r of [feature, docs]) {
+    r.state.modelFallback = episode();
+    // Stamp each role's latest observation as a 429; the poll reads the provider through
+    // runProvider, which resolves the active episode's fallback pair, not the primary.
+    r.foldLandingUsage(piRunResult({ ok: false, transientRateLimit: true }));
+  }
+  const runners = [feature, docs, perf];
+
+  const states = newFleetGateStates(config);
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", "docs", "perf"] },
+    infoFile: path.join(root, "orchestrator.json"),
+  };
+  pollFleetGates(states, ctx);
+
+  const held = heldProviders(states.fleetHold);
+  assert.ok(held.has("free"), "the storm on the fallback pair forms a hold there");
+  assert.ok(!held.has("paid"), "the abandoned primary is not held");
+  assert.equal(
+    perf.runProvider(now),
+    "paid",
+    "a role with no episode keeps reporting the primary, so the free hold does not gate it",
+  );
 });
 
 test("pollFleetGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yields the empty set", () => {

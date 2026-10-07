@@ -629,3 +629,24 @@ test("formatEvent renders model_changed with the new selector, or pi's default",
   } as never);
   assert.match(cleared, /harness\s+model changed — now pi's default$/);
 });
+
+test("formatEvent renders the model-fallback episode start and end", () => {
+  const started = formatEvent({
+    ts: 0,
+    loop: "bugfix",
+    type: "model_fallback_started",
+    provider: "backup",
+    model: "f1",
+    reason: "server",
+  } as never);
+  assert.match(started, /bugfix\s+model fallback — backup\/f1 engaged \(primary failing: server\)$/);
+  const ended = formatEvent({
+    ts: 0,
+    loop: "bugfix",
+    type: "model_fallback_ended",
+    provider: "primary",
+    model: "m1",
+    durationMs: 5 * 60_000,
+  } as never);
+  assert.match(ended, /bugfix\s+model fallback ended — back on primary\/m1 after 5m$/);
+});

@@ -28,8 +28,9 @@ import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { waitFor } from "./wait.js";
 
-/** A stand-in runner: only what launchDueTicks reads. `config` is what the evidence fold
- * reads (part 5c/8: the tick's pair comes from the runner's own config view). */
+/** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —
+ * the tick's pair comes from the runner's own config view (part 5c/8), or from its active
+ * model-fallback episode in the real runner. */
 function fakeRunner(
   role: string,
   tick: () => Promise<TickOutcome> = async () => ({ result: "changed" }),
@@ -39,6 +40,7 @@ function fakeRunner(
     role,
     state: {} as LoopState,
     config,
+    runConfig: () => config as ReturnType<LoopRunner["runConfig"]>,
     tick,
   } as unknown as LoopRunner;
 }
@@ -142,6 +144,30 @@ test("the probe goes to a runner whose tier resolves to the probed pair, one per
   assert.equal(second.state.running ?? false, false, "the second eligible role was never reserved: one claim per poll");
   assert.equal(c.roleTickDurationsMs.length, 1, "only the probe ran");
   assert.equal(c.rolePermitHolders.size, 0);
+});
+
+test("a model-fallback tick folds its breaker evidence into the pair runConfig names, not the primary (PLANS.md 1/2)", async () => {
+  // The runner's installed config is the primary (what configForRole would read), but its
+  // active model-fallback episode means the tick runs the fallback pair, which runConfig —
+  // the start pass's read — returns. The evidence must land on the fallback breaker; the
+  // primary's must stay untouched.
+  const primary = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "paid/gpt", 10);
+  const fallback = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
+  const gateStates = {
+    budget: { breakers: { "paid/gpt": primary, "free/qwen": fallback }, engaged: "paid/gpt" },
+  } as unknown as FleetGateStates;
+  const runner = {
+    role: "feature",
+    state: {} as LoopState,
+    config: { roles: {}, provider: "paid", model: "gpt" },
+    runConfig: () => ({ roles: {}, provider: "free", model: "qwen" }),
+    tick: async () => ({ result: "error" }) as TickOutcome,
+  } as unknown as LoopRunner;
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]), budgetActive: true, gateStates });
+  launchDueTicks(c);
+  await settle(c);
+  assert.equal(c.gateStates.budget.breakers["free/qwen"]?.failures, 1, "the fallback pair carries the failure");
+  assert.equal(c.gateStates.budget.breakers["paid/gpt"]?.failures, 0, "the abandoned primary stays clean");
 });
 
 test("a probe with no eligible runner leaves the other due launches alone (part 5c/8)", async () => {

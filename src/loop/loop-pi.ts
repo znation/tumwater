@@ -262,9 +262,12 @@ export class LoopPi {
    * bounded turn, folded into the tick's usage like every other run. Null when there is no
    * session to continue (pi never wrote one) — the caller then derives a subject itself. The
    * run is returned even when it failed so the caller can honor a shutdown abort. */
-  async requestSummary(wt: string): Promise<PiRunResult | null> {
+  async requestSummary(wt: string, config?: ResolvedModelConfig): Promise<PiRunResult | null> {
     if (!hasResumableSession(sessionDir(this.host.root, this.host.role))) return null;
-    const cfg = configForRole(this.host.config(), this.host.role);
+    // The follow-up continues this tick's own session, so it must run on the same pair that
+    // session ran on: the caller passes the tick's effective config (the fallback pair while a
+    // model-fallback episode is active). A caller without one rides the role's own config.
+    const cfg = config ?? configForRole(this.host.config(), this.host.role);
     // The shared per-loop wiring (loopPiOpts) with the follow-up's hard caps overriding the
     // authoring run's budget: one short reply on a warm session. The run takes the loop's
     // SHARED transient-failure retry (BUGS.md 2026-10-01): a 429 on the follow-up turn waits

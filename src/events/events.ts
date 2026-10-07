@@ -74,6 +74,8 @@ export interface HarnessEvent {
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
     | "model_changed" // a live tumwater.json edit changed the fleet's model wiring; carries from/to (fleetModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
+    | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
+    | "model_fallback_ended" // a probe tick on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
     | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it

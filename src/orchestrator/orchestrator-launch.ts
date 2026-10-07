@@ -21,7 +21,6 @@ import { logEvent } from "../events/events.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
-import { configForRole } from "../config/config-views.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleTick } from "../tick/tick-timing.js";
@@ -155,12 +154,15 @@ export function launchDueTicks(ctx: LaunchContext): void {
         async () => {
           started = true;
           // A role tick that starts while the budget holds runs on the fallback pair its tier
-          // resolved to (the gate's per-tier view was installed in its config), so its outcome
-          // is the evidence for THAT pair's breaker (part 5c/8: per-pair evidence, not the
-          // engaged pair's — a per-tier fallback puts different roles on different pairs). The
-          // pair is read from the config the tick will resolve (configForRole, exactly what
-          // loop.ts's tick() captures as tickPair), not from a fleet-wide engaged pair.
-          const cfg = runner.role === DIRECTOR_ROLE ? null : configForRole(runner.config, runner.role);
+          // resolved to (the gate's per-tier view was installed in its config), or — when a
+          // model-fallback episode is active — on the tier's model-fallback pair, which can
+          // differ from the budget pair. Its outcome is the evidence for the pair it ACTUALLY
+          // ran on, so read it from runConfig (config + episode), never from configForRole
+          // alone: a per-pair breaker fed a fallback tick under the primary's name would
+          // misprice a healthy pair and miss a dead one (PLANS.md "Model failure fallback,
+          // part 1/2").
+          const now = Date.now();
+          const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
           const ranPair =
             budgetActive && cfg !== null && cfg.model !== undefined
               ? modelPairName({ provider: cfg.provider, model: cfg.model })

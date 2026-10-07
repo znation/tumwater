@@ -7,6 +7,7 @@ import {
   configForRole,
   FALLBACK_REVIEW_TIMEOUT_S,
   fallbackPair,
+  fallbackRoleConfig,
   fleetModelLabel,
   reviewConfig,
   resolveTierFallbacks,
@@ -384,6 +385,28 @@ test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides
   const pausedStrong: TierFallback = { pair: null, from: null };
   const half = applyFallbackModel(config, { ...resolved, strong: pausedStrong });
   assert.deepEqual(half.model, { small: "omlx/d:low", default: "omlx/d:low" });
+});
+
+test("fallbackRoleConfig resolves the role's tier pair and is null when it pauses", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = "paid/primary";
+  config.fallback = "free/f";
+  const fb = fallbackRoleConfig(config, "feature");
+  assert.equal(fb?.provider, "free");
+  assert.equal(fb?.model, "f");
+  assert.equal(
+    fb?.minTickIntervalSeconds,
+    config.roles.feature?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+  );
+  // A strong-tier role borrows the default tier's own fallback (BORROW_ORDER).
+  config.roles.feature = { enabled: true, model: "strong" };
+  const strong = fallbackRoleConfig(config, "feature");
+  assert.equal(strong?.provider, "free");
+  assert.equal(strong?.model, "f");
+  // No fallback configured resolves every tier to pause: the feature is off.
+  const none: TumwaterConfig = defaultConfig();
+  none.model = "paid/primary";
+  assert.equal(fallbackRoleConfig(none, "feature"), null);
 });
 
 test("applyFallbackModel without a resolved map is unchanged", () => {

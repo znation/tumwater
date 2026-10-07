@@ -332,6 +332,26 @@ export function resolveTierFallbacks(
   return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };
 }
 
+/** The config a role's ticks run on while a model-fallback episode is active (PLANS.md "Model
+ * failure fallback, part 1/2"): the role's tier pair from resolveTierFallbacks (the tier's own
+ * pair, else BORROW_ORDER's borrow), shaped like configForRole — provider/model/thinking over
+ * the role's own and top-level values, plus the role's minTickIntervalSeconds. Null when the
+ * tier resolves to pause (no fallback configured), so the feature stays off. Pure. */
+export function fallbackRoleConfig(config: TumwaterConfig, role: string): ResolvedModelConfig | null {
+  const tier = roleSeamTier(config, role);
+  const pair = resolveTierFallbacks(config, () => true)[tier].pair;
+  if (pair === null) return null;
+  const rc = config.roles[role];
+  return {
+    ...withModelOverrides(config, tier, {
+      provider: pair.provider,
+      model: pair.model,
+      thinking: pair.thinking,
+    }),
+    minTickIntervalSeconds: rc?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+  };
+}
+
 /** The per-tier fallback labels the observability surfaces render (part 7b/8): tier →
  * `provider/model[ (from <tier>)]` for every tier the resolution gives a pair, in tier order.
  * The `(from …)` suffix marks a borrowed pair — a strong-tier borrow is the fact an operator

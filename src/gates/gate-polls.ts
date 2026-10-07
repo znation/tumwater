@@ -30,7 +30,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEvent } from "../events/events.js";
 import { writeJsonFile } from "../files/json-files.js";
 import type { OrchestratorInfo } from "../fleet/fleet-state.js";
-import { configForRole, roleSeamTier } from "../config/config-views.js";
+import { roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-views.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost
@@ -285,13 +285,16 @@ export function pollFleetGates(
   );
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
-  // episodic fields, and the provider its runs resolve to (configForRole — the run's
-  // resolved config; undefined when pi's default is in charge). Built ONCE per poll so the
-  // hold and the spread read the same list, like holdObservations on the reducer side.
-  const holdInputs = (config: TumwaterConfig, rs: readonly LoopRunner[]): HoldInputs[] =>
+  // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier
+  // fallback pair while a model-fallback episode is active, else the role's resolved config;
+  // undefined when pi's default is in charge). Built ONCE per poll so the hold and the spread
+  // read the same list, like holdObservations on the reducer side. Keying on the effective
+  // provider is what lets a storm on the fallback pair form its own hold while the abandoned
+  // primary stays clear (PLANS.md "Model failure fallback, part 1/2").
+  const holdInputs = (rs: readonly LoopRunner[]): HoldInputs[] =>
     rs.map((r) => ({
       role: r.role,
-      provider: configForRole(config, r.role).provider,
+      provider: r.runProvider(now),
       ...(r.lastRateLimit ? { lastRateLimit: r.lastRateLimit } : {}),
       ...(r.lastBackendFailure ? { lastBackendFailure: r.lastBackendFailure } : {}),
     }));
@@ -316,7 +319,7 @@ export function pollFleetGates(
   // provider, lifted holds kept keyed for their relapse memory but never reading as held —
   // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
   // permit after a later poll sees that poll's world.
-  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(liveConfig, runners), now);
+  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(runners), now);
 
   // Fleet-wide error-storm warning (src/failure/error-storm.ts): when several roles' tick streaks
   // fail consecutively on one shared cause, each role's own "consecutive tick failures"
@@ -332,7 +335,7 @@ export function pollFleetGates(
   // together — this counts raw failures of one kind across roles in a rolling window,
   // so a degraded backend that fails the fleet widely and shallowly still names itself.
   // Observational only, like the error storm: it gates nothing.
-  states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(liveConfig, runners), now);
+  states.failureSpread = pollFailureSpread(root, states.failureSpread, holdInputs(runners), now);
 
   return {
     gate,

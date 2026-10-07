@@ -44,7 +44,7 @@ import {
 } from "../tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
 import { heldProviders } from "../fleet/fleet-hold.js";
-import { configForRole, reviewRunConfig } from "../config/config-views.js";
+import { reviewRunConfig } from "../config/config-views.js";
 
 const POLL_MS = 2000;
 
@@ -336,9 +336,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         liveConfig.review.enabled && fleetHeldNow().has(reviewRunConfig(liveConfig).provider);
       const reviewHeld =
         liveConfig.review.enabled && fleetHeldProviders.has(reviewRunConfig(liveConfig).provider);
-      const roleProviders = new Map(
-        runners.map((r) => [r.role, configForRole(liveConfig, r.role).provider as string | undefined]),
-      );
+      const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
 
       // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state machine observe it.
       // `hold` starts no new ticks at all — director included; a restart lands within the drain's

@@ -273,6 +273,13 @@ export function eventMessage(e: HarnessEvent): string {
       // The live-edit sibling of config_changed: names the new selector, the one fact the key
       // list cannot show. The per-role diffs stay structured on the event.
       return `model changed — now ${e.to ?? "pi's default"}`;
+    case "model_fallback_started":
+      // Routine-with-explanation, like rate_limit_hold: the switch IS the harness handling the
+      // failure. Names the pair the role now runs on and why the primary was abandoned.
+      return `model fallback — ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} engaged (primary failing: ${e.reason ?? "backend failure"})`;
+    case "model_fallback_ended":
+      // The return counterpart: names the pair ticks resume on and how long the episode ran.
+      return `model fallback ended — back on ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} after ${Math.round(Number(e.durationMs ?? 0) / 60_000)}m`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.

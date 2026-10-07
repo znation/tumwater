@@ -1,4 +1,5 @@
 import type { TickResult } from "../tick/tick-outcome.js";
+import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { statePath } from "../paths.js";
 
@@ -131,6 +132,12 @@ export interface LoopState {
    * prompts until its next change is queued — the author's only memory that the work is gone
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
+  /** This role's active model-fallback episode (src/loop/model-fallback.ts): set once
+   * consecutive provider-class failures on the primary trip it, cleared by a probe tick on
+   * the primary that answers without a provider failure. Absent means the role runs its
+   * primary model, so existing state files read unchanged. Persisted: an episode must survive
+   * a restart like the schedule does. */
+  modelFallback?: ModelFallbackState;
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At landing-check-failures.ts's LANDING_CHECK_FAILURE_LIMIT the
    * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */

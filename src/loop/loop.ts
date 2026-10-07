@@ -11,11 +11,18 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole, modelSelectorField, type ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, fallbackRoleConfig, modelSelectorField, type ResolvedModelConfig } from "../config/config-views.js";
 import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "./loop-state.js";
+import {
+  modelFallbackActive,
+  modelFallbackProbe,
+  modelFallbackVerdict,
+  providerFailureReason,
+  recordModelFallback,
+} from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { TickUsage } from "../tick/tick-usage.js";
@@ -199,6 +206,24 @@ export class LoopRunner {
     return this.state.running ? (this.tickPair ?? null) : null;
   }
 
+  /** The config this role's NEXT tick will run on, from the live config and the persisted
+   * model-fallback episode: the tier fallback pair while the episode is active (a due probe
+   * runs the primary), else the role's own resolved config — which the budget gate may
+   * already have switched to its fallback pair. The orchestrator derives both the
+   * per-provider failure hold's observation provider and the start pass's budget-breaker pair
+   * from this, so a role mid-episode is keyed by the provider it will actually use, not the
+   * primary it abandoned. Pure read of config + state + the caller's clock. */
+  runConfig(now: number): ResolvedModelConfig {
+    const fallback = fallbackRoleConfig(this.config, this.role);
+    if (fallback !== null && modelFallbackActive(this.state.modelFallback, now)) return fallback;
+    return configForRole(this.config, this.role);
+  }
+
+  /** The provider `runConfig(now)` resolves to; the hold and start passes read only this. */
+  runProvider(now: number): string | undefined {
+    return this.runConfig(now).provider;
+  }
+
   /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user
    * abort (Node ≥ 20's AbortSignal.any). */
   private runSignal(): AbortSignal {
@@ -376,7 +401,16 @@ export class LoopRunner {
     // This role's view of the config (per-role provider/model/thinking + minTickIntervalSeconds
     // overrides): resolved once so every interval-based scheduling branch below honors a slow
     // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
-    const cfg = configForRole(this.config, this.role);
+    const primaryCfg = configForRole(this.config, this.role);
+    // Model-fallback episode (src/loop/model-fallback.ts): while one is active the tick runs
+    // on the role's tier fallback pair, and once the cooldown elapses it runs on the primary
+    // as the probe. Resolved at tick start so the authoring run below and the end-of-tick fold
+    // agree on which pair ran. Null fallback (the tier resolves to pause) keeps the feature off.
+    const now = Date.now();
+    const fallback = fallbackRoleConfig(this.config, this.role);
+    const probing = fallback !== null && modelFallbackProbe(s.modelFallback, now);
+    const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
+    const cfg = onFallback && fallback !== null ? fallback : primaryCfg;
     // Capture what this tick runs on (the orchestrator's budget handback matches it against
     // the fallback pair) and clear any stale handback flag: an abort request that lands while
     // the loop is idle must not name a later tick's resume.
@@ -414,7 +448,7 @@ export class LoopRunner {
 
     let outcome: TickOutcome;
     try {
-      outcome = await this.runTick();
+      outcome = await this.runTick(cfg, { fallback, probe: probing, primary: primaryCfg });
     } catch (err) {
       outcome = { result: "error" };
       s.lastError = errorMessage(err);
@@ -449,7 +483,86 @@ export class LoopRunner {
     return finalizeResult;
   }
 
-  private async runTick(): Promise<TickOutcome> {
+  /** Fold one AUTHORING run's verdict into the role's model-fallback state
+   * (src/loop/model-fallback.ts) and emit the episode's started/ended events. Only the run
+   * that actually happened is evidence: a tick that never invoked pi (a skipped director
+   * inbox, a recovered leftover, a red-main block) returns from runTick before this is
+   * reached, and modelFallbackVerdict reports an aborted/killed/timed-out run as
+   * inconclusive — so neither can end an episode without the primary having answered.
+   * A role whose tier resolves to no fallback pair never trips, and an episode persisted from a
+   * config that HAD a pair is cleared when a live edit removes it (or sets it to "pause"), so a
+   * stale "on fallback" mark cannot outlive the config that created it. Persists on any state
+   * change; the tick's own finalize save carries it too. */
+  private foldModelFallback(
+    ctx: { fallback: ResolvedModelConfig | null; probe: boolean; primary: ResolvedModelConfig },
+    pi: PiRunResult,
+  ): void {
+    const s = this.state;
+    const prior = s.modelFallback;
+    const now = Date.now();
+    const verdict = modelFallbackVerdict(pi);
+    const reason = providerFailureReason(pi.transientRateLimit, pi.backendKind);
+    const wasIn = prior !== undefined && prior.since > 0;
+    if (ctx.fallback === null) {
+      // No fallback pair resolves any more: the feature is off for this role. End a persisted
+      // episode (the primary just ran, so this tick IS the return), and drop any pre-trip count
+      // so a later config starts from zero. A killed/aborted/timed-out run is no verdict, so it
+      // leaves the episode in place exactly as it does on a configured fallback.
+      if (prior === undefined) return;
+      if (wasIn && verdict === "inconclusive") return;
+      this.emitFallbackEnded(prior, ctx.primary, now, wasIn);
+      s.modelFallback = undefined;
+      this.save();
+      return;
+    }
+    const next = recordModelFallback(prior, { verdict, probe: ctx.probe, now, reason });
+    const willBeIn = next !== undefined && next.since > 0;
+    if (!wasIn && willBeIn) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "model_fallback_started",
+        provider: ctx.fallback.provider,
+        model: ctx.fallback.model,
+        reason: next?.reason,
+      });
+    } else if (wasIn && !willBeIn) {
+      logEvent(this.root, {
+        loop: this.role,
+        type: "model_fallback_ended",
+        provider: ctx.primary.provider,
+        model: ctx.primary.model,
+        durationMs: now - (prior?.since ?? now),
+      });
+    }
+    if (next !== prior) {
+      s.modelFallback = next;
+      this.save();
+    }
+  }
+
+  /** Log the model_fallback_ended event for an episode that was active. Split out so the two
+   * ending paths — a successful probe and a config that dropped the pair — name the primary
+   * pair and duration the same way. A pre-trip state (no episode) has no ended event. */
+  private emitFallbackEnded(
+    prior: NonNullable<LoopState["modelFallback"]>,
+    primary: ResolvedModelConfig,
+    now: number,
+    wasIn: boolean,
+  ): void {
+    if (!wasIn) return;
+    logEvent(this.root, {
+      loop: this.role,
+      type: "model_fallback_ended",
+      provider: primary.provider,
+      model: primary.model,
+      durationMs: now - (prior.since || now),
+    });
+  }
+
+  private async runTick(
+    cfg: ResolvedModelConfig,
+    fallbackCtx: { fallback: ResolvedModelConfig | null; probe: boolean; primary: ResolvedModelConfig },
+  ): Promise<TickOutcome> {
     const s = this.state;
     // How this tick starts — resume the interrupted session or run fresh, and which prompt —
     // is the resume policy, not runner mechanics: it lives in src/tick/tick-resume.ts, which also
@@ -518,13 +631,16 @@ export class LoopRunner {
     }
 
     const piStartedAt = Date.now();
-    const pi = await this.pi.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming);
+    const pi = await this.pi.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming, cfg);
+    // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
+    // post-run handlers spend any more pi runs: only this run is evidence about the primary.
+    this.foldModelFallback(fallbackCtx, pi);
     // The `qa` observer's reply ends with a result-carrying `FLOW:` line (plans/observer-roles.md
     // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
     // failed tick must not advance the rotation. The harness records it, never pi.
     const flow = this.role === "qa" ? extractFlow(pi.finalText) : null;
 
-    return this.handlePiResult(pi, userPrompt, wt, flow, piStartedAt);
+    return this.handlePiResult(pi, userPrompt, wt, flow, piStartedAt, cfg);
   }
 
   /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so
@@ -540,6 +656,7 @@ export class LoopRunner {
     wt: string,
     flow: FlowResult | null,
     piStartedAt: number,
+    cfg: ResolvedModelConfig,
   ): Promise<TickOutcome> {
     // Everything that decides the run left nothing landable — abort, config request,
     // quiet kill, timeout, refusal, failure without changes, no change — lives in
@@ -582,7 +699,7 @@ export class LoopRunner {
       flow,
       piStartedAt,
       warn: (message) => this.warn(message),
-      requestSummary: (w) => this.pi.requestSummary(w),
+      requestSummary: (w) => this.pi.requestSummary(w, cfg),
       pinAndReset: (w, sha) => this.pinAndReset(w, sha),
       finishAbortedTick: () => this.finishAbortedTick(userPrompt, wt),
     });
