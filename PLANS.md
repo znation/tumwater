@@ -243,6 +243,473 @@ It is project-neutral and uses git only.
   40-file rename produces a bounded finding text.
 - `npm run test` green.
 
+### Disk floor, part 1/4: hold new work when the worktrees volume runs low on free space (planned 2026-10-06 by operator)
+
+Design: plans/disk-floor.md ("Measuring free space", "The hold").
+
+Context: a fleet running on a Rust repo filled the disk of the user's smaller machine.
+- Every harness worktree builds the project, so every worktree grows its own `target/` of
+  several GB. A fleet has about two worktrees per role: the role's own plus its `_land-<role>`.
+- Nothing watches free space. No code calls `statfs`.
+- A full disk fails git object writes, `events.jsonl` appends and atomic state writes in the
+  middle of writing them.
+
+This part turns "disk full" into "fleet held, with a notification". Part 2/4 reclaims space so
+the hold rarely engages. It works for any language, because it only measures bytes.
+
+**Goal.** When the volume holding `.tumwater/worktrees` has less than `diskHoldGB` free, no new
+work starts until free space is back at `diskHoldGB + 5`. That covers role ticks, director
+ticks, landing vets and merges. In-flight work runs on.
+
+**Approach.**
+1. **Config.** Add `diskHoldGB`: a number ≥ 0, default 10, where 0 disables the hold. GB means
+   10^9 bytes. It touches:
+   - `TumwaterConfig` and `TOP_LEVEL_KEYS` in src/config/config-schema.ts;
+   - `defaultConfig()` in src/config/config.ts;
+   - a `checkNumber` in src/config/config-validation.ts;
+   - the key list in docs/how-it-works.md.
+   
+   Do not add it to tumwater.example.json, because `exampleDrift` would flag every install.
+2. **Gate.** New file src/gates/disk-gate.ts:
+   - `sampleFreeBytes(root, statfs = fs.statfsSync)` returns `bavail * bsize` for
+     `worktreesDir(root)`, falling back to `root` while that dir does not exist. It returns
+     `null` when statfs throws.
+   - `pollDiskGate(root, freeBytes, holdGB, state)` is edge-triggered like
+     `pollQuietHoursGate` (src/scheduling/quiet-hours.ts). It enters the hold when free space
+     is below `holdGB`, and leaves it at `holdGB + DISK_HOLD_HYSTERESIS_GB` (5) or more.
+   - It logs `disk_low` { freeGB, holdGB } or `disk_ok` { freeGB }, with loop `harness`, once
+     per crossing.
+   - A `null` sample never holds, and logs one `warning` per process.
+3. **Wiring.**
+   - Add `disk` to `FleetGateStates` and poll it from `pollFleetGates` (src/gates/gate-polls.ts).
+     `FleetGatePoll` returns `diskHeld`.
+   - In src/orchestrator/orchestrator.ts, keep `diskHeld` in a hoisted `let`, like
+     `holdForRestart`.
+   - Add it to `tickStartHeld`, which already gates role ticks, the director, and parked vets
+     at permit time.
+   - Add it to the drain condition `if (!holdForRestart && !reviewHeld)`.
+   - Add it to `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts), so a held
+     role reports the hold and reserves no tick.
+4. **Events.** Add `disk_low` and `disk_ok` to src/events/events.ts, each with a comment, and
+   render them in src/events/event-format.ts. `disk_low` joins `PROBLEM_EVENTS`
+   (src/ui/tone.ts) and the notify hook's notable events (src/events/notify.ts).
+5. **Doctor.** Add `checkDiskSpace` to src/doctor/doctor-checks.ts and compose it in
+   src/doctor/doctor.ts:
+   - **fail** below `diskHoldGB`;
+   - **ok** otherwise. Part 2/4 adds a warn band;
+   - **warn** "cannot measure" when statfs throws.
+   
+   Its detail names the measured path, the free GB to one decimal, and the floor.
+
+**Files touched.** src/gates/disk-gate.ts (new), src/gates/gate-polls.ts,
+src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-scheduling.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
+src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/ui/tone.ts,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests:
+test/disk-gate.test.ts (new), plus cases in test/config.test.ts, test/config-validation.test.ts
+and test/doctor-checks.test.ts.
+
+**Acceptance criteria.**
+- **Hold.** With an injected sampler reporting 9 GB and `diskHoldGB: 10`, no role tick,
+  director tick, vet or merge starts. A tick already running finishes. Exactly one `disk_low`
+  is logged.
+- **Hysteresis.** At 14 GB the hold stays. At 15 GB it lifts with one `disk_ok`, and loops
+  start ticks again on the next poll.
+- **Off and unmeasurable.** `diskHoldGB: 0` never holds. A sampler that throws never holds and
+  logs one warning.
+- **Live config.** A live edit of `diskHoldGB` applies on the next poll.
+- **Doctor.** `tumwater doctor` reports fail below the floor, ok above it, and warn when free
+  space cannot be measured.
+- `npm run test` green.
+
+### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed)
+
+Design: plans/disk-floor.md ("Reclaiming build outputs").
+
+**Goal.** Before the hold from part 1/4 engages, delete the files git ignores (`git clean -fdX`)
+in harness worktrees that nothing is using, least recently used first. Build outputs of every
+ecosystem go this way (`target/`, `node_modules/`, `dist/`, `.venv/`) without the code naming
+any of them. An interrupted tick's uncommitted edits survive: `-X` removes only ignored files.
+
+**Approach.**
+1. **Use registry.** New file src/git/worktree-use.ts:
+   - `useWorktree(root, dir, fn)` holds a use count around `fn`. On release it records
+     `lastUsedAt` for the dir's basename in `.tumwater/state/worktree-use.json`, through
+     `writeJsonAtomic` and a new `worktreeUsePath(root)` in src/paths.ts.
+   - `claimForReclaim(dir)` returns false while the worktree is in use. Otherwise it marks the
+     worktree as reclaiming until `releaseReclaim(dir, at)`, which records `reclaimedAt`. A
+     `useWorktree` that arrives meanwhile awaits the release before `fn` runs.
+   - A worktree the registry has never seen counts as used at first sight.
+2. **Wrap the users.**
+   - `LoopRunner.runTick` (src/loop/loop.ts), from `ensureWorktree` to the tick's end;
+   - `vetRequest` (src/landing/landing-batch.ts);
+   - `landApprovedChange` (src/landing/landing-core.ts);
+   - `landStack` (src/landing/landing-stack.ts);
+   - the `_gate-main` run in src/baseline/main-red.ts.
+3. **Reclaim.** New file src/fleet/reclaim.ts:
+   - `reclaimCandidates(root)` lists the linked worktrees directly under `worktreesDir(root)`,
+     minus `_main`, `_build` and those in use. They are ordered least recently used first, with
+     roles whose loop state has `resumePending` last.
+   - `reclaimWorktree(root, dir)` checks a guard first. The resolved path must lie inside
+     `worktreesDir(root)`, and `git rev-parse --git-dir` must differ from `--git-common-dir`,
+     which proves it is a linked worktree and never the primary checkout. The primary checkout
+     ignores `.tumwater/` itself. It then runs `git -C dir clean -fdX`: a single `-f`, never
+     `-x`, never `-ff`.
+   - `reclaimPass(root, "pressure", …)` cleans candidates until the re-sampled free space
+     reaches `diskReclaimGB`. It logs one `disk_reclaim` { mode, worktrees, freedGB, freeGB,
+     durationMs } when it cleaned anything. `freedGB` is the statfs delta, not `du`.
+4. **Orchestrator.** While free space is below `diskReclaimGB`, start a pressure pass in the
+   background: one at a time, and never awaited, like `launchServicesWatch.poll()`.
+   `pollDiskGate` enters the hold only when a pressure pass has finished since free space
+   fell below the floor. With `diskReclaimGB: 0` it holds immediately, as in part 1/4.
+5. **Config.** Add `diskReclaimGB`, default 40. 0 disables pressure reclaim. Validation
+   requires it to be at least `diskHoldGB` unless it is 0. It touches the same config and doc
+   spots as part 1/4.
+6. **Doctor.** `checkDiskSpace` warns between `diskHoldGB` and `diskReclaimGB`.
+
+**Files touched.** src/git/worktree-use.ts (new), src/fleet/reclaim.ts (new), src/paths.ts,
+src/loop/loop.ts, src/landing/landing-batch.ts, src/landing/landing-core.ts,
+src/landing/landing-stack.ts, src/baseline/main-red.ts, src/orchestrator/orchestrator.ts,
+src/gates/disk-gate.ts, src/config/config-schema.ts, src/config/config.ts,
+src/config/config-validation.ts, src/events/events.ts, src/events/event-format.ts,
+src/doctor/doctor-checks.ts, docs/how-it-works.md. Tests: test/worktree-use.test.ts and
+test/reclaim.test.ts (new), plus config and doctor cases.
+
+**Acceptance criteria.**
+- **Only ignored files go.** In a temp repo, take a linked worktree holding a modified tracked
+  file, an untracked file, an ignored `build/` dir and a nested repo. After `reclaimWorktree`,
+  everything except `build/` remains.
+- **Guard.** `reclaimWorktree` throws and deletes nothing when pointed at the primary checkout
+  or at a path outside `worktreesDir`.
+- **In use.** An in-use worktree is never cleaned. A `useWorktree` that starts during a clean
+  runs `fn` only after the clean finishes.
+- **Order.** Pressure mode cleans least recently used first and stops once the sampler reports
+  `diskReclaimGB`. A resume-pending role's worktree is cleaned only after every other
+  candidate. `_main` and `_build` are never candidates.
+- **Hold.** With free space below the floor, the hold engages only after a pressure pass
+  completes, and does not engage when that pass restored the floor.
+- **Event.** A pass logs exactly one `disk_reclaim` naming the cleaned worktrees.
+- `npm run test` green.
+
+### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed)
+
+Design: plans/disk-floor.md ("Reclaiming build outputs": idle mode and the command).
+
+**Goal.** Reclaim worktrees that have been unused for a day even when the disk is not low.
+Those are worktrees of paused, retired, disabled or rarely due roles, and lander worktrees of
+roles that seldom land. Also give the operator a manual reclaim.
+
+**Approach.**
+1. **Idle mode.** `reclaimPass(root, "idle", …)` in src/fleet/reclaim.ts cleans each
+   candidate unused for `worktreeIdleReclaimHours` or longer, unless its `reclaimedAt` is
+   already later than its `lastUsedAt`. It never cleans a resume-pending role's worktree.
+2. **Scheduling.** The orchestrator runs an idle pass at most hourly, on the same single-flight
+   background runner as pressure passes.
+3. **Config.** Add `worktreeIdleReclaimHours`, default 24, where 0 disables idle mode. It
+   touches the same spots as part 1/4.
+4. **Command.** Add `tumwater reclaim [--dry-run]`:
+   - **Fleet running:** drop `.tumwater/reclaim.json`, through a new `reclaimRequestPath(root)`
+     in src/paths.ts. The orchestrator consumes it like the wake marker and runs one
+     `"manual"` pass over every candidate.
+   - **No fleet:** run the manual pass in-process.
+   - **`--dry-run`:** print each candidate with its idle age and the number of paths
+     `git clean -ndX` lists, and clean nothing.
+   - Wiring goes in src/cli/cli-marker-commands.ts, and help text in src/cli/help.ts.
+
+**Files touched.** src/fleet/reclaim.ts, src/orchestrator/orchestrator.ts, src/paths.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
+src/cli/cli-marker-commands.ts, src/cli/help.ts, docs/how-it-works.md. Tests: cases in
+test/reclaim.test.ts, plus config and CLI cases.
+
+**Acceptance criteria.**
+- **Idle mode.** A worktree idle 25 h is cleaned once, and skipped on the next pass. It is
+  cleaned again only after a new use followed by 24 h idle. A resume-pending worktree is never
+  cleaned in idle mode.
+- **Off.** `worktreeIdleReclaimHours: 0` never runs idle passes.
+- **Command.** `tumwater reclaim --dry-run` cleans nothing and lists the candidates.
+  `tumwater reclaim` with a running fleet results in one `disk_reclaim` with mode `manual`.
+  With no fleet running, it cleans directly.
+- `npm run test` green.
+
+### Disk floor, part 4/4: show free space, the disk hold and the last reclaim on status, TUI and GUI (planned 2026-10-06 by operator; requires parts 1/4 and 2/4 landed)
+
+Design: plans/disk-floor.md ("Surfaces").
+
+**Goal.** An operator sees why the fleet stopped, without reading events. The status, TUI and
+GUI processes cannot call statfs on the orchestrator's behalf in a consistent way, so the
+orchestrator publishes what it measured.
+
+**Approach.**
+1. **Publish.** Add `disk?: { freeGB, holdGB, reclaimGB, held, lastReclaim?: { at, mode,
+   freedGB } }` to `OrchestratorInfo` (src/fleet/fleet-state.ts). `pollFleetGates`
+   (src/gates/gate-polls.ts) writes it only when it changes, like `budget`, rounding `freeGB`
+   to one decimal.
+2. **Header badge.** Add `diskBadge` to src/ui/badges.ts, after `budgetBadge`/`quietBadge`. It
+   is shown while the fleet holds, or while free space is below `reclaimGB`, e.g.
+   "disk 8.2 GB free — holding new work".
+3. **Alert.** Add a `disk` alert in src/ui/fleet-alerts.ts while the fleet holds.
+4. **Loop phase.** A held loop's phase reads "disk hold" in src/ui/status-model.ts, ranked
+   like "budget paused".
+5. **Status.** `tumwater status` (src/status/status-data.ts) shows the same facts.
+
+**Files touched.** src/fleet/fleet-state.ts, src/gates/gate-polls.ts, src/ui/badges.ts,
+src/ui/fleet-alerts.ts, src/ui/status-model.ts, src/status/status-data.ts. Tests: cases in the
+existing badge, fleet-alert, status-model and status tests.
+
+**Acceptance criteria.**
+- **Held.** A published `disk.held: true` shows the badge, the alert and the "disk hold" phase
+  on held loops.
+- **Low but not held.** Free space below `reclaimGB` while not held shows the badge only.
+- **Missing.** No `disk` field, as with an older orchestrator, renders exactly as today.
+- `npm run test` green.
+
+### Worktree pool, part 1/5: label every pi run's kind and demultiplex progress by the label, not the lander path (planned 2026-10-06 by operator)
+
+Design: plans/worktree-pool.md ("Progress demux"). This is preparation that changes no behavior.
+
+Context: `feedDemuxed` (src/ui/progress-data.ts) decides whether a pi run in a role's raw log
+belongs to the review gate (the reviewing cell) or to the author. It decides by
+`session.cwd === landWorktreePath(root, role)`. Parts 2/5 and 4/5 move vets and role ticks
+into shared pool slots, and after that a path cannot tell the two apart.
+
+**Approach.**
+1. **Kind on every run.** `PiRunOptions` (src/pi/pi.ts) gains a required
+   `kind: "author" | "gate"`, required so that no caller is missed. `runPi` writes one marker
+   line before spawning: `{ "type": "tumwater_run", "kind": <kind> }`, plus today's `label`
+   when one is set, so a run still gets exactly one marker line. Update the option's doc
+   comment, which today says author runs write nothing.
+2. **Callers.**
+   - **Gate:** the reviewer runs and the review follow-up (src/review/*), and the conflict
+     resolver and the post-resolve re-review (src/landing/*).
+   - **Author:** the tick's runs in src/loop/loop-pi.ts: authoring, the transient retry, the
+     summary request and the stage-fix request.
+3. **Demux.** In `feedDemuxed`, a `tumwater_run` line carrying `kind` sets `tail.cur` to that
+   kind and starts that accumulator fresh, generalising today's reset on `review`. The run's
+   following `session` event keeps that kind. The cwd test remains only for a `session` that
+   no kind-bearing marker preceded, as in logs written before this change.
+4. **Transcript.** In src/ui/transcript.ts, a `tumwater_run` line without `label` renders
+   nothing and sets no pending label.
+
+**Files touched.** src/pi/pi.ts, src/loop/loop-pi.ts, the runPi callers in src/review/ and
+src/landing/, src/ui/progress-data.ts, src/ui/transcript.ts. Tests: cases in
+test/progress.test.ts, test/transcript.test.ts and test/pi.test.ts.
+
+**Acceptance criteria.**
+- **Type-checked.** Every runPi call site passes a `kind`.
+- **Same cwd.** A raw log whose author and gate runs share one cwd demultiplexes correctly by
+  marker.
+- **Old logs.** A log with no kind markers demultiplexes exactly as before.
+- **Transcript.** A reviewer run still renders its labeled separator. An author run's
+  kind-only marker renders nothing.
+- `npm run test` green.
+
+### Worktree pool, part 2/5: landing vets lease pooled slot worktrees; merges use one `_merge` checkout (planned 2026-10-06 by operator; requires Disk floor 2/4 and Worktree pool 1/5 landed)
+
+Design: plans/worktree-pool.md ("Rejected", "Layout", "Config", "Leases", "Vets and merges").
+
+Context: every landing role keeps its own `_land-<role>` checkout with its own build outputs,
+about one per role. Vets are concurrent up to `max(1, maxConcurrent - 1)`
+(src/landing/landing-vetting.ts). A vet already passes its result on through refs and
+`VettedLanding`, never through the worktree. Every merge-side step already re-ensures its
+worktree at a commit. So vets can share a small pool of checkouts, and merges, which the drain
+runs one at a time, need only one. It works for any language, because a slot keeps a fixed
+path and switches commits in place. Build outputs never move between paths; the design doc
+records why moving them is unsafe.
+
+**Approach.**
+1. **Config.** Add `worktreeSlots`, an integer ≥ 1. When absent it defaults to
+   `maxConcurrent + 1`, computed by a `slotCount(config)` helper. It touches the schema,
+   default, validation and docs, like `maxConcurrentChecks`.
+2. **Paths** in src/paths.ts:
+   - `slotWorktreePath(root, n)` → `_slot-<n>`;
+   - `mergeWorktreePath(root)` → `_merge`;
+   - `slotsStatePath(root)` → `.tumwater/state/slots.json`, with `slotsLockPath(root)` beside
+     it.
+3. **Pool.** New file src/git/worktree-pool.ts. `leaseSlot(root, { role, purpose, ref,
+   signal })` returns `{ dir, release() }`.
+   - **Choice order:**
+     1. a slot pinned for the role. Pins are unused until part 4/5;
+     2. the free slot this role released most recently;
+     3. the free slot released most recently by anyone;
+     4. a new `_slot-<n>`, while fewer than `slotCount` unpinned slots exist;
+     5. otherwise wait first-in first-out, aborting on `signal`.
+   - **Use.** The lease holds `useWorktree` (Disk floor 2/4) for its duration, and prepares the
+     slot with `ensureDetachedWorktree(root, dir, ref)`.
+   - **State.** Every change is persisted to slots.json under `withSyncLock`
+     (src/concurrency/lock.ts). Each slot records `{ dir, lease: { role, purpose, since, pid }
+     | null, pinnedFor, lastRole, lastReleasedAt }`.
+   - **Startup.** The pool clears leases whose `pid` is not this process.
+4. **Vets.** In `vetRequest` (src/landing/landing-batch.ts), replace
+   `ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha)` with a
+   lease: purpose `vet`, role `req.role`, ref `req.sha`. Release it in a `finally`.
+5. **Merges** use `mergeWorktreePath(root)`. That covers `landApprovedChange`
+   (src/landing/landing-core.ts), the stack's `wtPath` (landing-batch.ts) and
+   `attributeRedCheck`.
+6. **Removals.**
+   - Delete every `removeLandWorktree` call: in landing-core.ts, landing-check-failures.ts,
+     landing-pipeline.ts and landing-batch.ts. Then delete the helper (src/git/git.ts) and
+     `landWorktreePath`.
+   - progress-data.ts's cwd fallback from part 1/5 keeps the legacy `_land-<role>` path as a
+     local expression, for old logs.
+7. **Startup cleanup.** When the orchestrator starts, it removes legacy `_land-*` worktrees
+   with a force `worktree remove` followed by a prune. They hold no state, and queued landings
+   re-vet from their pinned refs.
+8. **Fixtures.** Update the tests that hard-code `_land-<role>`: test/status-fixtures.ts,
+   test/progress.test.ts, test/landing-pipeline.test.ts, test/orchestrator-3.e2e.test.ts and
+   test/doctor-orphans.test.ts.
+
+**Files touched.** src/git/worktree-pool.ts (new), src/paths.ts, src/config/config-schema.ts,
+src/config/config.ts, src/config/config-validation.ts, src/landing/landing-batch.ts,
+src/landing/landing-core.ts, src/landing/landing-check-failures.ts,
+src/landing/landing-pipeline.ts, src/git/git.ts, src/ui/progress-data.ts,
+src/orchestrator/orchestrator.ts, docs/how-it-works.md. Tests: test/worktree-pool.test.ts
+(new), plus the fixtures above.
+
+**Acceptance criteria.**
+- **Concurrency.** Two concurrent vets lease two different slots. A third vet, with
+  `worktreeSlots: 2`, waits and proceeds when one is released. A waiting lease honors abort.
+- **Affinity.** A vet prefers the free slot its role used last.
+- **No `_land-*` directories** exist after startup or after any landing outcome.
+- **Merges.** Single merges, stacks and bisects run in `_merge`, and the existing orchestrator
+  e2e landing tests pass unchanged in outcome.
+- **State file.** slots.json shows the lease during a vet and none after it. A lease left by a
+  dead pid is cleared at startup.
+- `npm run test` green.
+
+### Worktree pool, part 3/5: readers find a role's checkout through `roleWorktreeDir` (planned 2026-10-06 by operator; requires part 2/5 landed)
+
+Design: plans/worktree-pool.md ("Readers find a role's checkout").
+
+Context: `tumwater diff`, the GUI's `/api/diff` (both through `collectRoleChange`), `retire`
+and `doctor` find a role's checkout as `worktreePath(root, role)`, and they run in processes
+other than the orchestrator. Part 4/5 moves role ticks into pool slots. This part moves the
+readers first, so the GUI's diff view never breaks in between. Until part 4/5 lands it changes
+no behavior.
+
+**Approach.**
+1. **Resolver.** Add `readSlotsState(root)` and `roleWorktreeDir(root, role)` in a module that
+   separate processes can import without the pool's in-memory state, e.g.
+   src/git/slots-state.ts. `roleWorktreeDir` resolves, in order:
+   - a slot that slots.json lists as leased by the role with purpose `tick`, or pinned for the
+     role, gives its dir;
+   - else the legacy `worktreePath(root, role)` when `isUsableWorktree`;
+   - else `null`.
+2. **Diff.** `collectRoleChange` (src/change/change-data.ts) uses `roleWorktreeDir`. `null`
+   gives the existing "absent" shape.
+3. **Retire.** In src/operator/retire.ts:
+   - `worktreePresent`, `worktreeUsable` and `dirty` come from `roleWorktreeDir`.
+   - **Removal, when the dir is a slot:** under the slots lock, clear `pinnedFor`, then run
+     `git reset --hard`, `git clean -fd` and `git checkout --detach` in the slot. Never remove
+     a slot directory.
+   - **Removal, when the dir is legacy:** `removeWorktree` as today.
+   - Branch deletion is unchanged. Update the literal `.tumwater/worktrees/${role}/` message.
+4. **Doctor.** Any doctor code that probes a role's worktree uses `roleWorktreeDir`.
+
+**Files touched.** src/git/slots-state.ts (new), src/git/worktree-pool.ts (moves its state
+read/write here if convenient), src/change/change-data.ts, src/operator/retire.ts,
+src/doctor/*. Tests: cases in test/change-data.test.ts, test/retire.test.ts and a fabricated
+slots.json fixture.
+
+**Acceptance criteria.**
+- **Slot lease.** With a slots.json that lists `_slot-1` leased by `feature` for a tick,
+  `tumwater diff --role feature` reports the changes in `_slot-1`.
+- **Fallback.** With no slots.json, every reader behaves exactly as before.
+- **Retire a pinned slot.** It leaves `_slot-1` on disk, clean, detached and unpinned, and
+  deletes the branch.
+- `npm run test` green.
+
+### Worktree pool, part 4/5: role ticks lease pooled slot worktrees (planned 2026-10-06 by operator; requires parts 1/5–3/5 landed)
+
+Design: plans/worktree-pool.md ("Role ticks lease slots").
+
+Context: each role keeps a persistent `.tumwater/worktrees/<role>` with its own build outputs,
+yet at most `maxConcurrent` role ticks run at once. Every fresh tick already starts with
+`reset --hard main`, so any recently used slot is about as warm as the role's own worktree.
+
+**Approach.**
+1. **Lease.** In `LoopRunner.runTick` (src/loop/loop.ts), every role except the director
+   replaces `ensureWorktree(root, role, main)` with `leaseSlot({ role, purpose: "tick" })`.
+   - On a slot that is not pinned for this role, run `git checkout -f tumwater/<role>` then
+     `git clean -fd`.
+   - When the branch is absent, run `git checkout -f -b tumwater/<role> <main>` instead. Never
+     use `-B`: it would reset an existing branch and lose a commit that has no pin yet.
+   - Everything after this stays as it is: `recoverLeftover`, `resetWorktreeToMain`, the
+     red-main gate and `commitAll` all act on the branch through HEAD.
+2. **Release,** in runTick's `finally`:
+   - **When the role's state has `resumePending`:** pin the slot for the role. The branch stays
+     checked out and the edits stay uncommitted.
+     - pi 1.0.0's `--continue` only resumes a session whose recorded cwd equals the current
+       directory exactly (session-manager.js `continueRecent`).
+     - A resume anywhere else silently starts a fresh session, while `hasResumableSession`
+       would still report one.
+   - **Otherwise:** run `git checkout --detach`, so the branch is free for the role's next
+     slot and keeps any commit.
+   - Either way, a slot that was pinned for this role and is not re-pinned is unpinned.
+3. **Pins.** A pinned slot is leased only by its role. Pins do not count toward `slotCount`, so
+   a lease creates a new slot when every unpinned slot is busy and fewer than `slotCount`
+   unpinned slots exist. Disk-floor reclaim treats pinned slots as resume-pending.
+4. **Legacy migration,** once at orchestrator start, for each `.tumwater/worktrees/<role>`
+   other than the director's:
+   - **Role has `resumePending`:** register the directory in slots.json as that role's pinned
+     slot at its existing path. Remove it with `removeWorktree` after the role's next release,
+     instead of returning it to the pool.
+   - **Otherwise:** `removeWorktree` it. The branch keeps any commit.
+   
+   Git refuses to check a branch out in two worktrees, so this must happen before any slot
+   checks out a role branch.
+5. **Director.** It keeps `ensureWorktree(root, DIRECTOR_ROLE, main)`.
+
+**Files touched.** src/loop/loop.ts, src/git/worktree-pool.ts, src/git/slots-state.ts,
+src/orchestrator/orchestrator.ts (migration), src/git/worktree.ts (if `ensureWorktree` becomes
+director-only, say so in its doc). Tests: cases in test/worktree-pool.test.ts and the loop and
+orchestrator tests that assert `.tumwater/worktrees/<role>` paths.
+
+**Acceptance criteria.**
+- **Pool size.** With `maxConcurrent: 2` and `worktreeSlots: 2`, three roles tick over time
+  using at most two `_slot-*` directories. No `.tumwater/worktrees/<role>` is created for a
+  non-director role.
+- **Leftover commit.** A commit left on `tumwater/<role>` with no pin (simulate the crash
+  window) is recovered by the role's next tick in whichever slot it leases.
+- **Resume.** An aborted tick pins its slot. The role's next tick leases that same directory,
+  resumes with `--continue` (the fake pi sees the same cwd), and unpins on release.
+- **Pins and capacity.** While one slot is pinned and `worktreeSlots: 1`, another role's tick
+  gets a new slot instead of waiting forever.
+- **Migration.** A legacy clean role worktree is removed at startup. A legacy worktree with a
+  pending resume serves exactly one resume and is then removed.
+- **Director.** It still ticks in `.tumwater/worktrees/director`.
+- `npm run test` green.
+
+### Worktree pool, part 5/5: slot waits, slot display, doctor check and docs (planned 2026-10-06 by operator; requires part 4/5 landed)
+
+Design: plans/worktree-pool.md ("Observability").
+
+**Goal.** Give the operator what they need to size `worktreeSlots` and spot stuck pins.
+
+**Approach.**
+1. **`slot_wait` event.** Logged when a lease waited 30 s or more. It carries role, purpose,
+   waitedMs, slots and pinned. Add it to src/events/events.ts and src/events/event-format.ts.
+2. **Status and GUI.** `tumwater status` and the GUI role rows show which slot a running tick
+   or vet holds, and any pin, read from slots.json.
+3. **Doctor.** Add `checkWorktreePool` to src/doctor/doctor-checks.ts. It lists slots, leases
+   and pins, and warns on:
+   - a legacy non-director `<role>` directory or a `_land-*` directory still present;
+   - a pin older than 24 h, which usually means a paused role holding a checkout.
+4. **Docs.** docs/how-it-works.md describes slots, `worktreeSlots`, the dedicated `director`,
+   `_merge` and `_gate-main` checkouts, and how to size a disk: about (`worktreeSlots` + 3)
+   warm checkouts.
+
+**Files touched.** src/git/worktree-pool.ts, src/events/events.ts, src/events/event-format.ts,
+src/status/status-data.ts, src/ui/status-model.ts, the GUI role-row renderer,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
+pool, event-format, status and doctor tests.
+
+**Acceptance criteria.**
+- **Wait event.** A lease that waited 31 s logs one `slot_wait`. A lease that waited 1 s logs
+  none.
+- **Display.** Status and GUI show the slot of a running tick.
+- **Doctor.** It warns on a 25 h-old pin and on a leftover `_land-feature` directory.
+- `npm run test` green.
+
 ---
 
 ## Done
