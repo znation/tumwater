@@ -52,10 +52,14 @@ function gh(args) {
   return JSON.parse(out.stdout);
 }
 
-/** The latest CI run row for a commit, or null when none exists yet. */
+/** The latest CI run row for a commit, or null when none exists yet. Selects the greatest
+ * databaseId rather than trusting `gh run list`'s array order: the contract here is "latest",
+ * and a commit triggered more than once (a re-run, a re-dispatch) must report the newest row's
+ * verdict instead of whichever element gh happened to put last. */
 function ciRun(commit) {
   const runs = gh(["run", "list", "--workflow", "CI", "--commit", commit, "--json", "databaseId,status,conclusion"]);
-  return runs?.length ? runs[runs.length - 1] : null;
+  if (!runs?.length) return null;
+  return runs.reduce((latest, run) => (run.databaseId > latest.databaseId ? run : latest));
 }
 
 async function ciWait(runId) {
