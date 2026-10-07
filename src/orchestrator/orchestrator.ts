@@ -33,7 +33,7 @@ import { piModelsPath } from "../pi/pi-models.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
-import type { LaunchServicesWatch } from "../launch-services.js";
+import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import {
@@ -58,7 +58,7 @@ interface RunOptions {
   /** Self-redeploy state machine (src/redeploy/redeployer.ts; the policy it decides with lives in src/redeploy/redeploy-policy.ts) for a self-hosting fleet; null/absent when the
    * running dist carries no build stamp. Consulted every poll with main's head. */
   redeploy?: Redeployer | null;
-  /** launchservicesd's port watch (src/launch-services.ts), stepped every poll; null/absent runs
+  /** launchservicesd's port watch (src/process/launch-services.ts), stepped every poll; null/absent runs
    * without one — a `--once` round, and every in-process test, so none reads the real Mac. */
   launchServicesWatch?: LaunchServicesWatch | null;
   /** pi's model definitions (default ~/.pi/agent/models.json), read to decide whether the
@@ -261,7 +261,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // missing) drives the check, like the budget gate.
       retentionPruner.poll(root, liveConfig.sessionRetentionDays);
 
-      // launchservicesd's Mach-port budget (src/launch-services.ts owns it): a background sample
+      // launchservicesd's Mach-port budget (src/process/launch-services.ts owns it): a background sample
       // at most every 15 minutes, and a warning days before the kernel kills the daemon and
       // wedges the Mac's GUI session. Never awaited — a poll does not wait on `top`.
       void launchServicesWatch?.poll();

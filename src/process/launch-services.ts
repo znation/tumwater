@@ -8,10 +8,10 @@
  * hand, an older build, another tool. This module says so where an operator looks, days ahead.
  * Dependency direction: doctor and orchestrator → launch-services → process (the probe). */
 
-import type { CheckOutcome } from "./doctor/doctor-checks.js";
-import { warnEvent } from "./events/events.js";
-import { type ProcessProbe, systemProcessProbe } from "./process/process-table.js";
-import { compactTokens } from "./text/format.js";
+import type { CheckOutcome } from "../doctor/doctor-checks.js";
+import { warnEvent } from "../events/events.js";
+import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
+import { compactTokens } from "../text/format.js";
 
 /** Where the kernel killed launchservicesd on 2026-09-25 (termination reason OS_REASON_PORT_SPACE
  * at 267,967 ports) — what the warning counts toward. */

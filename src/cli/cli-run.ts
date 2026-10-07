@@ -161,7 +161,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
   // A long-running fleet watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.
-  const launchServicesWatch = once ? null : new (await import("../launch-services.js")).LaunchServicesWatch(root);
+  const launchServicesWatch = once ? null : new (await import("../process/launch-services.js")).LaunchServicesWatch(root);
   // Name the resolved root when it differs from the cwd: an operator who started the fleet
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
