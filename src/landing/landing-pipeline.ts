@@ -1,5 +1,6 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import { runOnAbort } from "../process/process.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { deleteRef, removeLandWorktree } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome } from "./landing-slot.js";
@@ -117,11 +118,10 @@ export function abortableLandings(p: LandingPipeline): AbortableLanding[] {
   return [...landingTasks(p), ...p.vetted.values()];
 }
 
-/** Wire harness shutdown to one task's own controller — at once when it has already fired,
- * since a listener added after the event never runs. */
+/** Wire harness shutdown to one task's own controller — through the shared register/abort
+ * race helper, so an already-fired signal aborts at once. */
 export function abortOnShutdown(signal: AbortSignal, controller: AbortController): void {
-  if (signal.aborted) controller.abort();
-  else signal.addEventListener("abort", () => controller.abort(), { once: true });
+  runOnAbort(signal, () => controller.abort());
 }
 
 /** Take a permit at `tier` unless `signal` fires first: resolves to its release, or to null

@@ -4,7 +4,7 @@ import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
 import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../gates/readiness.js";
-import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
+import { runOnAbort, terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../process/run-marker.js";
 import { piArgs } from "./pi-args.js";
 import type { PiRunKind } from "./pi-event-line.js";
@@ -204,8 +204,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       aborted = true;
       terminateChild(child);
     };
-    opts.signal?.addEventListener("abort", onAbort, { once: true });
-    if (opts.signal?.aborted) onAbort();
+    runOnAbort(opts.signal, onAbort);
 
     // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
 

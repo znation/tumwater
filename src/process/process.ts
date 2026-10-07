@@ -4,7 +4,8 @@ import { promisify } from "node:util";
 /** Child-process plumbing: the harness's one execFile helper (execFileAsync), the pid-liveness
  * probe every place that decides whether a recorded pid still belongs to a live process shares
  * (the merge lock's stale-holder check in lock.ts, the orchestrator-alive status in
- * fleet/fleet-state.ts), the group-signal helpers behind every teardown, and the child environment
+ * fleet/fleet-state.ts), the group-signal helpers behind every teardown, the register/abort
+ * race helper the spawns and landing's shutdown wiring share, and the child environment
  * that keeps the harness's Node processes out of LaunchServices on macOS. Reading the host's
  * process table and the per-run TUMWATER_RUN marks and sweep built on it live in
  * process-table.ts, on top of the exec helper here. */
@@ -26,6 +27,18 @@ export function execFileAsync(
   options: Omit<ExecFileOptions, "encoding"> = {},
 ): PromiseWithChild<{ stdout: string; stderr: string }> {
   return execFileRaw(file, args, { maxBuffer: EXEC_MAX_BUFFER, ...options });
+}
+
+/** Run `fn` once when `signal` aborts, or at once when it has already aborted — a listener
+ * added after the abort event never fires, so `addEventListener` alone would leave the caller
+ * waiting on a shutdown that has come and gone. A missing signal (no shutdown wiring)
+ * registers nothing. Shared by spawnSupervised (supervisor.ts), runPi's child spawn (pi.ts),
+ * sleepInterruptible (tick-timing.ts), and abortOnShutdown (landing-pipeline.ts); a caller that
+ * must detach `fn` later holds the same reference for `removeEventListener`. */
+export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): void {
+  if (!signal) return;
+  if (signal.aborted) fn();
+  else signal.addEventListener("abort", fn, { once: true });
 }
 
 /** True when a process with this pid exists — a signal-0 send, which cannot affect the
