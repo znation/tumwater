@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { stageTickLanding } from "../src/tick/tick-stage.js";
+import { stageCheckFindings } from "../src/tick/stage-check.js";
 import { initializedWorktree, sh } from "./repo-fixtures.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -41,6 +42,9 @@ interface CtxOverrides {
   /** When true, requestStageFix deletes the tick's only changed file, so the fix-up leaves a
    * clean worktree. */
   stageFixDrops?: boolean;
+  /** When true, stageCheck runs the real stageCheckFindings (which stages the change and
+   * restores the index) instead of returning canned findings. */
+  realStageCheck?: boolean;
   pinResult?: boolean;
   abortedOutcome?: TickOutcome;
 }
@@ -103,9 +107,12 @@ function buildCtx(
       return over.followUp ?? null;
     },
     stageCheck: async (checkWt: string) => {
-      const results = over.stageChecks ?? [[]];
-      const result = results[Math.min(calls.stageChecks.length, results.length - 1)] ?? [];
       calls.stageChecks.push(checkWt);
+      if (over.realStageCheck) {
+        return stageCheckFindings(checkWt, "main", config.review.exemptPaths);
+      }
+      const results = over.stageChecks ?? [[]];
+      const result = results[Math.min(calls.stageChecks.length - 1, results.length - 1)] ?? [];
       return result;
     },
     requestStageFix: async (fixWt: string, findings: string[]) => {
@@ -475,6 +482,32 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
 
   assert.equal(outcome.result, "no_change");
   assert.equal(calls.stageFixRequests.length, 1);
+  assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
+  assert.equal(queueDepth(root), 0, "nothing is queued");
+  assert.deepEqual(calls.warnings, [
+    "stage self-check: the follow-up turn left no change; nothing to land",
+  ]);
+});
+
+test("the real staging self-check leaves the index clean, so a full revert still ends no_change", async () => {
+  const { root, wt } = await setup();
+  const state: LoopState = freshLoopState("improve");
+  // Drop the tick's only change's final newline so the real git-level self-check raises a
+  // finding and the follow-up turn runs. Unlike the canned-findings case above, this exercises
+  // stageCheckFindings' own `git add -A`, whose staging must not survive into the guard's
+  // changedFiles read: a stale staged addition would make the revert look like a live change.
+  fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: add the feature\n",
+    realStageCheck: true,
+    stageFix: okPi({ finalText: "RISK: the change should not exist; reverted\n" }),
+    stageFixDrops: true,
+  });
+
+  const outcome = await stageTickLanding(ctx);
+
+  assert.equal(outcome.result, "no_change");
+  assert.equal(calls.stageFixRequests.length, 1, "the real finding triggered the fix-up");
   assert.equal(calls.pins.length, 0, "a clean worktree is never pinned");
   assert.equal(queueDepth(root), 0, "nothing is queued");
   assert.deepEqual(calls.warnings, [

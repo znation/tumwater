@@ -186,63 +186,6 @@ test/tick-stage.test.ts, and a new test/revision-interdiff.test.ts.
 - **Recovery.** A recovery landing of a revision is reviewed without the prior block.
 - `npm run test` green.
 
-### Pre-queue self-check, part 2/2: flag stale path references, nonexistent paths, and lost final newlines (planned 2026-10-06 by operator; requires part 1/2 landed)
-
-Context: path drift is the organize loop's main rejection cause. In organize's 11 rejections from
-2026-10-04 to 10-06:
-- Seven left a renamed or deleted path still named in docs, comments, BUGS.md or plans/:
-  40fc155e, 1ea3c96d, dd971b48, e1b4e113, 04f4be3e, 3780b9a7, 177f2481.
-- One added paths that never existed: 025f5425 applied a path rewrite twice, producing
-  `src/backlog/src/backlog/…`.
-- One pointed at test paths that were never moved (16516b42).
-- Two of the eleven also removed files' final newlines.
-
-Each is a git-level fact the harness can compute without knowing the project's language. Today a
-model reviewer finds them by grepping and rejects the refactor, which discards it even when the
-reasons say the rest was verified correct.
-
-Doc-comment debris, such as an unterminated `/**` swallowed by the next comment or an import
-glued to a comment, is language-specific. It stays with the project's own lint and is out of
-scope here.
-
-**Goal.** Part 1/2's stage self-check also reports three kinds of finding. The author fixes them,
-or says why not, in the follow-up turn:
-- (a) every remaining reference to a path the change renamed or deleted;
-- (b) repo paths named on added lines that do not exist in the resulting tree;
-- (c) files whose final newline the change removed.
-
-**Approach.** Everything goes in `src/tick/stage-check.ts`, appended to `stageCheckFindings`.
-It is project-neutral and uses git only.
-1. Stage with `git add -A`; commitAll restages anyway, and git state belongs to the harness.
-   Read `git diff --cached -M --name-status <changeBaseRev>`.
-2. **(a) Stale references.** For each `D` path and each `R` old path, run
-   `git grep -n -F -I --cached -- <old path>`. Report up to 10 `file:line` hits per path in one
-   finding: "<old> was renamed to <new> (or deleted) but is still named at: …".
-3. **(b) Nonexistent paths.** In `git diff --cached -U0 <base>`, collect tokens on `+` lines
-   shaped `<top>/<segments>.<ext>`, where `<top>` is a tracked top-level directory (from
-   `git ls-files`) and the path ends in a file extension. Report those missing from the staged
-   tree, except step 2's old paths, which "moved from X" prose names legitimately. Cap the
-   list.
-4. **(c) Final newline.** Report, in one finding, every text file in the staged diff whose new
-   side ends with `\ No newline at end of file` while its base side did not. A new text file
-   with no final newline counts too.
-5. `buildStageFixPrompt` from part 1/2 already covers these. Each finding's text names its fix
-   concretely.
-
-**Files touched.** src/tick/stage-check.ts, test/stage-check.test.ts.
-
-**Acceptance criteria.**
-- **Stale references.** On a scratch repo, renaming `src/a.ts` to `src/x/a.ts` while README.md
-  still names `src/a.ts` yields one stale-reference finding citing `README.md:<line>`.
-  Updating the README clears it.
-- **Nonexistent paths.** An added line naming `src/x/src/x/a.ts` yields a nonexistent-path
-  finding. An added line naming the renamed-away `src/a.ts` ("moved from src/a.ts") does not.
-- **Final newline.** A change that removes a file's final newline yields the newline finding.
-  A file whose base already lacked one does not.
-- **No noise.** Binary and untouched files produce no findings. Findings are capped, so a
-  40-file rename produces a bounded finding text.
-- `npm run test` green.
-
 ### Disk floor, part 1/4: hold new work when the worktrees volume runs low on free space (planned 2026-10-06 by operator)
 
 Design: plans/disk-floor.md ("Measuring free space", "The hold").
@@ -713,6 +656,67 @@ pool, event-format, status and doctor tests.
 ---
 
 ## Done
+
+### Pre-queue self-check, part 2/2: flag stale path references, nonexistent paths, and lost final newlines (planned 2026-10-06 by operator; requires part 1/2 landed; done 2026-10-06 by feature)
+
+Context: path drift is the organize loop's main rejection cause. In organize's 11 rejections from
+2026-10-04 to 10-06:
+- Seven left a renamed or deleted path still named in docs, comments, BUGS.md or plans/:
+  40fc155e, 1ea3c96d, dd971b48, e1b4e113, 04f4be3e, 3780b9a7, 177f2481.
+- One added paths that never existed: 025f5425 applied a path rewrite twice, producing
+  `src/backlog/src/backlog/…`.
+- One pointed at test paths that were never moved (16516b42).
+- Two of the eleven also removed files' final newlines.
+
+Each is a git-level fact the harness can compute without knowing the project's language. Today a
+model reviewer finds them by grepping and rejects the refactor, which discards it even when the
+reasons say the rest was verified correct.
+
+Doc-comment debris, such as an unterminated `/**` swallowed by the next comment or an import
+glued to a comment, is language-specific. It stays with the project's own lint and is out of
+scope here.
+
+**Goal.** Part 1/2's stage self-check also reports three kinds of finding. The author fixes them,
+or says why not, in the follow-up turn:
+- (a) every remaining reference to a path the change renamed or deleted;
+- (b) repo paths named on added lines that do not exist in the resulting tree;
+- (c) files whose final newline the change removed.
+
+**Approach.** Everything goes in `src/tick/stage-check.ts`, appended to `stageCheckFindings`.
+It is project-neutral and uses git only.
+1. Stage with `git add -A`, read `git diff --cached -M --name-status <changeBaseRev>`, and
+   restore the index to HEAD before returning — the staging is a read aid for these checks,
+   so the tick's own change detection (`changedFiles` and the nothing-left-to-land guard)
+   still reads the worktree. (An earlier draft left the index staged, which made a fix-up
+   that reverted the whole change look like a live change.)
+2. **(a) Stale references.** For each `D` path and each `R` old path, run
+   `git grep -n -F -I --cached -- <old path>`. Report up to 10 `file:line` hits per path in one
+   finding: "<old> was renamed to <new> (or deleted) but is still named at: …".
+3. **(b) Nonexistent paths.** In `git diff --cached -U0 <base>`, collect tokens on `+` lines
+   shaped `<top>/<segments>.<ext>`, where `<top>` is a tracked top-level directory (from
+   `git ls-files`) and the path ends in a file extension. Report those missing from the staged
+   tree, except step 2's old paths, which "moved from X" prose names legitimately. Cap the
+   list.
+4. **(c) Final newline.** Report, in one finding, every text file in the staged diff whose new
+   side ends with `\ No newline at end of file` while its base side did not. A new text file
+   with no final newline counts too.
+5. `buildStageFixPrompt` from part 1/2 already covers these. Each finding's text names its fix
+   concretely.
+
+**Files touched.** src/tick/stage-check.ts, test/stage-check.test.ts, test/tick-stage.test.ts (the
+fix-up/`no_change` regression case).
+
+**Acceptance criteria.**
+- **Stale references.** On a scratch repo, renaming `src/a.ts` to `src/x/a.ts` while README.md
+  still names `src/a.ts` yields one stale-reference finding citing `README.md:<line>`.
+  Updating the README clears it.
+- **Nonexistent paths.** An added line naming `src/x/src/x/a.ts` yields a nonexistent-path
+  finding. An added line naming the renamed-away `src/a.ts` ("moved from src/a.ts") does not.
+- **Final newline.** A change that removes a file's final newline yields the newline finding.
+  A file whose base already lacked one does not.
+- **No noise.** Binary and untouched files produce no findings. Findings are capped, so a
+  40-file rename produces a bounded finding text.
+- `npm run test` green.
 
 ### Pre-queue self-check, part 1/2: run the gate's deterministic backlog checks before a tick queues, with one fix-up turn on the author's session (planned 2026-10-06 by operator; done 2026-10-06 by feature)
 
