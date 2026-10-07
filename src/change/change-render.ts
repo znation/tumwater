@@ -1,6 +1,6 @@
 /** The renderer behind `tumwater diff` — the operator-facing text for the change views the
- * collector (change-data.ts, beside src/report/report-data.ts and history-data.ts) gathers: one role's
- * pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
+ * collector (change-data.ts, beside src/report/report-data.ts and history-data.ts) gathers: one
+ * role's pending work (`--role <id>`) and the fleet-wide roster (no --role). Pure function of the
  * collected view — no I/O, no clock reads. */
 
 import { plural } from "../text/phrases.js";
@@ -28,10 +28,7 @@ export function renderFleetChange(view: FleetChangeView): string {
   }
   const lines = view.roles
     .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
-    .map(
-      (r) =>
-        `${r.role}: ${workSummary(r.ahead, view.mainBranch, r.dirtyFiles)}`,
-    );
+    .map((r) => `${r.role}: ${workSummary(r.ahead, view.mainBranch, r.dirtyFiles)}`);
   return lines.length > 0 ? lines.join("\n") : "no pending changes";
 }
 
