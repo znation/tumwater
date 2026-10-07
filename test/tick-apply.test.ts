@@ -291,6 +291,35 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   assert.equal(a.phase, "review");
 });
 
+// A stale reject must not outlive the landing that supersedes it: a review-exempt (or
+// review-disabled) landing records no verdict, so before this fix lastReview stayed "reject"
+// and tick-prompt.ts injected the rejected note on every later tick, long after main had moved
+// past the objection (BUGS.md 2026-10-07). The clear is conditional on no revision being owed:
+// a landing that left a rejected change's revision pending did not resolve it, so its next
+// revision tick still needs the objections.
+test("a landed change clears a stale review rejection unless a revision is still owed", () => {
+  const change = { sha: PINNED, summary: "did it" };
+
+  const s = freshLoopState("feature");
+  s.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
+  applyLandingOutcome(s, "changed", change);
+  assert.equal(s.lastReview, undefined, "the landed change supersedes the rejection");
+
+  // A per-role user-request tick can land an unrelated change while the rejected change still
+  // owes a revision (loop.ts leaves `state.revision` set for it): the objections must survive.
+  const pending = freshLoopState("feature");
+  pending.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
+  pending.revision = { sha: PINNED, round: 1, at: 2 };
+  applyLandingOutcome(pending, "changed", change);
+  assert.equal(pending.lastReview?.verdict, "reject", "a pending revision keeps the rejection");
+
+  // A non-landing outcome must keep it: the objection still stands until a change lands.
+  const n = freshLoopState("feature");
+  n.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
+  applyLandingOutcome(n, "merge_conflict", change);
+  assert.equal(n.lastReview?.verdict, "reject", "an unlanded change leaves the rejection standing");
+});
+
 test("a rejection past the warn bar backs the re-author off on the error ladder", () => {
   // BUGS.md 2026-09-30: the rejection episode's accumulation point is applyLandingOutcome's
   // rejected branch — the authoring tick ends `queued`, which only preserves the streak — so

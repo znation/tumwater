@@ -141,3 +141,34 @@ test("a failed note merge records lastError and still reports the commit", async
   assert.equal(merges.length, 1);
   assert.equal(state.lastError, "refusal note merge failed: merge_conflict");
 });
+
+// The refusal-note merge bypasses applyLandingOutcome, so it must clear a stale rejection
+// itself — otherwise a role whose refused note landed is still told to address an objection
+// main has moved past (BUGS.md 2026-10-07). A still-owed revision keeps it, exactly as the
+// landing fold does; a failed merge lands nothing and clears nothing.
+test("a landed refusal note clears a superseded rejection unless a revision is owed", async () => {
+  const { wt } = await initializedWorktree();
+  fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
+  const state: LoopState = freshLoopState("improve");
+  state.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
+  const { ctx } = makeCtx("changed");
+  await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
+  assert.equal(state.lastReview, undefined, "the landed note supersedes the rejection");
+
+  const { wt: pendingWt } = await initializedWorktree();
+  fs.appendFileSync(path.join(pendingWt, "PLANS.md"), "\n**Refused:** still risky\n");
+  const pending: LoopState = freshLoopState("improve");
+  pending.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
+  pending.revision = { sha: "deadbeef", round: 1, at: 2 };
+  const { ctx: pendingCtx } = makeCtx("changed");
+  await handleRefusal(pendingCtx, pending, pendingWt, refusedPi({ refusedReason: "still risky" }));
+  assert.equal(pending.lastReview?.verdict, "reject", "a pending revision keeps the rejection");
+
+  const { wt: failedWt } = await initializedWorktree();
+  fs.appendFileSync(path.join(failedWt, "PLANS.md"), "\n**Refused:** no\n");
+  const failed: LoopState = freshLoopState("improve");
+  failed.lastReview = { verdict: "reject", reasons: ["old objection"], at: 1 };
+  const { ctx: failedCtx } = makeCtx("merge_conflict");
+  await handleRefusal(failedCtx, failed, failedWt, refusedPi({ refusedReason: "no" }));
+  assert.equal(failed.lastReview?.verdict, "reject", "a failed merge clears nothing");
+});

@@ -28,6 +28,19 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
   s.lastReview = { verdict, reasons, ...(head === undefined ? {} : { head }), at: Date.now() };
 }
 
+/** Drop a stale review rejection once the change it objected to is superseded (BUGS.md
+ * 2026-10-07): the review-exempt and refusal-note landings record no new verdict, so a reject
+ * would otherwise ride every later tick prompt as if it were the role's last review outcome.
+ * Called from the points a change lands (`applyLandingOutcome`'s changed branch and
+ * `handleRefusal`'s note merge), never while a revision is still owed: a landing that leaves
+ * `state.revision` set — a per-role user-request tick did not apply the rejected change — did
+ * not resolve it, and its next revision tick still needs the objections (loop.ts's revision
+ * note). A model-reviewed landing already overwrote `lastReview` with its approve; this only
+ * clears a standing `reject`. */
+export function clearSupersededRejection(s: LoopState): void {
+  if (s.revision === undefined && s.lastReview?.verdict === "reject") s.lastReview = undefined;
+}
+
 /** Consecutive failed ticks after which the loop raises a harness warning and its state
  * cell reads "failing" (BUGS.md 2026-09-15: every loop failing identically looked like a
  * quiet fleet). Small on purpose — at 3 the error ladder has already doubled twice and
@@ -249,6 +262,11 @@ export function applyLandingOutcome(
   if (result === "changed") {
     s.commits += 1;
     s.lastApprovedPatchId = undefined; // see applyTickOutcome
+    // A landing supersedes a stale rejection: a model-reviewed landing has already overwritten
+    // lastReview with its approve, but a review-exempt (or review-disabled) landing records no
+    // verdict, so a stale reject would otherwise ride every later tick prompt (BUGS.md
+    // 2026-10-07). Cleared only with no revision pending — see clearSupersededRejection.
+    clearSupersededRejection(s);
     // A landed change resets the error streak exactly as an error-free tick does (BUGS.md
     // 2026-09-30): the queued tick that authored it preserved the streak — a rejection counts
     // into it below — so the landing, the episode's only clean verdict, ends it.

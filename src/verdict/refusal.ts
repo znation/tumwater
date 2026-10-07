@@ -3,6 +3,7 @@ import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
 import { labeledLine } from "./reply-contract.js";
+import { clearSupersededRejection } from "../tick/tick-apply.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -78,5 +79,8 @@ export async function handleRefusal(
   }
   const result = await ctx.merge(wt, `refused: ${reason}`);
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
+  // A landed refusal note is a landed change too: it supersedes a stale rejection exactly as
+  // applyLandingOutcome's landed branch does (this path merges directly, bypassing that fold).
+  else clearSupersededRejection(state);
   return { result: "refused", summary: reason, commit };
 }
