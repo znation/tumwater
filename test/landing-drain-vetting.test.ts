@@ -23,12 +23,11 @@ import {
   REVIEWING,
   rowReader,
   runnersFor,
-  within,
 } from "./landing-fixtures.js";
 import { eventsOfType } from "./log-fixtures.js";
 import { mainSha, makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { fakePi } from "./fake-pi.js";
-import { waitFor, waitForFile } from "./wait.js";
+import { waitFor, waitForFile, within } from "./wait.js";
 
 /** Second slice of the landing-drain suite — the vet-permit and merge-slot tests beside
  * landing-drain.test.ts (which carries the dedupe tests, including the one ~10.5s stress

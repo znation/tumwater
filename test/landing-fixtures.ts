@@ -178,16 +178,3 @@ export function rowReader(root: string, roles: string[]): (role: string) => stri
 }
 
 export const REVIEWING = /^landing \d+s · reviewing$/;
-
-/** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a
- * resolved race leaves nothing keeping the test process alive. */
-export function within(p: Promise<unknown>, ms: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms);
-    timer.unref();
-    void p.then(() => {
-      clearTimeout(timer);
-      resolve(true);
-    });
-  });
-}

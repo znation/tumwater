@@ -1,4 +1,4 @@
-import { sleep } from "./wait.js";
+import { sleep, within } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -18,20 +18,6 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 /** Flush the microtasks (and the auto-release callback) a resolved waiter chain needs. */
 function settle(): Promise<void> {
   return sleep(0);
-}
-
-/** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a
- * genuinely hung acquire fails the assertion instead of hanging the suite (the same helper
- * landing-fixtures.ts carries; a local copy keeps this file free of the pipeline harness). */
-function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms);
-    timer.unref();
-    void p.then(() => {
-      clearTimeout(timer);
-      resolve(true);
-    });
-  });
 }
 
 test("abortOnShutdown aborts an already-aborted signal's task controller at once", () => {

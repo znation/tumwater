@@ -1,6 +1,7 @@
 /** Wait-for-something helpers shared across the test suite: polling (waitFor, waitForFile,
- * waitForLogLines) and the logical clock for runPi's watchdog (watchdogClock). Split from
- * the old util.ts grab-bag, whose shared name made these unfindable. */
+ * waitForLogLines), the settle-within-a-budget check (within), and the logical clock for
+ * runPi's watchdog (watchdogClock). Split from the old util.ts grab-bag, whose shared name
+ * made these unfindable. */
 import type { TestContext } from "node:test";
 import fs from "node:fs";
 
@@ -45,6 +46,22 @@ export async function waitForFile(file: string, timeoutMs = 30_000): Promise<voi
     if (performance.now() - start > timeoutMs) throw new Error(`timed out waiting for ${file}`);
     await sleep(25);
   }
+}
+
+/** Resolve true when `p` settles within `ms`, false otherwise — an unref'd timer, so a
+ * resolved race leaves nothing keeping the test process alive. The one home of the suite's
+ * boolean settle-within-a-budget check, shared by the landing fixtures, the pipeline seams, and the
+ * drain slices; it uses the real timer captured above so it keeps its budget under a test
+ * that mocks the timer APIs. */
+export function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = realSetTimeout(() => resolve(false), ms);
+    timer.unref();
+    void p.then(() => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
 }
 
 /** Put runPi's watchdog (src/pi/pi.ts: the quiet kill and the stall warning) on logical time for
