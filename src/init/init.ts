@@ -16,6 +16,7 @@ import {
 } from "../readme.js";
 import { CONFIG_BASENAME, STATE_DIR, configPath } from "../paths.js";
 import { projectName } from "../project-name.js";
+import { tooLongMessage } from "../text/text.js";
 import {
   getTemplate,
   BUGS_TEMPLATE,
@@ -101,7 +102,12 @@ export async function initProject(
     : initialPrompt.trim();
   if (combinedPrompt.length > INITIAL_PROMPT_MAX_CHARS) {
     throw new Error(
-      `the initial prompt with the ${tpl.id} template's preamble is ${combinedPrompt.length} chars — shorten it to at most ${INITIAL_PROMPT_MAX_CHARS}: it rides into every tick's prefill`,
+      tooLongMessage(
+        `the initial prompt with the ${tpl.id} template's preamble`,
+        combinedPrompt.length,
+        INITIAL_PROMPT_MAX_CHARS,
+        "it rides into every tick's prefill",
+      ),
     );
   }
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
