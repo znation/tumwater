@@ -7,6 +7,7 @@
  * event shape; the render adds the timestamp and a roleCell-sliced role, so no unbounded field
  * reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
+import { cutSplitsSurrogatePair } from "../text/text.js";
 import { stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../text/phrases.js";
@@ -51,9 +52,15 @@ const STATE_CHANGE_MAX = 72;
 const STATE_CHANGE_FIELD_MAX = 24;
 
 /** A free event field, sliced so one hand-edited or future payload cannot blow the section's
- * byte budget. Takes unknown because HarnessEvent carries its fields loosely typed. */
+ * byte budget. Takes unknown because HarnessEvent carries its fields loosely typed. A cut that
+ * would land between an astral character's two UTF-16 units backs off one unit — dropping the
+ * whole character rather than leaving a lone high surrogate the terminal renders as a
+ * replacement box (text.ts's truncate rule, shared rather than re-derived). */
 function field(v: unknown): string {
-  return String(v).slice(0, STATE_CHANGE_FIELD_MAX);
+  const s = String(v);
+  let cut = STATE_CHANGE_FIELD_MAX;
+  if (cutSplitsSurrogatePair(s, cut)) cut -= 1; // Never emit a lone high surrogate.
+  return s.slice(0, cut);
 }
 
 /** A compact, bounded one-liner for one harness decision event, for the Fleet state changes

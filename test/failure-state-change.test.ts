@@ -218,6 +218,12 @@ test("free fields are sliced to 24 chars and the whole line to 72", () => {
     describeStateChange(ev({ type: "max_concurrent_changed", from: "x".repeat(100), to: 2 })),
     `maxConcurrent ${"x".repeat(24)} → 2`,
   );
+  // A cut between an astral character's surrogate halves backs off one unit: the whole
+  // character is dropped, never a lone high surrogate the terminal renders as a box.
+  assert.equal(
+    describeStateChange(ev({ type: "max_concurrent_changed", from: "x".repeat(23) + "😀" + "y".repeat(30), to: 2 })),
+    `maxConcurrent ${"x".repeat(23)} → 2`,
+  );
   // Six 24-char keys cannot all fit the line cap: whole keys are kept and the drop is
   // marked, instead of a bare slice leaving a mid-word fragment standing in for a key
   // (BUGS.md 2026-10-01). One 24-char key plus the marker fits; the second would not.
