@@ -220,9 +220,10 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   const role = await expectFailAsync(() => cmdTick(repo, ["nosuch", "3"], false));
   assert.match(role, /unknown role: nosuch/);
   assert.match(role, /usage: tumwater tick <role>/);
-  // A non-positive or non-numeric n: the shared count parser's wording.
+  // A non-positive or non-numeric n: the shared count parser's wording, naming the command
+  // so a bare `<n>` cannot leave the operator guessing which argument it means.
   for (const bad of ["0", "-1", "1.5", "abc"]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", bad], false)), /<n> needs a positive integer/);
+    assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", bad], false)), /tick <n> needs a positive integer/);
   }
 });
 

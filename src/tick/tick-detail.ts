@@ -97,7 +97,7 @@ export async function cmdTick(
   // found by construction, so the not-found path below takes it with the last-form wording.
   const tick = last
     ? (readTickRows(root, 1, role)[0]?.tick ?? null)
-    : parseCountFlag("<n>", positionals[1]);
+    : parseCountFlag("tick <n>", positionals[1]);
   const detail = tick === null ? null : readTickDetail(root, role, tick);
   if (tick === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.
