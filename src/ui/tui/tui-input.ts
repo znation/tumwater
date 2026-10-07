@@ -141,12 +141,18 @@ export function parseBudgetInput(
   // one-zero typo silently writes an effectively uncapped budget.
   const n = Number(t);
   // Both guards return the one error message below, so the wording cannot drift between the
-  // shape rejection and the bounds rejection (a prior copy pasted the same line twice).
+  // shape rejection and the bounds rejection (a prior copy pasted the same line twice). The
+  // message names the MAX_SAFE_INTEGER bound too — a 25-digit run IS a number of 0 or more, so
+  // the bounds rejection must say which bound it broke, mirroring config-field-checks'
+  // DOLLAR_CAP wording ("a number of 0 or more, at most …").
   if (
     !/^\d*\.?\d+$/.test(t) ||
     !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER
   )
-    return { ok: false, error: `budget must be a number of 0 or more${gotSuffix(text)}` };
+    return {
+      ok: false,
+      error: `budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`,
+    };
   return { ok: true, value: n };
 }
 

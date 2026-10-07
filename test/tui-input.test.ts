@@ -201,7 +201,9 @@ test("parseBudgetInput maps empty to disabled and validates the rest", () => {
   ]) {
     const r = parseBudgetInput(bad);
     assert.equal(r.ok, false, bad);
-    if (!r.ok) assert.match(r.error, /number of 0 or more/);
+    // The one message names the MAX_SAFE_INTEGER bound as well: a 25-digit run IS "a number
+    // of 0 or more", so a bounds rejection that omitted the cap would name the wrong rule.
+    if (!r.ok) assert.match(r.error, new RegExp(`number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}`));
   }
 });
 
