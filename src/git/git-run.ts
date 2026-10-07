@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { findOnPath } from "../files/files.js";
 import { execFileAsync } from "../process/process.js";
+import { errorMessage } from "../text/text.js";
 
 /** Identity used for harness-authored commits so ticks work without global git config. */
 export const COMMIT_IDENT = [
@@ -96,7 +97,7 @@ export async function runGit(
     // GitError always says why when there is a why to say instead of ending in ": " —
     // `e.stderr ?? …` would not help: on spawn failure stderr is an empty string, and
     // `"" ?? x` keeps the empty string.
-    const detail = e.stderr?.trim() || (typeof e.code === "string" && err instanceof Error ? err.message : "");
+    const detail = e.stderr?.trim() || (typeof e.code === "string" ? errorMessage(err) : "");
     throw new GitError(args, detail, e.code);
   }
 }
