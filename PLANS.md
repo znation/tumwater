@@ -6,6 +6,123 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator)
+
+Context: when a rebase onto main conflicts, `resolveConflict` (src/landing/landing-merge.ts)
+gives a strong-tier pi run `buildConflictPrompt(roleId, files, check)`
+(src/gates/gate-prompts.ts). That prompt lists the conflicted files and says to "combine the
+intent of BOTH sides", but it states neither side's intent:
+- the change's own commit message (subject, WHY body, and the backlog entry it implements);
+- the main commits that touched the conflicted files since the change's merge-base.
+
+Conflicts are rare today: 2 `merge_conflict` landings against 916 merges in the 7 days before
+2026-10-07. Parallel work instances (plans/parallel-work-instances.md) will make overlapping
+landings routine, so the resolver needs that context before they ship.
+
+**Approach.**
+1. **Gather.** In `resolveConflict`, before the pi run:
+   - **The change's side:** its full commit message, `git log --format=%B -1 <preMergeHead>`.
+     The harness stamps that message, so it carries the subject, the WHY body and the trailer.
+   - **Main's side:** for each conflicted file, the commits on main since the merge-base that
+     touched it, from `git log --format='%h %s%n%b' <merge-base>..<main> -- <file>`. Cap each
+     body at 20 lines and the whole list at 15 commits, newest first, and say so when it is
+     cut.
+
+   Keep the git calls in a small helper in src/landing/landing-git.ts.
+2. **Prompt.** `buildConflictPrompt` gains an optional `intent: { change: string; main:
+   Array<{ sha; subject; body }> }`. The prompt renders it as two short blocks, "This branch's
+   change" and "What main changed in these files". Both are labelled as data, and the existing
+   rules stay as they are. The rule that "a deliberate removal on main wins" now cites the main
+   block.
+3. **Divergence.** No change to `resolvedDiffDiverges` or the re-review: a resolution that
+   leaves the reviewed lines still gets re-gated.
+
+**Files touched.** src/landing/landing-merge.ts, src/landing/landing-git.ts,
+src/gates/gate-prompts.ts. Tests: cases in the gate-prompts test and a landing-merge test using
+two real branches.
+
+**Acceptance criteria.**
+- **Both sides shown.** A conflicted landing's resolver prompt contains the change's commit
+  subject and WHY body, plus the subject of each main commit since the merge-base that touched
+  a conflicted file.
+- **Only relevant commits.** Main commits that touched no conflicted file are not listed.
+- **Caps.** The caps hold, with a "(N more not shown)" line when the list is cut.
+- **No intent supplied.** The prompt is byte-identical to today's when no intent is passed.
+- `npm run test` green.
+
+### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed)
+
+Context: today two paths throw an approved change away over a merge conflict:
+- **Repeated landing conflicts.** A pinned change whose landing conflicts and whose single
+  resolver run fails ends `merge_conflict` and is re-queued. After `MERGE_CONFLICT_LIMIT` (3)
+  such landings, `recoverLeftover` (src/loop/leftover.ts) deletes the pin ("discarding leftover
+  … unresolved merge conflicts with main"), and the author starts over with nothing.
+- **Revision re-apply.** `applyRevision` (src/loop/revision.ts) aborts a revision's re-apply on
+  any conflict, then falls back to the plain rejection note.
+
+In both cases the loop best placed to resolve the conflict, the author, never sees it. The
+author knows what its change was for and can read main's side, and its result goes through the
+full review gate again.
+
+**Approach.**
+1. **Hand-back state.** `LoopState.conflictHandback?: { sha; at; reason: "landing" |
+   "revision"; round?: number }` (src/loop/loop-state.ts).
+2. **Landing path.** In `recoverLeftover`, at `MERGE_CONFLICT_LIMIT`, set `conflictHandback`
+   from the pin instead of discarding it, and keep the landing ref until the author's tick has
+   applied it. Then lower the limit from 3 to 2: the resolver gets a second try in case main
+   moves again, then the author takes over. Log `conflict_handback` `queued`.
+3. **Apply with markers.** New `applyWithConflicts(wt, mainBranch, sha)` in
+   src/loop/revision.ts. It runs `git cherry-pick --no-commit <merge-base>..<sha>`. On a
+   conflict it does NOT abort:
+   - it records the conflicted paths;
+   - it runs `git reset` to drop the index state, so the markers stay as ordinary uncommitted
+     edits and the author's tick can commit normally;
+   - it returns `{ applied: true, conflicted: string[] }`.
+
+   A missing object or other non-conflict failure still resets to main and returns
+   `{ applied: false }`. `applyRevision` keeps its current contract for callers outside the
+   hand-back.
+4. **Revision path.** In loop.ts's revision branch (around `applyRevision`), when the clean
+   re-apply fails, try `applyWithConflicts`. If it applies with conflicts, the tick gets the
+   revision note plus the conflict note below. Only an `applied: false` falls back to the plain
+   rejection note.
+5. **Author's tick.** At tick start (loop.ts, beside the revision branch), a `conflictHandback`
+   applies its sha with `applyWithConflicts`. The prompt gets `buildConflictHandbackNote`
+   (src/gates/gate-prompts.ts), which:
+   - lists the conflicted files;
+   - includes the same "What main changed in these files" block as part 1/2;
+   - says the change was approved (landing) or was being revised (revision) and that main
+     moved under it;
+   - asks the author to resolve every marker, keeping the intent of both sides and respecting
+     main's deliberate removals, and to re-run the check.
+
+   Clear `conflictHandback` and delete the landing ref once the edits are applied. The tick then
+   commits and queues as usual: it is new bytes, so the gate reviews it in full. A hand-back
+   uses no revision round.
+6. **Bound.** A change handed back once and conflicting again at the cap is discarded as today,
+   with a warning naming both attempts. `conflictHandback` carries a `count`, and the limit is
+   one hand-back per change.
+7. **Stage check.** The pre-queue stage check (src/tick/stage-check.ts) flags any conflict
+   marker (`<<<<<<<`, `>>>>>>>`, a `=======` line between them) left in a staged file. The
+   author gets one fix-up turn.
+
+**Files touched.** src/loop/loop-state.ts, src/loop/leftover.ts, src/loop/revision.ts,
+src/loop/loop.ts, src/gates/gate-prompts.ts, src/tick/stage-check.ts, src/events/events.ts,
+src/events/event-format.ts. Tests: cases in the leftover, revision, loop and stage-check tests,
+plus one with real branches: a pinned change and a main commit that edit the same lines.
+
+**Acceptance criteria.**
+- **Landing hand-back.** A pin whose landings end `merge_conflict` twice is not discarded. The
+  author's next tick starts with its diff applied over current main, markers in the conflicted
+  files, and a prompt naming those files and main's commits for them.
+- **Revision hand-back.** A rejected change whose re-apply conflicts reaches its author as a
+  revision with markers in place, not as a plain rejection note.
+- **Normal landing.** The author's resolved commit queues and is reviewed like any fresh
+  change.
+- **Leftover markers.** A staged file still holding a conflict marker is flagged before queuing.
+- **Bound.** A change that conflicts again after one hand-back is discarded with the warning.
+- `npm run test` green.
+
 ### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed)
 
 Design: plans/disk-floor.md ("Reclaiming build outputs").
@@ -356,7 +473,6 @@ pool, event-format, status and doctor tests.
 
 ---
 
-
 ### Replan a plan whose change used up its review rounds, instead of re-authoring the same plan from scratch (planned 2026-10-07 by operator)
 
 Context: when a change is rejected after its last revision round (`REVISION_LIMIT` = 2,
@@ -413,123 +529,6 @@ role-catalog and backlog-index tests.
 - **Charters.** The feature charter tells feature to skip Needs-replan entries, and the plan
   charter ranks them with Needs-review entries above writing a new plan.
 - **Index.** The backlog index marks a Needs-replan entry `[needs replan]`.
-- `npm run test` green.
-
-### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator)
-
-Context: when a rebase onto main conflicts, `resolveConflict` (src/landing/landing-merge.ts)
-gives a strong-tier pi run `buildConflictPrompt(roleId, files, check)`
-(src/gates/gate-prompts.ts). That prompt lists the conflicted files and says to "combine the
-intent of BOTH sides", but it states neither side's intent:
-- the change's own commit message (subject, WHY body, and the backlog entry it implements);
-- the main commits that touched the conflicted files since the change's merge-base.
-
-Conflicts are rare today: 2 `merge_conflict` landings against 916 merges in the 7 days before
-2026-10-07. Parallel work instances (plans/parallel-work-instances.md) will make overlapping
-landings routine, so the resolver needs that context before they ship.
-
-**Approach.**
-1. **Gather.** In `resolveConflict`, before the pi run:
-   - **The change's side:** its full commit message, `git log --format=%B -1 <preMergeHead>`.
-     The harness stamps that message, so it carries the subject, the WHY body and the trailer.
-   - **Main's side:** for each conflicted file, the commits on main since the merge-base that
-     touched it, from `git log --format='%h %s%n%b' <merge-base>..<main> -- <file>`. Cap each
-     body at 20 lines and the whole list at 15 commits, newest first, and say so when it is
-     cut.
-
-   Keep the git calls in a small helper in src/landing/landing-git.ts.
-2. **Prompt.** `buildConflictPrompt` gains an optional `intent: { change: string; main:
-   Array<{ sha; subject; body }> }`. The prompt renders it as two short blocks, "This branch's
-   change" and "What main changed in these files". Both are labelled as data, and the existing
-   rules stay as they are. The rule that "a deliberate removal on main wins" now cites the main
-   block.
-3. **Divergence.** No change to `resolvedDiffDiverges` or the re-review: a resolution that
-   leaves the reviewed lines still gets re-gated.
-
-**Files touched.** src/landing/landing-merge.ts, src/landing/landing-git.ts,
-src/gates/gate-prompts.ts. Tests: cases in the gate-prompts test and a landing-merge test using
-two real branches.
-
-**Acceptance criteria.**
-- **Both sides shown.** A conflicted landing's resolver prompt contains the change's commit
-  subject and WHY body, plus the subject of each main commit since the merge-base that touched
-  a conflicted file.
-- **Only relevant commits.** Main commits that touched no conflicted file are not listed.
-- **Caps.** The caps hold, with a "(N more not shown)" line when the list is cut.
-- **No intent supplied.** The prompt is byte-identical to today's when no intent is passed.
-- `npm run test` green.
-
-### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed)
-
-Context: today two paths throw an approved change away over a merge conflict:
-- **Repeated landing conflicts.** A pinned change whose landing conflicts and whose single
-  resolver run fails ends `merge_conflict` and is re-queued. After `MERGE_CONFLICT_LIMIT` (3)
-  such landings, `recoverLeftover` (src/loop/leftover.ts) deletes the pin ("discarding leftover
-  … unresolved merge conflicts with main"), and the author starts over with nothing.
-- **Revision re-apply.** `applyRevision` (src/loop/revision.ts) aborts a revision's re-apply on
-  any conflict, then falls back to the plain rejection note.
-
-In both cases the loop best placed to resolve the conflict, the author, never sees it. The
-author knows what its change was for and can read main's side, and its result goes through the
-full review gate again.
-
-**Approach.**
-1. **Hand-back state.** `LoopState.conflictHandback?: { sha; at; reason: "landing" |
-   "revision"; round?: number }` (src/loop/loop-state.ts).
-2. **Landing path.** In `recoverLeftover`, at `MERGE_CONFLICT_LIMIT`, set `conflictHandback`
-   from the pin instead of discarding it, and keep the landing ref until the author's tick has
-   applied it. Then lower the limit from 3 to 2: the resolver gets a second try in case main
-   moves again, then the author takes over. Log `conflict_handback` `queued`.
-3. **Apply with markers.** New `applyWithConflicts(wt, mainBranch, sha)` in
-   src/loop/revision.ts. It runs `git cherry-pick --no-commit <merge-base>..<sha>`. On a
-   conflict it does NOT abort:
-   - it records the conflicted paths;
-   - it runs `git reset` to drop the index state, so the markers stay as ordinary uncommitted
-     edits and the author's tick can commit normally;
-   - it returns `{ applied: true, conflicted: string[] }`.
-
-   A missing object or other non-conflict failure still resets to main and returns
-   `{ applied: false }`. `applyRevision` keeps its current contract for callers outside the
-   hand-back.
-4. **Revision path.** In loop.ts's revision branch (around `applyRevision`), when the clean
-   re-apply fails, try `applyWithConflicts`. If it applies with conflicts, the tick gets the
-   revision note plus the conflict note below. Only an `applied: false` falls back to the plain
-   rejection note.
-5. **Author's tick.** At tick start (loop.ts, beside the revision branch), a `conflictHandback`
-   applies its sha with `applyWithConflicts`. The prompt gets `buildConflictHandbackNote`
-   (src/gates/gate-prompts.ts), which:
-   - lists the conflicted files;
-   - includes the same "What main changed in these files" block as part 1/2;
-   - says the change was approved (landing) or was being revised (revision) and that main
-     moved under it;
-   - asks the author to resolve every marker, keeping the intent of both sides and respecting
-     main's deliberate removals, and to re-run the check.
-
-   Clear `conflictHandback` and delete the landing ref once the edits are applied. The tick then
-   commits and queues as usual: it is new bytes, so the gate reviews it in full. A hand-back
-   uses no revision round.
-6. **Bound.** A change handed back once and conflicting again at the cap is discarded as today,
-   with a warning naming both attempts. `conflictHandback` carries a `count`, and the limit is
-   one hand-back per change.
-7. **Stage check.** The pre-queue stage check (src/tick/stage-check.ts) flags any conflict
-   marker (`<<<<<<<`, `>>>>>>>`, a `=======` line between them) left in a staged file. The
-   author gets one fix-up turn.
-
-**Files touched.** src/loop/loop-state.ts, src/loop/leftover.ts, src/loop/revision.ts,
-src/loop/loop.ts, src/gates/gate-prompts.ts, src/tick/stage-check.ts, src/events/events.ts,
-src/events/event-format.ts. Tests: cases in the leftover, revision, loop and stage-check tests,
-plus one with real branches: a pinned change and a main commit that edit the same lines.
-
-**Acceptance criteria.**
-- **Landing hand-back.** A pin whose landings end `merge_conflict` twice is not discarded. The
-  author's next tick starts with its diff applied over current main, markers in the conflicted
-  files, and a prompt naming those files and main's commits for them.
-- **Revision hand-back.** A rejected change whose re-apply conflicts reaches its author as a
-  revision with markers in place, not as a plain rejection note.
-- **Normal landing.** The author's resolved commit queues and is reviewed like any fresh
-  change.
-- **Leftover markers.** A staged file still holding a conflict marker is flagged before queuing.
-- **Bound.** A change that conflicts again after one hand-back is discarded with the warning.
 - `npm run test` green.
 
 ### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator)
