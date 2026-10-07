@@ -73,6 +73,14 @@ export interface CompileResult {
   rejected?: boolean;
 }
 
+/** A compile rejection: no compiler verdict, only the environment's failure to produce one.
+ * The single home of the `{ ok: false, rejected: true }` shape shared by the four rejection
+ * sites (the missing toolchain, the primary spawn failing, the shebang fallback failing, and
+ * a tsc killed by signal), so the flag callers must not latch is set in one place. */
+function rejectedCompile(detail: string): CompileResult {
+  return { ok: false, rejected: true, detail };
+}
+
 /** Compile `mainHead` — checked out detached in the mirror worktree — into its staging dir with
  * the project's own tsc, then stamp it. The mirror is the compile source (not the primary
  * checkout, which may be dirty or on another branch): it holds exactly the tree main names. tsc
@@ -93,11 +101,7 @@ export async function compileStaged(
 ): Promise<CompileResult> {
   const tsc = resolveFromNodeModules(root, path.join("typescript", "bin", "tsc"));
   if (!tsc)
-    return {
-      ok: false,
-      rejected: true,
-      detail: `typescript is not installed under node_modules at or above ${root} — cannot rebuild`,
-    };
+    return rejectedCompile(`typescript is not installed under node_modules at or above ${root} — cannot rebuild`);
   const staged = stagingDir(root, mainHead);
   removeTree(staged);
   ensureDir(staged);
@@ -121,23 +125,16 @@ export async function compileStaged(
     // no longer exists, while every PATH-resolved spawn — git, npm, pi — keeps working). tsc's
     // own shebang resolves a live node through PATH at spawn time, so run it directly.
     if (fs.existsSync(execPath) || !fs.existsSync(mirrorWt))
-      return {
-        ok: false,
-        rejected: true,
-        detail: `could not start the compile: ${errorMessage(err)}${missing}`,
-      };
+      return rejectedCompile(`could not start the compile: ${errorMessage(err)}${missing}`);
     try {
       await execFileAsync(tsc, tscArgs, opts);
     } catch (fallbackErr) {
       const verdict = tscVerdict(fallbackErr, timeoutMs);
       if (verdict) return verdict;
-      return {
-        ok: false,
-        rejected: true,
-        detail:
-          `could not start the compile: ${errorMessage(err)}${missing}` +
+      return rejectedCompile(
+        `could not start the compile: ${errorMessage(err)}${missing}` +
           `; the shebang fallback also failed: ${errorMessage(fallbackErr)}`,
-      };
+      );
     }
   }
   const stamped = await stampBuild(root, staged, mainHead);
@@ -163,11 +160,9 @@ function tscVerdict(err: unknown, timeoutMs: number): CompileResult | null {
   if (typeof e.code === "number")
     return { ok: false, detail: `tsc exited ${String(e.code)}${tail ? `: ${tail}` : ""}` };
   if (e.signal)
-    return {
-      ok: false,
-      rejected: true,
-      detail: `tsc died by signal ${String(e.signal)} — no compiler verdict${tail ? `: ${tail}` : ""}`,
-    };
+    return rejectedCompile(
+      `tsc died by signal ${String(e.signal)} — no compiler verdict${tail ? `: ${tail}` : ""}`,
+    );
   return null;
 }
 
