@@ -21,12 +21,23 @@ import type { LanderContext } from "./landing-core.js";
  * than the full check) would re-queue as merge_blocked forever, its role never authoring. */
 export const LANDING_CHECK_FAILURE_LIMIT = 2;
 
+/** Whether a deterministic failure keeps its pin for one more re-land instead of being
+ * attributed to the change: always when the patch-id could not be read (it cannot be matched
+ * to a prior strike, so it never reaches LANDING_CHECK_FAILURE_LIMIT — the pre-cap behavior,
+ * never a wrong attribution), otherwise while the strike count is still under the limit. The
+ * one home of that rule: tallyCheckFailure's strike store and keepPinOrAttribute's
+ * keep-or-attribute branch both read it, so the two cannot disagree on when the limit is
+ * reached. */
+function pinKept(patch: string | null, count: number): boolean {
+  return patch === null || count < LANDING_CHECK_FAILURE_LIMIT;
+}
+
 /** Tally one deterministic failure of the same patch toward attribution: read the worktree's
  * head and its patch-id against main, carry LoopState.landingCheckFailures's count across
  * re-lands of the identical patch (a clean rebase onto a moved main keeps the patch-id, so the
  * retries of one change add up while a different change starts fresh), and store the strike.
- * An unreadable patch-id cannot be matched, so it never reaches the limit: the pre-cap
- * behavior, never a wrong attribution. */
+ * An unreadable patch-id cannot be matched, so pinKept never counts it toward the limit.
+ * Keeping the strike only under the limit (pinKept) is what ends the streak at attribution. */
 async function tallyCheckFailure(
   ctx: LanderContext,
   wt: string,
@@ -35,12 +46,31 @@ async function tallyCheckFailure(
   const patch = await patchId(wt, ctx.mainBranch, head);
   const prior = ctx.state.landingCheckFailures;
   const count = (patch !== null && prior?.patchId === patch ? prior.count : 0) + 1;
-  if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
+  if (pinKept(patch, count)) {
     ctx.state.landingCheckFailures = patch === null ? undefined : { patchId: patch, count };
   } else {
     ctx.state.landingCheckFailures = undefined;
   }
   return { head, patch, count };
+}
+
+/** The shared re-land rule of the two deterministic-block paths below (landingCheckRed and
+ * landingBlocked): tally the strike on this patch (tallyCheckFailure), then either keep the
+ * pin for one more attempt — merge_blocked with `reason` named in lastError — or hand the head
+ * to the caller's terminal sink `attribute`. Both paths decide keep-vs-attribute through
+ * pinKept, so the LANDING_CHECK_FAILURE_LIMIT rule has one home. */
+async function keepPinOrAttribute(
+  ctx: LanderContext,
+  wt: string,
+  reason: string,
+  attribute: (head: string) => Promise<TickResult>,
+): Promise<TickResult> {
+  const { head, patch, count } = await tallyCheckFailure(ctx, wt);
+  if (pinKept(patch, count)) {
+    ctx.state.lastError = `merge failed: merge_blocked — ${reason}`;
+    return "merge_blocked";
+  }
+  return attribute(head);
 }
 
 /** The terminal deterministic-reject sink shared by landingBlocked and attributeRedCheck:
@@ -92,12 +122,9 @@ export async function landingCheckRed(
     ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
     return "merge_blocked";
   }
-  const { head, patch, count } = await tallyCheckFailure(ctx, wt);
-  if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
-    ctx.state.lastError = `merge failed: merge_blocked — ${firstCheckReason(red)}`;
-    return "merge_blocked";
-  }
-  return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state, wt);
+  return keepPinOrAttribute(ctx, wt, firstCheckReason(red), (head) =>
+    attributeRedCheck(ctx, role, head, "landing check", red, ctx.state, wt),
+  );
 }
 
 /** A landing blocked by a deterministic cross-check (onLandingBlocked's fix-claim or
@@ -115,12 +142,9 @@ export async function landingBlocked(
   wt: string,
   blocked: string,
 ): Promise<TickResult> {
-  const { head, patch, count } = await tallyCheckFailure(ctx, wt);
-  if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
-    ctx.state.lastError = `merge failed: merge_blocked — ${blocked}`;
-    return "merge_blocked";
-  }
-  return rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state, wt);
+  return keepPinOrAttribute(ctx, wt, blocked, (head) =>
+    rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state, wt),
+  );
 }
 
 /** Attribute a check that went red over ONE change's tree after its vet approved it — a batch
