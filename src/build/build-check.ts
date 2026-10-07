@@ -6,32 +6,32 @@ import { parseTestCounts, type TestCounts } from "./build-check-counts.js";
 import { sampleSleepClock, sleptMsBetween, type SleepSampler } from "../scheduling/host-sleep.js";
 import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
 
-/** The deterministic build pre-check the review gate runs before any model reviewer: detect
- * the project's declared check (an npm script — `test` preferred per npm convention, then
- * `typecheck`, then `build`) by walking up to the installed root, run it in the worktree with a
- * hard timeout, and classify the outcome. Split out of review.ts — which
- * keeps the adversarial review gate itself — because this is a self-contained concern with its
- * own data model (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install — now build-check-detect.ts, its own pure
- * filesystem concern),
- * and execution/classification logic: deterministic process verification, distinct from the
- * model-based review. Its scoped orchestration — the permit, the build_check event, the
- * verdict-less retry, the merge-scope unverified remapping, and the skip warning — is a
- * separate concern and lives in build-check-scoped.ts. Reading the runner's summary counts — parseTestCounts/TestCounts — is
- * pure parsing with its own importers and lives in build-check-counts.ts. runScopedBuildCheck
- * (build-check-scoped.ts) is the shared detect → run → build_check
- * event → skip-warning sequence of the gate's pre-check (review.ts, via review-precheck.ts) and the landing path's
- * in-lock re-check (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same
- * detection and execution from main-baseline.ts to verify main itself once per SHA before an
- * authoring run is spent on top of it. The detached process-group runner runBuildCheck uses
- * (runScriptGroup) is this module's only runtime concern in process-group.ts — its run record
- * (BuildCheckRun, below) stays here beside the outcome it rides on; process-group.ts imports
- * the type back (no runtime cycle), and the signals it escalates with come from signalTree in
- * process.ts. Formatting and description of a check's failure output — clipReason/MAX_REASON_CHARS
- * (which bound one line of machine text, shared with parseVerdict in review-verdict.ts),
- * clipBuildTail, failureHeadline, describeCheck and checkFailureReasons — are presentation, not
- * execution, and live in build-check-report.ts (type-only back-reference here — no runtime cycle);
- * the build_check event's shape and the skip-warning wording live beside it in
- * build-check-events.ts (type-only back-reference here — no runtime cycle). */
+/** The deterministic build pre-check the review gate runs before any model reviewer: detect the
+ * project's declared check (an npm script — `test` preferred per npm convention, then `typecheck`,
+ * then `build`) by walking up to the installed root, run it in the worktree with a hard timeout,
+ * and classify the outcome. Split out of review.ts — which keeps the adversarial review gate itself
+ * — because this is a self-contained concern with its own data model
+ * (BuildCheck/BuildCheckOutcome), detection algorithm (walk-up to the install — now
+ * build-check-detect.ts, its own pure filesystem concern), and execution/classification logic:
+ * deterministic process verification, distinct from the model-based review. Its scoped
+ * orchestration — the permit, the build_check event, the verdict-less retry, the merge-scope
+ * unverified remapping, and the skip warning — is a separate concern and lives in
+ * build-check-scoped.ts. Reading the runner's summary counts — parseTestCounts/TestCounts — is pure
+ * parsing with its own importers and lives in build-check-counts.ts. runScopedBuildCheck
+ * (build-check-scoped.ts) is the shared detect → run → build_check event → skip-warning sequence of
+ * the gate's pre-check (review.ts, via review-precheck.ts) and the landing path's in-lock re-check
+ * (landing-merge.ts). The red-main baseline gate (main-red.ts) reuses this same detection and
+ * execution from main-baseline.ts to verify main itself once per SHA before an authoring run is
+ * spent on top of it. The detached process-group runner runBuildCheck uses (runScriptGroup) is this
+ * module's only runtime concern in process-group.ts — its run record (BuildCheckRun, below) stays
+ * here beside the outcome it rides on; process-group.ts imports the type back (no runtime cycle),
+ * and the signals it escalates with come from signalTree in process.ts. Formatting and description
+ * of a check's failure output — clipReason/MAX_REASON_CHARS (which bound one line of machine text,
+ * shared with parseVerdict in review-verdict.ts), clipBuildTail, failureHeadline, describeCheck and
+ * checkFailureReasons — are presentation, not execution, and live in build-check-report.ts
+ * (type-only back-reference here — no runtime cycle); the build_check event's shape and the
+ * skip-warning wording live beside it in build-check-events.ts (type-only back-reference here — no
+ * runtime cycle). */
 
 // A check whose correctness must not depend on model compliance is run by the harness, not
 // asked of the reviewer (plans/review-gate.md): the reviewer may not run state-changing
@@ -41,24 +41,23 @@ import { type InstallRunner, npmInstall, syncInstall } from "./dep-install.js";
 
 // ── Execution ─────────────────────────────────────────────────────────────────────────────
 
-/** Why a declared check reached no verdict: the script never finished (timeout), the script
- * died on a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md
- * 2026-09-23), npm is not on PATH, the toolchain below the project is broken, or the tree's
- * lockfile pins dependencies the walk-up does not provide and installing them failed (install —
- * BUGS.md 2026-10-01; usually an unreachable registry). Shared with
- * main-baseline.ts's MainBaselineCheck, whose skip is the same environmental case family — the
- * string literals live in one place so a new reason can be added without two unions drifting
- * apart. */
+/** Why a declared check reached no verdict: the script never finished (timeout), the script died on
+ * a signal the harness did not send (killed — e.g. another run's `pkill`, BUGS.md 2026-09-23), npm
+ * is not on PATH, the toolchain below the project is broken, or the tree's lockfile pins
+ * dependencies the walk-up does not provide and installing them failed (install — BUGS.md
+ * 2026-10-01; usually an unreachable registry). Shared with main-baseline.ts's MainBaselineCheck,
+ * whose skip is the same environmental case family — the string literals live in one place so a new
+ * reason can be added without two unions drifting apart. */
 export type BuildSkipReason = "timeout" | "killed" | "no-npm" | "toolchain" | "install";
 
 /** What the deterministic build check concluded. "passed": proceed to the reviewer unchanged.
- * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped
- * output tail as machine-generated reasons (no pi run consumed). "skipped": environmental
- * (timeout, an external signal kill, no npm on PATH, or a broken toolchain) — warn and still
- * proceed to the model review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick into
- * the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot be
- * misread as a red build of the tree. runScopedBuildCheck remaps a timeout or a signal kill at
- * a merge scope (landing/batch) to "failed": a suite that never finished is unverified, not
+ * "failed": a started process exited nonzero — a deterministic REJECTION with the clipped output
+ * tail as machine-generated reasons (no pi run consumed). "skipped": environmental (timeout, an
+ * external signal kill, no npm on PATH, or a broken toolchain) — warn and still proceed to the
+ * model review; deliberately NOT fail-closed so a hung build script cannot wedge every code tick
+ * into the 3-strike discard, and a toolchain broken below the project (BUGS.md 2026-09-15) cannot
+ * be misread as a red build of the tree. runScopedBuildCheck remaps a timeout or a signal kill at a
+ * merge scope (landing/batch) to "failed": a suite that never finished is unverified, not
  * environmental. */
 export interface BuildCheckOutcome {
   status: "passed" | "failed" | "skipped";
