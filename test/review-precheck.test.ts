@@ -126,6 +126,11 @@ async function gateBuildFixture(
   buildScript: string,
   toolBody?: string,
   scriptName = "build",
+  /** What the root install's manifest declares — main's own check walks up to this, while the
+   * change worktree carries its own copy of `buildScript`. Defaults to the same script; a test
+   * whose change fails while main should stay green passes a passing script here, so the gate's
+   * fresh main re-check (BUGS.md 2026-10-06) really passes. */
+  rootScript = buildScript,
 ): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
@@ -134,7 +139,7 @@ async function gateBuildFixture(
   }
   fs.writeFileSync(
     path.join(root, "package.json"),
-    projManifest({ [scriptName]: buildScript }),
+    projManifest({ [scriptName]: rootScript }),
   );
   const wt = await ensureWorktree(root, ROLE, "main");
   fs.writeFileSync(
@@ -180,6 +185,8 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
   const { root, wt } = await gateBuildFixture(
     "buildcheck-tool --fail",
     "#!/bin/sh\necho 'src/bad.ts(3,5): error TS2345: Argument of type string is not assignable'\nexit 1\n",
+    undefined,
+    "echo ok",
   );
   seedGreenMain(root);
 
@@ -191,8 +198,9 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
     assert.equal(result.run, undefined, "the reviewer never ran");
     // The failure is re-run once before it is attributed, both runs priced as gate build_check
-    // events; main's green verdict was a cache hit (the seeded landing), so no baseline run.
-    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"]);
+    // events; main's fresh re-check (BUGS.md 2026-10-06) passes against the root manifest, so a
+    // baseline run is priced too.
+    assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:passed"]);
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
     assert.match(result.detail ?? "", /^build check failed \(\`npm run build\`\): /);
     assert.equal(state.lastReview?.verdict, "reject");
@@ -211,6 +219,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
     "buildcheck-tool --fail",
     "#!/bin/sh\necho '1 failing of 3 tests: assert.equal'\nexit 1\n",
     "test",
+    "echo ok",
   );
   seedGreenMain(root);
 
@@ -254,6 +263,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
       "",
     ].join("\n"),
     "test",
+    "echo ok",
   );
   seedGreenMain(root);
 
@@ -426,6 +436,37 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
   });
 });
 
+// BUGS.md 2026-10-06: main's cached green can go stale for a clock- or load-sensitive test,
+// and the attribution then rejected an unrelated change. A repeated failure matching no
+// recorded flake must run main's check fresh, bypassing the cached green: here main fails the
+// same check but its SHA was seeded green, so the pre-fix gate rejected the change while main
+// was really red.
+test("a repeat failure with no recorded flake re-runs main fresh instead of trusting its cached green", async () => {
+  const { root, wt } = await gateBuildFixture(
+    "buildcheck-tool --fail",
+    "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n",
+  );
+  seedGreenMain(root); // an earlier landing verified this SHA green; the test now fails on it
+  const marker = piRanMarker();
+  await withPi(reviewerStub(marker), async () => {
+    const state = freshLoopState(ROLE);
+    state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
+    const head = await headOf(wt, "HEAD");
+    const result = await reviewAheadOfMain(gateCtx(root, wt), state);
+    assert.equal(result.decision, "failed");
+    assert.equal(result.mainRed, true, "the fresh run finds main red, not this change's failure");
+    assert.equal(result.discarded, undefined, "not a discard: the pin must stay");
+    assert.equal(state.unreviewFailures, 1, "no strike: nothing judged this diff");
+    assert.equal(await headOf(wt, "HEAD"), head, "the commit stays for the next re-land");
+    assert.ok(!fs.existsSync(marker), "no pi run: main's fresh verdict decided alone");
+    assert.deepEqual(
+      buildCheckEvents(root),
+      ["gate:failed", "gate:failed", "baseline:failed"],
+      "the cached green is bypassed and main's check runs",
+    );
+  });
+});
+
 test("a configured check.command gates a merge in a repo with no npm install at all", async () => {
   // plans/portability.md §6/7: no package.json and no node_modules anywhere — today's walk-up
   // detection finds nothing and every gate silently turns off; a configured command must run
@@ -437,8 +478,11 @@ test("a configured check.command gates a merge in a repo with no npm install at 
   commitIn(wt, "wip change");
   const ctx = {
     ...gateCtx(root, wt),
-    config: { ...defaultConfig(), check: { command: "echo 'pytest: 3 failing'; exit 1" } },
+    // Fails only where the change lands the marker, so main's fresh re-check (BUGS.md
+    // 2026-10-06) still passes in its own worktree.
+    config: { ...defaultConfig(), check: { command: "if [ -f ./change-marker ]; then echo 'pytest: 3 failing'; exit 1; fi; echo ok" } },
   };
+  fs.writeFileSync(path.join(wt, "change-marker"), "");
 
   // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
   const marker = path.join(tmpdir(), "pi-ran-command-check");
@@ -450,7 +494,8 @@ test("a configured check.command gates a merge in a repo with no npm install at 
     assert.ok(!fs.existsSync(marker), "no pi run");
     assert.equal(state.lastReview?.verdict, "reject");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(\`echo 'pytest: 3 failing'; exit 1\`\): pytest: 3 failing$/);
+    assert.ok(reasons[0]?.includes("if [ -f ./change-marker ]"), "the configured command is named");
+    assert.match(reasons[0] ?? "", /pytest: 3 failing$/);
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
     assert.ok(rejected, "the rejection is logged");
   });
@@ -592,7 +637,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
   // The same patch, but main moved under it and the rebased tree no longer builds: the
   // approval covers the diff's review, never the check.
   const red = path.join(tmpdir(), "red");
-  const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`);
+  const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`, undefined, "build", "echo ok");
   await withPi(reviewerStub(), async () => {
     const state = freshLoopState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");

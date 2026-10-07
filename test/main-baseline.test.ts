@@ -362,7 +362,7 @@ test("a baseline run the host slept through is unverified and never cached red",
   fs.writeFileSync(path.join(wt, "SLEEP_RED_MARKER"), "");
   // The one attempt opens awake and closes after a 119 s sleep.
   const slept = scriptedSampler([woke(1_000), woke(121_000, 2_000)]);
-  const first = await checkMainBaseline(wt, CFG, undefined, false, slept);
+  const first = await checkMainBaseline(wt, CFG, undefined, false, false, slept);
   assert.equal(first.baseline, null, "a slept run caches nothing");
   assert.equal(first.unverified, true, "the caller is told the run was unverified, not skipped");
   assert.equal(runsOf(counter), 1);
@@ -371,7 +371,7 @@ test("a baseline run the host slept through is unverified and never cached red",
   // SHA exactly as before — here green, which the cache then holds for everyone.
   fs.unlinkSync(path.join(wt, "SLEEP_RED_MARKER"));
   const clean = scriptedSampler([woke(1_000), woke(1_500)]);
-  const second = await checkMainBaseline(wt, CFG, undefined, false, clean);
+  const second = await checkMainBaseline(wt, CFG, undefined, false, false, clean);
   assert.equal(second.baseline?.status, "green");
   assert.equal(runsOf(counter), 2, "the slept failure did not latch the red into the cache");
   assert.equal((await checkMainBaseline(wt, CFG)).baseline?.status, "green");

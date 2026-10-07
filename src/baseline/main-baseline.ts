@@ -168,6 +168,13 @@ export async function checkMainBaseline(
    * strands the whole fleet on a stale build until main moves. A green from the re-run promotes
    * the SHA fleet-wide, which unblocks the role loops too. */
   reverifyRed = false,
+  /** Ignore the cache entirely and run the suite here, even over a GREEN verdict. For the one
+   * caller that cannot trust a green (BUGS.md 2026-10-06: the review gate re-attributing a
+   * repeated gate failure): a clock- or load-sensitive test can pass on an immutable SHA early
+   * and fail later, so main's cached green may no longer be true. The fresh verdict is returned
+   * but never overwrites a green (the write guard below), so the SHA's green keeps its authority
+   * for every other consumer. */
+  forceFresh = false,
   /** The sleep clock the run measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
   sampleSleep: SleepSampler = sampleSleepClock,
@@ -175,7 +182,7 @@ export async function checkMainBaseline(
   const sha = await refSha(wt, "HEAD");
   if (!sha) return { baseline: null }; // No HEAD (unborn branch) — nothing to key on.
   const cached = baselineCache.get(sha);
-  if (cached && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };
+  if (cached && !forceFresh && !shouldRerunRed(cached, wt, reverifyRed)) return { baseline: cached };
   // A re-run of a red keys the in-flight map by worktree: joining another worktree's run would
   // observe the environment this run exists to re-test.
   const key = cached?.status === "red" ? `${sha}\u0000${wt}` : sha;

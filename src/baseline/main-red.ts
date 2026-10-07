@@ -90,7 +90,7 @@ export async function mainRedGate(
   wt: string,
   /** The sleep clock the baseline run measures host suspension with; defaults to the real
    * sampleSleepClock. A test seam — production callers leave it unset. */
-  sampleSleep?: Parameters<typeof checkMainBaseline>[4],
+  sampleSleep?: Parameters<typeof checkMainBaseline>[5],
 ): Promise<TickOutcome | null> {
   // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
@@ -99,7 +99,7 @@ export async function mainRedGate(
   // which know no customs).
   const cfg = liveConfig(root);
   if (!BASELINE_BLOCKED_ROLES.has(role) && !isCustomRole(cfg, role)) return null;
-  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, sampleSleep);
+  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
   if (baseline.unverified) {
     // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md
     // 2026-09-30). Warn-and-proceed, like a skip — the sleep is named, not a test failure.
@@ -164,14 +164,20 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
  * provisional red from another worktree) runs the declared check once here, bounded by its
  * timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
  * throws: an unreadable main, a checkout that fails, no declared check on main, or a skipped
- * run all read as `unavailable`. */
+ * run all read as `unavailable`.
+ *
+ * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a
+ * cached green (checkMainBaseline's forceFresh): the review gate needs it to re-attribute a
+ * repeated gate failure on a clock- or load-sensitive test whose cached green has gone stale
+ * (BUGS.md 2026-10-06). The landing pipeline's attribution reads the cached verdict instead. */
 export function mainTipVerdict(
   root: string,
   role: string,
   mainBranch: string,
   config: TumwaterConfig,
+  forceFresh = false,
 ): Promise<MainTipVerdict> {
-  const run = gateMainQueue.then(() => verdictAtMainTip(root, role, mainBranch, config));
+  const run = gateMainQueue.then(() => verdictAtMainTip(root, role, mainBranch, config, forceFresh));
   gateMainQueue = run.catch(() => undefined);
   return run;
 }
@@ -181,12 +187,13 @@ async function verdictAtMainTip(
   role: string,
   mainBranch: string,
   config: TumwaterConfig,
+  forceFresh: boolean,
 ): Promise<MainTipVerdict> {
   try {
     const tip = await branchHead(root, mainBranch);
     if (!tip) return { status: "unavailable", why: `${mainBranch} is unreadable` };
     const wt = await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip);
-    const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
+    const check = await checkMainBaseline(wt, config, baselineCheckLogger(root, role), false, forceFresh);
     const baseline = check.baseline;
     if (baseline?.status === "green") return { status: "green", sha: baseline.sha };
     if (baseline?.status === "red") {

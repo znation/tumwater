@@ -124,10 +124,14 @@ export async function gateBuildPrecheck(
       // whole queue waits on is no place for a model run (the in-slot build-fix run this
       // replaces held it for hours and never once led to a landing — PLANS.md "Land-queue
       // speed 1/3"). The question is whose failure it is, and main's own verdict at its tip
-      // answers it — usually a cache hit, since every landing seeds the SHA it moved main to.
-      // A shutdown already under way skips the question and fails closed like any abort.
+      // answers it. A failure matching no recorded flake bypasses the per-SHA cache and runs
+      // main's check now (forceFresh): a clock- or load-sensitive test can pass on an immutable
+      // SHA early and fail later, so a cached green — usually seeded by an earlier landing —
+      // may no longer be true, and trusting it rejected an unrelated change (BUGS.md
+      // 2026-10-06). A shutdown already under way skips the question and fails closed like any
+      // abort.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
-      const main = await mainTipVerdict(root, role, mainBranch, config);
+      const main = await mainTipVerdict(root, role, mainBranch, config, true);
       // A check killed by that shutdown reads as a skip, never as evidence against the author.
       if (ctx.signal?.aborted) return { resolved: { decision: "failed", aborted: true } };
       if (main.status === "red") {

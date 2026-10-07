@@ -122,7 +122,9 @@ Suggested fix (harness half):
 Expected state: `tumwater doctor` flags the pre-fix config (`models.json.bak-pre-pricing-fix-2026-10-06`)
 on both counts and stays silent on the fixed one.
 
-### A repeated gate failure that matches no recorded flake still attributes through main's cached per-SHA verdict, so a clock-sensitive test that now fails on a SHA whose cached verdict is green rejects an unrelated change (found by bugfix loop 2026-10-06, split from the flake-memory entry now under Fixed — the fresh-main re-check that entry's suggested step 2 left open)
+## Fixed
+
+### A repeated gate failure that matches no recorded flake still attributes through main's cached per-SHA verdict, so a clock-sensitive test that now fails on a SHA whose cached verdict is green rejects an unrelated change (found by bugfix loop 2026-10-06, split from the flake-memory entry now under Fixed — the fresh-main re-check that entry's suggested step 2 left open; fixed 2026-10-06 by bugfix loop)
 Symptom: `mainTipVerdict` (src/baseline/main-red.ts) reads `checkMainBaseline`'s fleet-wide
 per-SHA cache, which short-circuits on a cached green. A test whose result depends on host load
 or wall-clock time can pass when the landing (or the gate's own pre-check) ran it and fail later
@@ -141,8 +143,7 @@ for the attribution, bypassing the per-SHA cache (including the cached green). A
 to the existing main_red path (keep the pin, no strike); a fresh green rejects as today. This
 costs one extra check per reproduced failure — about 41 over the two weeks the Fixed entry
 measured.
-
-## Fixed
+**Validation gap:** unclear-invariant — the cache's own doc ("a green is authoritative … never re-run") made the stale-green rejection look by-design until we reconstructed that a clock-sensitive test's pass need not hold later.
 
 ### The gate blames a change for a test failure the gate itself has already logged as flaky: after its one immediate re-run also fails, attribution asks main's cached per-SHA verdict, so a load- or clock-sensitive test rejects whichever unrelated change it hits — 16 of the 17 test-failure rejections since 2026-09-22 with an identifiable test failed in a file the rejected commit never touched (found by human log analysis 2026-10-06, fixed 2026-10-06 by bugfix loop)
 Symptom: since 2026-09-22, 17 build-check rejections name the failing test file. In 16 of them

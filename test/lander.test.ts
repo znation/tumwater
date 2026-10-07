@@ -425,13 +425,14 @@ test("the lander worktree is per-role, kept detached at a non-terminal outcome, 
 
 test("a failing pre-check on a green main rejects the landing and spends no pi run", async () => {
   const { root, sha } = await pinnedFixture();
-  declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
-  noteGreenBaseline(mainSha(root)); // what the last landing left behind
+  // The gate scope fails while the declared check — what main's fresh re-check runs — passes:
+  // main is green, so the change's failure is its own.
   const marker = piRanMarker();
   const restore = fakePi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`);
   try {
     const state = freshLoopState(ROLE);
     const { ctx, folded } = makeCtx(root, state);
+    ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "echo 'error TS2345: boom' >&2; exit 1" } };
     assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
     assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
