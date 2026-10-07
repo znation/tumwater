@@ -15,14 +15,17 @@ import { statRoleLog, readCompleteLines, type TailState, withTail } from "../fil
 /** Live view of an in-flight tick, derived from the tail of the loop's raw pi log.
  * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
  * the one `roleLogPath` file — the authoring tick's run in its own worktree, and the review
- * gate's runs (reviewer, conflict resolver) in its `_land-<role>` lander worktree — each
- * starting with a `session` event whose `cwd` names the worktree it runs in. The reader
- * keeps one accumulator per run kind (readLiveProgress's `kind`), so a gate run starting
- * mid-tick resets only the gate's counts, never the working tick's (BUGS.md 2026-09-22).
- * Everything after a run's `session` event is folded into that run's accumulator; lines
- * from two truly concurrent runs of different kinds interleave unattributed and land in
- * the newer run's accumulator — the best attribution the line format allows, since only
- * `session` (and the harness's own `tumwater_run` label line) carry the run's identity. */
+ * gate's runs (reviewer, conflict resolver) in its `_land-<role>` lander worktree. Every run
+ * starts with the harness's `tumwater_run` marker (src/pi/pi.ts), written before pi spawns so
+ * it precedes pi's first `session` event; a kind-bearing marker names the run's kind, and a
+ * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
+ * the session's `cwd` names). The reader keeps one accumulator per run kind
+ * (readLiveProgress's `kind`), so a gate run starting mid-tick resets only the gate's counts,
+ * never the working tick's (BUGS.md 2026-09-22). Everything after a run's opening marker (or,
+ * for a legacy log, its `session` event) is folded into that run's accumulator; lines from two
+ * truly concurrent runs of different kinds interleave unattributed and land in the newer run's
+ * accumulator — the best attribution the line format allows, since only the marker and
+ * `session` carry the run's identity. */
 export interface LiveProgress {
   /** Assistant turns completed so far. */
   turns: number;
@@ -93,9 +96,9 @@ export type ProgressRunKind = PiRunKind;
  * (one root × its roles for a TUI/GUI). */
 const tails = new Map<string, TailState<RoleLogTail>>();
 
-/** The tail state for one role log: per-kind accumulators plus which kind the most recent
- * `session` event belongs to — non-session lines carry no run identity, so they fold into
- * that kind's accumulator (see the module premise above). */
+/** The tail state for one role log: per-kind accumulators plus the current run kind (`cur`),
+ * set by the most recent run-opening marker or legacy `session` event, which lines carrying
+ * no run identity fold into (see the module premise above). */
 interface RoleLogTail {
   author: LiveProgress;
   gate: LiveProgress;
@@ -237,10 +240,10 @@ function feedLine(progress: LiveProgress, event: ProgressEvent): void {
   }
 }
 
-/** Parse pi event lines of ONE run (its events = after its `session` event). Exported for
- * tests; readLiveProgress routes through feedDemuxed instead, since a real role log can
- * interleave two runs' lines. A `session` event without a cwd (the test fixtures' shape)
- * counts as an author run. */
+/** Parse pi event lines of ONE run (the `tumwater_run` marker is ignored; the run's
+ * `session` event resets the accumulator). Exported for tests; readLiveProgress routes
+ * through feedDemuxed instead, since a real role log can interleave two runs' lines. A
+ * `session` event without a cwd (the test fixtures' shape) counts as an author run. */
 export function parseProgress(lines: string[], quietMs: number): LiveProgress {
   const progress = freshProgress(quietMs);
   for (const line of lines) {
@@ -334,10 +337,10 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
 /** Live progress for one of a loop's pi run kinds (`author` — the in-flight tick's run in
  * the role's own worktree, the default; `gate` — the review gate's runs in the role's lander
  * worktree, what the reviewing cell shows), or null when there is no log yet. The raw log is
- * append-only while pi runs and every run starts with a `session` event, so after seeding
- * from the tail window once we only read and parse bytes appended since the last poll —
- * observers that call this every second (TUI, GUI) stop rescanning up to TAIL_BYTES of JSON
- * per role per poll. */
+ * append-only while pi runs and every run starts with a `tumwater_run` marker (src/pi/pi.ts),
+ * so after seeding from the tail window once we only read and parse bytes appended since the
+ * last poll — observers that call this every second (TUI, GUI) stop rescanning up to TAIL_BYTES
+ * of JSON per role per poll. */
 export function readLiveProgress(root: string, role: string, kind: ProgressRunKind = "author"): LiveProgress | null {
   const log = statRoleLog(tails, root, role);
   if (!log) return null; // No raw log yet — nothing to show.
