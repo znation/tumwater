@@ -9,7 +9,7 @@ import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-
 import { rankCountEntries } from "../failure/rank.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { formatTimestamp, reportWindow } from "../text/datetime.js";
+import { formatTimestamp, monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { markdownTable } from "../text/markdown.js";
@@ -122,7 +122,7 @@ export function renderReportMarkdown(data: ReportData): string {
         const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
         const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
         const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
-        return [d.date.slice(5), `${compactTokens(d.tokensOut)}${bar}`, String(ticks), String(d.commits), usd(d.costUsd)];
+        return [monthDay(d.date), `${compactTokens(d.tokensOut)}${bar}`, String(ticks), String(d.commits), usd(d.costUsd)];
       }),
       ["left", "right", "right", "right", "right"],
     ),

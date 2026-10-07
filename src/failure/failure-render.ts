@@ -9,7 +9,7 @@ import type { SpendCell } from "./time-spend.js";
 import type { ColumnAlign } from "../text/markdown.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { dayKey, dayLabel, formatTime, reportWindow } from "../text/datetime.js";
+import { dayKey, dayLabel, formatTime, monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { markdownTable } from "../text/markdown.js";
 
@@ -263,7 +263,7 @@ function renderClusters(lines: string[], title: string, section: ClusterSection,
   }
   for (const c of section.clusters) {
     lines.push(
-      `- **${c.count}×** ${roleList(c.roles)} · ${dayShort(c.firstSeen)} → ${dayShort(c.lastSeen)} — ${c.example}`,
+      `- **${c.count}×** ${roleList(c.roles)} · ${monthDay(dayKey(c.firstSeen))} → ${monthDay(dayKey(c.lastSeen))} — ${c.example}`,
     );
   }
   // Mark the top-N cut the way roleList marks its own: a capped section that stays silent
@@ -295,12 +295,6 @@ function roleCell(role: string): string {
 /** A transition line's local `MM-DD HH:MM` stamp — the year is redundant inside the window and
  * the seconds add bytes without adding causality. */
 function stateChangeStamp(ts: number): string {
-  return `${dayShort(ts)} ${formatTime(new Date(ts)).slice(0, 5)}`;
+  return `${monthDay(dayKey(ts))} ${formatTime(new Date(ts)).slice(0, 5)}`;
 }
 
-/** The month-day half of a day key. Every cluster date lies inside the digest's window (at
- * most REPORT_MAX_DAYS), so the year is redundant on the line and the bytes are better spent
- * on the top-N budget. */
-function dayShort(ts: number): string {
-  return dayKey(ts).slice(5);
-}

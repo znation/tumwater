@@ -69,6 +69,15 @@ export function dayKey(ms: number): string {
   return formatDate(new Date(ms));
 }
 
+/** The `MM-DD` half of a `YYYY-MM-DD` day key (dayKey/formatDate): the redundant year
+ * dropped for a line whose date lies inside the current window. Shared by the failure
+ * digest's cluster ranges and transition stamps (failure-render.ts) and the usage report's
+ * per-day rows (report-render.ts), so the column shape cannot drift. (The GUI's browser
+ * report keeps its own `date.slice(5)`: a separate runtime that cannot import TypeScript.) */
+export function monthDay(dayKey: string): string {
+  return dayKey.slice(5);
+}
+
 /** Epoch ms as a local `YYYY-MM-DD HH:MM:SS` stamp — date and wall-clock time in one string,
  * built from one Date so the two halves cannot disagree across a midnight crossing. Shared by
  * the transcript's run separators, the history table's time cell, and the review-gate prompt's
