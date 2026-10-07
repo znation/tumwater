@@ -61,14 +61,32 @@ const MAIN_CHECK_FULL_SET_MAX = 64;
  * header, and every event after the check — the landed pairing the sha needs — is newer, so
  * one window holds the whole derivation. */
 export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
-  let check: ReturnType<typeof readEvents>[number] | undefined;
-  let events: ReturnType<typeof readEvents> = [];
+  type TailEvent = ReturnType<typeof readEvents>[number];
+  let check: TailEvent | undefined;
+  // The final window's landed events, in scan order — collected in the same pass that
+  // finds the check instead of a second full scan of the window below.
+  let landed: TailEvent[] = [];
   const grewFull = mainCheckGrewFull.has(root);
-  for (let window = DEFAULT_EVENT_TAIL; ; window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)) {
-    events = readEvents(root, window);
+  // A set note means the previous poll reached the cap without finding a check, so start
+  // there: starting at DEFAULT_EVENT_TAIL would only re-read (and re-parse on a cache miss)
+  // a window the next step discards. This is what the note's "starts straight at the cap"
+  // promises; the update keeps a non-set poll on the ×4 ladder it has always used.
+  for (
+    let window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : DEFAULT_EVENT_TAIL;
+    ;
+    window = grewFull ? MAIN_CHECK_SCAN_MAX_EVENTS : Math.min(window * 4, MAIN_CHECK_SCAN_MAX_EVENTS)
+  ) {
+    const events = readEvents(root, window);
+    check = undefined;
+    landed = [];
+    // One pass collects both facts the derivation needs: the newest merge-scope check and
+    // every landed event. The landings are re-read against the check's ts below — a pass
+    // over the landings alone, not a second pass over every event in the window.
     for (const e of events) {
       if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
         check = e;
+      } else if (e.type === "landed" && typeof e.ts === "number") {
+        landed.push(e);
       }
     }
     // Found, the log is shorter than the window (nothing older exists to find), or the cap
@@ -81,10 +99,9 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
   if (check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
   if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
-  let landedAfter: (typeof events)[number] | undefined;
-  let landedBefore: (typeof events)[number] | undefined;
-  for (const e of events) {
-    if (e.type !== "landed" || typeof e.ts !== "number") continue;
+  let landedAfter: TailEvent | undefined;
+  let landedBefore: TailEvent | undefined;
+  for (const e of landed) {
     if (e.ts > check.ts) landedAfter = e;
     else landedBefore = e;
   }
