@@ -5,7 +5,7 @@
  * feed (the loops table with its per-row actions lives in gui-client-loops.ts; the composer
  * rendered onto this view lives in gui-client-composer.ts). renderFleet repaints all of it
  * from each /api/status poll. Spliced into gui-client.ts's script, reaching its helpers (esc,
- * icon, getJson, postJson, postAction, plural, recall, fmtAgo, fmtTokens, fmtUsd,
+ * icon, getJson, postJson, postAction, plural, agree, recall, fmtAgo, fmtTokens, fmtUsd,
  * paintPanel, showFlash) through that concatenation. */
 export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet status, budget and pause controls ----
   // restart-button:start
@@ -185,10 +185,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     paintPanel("stats", [
       { label: "In flight", icon: "bolt", value: live.length + " <small>of " + loops.length + " loops</small>", sub: esc(liveSub) },
       { label: "Landed today", icon: "merge", act: "view", arg: "history", hint: "See every tick in History",
-        value: t ? String(t.commits) + " <small>" + (t.commits === 1 ? "commit" : "commits") + "</small>" : "—",
+        value: t ? String(t.commits) + " <small>" + agree(t.commits, "commit", "commits") + "</small>" : "—",
         sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed") : "counting…" },
       { label: "Ticks today", icon: "refresh", act: "view", arg: "usage", hint: "See usage per day and per loop",
-        value: t ? String(t.ticks) + " <small>" + (t.ticks === 1 ? "tick" : "ticks") + "</small>" : "—",
+        value: t ? String(t.ticks) + " <small>" + agree(t.ticks, "tick", "ticks") + "</small>" : "—",
         sub: t ? esc(fmtTokens(t.tokensOut) + " output tokens" + (t.costUsd > 0 ? " · " + fmtUsd(t.costUsd) : "")) : "counting…" },
       { label: "Backlog", icon: "inbox", act: "backlog", hint: "Jump to the backlog", value: String(plans + bugs) + " <small>open</small>",
         sub: esc(plural(plans, "plan") + " · " + plural(bugs, "bug") + (qs ? " · " + plural(qs, "question") : "")) },
