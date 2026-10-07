@@ -93,8 +93,8 @@ export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and
  * clause cannot drift. */
 export const NEEDS_REVIEW_NOTE = `**Needs review <YYYY-MM-DD> by feature: too large for one run**`;
 
-/** How a role with no backlog (organize, clean, dry, perf, improve) finds its one task, as
- * numbered steps. Written
+/** How a role with no backlog (organize, clean, dry, perf, security, robustness, improve)
+ * finds its one task, as numbered steps. Written
  * against the observed failure: with nothing to point at, a local model reads the codebase file
  * by file — thirty whole-file reads, ~300 KB of tool output — and then either fills its window or
  * declares nothing-to-do (improve: 41 of 44 ticks in the first week of September landed nothing).

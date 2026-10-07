@@ -35,7 +35,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * event log for `telemetry`) is not a function of whether main moved. */
 export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
 
-/** The built-in maintenance roles that author code on their own cadence — the six members
+/** The built-in maintenance roles that author code on their own cadence — the eight members
  * DEFERRABLE_ROLES and BASELINE_BLOCKED_ROLES share. Both sets list them because both charter
  * the same roles (defer-until-needed scheduling, red-main blocking), so the list lives once
  * here and a new maintenance role cannot be added to one set and missed in the other. */
@@ -45,10 +45,12 @@ const CODE_MAINTENANCE_ROLES: readonly string[] = [
   "clean",
   "dry",
   "perf",
+  "security",
+  "robustness",
   "improve",
 ];
 
-/** Maintenance-tier roles (need-based prioritization): exactly the eight built-ins whose due
+/** Maintenance-tier roles (need-based prioritization): exactly the ten built-ins whose due
  * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
  * their last tick and that tick did nothing. Unknown/custom roles are deliberately NOT in this
  * set — the harness cannot judge what an arbitrary custom role needs, so they never defer (they
@@ -61,7 +63,7 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
 ]);
 
 /** Does this role's recent yield scale its min-tick gap (yield-scaled clocks, PLANS.md)?
- * The search/maintenance roles — the deferrable eight, the observers, and bugfix on its
+ * The search/maintenance roles — the deferrable ten, the observers, and bugfix on its
  * empty-backlog search duty (it is the one work role that defers like maintenance, so its
  * idle clock stretches like one too; the open-bugs state is deferTick's concern, not the
  * clock's: ten consecutive empty ticks are empty-yield evidence however many bugs are

@@ -166,7 +166,7 @@ function deferralExpired(s: LoopState, now: number): boolean {
 }
 
 /** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
- * role is one of the eight deferrable built-ins — other work roles and unknown/custom never
+ * role is one of the ten deferrable built-ins — other work roles and unknown/custom never
  * defer, the harness cannot judge what an arbitrary custom role needs; its last tick did
  * nothing; it has seen main before (a never-ticked role always runs its first tick); either
  * the backlog is open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued

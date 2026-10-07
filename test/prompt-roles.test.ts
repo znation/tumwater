@@ -40,6 +40,48 @@ test("the perf role hunts measured wins and refuses speculative micro-optimizati
   assert.match(prompt, /Do NOT micro-optimize cold paths/);
   assert.match(prompt, /nothing to do/);
 });
+test("the security role traces a reachable source-to-sink path and proves it with a test", () => {
+  const role = roleById("security");
+  assert.ok(role, "security role exists");
+  assert.equal(role.title, "security reviewer");
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /"security" loop/);
+  assert.match(prompt, /Find ONE real, reachable security weakness/);
+  assert.match(prompt, /Start from the trust boundaries, not from a file listing/);
+  assert.match(prompt, /name the input an attacker controls, the path it travels, and the missing check/);
+  assert.match(prompt, /a sink fed only by constants or the operator's own trusted config is not a finding/);
+  assert.match(prompt, /a test that feeds the hostile input .* fails before your fix/);
+  assert.match(prompt, /Put the source, the sink, and the path between them in your WHY/);
+  assert.match(prompt, /Never paste a discovered secret's value anywhere/);
+  assert.match(prompt, /Do not add or upgrade dependencies/);
+  assert.match(prompt, /git log --oneline -15 --grep="tumwater\(security\)"/);
+  assert.match(prompt, /If no candidate survives the trace, there is nothing to do/);
+});
+test("the robustness role injects a concrete fault and refuses to silence errors", () => {
+  const role = roleById("robustness");
+  assert.ok(role, "robustness role exists");
+  assert.equal(role.title, "robustness hardener");
+  const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
+  assert.match(prompt, /"robustness" loop/);
+  assert.match(prompt, /fails halfway, returns garbage, or never returns/);
+  assert.match(prompt, /write-to-temp-then-rename/);
+  assert.match(prompt, /no timeout or cancellation/);
+  assert.match(prompt, /name the concrete fault .* and the wrong outcome it causes/);
+  assert.match(prompt, /a test that injects that fault .* fails before your fix/);
+  assert.match(prompt, /it never turns a visible error into a silent one/);
+  assert.match(prompt, /Do not wrap code in blanket try\/catch/);
+  assert.match(prompt, /git log --oneline -15 --grep="tumwater\(robustness\)"/);
+  assert.match(prompt, /If no candidate survives, there is nothing to do/);
+});
+test("security and robustness sit between the observers and improve in catalog order", () => {
+  const ids = ROLES.map((r) => r.id);
+  assert.deepEqual(ids.slice(ids.indexOf("telemetry"), ids.indexOf("improve") + 1), [
+    "telemetry",
+    "security",
+    "robustness",
+    "improve",
+  ]);
+});
 test("the feature find text refuses rather than forces and skips refused plans", () => {
   const role = roleById("feature");
   assert.ok(role);

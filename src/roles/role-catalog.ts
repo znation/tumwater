@@ -331,6 +331,86 @@ BUGS.md is your only write; never edit source, tests, or docs. If every cluster 
 infrastructure weather or already filed, there is nothing to do.`,
   },
   {
+    id: "security",
+    tier: "default",
+    title: "security reviewer",
+    // A source-to-sink audit, not a checklist sweep: an unanchored "find a vulnerability"
+    // invites speculative hardening the reviewer cannot verify, so the text demands a traced,
+    // reachable path and a test that exercises it before anything changes.
+    find: `Find ONE real, reachable security weakness in this project and fix it — or, when the fix is
+too large for this run, record it in BUGS.md. Start from the trust boundaries, not from a file
+listing: where untrusted data enters (network requests and listeners, CLI arguments, environment
+variables, config and data files, file and branch names, subprocess output, model or third-party
+API replies) and the powerful sinks it could reach:
+   - process execution: a shell string built from data, \`shell: true\`, \`sh -c\`, \`os.system\`;
+   - filesystem paths joined from data: traversal via \`..\` or an absolute path, symlinks
+     followed out of a directory, predictable temp names;
+   - code or object loading from data: eval, dynamic import, unsafe deserialization (pickle,
+     unsafe YAML loads);
+   - queries and markup built by string concatenation: SQL, HTML/innerHTML, terminal escape
+     sequences;
+   - network exposure: a listener bound beyond loopback, an endpoint with no auth or origin check
+     (a browser on the same machine can reach a localhost server), unbounded request bodies;
+   - secrets: tokens written to logs, error messages, or world-readable files.
+${searchGuidance("security")}
+Then:
+   - Grep for those sinks in this project's own language and pick ONE hit. Trace it back to its
+     source: it is real only when you can name the input an attacker controls, the path it
+     travels, and the missing check. Read every caller on that path — a guard upstream already
+     closes it — and a sink fed only by constants or the operator's own trusted config is not a
+     finding.
+   - Prove it with a test that feeds the hostile input (a \`../\` path, a shell metacharacter, an
+     oversized body, a foreign Origin) and fails before your fix. Then fix it at the boundary —
+     validate, escape, or switch to the safe API (an argument array instead of a shell string, a
+     resolved-path containment check, a parameterized query) — and watch the test pass.
+   - Put the source, the sink, and the path between them in your WHY, so the reviewer can check
+     the trace rather than take it on trust.
+Never paste a discovered secret's value anywhere — name the file and line only. Do not add or
+upgrade dependencies, add defense-in-depth for paths no input can reach, or rewrite code under a
+security label; a fix too large for one run becomes ONE BUGS.md entry (source, sink, path, and a
+reproduction) instead. If no candidate survives the trace, there is nothing to do.`,
+  },
+  {
+    id: "robustness",
+    tier: "default",
+    title: "robustness hardener",
+    // Distinct from bugfix's latent-bug hunt (wrong results on the happy path) and improve's
+    // error messages: this role asks what the code does when the world misbehaves — and
+    // insists on a fault-injecting test, since a guard nobody can trigger is unreviewable.
+    find: `Find ONE place where this project misbehaves when something around it fails, and make it
+handle that failure correctly. The question is not "is the logic right?" but "what happens when
+this step fails halfway, returns garbage, or never returns?" Look where the code meets what it
+does not control — files and persisted state, subprocesses, network calls, locks, timers,
+concurrent processes or tasks — for these failure modes:
+   - a write that leaves a corrupt or truncated file when the process dies mid-write (no
+     write-to-temp-then-rename);
+   - a parse of a file or reply that crashes, or silently resets state, on empty, truncated, or
+     malformed input;
+   - a subprocess, request, or wait with no timeout or cancellation, so one hang stalls everything;
+   - an error swallowed (an empty catch, a bare except, a discarded Result, a promise with no
+     rejection handler) where the caller needs to know;
+   - cleanup skipped on the error path: a leaked lock file, child process, file handle, listener,
+     or temp directory;
+   - a retry with no bound or backoff, or a queue, cache, log, or map that only ever grows;
+   - a read-modify-write that two processes or tasks can interleave, losing one update.
+${searchGuidance("robustness")}
+Then:
+   - Grep for those patterns in this project's own language and pick ONE hit on a path that
+     actually runs. Read its callers: it is real only when you can name the concrete fault (the
+     process is killed during this write, this file is empty after a crash, this child never
+     exits) and the wrong outcome it causes (lost state, a stuck loop, a crash, a silently wrong
+     answer).
+   - Prove it with a test that injects that fault — a truncated file, a fake that throws or
+     hangs, a timer that never fires — and fails before your fix; then make the code handle it
+     and watch the test pass.
+   - Name the fault and the outcome, before and after, in your WHY.
+A robust fix fails loudly and leaves state consistent; it never turns a visible error into a
+silent one. Do not wrap code in blanket try/catch, add checks for states the code cannot reach,
+or add retries that hide a real failure. A fix too large for one run becomes ONE BUGS.md entry
+(the fault, the outcome, and a reproduction) instead. If no candidate survives, there is nothing
+to do.`,
+  },
+  {
     id: "improve",
     tier: "default",
     title: "general improver",
