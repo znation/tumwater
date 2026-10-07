@@ -257,6 +257,12 @@ export interface TumwaterConfig {
    * TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE (the line
    * `tumwater logs` renders) in its environment. Absent or an empty string disables. */
   notify?: string;
+  /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
+   * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —
+   * or a map by tier whose values are selectors or `"pause"` (the pause entries are consulted
+   * per tier in part 5/8; until then a map uses its `default` entry). Setting `fallback` and
+   * `fallbackModel` both is a validation error. */
+  fallback?: string | Partial<Record<ModelTier, string>>;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free
@@ -264,12 +270,6 @@ export interface TumwaterConfig {
    * default) — or present but not verifiably free — the gate pauses role loops exactly as
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
-  /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
-   * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —
-   * or a map by tier whose values are selectors or `"pause"` (the pause entries are consulted
-   * per tier in part 5/8; until then a map uses its `default` entry). Setting `fallback` and
-   * `fallbackModel` both is a validation error. */
-  fallback?: string | Partial<Record<ModelTier, string>>;
   fallbackModel?: FallbackModelConfig;
   /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
    * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on
