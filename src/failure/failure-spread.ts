@@ -14,7 +14,7 @@
  * which failures still sit inside the window is a fact about the past no single poll's inputs
  * carry — so it is a reducer rather than a stateless predicate. */
 
-import { type HoldKind, type HoldObservation } from "../fleet/fleet-hold.js";
+import type { HoldKind, HoldObservation } from "../fleet/fleet-hold.js";
 import { rankCountEntries } from "./rank.js";
 
 /** Failures of one kind within the window that trip the alarm. Six in thirty minutes: the
