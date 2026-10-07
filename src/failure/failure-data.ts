@@ -17,6 +17,7 @@ import { dayAt, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, NO_ERROR_TEXT, truncateExample, type Cluster } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
+import { addTo } from "../collections.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -205,7 +206,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
     const role = eventRole(ev);
     const counts = outcomeMap.get(role) ?? {};
     const result = ev.result as TickResult;
-    counts[result] = (counts[result] ?? 0) + 1;
+    addTo(counts, result, 1);
     outcomeMap.set(role, counts);
   }
   // rankByCount orders strongest role first with the ascending-key tiebreak. The old

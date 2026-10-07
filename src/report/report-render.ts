@@ -13,6 +13,7 @@ import { formatTimestamp, monthDay, reportWindow } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { markdownTable } from "../text/markdown.js";
+import { addTo } from "../collections.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -34,7 +35,7 @@ function rankedRoleMap(totals: Record<string, number>): [string, number][] {
 function rankedRoleTotals(series: ReportDay[], pick: (d: ReportDay) => Record<string, number>): [string, number][] {
   const totals: Record<string, number> = {};
   for (const d of series) {
-    for (const [role, n] of Object.entries(pick(d))) totals[role] = (totals[role] ?? 0) + n;
+    for (const [role, n] of Object.entries(pick(d))) addTo(totals, role, n);
   }
   return rankedRoleMap(totals);
 }

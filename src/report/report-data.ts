@@ -14,6 +14,7 @@ import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate, humanSeconds } from "../text/datetime.js";
+import { addTo } from "../collections.js";
 
 /** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
  * and the totals each render prints. `ticks` is counted only where a consumer needs a window
@@ -48,12 +49,12 @@ interface UsageFold {
 function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   if (ev.type === "tick_end") {
     const role = eventRole(ev);
-    target.ticksByRole[role] = (target.ticksByRole[role] ?? 0) + 1;
+    addTo(target.ticksByRole, role, 1);
     if (target.ticks !== undefined) target.ticks++;
     const { tokens, costUsd } = eventUsage(ev);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
-    if (costUsd !== 0) target.costByRole[role] = (target.costByRole[role] ?? 0) + costUsd;
+    if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
   } else if (ev.type === "merged") {
     target.commits++;
   } else if (ev.type === "landed" || ev.type === "land_failed") {

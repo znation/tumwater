@@ -26,3 +26,19 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
 export function increment<K>(map: Map<K, number>, key: K): void {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
+
+/** Add `amount` to a plain-object counter, seeding a missing key at `amount` — the record
+ * sibling of `increment`, the single home of the `record[key] = (record[key] ?? 0) + n`
+ * step (the seed matters because `noUncheckedIndexedAccess` reads every entry as possibly
+ * undefined), shared by the failure digest's outcome tally per role (failure-data.ts), the
+ * usage report's window role totals (report-render.ts), and its per-day fold's tick and cost
+ * tallies (report-data.ts), so those sites cannot drift on how a missing key is seeded. The
+ * test duration reporter (test/test-durations-reporter.ts) keeps its own copy: it imports no
+ * tumwater module by design, since node --test loads it into its own parent process. */
+export function addTo<K extends string>(
+  record: Partial<Record<K, number>>,
+  key: K,
+  amount: number,
+): void {
+  record[key] = (record[key] ?? 0) + amount;
+}
