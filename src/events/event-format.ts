@@ -1,6 +1,6 @@
 import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { textOr } from "../text/text.js";
@@ -160,7 +160,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "orchestrator_start":
       return `orchestrator started (pid ${textOr(e.pid)}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
-      return `orchestrator stopped`;
+      return ORCHESTRATOR_STOPPED;
     case "prompt_enqueued":
       return `user prompt queued: ${textOr(e.preview)}`;
     case "prompt_cancelled":
@@ -254,14 +254,14 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "fleet_paused":
       // Routine state change, like counters_reset — no warning prefix.
-      return `fleet paused — role loops stop starting new ticks (director keeps running)`;
+      return `${fleetPausePhrase()} (director keeps running)`;
     case "fleet_resumed":
-      return `fleet resumed — role loops tick again`;
+      return fleetResumePhrase();
     case "role_paused":
       // Routine state change, like fleet_paused — no warning prefix.
-      return `role ${textOr(e.role)} paused — it stops starting new ticks (the rest of the fleet keeps running)`;
+      return `${rolePausePhrase(textOr(e.role))} (the rest of the fleet keeps running)`;
     case "role_resumed":
-      return `role ${textOr(e.role)} resumed — it ticks again`;
+      return roleResumePhrase(textOr(e.role));
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the

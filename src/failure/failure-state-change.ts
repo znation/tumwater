@@ -10,7 +10,7 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase } from "../text/phrases.js";
+import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
@@ -93,16 +93,16 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
     case "fleet_paused":
-      text = "fleet paused — role loops stop starting new ticks";
+      text = fleetPausePhrase();
       break;
     case "fleet_resumed":
-      text = "fleet resumed — role loops tick again";
+      text = fleetResumePhrase();
       break;
     case "role_paused":
-      text = `role ${field(ev.role ?? "?")} paused — it stops starting new ticks`;
+      text = rolePausePhrase(field(ev.role ?? "?"));
       break;
     case "role_resumed":
-      text = `role ${field(ev.role ?? "?")} resumed — it ticks again`;
+      text = roleResumePhrase(field(ev.role ?? "?"));
       break;
     case "rate_limit_hold": {
       // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
@@ -170,7 +170,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `orchestrator started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
       break;
     case "orchestrator_stop":
-      text = "orchestrator stopped";
+      text = ORCHESTRATOR_STOPPED;
       break;
     case "supervisor_exit":
       text = `fleet down — generation ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;

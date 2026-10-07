@@ -104,6 +104,47 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
   return `${count} consecutive tick failures: ${reason}`;
 }
 
+/** The base line for an operator fleet pause — `fleet paused — role loops stop starting new
+ * ticks` — built here so the event feed (event-format.ts, which appends its own `(director
+ * keeps running)` consequence) and the failure digest's Fleet state changes lines
+ * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base
+ * wording. `tumwater pause`'s confirmation (operator/operator-commands.ts) interleaves its
+ * `--for`/`--reason` spans before the dash, so it composes its own line and keeps that wording
+ * inline. */
+export function fleetPausePhrase(): string {
+  return "fleet paused — role loops stop starting new ticks";
+}
+
+/** The base line for lifting the fleet pause — `fleet resumed — role loops tick again` — shared
+ * by the event feed (event-format.ts), the failure digest's Fleet state changes lines
+ * (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
+ * (operator/operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
+ * three cannot drift. */
+export function fleetResumePhrase(): string {
+  return "fleet resumed — role loops tick again";
+}
+
+/** The base line for a per-role pause — `role <id> paused — it stops starting new ticks` — shared
+ * by the event feed (event-format.ts, which appends `(the rest of the fleet keeps running)`) and
+ * the failure digest's Fleet state changes lines (src/failure/failure-state-change.ts, which
+ * deliberately keeps the short form), so the two cannot drift on the base wording. The role is
+ * coerced, so the digest's byte-sliced `field()` output and the feed's raw field both render. */
+export function rolePausePhrase(role: unknown): string {
+  return `role ${String(role)} paused — it stops starting new ticks`;
+}
+
+/** The base line for a per-role resume — `role <id> resumed — it ticks again` — shared by the
+ * event feed (event-format.ts) and the failure digest's Fleet state changes lines
+ * (src/failure/failure-state-change.ts), so the two cannot drift. The role is coerced, like
+ * rolePausePhrase. */
+export function roleResumePhrase(role: unknown): string {
+  return `role ${String(role)} resumed — it ticks again`;
+}
+
+/** The line for an orchestrator shutdown — the event feed (event-format.ts) and the failure
+ * digest's Fleet state changes lines (src/failure/failure-state-change.ts) both render it. */
+export const ORCHESTRATOR_STOPPED = "orchestrator stopped";
+
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the array
  * coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,
  * budget_handback's handed-back list, the rate_limit_hold line) and the failure digest's state-

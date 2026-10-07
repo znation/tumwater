@@ -4,7 +4,7 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "./retire.js";
-import { agree, pauseReasonSuffix } from "../text/phrases.js";
+import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { allRoleIds } from "../roles/roles.js";
 import {
@@ -294,7 +294,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   const roleNote = still.length > 0
     ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
     : "";
-  say(`fleet resumed — role loops tick again${when}${roleNote}${tail}`);
+  say(`${fleetResumePhrase()}${when}${roleNote}${tail}`);
 }
 
 /** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
