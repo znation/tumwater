@@ -403,6 +403,20 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   } as never);
   assert.match(clean, /\(drained 0m\)$/, "nothing aborted: no resume clause");
 
+  // A torn or hand-edited numeric field reads as zero, never NaN: "NaN commits", "after
+  // NaNm", and "true tick(s)" would all mislead an operator, and `String`/`Number`
+  // coercions otherwise leak them through.
+  const staleTorn = formatEvent({
+    ts: 0, loop: "harness", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: "12",
+  } as never);
+  assert.match(staleTorn, /is 0 commits ahead in src\//, `corrupt aheadCommits must read zero: ${staleTorn}`);
+  assert.doesNotMatch(staleTorn, /NaN/);
+  const restartTorn = formatEvent({
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: "x", abortedTicks: "2",
+  } as never);
+  assert.match(restartTorn, /\(drained 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
+  assert.doesNotMatch(restartTorn, /NaN|true tick/);
+
   // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead fleet says so.
   const refused = formatEvent({
     ts: 0, loop: "harness", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
@@ -667,4 +681,15 @@ test("formatEvent renders the model-fallback episode start and end", () => {
     durationMs: 5 * 60_000,
   } as never);
   assert.match(ended, /bugfix\s+model fallback ended — back on primary\/m1 after 5m$/);
+  // A torn durationMs is not NaN minutes: the episode length reads as 0.
+  const endedTorn = formatEvent({
+    ts: 0,
+    loop: "bugfix",
+    type: "model_fallback_ended",
+    provider: "primary",
+    model: "m1",
+    durationMs: "five",
+  } as never);
+  assert.match(endedTorn, /after 0m$/, `corrupt durationMs must read zero: ${endedTorn}`);
+  assert.doesNotMatch(endedTorn, /NaN/);
 });

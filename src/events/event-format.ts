@@ -48,6 +48,13 @@ function gigabytes(v: unknown): string {
   return finiteNumber(v, 0).toFixed(1);
 }
 
+/** A duration in whole minutes. A torn or hand-edited value that is missing or non-numeric
+ * reads as 0, never NaN — the same corrupt-field rule gigabytes applies, for the fallback
+ * episode's and the restart's minute counts. */
+function minutes(ms: unknown): number {
+  return Math.round(Number(finiteNumber(ms, 0)) / 60_000);
+}
+
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
  * (pollFleetHold omits it for pi's default) and "" otherwise, so a multi-provider fleet can
  * tell WHICH backend the storm was at. Shared by the hold and resumed lines. */
@@ -300,17 +307,19 @@ export function eventMessage(e: HarnessEvent): string {
       return `model fallback — ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} engaged (primary failing: ${e.reason ?? "backend failure"})`;
     case "model_fallback_ended":
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
-      return `model fallback ended — back on ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} after ${Math.round(Number(e.durationMs ?? 0) / 60_000)}m`;
+      return `model fallback ended — back on ${e.provider ?? "pi's default"}/${e.model ?? "pi's default"} after ${minutes(e.durationMs)}m`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the code
       // running. Not a warning prefix — a stale build is a state, and auto-restart resolves it.
-      return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(Number(e.aheadCommits ?? 0), "commit")} ahead in src/`;
+      return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(finiteNumber(e.aheadCommits, 0), "commit")} ahead in src/`;
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
-    case "restart":
-      return `restarting onto build ${shortSha(e.to)} (drained ${Math.round(Number(e.drainedMs ?? 0) / 60_000)}m${
-          Number(e.abortedTicks ?? 0) > 0 ? `, ${e.abortedTicks} tick(s) will resume on the new build` : ""
+    case "restart": {
+      const aborted = finiteNumber(e.abortedTicks, 0);
+      return `restarting onto build ${shortSha(e.to)} (drained ${minutes(e.drainedMs)}m${
+          aborted > 0 ? `, ${aborted} tick(s) will resume on the new build` : ""
         })`;
+    }
     case "restart_refused":
       // The restart is refused, not failed: the running build stays and the gate is re-asked
       // every poll, so the line names both builds and what the operator must repair.
