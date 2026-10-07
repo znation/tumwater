@@ -58,13 +58,14 @@ function killWordBefore(text: string, c: number): { text: string; cursor: number
  * both: type the tail, Ctrl+U it away, retype). Every other control/meta combination is
  * ignored — Ctrl+W cannot join the kill set because the TUI's transcript views already
  * bind it to per-loop wake (tui.tsx). Returns the new state; an out-of-range cursor is
- * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when the unit they would cut is one
- * half of a surrogate pair (an astral character such as emoji), both units go together so no
- * lone surrogate — which terminals render as garbage — is ever left behind (the same
- * surrogate-safe rule truncate in text.ts applies to display clipping). The cursor itself
- * only ever sits on a character boundary: a stale mid-pair cursor is snapped to the pair's
- * start, and left/right step over a whole astral character rather than into the middle of
- * its pair (which would otherwise let backspace/delete cut the pair in half). */
+ * clamped instead of corrupting the edit. Backspace/delete remove a whole character: when
+ * the unit they would cut is one half of a surrogate pair (an astral character such as
+ * emoji), both units go together so no lone surrogate — which terminals render as garbage —
+ * is ever left behind (the same surrogate-safe rule truncate in text.ts applies to display
+ * clipping). The cursor itself only ever sits on a character boundary: a stale mid-pair
+ * cursor is snapped to the pair's start, and left/right step over a whole astral character
+ * rather than into the middle of its pair (which would otherwise let backspace/delete cut
+ * the pair in half). */
 export function applyKey(
   text: string,
   cursor: number,
