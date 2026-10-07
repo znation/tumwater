@@ -9,7 +9,7 @@
  * after the fleet view, reaching its helpers ($, esc, postJson, plural, showFlash, refresh)
  * and the fleet view's activeView/drawer state through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../../inbox/inbox-submit.js";
-import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
+import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGE_MAX_BYTES, PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
 export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
   const PROMPT_MAX = ${DIRECTOR_PROMPT_MAX_CHARS};
   const promptInput = $("prompt");
@@ -98,6 +98,9 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // accepts but the server refuses would sit in an unsendable chip. The name's extension is
   // what the server validates, so a MIME type alone is not enough.
   const IMAGE_EXTENSIONS = ${JSON.stringify(PROMPT_IMAGE_EXTENSIONS)};
+  // The server's per-image decoded-byte cap (inbox-attachments.ts), interpolated the same way,
+  // so a file the client attaches is one the endpoint will not refuse for its size.
+  const IMAGE_MAX_BYTES = ${PROMPT_IMAGE_MAX_BYTES};
   // The server (promptImageExtensionProblem → path.extname) treats a single leading dot as a
   // hidden name, not an extension: ".png" has none and is refused. Matching that here keeps a
   // dropped file from becoming a chip the endpoint later rejects. A File's name is always a
@@ -113,19 +116,22 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   function addPromptImages(files) {
     let added = 0;
     let notImage = 0;
+    let oversize = 0;
     let overCap = 0;
     for (const f of files) {
       if (!isImageFile(f)) { notImage++; continue; }
+      if (f.size > IMAGE_MAX_BYTES) { oversize++; continue; }
       if (promptImages.length >= ${PROMPT_IMAGES_MAX_COUNT}) { overCap++; continue; }
       promptImages.push({ name: f.name, size: f.size, file: f });
       added++;
     }
     if (added) renderPromptImages();
-    if (notImage || overCap) {
+    if (notImage || oversize || overCap) {
       const why = [];
       if (notImage) why.push(IMAGE_EXTENSIONS.join(" ") + " images only");
+      if (oversize) why.push("at most " + ${PROMPT_IMAGE_MAX_BYTES / (1024 * 1024)} + " MiB each");
       if (overCap) why.push("at most " + ${PROMPT_IMAGES_MAX_COUNT} + " per prompt");
-      showFlash("Did not attach " + plural(notImage + overCap, "file") + " — " + why.join(", "));
+      showFlash("Did not attach " + plural(notImage + oversize + overCap, "file") + " — " + why.join(", "));
     }
     return added;
   }

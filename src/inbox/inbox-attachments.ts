@@ -18,8 +18,10 @@ import { agree, plural } from "../text/phrases.js";
  * `<stem>-<n>.<ext>` shape savePromptImages writes and nothing else. */
 export const PROMPT_IMAGE_EXTENSIONS: readonly string[] = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"];
 
-/** Per-image decoded-size cap. */
-const PROMPT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** Per-image decoded-size cap. Exported so a surface that holds a file before reading it
+ * (the GUI composer's drop/paste handler) can refuse an oversized image with the same bound
+ * the endpoint enforces, instead of offering a chip the server later rejects. */
+export const PROMPT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 /** Per-prompt image count cap. */
 export const PROMPT_IMAGES_MAX_COUNT = 4;

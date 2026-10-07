@@ -2,7 +2,7 @@ import { sleep } from "./wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_COMPOSER_JS } from "../src/ui/gui/gui-client-composer.js";
-import { promptImageExtensionProblem } from "../src/inbox/inbox-attachments.js";
+import { promptImageExtensionProblem, promptImageSizeProblem, PROMPT_IMAGE_MAX_BYTES } from "../src/inbox/inbox-attachments.js";
 import { clientRegion, ESC_LINE } from "./gui-client-scope.js";
 
 // The dashboard's composer, browser-side (src/ui/gui/gui-client-composer.ts): the target selector
@@ -290,6 +290,18 @@ test("the composer accepts exactly the image names the server's validator accept
     const clientAccepts = s.scope.isImageFile({ name });
     const serverAccepts = promptImageExtensionProblem(name) === null;
     assert.equal(clientAccepts, serverAccepts, `client and server disagree on ${JSON.stringify(name)}`);
+  }
+});
+
+test("the composer accepts exactly the image sizes the server's size rule accepts", () => {
+  // One file per fresh scope so the four-image cap cannot mask the size rule. The server
+  // compares the decoded base64 byte length; a File's size is that same decoded byte count.
+  for (const size of [0, 1, 1024, PROMPT_IMAGE_MAX_BYTES - 1, PROMPT_IMAGE_MAX_BYTES, PROMPT_IMAGE_MAX_BYTES + 1, 50 * 1024 * 1024]) {
+    const s = composerScope();
+    const added = s.scope.addPromptImages([{ name: "a.png", type: "image/png", size }]);
+    const serverAccepts = promptImageSizeProblem("a.png", size) === null;
+    assert.equal(added === 1, serverAccepts, `client and server disagree on a ${size}-byte image`);
+    if (!serverAccepts) assert.match(s.flashes[0] ?? "", /at most 5 MiB each/);
   }
 });
 
