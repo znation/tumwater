@@ -4,7 +4,7 @@ import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, roles
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { formatTimestamp } from "../text/datetime.js";
-import { isJsonObject, stringList } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares
@@ -38,6 +38,14 @@ function elapsed(ms: unknown): string {
   const n = Number(ms);
   if (!Number.isFinite(n) || n < 0 || ms === null) return "";
   return ` (in ${shortSpanPhrase(n)})`;
+}
+
+/** A disk event's GB field as "12.3"-style text. A torn or hand-edited event whose value is
+ * missing or non-numeric reads as "0.0", never "NaN" — the same corrupt-field rule budgetPhrase
+ * applies to spentUsd/capUsd, since HarnessEvent's index signature hands every field over
+ * unvalidated. */
+function gigabytes(v: unknown): string {
+  return finiteNumber(v, 0).toFixed(1);
 }
 
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
@@ -241,14 +249,14 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
-      return `disk low — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume (floor ${e.holdGB} GB); new work is held until space recovers`;
+      return `disk low — ${gigabytes(e.freeGB)} GB free on the worktrees volume (floor ${gigabytes(e.holdGB)} GB); new work is held until space recovers`;
     case "disk_ok":
-      return `disk recovered — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume; new work starts again`;
+      return `disk recovered — ${gigabytes(e.freeGB)} GB free on the worktrees volume; new work starts again`;
     case "disk_reclaim": {
       // Routine maintenance, no warning prefix: the pass freed space so the hold need not
       // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
       const names = Array.isArray(e.worktrees) ? e.worktrees.join(", ") : "?";
-      return `disk reclaim (${e.mode ?? "pressure"}) — freed ${Number(e.freedGB).toFixed(1)} GB from ${names}; ${Number(e.freeGB).toFixed(1)} GB free now`;
+      return `disk reclaim (${e.mode ?? "pressure"}) — freed ${gigabytes(e.freedGB)} GB from ${names}; ${gigabytes(e.freeGB)} GB free now`;
     }
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness

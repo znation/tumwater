@@ -321,3 +321,23 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(rlResumed, /429 hold lifted — role loops on every provider tick again$/, `rate-limit resumed line: ${rlResumed}`);
 });
+
+// The disk-floor events (the gate sampler's disk_low/disk_ok/disk_reclaim) render each GB field
+// one-decimal. A torn or hand-edited event whose value is missing or non-numeric must read "0.0",
+// never "NaN", for freeGB, holdGB, and freedGB alike.
+test("formatEvent renders the disk-floor events' GB fields one-decimal and never NaN", () => {
+  const low = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: 12.34, holdGB: 5 } as never);
+  assert.match(low, /disk low — 12\.3 GB free on the worktrees volume \(floor 5\.0 GB\)/, `disk low line: ${low}`);
+  const ok = formatEvent({ ts: 0, loop: "harness", type: "disk_ok", freeGB: 12.34 } as never);
+  assert.match(ok, /disk recovered — 12\.3 GB free on the worktrees volume/, `disk ok line: ${ok}`);
+  const reclaim = formatEvent({
+    ts: 0, loop: "harness", type: "disk_reclaim", mode: "pressure", worktrees: ["a", "b"], freedGB: 1.25, freeGB: 40,
+  } as never);
+  assert.match(reclaim, /disk reclaim \(pressure\) — freed 1\.3 GB from a, b; 40\.0 GB free now/, `disk reclaim line: ${reclaim}`);
+
+  // Corrupt values: each GB field falls back to 0.0 rather than interpolating NaN.
+  const torn = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: "x", holdGB: null } as never);
+  assert.match(torn, /disk low — 0\.0 GB free on the worktrees volume \(floor 0\.0 GB\)/, `torn disk low line: ${torn}`);
+  const tornReclaim = formatEvent({ ts: 0, loop: "harness", type: "disk_reclaim", freedGB: "x", freeGB: null } as never);
+  assert.match(tornReclaim, /freed 0\.0 GB from \?; 0\.0 GB free now/, `torn disk reclaim line: ${tornReclaim}`);
+});
