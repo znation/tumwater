@@ -356,6 +356,365 @@ pool, event-format, status and doctor tests.
 
 ---
 
+
+### Parallel work instances, part 1/7: one role, several loop ids — normalize every catalog-role lookup through `baseRoleOf` (planned 2026-10-07 by operator)
+
+Design: plans/parallel-work-instances.md ("Identity: loop id vs. base role").
+
+Context: a role's runner id keys its state, branch, refs, sessions, inbox, land-queue entry and
+events, so a second instance only needs a distinct id such as `feature-2`. But a handful of
+sites look the id up in the catalog or the config, or compare it to `"bugfix"`. With
+`feature-2` those sites would silently pick defaults: no catalog entry, no model override, tier
+1, and a `tumwater(feature-2):` subject that `workLanded` does not count. This part makes every
+such site take the base role. With no instances configured it changes nothing.
+
+**Approach.**
+1. **Module.** New src/roles/loop-ids.ts:
+   - `INSTANCE_ROLES = new Set(["feature", "bugfix"])`.
+   - `baseRoleOf(id)`: `^(feature|bugfix)-([2-9]|[1-9][0-9]+)$` → its role; any other id →
+     itself.
+   - `instanceIndex(id)`: 1 for the bare id, N for `-N`.
+   - `loopEnabled(config, id)`: true when `config.roles[baseRoleOf(id)]?.enabled` and
+     `instanceIndex(id)` is at most that role's instance count, which is 1 until part 5/7.
+2. **Runner.** `LoopRunner` (src/loop/loop.ts) gains `readonly baseRole = baseRoleOf(role)`.
+   - `runTick`'s `this.role === "bugfix"` and the qa `extractFlow` check use `baseRole`.
+   - The doc comment says `role` is the loop id.
+3. **Role helpers.** In src/roles/roles.ts, `roleById`, `roleTier` and `yieldScaledRole`
+   normalize their argument. Export `baselineBlocked(role)` and use it in place of
+   `BASELINE_BLOCKED_ROLES.has` in src/baseline/main-red.ts.
+4. **Config views.** In src/config/config-views.ts, `configForRole`, `roleSeamTier` and
+   `fallbackRoleConfig` read `config.roles[baseRoleOf(role)]`.
+5. **Scheduling.**
+   - `isEligible` (src/scheduling/scheduling.ts) uses `loopEnabled`.
+   - `deferTick` tests `DEFERRABLE_ROLES` and `BUGFIX_ROLE` on `baseRoleOf(role)`, as does
+     orchestrator-scheduling.ts's `searchBugfix`.
+   - The paused-roles check skips a runner when either its id or its base role is paused.
+6. **Prompt.** `assembleTickPrompt` (src/tick/tick-prompt.ts) resolves the catalog role, the
+   custom loop, the `qa`/`telemetry`/`clean` blocks and `config.roles[…].instructions` by base
+   role. It keeps the loop id for the inbox and the notebook.
+7. **Commit subject.** `stampedSubject(baseRoleOf(ctx.role), …)` in src/tick/tick-stage.ts and
+   src/verdict/refusal.ts. The trailer keeps the loop id (`Tick: feature-2 #N`).
+8. **Gates.**
+   - `pollRoleCapGate` (src/gates/role-cap-gates.ts) groups runners by base role, sums their
+     `dailyCost` against `maxDailyCostUsdPerRole[base]`, and pauses every runner in the group.
+   - gate-polls.ts's quiet-hours and budget-tier lookups use the base role.
+   - In src/tick/tick-apply.ts, `OBSERVER_ROLES.has` takes the base role.
+9. **Operator fan-out.** `roleRequestTargets` (src/operator/operator-requests.ts) matches a
+   requested id against both `r.role` and `r.baseRole`.
+10. **Validation.** A `customLoops[].name` matching the instance pattern is a validation error
+    (src/config/config-validation.ts).
+
+**Files touched.** src/roles/loop-ids.ts (new), src/roles/roles.ts, src/loop/loop.ts,
+src/config/config-views.ts, src/config/config-validation.ts, src/scheduling/scheduling.ts,
+src/orchestrator/orchestrator-scheduling.ts, src/tick/tick-prompt.ts, src/tick/tick-stage.ts,
+src/tick/tick-apply.ts, src/verdict/refusal.ts, src/baseline/main-red.ts,
+src/gates/role-cap-gates.ts, src/gates/gate-polls.ts, src/operator/operator-requests.ts.
+Tests: test/loop-ids.test.ts (new), plus cases in the scheduling, tick-prompt, tick-stage,
+role-cap-gate and config-validation tests.
+
+**Acceptance criteria.**
+- **Ids.** `baseRoleOf("feature-2")` is `feature`, `baseRoleOf("bugfix-10")` is `bugfix`, and
+  `baseRoleOf("feature-1")`, `baseRoleOf("clean-2")` and `baseRoleOf("my-loop")` are unchanged.
+- **Runner.** A `LoopRunner` built directly as `feature-2`:
+  - gets the feature charter and `roles.feature.instructions` in its prompt;
+  - resolves `roles.feature.model`;
+  - sorts in tier 0;
+  - stamps `tumwater(feature):` with trailer `Tick: feature-2 #1`;
+  - writes `.tumwater/state/feature-2.json`.
+- **bugfix-2** gets the red-main handoff note, not the block.
+- **Caps.** `maxDailyCostUsdPerRole.feature: 1` with instances `feature` and `feature-2` at
+  $0.60 each pauses both.
+- **Validation.** A custom loop named `feature-2` fails validation.
+- **No regression.** With no instances configured, every existing test passes unchanged.
+- `npm run test` green.
+
+### Parallel work instances, part 2/7: mark backlog entries blocked by an unlanded prerequisite, refused, or needing review (planned 2026-10-07 by operator)
+
+Design: plans/parallel-work-instances.md ("Eligibility").
+
+Context: plan series serialize through heading clauses such as `requires part 1/4 landed`,
+`requires parts 1/5–3/5 landed` and `requires Disk floor 2/4 and Worktree pool 1/5 landed`.
+Nothing parses them today. Every feature tick reads entries it cannot do yet, and the harness
+cannot count how much work is actually available. On 2026-10-07 only 1 of the 7 planned
+entries was unblocked.
+
+**Approach.**
+1. **Module.** New src/backlog/backlog-eligibility.ts, pure over markdown text:
+   - `entryKey(title)`: `ENTRY_STAMP_META_RE` (src/backlog/backlog-structure.ts) stripped,
+     whitespace collapsed, lowercased.
+   - `seriesPart(title)`: `{ series, part, of }` from `<Series>, part i/n:`, or null.
+   - `requiredParts(title)`: parse only the heading's trailing parenthetical.
+     - The clause is `requires <ref>((, | and )<ref>)* landed`, with a ref of
+       `[<Series>] [part|parts] i/n[(–|-)j/n]`. Ranges expand.
+     - A bare ref means the entry's own series.
+     - An unparseable clause gives `[]`.
+   - `entryHold(entry, planned)`: `"refused"` when the body has a `**Refused ` line;
+     `"needs-review"` for the `NEEDS_REVIEW_NOTE` prefix; `{ blockedBy: string[] }` when a
+     required `(series, part)` is still among `planned`; else `null`.
+   - `eligibleEntries(root, role)`: from `plannedPlanEntries` for feature or `openBugEntries`
+     for bugfix (src/backlog/backlog.ts), each with its key, title, line range (via
+     `actionableEntryRanges`) and the `src/…`-style paths found in its **Files touched**
+     paragraph. It keeps only entries whose `entryHold` is null.
+2. **Index.** `renderBacklogIndexBlock` appends ` [blocked: requires <Series i/n>, …]`,
+   ` [refused]` or ` [needs review]` to held entries.
+3. **Charter.** The feature charter's step 2 (src/roles/role-catalog.ts) says to skip entries
+   marked blocked in the index.
+
+**Files touched.** src/backlog/backlog-eligibility.ts (new),
+src/backlog/backlog-structure.ts, src/roles/role-catalog.ts. Tests:
+test/backlog-eligibility.test.ts (new), using every `requires` form in PLANS.md's history,
+plus cases in the backlog-index test.
+
+**Acceptance criteria.**
+- **Live headings.** Against the 2026-10-07 `## Planned`:
+  - Disk floor 2/4 is eligible;
+  - Disk floor 3/4 and 4/4 are blocked by Disk floor 2/4;
+  - Worktree pool 2/5 is blocked by Disk floor 2/4. Worktree pool 1/5 is not planned, so it
+    does not block;
+  - Worktree pool 4/5 is blocked by 2/5 and 3/5.
+- **Body text** containing "requires" never blocks.
+- **Refused.** An entry with a Refused note is ineligible and indexed `[refused]`.
+- **Unparsed clauses.** A clause like "land that plan first" blocks nothing.
+- `npm run test` green.
+
+### Parallel work instances, part 3/7: insert-only conflicts in PLANS.md, BUGS.md and QUESTIONS.md resolve without a model run (planned 2026-10-07 by operator)
+
+Design: plans/parallel-work-instances.md ("Insert-only backlog conflicts").
+
+Context: the move guidance (`backlogMoveGuidance`, src/roles/role-guidance.ts) pastes every
+finished entry as the first one under `## Done` or `## Fixed`. Two landings off the same base
+therefore conflict at that line, and the second one pays a strong-tier resolver run
+(`resolveConflict`, src/landing/landing-merge.ts). This already happens between bugfix and the
+director on BUGS.md. With several feature instances it would happen on nearly every landing.
+Keeping both inserted sides adds no authored bytes, so no model is needed.
+
+**Approach.**
+1. **Diff3.** `rebaseOntoMainLeaveConflicts` (src/landing/landing-git.ts) runs the rebase
+   with `-c merge.conflictStyle=diff3`.
+2. **Resolver.** New src/landing/backlog-conflicts.ts: `resolveBacklogInsertConflicts(wt,
+   files)`. For each conflicted `PLANS.md`, `BUGS.md` or `QUESTIONS.md` at the repo root, it
+   parses the `<<<<<<<` / `|||||||` / `=======` / `>>>>>>>` hunks.
+   - **A hunk with an empty base section and two non-empty sides** is replaced by the change's
+     lines, then one blank line if neither side supplies a separator, then main's lines.
+   - **Any other hunk** leaves that file untouched.
+   - Files resolved entirely are written and `git add`ed. It returns the files still
+     conflicted.
+3. **Wiring.** In `resolveConflict`, call it first.
+   - With none left, `continueRebase` runs without a pi run.
+   - Otherwise `buildConflictPrompt` lists only the remaining files.
+   - The existing `resolvedDiffDiverges` and `verifyLanding` checks run unchanged.
+
+**Files touched.** src/landing/backlog-conflicts.ts (new), src/landing/landing-git.ts,
+src/landing/landing-merge.ts. Tests: test/backlog-conflicts.test.ts (new), plus a
+landing-merge case using two real branches that each move a different plan to `## Done`.
+
+**Acceptance criteria.**
+- **Insert-only.** Two changes that each move a different `## Planned` entry to the top of
+  `## Done` land back to back with no conflict-resolution pi run. The later one's entry sits
+  first, both entries are present once, and no re-review runs.
+- **Same entry.** Two changes editing the same entry's body still go to the pi resolver.
+- **Mixed.** With a code conflict next to an insert-only PLANS.md conflict, the resolver
+  prompt names only the code file.
+- **Structure.** The resolved PLANS.md passes `backlogStructureReason` and
+  `duplicateHeadings`.
+- `npm run test` green.
+
+### Parallel work instances, part 4/7: the harness assigns each multi-instance loop one backlog entry and holds the claim through landing (planned 2026-10-07 by operator; requires parts 1/7 and 2/7 landed)
+
+Design: plans/parallel-work-instances.md ("Claims").
+
+Context: if instances picked work themselves, those started in the same poll would read the
+same index and pick the same entry. `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts)
+is serial, so assigning there cannot race. Storing the claim in `LoopState` makes resumes,
+leftover recovery, revisions (plans/revise-rejected.md) and restarts carry it with no new store.
+This part only acts for a role with more than one runner, so tests build two runners directly,
+and the fleet is unchanged until part 5/7.
+
+**Approach.**
+1. **State.** `LoopState.claim?: { file: "PLANS.md" | "BUGS.md"; key; title; at; source:
+   "assigned" | "staged" }` (src/loop/loop-state.ts).
+2. **Module.** New src/scheduling/claims.ts:
+   - `heldKeys(runners, eligibleKeys, listedKeys)`;
+   - `assignNext(free, heldPaths)`: file order, preferring no overlap with **Files touched**
+     paths;
+   - `claimReleaseReason(runner, ctx)`: one of `left` (key no longer listed), `ineligible`,
+     `disabled` (not `loopEnabled`, idle, no queued landing, no `revision`), `stale` (older
+     than `CLAIM_IDLE_MAX_MS` = 24 h, and the runner is idle with no queued landing, no
+     `revision` and no `resumePending`), or null.
+3. **Scheduling.** In `pollRunnerReasons`, once per multi-instance base role, compute
+   `eligibleEntries` (part 2/7) and release the claims that `claimReleaseReason` names. For
+   each runner that passes every gate, just before `reasons.set`:
+   - **It holds a claim:** proceed.
+   - **Reason is not `inbox`/`resume` and `free` is non-empty:** assign `assignNext(free)` and
+     log `claim` `assigned`.
+   - **Index ≥ 2, no claim, empty `free`:** `continue`. No tick runs and no backoff is touched.
+   - **Primary, no claim, empty `free`:** proceed unassigned, as today.
+4. **Prompt.** `buildAssignmentNote(claim, range, othersHeld)` (src/gates/gate-prompts.ts) is
+   appended by `assembleTickPrompt` when `state.claim` is set and no user request was dequeued.
+   It says:
+   - implement or fix only that entry, which replaces the charter's choosing step;
+   - if it is too large, add the Needs-review note and end with that note only;
+   - if it should not be done, refuse it;
+   - do not edit the other held entries.
+
+   With no claim but held entries, a one-line exclusion list is appended.
+5. **Claim at staging** (src/tick/tick-stage.ts), comparing the worktree's PLANS.md or BUGS.md
+   to the merge-base with `actionableEntryRanges`:
+   - **An unassigned tick** whose diff removes an entry from `## Planned`/`## Open` records
+     `claim { source: "staged" }`.
+   - **An assigned tick** that removes a different entry yields a stage-check finding, "assigned
+     <X>, moved <Y>", which gets one fix-up turn (src/tick/stage-check.ts).
+6. **Release after a tick.** In `finalizeTick` (src/tick/tick-finalize.ts), results
+   `no_change`, `refused`, `user_aborted` and `skipped`, with no `revision` and no
+   `resumePending`, clear the claim and log `claim` `released`. Every other result keeps it.
+7. **Event.** `claim` with `action` (`assigned` / `released`), `key`, `title` and `reason`
+   (src/events/events.ts).
+
+**Files touched.** src/loop/loop-state.ts, src/scheduling/claims.ts (new),
+src/orchestrator/orchestrator-scheduling.ts, src/tick/tick-prompt.ts,
+src/gates/gate-prompts.ts, src/tick/tick-stage.ts, src/tick/stage-check.ts,
+src/tick/tick-finalize.ts, src/events/events.ts. Tests: test/claims.test.ts (new), plus cases in
+the orchestrator-scheduling, tick-prompt, tick-stage and tick-finalize tests.
+
+**Acceptance criteria.**
+- **Distinct entries.** Runners `feature` and `feature-2`, with two eligible plans and both due
+  in one poll, get different claims, and each prompt names its own entry.
+- **Idle extra.** With one eligible plan, `feature-2` is not admitted and its state's
+  `nextRunAt` and `backoffSeconds` are untouched.
+- **Blocked entries** are never assigned.
+- **Held through.** The claim survives `queued`, a rejection with a revision (the revision tick
+  re-applies on the same instance and keeps the claim), a crash and resume, and an exhausted
+  revision.
+- **Released by** the entry landing into `## Done` (next poll), a `no_change` tick, a Refused
+  note, and the 24 h idle stale rule (with a warning).
+- **Staging.** An unassigned primary that moves plan X gets `claim` X with source `staged`. An
+  assigned tick that moves Y gets the stage-check finding.
+- **Single runner.** With one runner per role, prompts and scheduling are unchanged.
+- `npm run test` green.
+
+### Parallel work instances, part 5/7: `roles.<id>.instances` runs several feature or bugfix loops, each active only while unclaimed work exists; the plan target scales (planned 2026-10-07 by operator; requires parts 3/7 and 4/7 and Worktree pool 4/5 landed)
+
+Design: plans/parallel-work-instances.md ("Spawning instances and keeping the plan loop
+ahead").
+
+Context: once Worktree pool 4/5 makes role ticks lease `_slot-<n>` checkouts, an extra loop
+adds no checkout. Its tick and vet use the same slots, so a project with a large `target/`
+pays nothing extra on disk. Before the pool, each instance would carry its own role and lander
+worktree; hence the prerequisite. The plan charter currently stops at two waiting plans
+(src/roles/role-catalog.ts, plan step 1), which cannot keep several feature instances busy.
+
+**Approach.**
+1. **Config.** `RoleConfig.instances?: number` (src/config/config-schema.ts): an integer from
+   1 to 8, valid only under `roles.feature` and `roles.bugfix`, defaulting to 1. It touches
+   validation, src/config/config-editable-keys.ts (so `config set roles.feature.instances 3`
+   works), tumwater.example.json, src/config/config-example.ts and the docs config table.
+2. **Ids.** `loopIdsFor` and `loopIds(config)` in src/roles/loop-ids.ts expand enabled roles by
+   instances. `loopEnabled` reads the configured count. `knownRoleIds` (src/config/config.ts)
+   includes the ids, so the CLI and GUI accept `--role feature-2`.
+3. **Runners.**
+   - `runOrchestrator` (src/orchestrator/orchestrator.ts) builds runners from `loopIds`.
+   - `newLiveConfigReload` (src/config/config-live.ts) adds runners for new ids and logs one
+     warning per instance started or stopped. Surplus runners stay in place and are skipped
+     by `loopEnabled`.
+   - `snapshot` (src/status/status-data.ts) lists loop ids.
+4. **Plan target.** In the plan charter, "two or more plans" becomes `{{planTarget}}
+   eligible plans`. `assembleTickPrompt` substitutes `planBacklogTarget(config) =
+   instances(feature) + 1` and counts eligibility per part 2/7. With instances > 1 the charter
+   asks the plan loop to prefer a plan independent of the waiting series.
+5. **Docs.** plans/merge-queue.md invariant 3 becomes "one in-flight landing per loop".
+
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
+src/config/config-editable-keys.ts, src/config/config-example.ts, src/config/config.ts,
+src/config/config-live.ts, src/roles/loop-ids.ts, src/orchestrator/orchestrator.ts,
+src/status/status-data.ts, src/roles/role-catalog.ts, src/tick/tick-prompt.ts,
+tumwater.example.json, plans/merge-queue.md, docs (config reference). Tests: cases in the
+config-validation, config-live, orchestrator e2e and tick-prompt tests.
+
+**Acceptance criteria.**
+- **Startup.** With `roles.feature.instances: 3` and two eligible plans, an e2e run starts
+  `feature` and `feature-2` on different plans, never starts `feature-3`, and leases slots only
+  (no `.tumwater/worktrees/feature-2`).
+- **Live edit.** Raising `instances` from 1 to 2 starts `feature-2` within one poll. Lowering
+  it back stops new ticks and leaves an in-flight landing to finish.
+- **Landing.** Both instances' landings land with no resolver run (part 3/7). Each instance's
+  next tick is blocked only by its own landing.
+- **Bugfix.** `roles.bugfix.instances: 2` with an empty `## Open` runs only `bugfix`, in
+  search mode.
+- **Validation.** `roles.plan.instances: 2` fails, and so does `instances: 0`.
+- **Plan prompt.** It names the target 4 when `feature.instances` is 3.
+- `npm run test` green.
+
+### Parallel work instances, part 6/7: show instances and claims on status, TUI, GUI, logs and doctor (planned 2026-10-07 by operator; requires part 5/7 landed)
+
+Design: plans/parallel-work-instances.md ("Observability").
+
+**Goal.** An operator can see which instance holds which entry, and why an extra instance is
+idle.
+
+**Approach.**
+1. **Status.** `loopStateForPoll` rows (src/status/status-data.ts) carry `claim` (the title)
+   and `instanceOf` (the base role). `tumwater status --json` and `/api/status` serve them.
+2. **TUI and GUI.**
+   - src/ui/status-model.ts and src/ui/status-render.ts show the claim as the row's work text
+     while the row is idle or landing.
+   - An idle extra instance with no claim reads `idle — no unclaimed <plans|bugs>`.
+   - src/ui/gui/gui-client-loops.ts uses the claim when `currentWork` is empty.
+3. **Logs.** src/events/event-format.ts renders `claim` events: `assigned "<title>"` and
+   `released "<title>" (<reason>)`.
+4. **Doctor.** `checkWorkInstances` (src/doctor/doctor-checks.ts) warns on:
+   - a claim whose key is no longer listed;
+   - a claim older than 24 h;
+   - `instances > 1` with `worktreeSlots` below `maxConcurrent`.
+5. **Docs.** docs/how-it-works.md covers instances, claims, the scaling rule and the plan
+   target.
+
+**Files touched.** src/status/status-data.ts, src/ui/status-model.ts,
+src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/events/event-format.ts,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests: cases in the
+status, status-render, event-format and doctor tests.
+
+**Acceptance criteria.**
+- **Rows.** A fabricated `feature-2` state with a claim shows the claimed title in
+  `status --json`, the TUI row and the GUI row.
+- **Logs.** `tumwater logs` renders one line per `claim` event.
+- **Doctor.** It warns on a 25 h-old claim and on a claim whose entry is gone.
+- `npm run test` green.
+
+### Parallel work instances, part 7/7: keep permit headroom for work loops that have work to take (planned 2026-10-07 by operator; requires part 5/7 landed)
+
+Design: plans/parallel-work-instances.md ("Priority headroom").
+
+Context: the semaphore (src/concurrency/semaphore.ts) orders *waiters* by tier, but it never
+preempts. With several work instances, maintenance ticks can take every free permit in the gap
+before a work instance becomes due. The work tick then waits a full maintenance tick. Holding a
+small reserve only while work is actually waiting keeps that latency off the work tier without
+idling permits when every work loop is busy. Before implementing, check `parkedSince` on work
+rows since 5/7 landed: if work loops never park, refuse this entry as unneeded.
+
+**Approach.**
+1. **Reserve.** `Semaphore.setReserve(n)`. A tier ≥ 1 acquirer or waiter is granted only while
+   `inUse < capacity − n`, in both `acquire`'s fast path and `grantNextWaiter`. Tiers ≤ 0
+   (work, `LANDING_TIER`, `MERGE_TIER`) are unaffected.
+2. **Sizing.** Each poll, the orchestrator (src/orchestrator/orchestrator.ts) sets
+   `n = min(floor(maxConcurrent / 3), count of work-tier loops that are loopEnabled, not
+   running, have no queued landing, and either hold a claim or have an unclaimed eligible
+   entry)`. The counting helper sits in src/scheduling/claims.ts. When `n` changes, call
+   `setReserve`, which re-runs `grantNextWaiter` so a lowered reserve admits waiters.
+3. **Event.** Log a `permit_reserve` event when `n` changes from 0 or to 0.
+
+**Files touched.** src/concurrency/semaphore.ts, src/orchestrator/orchestrator.ts,
+src/scheduling/claims.ts, src/events/events.ts, src/events/event-format.ts. Tests: cases in
+test/semaphore.test.ts and an orchestrator scheduling test.
+
+**Acceptance criteria.**
+- **Reserve held.** With `maxConcurrent: 6`, reserve 2 and four maintenance ticks running, a
+  fifth maintenance acquirer parks, and a work acquirer is granted at once.
+- **Reserve zero.** When every work loop is running or landing, maintenance can fill all six
+  permits.
+- **Vets.** A vet at `LANDING_TIER` is never held by the reserve.
+- `npm run test` green.
+
+
 ## Done
 
 ### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running; done 2026-10-07 by feature)
