@@ -84,6 +84,21 @@ export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> |
   );
 }
 
+/** Resolve a `provider`/`model` pair against pi's definitions — the shared first step of
+ * pairFree and cacheReadUnpriced. Undefined when the pair cannot be resolved at all: an
+ * omitted provider or model (pi's own default), a missing or malformed definitions file, an
+ * unknown provider, or an id the provider does not list. Both callers read an unresolved pair
+ * as "cannot verify" — never as free or unpriced — so the lookup and its null guards live here
+ * once instead of being re-derived per resolver. */
+function resolveModelDef(
+  providers: Map<string, PiModelDef[]> | null,
+  provider: string | undefined,
+  model: string | undefined,
+): PiModelDef | undefined {
+  if (!providers || !provider || !model) return undefined;
+  return providers.get(provider)?.find((m) => m.id === model);
+}
+
 /** True when `provider`/`model` names a model pi's definitions price at zero — a "(cost n/a)"
  * pair. Anything unresolvable counts as NOT free: an omitted provider or model (pi's own
  * default), a missing or malformed definitions file, an unknown provider, or a model id the
@@ -97,8 +112,7 @@ export function pairFree(
   provider: string | undefined,
   model: string | undefined,
 ): boolean {
-  if (!providers || !provider || !model) return false;
-  const def = providers.get(provider)?.find((m) => m.id === model);
+  const def = resolveModelDef(providers, provider, model);
   return def !== undefined && costIsFree(def.cost);
 }
 
@@ -113,8 +127,7 @@ export function cacheReadUnpriced(
   provider: string | undefined,
   model: string | undefined,
 ): boolean {
-  if (!providers || !provider || !model) return false;
-  const def = providers.get(provider)?.find((m) => m.id === model);
+  const def = resolveModelDef(providers, provider, model);
   if (!def || !isJsonObject(def.cost)) return false;
   const input = def.cost.input;
   const cacheRead = def.cost.cacheRead;
