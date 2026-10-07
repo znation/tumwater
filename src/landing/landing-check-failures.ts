@@ -66,6 +66,15 @@ async function rejectChange(
   return "rejected";
 }
 
+/** The one-line reason a red check's lastError carries: checkFailureReasons' first entry (it
+ * always returns at least one). Shared by the blocked-landing paths below — landingCheckRed's
+ * two branches and attributeRedCheck's unverified branch — so the "name the red by its first
+ * reason" rule has one home while the full reason list stays where a whole review needs it
+ * (attributeRedCheck's reject reasons). */
+function firstCheckReason(red: { check: BuildCheck; outcome: BuildCheckOutcome }): string {
+  return checkFailureReasons(red.check, red.outcome)[0]!;
+}
+
 /** A landing blocked because its in-lock check went red on the rebased tree (landing-merge.ts's
  * verifyLanding). The count is keyed by the patch-id; under LANDING_CHECK_FAILURE_LIMIT the
  * pin is kept (merge_blocked) for recovery's re-land; at the limit the red is attributed like
@@ -81,12 +90,12 @@ export async function landingCheckRed(
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
 ): Promise<TickResult> {
   if (unverifiedTreeOutcome(red.outcome)) {
-    ctx.state.lastError = `merge failed: ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
     return "merge_blocked";
   }
   const { head, patch, count } = await tallyCheckFailure(ctx, wt);
   if (patch === null || count < LANDING_CHECK_FAILURE_LIMIT) {
-    ctx.state.lastError = `merge failed: merge_blocked — ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    ctx.state.lastError = `merge failed: merge_blocked — ${firstCheckReason(red)}`;
     return "merge_blocked";
   }
   return attributeRedCheck(ctx, role, head, "landing check", red, ctx.state, wt);
@@ -139,7 +148,7 @@ export async function attributeRedCheck(
   // (BUGS.md 2026-09-30). Main's own verdict is beside the point: the attribution question is
   // only live when the check produced a verdict.
   if (unverifiedTreeOutcome(red.outcome)) {
-    state.lastError = `${label}: ${checkFailureReasons(red.check, red.outcome)[0]}`;
+    state.lastError = `${label}: ${firstCheckReason(red)}`;
     saveLoopState(ctx.root, state);
     return "merge_blocked";
   }
