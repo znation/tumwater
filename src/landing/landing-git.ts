@@ -23,6 +23,60 @@ export async function conflictedFiles(wt: string): Promise<string[]> {
   return gitLines(out).map(unquotePorcelainPath);
 }
 
+/** One commit on main that touched a conflicted file, as the conflict resolver's context. */
+interface MainCommitIntent {
+  sha: string;
+  subject: string;
+  body: string;
+}
+
+/** How many main commits the resolver prompt lists, and how many body lines it keeps per
+ * commit: enough to explain a deliberate removal without filling the window. */
+const MAX_INTENT_COMMITS = 15;
+const MAX_INTENT_BODY_LINES = 20;
+
+function capIntentBody(body: string): string {
+  const lines = body.split("\n");
+  if (lines.length <= MAX_INTENT_BODY_LINES) return body;
+  const kept = lines.slice(0, MAX_INTENT_BODY_LINES).join("\n");
+  return `${kept}\n… (${lines.length - MAX_INTENT_BODY_LINES} more lines)`;
+}
+
+/** The commits on `mainBranch` since `since` (the change's merge-base with main) that touched
+ * any of `files`, newest first. resolveConflict threads this into the resolver prompt so pi
+ * reads what main deliberately changed instead of guessing from the markers. The list is
+ * capped at MAX_INTENT_COMMITS and each body at MAX_INTENT_BODY_LINES; `omitted` counts the
+ * commits the cap dropped so the prompt can say so. An empty result is the normal case of a
+ * fork point with no later main commits touching the files. */
+export async function mainCommitsTouching(
+  wt: string,
+  since: string,
+  mainBranch: string,
+  files: string[],
+): Promise<{ commits: MainCommitIntent[]; omitted: number }> {
+  if (files.length === 0) return { commits: [], omitted: 0 };
+  const out = await gitTry(
+    wt,
+    "log",
+    "--format=%h%x1f%s%x1f%b%x1e",
+    `${since}..${mainBranch}`,
+    "--",
+    ...files,
+  );
+  const parsed = (out ?? "")
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .map((record) => {
+      const [sha = "", subject = "", ...rest] = record.split("\x1f");
+      return { sha, subject, body: capIntentBody(rest.join("\x1f").trim()) };
+    });
+  return {
+    commits: parsed.slice(0, MAX_INTENT_COMMITS),
+    omitted: Math.max(0, parsed.length - MAX_INTENT_COMMITS),
+  };
+}
+
 /** Attempt to rebase the worktree branch onto main and classify the outcome WITHOUT
  * cleaning up: "rebased" (including already up to date), "conflict" (the rebase stopped on
  * unmerged paths, which remain in the worktree for a resolver), or "other" (any other

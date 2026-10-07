@@ -6,50 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator)
-
-Context: when a rebase onto main conflicts, `resolveConflict` (src/landing/landing-merge.ts)
-gives a strong-tier pi run `buildConflictPrompt(roleId, files, check)`
-(src/gates/gate-prompts.ts). That prompt lists the conflicted files and says to "combine the
-intent of BOTH sides", but it states neither side's intent:
-- the change's own commit message (subject, WHY body, and the backlog entry it implements);
-- the main commits that touched the conflicted files since the change's merge-base.
-
-Conflicts are rare today: 2 `merge_conflict` landings against 916 merges in the 7 days before
-2026-10-07. Parallel work instances (plans/parallel-work-instances.md) will make overlapping
-landings routine, so the resolver needs that context before they ship.
-
-**Approach.**
-1. **Gather.** In `resolveConflict`, before the pi run:
-   - **The change's side:** its full commit message, `git log --format=%B -1 <preMergeHead>`.
-     The harness stamps that message, so it carries the subject, the WHY body and the trailer.
-   - **Main's side:** for each conflicted file, the commits on main since the merge-base that
-     touched it, from `git log --format='%h %s%n%b' <merge-base>..<main> -- <file>`. Cap each
-     body at 20 lines and the whole list at 15 commits, newest first, and say so when it is
-     cut.
-
-   Keep the git calls in a small helper in src/landing/landing-git.ts.
-2. **Prompt.** `buildConflictPrompt` gains an optional `intent: { change: string; main:
-   Array<{ sha; subject; body }> }`. The prompt renders it as two short blocks, "This branch's
-   change" and "What main changed in these files". Both are labelled as data, and the existing
-   rules stay as they are. The rule that "a deliberate removal on main wins" now cites the main
-   block.
-3. **Divergence.** No change to `resolvedDiffDiverges` or the re-review: a resolution that
-   leaves the reviewed lines still gets re-gated.
-
-**Files touched.** src/landing/landing-merge.ts, src/landing/landing-git.ts,
-src/gates/gate-prompts.ts. Tests: cases in the gate-prompts test and a landing-merge test using
-two real branches.
-
-**Acceptance criteria.**
-- **Both sides shown.** A conflicted landing's resolver prompt contains the change's commit
-  subject and WHY body, plus the subject of each main commit since the merge-base that touched
-  a conflicted file.
-- **Only relevant commits.** Main commits that touched no conflicted file are not listed.
-- **Caps.** The caps hold, with a "(N more not shown)" line when the list is cut.
-- **No intent supplied.** The prompt is byte-identical to today's when no intent is passed.
-- `npm run test` green.
-
 ### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed)
 
 Context: today two paths throw an approved change away over a merge conflict:
@@ -822,6 +778,52 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Robust conflict landing, part 1/2: the conflict resolver sees what both sides meant, not only the markers (planned 2026-10-07 by operator; done 2026-10-07 by feature)
+
+Context: when a rebase onto main conflicts, `resolveConflict` (src/landing/landing-merge.ts)
+gives a strong-tier pi run `buildConflictPrompt(roleId, files, check)`
+(src/gates/gate-prompts.ts). That prompt lists the conflicted files and says to "combine the
+intent of BOTH sides", but it states neither side's intent:
+- the change's own commit message (subject, WHY body, and the backlog entry it implements);
+- the main commits that touched the conflicted files since the change's merge-base.
+
+Conflicts are rare today: 2 `merge_conflict` landings against 916 merges in the 7 days before
+2026-10-07. Parallel work instances (plans/parallel-work-instances.md) will make overlapping
+landings routine, so the resolver needs that context before they ship.
+
+**Approach.**
+1. **Gather.** In `resolveConflict`, before the pi run:
+   - **The change's side:** its full commit message, `git log --format=%B -1 <preMergeHead>`.
+     The harness stamps that message, so it carries the subject, the WHY body and the trailer.
+   - **Main's side:** for each conflicted file, the commits on main since the merge-base that
+     touched it, from a `git log` over `<merge-base>..<main>` with the files as pathspec. Cap
+     each body at 20 lines and the whole list at 15 commits, newest first, and say so when it
+     is cut.
+
+   `mainCommitsTouching` (added to src/landing/landing-git.ts) returns the capped list plus
+   the omitted count; the change's message comes from the existing `commitMessage` in
+   src/git/git.ts.
+2. **Prompt.** `buildConflictPrompt` gains an optional `intent: { change: string; main:
+   Array<{ sha; subject; body }>; mainOmitted?: number }`. The prompt renders it as two short
+   blocks, "This branch's change" and "What main changed in these files". Both are labelled as
+   data, and the existing rules stay as they are. The rule that "a deliberate removal on main
+   wins" now cites the main block; `mainOmitted` prints the "(N more not shown)" line.
+3. **Divergence.** No change to `resolvedDiffDiverges` or the re-review: a resolution that
+   leaves the reviewed lines still gets re-gated.
+
+**Files touched.** src/landing/landing-merge.ts, src/landing/landing-git.ts,
+src/gates/gate-prompts.ts. Tests: cases in the gate-prompts test and a landing-merge test using
+two real branches.
+
+**Acceptance criteria.**
+- **Both sides shown.** A conflicted landing's resolver prompt contains the change's commit
+  subject and WHY body, plus the subject of each main commit since the merge-base that touched
+  a conflicted file.
+- **Only relevant commits.** Main commits that touched no conflicted file are not listed.
+- **Caps.** The caps hold, with a "(N more not shown)" line when the list is cut.
+- **No intent supplied.** The prompt keeps its pre-part-1/2 text — no intent blocks, no citation.
+- `npm run test` green.
 
 ### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed; done 2026-10-07 by feature)
 

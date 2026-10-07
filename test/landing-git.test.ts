@@ -6,6 +6,7 @@ import {
   conflictedFiles,
   continueRebase,
   hasConflictMarkers,
+  mainCommitsTouching,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/landing/landing-git.js";
@@ -110,6 +111,50 @@ test("continueRebase finishes cleanly when the resolution leaves no unique conte
   const head = await continueRebase(wt);
   assert.equal(head, sh(wt, "git", "rev-parse", "HEAD"));
   assertWorktreeSettled(wt);
+});
+
+test("mainCommitsTouching lists only main commits touching the given files, newest first", async () => {
+  const { root, wt } = await initializedWorktree();
+  const fork = sh(wt, "git", "rev-parse", "HEAD").trim();
+  fs.writeFileSync(path.join(root, "touched.txt"), "one\n");
+  commitIn(root, "main touch one");
+  fs.writeFileSync(path.join(root, "other.txt"), "other\n");
+  commitIn(root, "main other");
+  fs.writeFileSync(path.join(root, "touched.txt"), "two\n");
+  commitIn(root, "main touch two");
+  const { commits, omitted } = await mainCommitsTouching(wt, fork, "main", ["touched.txt"]);
+  assert.deepEqual(
+    commits.map((c) => c.subject),
+    ["main touch two", "main touch one"],
+    "only the commits that touched the conflicted file, newest first",
+  );
+  assert.ok(commits.every((c) => c.sha.length > 0), "each entry carries its short sha");
+  assert.equal(omitted, 0);
+});
+
+test("mainCommitsTouching caps the list and the body, reporting what it dropped", async () => {
+  const { root, wt } = await initializedWorktree();
+  const fork = sh(wt, "git", "rev-parse", "HEAD").trim();
+  for (let i = 0; i < 16; i++) {
+    fs.writeFileSync(path.join(root, "touched.txt"), `line ${i}\n`);
+    commitIn(root, `touch ${i}`);
+  }
+  // Newest commit: a 25-line body, to check the per-commit body cap too.
+  const body = Array.from({ length: 25 }, (_, i) => `body line ${i}`).join("\n");
+  fs.writeFileSync(path.join(root, "touched.txt"), "x\n");
+  commitIn(root, `first subject\n\n${body}`);
+  const { commits, omitted } = await mainCommitsTouching(wt, fork, "main", ["touched.txt"]);
+  assert.equal(commits.length, 15, "the list is capped at 15");
+  assert.equal(omitted, 2, "the two oldest commits are reported as omitted");
+  assert.equal(commits[0]!.subject, "first subject", "newest first");
+  const bodyLines = commits[0]!.body.split("\n");
+  assert.equal(bodyLines.length, 21, "20 body lines kept plus the truncation note");
+  assert.match(bodyLines[20]!, /5 more lines/);
+});
+
+test("mainCommitsTouching returns nothing for an empty file list", async () => {
+  const { wt } = await initializedWorktree();
+  assert.deepEqual(await mainCommitsTouching(wt, "HEAD", "main", []), { commits: [], omitted: 0 });
 });
 
 test("hasConflictMarkers sees start/end markers but not a bare ======= separator", async () => {

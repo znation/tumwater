@@ -1,6 +1,6 @@
 import { openQuestions } from "../backlog/backlog.js";
 import { logEvent, warnEvent } from "../events/events.js";
-import { headOf } from "../git/git.js";
+import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
 import { aheadOfMainFiles } from "../git/git-diff.js";
 import { resolvedDiffDiverges } from "./landing-diff.js";
 import {
@@ -8,6 +8,7 @@ import {
   continueRebase,
   ffMainTo,
   hasConflictMarkers,
+  mainCommitsTouching,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "./landing-git.js";
@@ -113,7 +114,7 @@ export async function mergeToMain(
   const preMergeHead = await headOf(wt, "HEAD");
   const first = await tryMerge(ctx, wt, summary, preMergeHead, verifiedHead);
   if (first !== "merge_conflict") return first;
-  if (!(await resolveConflict(ctx, wt))) return "merge_conflict";
+  if (!(await resolveConflict(ctx, wt, preMergeHead))) return "merge_conflict";
   // A resolution whose diff ahead of main introduces lines the reviewed change never added, or
   // removes lines the reviewed change never removed, has left the reviewer's scope: those bytes
   // were never judged, and the in-lock build check cannot judge intent (BUGS.md 2026-10-01: a
@@ -295,7 +296,7 @@ async function verifyLanding(
 
 /** Re-run the conflicting rebase leaving markers in place, let pi resolve them, and continue
  * the rebase. Returns true when the branch now sits cleanly on top of main. */
-async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> {
+async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: string): Promise<boolean> {
   const state = await rebaseOntoMainLeaveConflicts(wt, ctx.mainBranch);
   if (state === "clean") return true;
   if (state === "failed") return false;
@@ -303,9 +304,15 @@ async function resolveConflict(ctx: MergeContext, wt: string): Promise<boolean> 
   // The prompt names the project's own check, detected the way the in-lock re-check detects it,
   // so the resolver verifies with that instead of guessing a runner (BUGS.md 2026-10-05).
   const check = detectBuildCheck(wt, ctx.config) ?? undefined;
+  // Show both sides' intent: the change's own commit message and the main commits that touched
+  // a conflicted file since the merge-base (PLANS.md, Robust conflict landing part 1/2). The markers
+  // alone never said why either side made the edit.
+  const since = await changeBaseRev(wt, ctx.mainBranch, preMergeHead);
+  const change = (await commitMessage(wt, preMergeHead)) ?? "";
+  const { commits, omitted } = await mainCommitsTouching(wt, since, ctx.mainBranch, files);
   const pi = await ctx.runPi(
     wt,
-    buildConflictPrompt(ctx.role, files, check),
+    buildConflictPrompt(ctx.role, files, check, { change, main: commits, mainOmitted: omitted }),
     `tumwater-${ctx.role}-${ctx.tick}-conflict`,
     // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
     // tolerant of latency, and edits code inside landing. Its spend still folds into the
