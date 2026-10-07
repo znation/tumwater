@@ -10,16 +10,15 @@ import {
   checkBrief,
   checkBuild,
   checkBuildCheck,
-  checkFallbackModel,
   checkGitBinary,
   checkInit,
   checkMergeLock,
   checkNodeVersion,
   checkRepo,
   checkStateDir,
-  checkTierModels,
   type DoctorReport,
 } from "./doctor-checks.js";
+import { checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
 import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
@@ -32,7 +31,7 @@ import { checkBacklogHeadings, checkFixClaims, checkStrandedPlans } from "./doct
  * verdicts on the environment. Every check is read-only against .tumwater/ (works with or
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
- * doctor-checks.ts; this module composes them into the report. */
+ * doctor-checks.ts and doctor-model-checks.ts; this module composes them into the report. */
 
 /** Run every check in order and compose the report. Read-only against .tumwater/ by
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file

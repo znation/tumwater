@@ -8,7 +8,8 @@ import { vanishOnReadFile } from "./fs-faults.js";
 
 // Unit coverage for the doctor's backlog-document checks (src/doctor/doctor-backlog.ts): the three
 // checks that read the tracked Markdown backlog rather than the environment. The environment
-// checks' own coverage lives in test/doctor-checks.test.ts; report composition, rendering, and
+// checks' own coverage lives in test/doctor-checks.test.ts (the model-readiness checks in
+// test/doctor-model-checks.test.ts); report composition, rendering, and
 // the CLI wiring (`tumwater doctor` exit codes through main()) are pinned in
 // test/doctor.test.ts, and the fixtures those files share live in test/doctor-fixtures.ts.
 

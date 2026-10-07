@@ -111,7 +111,7 @@ Suggested fix (harness half):
      cached until the config changes.
    - `cacheReadUnpriced(def)`: input price above 0, and `cacheRead` missing or 0.
 2. **Warn about them.** Check every configured model (role, tier, reviewer, fallback) in
-   `tumwater doctor` (src/doctor/doctor-checks.ts), once at fleet start, and on
+   `tumwater doctor` (src/doctor/doctor-model-checks.ts), once at fleet start, and on
    `config_changed`.
    - An undefined id gets an error: "pi will run <id> with <provider default>'s price and
      context window; add an exact entry to ~/.pi/agent/models.json".

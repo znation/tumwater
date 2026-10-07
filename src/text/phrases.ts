@@ -36,7 +36,7 @@ export function plural(n: number, one: string, many = `${one}s`): string {
  * (ui/fleet-alerts.ts), the resume confirmation's still-paused note (operator/operator-commands.ts),
  * the dropped-attachment note (inbox-attachments.ts), the failure digest's loss-cause and
  * cluster remainders (failure/failure-render.ts), the doctor's oh-my-pi and model notes
- * (doctor/doctor-checks.ts), and `tumwater role`'s queued-prompt remainder (roles/role-render.ts)
+ * (doctor/doctor-model-checks.ts), and `tumwater role`'s queued-prompt remainder (roles/role-render.ts)
  * all rendered the same `=== 1 ? … : …` selection inline before, so the singular/plural
  * decision now has one home beside plural's. */
 export function agree(n: number, one: string, many: string): string {

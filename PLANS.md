@@ -785,7 +785,7 @@ Design: plans/model-tiers.md ("Doctor"). Split from part 7/8; sibling 7a landed 
 **Goal.** `tumwater doctor` catches a tier model pi cannot resolve, or a provider without
 credentials, before the fleet finds out the hard way mid-review.
 
-**Approach.** src/doctor/doctor-checks.ts: a new `checkTierModels` verifies that every declared
+**Approach.** src/doctor/doctor-model-checks.ts: a new `checkTierModels` verifies that every declared
 tier model resolves in pi's catalog and that its provider reports `ready` from
 `pi auth check --provider <p> --json` (probe verdict ready/not-ready/unknown; injectable so
 tests never spawn pi). When `PI_SMOL_MODEL`, `PI_SLOW_MODEL`, or `PI_PLAN_MODEL` is set, it
@@ -796,8 +796,8 @@ default-pair report rather than extending it to each tier's fallback — the gat
 every tier's resolved pair at resolution time (part 5a/8), so a doctor re-derivation would only
 restate it.
 
-**Files touched.** src/doctor/doctor-checks.ts (checkTierModels, piProviderAuth),
-src/doctor/doctor.ts (wiring, new "tier models" row), test/doctor-checks.test.ts,
+**Files touched.** src/doctor/doctor-model-checks.ts (checkTierModels, piProviderAuth),
+src/doctor/doctor.ts (wiring, new "tier models" row), test/doctor-model-checks.test.ts,
 test/doctor.test.ts (the pinned check-name list).
 
 **Acceptance criteria.**
