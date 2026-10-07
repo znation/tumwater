@@ -238,6 +238,44 @@ test("a revision tick that declares nothing-to-do drops the change and ends no_c
   assert.equal(eventsOfType(root, "revision").length, 1, "the drop is logged");
 });
 
+test("a revision tick that declares nothing-to-do drops the change with a clean worktree", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  // A revision tick need not leave the re-applied diff dirty: the cherry-pick can be an empty
+  // range, or the author can revert the edits while deciding the change should not exist. The
+  // author's NOTHING_TO_DO must still end the rejected change, or every later tick re-applies
+  // the same rejected diff and the change loops without ever reaching its limit.
+  await setRef(root, rejectedRefName("improve"), "a".repeat(40));
+  const state = {
+    ...freshLoopState("improve"),
+    revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
+  };
+  const pending = new PendingPrompt(root, "improve");
+  const ctx = {
+    root,
+    wt,
+    role: "improve",
+    mainBranch: "main",
+    state,
+    pending,
+    turns: 1,
+    userPrompt: null,
+    revisionRound: 1,
+    pi: piRunResult({ nothingToDo: true }),
+    flow: null,
+    warn: () => {},
+    merge: async () => "changed" as const,
+    finishAbortedTick: async () => ({ result: "aborted" as const }),
+  };
+
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(await isDirty(wt), false, "the worktree is already clean");
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(state.revision, undefined, "the rejected change is dropped");
+  assert.equal(await refSha(root, rejectedRefName("improve")), null, "the rejected ref is deleted");
+  assert.equal(eventsOfType(root, "revision").length, 1, "the drop is logged");
+});
+
 test("the tick prompt skips the plain rejection note while a revision is due", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a tiny thing.\n"));

@@ -159,6 +159,23 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     }
     return { result: "error" };
   }
+  // A revision tick that declares nothing-to-do drops the rejected change (the revise-rejected
+  // plan in PLANS.md):
+  // the author judged the objections show the change should not exist, so reset the re-applied diff
+  // away, delete the rejected ref, and end no_change without staging anything. Guarded on the
+  // tick's own revisionRound, not state.revision: a dirty user-request tick that happens to leave
+  // a pending revision untouched must not drop it. Checked before the clean-worktree branch
+  // because the re-applied diff can leave the worktree clean — an empty cherry-pick range, or the
+  // author reverting the edits while deciding — and the author's NOTHING_TO_DO must end the change
+  // anyway, or every later tick re-applies the same rejected diff.
+  if (ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
+    const { sha } = s.revision;
+    s.revision = undefined;
+    await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
+    await deleteRef(ctx.root, rejectedRefName(ctx.role));
+    logEvent(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
+    return { result: "no_change" };
+  }
   if (!changed) {
     // No sentinel anywhere in the reply is either non-compliance or truncation —
     // diagnoseNoChange (src/verdict/no-change.ts) tells which, so the warning event below is
@@ -185,19 +202,6 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
         ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
       );
     return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
-  }
-  // A revision tick that declares nothing-to-do drops the rejected change (plans/revise-rejected.md):
-  // the author judged the objections show the change should not exist, so reset the re-applied diff
-  // away, delete the rejected ref, and end no_change without staging anything. Guarded on the
-  // tick's own revisionRound, not state.revision: a dirty user-request tick that happens to leave
-  // a pending revision untouched must not drop it.
-  if (changed && ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
-    const { sha } = s.revision;
-    s.revision = undefined;
-    await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
-    await deleteRef(ctx.root, rejectedRefName(ctx.role));
-    logEvent(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
-    return { result: "no_change" };
   }
   return null;
 }
