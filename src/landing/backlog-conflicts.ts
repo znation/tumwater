@@ -10,10 +10,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { git } from "../git/git-run.js";
-
-/** The repo-root markdown files whose insert-only conflicts can be settled mechanically. */
-const BACKLOG_FILES = new Set(["PLANS.md", "BUGS.md", "QUESTIONS.md"]);
 
 /** A parsed diff3 conflict hunk: the three sides between `<<<<<<<`, `|||||||`, `=======` and
  * `>>>>>>>`. `base` is empty for an insertion both sides made at the same spot. */

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
+import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { bugEntryBody, fixSymbols, fixedHeadings, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import type { CheckOutcome } from "./doctor-checks.js";
@@ -134,7 +135,7 @@ export function checkStrandedPlans(root: string): CheckOutcome {
  * deliberate removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {
   const duplicates: string[] = [];
-  for (const file of ["PLANS.md", "BUGS.md", "QUESTIONS.md"]) {
+  for (const file of BACKLOG_FILES) {
     const p = path.join(root, file);
     if (!fs.existsSync(p)) continue; // Absent file (early repo): contributes nothing.
     const read = readDoc(p);

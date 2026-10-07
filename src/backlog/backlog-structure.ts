@@ -2,7 +2,7 @@ import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
+import { BACKLOG_FILES, fenceTracker, headingMetadata, sectionBodyLines, fenceAwareHeadingLines } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX } from "../roles/role-guidance.js";
@@ -101,10 +101,6 @@ function planHeadingKeys(md: string): Set<string> {
   return keys;
 }
 
-/** The backlog files every structural check covers — the tracked markdown loops edit and
- * readers parse by `## ` section. */
-const BACKLOG_FILES = ["PLANS.md", "BUGS.md", "QUESTIONS.md"];
-
 /** The `## ` section titles of `md`, in file order, fence-aware (backlog-md.ts's shared tracker:
  * a `## Done` quoted inside a fenced code block is body text, not structure). */
 function sectionTitles(md: string): string[] {
@@ -153,7 +149,7 @@ export async function backlogStructureReason(
   mainBranch: string,
   files: string[],
 ): Promise<string | undefined> {
-  const touched = files.filter((f) => BACKLOG_FILES.includes(f));
+  const touched = files.filter((f) => BACKLOG_FILES.has(f));
   if (touched.length === 0) return undefined;
   const baseRev = await changeBaseRev(wt, mainBranch);
   for (const file of touched) {

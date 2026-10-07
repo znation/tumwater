@@ -8,6 +8,13 @@
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
  * never disagree about what is body content. */
 
+/** The repo-root backlog markdown files shared by every layer that knows them by name: the
+ * tracked files loops edit and readers parse by `## ` section — read by backlog-structure.ts's
+ * structural checks, landing/backlog-conflicts.ts's mechanical insert-conflict resolver, and
+ * doctor-backlog.ts's duplicate-heading check. One definition, so the three cannot disagree
+ * about which files count. */
+export const BACKLOG_FILES = new Set(["PLANS.md", "BUGS.md", "QUESTIONS.md"]);
+
 /** One backlog entry as parsed from a markdown section: the full `### ` heading text (kept
  * verbatim, including any `(planned …)`/`(reported …)` suffix) plus the entry's body — the
  * trimmed lines between its heading and the next `### `/`## ` line (empty string for a bare
