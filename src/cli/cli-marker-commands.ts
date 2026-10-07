@@ -1,5 +1,6 @@
 import {
   durationFlagSpec,
+  PAUSE_FOR_OVERFLOW_HINT,
   REASON_FLAG,
   WAKE_IN_FLAG,
   rejectUnknownArgs,
@@ -40,10 +41,7 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
     abort: [ROLE_FLAG],
     pause: [
       ROLE_FLAG,
-      durationFlagSpec(
-        "pause --for",
-        "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)",
-      ),
+      durationFlagSpec("pause --for", PAUSE_FOR_OVERFLOW_HINT),
       REASON_FLAG,
     ],
     resume: [ROLE_FLAG],

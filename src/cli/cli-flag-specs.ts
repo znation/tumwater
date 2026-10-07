@@ -145,6 +145,12 @@ export function durationFlagSpec(label: string, hint?: string): FlagSpec {
   };
 }
 
+/** The hint `pause --for`'s over-cap failure carries: the gate's durationFlagSpec and cmdPause's
+ * own re-parse beside the writer must phrase it identically, so the wording lives here once.
+ * Other `--for` users (`run --for`) take no hint — their ceiling is an ordinary bound. */
+export const PAUSE_FOR_OVERFLOW_HINT =
+  "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)";
+
 /** The `--in <duration>` flag spec, accepted by `wake` alone (the scheduled wake): one
  * definition of the flag's spelling and value shape, beside durationFlagSpec, so the gate's
  * accepted vocabulary and parseDurationFlag's error messages cannot drift apart. validate

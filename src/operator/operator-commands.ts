@@ -2,7 +2,7 @@ import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
-import { REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
+import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "./retire.js";
 import { agree, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
@@ -140,12 +140,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // standing pause in disguise, and the message names the command that is one (the same
   // capped-flag idiom the --since windows in cli.ts use).
   if (forMs !== undefined)
-    failOverDurationCap(
-      "pause --for",
-      forMs,
-      PAUSE_FOR_MAX_MS,
-      "for a longer or standing pause run bare `tumwater pause` (lift it with `tumwater resume`)",
-    );
+    failOverDurationCap("pause --for", forMs, PAUSE_FOR_MAX_MS, PAUSE_FOR_OVERFLOW_HINT);
   // `now` is the one instant the deadline and the confirmation both read, injected by tests
   // so the wording they pin cannot drift with the wall clock — the same single-clock
   // discipline timedPauseBits's own `now` parameter follows.
