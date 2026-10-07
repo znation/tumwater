@@ -10,9 +10,9 @@ import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
 import { failRivalShapes, flagValue, parseCountFlag, parseSinceFlag } from "../cli/cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
-/** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags,
- * collect through src/report/report-data.ts / src/failure/failure-data.ts, and print. Unknown-args rejection and the
- * no-ready-repo-gate decision stay in cli.ts's case, like every other command's. */
+/** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags and
+ * print. Unknown-args rejection and the no-ready-repo-gate decision stay in cli.ts's case,
+ * like every other command's. */
 export async function cmdReport(root: string, args: string[]): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
