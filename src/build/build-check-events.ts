@@ -5,8 +5,8 @@
  * change when feed wording or event fields change, and several surfaces outside build-check.ts
  * (main-red.ts's baseline logger, redeploy.ts's mirror) construct the same event without ever
  * running a check. This module imports only types from build-check.js, so no runtime cycle.
- * runScopedBuildCheck (build-check.ts) is the only caller that both runs a check and uses this
- * wording; the baseline surfaces use the event/warning helpers alone. */
+ * runScopedBuildCheck (build-check-scoped.ts) is the only caller that both runs a check and
+ * uses this wording; the baseline surfaces use the event/warning helpers alone. */
 
 import type { HarnessEventInput } from "../events/events.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
@@ -169,9 +169,9 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
 /** The one home of the build_check event's shape — `{ loop, type: "build_check", scope,
  * status, script, durationMs }` plus the run-timing fields (buildCheckRunFields above) —
  * so the feed's most expensive event type cannot drift a field between its four surfaces:
- * runScopedBuildCheck's two priced events in build-check.ts (the killed retry and the final
- * verdict) and the red-main baseline loggers (main-red.ts's baselineCheckLogger, redeploy.ts's redeploy
- * mirror), which all paid the run whose timings the event carries. */
+ * runScopedBuildCheck's two priced events in build-check-scoped.ts (the killed retry and the
+ * final verdict) and the red-main baseline loggers (main-red.ts's baselineCheckLogger,
+ * redeploy.ts's redeploy mirror), which all paid the run whose timings the event carries. */
 export function buildCheckEvent(
   loop: string,
   scope: BuildCheckScope | "baseline",
