@@ -86,6 +86,41 @@ test("a landing on a repo with no config needs no preserve and still fast-forwar
   assertClean(root);
 });
 
+test("a crash mid write-back leaves the live config absent, never torn", () => {
+  const root = makeRepo();
+  const cfg = path.join(root, "tumwater.json");
+  const saved = Buffer.from('{"provider":"preserved"}\n');
+  assert.ok(!fs.existsSync(cfg), "the landing deleted the live config");
+
+  // Inject the fault: the write dies after emitting half the bytes (an interrupted write —
+  // SIGKILL, the OOM killer, a full disk). The live config path must never hold that prefix;
+  // the tmp the atomic writer uses may, and is cleaned up on the rethrow.
+  const realWrite = fs.writeFileSync;
+  (fs as unknown as { writeFileSync: unknown }).writeFileSync = (
+    file: unknown,
+    data: unknown,
+    ...rest: unknown[]
+  ) => {
+    if (typeof file === "string" && file.startsWith(cfg)) {
+      const text = typeof data === "string" ? data : String(data);
+      (realWrite as (...a: unknown[]) => void).call(fs, file, text.slice(0, Math.ceil(text.length / 2)), ...rest);
+      throw new Error("simulated interrupted write");
+    }
+    return (realWrite as (...a: unknown[]) => void).call(fs, file, data, ...rest);
+  };
+  try {
+    assert.throws(() => restoreConfigBytes(root, saved), /simulated interrupted write/);
+  } finally {
+    (fs as unknown as { writeFileSync: unknown }).writeFileSync = realWrite;
+  }
+  assert.ok(!fs.existsSync(cfg), "the torn prefix did not survive at the live config path");
+  assert.deepEqual(
+    fs.readdirSync(root).filter((f) => f.includes(".tmp-")),
+    [],
+    "no tmp remnant is left behind",
+  );
+});
+
 test("the config write-back is restore-only-when-absent: a newer write wins", async () => {
   const root = trackedConfigRoot('{"provider":"old"}\n');
   const sha = await untrackingBranch(root);

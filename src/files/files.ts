@@ -106,25 +106,38 @@ export function ensureParentDir(file: string): void {
   ensureDir(path.dirname(file));
 }
 
-/** Write `text` to `file` as UTF-8 via a tmp file + rename, so a concurrent reader of the same
- * path sees either the old (absent) or the new content, never a partial write: the prompt-inbox
- * queue files (inbox.ts's enqueueRolePrompt) are written by one process while dashboards poll,
- * `--list` reads, and the loops dequeue in others, and a read that races the write could run a
- * tick on a truncated user request or flash one on the dashboard. The tmp name carries the pid
- * because several processes can enqueue at once (CLI, TUI, GUI, a loop's re-queue); on failure
- * the tmp is removed and the error rethrown, leaving the target untouched. The harness's JSON
- * writer (writeJsonAtomic in src/files/json-files.ts) serializes first and writes through this helper,
- * so the pid-tmp and no-torn-file contract lives in exactly one place. */
-export function writeTextAtomic(file: string, text: string): void {
+/** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent
+ * reader of the same path sees either the old (absent) or the new content, never a partial
+ * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process
+ * while dashboards poll, `--list` reads, and the loops dequeue in others, and a read that races
+ * the write could run a tick on a truncated user request or flash one on the dashboard. The tmp
+ * name carries the pid because several processes can write at once (CLI, TUI, GUI, a loop's
+ * re-queue); on failure the tmp is removed and the error rethrown, leaving the target untouched.
+ * The harness's JSON writer (writeJsonAtomic in src/files/json-files.ts) and the config write-back
+ * (writeBytesAtomic's caller, landing-git.ts's restoreConfigBytes) write through this, so the
+ * pid-tmp and no-torn-file contract lives in exactly one place. */
+function writeAtomic(file: string, data: string | Uint8Array): void {
   ensureParentDir(file);
   const tmp = `${file}.tmp-${process.pid}`;
   try {
-    fs.writeFileSync(tmp, text, "utf8");
+    fs.writeFileSync(tmp, data);
     fs.renameSync(tmp, file); // atomic on POSIX — readers never see a partial file
   } catch (err) {
     removeQuiet(tmp); // a failed write leaves no tmp remnant behind
     throw err;
   }
+}
+
+/** Write `text` to `file` as UTF-8 — the text entry point to writeAtomic's tmp+rename. */
+export function writeTextAtomic(file: string, text: string): void {
+  writeAtomic(file, text);
+}
+
+/** Write raw `data` bytes to `file` — the byte entry point to writeAtomic's tmp+rename, for
+ * writers that must preserve the source bytes exactly (landing-git.ts's restoreConfigBytes
+ * writes back the live tumwater.json bytes a landing's merge deleted). */
+export function writeBytesAtomic(file: string, data: Uint8Array): void {
+  writeAtomic(file, data);
 }
 
 /** Delete a file, swallowing every error — the one place for cleanup deletes that must never

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { COMMIT_IDENT, git, gitTry, runGit } from "../git/git-run.js";
+import { writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
@@ -168,12 +169,15 @@ export async function configBytesToPreserve(root: string, ref: string): Promise<
  * the live config is absent at write-back time. The merge deletes the file mid-window, so a
  * config request applied in that window (3/7's applyConfigRequest runs outside the merge lock)
  * recreates it — the newer bytes win (latest instruction wins), which also makes the step
- * idempotent. Called only after a successful merge: a refused merge leaves the file untouched. */
+ * idempotent. Called only after a successful merge: a refused merge leaves the file untouched.
+ * Written through writeBytesAtomic (tmp+rename), like every other tumwater.json writer, so a
+ * crash mid-write cannot leave the live config torn for the ~2 s config poll or the next
+ * generation's startup load. */
 export function restoreConfigBytes(root: string, saved: Buffer | null): void {
   if (!saved) return;
   const cfg = configPath(root);
   if (fs.existsSync(cfg)) return;
-  fs.writeFileSync(cfg, saved);
+  writeBytesAtomic(cfg, saved);
 }
 
 /** Fast-forward main to `ref`, without touching any remote. Callers pass the worktree's
