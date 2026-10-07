@@ -77,7 +77,7 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   const localPort = await freeTcpPort();
   const local = spawnCli(repo, ["gui", "--port", String(localPort)]);
   try {
-    await local.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${localPort}`), "the gui banner", 30_000);
+    await local.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${localPort}`), "the gui banner");
     assert.ok(!local.out().includes("ALL interfaces"), "default bind does not claim all interfaces");
   } finally {
     local.kill();
@@ -87,7 +87,7 @@ test("gui starts, prints its banner, and --all-interfaces names the LAN exposure
   const lanPort = await freeTcpPort();
   const lan = spawnCli(repo, ["gui", "--port", String(lanPort), "--all-interfaces"]);
   try {
-    await lan.waitFor((b) => b.includes("listening on ALL interfaces"), "the all-interfaces warning", 30_000);
+    await lan.waitFor((b) => b.includes("listening on ALL interfaces"), "the all-interfaces warning");
     for (const addr of lanAddresses())
       assert.ok(
         lan.out().includes(`also at http://${addr}:${lanPort}`),
@@ -110,7 +110,7 @@ test("the served /api/status carries the land queue's entries", async () => {
   const port = await freeTcpPort();
   const gui = spawnCli(repo, ["gui", "--port", String(port)]);
   try {
-    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner", 30_000);
+    await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner");
     const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
     assert.equal(snap.landQueue.depth, 2);
     assert.deepEqual(
@@ -182,7 +182,6 @@ test("gui --token serves behind the gate and prints the token-bearing URL", asyn
     await gui.waitFor(
       (b) => b.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`),
       "the token-bearing banner",
-      30_000,
     );
     // The gate is live from the first response: without the token, even the page is 401.
     const bare = await fetch(`http://127.0.0.1:${port}/`);
@@ -281,7 +280,6 @@ test("gui --all-interfaces --token prints the protected warning and token-bearin
         out.includes(`tumwater gui at http://127.0.0.1:${port}/?token=s3cret`) &&
         out.includes("listening on ALL interfaces"),
       "the gui banner and exposure warning",
-      30_000,
     );
 
     // The protected warning replaces the no-auth one — checking both forms means a

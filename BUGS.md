@@ -5,13 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### `gui starts, prints its banner, and --all-interfaces names the LAN exposure` flaked once on the loaded gate host, and the test does not yet name the timing assumption that broke (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`)
-
-- **Symptom:** the 2026-10-07 digest carries `feature — gate check failed then passed on retry — flaky: ✖ gui starts, prints its banner, and --all-interfaces names the LAN exposure`; the gate's one re-run passed and `review-precheck.ts` promoted that pass as the tree's verdict.
-- **Reproduce:** `node dist/test/test-runner.js 'cli-gui#gui starts'` under the fleet's own load (several busy-loop processes spinning).
-- **Cause (suspected):** a live server/banner readiness wait — this file's fixed `gui --all-interfaces prints the reachable LAN URLs and serves until killed` sibling needed the 60 s `waitFor` deadline from 55de47d8 — but the failing assertion is not named, so the wait that raced is not yet identified.
-- **Expected:** the banner/serve readiness wait tolerates a loaded host (an explicit long deadline or a readiness signal), so the gate never has to re-run it.
-
 ### `simultaneous cross-process pauseRole calls all survive in the marker` flaked once on the loaded gate host (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`)
 
 - **Symptom:** the 2026-10-07 digest carries `dry — gate check failed then passed on retry — flaky: ✖ simultaneous cross-process pauseRole calls all survive in the marker`; the gate's one re-run passed.
@@ -20,6 +13,15 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected:** the test's cross-process writers are ordered by an explicit completion signal, or the marker's read-modify-write is serialized, so the loaded host cannot change the outcome.
 
 ## Fixed
+
+### `gui starts, prints its banner, and --all-interfaces names the LAN exposure` flaked once on the loaded gate host, and the test does not yet name the timing assumption that broke (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`; fixed 2026-10-07 by bugfix loop — five cold-start banner waits had outgrown explicit 30 s deadlines)
+
+- **Symptom:** the 2026-10-07 digest carries `feature — gate check failed then passed on retry — flaky: ✖ gui starts, prints its banner, and --all-interfaces names the LAN exposure`; the gate's one re-run passed and `review-precheck.ts` promoted that pass as the tree's verdict.
+- **Reproduce:** `node dist/test/test-runner.js 'cli-gui#gui starts'` under the fleet's own load (several busy-loop processes spinning).
+- **Cause (suspected):** a live server/banner readiness wait — this file's fixed `gui --all-interfaces prints the reachable LAN URLs and serves until killed` sibling needed the 60 s `waitFor` deadline from 55de47d8 — but the failing assertion is not named, so the wait that raced is not yet identified.
+- **Expected:** the banner/serve readiness wait tolerates a loaded host (an explicit long deadline or a readiness signal), so the gate never has to re-run it.
+**Fix:** Commit 55de47d8 raised `spawnCli.waitFor`'s default deadline from 10 s to 60 s for exactly this cold-start-under-load race, but five waits in `test/cli-gui.test.ts` still passed an explicit `30_000`, so they kept the outgrown budget. The five are the localhost-banner and all-interfaces-warning waits in `gui starts, prints its banner, and --all-interfaces names the LAN exposure`, plus the startup waits in `the served /api/status carries the land queue's entries`, `gui --token serves behind the gate and prints the token-bearing URL`, and `gui --all-interfaces --token prints the protected warning and token-bearing LAN URLs`. Removing the explicit deadline lets all five use the 60 s default; the already-hardened `gui --all-interfaces prints the reachable LAN URLs and serves until killed` sibling and the SIGINT test were already deadline-free. `grep -n '30_000' test/cli-gui.test.ts` now matches no line.
+**Validation gap:** no-repro — the loaded-host flake never reproduced on demand, so the fix was confirmed by the grep that no explicit `30_000` override remains in the file, not by reproducing the original timeout.
 
 ### `doctor --json prints the collector's own payload, matching the plain render` flaked once on the loaded gate host; this file attributes it to a leaked process rather than a timing race (found by telemetry loop 2026-10-07 in the failure digest's one-off `flaky:` warning cluster; split from the double-SIGINT entry now under `## Fixed`; fixed 2026-10-07 by bugfix loop — the nondeterminism was the host `top` sample, not a leak)
 
