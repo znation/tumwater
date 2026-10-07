@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { eventResult, formatEvent, usageText } from "../src/events/event-format.js";
+import { eventResult, formatEvent, outcomeText, usageText } from "../src/events/event-format.js";
 import { formatTimestamp } from "../src/text/datetime.js";
 import { displayWidth } from "../src/text/text-width.js";
 
@@ -596,6 +596,27 @@ test("eventResult takes a tick's result, else a landing's or build check's statu
   // Non-string values (a number smuggled into the loose payload) are not an outcome.
   assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: 7 } as never), undefined);
   assert.equal(eventResult({ ts: 0, loop: "x", type: "wake" }), undefined);
+});
+
+// outcomeText — eventResult as a display cell: the same extraction with "?" for an absent
+// outcome, so a torn tick_end renders like eventRole's loop and eventTick's tick rather than
+// String(undefined)'s literal "undefined". eventResult must stay undefined for the tone and
+// filter keys, so the corrupt-field guard lives here, not there.
+test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end", result: "changed" }), "changed");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end" }), "?");
+  // A non-string value smuggled into the loose payload is not an outcome.
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end", result: 7 } as never), "?");
+});
+
+test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
+  const tickEnd = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5 } as never);
+  assert.match(tickEnd, /tick #5 \?$/);
+  const landFailed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abc1234", result: 7 } as never);
+  assert.match(landFailed, /did not land \(\?\)/);
+  const build = formatEvent({ ts: 0, loop: "clean", type: "build_check", scope: "merge", script: "test" } as never);
+  assert.match(build, /build check \(merge\): test \?$/);
 });
 
 // usageText's either-part-omitted rule has a third shape the tick_end/landed tests never hit:

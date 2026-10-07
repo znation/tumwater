@@ -158,6 +158,13 @@ test("renderTickDetail prints the summary header, the commit sha, and formatEven
   assert.match(lines[3]!, /tick #3 changed — the fix/);
 });
 
+test("renderTickDetail renders a corrupt outcome as ?, never undefined", () => {
+  const root = makeRepo();
+  writeEvents(root, [start({ ts: 1000 }), end({ ts: 2000, result: 7 } as never)]);
+  const d = readTickDetail(root, "bugfix", 3)!;
+  assert.match(renderTickDetail(d).split("\n")[0]!, /^bugfix tick #3 — \?( ·.*)?$/);
+});
+
 test("renderTickDetail marks an in-flight tick in its header", () => {
   const root = makeRepo();
   writeEvents(root, [

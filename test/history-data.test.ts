@@ -45,6 +45,16 @@ test("a corrupt event's tick reads as 0, never NaN", () => {
   }
 });
 
+test("a corrupt tick_end outcome renders as ?, never undefined", () => {
+  // The result cell used String(e.result) raw: a torn or hand-edited tick_end rendered the
+  // literal "undefined" in the history table and /api/history rows. It now rides the shared
+  // outcomeText, matching the loop's and tick's corrupt-field rule.
+  for (const result of [undefined, 7, null] as const) {
+    const rows = tickRows([endEvent({ result } as never)], 10, null);
+    assert.equal(rows[0]!.result, "?");
+  }
+});
+
 test("a missing or empty log reads as no rows over a covered window", () => {
   const missing = tmpdir();
   assert.deepEqual(readTickRowsSince(missing, TWO_HOURS, null), { rows: [], covered: true });

@@ -8,7 +8,7 @@
  * CLI command — lives in tick-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
-import { usageText } from "../events/event-format.js";
+import { outcomeText, usageText } from "../events/event-format.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** One tick's full event trail, as `tumwater tick <role> <n>` and the GUI's tick drill-down
@@ -116,7 +116,7 @@ function detailFrom(
     startTs,
     endTs: end === null ? null : end.ts,
     durationMs: end === null ? null : tickSpanMs(end, tickStartMap(scoped)),
-    result: end === null ? null : String(end.result),
+    result: end === null ? null : outcomeText(end),
     tokens: usageNums.tokens,
     costUsd: usageNums.costUsd,
     usage: end === null ? "" : usageText(end),

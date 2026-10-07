@@ -69,6 +69,19 @@ test("a paired tick's block is its start, its in-tick events, and its end — no
   );
 });
 
+test("a torn tick_end outcome reads as ?, never undefined", () => {
+  // The collector used String(end.result) raw: a hand-edited tick_end with a missing or
+  // non-string result shipped the literal "undefined" as TickDetail.result, which the CLI
+  // header and /api/tick drill-down printed. It now rides the shared outcomeText.
+  for (const result of [undefined, 7] as const) {
+    const root = tmpdir();
+    writeEvents(root, [startEvent({ ts: 1000 }), endEvent({ ts: 2000, result } as never)]);
+    const detail = readTickDetail(root, "feature", 1);
+    assert.ok(detail);
+    assert.equal(detail.result, "?");
+  }
+});
+
 test("an in-flight tick reads open: no end, no fabricated duration, zero usage", () => {
   const root = tmpdir();
   writeEvents(root, [

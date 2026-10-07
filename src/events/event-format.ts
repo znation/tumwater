@@ -78,6 +78,16 @@ export function eventResult(e: HarnessEvent): string | undefined {
   return typeof e.result === "string" ? e.result : typeof e.status === "string" ? e.status : undefined;
 }
 
+/** eventResult as a display cell: the outcome text when the event carries one, else "?". A
+ * torn or hand-edited event whose result/status is missing or non-string — the loose payload
+ * HarnessEvent's index signature hands over unvalidated — reads "?" like eventRole's loop and
+ * eventTick's tick, never String(undefined)'s literal "undefined". The display surfaces — the
+ * event line, the history row, the tick drill-down — use this; eventResult stays undefined
+ * for the tone and filter keys, which must tell "no outcome" apart from a real one. */
+export function outcomeText(e: HarnessEvent): string {
+  return eventResult(e) ?? "?";
+}
+
 /** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
  * the local `YYYY-MM-DD HH:MM:SS` stamp (formatTimestamp — the same zero-padded, locale-
  * independent phrasing the history table and transcript run separators print, not
@@ -111,7 +121,7 @@ export function eventMessage(e: HarnessEvent): string {
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
       // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
-      return `tick #${eventTick(e)} ${e.result}${extra}${usagePhrase(e)}`;
+      return `tick #${eventTick(e)} ${outcomeText(e)}${extra}${usagePhrase(e)}`;
     }
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${e.summary}`;
@@ -127,7 +137,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "land_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
-      return `landing of ${shortSha(e.commit)} did not land (${e.result})${elapsed(e.durationMs)}`;
+      return `landing of ${shortSha(e.commit)} did not land (${outcomeText(e)})${elapsed(e.durationMs)}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `question posted: ${e.question}`;
@@ -188,12 +198,12 @@ export function eventMessage(e: HarnessEvent): string {
       // for an npm check but the FULL configured command otherwise (checkScriptName in
       // build/build-check.ts), so no "npm" prefix is asserted here — the bare name reads correctly
       // for both kinds ("npm test" would misrender a cargo or make-based project's check).
-      return `build check (${e.scope}): ${e.script} ${e.status}${elapsed(e.durationMs)}`;
+      return `build check (${e.scope}): ${e.script} ${outcomeText(e)}${elapsed(e.durationMs)}`;
     case "dep_install": {
       // The root checkout's install catching up with a landed lockfile change — routine on
       // success; a failure also rides its own warning, which says what happens meanwhile.
       const pkgs = stringList(e.packages).join(", ");
-      return `root install (${pkgs}) ${e.status}${e.error ? ` — ${e.error}` : ""}${elapsed(e.durationMs)}`;
+      return `root install (${pkgs}) ${outcomeText(e)}${e.error ? ` — ${e.error}` : ""}${elapsed(e.durationMs)}`;
     }
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the

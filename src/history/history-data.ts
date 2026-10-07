@@ -11,7 +11,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { squash } from "../text/text.js";
-import { usageText } from "../events/event-format.js";
+import { outcomeText, usageText } from "../events/event-format.js";
 import { groupBy } from "../collections.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
@@ -178,7 +178,7 @@ export function tickRows(
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
     if (!e || e.type !== "tick_end") continue;
-    const rawResult = String(e.result);
+    const rawResult = outcomeText(e);
     const result =
       rawResult === "queued"
         ? (resolveQueuedResult(e, landQueuedByLoop, outcomeByLoop, claimTop, joinStarts, floorTs)
