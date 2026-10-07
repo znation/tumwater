@@ -107,14 +107,13 @@ export function yieldMultiplierFor(s: LoopState): number {
 }
 
 /** progressOfTick with the tail read folded in — the one home for the
- * `live === undefined ? readLiveProgress(...) : live` idiom that was copied across
- * status-render.ts's work cell, status-model.ts's reviewing branch and displayTokenMetrics,
- * and workingDetail below. Callers holding this frame's already-fetched tail pass it as
- * `live` (renderStatus reads once per running loop and threads it through every helper);
- * standalone callers pass undefined and this reads the role's log itself — the author
- * accumulator by default, the gate one via `kind`. The four converted sites are all of them:
- * status-model.ts's staged branch keeps its raw readLiveProgress call (it feeds inFlightDetail
- * with a freshly read tail, not a per-frame threaded one). */
+ * `live === undefined ? readLiveProgress(...) : live` idiom. Callers holding this frame's
+ * already-fetched tail pass it as `live` (renderStatus reads once per running loop and
+ * threads it through every helper); standalone callers pass undefined and this reads the
+ * role's log itself — the author accumulator by default, the gate one via `kind`. Every
+ * tail-reading caller outside this module routes through it; status-model.ts's staged branch
+ * is the one exception, keeping its raw readLiveProgress call because it feeds inFlightDetail
+ * a freshly read gate tail for the landing label, not a per-frame threaded one. */
 export function tickProgress(
   root: string,
   s: LoopState,
