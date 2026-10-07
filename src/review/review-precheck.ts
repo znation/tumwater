@@ -12,7 +12,7 @@ import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { sleptPhrase, unverifiedTreeOutcome } from "../build/build-check-events.js";
-import { sampleSleepClock } from "../scheduling/host-sleep.js";
+import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";

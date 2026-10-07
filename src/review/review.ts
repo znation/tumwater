@@ -17,7 +17,7 @@ import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { shortSha } from "../text/format.js";
 import { firstReason } from "../text/phrases.js";
-import type { SleepSampler } from "../scheduling/host-sleep.js";
+import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";

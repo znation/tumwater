@@ -4,7 +4,7 @@ import {
   runBuildCheck,
 } from "../build/build-check.js";
 import { SLEEP_SPAN_TOLERANCE_MS, type BaselineCheckRun } from "../build/build-check-events.js";
-import { sampleSleepClock, type SleepSampler } from "../scheduling/host-sleep.js";
+import { sampleSleepClock, type SleepSampler } from "../build/host-sleep.js";
 import { CHECK_TIER, withCheckPermit } from "../concurrency/check-permit.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { refSha } from "../git/git.js";
