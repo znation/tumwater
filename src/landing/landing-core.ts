@@ -131,6 +131,14 @@ export async function reviewPinnedChange(
   const { root, mainBranch, config } = ctx;
   const { role } = req;
   const ref = landingRefName(role);
+  // Both uses below — a rejection and a strike-cap discard — end a pinned change without
+  // keeping it: drop the held-selector note, the pin ref, and the lander worktree together,
+  // so the three-part cleanup cannot drift between them.
+  const discardPin = async () => {
+    state.landingReviewError = undefined;
+    await deleteRef(root, ref);
+    await removeLandWorktree(root, wt);
+  };
   // Already stopping: the gate never starts, so nothing is persisted or folded — the ref stays
   // (fail closed) exactly as for an abort mid-review below.
   if (ctx.signal().aborted) return { kind: "result", result: "aborted" };
@@ -173,9 +181,7 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "rejected") {
     // The gate already reset this worktree to main; the verdict is final for this sha.
-    state.landingReviewError = undefined;
-    await deleteRef(root, ref);
-    await removeLandWorktree(root, wt);
+    await discardPin();
     return { kind: "result", result: "rejected" };
   }
 
@@ -210,9 +216,7 @@ export async function reviewPinnedChange(
     // pin as it is: the gate never commits, so the pin still names the tree the next re-land
     // reviews.
     if (gate.discarded) {
-      state.landingReviewError = undefined;
-      await deleteRef(root, ref);
-      await removeLandWorktree(root, wt);
+      await discardPin();
       return { kind: "result", result: "review_error", discarded: true };
     }
     return { kind: "result", result: "review_error" };
