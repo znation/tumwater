@@ -5,6 +5,7 @@ import path from "node:path";
 import { editListedPrompt, editRolePrompt } from "../src/inbox/inbox-edit.js";
 import { enqueuePrompt, enqueueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { cancelListedPrompt } from "../src/inbox/inbox-cancel.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { notBeforeMs } from "../src/prompt/prompt-not-before.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { eventsOfType } from "./log-fixtures.js";
@@ -82,6 +83,21 @@ test("editRolePrompt errors on out-of-range positions without touching any file"
     assert.throws(() => editRolePrompt(root, DIRECTOR_ROLE, pos, "new"), /no prompt at position/);
   }
   assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["alpha"], "nothing touched on failure");
+  assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
+});
+
+test("editRolePrompt refuses an over-cap replacement, like every enqueue path", () => {
+  const root = tmpdir();
+  enqueuePrompt(root, "short enough");
+
+  // The edited text rides into the target tick's prefill exactly like a queued prompt, so
+  // the submission cap applies: an edit must not smuggle in the megabyte a submit rejects.
+  const overCap = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
+  assert.throws(
+    () => editRolePrompt(root, DIRECTOR_ROLE, 1, overCap),
+    /shorten it to at most/,
+  );
+  assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["short enough"], "nothing touched on failure");
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
 

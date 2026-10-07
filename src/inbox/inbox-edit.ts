@@ -1,6 +1,7 @@
 import { writeTextAtomic } from "../files/files.js";
 import { logEvent } from "../events/events.js";
 import { promptPreview, queuedFileAtPosition, readQueueText } from "./inbox.js";
+import { promptLengthProblem } from "./inbox-submit.js";
 import { listedQueueOutcome, resolveListedQueue, type ListedQueueMiss } from "./inbox-cancel.js";
 import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "../prompt/prompt-not-before.js";
 
@@ -30,6 +31,11 @@ export type EditOutcome =
  * marker. Logs one prompt_edited event under that loop (preview via promptPreview, exactly
  * like its prompt_cancelled sibling) only after a successful write.
  *
+ * Enforces the same prefill length cap as a submission (promptLengthProblem): the edited
+ * text rides into the target tick's prefill exactly like a queued prompt, so an edit to an
+ * over-cap value must not bypass the cap every enqueue path applies. Throws before any read
+ * or write.
+ *
  * Throws for out-of-range positions with no side effects. The race policy pairs with the
  * outcome: the file is read first, and a read that hits ENOENT returns { status: "gone" } —
  * the loop dequeued it or a cancel removed it between listing and write, a normal race
@@ -39,6 +45,8 @@ export type EditOutcome =
  * read-then-remove window, and the atomic rename means every observer sees either the whole
  * old file or the whole new one — never a half-written prompt. */
 export function editRolePrompt(root: string, role: string, position: number, newText: string): EditOutcome {
+  const lengthProblem = promptLengthProblem(newText, role);
+  if (lengthProblem) throw new Error(lengthProblem); // Before any read or write, like submitRolePrompt.
   const file = queuedFileAtPosition(root, role, position);
   const oldFileText = readQueueText(file);
   if (oldFileText === null) return { status: "gone" }; // Dequeued or cancelled mid-listing.
