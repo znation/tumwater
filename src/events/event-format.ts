@@ -1,4 +1,4 @@
-import { eventRole, eventUsage } from "./event-read.js";
+import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
@@ -103,7 +103,7 @@ export function formatEvent(e: HarnessEvent): string {
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "tick_start":
-      return `tick #${e.tick} started${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
+      return `tick #${eventTick(e)} started${e.model !== undefined ? ` on ${String(e.model)}` : ""}`;
     case "tick_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
       // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
@@ -111,7 +111,7 @@ export function eventMessage(e: HarnessEvent): string {
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${e.summary}` : e.error ? ` — ${e.error}` : "";
       // Per-tick usage (PLANS.md, per-tick-usage plan): where the day's spend went.
-      return `tick #${e.tick} ${e.result}${extra}${usagePhrase(e)}`;
+      return `tick #${eventTick(e)} ${e.result}${extra}${usagePhrase(e)}`;
     }
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${e.summary}`;

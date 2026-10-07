@@ -42,6 +42,17 @@ export function eventRole(ev: HarnessEvent): string {
   return typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
 }
 
+/** The tick number an event names, or 0 when it is absent or non-finite. The one guard every
+ * display surface applies to the loosened `tick` field: an event log is read without a shape
+ * filter, so a torn or hand-edited line can carry no tick (String(undefined) printed "#undefined"
+ * in the feed) or a non-numeric one (String(Number(…)) printed "#NaN" in history). Ticks are
+ * 1-based — the loop increments state.ticks before logging its first tick — so 0 is visibly not
+ * a real tick, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
+ * aheadCommits apply, kept finite so a JSON consumer never sees NaN's null stand-in. */
+export function eventTick(ev: HarnessEvent): number {
+  return finiteNumber(ev.tick, 0);
+}
+
 /** The usage numbers an event records (`tick_end`'s own run, `landed`'s landing slot):
  * `tokens` and `costUsd` arrive `unknown` through the event's index signature, so they are
  * coerced to numbers here, with an absent, non-numeric, or non-finite value reading as 0 —

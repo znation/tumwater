@@ -36,6 +36,15 @@ test("a corrupt event's loop renders as ? like the reports", () => {
   assert.equal(rows[0]!.loop, "?");
 });
 
+test("a corrupt event's tick reads as 0, never NaN", () => {
+  // The row's tick used to be Number(e.tick) raw: a torn or hand-edited tick_end rendered
+  // "#NaN" in the table and shipped JSON null (JSON.stringify(NaN)) in /api/history.
+  for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
+    const rows = tickRows([endEvent({ tick } as never)], 10, null);
+    assert.equal(rows[0]!.tick, 0);
+  }
+});
+
 test("a missing or empty log reads as no rows over a covered window", () => {
   const missing = tmpdir();
   assert.deepEqual(readTickRowsSince(missing, TWO_HOURS, null), { rows: [], covered: true });

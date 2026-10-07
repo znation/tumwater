@@ -45,6 +45,19 @@ test("formatEvent renders a corrupt event's loop as ? like the reports", () => {
   }
 });
 
+test("formatEvent renders a corrupt event's tick as #0, never undefined or NaN", () => {
+  // The log is read without a shape filter, so a torn or hand-edited tick_start/tick_end can
+  // carry no tick ("#undefined") or a non-numeric one ("#NaN"). eventTick's 0 is the one
+  // rule; ticks are 1-based, so 0 is visibly not a real tick.
+  for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
+    for (const type of ["tick_start", "tick_end"] as const) {
+      const line = formatEvent({ ts: 0, loop: "clean", type, tick, result: "changed" } as never);
+      assert.ok(line.includes("#0"), `corrupt tick must render #0: ${line}`);
+      assert.ok(!/undefined|NaN/.test(line), `corrupt tick must not print undefined or NaN: ${line}`);
+    }
+  }
+});
+
 test("formatEvent keeps the loop column aligned when a loop name holds a wide character", () => {
   // The loop column is padded so every line's message starts at the same display column.
   // A custom loop name carrying a wide character (CJK, emoji) is one UTF-16 code unit but
