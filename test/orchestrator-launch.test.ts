@@ -57,6 +57,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     signal: new AbortController().signal,
     gateStates: emptyGateStates(),
     breakerPolicy: FALLBACK_BREAKER_POLICY,
+    breakerNow: Date.now,
     probePair: null,
     probeRoles: new Set<string>(),
     budgetActive: false,

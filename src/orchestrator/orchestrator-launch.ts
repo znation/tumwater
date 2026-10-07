@@ -47,6 +47,9 @@ interface LaunchContext {
   gateStates: FleetGateStates;
   /** The breaker's policy knobs (drain window and probe timing), fixed at startup. */
   breakerPolicy: FallbackBreakerPolicy;
+  /** The fallback breaker's clock (default Date.now; see RunOptions.breakerNow): the evidence
+   * fold stamps its cool-down deadline from this, never from the tick's own wall clock. */
+  breakerNow: () => number;
   /** The pair whose demoted fallback this poll admits a probe tick for, or null when none
    * (the decision pass computed it from the breaker map). */
   probePair: string | null;
@@ -86,6 +89,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     signal,
     gateStates,
     breakerPolicy,
+    breakerNow,
     probePair,
     probeRoles,
     budgetActive,
@@ -170,7 +174,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
           const outcome = await runner.tick();
           if (ranPair !== null && ranOn !== undefined) {
-            const at = Date.now();
+            const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;
             gateStates.budget.breakers = recordFallbackTickAt(
               gateStates.budget.breakers,

@@ -70,6 +70,11 @@ interface RunOptions {
    * FALLBACK_BREAKER_POLICY) — a
    * test seam, like pollMs: e2e tests shrink the cool-down so a probe fits in a test. */
   fallbackBreakerPolicy?: FallbackBreakerPolicy;
+  /** The fallback breaker's clock (default Date.now) — a test seam, like pollMs: the cool-down
+   * deadline and its elapsed check both read it, so a test can elapse a cool-down by advancing
+   * this clock instead of sleeping through the real one. Scheduling, tick timing, and gate
+   * polling keep the wall clock; only the breaker's probe deadlines move with it. */
+  breakerNow?: () => number;
   /** The restart hand-off's per-phase wait on an in-flight landing (default
    * HANDOFF_LANDING_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
    * deadline path resolves quickly. */
@@ -109,6 +114,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
+  const breakerNow = opts.breakerNow ?? Date.now;
   const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : enabledRoleIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
@@ -419,7 +425,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // the pause for every role (objection to an earlier draft), and a probe with no
       // eligible runner must not hijack the poll's other launches (the launch pass continues
       // only the eligible runners it cannot admit, never the rest of the fleet).
-      const probePair = fallbackProbeDuePair(gateStates.budget.breakers, now);
+      const probePair = fallbackProbeDuePair(gateStates.budget.breakers, breakerNow());
       const probeRoles = new Set<string>();
       if (probePair !== null) {
         for (const r of runners) {
@@ -466,6 +472,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         signal: roleSignal,
         gateStates,
         breakerPolicy,
+        breakerNow,
         probePair,
         probeRoles,
         budgetActive,
