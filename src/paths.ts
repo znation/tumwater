@@ -157,8 +157,8 @@ export function pausedRolesPath(root: string): string {
  * (pauseRole/resumeRole in fleet/fleet-state.ts): the CLI and the GUI server are separate processes
  * that can toggle different roles in the same instant, and without serialization the last
  * writer's whole-set overwrite silently drops the other's pause. A lock directory owned by the
- * shared mkdir-and-pid mutex (withSyncLock, src/concurrency/lock.ts), which creates and removes it; lives
- * beside the marker path it guards, same single-definition rule. */
+ * shared mkdir-and-pid mutex (withSyncLock, src/concurrency/lock.ts), which creates and removes it;
+ * lives beside the marker path it guards, same single-definition rule. */
 export function pausedRolesLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "paused-roles.lock");
 }
@@ -172,8 +172,8 @@ export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", EVENTS_LOG_BASENAME);
 }
 
-/** The event log's one archived generation (src/files/files.ts rotateIfLarge renames the grown log to
- * events.jsonl.1); the windowed readers continue into it when the live log ends inside the
+/** The event log's one archived generation (src/files/files.ts rotateIfLarge renames the grown log
+ * to events.jsonl.1); the windowed readers continue into it when the live log ends inside the
  * window (event-window.ts). One archive, by design: the rotation note tells the truth about
  * coverage either way, and the archive path belongs beside eventsLogPath so the pair cannot
  * drift apart. */
@@ -199,7 +199,8 @@ export function sessionsRootDir(root: string): string {
   return path.join(tumwaterDir(root), "sessions");
 }
 
-/** A role's own pi session dir; hasResumableSession looks here for an interrupted tick to resume. */
+/** A role's own pi session dir; hasResumableSession looks here for an interrupted tick to
+ * resume. */
 export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
@@ -226,8 +227,8 @@ export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
-/** The durable land queue (src/landing/landing-queue.ts): a changed tick's pinned commit waits here as
- * one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
+/** The durable land queue (src/landing/landing-queue.ts): a changed tick's pinned commit waits here
+ * as one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
  * scheduler. */
@@ -265,10 +266,10 @@ export function witnessWorktreePath(root: string): string {
   return path.join(worktreesDir(root), "_build");
 }
 
-/** A role's lander worktree (src/landing/landing-core.ts): the detached checkout where its pinned commit is
- * reviewed and rebased onto main, outside the role's own worktree. One per role so two roles'
- * landings never wait on each other; the leading underscore follows the _main convention above,
- * so it can never collide with a role worktree (plans/merge-queue.md). */
+/** A role's lander worktree (src/landing/landing-core.ts): the detached checkout where its pinned
+ * commit is reviewed and rebased onto main, outside the role's own worktree. One per role so two
+ * roles' landings never wait on each other; the leading underscore follows the _main convention
+ * above, so it can never collide with a role worktree (plans/merge-queue.md). */
 export function landWorktreePath(root: string, role: string): string {
   return path.join(worktreesDir(root), `_land-${role}`);
 }
@@ -289,7 +290,8 @@ export function rejectedRefName(role: string): string {
 }
 
 /** Where redeploy stages compiled builds before swapping one into dist/ — under .tumwater/ so a
- * build in progress never dirties the primary checkout (dist/ is gitignored, a sibling would not be). */
+ * build in progress never dirties the primary checkout (dist/ is gitignored, a sibling would
+ * not be). */
 export function stagingRootDir(root: string): string {
   return path.join(tumwaterDir(root), "build");
 }
