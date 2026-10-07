@@ -45,7 +45,11 @@ export type EditOutcome =
  * read-then-remove window, and the atomic rename means every observer sees either the whole
  * old file or the whole new one — never a half-written prompt. */
 export function editRolePrompt(root: string, role: string, position: number, newText: string): EditOutcome {
-  const lengthProblem = promptLengthProblem(newText, role);
+  // Trim once, then measure and store that one text: promptLengthProblem judges the trimmed
+  // value, and submitRolePrompt queues the trimmed value, so writing the raw replacement let
+  // whitespace the probe discarded smuggle an over-cap body past the cap.
+  const text = newText.trim();
+  const lengthProblem = promptLengthProblem(text, role);
   if (lengthProblem) throw new Error(lengthProblem); // Before any read or write, like submitRolePrompt.
   const file = queuedFileAtPosition(root, role, position);
   const oldFileText = readQueueText(file);
@@ -54,11 +58,11 @@ export function editRolePrompt(root: string, role: string, position: number, new
   // reads the writer's exact marker shape, so content that merely resembles a marker is
   // content, and the new text goes in marker-free.
   const deferral = notBeforeMs(oldFileText);
-  const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + newText;
+  const fileText = (deferral !== null ? notBeforeMarker(deferral) : "") + text;
   writeTextAtomic(file, fileText);
   const oldText = stripNotBeforeMarker(oldFileText);
-  logEvent(root, { loop: role, type: "prompt_edited", preview: promptPreview(newText) });
-  return { status: "edited", oldText, newText };
+  logEvent(root, { loop: role, type: "prompt_edited", preview: promptPreview(text) });
+  return { status: "edited", oldText, newText: text };
 }
 
 /** Outcome of editListedPrompt: a resolved edit (naming the loop it landed in, since the

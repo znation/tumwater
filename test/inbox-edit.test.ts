@@ -101,6 +101,21 @@ test("editRolePrompt refuses an over-cap replacement, like every enqueue path", 
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
 
+test("editRolePrompt measures and stores one text, so padding cannot smuggle an over-cap edit", () => {
+  const root = tmpdir();
+  enqueuePrompt(root, "short enough");
+
+  // The cap probe trims, but the write did not: a body at exactly the cap, padded with
+  // whitespace the probe discards, was measured as fitting and stored whole — an over-cap
+  // queue file larger than any submission the same cap admits.
+  const padded = " ".repeat(8) + "x".repeat(DIRECTOR_PROMPT_MAX_CHARS) + " ".repeat(8);
+  const outcome = editRolePrompt(root, DIRECTOR_ROLE, 1, padded);
+  assert.equal(outcome.status, "edited");
+  const written = outcome.status === "edited" ? outcome.newText : "";
+  assert.equal(written.length, DIRECTOR_PROMPT_MAX_CHARS, "the stored text satisfies the cap it was measured against");
+  assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["x".repeat(DIRECTOR_PROMPT_MAX_CHARS)]);
+});
+
 test("editRolePrompt returns gone when the file disappears between listing and reading", (t: TestContext) => {
   const root = tmpdir();
   enqueuePrompt(root, "raced");
