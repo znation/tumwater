@@ -5,7 +5,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-_None yet._
+### The reviewer's fixed 900 s budget times out on feature-sized diffs while still making progress, and the retry starts a fresh session that redoes the same reading, so a large feature change can lose 15–30 min of permit time and a full landing cycle before it lands (found by human-directed investigation 2026-10-07)
+
+- **Symptom:** in the 8 h before 2026-10-07 04:49 PDT, feature's landings ended `review_failed` "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch" three times: 64bdcba6 at 21:02, 5224f843 at 21:24 (the same change, recovered and re-queued), and 7287b067 at 04:15. Earlier windows show the same shape on bugfix (2565e57c twice on 09-30), organize (14e27412 twice on 09-30) and coverage (b4daa63b on 10-04). Every timeout held a `maxConcurrent` permit for the full 15 min. The feature loop's next tick also waited that long, because the merge-queue interlock blocks a role while it has a queued landing. Then the retry re-reviewed from scratch.
+- **Evidence the reviewer was working, not wedged:** the 04:15 run (`.tumwater/sessions/_review/feature/2026-10-07T11-00-30-014Z_*.jsonl`) made 30 tool calls in steady 1–2 min turns over a 19-file, +462/−75 diff (7287b067: the revise-rejected part 2/2 implementation, which landed under a doc-only summary). Its last calls, at 11:14:43 UTC, were building a scratch git repo to check rejected-ref behaviour. The budget ran out mid-verification, not during a stall.
+- **How to reproduce:** offline: `reviewRunConfig(config).tickTimeoutSeconds` is `REVIEW_TIMEOUT_S` (900) for every change whatever its size (src/config/config-views.ts). Live: queue a change of ~20 files / ~500 changed lines and watch `review_start` → `review_failed` exactly 900 s later, then the recovered re-queue.
+- **Cause:** REVIEW_TIMEOUT_S was sized on 2026-09-22/23 review durations (2.3 min median, 9.2 min p90), which were mostly small maintenance diffs. One wall-clock budget covers every change regardless of size. src/review/review.ts deliberately runs "Fresh session every time (no --continue)", so a timeout while still making progress throws away everything the run read. The 2026-10-01 fix in `## Fixed` ("A timed-out review is reported as … preserved for resume") only corrected the message; it left the behaviour alone.
+- **Expected:** a review that is still making progress on a large diff gets to finish. Options, any of which would do:
+  - scale the budget with the change's size, e.g. base + per-changed-file/line, capped by `tickTimeoutSeconds` and still overridable by `review.timeoutSeconds`;
+  - when the previous attempt on the same head timed out while still progressing, resume that reviewer session instead of starting fresh;
+  - extend the deadline once while the run is still producing tool calls.
+
+  A wedged reviewer (quiet, no tool calls) must still die at today's bound. The FALLBACK_REVIEW_TIMEOUT_S floor keeps working as it does now.
 
 ## Fixed
 
