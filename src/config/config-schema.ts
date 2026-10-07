@@ -140,15 +140,15 @@ export interface CheckConfig {
   timeoutSeconds?: number;
 }
 
-/** The config slice the build-check family reads (src/build/build-check-detect.ts's detectBuildCheck,
- * src/build/build-check-scoped.ts's runScopedBuildCheck, src/baseline/main-baseline.ts's checkMainBaseline and
- * mainIsGreen, src/doctor/doctor-checks.ts's checkBuildCheck, and src/concurrency/check-permit.ts's withCheckPermit):
- * the declared check plus the cap that sizes the process-wide check permit. Every field is
- * optional because every caller differs — most hand a full TumwaterConfig, doctor hands a
- * possibly-torn one, and the tests hand a bare `{ check }` — and each field is guarded again
- * at its point of use. One declaration, so a new check setting is added here once and read
- * by every consumer instead of being appended to some of the seven hand-copied literals the
- * inline form invited. */
+/** The config slice the build-check family reads (src/build/build-check-detect.ts's
+ * detectBuildCheck, src/build/build-check-scoped.ts's runScopedBuildCheck,
+ * src/baseline/main-baseline.ts's checkMainBaseline and mainIsGreen, src/doctor/doctor-checks.ts's
+ * checkBuildCheck, and src/concurrency/check-permit.ts's withCheckPermit): the declared check plus
+ * the cap that sizes the process-wide check permit. Every field is optional because every caller
+ * differs — most hand a full TumwaterConfig, doctor hands a possibly-torn one, and the tests hand a
+ * bare `{ check }` — and each field is guarded again at its point of use. One declaration, so a new
+ * check setting is added here once and read by every consumer instead of being appended to some of
+ * the seven hand-copied literals the inline form invited. */
 export interface CheckConfigSlice {
   /** The declared check (see CheckConfig). */
   check?: CheckConfig;
@@ -198,9 +198,9 @@ export interface TumwaterConfig {
    * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
    * fast-forwarded to main in one ff. 1 lands every vetted change on its own (no coalescing). */
   landBatchMax: number;
-  /** Max runs of the project's declared check (the full suite) in flight at once across the
-   * whole harness process — every gate, landing, batch, and main-baseline check takes one
-   * permit (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
+  /** Max runs of the project's declared check (the full suite) in flight at once across the whole
+   * harness process — every gate, landing, batch, and main-baseline check takes one permit
+   * (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */
@@ -290,9 +290,9 @@ export interface TumwaterConfig {
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
   thrashMinutes: number;
   idleBackoff: BackoffConfig;
-  /** Self-redeploy for a self-hosting fleet (src/redeploy/redeploy.ts): when main's build inputs move past
-   * the running build and main is green, rebuild, drain, and restart onto the new code (default
-   * true). Off, the dashboards still flag the build as stale but nothing restarts. */
+  /** Self-redeploy for a self-hosting fleet (src/redeploy/redeploy.ts): when main's build inputs
+   * move past the running build and main is green, rebuild, drain, and restart onto the new code
+   * (default true). Off, the dashboards still flag the build as stale but nothing restarts. */
   autoRestart: boolean;
   /** Adversarial pre-merge review gate (see src/review/review.ts). */
   review: ReviewConfig;
