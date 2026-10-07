@@ -25,6 +25,7 @@ import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
+import { moreSuffix } from "../text/phrases.js";
 
 /** How many `file:line` hits a single stale-reference finding lists before it stops. */
 const MAX_STALE_HITS = 10;
@@ -200,7 +201,7 @@ async function missingPathFindings(
   }
   if (missing.length === 0) return [];
   const shown = missing.slice(0, MAX_MISSING_PATHS);
-  const more = missing.length > shown.length ? ` (+${missing.length - shown.length} more)` : "";
+  const more = moreSuffix(missing.length - shown.length);
   return [`added lines name paths that do not exist in the tree: ${shown.join(", ")}${more}`];
 }
 
@@ -240,6 +241,6 @@ function newlineFindings(diff: string): string[] {
   flush();
   if (files.length === 0) return [];
   const shown = files.slice(0, MAX_NEWLINE_FILES);
-  const more = files.length > shown.length ? ` (+${files.length - shown.length} more)` : "";
+  const more = moreSuffix(files.length - shown.length);
   return [`the change removes the final newline from: ${shown.join(", ")}${more}`];
 }

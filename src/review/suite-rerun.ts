@@ -18,6 +18,7 @@
 
 import path from "node:path";
 import { squash } from "../text/text.js";
+import { moreSuffix } from "../text/phrases.js";
 
 /** One tool call as pi started it (a `tool_execution_start` event): the tool's name — empty
  * when pi omitted it — and its raw args (bash: `{ command }`). */
@@ -181,6 +182,6 @@ export function suiteRerunWarning(calls: readonly ToolCallStart[]): string | und
   const reruns = calls.map(bashCommand).filter((c): c is string => c !== undefined && runsFullSuite(c));
   const first = reruns[0];
   if (first === undefined) return undefined;
-  const more = reruns.length > 1 ? ` (+${reruns.length - 1} more)` : "";
+  const more = moreSuffix(reruns.length - 1);
   return `reviewer re-ran the suite the harness's pre-check already verified: ${squash(first, 160)}${more}`;
 }
