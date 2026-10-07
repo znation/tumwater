@@ -8,7 +8,7 @@ import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { PROMPT_END, PROMPT_START, STATUS_END, STATUS_START, briefTemplate, readmeTemplate } from "../src/readme.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./log-fixtures.js";
-import { qaCoveragePath } from "../src/paths.js";
+import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./repo-fixtures.js";
 
@@ -138,6 +138,36 @@ test("a role tick prompt injects the rendered <backlog-index> block from the pri
   assert.ok(result);
   assert.match(result.prompt, /<backlog-index>/);
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
+});
+
+// The role notebook (PLANS.md "Role notebook"): the tick reads the role's note file from disk.
+// A missing file omits the block; the standing write instruction rides either way. The
+// director's branch never reads the path, so its prompt carries neither.
+test("a role tick prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "coverage");
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+  fs.writeFileSync(notes, "coverage runs through the oracle helpers\n");
+  const withNote = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(withNote);
+  assert.match(withNote.prompt, /<role-notes>\ncoverage runs through the oracle helpers\n<\/role-notes>/);
+  assert.match(withNote.prompt, /call role_notes with/);
+
+  fs.rmSync(notes);
+  const without = assembleTickPrompt({
+    root: dir,
+    config: defaultConfig(),
+    role: "coverage",
+    state: state({ role: "coverage" }),
+  });
+  assert.ok(without);
+  assert.ok(!without.prompt.includes("<role-notes>"), "a missing note file means no block");
+  assert.match(without.prompt, /call role_notes with/, "the write instruction is still present");
 });
 
 test("a director prompt carries the same <backlog-index> block", () => {

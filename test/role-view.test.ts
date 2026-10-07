@@ -11,7 +11,7 @@ import path from "node:path";
 import { rolePayload } from "../src/roles/role-view.js";
 import { renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
-import { pausedRolesPath } from "../src/paths.js";
+import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/readme.js";
 import { writeConfig, tmpdir } from "./repo-fixtures.js";
@@ -179,7 +179,24 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
   assert.ok(!md.includes("Budget fallback")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
   assert.match(md, /_\(none — the director is driven by its queued prompts, not a find text\)_/);
+  assert.match(md, /## Notebook\n\n_\(none yet/); // the director has no notebook
   assert.match(md, /## Next tick prompt\n\n_\(nothing to run this tick\)_/);
+});
+
+test("a role's notebook renders verbatim, or reads as none yet", () => {
+  const dir = root();
+  const notes = roleNotesPath(dir, "feature");
+  fs.mkdirSync(path.dirname(notes), { recursive: true });
+  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+  const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.match(md, /## Notebook\n\n```\nthe scheduler lives in fleet\.ts\n```/);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, "the scheduler lives in fleet.ts\n");
+
+  // Empty or missing degrades to the placeholder, never a throw or a blank section.
+  fs.writeFileSync(notes, "");
+  const blank = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, null);
+  assert.match(blank, /## Notebook\n\n_\(none yet/);
 });
 
 test("the State line distinguishes disabled from paused, alone and together", () => {

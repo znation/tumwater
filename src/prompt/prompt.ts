@@ -204,6 +204,23 @@ function digestBlock(digest: string): string {
   return `Runtime failure digest of this harness's own event log — your evidence base:\n<failure-digest>\n${digest}\n</failure-digest>`;
 }
 
+/** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
+ * Rides only when there is a non-empty note; the standing instruction to write one is always
+ * present (roleNotesInstruction), so a role's FIRST tick — with no note yet — still learns the
+ * tool exists and can seed the notebook. */
+function roleNotesBlock(notes: string): string {
+  return `Notes your role wrote in earlier ticks (yours, unverified — check against the code before
+relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
+}
+
+/** The standing instruction that makes the notebook seedable: every role tick is told it may
+ * write one, so the first tick (when no note exists yet) can create it. The note content block
+ * (roleNotesBlock) is what is omitted when there is nothing to show. */
+const ROLE_NOTES_INSTRUCTION = `Before you end, if you learned something the next tick of your role should know (where
+things live, what you ruled out and why, what you would look at next), call role_notes with
+the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
+BUGS.md hold the work itself.`;
+
 interface TickPromptInput {
   role: Role;
   initialPrompt: string;
@@ -218,6 +235,11 @@ interface TickPromptInput {
   backlogStructure?: string;
   /** Rendered actionable backlog index (see backlog-structure.ts); every tick carries it. */
   backlogIndex?: string;
+  /** The role's notebook (roleNotesPath, read by tick-prompt.ts): the note its own earlier
+   * ticks wrote. A missing/empty/whitespace-only note is passed as undefined, so the
+   * <role-notes> block is omitted; the write instruction is always present. The director
+   * never reaches buildTickPrompt, so it never carries either. */
+  notes?: string;
   extraInstructions?: string;
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`,
    * PLANS.md "Per-role prompts 1/2"), rendered as a labeled block near the top of the task text.
@@ -256,7 +278,7 @@ deadlines from it; never infer the date from the repo.`,
 
 /** The full prompt for one role-loop tick. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, extraInstructions, check, briefFile, today, userRequest } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, check, briefFile, today, userRequest } = input;
   const parts = [
     `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
     ...sharedPreamble(initialPrompt, today),
@@ -272,8 +294,10 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
   if (backlogIndex) parts.push(backlogIndex);
+  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
+  parts.push(ROLE_NOTES_INSTRUCTION);
   parts.push(commonRules(check, briefFile, role.scope).trim());
   return parts.join("\n\n");
 }

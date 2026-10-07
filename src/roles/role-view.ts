@@ -9,6 +9,7 @@
  * fresh state, a missing queue directory an empty inbox — so the command works with the
  * fleet stopped and never throws on a torn repo. */
 
+import fs from "node:fs";
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
@@ -19,6 +20,7 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, fallbackPair, fallbackRoleConfig, resolvedModelFields, roleSeamTier } from "../config/config-views.js";
 import { modelFallbackActive } from "../loop/model-fallback.js";
 import { fallbackModelFree, piModelsPath } from "../pi/pi-models.js";
+import { roleNotesPath } from "../paths.js";
 
 /** The active model-fallback episode (LoopState.modelFallback) resolved for display: the
  * fallback pair the role's ticks run on, when the episode began, and the provider-class
@@ -71,6 +73,9 @@ export interface RoleViewPayload {
   /** The role's own find-something-to-do text verbatim (a custom loop's `task`), or null
    * for the director — it has no find text; its queued prompts ARE its work. */
   find: string | null;
+  /** The role's notebook (PLANS.md "Role notebook"): the note its own earlier ticks wrote, or
+   * null when there is none (missing, empty, or unreadable). Always null for the director. */
+  note: string | null;
   /** Prompts currently queued for this loop (the director's count includes the shared
    * inbox, which IS its queue). */
   inboxCount: number;
@@ -109,6 +114,17 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // One state read serves both the model-fallback episode and the next-tick preview below.
   const state = loadLoopState(root, role);
   const episode = state.modelFallback;
+  // The role's notebook, read for display. The same degradation as every other read here: a
+  // missing, empty, or unreadable file is simply "no note yet". The director has none.
+  let note: string | null = null;
+  if (role !== DIRECTOR_ROLE) {
+    try {
+      const text = fs.readFileSync(roleNotesPath(root, role), "utf8");
+      note = text.trim() === "" ? null : text;
+    } catch {
+      note = null;
+    }
+  }
   const episodeConfig =
     episode !== undefined && modelFallbackActive(episode, Date.now()) ? fallbackRoleConfig(cfg, role) : null;
   return {
@@ -133,6 +149,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
+    note,
     inboxCount: queuedRolePromptCount(root, role),
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the loop its queued work — the property the tick-prompt test pins.

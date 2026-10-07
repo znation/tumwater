@@ -46,6 +46,34 @@ test("every catalog role produces a prompt mentioning its id", () => {
   }
 });
 
+// The role notebook (PLANS.md "Role notebook"): the tick prompt shows the role's earlier note
+// when there is one, and ALWAYS carries the instruction to write one — the first tick has no
+// note yet, so an instruction that lived only in the content block would never seed it.
+test("a role's tick prompt carries the role-notes block only when a note exists", () => {
+  const role = roleById("feature")!;
+  const withNote = buildTickPrompt({ role, initialPrompt: "", notes: "the scheduler lives in fleet.ts" });
+  assert.match(withNote, /<role-notes>\nthe scheduler lives in fleet\.ts\n<\/role-notes>/);
+  assert.match(withNote, /yours, unverified/);
+  for (const empty of [undefined, "", "   \n"]) {
+    const prompt = buildTickPrompt({ role, initialPrompt: "", notes: empty });
+    assert.ok(!prompt.includes("<role-notes>"), `no block for ${JSON.stringify(empty)}`);
+  }
+});
+
+test("every role tick is told to write a note, even the first one with none", () => {
+  const role = roleById("feature")!;
+  const prompt = buildTickPrompt({ role, initialPrompt: "" });
+  assert.match(prompt, /call role_notes with\nthe full replacement note/);
+  assert.match(prompt, /at most 4 KB/);
+  assert.ok(!prompt.includes("<role-notes>"), "no note content block when there is no note");
+});
+
+test("the director prompt never carries the role-notes block or instruction", () => {
+  const prompt = buildDirectorPrompt("do a thing", "a project");
+  assert.ok(!prompt.includes("role-notes"), "no role-notes block");
+  assert.ok(!prompt.includes("role_notes"), "no role_notes tool instruction");
+});
+
 // BUGS.md 2026-09-12 (fixed 2026-09-13): an unmatched `find /` issued from inside a
 // node_modules-less worktree ran for ~20 min with no output, blocking the whole tick until it
 // was killed by hand. The rule names the class (unbounded scans above the worktree) and the

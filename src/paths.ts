@@ -76,6 +76,14 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
+/** A role's notebook (.tumwater/state/notes/<role>.md): the bounded note the role's own earlier
+ * ticks wrote, carried into the next fresh session. Runtime state under .tumwater/state/, never
+ * committed — the worktree resets to main each tick, so a committed note would move main. The
+ * director has none: its work is the operator's prompt, not a recurring search. */
+export function roleNotesPath(root: string, role: string): string {
+  return path.join(tumwaterDir(root), "state", "notes", `${role}.md`);
+}
+
 /** The in-flight landing marker (merge queue 4/5): the orchestrator's drain task
  * writes it (landing-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,

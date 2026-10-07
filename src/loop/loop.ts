@@ -427,8 +427,8 @@ export class LoopRunner {
     s.ticks += 1;
     // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
     // reset before the start-of-tick save so a working loop's columns grow live from 0 and
-    // an idle loop's show its last completed tick. runRolePi accumulates every pi run of
-    // this tick (main + transient-timeout retry + conflict resolution) into them, and the
+    // an idle loop's show its last completed tick. The loop's pi plumbing accumulates every pi
+    // run of this tick (main + transient-timeout retry + conflict resolution) into them, and the
     // end-of-tick save persists the finished run's totals.
     s.generatedTokens = 0;
     s.peakContextTokens = 0;
@@ -645,7 +645,7 @@ export class LoopRunner {
     }
 
     const piStartedAt = Date.now();
-    const pi = await this.pi.runRolePi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming, cfg);
+    const pi = await this.pi.runAuthoringPi(wt, prompt, `tumwater-${this.role}-${s.ticks}`, resuming, cfg);
     // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
     // post-run handlers spend any more pi runs: only this run is evidence about the primary.
     this.foldModelFallback(fallbackCtx, pi);

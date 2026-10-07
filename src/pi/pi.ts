@@ -66,6 +66,11 @@ export interface PiRunOptions {
    * PiStreamParser) — the review gate collects its reviewer's calls through this to notice a
    * full-suite re-run the harness's green pre-check made redundant. */
   onToolCallStart?: (toolName: string, args: unknown) => void;
+  /** The role notebook this run may write through the bundled `role_notes` tool, exported to
+   * the child as TUMWATER_NOTES_PATH. Only authoring runs set it (LoopPi.runAuthoringPi);
+   * review, landing, and conflict-resolution runs leave it unset, so the tool never registers
+   * there (src/pi-extension/role-notes.ts). Undefined: no notebook. */
+  notesPath?: string;
 }
 
 /** True when `sessionDir` holds at least one pi session file for --continue to resume.
@@ -91,6 +96,13 @@ function spawnErrorMessage(resolved: ResolvedAgentBin, errMessage: string): stri
   const source =
     resolved.source === "default" ? "" : ` (resolved from ${agentBinSourceLabel(resolved.source)})`;
   return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
+}
+
+/** `base` plus TUMWATER_NOTES_PATH when this run carries a notebook. Kept out of runMarkerEnv
+ * so the two environment concerns — cross-group attribution and the notebook — stay separate. */
+function withNotesPath(base: NodeJS.ProcessEnv, notesPath?: string): NodeJS.ProcessEnv {
+  if (!notesPath) return base;
+  return { ...base, TUMWATER_NOTES_PATH: notesPath };
 }
 
 /** Run pi non-interactively in a worktree and distill the result. Never throws. */
@@ -152,7 +164,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // reach what a tool call backgrounds (BUGS.md 2026-09-30) — the mark is the only
       // attribution that follows a reparented orphan. Appended to any inherited mark so a
       // nested harness under test keeps the outer run's.
-      env: runMarkerEnv(withoutLaunchServicesCheckIn(process.env), runMarker),
+      env: withNotesPath(runMarkerEnv(withoutLaunchServicesCheckIn(process.env), runMarker), opts.notesPath),
     });
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the tick deadline and the quiet

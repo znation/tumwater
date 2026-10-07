@@ -5,7 +5,8 @@ import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
-import { piLogPath, sessionDir } from "../paths.js";
+import { piLogPath, roleNotesPath, sessionDir } from "../paths.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 
 /** Upper bound on how long the transient retry waits out a provider's Retry-After hint
@@ -74,6 +75,7 @@ export class LoopPi {
     sessionName: string,
     resume = false,
     config?: ResolvedModelConfig,
+    notesPath?: string,
   ): PiRunOptions {
     return {
       cwd: wt,
@@ -87,6 +89,9 @@ export class LoopPi {
       continueSession: resume,
       rawLogFile: piLogPath(this.host.root, this.host.role),
       signal: this.host.runSignal(),
+      // Only runAuthoringPi passes this; a landing, review, or conflict-resolution run has no
+      // notebook, and neither does the director (see runAuthoringPi).
+      notesPath,
       // A tool call silent for the configured stall threshold names itself in the event feed
       // while the quiet watchdog still counts down (BUGS.md 2026-09-13 sibling): before this,
       // a hung command was invisible until the kill. The dashboards derive their own flag from
@@ -250,12 +255,33 @@ export class LoopPi {
   }
 
   /** Run pi for this loop's authoring run in worktree `wt`: the shared per-loop wiring and
-   * the transient-failure retry, with usage folded into the tick's counters. Every run starts
-   * a FRESH pi session: context never accumulates across ticks, so ticks start cheap
-   * (small prefill), never inherit a near-full window, and durable knowledge lives where
-   * the prompt makes pi read it — README/PLANS/BUGS and the code itself.
+   * the transient-failure retry, with usage folded into the tick's counters. It is the ONE
+   * entry point that carries the role notebook (PLANS.md "Role notebook": TUMWATER_NOTES_PATH,
+   * read by the bundled role-notes extension): every other run (runRolePi's landing/conflict path,
+   * runLandingPi, runGatePi) leaves it unset, and the director is excluded because its work is
+   * the operator's prompt, not a recurring search.
+   *
+   * Every run starts a FRESH pi session: context never accumulates across ticks, so ticks start
+   * cheap (small prefill), never inherit a near-full window, and durable knowledge lives where
+   * the prompt makes pi read it — README/PLANS/BUGS, the code itself, and the role's own note.
    * `resume` continues the role's most recent session instead — used only when picking up
    * a tick that a harness shutdown interrupted. */
+  async runAuthoringPi(
+    wt: string,
+    prompt: string,
+    sessionName: string,
+    resume = false,
+    config?: ResolvedModelConfig,
+  ): Promise<PiRunResult> {
+    const notesPath =
+      this.host.role === DIRECTOR_ROLE ? undefined : roleNotesPath(this.host.root, this.host.role);
+    return this.runWithTransientRetry(this.loopPiOpts(wt, prompt, sessionName, resume, config, notesPath));
+  }
+
+  /** The shared authoring/conflict run wiring WITHOUT the role notebook. The landing merge's
+   * conflict resolver reaches pi through this (plans/merge-queue.md), and a conflict resolution
+   * is not the role's recurring search: it must not carry the notes tool or rewrite the note.
+   * Authoring ticks run through runAuthoringPi above, which is the only notebook-carrying path. */
   async runRolePi(
     wt: string,
     prompt: string,

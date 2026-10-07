@@ -23,7 +23,8 @@ then exits, for cron and CI and for trying one round before committing to a flee
 1. Reset the role's persistent worktree (`.tumwater/worktrees/<role>`, branch `tumwater/<role>`)
    to main.
 2. Run pi in a fresh session with a role-specific "find one thing to do" prompt. Nothing carries
-   over between ticks; durable knowledge lives in the repo's markdown files.
+   over between ticks except the role's own notebook (see Prompts); durable knowledge lives in
+   the repo's markdown files.
 3. If pi changed files, commit and queue the change for the landing gate, which reviews it and
    fast-forwards main. A rejection resets the branch and passes the reasons to the author's next
    tick.
@@ -186,6 +187,13 @@ suite's first steps recompile and restamp `dist/`), so run suites in a worktree.
 Every tick carries PRINCIPLES.md, which only the director and steward edit. Prompts are written
 for a mid-sized model with a finite context window: tool-call budgets, ranged reads of large
 files, and a bundled pi extension that trims oversized tool output to its head and tail.
+
+Each role also has a notebook: a short, model-written note its own earlier ticks left for the
+next fresh session (where things live, what was ruled out, what to look at next). It lives at
+`.tumwater/state/notes/<role>.md`, is capped at 4 KB, and is the only state carried between a
+role's ticks besides the repo itself. A tick sees the note when one exists and may replace it
+with the bundled `role_notes` tool; the director, whose work is the operator's prompt rather
+than a recurring search, has no notebook.
 
 ## Configuration
 

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
@@ -11,6 +12,7 @@ import { buildConflictDiscardNote, buildRejectedReviewNote } from "../gates/gate
 import { detectBuildCheck } from "../build/build-check-detect.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
+import { roleNotesPath } from "../paths.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 
 /** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
@@ -24,6 +26,16 @@ export interface TickPromptInput {
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
   preview?: boolean;
+}
+
+/** Read a role's notebook, or undefined when it is missing, empty, or unreadable. The
+ * degradation is deliberate: a torn or absent runtime-state file must never fail a tick. */
+function readRoleNote(root: string, role: string): string | undefined {
+  try {
+    return fs.readFileSync(roleNotesPath(root, role), "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
@@ -107,6 +119,11 @@ export function assembleTickPrompt(
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
     const backlogStructure = role === "clean" ? renderBacklogStructureBlock(root) : undefined;
+    // The role's notebook (PLANS.md "Role notebook"): its own earlier ticks' note. A missing,
+    // empty, or unreadable file yields undefined, so the block is omitted; the write
+    // instruction in buildTickPrompt is present either way. The director branch above never
+    // reads this path, so it carries no notebook.
+    const notes = readRoleNote(root, role);
     prompt = buildTickPrompt({
       role: resolved,
       initialPrompt,
@@ -115,6 +132,7 @@ export function assembleTickPrompt(
       coverage,
       backlogStructure,
       backlogIndex,
+      notes,
       extraInstructions: config.roles[role]?.instructions,
       check,
       briefFile: brief,

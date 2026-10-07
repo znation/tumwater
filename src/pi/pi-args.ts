@@ -9,10 +9,11 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
 
 /** Paths to the bundled pi extensions, in load order, resolved from this module's own
  * location so staged builds (.tumwater/build/<sha>) load their own copies: bounded-output caps
- * oversized tool results, and context-budget then appends its context-usage note to the
- * (already bounded) result that crosses a threshold. */
+ * oversized tool results, context-budget then appends its context-usage note to the
+ * (already bounded) result that crosses a threshold, and role-notes registers the `role_notes`
+ * tool (only when TUMWATER_NOTES_PATH names a notebook — see pi-extension/role-notes.ts). */
 export function bundledExtensionPaths(): string[] {
-  return ["bounded-output.js", "context-budget.js"].map((file) =>
+  return ["bounded-output.js", "context-budget.js", "role-notes.js"].map((file) =>
     fileURLToPath(new URL(`../pi-extension/${file}`, import.meta.url)),
   );
 }

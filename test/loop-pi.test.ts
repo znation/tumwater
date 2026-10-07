@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { LoopPi } from "../src/loop/loop-pi.js";
-import { sessionDir } from "../src/paths.js";
+import { roleNotesPath, sessionDir } from "../src/paths.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -37,6 +38,7 @@ interface Recording {
 function makeHost(
   root: string,
   config: TumwaterConfig = defaultConfig(),
+  role = "feature",
 ): Recording & { loopPi: LoopPi; config: TumwaterConfig } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
@@ -47,7 +49,7 @@ function makeHost(
   const ctl = new AbortController();
   const host = {
     root,
-    role: "feature",
+    role,
     config: () => config,
     signal: undefined as AbortSignal | undefined,
     runSignal: () => ctl.signal,
@@ -123,6 +125,71 @@ test("runRolePi with resume passes --continue so a shutdown-interrupted tick res
     const line = runArgs(args)[0]!;
     assert.ok(line.includes("--continue"), "resume continues the role's session");
     assert.ok(!/-n /.test(line), "no -n when resuming");
+  } finally {
+    restore();
+  }
+});
+
+// The role notebook (PLANS.md "Role notebook"): runAuthoringPi is the ONE path that exports
+// TUMWATER_NOTES_PATH to the child. Every other run must leave it unset — a review, landing, or
+// conflict-resolution run is not the role's recurring search and must not rewrite the note —
+// and the director has no notebook at all.
+function envRecordingFakePi(envFile: string): () => void {
+  return fakePi(`printf '%s\\n' "$TUMWATER_NOTES_PATH" >> "${envFile}"`);
+}
+
+function lastEnvLine(envFile: string): string {
+  return fs.readFileSync(envFile, "utf8").trimEnd().split("\n").pop()!;
+}
+
+test("runAuthoringPi exports the role's notebook path to the child", async () => {
+  const root = tmpdir();
+  const env = path.join(root, "env");
+  const restore = envRecordingFakePi(env);
+  try {
+    const { loopPi } = makeHost(root);
+    const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, true);
+    assert.equal(lastEnvLine(env), roleNotesPath(root, "feature"));
+  } finally {
+    restore();
+  }
+});
+
+test("the director's authoring run carries no notebook", async () => {
+  const root = tmpdir();
+  const env = path.join(root, "env");
+  const restore = envRecordingFakePi(env);
+  try {
+    const { loopPi } = makeHost(root, defaultConfig(), DIRECTOR_ROLE);
+    await loopPi.runAuthoringPi(root, "route the prompt", "tumwater-director-1");
+    assert.equal(lastEnvLine(env), "", "no TUMWATER_NOTES_PATH for the director");
+  } finally {
+    restore();
+  }
+});
+
+test("conflict, landing, and review runs carry no notebook", async () => {
+  const root = tmpdir();
+  const env = path.join(root, "env");
+  const restore = envRecordingFakePi(env);
+  try {
+    const { loopPi } = makeHost(root);
+    // The landing merge's conflict resolver reaches pi through runRolePi (loop.ts's MergeContext);
+    // landing and gate runs have their own entry points.
+    await loopPi.runRolePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
+    await loopPi.runLandingPi(root, "resolve the conflict", "tumwater-feature-1-conflict");
+    await loopPi.runGatePi({
+      cwd: root,
+      prompt: "review the change",
+      config: defaultConfig(),
+      sessionDir: sessionDir(root, "feature"),
+      sessionName: "tumwater-review-feature-1",
+      rawLogFile: path.join(root, "log.jsonl"),
+      label: "review",
+    });
+    // One empty env line per run: the variable exists in neither child's environment.
+    assert.equal(fs.readFileSync(env, "utf8"), "\n\n\n", "none of the three runs exports a notebook path");
   } finally {
     restore();
   }

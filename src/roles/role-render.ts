@@ -75,6 +75,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
       "none — the director is driven by its queued prompts, not a find text",
     ),
   );
+  lines.push(
+    ...fencedOrNone(
+      "Notebook",
+      p.note,
+      "none yet — the role's own earlier ticks write it, and the director has none",
+    ),
+  );
   lines.push(...fencedOrNone("Next tick prompt", p.nextPrompt, "nothing to run this tick"));
   // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the

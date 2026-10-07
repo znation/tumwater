@@ -6,81 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first)
-
-Context: the 2026-10-06 analysis recorded a decision to keep a fresh pi session per tick, for
-three reasons.
-- Replaying the fleet with each tick carrying its predecessor's context costs 2.0× the prompt
-  tokens raw, or 1.7× compacted to ~23k (pi's `keepRecentTokens` 20k plus a summary).
-- Carried file views go stale: the worktree resets to main each tick, and other loops land
-  in between.
-- Fresh ticks are what retired session poisoning (1046112).
-
-The continuity worth keeping is small: 25% of what a role reads is a file it also read in its
-previous tick, and each tick re-derives the same codebase facts. omp's experimental
-notes-backed context (`compaction.experimentalContextManagement`: a 16 KB `context_notes`
-notebook plus `new_context` rollover, no summarizer) is the same design. This plan gives each
-tumwater role that notebook, with the tick boundary serving as the rollover.
-
-**Goal.** At tick start, each role loop sees a short note written by its own earlier ticks:
-codebase facts, dead ends, and where its search stands. The loop can replace the note before
-ending. No transcript is carried.
-
-**Approach.**
-1. **`src/paths.ts`** — `roleNotesPath(root, role)` → `.tumwater/state/notes/<role>.md`.
-   This is runtime state that is never committed, like `qaCoveragePath`.
-2. **`src/pi-extension/role-notes.ts`** (new bundled extension) — registers a `role_notes`
-   tool (`text: string`) through `pi.registerTool()`, but only when `TUMWATER_NOTES_PATH` is set
-   in the environment.
-   - The tool replaces the file at that path with `text`, writing to a temp file and renaming.
-   - Text over 4,096 UTF-8 bytes is rejected with an error that names the limit, and nothing
-     is written.
-   - Empty text clears the note.
-   - The validation is a pure exported function, so it is unit-testable without pi, the same
-     pattern as bounded-output and context-budget.
-3. **Wiring.**
-   - `src/pi/pi-args.ts` adds `role-notes.js` to `bundledExtensionPaths()`.
-   - The authoring runs in `src/loop/loop-pi.ts` (`runRolePi`, including resumes) set
-     `TUMWATER_NOTES_PATH=roleNotesPath(root, role)` in the child env, beside the existing
-     run marker (`src/pi/pi.ts`).
-   - Review, landing and conflict-resolver runs leave it unset, so the tool never registers
-     there.
-   - The director gets no notebook: its work is the operator's prompt, not a recurring search.
-4. **`src/tick/tick-prompt.ts` + `src/prompt/prompt.ts`** — `buildTickPrompt` takes an
-   optional `notes` input, read from `roleNotesPath`; a missing, empty or unreadable file
-   means no block. The block reads:
-   "Notes your role wrote in earlier ticks (yours, unverified — check against the code before
-   relying on them): <role-notes>…</role-notes>. Before you end, if you learned something the
-   next tick of your role should know (where things live, what you ruled out and why, what you
-   would look at next), call role_notes with the full replacement note (at most 4 KB). Do not
-   copy backlog entries into it — PLANS.md and BUGS.md hold the work itself."
-5. **`src/roles/role-view.ts` / `src/roles/role-render.ts`** — `tumwater role <id>` shows the
-   current note, so the operator can read what each role believes.
-6. **docs/how-it-works.md** — one paragraph: what the notebook is, where it lives, its size
-   cap, and that it is the only state carried between a role's ticks besides the repo itself.
-
-**Evaluation (operator, after 7 days on).** Use the tick_end fields from the plan above to
-compare, for the 7 days before and after: each role's median `preEditPromptTokens`, its share
-of ticks that never edit, and its prompt tokens per landed change.
-- Keep the notebook if those numbers fall.
-- Otherwise remove it (the extension, the prompt block and the path). The note costs up to
-  ~1k tokens on every turn, so it must pay for itself.
-
-**Files touched.** src/paths.ts, src/pi-extension/role-notes.ts (new), src/pi/pi-args.ts,
-src/pi/pi.ts, src/loop/loop-pi.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts,
-src/roles/role-view.ts, src/roles/role-render.ts, docs/how-it-works.md, and tests
-(test/role-notes.test.ts (new), test/pi-args.test.ts, test/prompt.test.ts, test/role-view.test.ts).
-
-**Acceptance criteria.**
-- Validation accepts 4,096 bytes and rejects 4,097 bytes with the limit in the error,
-  writing nothing. Empty text clears the file.
-- With fake pi, an authoring run's child env carries `TUMWATER_NOTES_PATH`, and review,
-  landing and conflict-resolver runs' envs do not.
-- A role's tick prompt carries the `<role-notes>` block when the file has content and omits
-  it otherwise. The director's prompt never carries it.
-- `tumwater role <id>` shows the note, or says there is none.
-- `npm run test` green.
-
 ### Fallback-window shake: reclaim old tool output instead of only warning when a small-window model fills (planned 2026-10-06 by operator; matters once roles run on a fallback model with a ~127k–258k window)
 
 Context: when a run fills its window, two things happen today.
@@ -451,6 +376,89 @@ It is project-neutral and uses git only.
 ---
 
 ## Done
+
+### Role notebook: carry a bounded, model-written note per role across fresh ticks (planned 2026-10-06 by operator; evaluate with the tick_end prompt-token fields above, so land that plan first; done 2026-10-06 by feature)
+
+Context: the 2026-10-06 analysis recorded a decision to keep a fresh pi session per tick, for
+three reasons.
+- Replaying the fleet with each tick carrying its predecessor's context costs 2.0× the prompt
+  tokens raw, or 1.7× compacted to ~23k (pi's `keepRecentTokens` 20k plus a summary).
+- Carried file views go stale: the worktree resets to main each tick, and other loops land
+  in between.
+- Fresh ticks are what retired session poisoning (1046112).
+
+The continuity worth keeping is small: 25% of what a role reads is a file it also read in its
+previous tick, and each tick re-derives the same codebase facts. omp's experimental
+notes-backed context (`compaction.experimentalContextManagement`: a 16 KB `context_notes`
+notebook plus `new_context` rollover, no summarizer) is the same design. This plan gives each
+tumwater role that notebook, with the tick boundary serving as the rollover.
+
+**Goal.** At tick start, each role loop sees a short note written by its own earlier ticks:
+codebase facts, dead ends, and where its search stands. The loop can replace the note before
+ending. No transcript is carried.
+
+**Approach.**
+1. **`src/paths.ts`** — `roleNotesPath(root, role)` → `.tumwater/state/notes/<role>.md`.
+   This is runtime state that is never committed, like `qaCoveragePath`.
+2. **`src/pi-extension/role-notes.ts`** (new bundled extension) — registers a `role_notes`
+   tool (`text: string`) through `pi.registerTool()`, but only when `TUMWATER_NOTES_PATH` is set
+   in the environment.
+   - The tool replaces the file at that path with `text`, writing to a temp file and renaming.
+   - Text over 4,096 UTF-8 bytes is rejected with an error that names the limit, and nothing
+     is written.
+   - Empty text clears the note.
+   - The validation is a pure exported function, so it is unit-testable without pi, the same
+     pattern as bounded-output and context-budget.
+3. **Wiring.**
+   - `src/pi/pi-args.ts` adds `role-notes.js` to `bundledExtensionPaths()`.
+   - The authoring runs in `src/loop/loop-pi.ts` (`runAuthoringPi`, including resumes) set
+     `TUMWATER_NOTES_PATH=roleNotesPath(root, role)` in the child env, beside the existing
+     run marker (`src/pi/pi.ts`). A dedicated entry point, not the shared `runRolePi`:
+     `runRolePi` is also the merge conflict resolver's runner, and a conflict resolution is
+     not the role's recurring search.
+   - Review, landing and conflict-resolver runs leave it unset, so the tool never registers
+     there (they use `runRolePi`, `runLandingPi`, and `runGatePi`).
+   - The director gets no notebook: its work is the operator's prompt, not a recurring search.
+     `runAuthoringPi` omits the path for `DIRECTOR_ROLE`.
+   - The write instruction is a standing part of every role tick prompt; only the
+     `<role-notes>` content block is conditional on an existing note, so a role's first tick
+     (no note yet) still learns the tool exists and can seed the notebook.
+4. **`src/tick/tick-prompt.ts` + `src/prompt/prompt.ts`** — `buildTickPrompt` takes an
+   optional `notes` input, read from `roleNotesPath`; a missing, empty or unreadable file
+   means no block. The block reads:
+   "Notes your role wrote in earlier ticks (yours, unverified — check against the code before
+   relying on them): <role-notes>…</role-notes>. Before you end, if you learned something the
+   next tick of your role should know (where things live, what you ruled out and why, what you
+   would look at next), call role_notes with the full replacement note (at most 4 KB). Do not
+   copy backlog entries into it — PLANS.md and BUGS.md hold the work itself."
+5. **`src/roles/role-view.ts` / `src/roles/role-render.ts`** — `tumwater role <id>` shows the
+   current note, so the operator can read what each role believes.
+6. **docs/how-it-works.md** — one paragraph: what the notebook is, where it lives, its size
+   cap, and that it is the only state carried between a role's ticks besides the repo itself.
+
+**Evaluation (operator, after 7 days on).** Use the tick_end fields from the plan above to
+compare, for the 7 days before and after: each role's median `preEditPromptTokens`, its share
+of ticks that never edit, and its prompt tokens per landed change.
+- Keep the notebook if those numbers fall.
+- Otherwise remove it (the extension, the prompt block and the path). The note costs up to
+  ~1k tokens on every turn, so it must pay for itself.
+
+**Files touched.** src/paths.ts, src/pi-extension/role-notes.ts (new), src/pi/pi-args.ts,
+src/pi/pi.ts, src/loop/loop-pi.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts,
+src/roles/role-view.ts, src/roles/role-render.ts, docs/how-it-works.md, and tests
+(test/role-notes.test.ts (new), test/pi-args.test.ts, test/prompt.test.ts, test/role-view.test.ts).
+
+**Acceptance criteria.**
+- Validation accepts 4,096 bytes and rejects 4,097 bytes with the limit in the error,
+  writing nothing. Empty text clears the file.
+- With fake pi, an authoring run's child env carries `TUMWATER_NOTES_PATH`, and review,
+  landing and conflict-resolver runs' envs do not.
+- A role's tick prompt carries the `<role-notes>` block when the file has content and omits
+  it otherwise. The director's prompt never carries it.
+- `tumwater role <id>` shows the note, or says there is none.
+- `npm run test` green.
+
+
 
 ### Model failure fallback, part 2/2: show the episode on every surface (planned 2026-10-06 by plan loop; requires part 1/2 landed; done 2026-10-06 by feature)
 

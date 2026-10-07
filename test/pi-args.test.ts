@@ -48,8 +48,16 @@ test("piArgs loads the context-budget extension right after bounded-output", () 
   const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
   const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
   assert.deepEqual(exts, bundledExtensionPaths());
-  assert.deepEqual(exts.map((e) => path.basename(e)), ["bounded-output.js", "context-budget.js"]);
+  assert.deepEqual(exts.map((e) => path.basename(e)), ["bounded-output.js", "context-budget.js", "role-notes.js"]);
   for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);
+});
+
+test("piArgs loads the role-notes extension last", () => {
+  const args = piArgs({ config: defaultConfig(), sessionDir: "/tmp/s", sessionName: "n" });
+  const exts = args.flatMap((a, i) => (a === "-e" ? [args[i + 1]!] : []));
+  const last = exts[exts.length - 1]!;
+  assert.equal(path.basename(last), "role-notes.js");
+  assert.ok(fs.existsSync(last), `extension exists in dist: ${last}`);
 });
 
 test("piArgs skips the extension for non-pi agents, keeps it for a configured pi path", () => {

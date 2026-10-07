@@ -97,7 +97,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // event. Requiring both (not either) keeps the absolute turn count from measuring model
   // speed: a fast model emits 40+ turns in a few minutes, which is ordinary work, not
   // difficulty (BUGS.md 2026-09-19). Measured over this tick's main authoring run (a transient
-  // retry included via runRolePi), like the trailer; conflict-resolution runs happen later
+  // retry included via runAuthoringPi), like the trailer; conflict-resolution runs happen later
   // inside merge().
   const minutes = (Date.now() - ctx.piStartedAt) / 60_000;
   // Friction is measured over this tick's authoring runs only — the review gate folds its
