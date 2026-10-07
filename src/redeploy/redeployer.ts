@@ -115,8 +115,8 @@ export class Redeployer {
    * directly instead of paying green-check + compile + drain from zero while the fleet sits on a
    * build it already knows is stale. The check and compile are the same side-effect-free effects
    * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the
-   * episode adopts is decided by the adopt helpers, not by the pre-warm. */
-  /** The cooldown's prewarm probes — owned in src/redeploy/redeploy-probes.ts; see there. */
+   * episode adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves
+   * live in src/redeploy/redeploy-probes.ts; see there. */
   private readonly probes: PrewarmProbes;
   /** The head whose green check already warned that it could not run (a rejection, not a red
    * verdict) — one warning per episode. */
