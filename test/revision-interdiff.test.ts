@@ -44,3 +44,49 @@ test("revisionInterdiff returns an empty string when the prior object is gone", 
 
   assert.equal(await revisionInterdiff(root, "main", "0".repeat(40), head), "");
 });
+
+/** True when `s` carries a lone UTF-16 surrogate: a high one not followed by a low, or a low
+ * one not preceded by a high. A capped prefix must never emit one (the terminal shows a box). */
+function hasLoneSurrogate(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = s.charCodeAt(i + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return true;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) return true;
+  }
+  return false;
+}
+
+test("revisionInterdiff caps its total length and never splits a surrogate pair", async () => {
+  const root = makeRepo();
+  sh(root, "git", "checkout", "-b", "rejected-work");
+  fs.writeFileSync(path.join(root, "feature.ts"), "export const a = 1;\n");
+  commitIn(root, "the rejected change");
+  const priorSha = sh(root, "git", "rev-parse", "HEAD").trim();
+  // The revision pads past the cap and carries an astral character after the padding, so a
+  // cut can be aimed exactly between the emoji's two UTF-16 units.
+  // Trailing padding past the emoji keeps the full interdiff longer than the aimed cap, so
+  // the truncation path actually runs.
+  fs.writeFileSync(path.join(root, "feature.ts"), "export const a = 2;\n" + "x".repeat(4000) + " 😀 tail\n" + "y".repeat(3000) + "\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "--amend", "-m", "the rejected change");
+  const head = await headOf(root, "HEAD");
+
+  const full = await revisionInterdiff(root, "main", priorSha, head, 1_000_000);
+  const emoji = full.indexOf("😀");
+  assert.ok(emoji > 0, "the full interdiff carries the emoji");
+  // Read the note's exact length from a first capped call rather than duplicating its wording.
+  const probe = await revisionInterdiff(root, "main", priorSha, head, 1000);
+  const note = probe.slice(0, probe.indexOf("\n") + 1);
+  assert.ok(note.startsWith("[interdiff truncated:"), `note first:\n${probe.slice(0, 120)}`);
+  // Aim the remaining budget between the emoji's high and low surrogate units.
+  const cap = note.length + emoji + 1;
+  const capped = await revisionInterdiff(root, "main", priorSha, head, cap);
+
+  assert.ok(capped.length <= cap, `total stays within the cap (${capped.length} <= ${cap})`);
+  assert.ok(capped.startsWith(note), "truncation note first");
+  assert.ok(!hasLoneSurrogate(capped), "no lone surrogate survives the cut");
+  assert.ok(capped.includes("😀") === false, "the split pair is dropped whole");
+});

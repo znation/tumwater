@@ -4,6 +4,7 @@
  * interprets git output; spawning git stays in git.ts. */
 import { changeBaseRev, gitLines } from "./git.js";
 import { gitTry } from "./git-run.js";
+import { cutSplitsSurrogatePair } from "../text/text.js";
 
 /** Decode a path from `git status --porcelain` output. Git C-quotes paths containing special
  * characters (control characters, quotes, non-ASCII under core.quotePath) and escapes them —
@@ -192,11 +193,15 @@ export async function revisionInterdiff(
         `${headBase}..${head}`,
       )) ?? "";
     if (out.length <= maxBytes) return out;
-    return (
-      `[interdiff truncated: the full interdiff is ${out.length} bytes; showing the first ` +
-      `${maxBytes}]\n` +
-      out.slice(0, maxBytes)
-    );
+    // Cap the total — note included — at maxBytes, like aheadOfMainDiff: counting the note
+    // inside the budget keeps the old note-plus-full-prefix form from overshooting the cap by
+    // the note's own length. The body is the longest prefix that fits the remaining budget;
+    // a cut that would split an astral character's surrogate pair backs off one unit, so the
+    // re-review prompt never carries a lone surrogate.
+    const note = `[interdiff truncated: the full interdiff is ${out.length} bytes; showing an initial prefix]\n`;
+    let room = Math.max(0, maxBytes - note.length);
+    if (cutSplitsSurrogatePair(out, room)) room -= 1;
+    return note + out.slice(0, room);
   } catch {
     return "";
   }
