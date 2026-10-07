@@ -15,8 +15,8 @@ import { phaseTone, resultTone, type Tone } from "./tone.js";
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
  * display model (status-model.ts); this module decides column widths and layout. Depends on
- * status/status-data.ts one way — rendering reads the snapshot; it never collects fleet state itself
- * (live tick detail is display-only). */
+ * status/status-data.ts one way — rendering reads the snapshot; it never collects fleet state
+ * itself (live tick detail is display-only). */
 
 function ago(ts: number | undefined): string {
   if (!ts) return "-";
