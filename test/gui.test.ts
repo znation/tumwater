@@ -464,6 +464,12 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
       "/api/backlog?file=plans&index=-1",
       "/api/backlog?file=plans&index=abc",
       "/api/backlog?file=plans&index=2", // only two planned entries
+      // Inherited Object.prototype names must not satisfy the file lookup: an object-literal
+      // dispatch table would call them (returning 200 `{}` or throwing 500) instead of 400.
+      "/api/backlog?file=constructor&index=0",
+      "/api/backlog?file=toString&index=0",
+      "/api/backlog?file=hasOwnProperty&index=0",
+      "/api/backlog?file=__proto__&index=0",
     ]) {
       const r = await fetch(base + url);
       assert.equal(r.status, 400, url);

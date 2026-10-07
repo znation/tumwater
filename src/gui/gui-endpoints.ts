@@ -39,6 +39,17 @@ export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, r
   sendJson(res, 200, { lines: readTranscript(root, role as string, n) });
 }
 
+/** The /api/backlog `file` values and the open-section reader each addresses — one table so
+ * the on-demand dispatch and the "valid values" list in both 400s cannot drift apart. A Map,
+ * not an object literal, so no `file` spelling (`constructor`, `toString`, `__proto__`) can
+ * reach an inherited member through the lookup. Insertion order is the list order. */
+const BACKLOG_FILE_READERS = new Map<string, (root: string) => BacklogEntry[]>([
+  ["plans", plannedPlanEntries],
+  ["bugs", openBugEntries],
+  ["questions", openQuestionEntries],
+]);
+const BACKLOG_FILE_VALUES = [...BACKLOG_FILE_READERS.keys()].join(", ");
+
 /** Handle GET /api/backlog?file=<plans|bugs|questions>&index=N: one backlog entry's full
  * text ({title, body}), fetched on demand so multi-KB bodies (long repros, whole plans) never
  * ride the 1-second /api/status poll. index addresses the Nth entry of that file's open
@@ -49,17 +60,15 @@ export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, r
 export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const file = q.get("file");
   if (file === null) {
-    sendJson(res, 400, { error: `file required (valid values: plans, bugs, questions)` });
+    sendJson(res, 400, { error: `file required (valid values: ${BACKLOG_FILE_VALUES})` });
     return;
   }
-  let entries: BacklogEntry[] | null = null;
-  if (file === "plans") entries = plannedPlanEntries(root);
-  else if (file === "bugs") entries = openBugEntries(root);
-  else if (file === "questions") entries = openQuestionEntries(root);
-  if (!entries) {
-    sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: plans, bugs, questions)` });
+  const reader = BACKLOG_FILE_READERS.get(file);
+  if (!reader) {
+    sendJson(res, 400, { error: `unknown file ${JSON.stringify(file)} (valid values: ${BACKLOG_FILE_VALUES})` });
     return;
   }
+  const entries = reader(root);
   const index = intQuery(q, res, "index", "non-negative");
   if (index === null) return;
   const entry = entries[index];
