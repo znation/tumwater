@@ -4,7 +4,7 @@
  * `rankCountEntries` serves the `[key, count]` entry shape (src/report/report-render.ts's rankedRoleMap,
  * src/failure/failure-spread.ts's strongest-kind pick) and `rankByCount` serves callers whose counts are
  * fields or computations on other shapes (src/failure/failure-cluster.ts's clusters, error-storm.ts's
- * strongest-cause pick, and src/failure/failure-data.ts's outcome and time-spend tables). The one
+ * strongest-cause pick, failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). The one
  * deliberate exception is ui/gui/gui-client-report.ts's reportRoleOrder, which keeps its own copy
  * by design: it runs in the browser, where harness modules cannot be imported. Both helpers
  * return a fresh sorted array; the input is never mutated. */
