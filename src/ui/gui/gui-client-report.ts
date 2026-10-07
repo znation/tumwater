@@ -9,6 +9,8 @@
  * (report-tip region); both are exercised in isolation by the tests. Spliced into
  * gui-client.ts's script, reaching its helpers (esc, getJson, icon, fmtTokens, fmtUsd,
  * renderMarkdown) through that concatenation. */
+import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
+
 export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // One color per loop, assigned in the report's role order so a loop keeps its color across
   // both per-loop charts and the legend. Chosen to stay distinct on white and on gray-950.
@@ -244,9 +246,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) + "</div>" +
         // The truncation note rides the window caption, hedged the same way the CLI and TUI
         // renders phrase it: covered is false only when the oldest retained event lies inside
-        // the window, so the sentence stays true whenever it prints.
+        // the window, so the sentence stays true whenever it prints. The sentence itself is
+        // interpolated from SPARSE_WINDOW_NOTE (events/event-window.ts), the one home shared
+        // with the CLI and TUI renders, so this copy cannot drift from theirs.
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
-          (!d.coversFullWindow ? " · oldest retained event lies inside this window; older events may have rotated out" : "") + "</p>" : "");
+          (!d.coversFullWindow ? " · " + ${JSON.stringify(SPARSE_WINDOW_NOTE)} : "") + "</p>" : "");
     },
   });
 

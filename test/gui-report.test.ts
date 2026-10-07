@@ -6,13 +6,15 @@ import { collectReport, type ReportData, type ReportDay } from "../src/report/re
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { eventsLogPath } from "../src/paths.js";
+import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./oracles.js";
 import { withGui } from "./gui-fixtures.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { writeLogLines } from "./log-fixtures.js";
-import { clientScope, iconStub } from "./gui-client-scope.js";
+import { clientScope, ESC_LINE, iconStub } from "./gui-client-scope.js";
+import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 
 // The GUI report tab (PLANS.md "report 2/3"): /api/report serves collectReport's ReportData
 // as JSON with days clamped rather than errored, the page carries the tab nav + #report
@@ -316,4 +318,48 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
   assert.doesNotMatch(head, /undefined/);
   assert.doesNotMatch(head, /<p>/, "no blurb means no subtitle element");
   assert.match(scope.viewHead("T", "b", "p", [7], 7, "r"), /<p>b<\/p>/);
+});
+
+test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", async () => {
+  // The note the CLI and TUI renders print when older events may have rotated out is
+  // events/event-window.ts's SPARSE_WINDOW_NOTE; the page's Usage caption must carry that
+  // same sentence rather than a re-typed copy, so the three surfaces cannot drift.
+  const els: Record<string, { dataset: Record<string, string>; innerHTML: string; addEventListener(): void }> = {};
+  for (const id of ["report", "usagebody", "usagewindow", "failures", "failbody", "failwindow"]) {
+    els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
+  }
+  const day = {
+    date: "2026-10-07", tokensOut: 100, ticksByRole: { feature: 1 }, costByRole: { feature: 0.01 },
+    commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0,
+  };
+  const report = {
+    days: 7, from: "2026-10-01", to: "2026-10-07", series: [day],
+    totals: { tokensOut: 100, ticks: 1, commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: false,
+  };
+  // reportSummary sits outside the marked regions, so the whole report blob runs here (the
+  // composer test's seam) with stand-ins for its helpers — esc rides in via ESC_LINE.
+  const inject = {
+    document: { getElementById: (id: string) => els[id] ?? null },
+    $: (id: string) => els[id] ?? null,
+    markActive: () => {},
+    recall: () => null,
+    store: () => {},
+    getJson: async () => report,
+    errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
+    clickClosest: () => null,
+    renderMarkdown: (md: string) => md,
+    icon: iconStub,
+    plural: (n: number, one: string) => `${n} ${one}`,
+    fmtTokens: (n: number) => String(n),
+    fmtUsd: (n: number) => "$" + n.toFixed(2),
+  };
+  const keys = Object.keys(inject);
+  const run = new Function(...keys, `${[ESC_LINE, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    ...args: unknown[]
+  ) => { fetchReport(throttled?: boolean): Promise<void> };
+  await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
+  assert.match(els.usagebody!.innerHTML, /2026-10-01 → 2026-10-07/);
+  assert.ok(els.usagebody!.innerHTML.includes(SPARSE_WINDOW_NOTE),
+    "the sparse-window sentence is the shared constant, not a re-typed copy");
 });
