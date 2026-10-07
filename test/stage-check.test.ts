@@ -178,6 +178,33 @@ test("updating the reference clears the stale-reference finding", async () => {
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT), []);
 });
 
+test("a reference to a rename's new path is not a stale reference to the old one", async () => {
+  const { wt } = await repoWith({
+    "config.ts": "export const config = 1;\n",
+    "src/keep.ts": "export const keep = 1;\n",
+    "README.md": "See src/config.ts for details.\n",
+  });
+  // A clean move of the root config.ts into src/ leaves README naming the new path; its
+  // suffix must not be read as a stale reference to the old one.
+  fs.renameSync(path.join(wt, "config.ts"), path.join(wt, "src", "config.ts"));
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT), []);
+});
+
+test("a stale reference ending a sentence is still reported", async () => {
+  const { wt } = await repoWith({
+    "config.ts": "export const config = 1;\n",
+    "src/keep.ts": "export const keep = 1;\n",
+    "README.md": "Moved from config.ts.\n",
+  });
+  fs.renameSync(path.join(wt, "config.ts"), path.join(wt, "src", "config.ts"));
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT);
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /config\.ts was renamed to src\/config\.ts but is still named at: README\.md:\d+/);
+});
+
 test("an added line naming a nonexistent path yields a finding", async () => {
   const { wt } = await repoWith({
     "src/keep.ts": "export const keep = 1;\n",

@@ -129,8 +129,8 @@ async function staleReferenceFindings(
     if (!out) continue;
     const hits: string[] = [];
     for (const line of out.split("\n")) {
-      const m = /^([^:]+):(\d+):/.exec(line);
-      if (!m) continue;
+      const m = /^([^:]+):(\d+):(.*)$/.exec(line);
+      if (!m || !hasStandalonePathOccurrence(m[3] ?? "", old)) continue;
       hits.push(`${m[1]}:${m[2]}`);
       if (hits.length >= MAX_STALE_HITS) break;
     }
@@ -140,6 +140,24 @@ async function staleReferenceFindings(
     reported++;
   }
   return findings;
+}
+
+/** True when `needle` appears in `line` as a repo path of its own — not as one segment of a
+ * longer path. `git grep -F` matches substrings, so a line naming a rename's destination
+ * (`src/config.ts`) would otherwise read as a stale reference to an old root `config.ts`.
+ * A preceding path character (or a following one that continues the token, as a `.` extension
+ * or an alphanumeric does) disqualifies the occurrence; trailing sentence punctuation does not. */
+function hasStandalonePathOccurrence(line: string, needle: string): boolean {
+  const pathChar = /[A-Za-z0-9_./-]/;
+  for (let i = line.indexOf(needle); i !== -1; i = line.indexOf(needle, i + 1)) {
+    const before = i > 0 ? line[i - 1]! : "";
+    if (before && pathChar.test(before)) continue;
+    const after = line[i + needle.length] ?? "";
+    if (/[A-Za-z0-9_/-]/.test(after)) continue;
+    if (after === "." && /[A-Za-z0-9]/.test(line[i + needle.length + 1] ?? "")) continue;
+    return true;
+  }
+  return false;
 }
 
 /** (b) Nonexistent paths: every path-shaped token on an added diff line whose first segment is
