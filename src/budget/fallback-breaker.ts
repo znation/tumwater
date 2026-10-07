@@ -192,9 +192,8 @@ export function fallbackDemotion(b: FallbackBreaker): FallbackDemotion | undefin
  * tiers resolve to, keyed by that pair name. Tiers sharing a fallback pair share one entry —
  * and therefore one judgment — and each entry is re-keyed per pair by every poll, so a
  * demotion sticks to its pair while the pair stays engaged and clears when the pair, its cap,
- * or the resolution changes. Until the gate wiring lands (part 5c/8) at most one pair is
- * engaged, so the map holds one live entry in production; the map shape is what lets the
- * per-tier gates share it without a second breaker. */
+ * or the resolution changes. The per-tier budget gates share this one map, so every resolved
+ * pair carries its own judgment without a second breaker. */
 export type FallbackBreakerMap = Record<string, FallbackBreaker>;
 
 /** Re-key the whole map per pair: every pair in `pairs` keeps its running judgment while its
@@ -220,8 +219,9 @@ export function fallbackServingPair(map: FallbackBreakerMap, pair: string | null
   return b !== undefined && fallbackServing(b);
 }
 
-/** The pair whose half-open window is due, or null when none is. Map order decides ties, and
- * with one engaged pair in production there is at most one demotion to find. */
+/** The pair whose half-open window is due, or null when none is. Several pairs can carry a
+ * demotion at once (one per resolved tier), so the walk returns the first due entry in map
+ * order and the caller probes that single pair this tick. */
 export function fallbackProbeDuePair(map: FallbackBreakerMap, now: number): string | null {
   for (const [pair, b] of Object.entries(map)) {
     if (fallbackProbeDue(b, now)) return pair;
