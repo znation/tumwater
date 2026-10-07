@@ -234,11 +234,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // because it is read at two points: at scheduling (no new tick is reserved) and — through
   // tickStartHeld — whenever a parked waiter is granted its permit, which happens between polls.
   let holdForRestart = false;
+  // Whether the last poll's disk gate held new work (plans/disk-floor.md, part 1/4). Hoisted
+  // beside holdForRestart because tickStartHeld reads it at permit time, between polls — the
+  // disk hold closes the same gate point every fleet-wide hold uses.
+  let diskHeld = false;
   // The start gate every reserved tick passes the moment its permit is granted
   // (runTimedRoleTick's `held`): closed while a restart is pending, and after one is decided so
   // no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
   // so another fleet-wide hold on new ticks can close the same gate point.
-  const tickStartHeld = () => holdForRestart || restart;
+  const tickStartHeld = () => holdForRestart || restart || diskHeld;
 
   // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
   // command run on notable events (budget_paused, role_streak_paused, land_failed,
@@ -317,6 +321,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         budgetActive,
         roleQuietHeld,
         quietNow,
+        diskHeld: polledDiskHeld,
       } = pollFleetGates(gateStates, {
         root,
         runners,
@@ -326,6 +331,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         info,
         infoFile,
       });
+      // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
+      // (plans/disk-floor.md, part 1/4).
+      diskHeld = polledDiskHeld;
       // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
       // tick model's provider stands under a hold, and every role is held when the
       // reviewer's provider is (with the review gate on, nothing could land — and the land
@@ -391,7 +399,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // merge slot, and the dedupe against main). A held poll starts no vet and no merge,
       // exactly as it starts no tick; what is already in flight runs on, and a vet parked for
       // its permit meets the same start gate as a parked tick when the permit comes.
-      if (!holdForRestart && !reviewHeld) {
+      if (!holdForRestart && !reviewHeld && !diskHeld) {
         await drainLandings(
           {
             root,
@@ -454,6 +462,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         reviewStrongPaused,
         roleQuietHeld,
         holdForRestart,
+        diskHeld,
         heldProviders: fleetHeldProviders,
         reviewHeld,
         roleProviders,

@@ -623,6 +623,21 @@ test("maxDailyCostUsdPerRole rejects a finite-but-unrepresentable cap past MAX_S
   );
 });
 
+test("diskHoldGB accepts 0 or a positive number and rejects a negative or non-number", () => {
+  // plans/disk-floor.md part 1/4: 0 disables the hold, so only a negative value or a
+  // non-number is a problem.
+  assert.equal(validateConfig({ ...defaultConfig(), diskHoldGB: 0 }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig(), diskHoldGB: 5 }), undefined);
+  assert.match(
+    validationError({ ...defaultConfig(), diskHoldGB: -1 }),
+    /diskHoldGB must be a number of 0 or more \(got -1\)/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), diskHoldGB: "10" }),
+    /diskHoldGB must be a number of 0 or more \(got "10"\)/,
+  );
+});
+
 test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
   // BUGS.md 2026-10-02: 1e24 is finite, so the old NON_NEGATIVE_OR_DISABLED rule admitted
   // it, and `config set`/the GUI's /api/config-set wrote an effectively uncapped budget

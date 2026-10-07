@@ -83,6 +83,10 @@ export function defaultConfig(): ResolvedModelConfig {
     // generous for a normal day of autonomous work on mid-tier API models and low enough to
     // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
+    // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
+    // below this many GB free, the fleet holds new work until it climbs 5 GB back above it.
+    // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.
+    diskHoldGB: 10,
     // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop/loop.ts): the
     // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
     // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over

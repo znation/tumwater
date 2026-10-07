@@ -21,6 +21,12 @@ import {
   roleQuietHold,
   type QuietHoursGateState,
 } from "../scheduling/quiet-hours.js";
+import {
+  newDiskGateState,
+  pollDiskGate,
+  sampleFreeBytes,
+  type DiskGateState,
+} from "./disk-gate.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
 import type { FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
@@ -58,6 +64,8 @@ export interface FleetGateStates {
   streak: StreakGateState;
   cap: RoleCapGateState;
   quiet: QuietHoursGateState;
+  /** The disk floor's cross-poll hold (plans/disk-floor.md, part 1/4). */
+  disk: DiskGateState;
   fleetHold: ReadonlyMap<string | undefined, FleetHold>;
   errorStorm: ErrorStorm;
   failureSpread: FailureSpread;
@@ -73,6 +81,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     streak: newStreakGateState(),
     cap: newRoleCapGateState(),
     quiet: newQuietHoursGateState(),
+    disk: newDiskGateState(),
     fleetHold: new Map(),
     errorStorm: ERROR_STORM_QUIET,
     failureSpread: FAILURE_SPREAD_QUIET,
@@ -115,6 +124,8 @@ interface FleetGatePoll {
    * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
   roleQuietHeld: ReadonlySet<string>;
   quietNow: boolean;
+  /** The disk floor holds new work right now (plans/disk-floor.md, part 1/4). */
+  diskHeld: boolean;
 }
 
 /** Inputs one poll needs: the live config the reload produced, the runner list (its states
@@ -128,6 +139,9 @@ interface FleetGatePollCtx {
   now: number;
   info: OrchestratorInfo;
   infoFile: string;
+  /** The free-bytes sampler for the disk floor: production reads statfs through
+   * sampleFreeBytes; tests inject a fixed sample. */
+  sampleFree?: (root: string) => number | null;
 }
 
 /** Poll every fleet-wide gate and alarm, advancing `states` in place. */
@@ -283,6 +297,9 @@ export function pollFleetGates(
     new Date(now),
   );
 
+  const freeBytes = (ctx.sampleFree ?? sampleFreeBytes)(root);
+  const diskHeld = pollDiskGate(root, freeBytes, liveConfig.diskHoldGB, states.disk);
+
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier
   // fallback pair while a model-fallback episode is active, else the role's resolved config;
@@ -348,5 +365,6 @@ export function pollFleetGates(
     budgetActive,
     roleQuietHeld,
     quietNow,
+    diskHeld,
   };
 }

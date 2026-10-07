@@ -137,6 +137,14 @@ discards a role's in-flight landing.
   end, and a window may wrap midnight (`"23:00-07:00"`). The director is exempt, exactly as
   under the budget gate and the operator pause. Edits apply live, and each crossing into or
   out of the window logs one `quiet_hours_started` / `quiet_hours_ended` event in the feed.
+- `diskHoldGB` (default 10; 0 disables) is the free-space floor, in GB (10^9 bytes), for the
+  volume holding `.tumwater/worktrees`. When free space drops below it, no new work starts —
+  role ticks, the director, landing vets and merges — until free space climbs 5 GB back above
+  the floor (the hysteresis that keeps a fleet at the line from flapping). In-flight work runs
+  on. A live edit applies on the next poll (including editing to 0, which lifts an active
+  hold), each crossing logs one `disk_low` / `disk_ok` event (and `disk_low` pages a configured
+  `notify` command), and `tumwater doctor` fails below the floor, passes above it, and warns
+  when the volume cannot be measured.
 - `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not

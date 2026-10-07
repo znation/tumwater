@@ -33,6 +33,7 @@ import {
 } from "../gates/readiness.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, mergeLockDir } from "../paths.js";
+import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 import { briefFile } from "../brief.js";
@@ -231,6 +232,36 @@ export function checkStateDir(root: string): CheckOutcome {
   } catch (err) {
     return { level: "fail", detail: `not writable: ${errorMessage(err)}` };
   }
+}
+
+/** Disk floor (plans/disk-floor.md, part 1/4) — is there room on the volume the worktrees
+ * live on? Fail below `diskHoldGB`, the same floor the running fleet holds new work at, so
+ * doctor and the gate agree on when the disk is a problem; ok at or above it (part 2/4 adds
+ * the warn band above a reclaim threshold). A statfs failure is a warning, not a failure: an
+ * unmeasurable volume never holds the fleet, so it must not fail a scripted pre-flight. The
+ * detail names the measured path, the free GB to one decimal, and the floor. `holdGB` 0
+ * disables the hold, so the check always passes. */
+export function checkDiskSpace(
+  root: string,
+  holdGB: number,
+  sample: (root: string) => number | null = sampleFreeBytes,
+): CheckOutcome {
+  const where = diskVolumePath(root);
+  const free = sample(root);
+  if (free === null)
+    return {
+      level: "warn",
+      detail: `cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`,
+    };
+  const freeGB = free / BYTES_PER_GB;
+  const freeText = `${freeGB.toFixed(1)} GB free at ${where}`;
+  if (holdGB > 0 && freeGB < holdGB)
+    return {
+      level: "fail",
+      detail: `${freeText} — below the ${holdGB} GB diskHoldGB floor; the fleet holds new work until space recovers`,
+    };
+  const floor = holdGB > 0 ? `above the ${holdGB} GB floor` : "diskHoldGB is 0 (hold disabled)";
+  return { level: "ok", detail: `${freeText}, ${floor}` };
 }
 
 /** Merge lock — read-only classification via classifyLock (the same three cases the breaker

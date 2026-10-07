@@ -243,6 +243,13 @@ export interface TumwaterConfig {
    * finish — while the fleet-wide window keeps working unchanged: a role is held when
    * EITHER window covers now. The director is exempt, exactly as under the fleet window. */
   quietHoursPerRole?: Record<string, string>;
+  /** Disk floor (plans/disk-floor.md, "Disk floor 1/4"): the free-space floor in GB
+   * (10^9 bytes) for the volume holding `.tumwater/worktrees`. When free space drops below
+   * it, no new work starts — role ticks, the director, landing vets and merges — until free
+   * space climbs back to `diskHoldGB` + 5 GB (the hysteresis that keeps a fleet hovering at
+   * the line from flapping). In-flight work runs on. 0 disables the hold, lifting an active
+   * one on the next poll. Default 10. */
+  diskHoldGB: number;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
    * fleet or one of its changes is stopped and only a human can act; src/events/notify.ts owns the
@@ -316,6 +323,7 @@ export const TOP_LEVEL_KEYS = [
   "maxDailyCostUsdPerRole",
   "quietHours",
   "quietHoursPerRole",
+  "diskHoldGB",
   "notify",
   "fallback",
   "fallbackModel",

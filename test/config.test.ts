@@ -146,6 +146,27 @@ test("defaultConfig carries the daily cost budget cap and validation guards it",
   assert.equal(loaded.maxDailyCostUsd, 50);
 });
 
+test("defaultConfig carries the disk floor and validation guards it", () => {
+  // plans/disk-floor.md part 1/4: 10 GB by default, 0 disables the hold; a negative or
+  // non-number is rejected with an actionable error like every other knob.
+  assert.equal(defaultConfig().diskHoldGB, 10);
+  assert.doesNotThrow(() => validateConfig({ diskHoldGB: 0 }));
+  for (const bad of [-1, "10", null]) {
+    assert.match(
+      validationError({ diskHoldGB: bad }),
+      new RegExp(
+        `^invalid tumwater\\.json:.*diskHoldGB must be a number of 0 or more \\(got ${JSON.stringify(bad)}\\)`,
+        "s",
+      ),
+      `diskHoldGB: ${String(bad)} should be rejected with an actionable error`,
+    );
+  }
+  // A file lacking the key picks up the default without editing.
+  const dir = tmpdir();
+  writeConfig(dir, { model: "sonnet" });
+  assert.equal(loadConfig(dir).diskHoldGB, 10);
+});
+
 test("loadConfig without a file returns defaults", () => {
   const dir = tmpdir();
   assert.deepEqual(loadConfig(dir), defaultConfig());

@@ -233,6 +233,13 @@ export function eventMessage(e: HarnessEvent): string {
       return `role ${e.role ?? "?"} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
       return `role ${e.role ?? "?"} resumed — it is under its daily cap again and ticks again`;
+    case "disk_low":
+      // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
+      // handling the low disk, and naming the free space and the floor tells the operator
+      // whether to clear space or lower diskHoldGB in tumwater.json.
+      return `disk low — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume (floor ${e.holdGB} GB); new work is held until space recovers`;
+    case "disk_ok":
+      return `disk recovered — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume; new work starts again`;
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.

@@ -57,6 +57,7 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     openBugsNow: false,
     workBacklogOpen: false,
     holdForRestart: false,
+    diskHeld: false,
     deferredDue: new Map<string, boolean>(),
     workLandedSince: {} as unknown as WorkLandedCache,
   };

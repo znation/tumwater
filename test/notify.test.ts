@@ -46,6 +46,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "budget_paused",
       "role_streak_paused",
       "role_cap_paused",
+      "disk_low",
       "land_failed",
       "restart_blocked",
     ],

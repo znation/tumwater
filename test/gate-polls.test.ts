@@ -15,6 +15,7 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { LoopRunner } from "../src/loop/loop.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -372,4 +373,48 @@ test("pollFleetGates: roleQuietHeld names the roles their own quiet window holds
   });
   assert.equal(lifted.roleQuietHeld.size, 0);
   assert.equal(readEvents(root, 100).length, 0);
+});
+
+// The disk floor (plans/disk-floor.md, part 1/4): pollFleetGates reads free space through the
+// injectable sampler, holds below diskHoldGB, and yields the edge-triggered disk_low/disk_ok.
+test("pollFleetGates: a low disk holds new work; recovery and a live floor edit lift it", () => {
+  const root = tmpdir("gate-polls-disk-");
+  const config = defaultConfig();
+  config.diskHoldGB = 10;
+  const ctx = {
+    root,
+    runners: [],
+    liveConfig: config,
+    modelsPath: path.join(root, "models.json"),
+    now: Date.now(),
+    info: { pid: process.pid, startedAt: 0, roles: [] },
+    infoFile: path.join(root, "orchestrator.json"),
+    sampleFree: () => 9 * BYTES_PER_GB,
+  };
+  const states = newFleetGateStates(config);
+  const first = pollFleetGates(states, ctx);
+  assert.equal(first.diskHeld, true, "9 GB free against a 10 GB floor holds");
+  // Still inside the hysteresis band below 15 GB: the hold stands, no second event.
+  const still = pollFleetGates(states, { ...ctx, sampleFree: () => 14 * BYTES_PER_GB });
+  assert.equal(still.diskHeld, true);
+  // A live edit to 0 while the hold is active lifts it on the next poll — even though free
+  // space sits inside the old hysteresis band — and logs the one disk_ok.
+  const off = pollFleetGates(states, {
+    ...ctx,
+    liveConfig: { ...config, diskHoldGB: 0 },
+    sampleFree: () => 1 * BYTES_PER_GB,
+  });
+  assert.equal(off.diskHeld, false);
+  // Back on with a low sample: a fresh crossing logs a second disk_low.
+  const heldAgain = pollFleetGates(states, { ...ctx, sampleFree: () => 9 * BYTES_PER_GB });
+  assert.equal(heldAgain.diskHeld, true);
+  // Reaching the floor + 5 lifts the hold and logs the second disk_ok.
+  const lifted = pollFleetGates(states, { ...ctx, sampleFree: () => 15 * BYTES_PER_GB });
+  assert.equal(lifted.diskHeld, false);
+  assert.deepEqual(
+    readEvents(root, 100)
+      .map((e) => e.type)
+      .filter((t) => t === "disk_low" || t === "disk_ok"),
+    ["disk_low", "disk_ok", "disk_low", "disk_ok"],
+  );
 });

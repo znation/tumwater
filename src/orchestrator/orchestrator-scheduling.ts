@@ -57,6 +57,9 @@ interface SchedulingPassCtx {
   openBugsNow: boolean;
   /** A pending self-redeploy hold: nothing new starts, on any loop. */
   holdForRestart: boolean;
+  /** The disk floor holds new work (plans/disk-floor.md, part 1/4): like a restart, nothing new
+   * starts on any loop — the director included — until free space recovers. */
+  diskHeld: boolean;
   /** PLANS.md `## Planned` or BUGS.md `## Open` non-empty, read once per poll by the poll body. */
   workBacklogOpen: boolean;
   /** Per-role deferred-due memory (one-shot tick_deferred events), advanced in place. */
@@ -89,6 +92,7 @@ export async function pollRunnerReasons(
     openBugsNow,
     workBacklogOpen,
     holdForRestart,
+    diskHeld,
     deferredDue,
     workLandedSince,
   } = ctx;
@@ -139,7 +143,8 @@ export async function pollRunnerReasons(
     // settles them); a custom loop or work role with a short backoff re-qualified every
     // poll and the round never ended.
     if (once.active && !runner.state.running && once.isSettled(runner)) continue;
-    if (holdForRestart) continue; // a restart is pending: nothing new starts, on any loop
+    if (holdForRestart || diskHeld)
+      continue; // a restart or a low disk is pending: nothing new starts, on any loop
     // The per-role pause gates BEFORE the fleet check and exempts nothing — the director
     // included (the operator named that one loop deliberately).
     if (pausedRolesSet.has(runner.role)) continue;

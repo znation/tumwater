@@ -7,6 +7,7 @@ import {
   checkBrief,
   checkBuild,
   checkBuildCheck,
+  checkDiskSpace,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -313,6 +314,25 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
   } finally {
     fs.chmodSync(stateDir, 0o755);
   }
+});
+
+test("checkDiskSpace fails below the floor, passes above it, and warns when unmeasurable", () => {
+  // plans/disk-floor.md part 1/4: the check shares the gate's floor, so doctor and the
+  // running fleet agree on when the disk is a problem.
+  const root = tmpdir("doctor-disk-");
+  const below = checkDiskSpace(root, 10, () => 9_000_000_000);
+  assert.equal(below.level, "fail");
+  assert.match(below.detail, /9\.0 GB free/);
+  assert.match(below.detail, /10 GB diskHoldGB floor/);
+  assert.equal(checkDiskSpace(root, 10, () => 20_000_000_000).level, "ok");
+  assert.equal(
+    checkDiskSpace(root, 0, () => 1).level,
+    "ok",
+    "0 disables the hold, so the check always passes",
+  );
+  const unmeasurable = checkDiskSpace(root, 10, () => null);
+  assert.equal(unmeasurable.level, "warn");
+  assert.match(unmeasurable.detail, /cannot measure free space/);
 });
 
 test("checkMergeLock classifies absent, live (with and without pid), and stale locks", () => {

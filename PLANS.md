@@ -186,85 +186,6 @@ test/tick-stage.test.ts, and a new test/revision-interdiff.test.ts.
 - **Recovery.** A recovery landing of a revision is reviewed without the prior block.
 - `npm run test` green.
 
-### Disk floor, part 1/4: hold new work when the worktrees volume runs low on free space (planned 2026-10-06 by operator)
-
-Design: plans/disk-floor.md ("Measuring free space", "The hold").
-
-Context: a fleet running on a Rust repo filled the disk of the user's smaller machine.
-- Every harness worktree builds the project, so every worktree grows its own `target/` of
-  several GB. A fleet has about two worktrees per role: the role's own plus its `_land-<role>`.
-- Nothing watches free space. No code calls `statfs`.
-- A full disk fails git object writes, `events.jsonl` appends and atomic state writes in the
-  middle of writing them.
-
-This part turns "disk full" into "fleet held, with a notification". Part 2/4 reclaims space so
-the hold rarely engages. It works for any language, because it only measures bytes.
-
-**Goal.** When the volume holding `.tumwater/worktrees` has less than `diskHoldGB` free, no new
-work starts until free space is back at `diskHoldGB + 5`. That covers role ticks, director
-ticks, landing vets and merges. In-flight work runs on.
-
-**Approach.**
-1. **Config.** Add `diskHoldGB`: a number ≥ 0, default 10, where 0 disables the hold. GB means
-   10^9 bytes. It touches:
-   - `TumwaterConfig` and `TOP_LEVEL_KEYS` in src/config/config-schema.ts;
-   - `defaultConfig()` in src/config/config.ts;
-   - a `checkNumber` in src/config/config-validation.ts;
-   - the key list in docs/how-it-works.md.
-   
-   Do not add it to tumwater.example.json, because `exampleDrift` would flag every install.
-2. **Gate.** New file src/gates/disk-gate.ts:
-   - `sampleFreeBytes(root, statfs = fs.statfsSync)` returns `bavail * bsize` for
-     `worktreesDir(root)`, falling back to `root` while that dir does not exist. It returns
-     `null` when statfs throws.
-   - `pollDiskGate(root, freeBytes, holdGB, state)` is edge-triggered like
-     `pollQuietHoursGate` (src/scheduling/quiet-hours.ts). It enters the hold when free space
-     is below `holdGB`, and leaves it at `holdGB + DISK_HOLD_HYSTERESIS_GB` (5) or more.
-   - It logs `disk_low` { freeGB, holdGB } or `disk_ok` { freeGB }, with loop `harness`, once
-     per crossing.
-   - A `null` sample never holds, and logs one `warning` per process.
-3. **Wiring.**
-   - Add `disk` to `FleetGateStates` and poll it from `pollFleetGates` (src/gates/gate-polls.ts).
-     `FleetGatePoll` returns `diskHeld`.
-   - In src/orchestrator/orchestrator.ts, keep `diskHeld` in a hoisted `let`, like
-     `holdForRestart`.
-   - Add it to `tickStartHeld`, which already gates role ticks, the director, and parked vets
-     at permit time.
-   - Add it to the drain condition `if (!holdForRestart && !reviewHeld)`.
-   - Add it to `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts), so a held
-     role reports the hold and reserves no tick.
-4. **Events.** Add `disk_low` and `disk_ok` to src/events/events.ts, each with a comment, and
-   render them in src/events/event-format.ts. `disk_low` joins `PROBLEM_EVENTS`
-   (src/ui/tone.ts) and the notify hook's notable events (src/events/notify.ts).
-5. **Doctor.** Add `checkDiskSpace` to src/doctor/doctor-checks.ts and compose it in
-   src/doctor/doctor.ts:
-   - **fail** below `diskHoldGB`;
-   - **ok** otherwise. Part 2/4 adds a warn band;
-   - **warn** "cannot measure" when statfs throws.
-   
-   Its detail names the measured path, the free GB to one decimal, and the floor.
-
-**Files touched.** src/gates/disk-gate.ts (new), src/gates/gate-polls.ts,
-src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-scheduling.ts,
-src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
-src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/ui/tone.ts,
-src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests:
-test/disk-gate.test.ts (new), plus cases in test/config.test.ts, test/config-validation.test.ts
-and test/doctor-checks.test.ts.
-
-**Acceptance criteria.**
-- **Hold.** With an injected sampler reporting 9 GB and `diskHoldGB: 10`, no role tick,
-  director tick, vet or merge starts. A tick already running finishes. Exactly one `disk_low`
-  is logged.
-- **Hysteresis.** At 14 GB the hold stays. At 15 GB it lifts with one `disk_ok`, and loops
-  start ticks again on the next poll.
-- **Off and unmeasurable.** `diskHoldGB: 0` never holds. A sampler that throws never holds and
-  logs one warning.
-- **Live config.** A live edit of `diskHoldGB` applies on the next poll.
-- **Doctor.** `tumwater doctor` reports fail below the floor, ok above it, and warn when free
-  space cannot be measured.
-- `npm run test` green.
-
 ### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed)
 
 Design: plans/disk-floor.md ("Reclaiming build outputs").
@@ -616,6 +537,85 @@ pool, event-format, status and doctor tests.
 ---
 
 ## Done
+
+### Disk floor, part 1/4: hold new work when the worktrees volume runs low on free space (planned 2026-10-06 by operator; done 2026-10-07 by feature)
+
+Design: plans/disk-floor.md ("Measuring free space", "The hold").
+
+Context: a fleet running on a Rust repo filled the disk of the user's smaller machine.
+- Every harness worktree builds the project, so every worktree grows its own `target/` of
+  several GB. A fleet has about two worktrees per role: the role's own plus its `_land-<role>`.
+- Nothing watches free space. No code calls `statfs`.
+- A full disk fails git object writes, `events.jsonl` appends and atomic state writes in the
+  middle of writing them.
+
+This part turns "disk full" into "fleet held, with a notification". Part 2/4 reclaims space so
+the hold rarely engages. It works for any language, because it only measures bytes.
+
+**Goal.** When the volume holding `.tumwater/worktrees` has less than `diskHoldGB` free, no new
+work starts until free space is back at `diskHoldGB + 5`. That covers role ticks, director
+ticks, landing vets and merges. In-flight work runs on.
+
+**Approach.**
+1. **Config.** Add `diskHoldGB`: a number ≥ 0, default 10, where 0 disables the hold. GB means
+   10^9 bytes. It touches:
+   - `TumwaterConfig` and `TOP_LEVEL_KEYS` in src/config/config-schema.ts;
+   - `defaultConfig()` in src/config/config.ts;
+   - a `checkNumber` in src/config/config-validation.ts;
+   - the key list in docs/how-it-works.md.
+   
+   Do not add it to tumwater.example.json, because `exampleDrift` would flag every install.
+2. **Gate.** New file src/gates/disk-gate.ts:
+   - `sampleFreeBytes(root, statfs = fs.statfsSync)` returns `bavail * bsize` for
+     `worktreesDir(root)`, falling back to `root` while that dir does not exist. It returns
+     `null` when statfs throws.
+   - `pollDiskGate(root, freeBytes, holdGB, state)` is edge-triggered like
+     `pollQuietHoursGate` (src/scheduling/quiet-hours.ts). It enters the hold when free space
+     is below `holdGB`, and leaves it at `holdGB + DISK_HOLD_HYSTERESIS_GB` (5) or more.
+   - It logs `disk_low` { freeGB, holdGB } or `disk_ok` { freeGB }, with loop `harness`, once
+     per crossing.
+   - A `null` sample never holds, and logs one `warning` per process.
+3. **Wiring.**
+   - Add `disk` to `FleetGateStates` and poll it from `pollFleetGates` (src/gates/gate-polls.ts).
+     `FleetGatePoll` returns `diskHeld`.
+   - In src/orchestrator/orchestrator.ts, keep `diskHeld` in a hoisted `let`, like
+     `holdForRestart`.
+   - Add it to `tickStartHeld`, which already gates role ticks, the director, and parked vets
+     at permit time.
+   - Add it to the drain condition `if (!holdForRestart && !reviewHeld)`.
+   - Add it to `pollRunnerReasons` (src/orchestrator/orchestrator-scheduling.ts), so a held
+     role reports the hold and reserves no tick.
+4. **Events.** Add `disk_low` and `disk_ok` to src/events/events.ts, each with a comment, and
+   render them in src/events/event-format.ts. `disk_low` joins `PROBLEM_EVENTS`
+   (src/ui/tone.ts) and the notify hook's notable events (src/events/notify.ts).
+5. **Doctor.** Add `checkDiskSpace` to src/doctor/doctor-checks.ts and compose it in
+   src/doctor/doctor.ts:
+   - **fail** below `diskHoldGB`;
+   - **ok** otherwise. Part 2/4 adds a warn band;
+   - **warn** "cannot measure" when statfs throws.
+   
+   Its detail names the measured path, the free GB to one decimal, and the floor.
+
+**Files touched.** src/gates/disk-gate.ts (new), src/gates/gate-polls.ts,
+src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-scheduling.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
+src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/ui/tone.ts,
+src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/how-it-works.md. Tests:
+test/disk-gate.test.ts (new), plus cases in test/config.test.ts, test/config-validation.test.ts
+and test/doctor-checks.test.ts.
+
+**Acceptance criteria.**
+- **Hold.** With an injected sampler reporting 9 GB and `diskHoldGB: 10`, no role tick,
+  director tick, vet or merge starts. A tick already running finishes. Exactly one `disk_low`
+  is logged.
+- **Hysteresis.** At 14 GB the hold stays. At 15 GB it lifts with one `disk_ok`, and loops
+  start ticks again on the next poll.
+- **Off and unmeasurable.** `diskHoldGB: 0` never holds. A sampler that throws never holds and
+  logs one warning.
+- **Live config.** A live edit of `diskHoldGB` applies on the next poll.
+- **Doctor.** `tumwater doctor` reports fail below the floor, ok above it, and warn when free
+  space cannot be measured.
+- `npm run test` green.
 
 ### Worktree pool, part 1/5: label every pi run's kind and demultiplex progress by the label, not the lander path (planned 2026-10-06 by operator; done 2026-10-07 by feature)
 

@@ -9,9 +9,10 @@ import { errorMessage } from "../text/text.js";
  * push channel beside the pull-based dashboards and `tumwater logs`.
  *
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
- * only sees events THIS process logs. All six allowlisted types are logged by the
- * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts and
- * role-cap-gates.ts, landing-slot.ts, src/redeploy/redeployer.ts), so nothing notable is missed; events appended by
+ * only sees events THIS process logs. All seven allowlisted types are logged by the
+ * orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
+ * role-cap-gates.ts and disk-gate.ts, landing-slot.ts, src/redeploy/redeployer.ts), so nothing
+ * notable is missed; events appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
  * One knob, an opinionated fixed allowlist, no per-event selection — a command that can post
@@ -23,6 +24,7 @@ export const NOTIFY_EVENT_TYPES = [
   "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
+  "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
 ] as const;

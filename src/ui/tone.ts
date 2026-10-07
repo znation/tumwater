@@ -66,7 +66,7 @@ export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_st
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "supervisor_exit", "warning"];
+export const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_paused", "disk_low", "supervisor_exit", "warning"];
 
 /** The build-check results that read as routine rather than problem in `eventKind` — one home
  * of the list, interpolated into gui-client-model.ts's browser eventKind exactly as
