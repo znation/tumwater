@@ -24,7 +24,7 @@ instead: `npm install && npm run build && npm link`.
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1.1**: working harness. All 13 roles and the director are enabled by default.
+**v0.1.1**: working harness. All 15 roles and the director are enabled by default.
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).
@@ -71,7 +71,9 @@ which role loops start no new ticks (the director is exempt), with optional per-
 `quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
 fleet-wide window covers now — a `diskHoldGB` free-space floor (default 10; when the volume
 holding the worktrees drops below it, no new work starts until free space recovers 5 GB above it;
-0 disables) — user-defined `customLoops`, and an
+0 disables) and a `diskReclaimGB` pressure-reclaim threshold (default 40; below it idle worktrees
+drop their gitignored build outputs before the hold engages; 0 disables) — user-defined
+`customLoops`, and an
 optional `notify` shell command run when the fleet needs a human (a budget pause, a budget warning
 at 80% of the cap while the gate is still open, an error-streak
 breaker trip, a failed landing, a blocked restart — the command gets `TUMWATER_EVENT_TYPE`,
