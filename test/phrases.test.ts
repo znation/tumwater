@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backendKindPhrase, describeToolCall } from "../src/text/phrases.js";
+import { backendKindPhrase, budgetPhrase, describeToolCall } from "../src/text/phrases.js";
 
 // text/phrases.ts is the single home of the fleet's shared wording fragments (the tool-call label,
 // the backend-hold kind phrasing, and their siblings). These tests pin the documented contracts
@@ -67,4 +67,13 @@ test("backendKindPhrase names each backend-failure kind and falls back on an unr
   assert.equal(backendKindPhrase("stream-severed"), "stream severed");
   assert.equal(backendKindPhrase("gateway-noon"), "backend failure");
   assert.equal(backendKindPhrase(undefined), "backend failure");
+});
+
+// --- budgetPhrase (the $<spent> of $<cap> fragment) ---
+
+test("budgetPhrase reads a non-numeric or non-finite event field as $0.00, never $NaN", () => {
+  assert.equal(budgetPhrase(12.5, 20), "$12.50 of $20.00");
+  assert.equal(budgetPhrase("oops", null), "$0.00 of $0.00");
+  assert.equal(budgetPhrase(Number.NaN, Number.POSITIVE_INFINITY), "$0.00 of $0.00");
+  assert.equal(budgetPhrase(undefined, 50), "$0.00 of $50.00");
 });

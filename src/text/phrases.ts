@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isJsonObject } from "../files/json-object.js";
+import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { squash } from "./text.js";
 import { shortSha, usd } from "./format.js";
 
@@ -104,10 +104,12 @@ export function rolesPhrase(
 /** The `$<spent> of $<cap>` fragment every budget-transition event renders — the one home of
  * that phrasing, shared by the event feed (event-format.ts) and the failure digest's Fleet
  * state changes lines (src/failure/failure-state-change.ts), so a budget transition reads the same on both
- * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through the
- * cents-pinned money format (usd) here. */
+ * surfaces. Both fields arrive loosely typed on HarnessEvent, so each is coerced through
+ * finiteNumber (a non-number or non-finite value reads as 0, exactly as event-read.ts's
+ * eventUsage reads a corrupt usage field) before the cents-pinned money format (usd) renders
+ * it — a string or NaN must never reach usd, which would print "$NaN". */
 export function budgetPhrase(spentUsd: unknown, capUsd: unknown): string {
-  return `${usd(Number(spentUsd ?? 0))} of ${usd(Number(capUsd ?? 0))}`;
+  return `${usd(finiteNumber(spentUsd, 0))} of ${usd(finiteNumber(capUsd, 0))}`;
 }
 
 /** A short duration as `Ns` under two minutes, else whole `Nm` — the one home of that cutoff
