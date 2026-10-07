@@ -181,75 +181,6 @@ role-catalog and backlog-index tests.
 - **Index.** The backlog index marks a Needs-replan entry `[needs replan]`.
 - `npm run test` green.
 
-### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed)
-
-Design: plans/disk-floor.md ("Reclaiming build outputs").
-
-**Goal.** Before the hold from part 1/4 engages, delete the files git ignores (`git clean -fdX`)
-in harness worktrees that nothing is using, least recently used first. Build outputs of every
-ecosystem go this way (`target/`, `node_modules/`, `dist/`, `.venv/`) without the code naming
-any of them. An interrupted tick's uncommitted edits survive: `-X` removes only ignored files.
-
-**Approach.**
-1. **Use registry.** New file src/git/worktree-use.ts:
-   - `useWorktree(root, dir, fn)` holds a use count around `fn`. On release it records
-     `lastUsedAt` for the dir's basename in `.tumwater/state/worktree-use.json`, through
-     `writeJsonAtomic` and a new `worktreeUsePath(root)` in src/paths.ts.
-   - `claimForReclaim(dir)` returns false while the worktree is in use. Otherwise it marks the
-     worktree as reclaiming until `releaseReclaim(dir, at)`, which records `reclaimedAt`. A
-     `useWorktree` that arrives meanwhile awaits the release before `fn` runs.
-   - A worktree the registry has never seen counts as used at first sight.
-2. **Wrap the users.**
-   - `LoopRunner.runTick` (src/loop/loop.ts), from `ensureWorktree` to the tick's end;
-   - `vetRequest` (src/landing/landing-batch.ts);
-   - `landApprovedChange` (src/landing/landing-core.ts);
-   - `landStack` (src/landing/landing-stack.ts);
-   - the `_gate-main` run in src/baseline/main-red.ts.
-3. **Reclaim.** New file src/fleet/reclaim.ts:
-   - `reclaimCandidates(root)` lists the linked worktrees directly under `worktreesDir(root)`,
-     minus `_main`, `_build` and those in use. They are ordered least recently used first, with
-     roles whose loop state has `resumePending` last.
-   - `reclaimWorktree(root, dir)` checks a guard first. The resolved path must lie inside
-     `worktreesDir(root)`, and `git rev-parse --git-dir` must differ from `--git-common-dir`,
-     which proves it is a linked worktree and never the primary checkout. The primary checkout
-     ignores `.tumwater/` itself. It then runs `git -C dir clean -fdX`: a single `-f`, never
-     `-x`, never `-ff`.
-   - `reclaimPass(root, "pressure", …)` cleans candidates until the re-sampled free space
-     reaches `diskReclaimGB`. It logs one `disk_reclaim` { mode, worktrees, freedGB, freeGB,
-     durationMs } when it cleaned anything. `freedGB` is the statfs delta, not `du`.
-4. **Orchestrator.** While free space is below `diskReclaimGB`, start a pressure pass in the
-   background: one at a time, and never awaited, like `launchServicesWatch.poll()`.
-   `pollDiskGate` enters the hold only when a pressure pass has finished since free space
-   fell below the floor. With `diskReclaimGB: 0` it holds immediately, as in part 1/4.
-5. **Config.** Add `diskReclaimGB`, default 40. 0 disables pressure reclaim. Validation
-   requires it to be at least `diskHoldGB` unless it is 0. It touches the same config and doc
-   spots as part 1/4.
-6. **Doctor.** `checkDiskSpace` warns between `diskHoldGB` and `diskReclaimGB`.
-
-**Files touched.** src/git/worktree-use.ts (new), src/fleet/reclaim.ts (new), src/paths.ts,
-src/loop/loop.ts, src/landing/landing-batch.ts, src/landing/landing-core.ts,
-src/landing/landing-stack.ts, src/baseline/main-red.ts, src/orchestrator/orchestrator.ts,
-src/gates/disk-gate.ts, src/config/config-schema.ts, src/config/config.ts,
-src/config/config-validation.ts, src/events/events.ts, src/events/event-format.ts,
-src/doctor/doctor-checks.ts, docs/how-it-works.md. Tests: test/worktree-use.test.ts and
-test/reclaim.test.ts (new), plus config and doctor cases.
-
-**Acceptance criteria.**
-- **Only ignored files go.** In a temp repo, take a linked worktree holding a modified tracked
-  file, an untracked file, an ignored `build/` dir and a nested repo. After `reclaimWorktree`,
-  everything except `build/` remains.
-- **Guard.** `reclaimWorktree` throws and deletes nothing when pointed at the primary checkout
-  or at a path outside `worktreesDir`.
-- **In use.** An in-use worktree is never cleaned. A `useWorktree` that starts during a clean
-  runs `fn` only after the clean finishes.
-- **Order.** Pressure mode cleans least recently used first and stops once the sampler reports
-  `diskReclaimGB`. A resume-pending role's worktree is cleaned only after every other
-  candidate. `_main` and `_build` are never candidates.
-- **Hold.** With free space below the floor, the hold engages only after a pressure pass
-  completes, and does not engage when that pass restored the floor.
-- **Event.** A pass logs exactly one `disk_reclaim` naming the cleaned worktrees.
-- `npm run test` green.
-
 ### Disk floor, part 3/4: reclaim long-idle worktrees, and a `tumwater reclaim` command (planned 2026-10-06 by operator; requires part 2/4 landed)
 
 Design: plans/disk-floor.md ("Reclaiming build outputs": idle mode and the command).
@@ -891,6 +822,82 @@ test/semaphore.test.ts and an orchestrator scheduling test.
 
 
 ## Done
+
+### Disk floor, part 2/4: reclaim gitignored build outputs from idle worktrees when free space runs low (planned 2026-10-06 by operator; requires part 1/4 landed; done 2026-10-07 by feature)
+
+Design: plans/disk-floor.md ("Reclaiming build outputs").
+
+**Goal.** Before the hold from part 1/4 engages, delete the files git ignores (`git clean -fdX`)
+in harness worktrees that nothing is using, least recently used first. Build outputs of every
+ecosystem go this way (`target/`, `node_modules/`, `dist/`, `.venv/`) without the code naming
+any of them. An interrupted tick's uncommitted edits survive: `-X` removes only ignored files.
+
+**Approach.**
+1. **Use registry.** New file src/git/worktree-use.ts:
+   - `useWorktree(root, dir, fn)` holds a use count around `fn`. On release it records
+     `lastUsedAt` for the dir's basename in `.tumwater/state/worktree-use.json`, through
+     `writeJsonAtomic` and a new `worktreeUsePath(root)` in src/paths.ts.
+   - `claimForReclaim(dir)` returns false while the worktree is in use. Otherwise it marks the
+     worktree as reclaiming until `releaseReclaim(dir, at)`, which records `reclaimedAt`. A
+     `useWorktree` that arrives meanwhile awaits the release before `fn` runs.
+   - A worktree the registry has never seen counts as used at first sight: `reclaimCandidates`
+     seeds it with `lastUsedAt = now` and leaves it out of that pass, so an upgrade under
+     pressure does not sweep every warm build at once.
+2. **Wrap the users.** Each holds its worktree from before the create/reset to its last touch:
+   - `LoopRunner.runTick` (src/loop/loop.ts), from before `ensureWorktree` to the tick's end;
+   - `vetRequest` (src/landing/landing-batch.ts);
+   - `landApprovedChange` (src/landing/landing-core.ts);
+   - `landStack` (src/landing/landing-stack.ts);
+   - the `_gate-main` run in src/baseline/main-red.ts.
+3. **Reclaim.** New file src/fleet/reclaim.ts:
+   - `reclaimCandidates(root)` lists the linked worktrees directly under `worktreesDir(root)`,
+     minus `_main`, `_build` and those in use. They are ordered least recently used first, with
+     roles whose loop state has `resumePending` last.
+   - `reclaimWorktree(root, dir)` checks a guard first. The resolved path must lie inside
+     `worktreesDir(root)`, and `git rev-parse --git-dir` must differ from `--git-common-dir`,
+     which proves it is a linked worktree and never the primary checkout. The primary checkout
+     ignores `.tumwater/` itself. It then runs `git -C dir clean -fdX`: a single `-f`, never
+     `-x`, never `-ff`. It reports true only when git actually removed a path, so a clean with
+     nothing to do counts as no reclaim and is neither logged nor named.
+   - `reclaimPass(root, "pressure", …)` cleans candidates until the re-sampled free space
+     reaches `diskReclaimGB`. It logs one `disk_reclaim` { mode, worktrees, freedGB, freeGB,
+     durationMs } when it cleaned anything. `freedGB` is the statfs delta, not `du`, clamped at
+     0 so a concurrent writer cannot render it negative.
+4. **Orchestrator.** While free space is below `diskReclaimGB`, start a pressure pass in the
+   background: one at a time, and never awaited, like `launchServicesWatch.poll()`.
+   `ReclaimController.poll` starts one pass per drop and returns whether the disk hold must
+   wait for that pass; once it settles the hold may engage unless free space recovered.
+   `pollDiskGate` enters the hold only then. With `diskReclaimGB: 0` it holds immediately, as in
+   part 1/4.
+5. **Config.** Add `diskReclaimGB`, default 40. 0 disables pressure reclaim. Validation
+   requires it to be at least `diskHoldGB` unless it is 0. It touches the same config and doc
+   spots as part 1/4.
+6. **Doctor.** `checkDiskSpace` warns between `diskHoldGB` and `diskReclaimGB`.
+
+**Files touched.** src/git/worktree-use.ts (new), src/fleet/reclaim.ts (new), src/paths.ts,
+src/loop/loop.ts, src/landing/landing-batch.ts, src/landing/landing-core.ts,
+src/landing/landing-stack.ts, src/baseline/main-red.ts, src/tick/tick-resume.ts,
+src/orchestrator/orchestrator.ts, src/gates/gate-polls.ts, src/gates/disk-gate.ts,
+src/config/config-schema.ts, src/config/config.ts, src/config/config-validation.ts,
+src/events/events.ts, src/events/event-format.ts, src/doctor/doctor-checks.ts,
+src/doctor/doctor.ts, docs/how-it-works.md. Tests: test/worktree-use.test.ts and
+test/reclaim.test.ts (new), plus disk-gate, config and doctor cases.
+
+**Acceptance criteria.**
+- **Only ignored files go.** In a temp repo, take a linked worktree holding a modified tracked
+  file, an untracked file, an ignored `build/` dir and a nested repo. After `reclaimWorktree`,
+  everything except `build/` remains.
+- **Guard.** `reclaimWorktree` throws and deletes nothing when pointed at the primary checkout
+  or at a path outside `worktreesDir`.
+- **In use.** An in-use worktree is never cleaned. A `useWorktree` that starts during a clean
+  runs `fn` only after the clean finishes.
+- **Order.** Pressure mode cleans least recently used first and stops once the sampler reports
+  `diskReclaimGB`. A resume-pending role's worktree is cleaned only after every other
+  candidate. `_main` and `_build` are never candidates.
+- **Hold.** With free space below the floor, the hold engages only after a pressure pass
+  completes, and does not engage when that pass restored the floor.
+- **Event.** A pass logs exactly one `disk_reclaim` naming the cleaned worktrees.
+- `npm run test` green.
 
 ### Revise rejected changes, part 2/2: the re-review sees the prior objections and what the revision changed (planned 2026-10-06 by operator; requires part 1/2 landed and running; done 2026-10-07 by feature)
 

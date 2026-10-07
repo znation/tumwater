@@ -6,13 +6,15 @@ import { loadLoopState, saveLoopState, zeroCounters, type LoopState } from "./lo
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { setRef, deleteRef } from "../git/git.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
+import { useWorktree } from "../git/worktree-use.js";
+import { worktreePath } from "../paths.js";
 import { logEvent, warnEvent } from "../events/events.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { buildConflictDiscardNote, buildRevisionNote, buildRejectedReviewNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
 import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig, type ResolvedModelConfig } from "../config/config-views.js";
-import { planTickStart } from "../tick/tick-resume.js";
+import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
@@ -585,6 +587,20 @@ export class LoopRunner {
       tickPrompt: () => this.tickPrompt(),
     });
     if (plan === null) return { result: "skipped" };
+    // Hold the worktree from before ensureWorktree — creating or resetting it is part of the
+    // use — to the tick's end (plans/disk-floor.md, part 2/4), so a concurrent pressure
+    // reclaim never cleans a tree this tick is creating or working in.
+    return useWorktree(this.root, worktreePath(this.root, this.role), () =>
+      this.tickWithWorktree(plan, cfg, fallbackCtx),
+    );
+  }
+
+  private async tickWithWorktree(
+    plan: TickStartPlan,
+    cfg: ResolvedModelConfig,
+    fallbackCtx: { fallback: ResolvedModelConfig | null; probe: boolean; primary: ResolvedModelConfig },
+  ): Promise<TickOutcome> {
+    const s = this.state;
     const { priorLandingFailure, resuming, resumeCause, userPrompt } = plan;
     let prompt = plan.prompt;
 

@@ -10,7 +10,7 @@ import { buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.j
  * planTickStart owns the whole decision — runTick (src/loop/loop.ts) consumes the plan verbatim:
  * a null plan means the loop has nothing to run (the tick is skipped), a resumed tick gets
  * the cause-named bridge prompt, a fresh tick the assembled one. */
-interface TickStartPlan {
+export interface TickStartPlan {
   /** The last landing's failure (the lander's own vocabulary — review_error, merge_conflict,
    * merge_blocked — with the detail it wrote into `lastError`), captured before the plan
    * clears lastError: a non-terminally failed landing kept its pin, and when this tick's

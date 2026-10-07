@@ -244,6 +244,12 @@ export function eventMessage(e: HarnessEvent): string {
       return `disk low — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume (floor ${e.holdGB} GB); new work is held until space recovers`;
     case "disk_ok":
       return `disk recovered — ${Number(e.freeGB).toFixed(1)} GB free on the worktrees volume; new work starts again`;
+    case "disk_reclaim": {
+      // Routine maintenance, no warning prefix: the pass freed space so the hold need not
+      // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
+      const names = Array.isArray(e.worktrees) ? e.worktrees.join(", ") : "?";
+      return `disk reclaim (${e.mode ?? "pressure"}) — freed ${Number(e.freedGB).toFixed(1)} GB from ${names}; ${Number(e.freeGB).toFixed(1)} GB free now`;
+    }
     case "rate_limit_hold": {
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.

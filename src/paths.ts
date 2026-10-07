@@ -64,6 +64,13 @@ export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
+/** The worktree-use registry (plans/disk-floor.md, part 2/4; git/worktree-use.ts): which
+ * worktrees are in use and when each was last used, so pressure reclaim can order candidates
+ * least-recently-used first across restarts. Runtime state under .tumwater/state/. */
+export function worktreeUsePath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "worktree-use.json");
+}
+
 /** The orchestrator's own info file (its pid, for liveness checks — fleet/fleet-state.ts). */
 export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");

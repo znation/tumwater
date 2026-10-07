@@ -121,3 +121,17 @@ test("pollDiskGate: measured path detail is the worktrees dir when it exists", (
   fs.mkdirSync(worktreesDir(root), { recursive: true });
   assert.equal(diskVolumePath(root), path.join(root, ".tumwater", "worktrees"));
 });
+
+test("pollDiskGate: waitForReclaim defers entering the hold until the pass settles", () => {
+  // plans/disk-floor.md part 2/4: below the floor, reclaim gets its chance first; the hold
+  // enters only once no pressure pass is running.
+  const root = tmpdir("disk-gate-wait-");
+  const state = newDiskGateState();
+  assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), false);
+  assert.deepEqual(typesAt(root), [], "no hold while reclaim still runs");
+  assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, false), true);
+  assert.deepEqual(typesAt(root), ["disk_low"]);
+  // It never lifts an active hold: reclaim starting while held changes nothing.
+  assert.equal(pollDiskGate(root, 9 * BYTES_PER_GB, 10, state, true), true);
+  assert.deepEqual(typesAt(root), ["disk_low"]);
+});

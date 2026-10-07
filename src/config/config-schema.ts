@@ -252,6 +252,13 @@ export interface TumwaterConfig {
    * the line from flapping). In-flight work runs on. 0 disables the hold, lifting an active
    * one on the next poll. Default 10. */
   diskHoldGB: number;
+  /** Disk floor reclaim (plans/disk-floor.md, "Disk floor 2/4"): the free-space threshold in
+   * GB (10^9 bytes) below which a background pressure pass deletes gitignored build outputs
+   * (`target/`, `node_modules/`, `dist/`, `.venv/`) from idle harness worktrees, least
+   * recently used first, so part 1/4's hold rarely engages. Must be at least `diskHoldGB`
+   * unless it is 0, which disables pressure reclaim (the hold then engages immediately).
+   * Default 40. */
+  diskReclaimGB: number;
   /** Operator notify hook: a shell command the orchestrator runs when a notable event fires
    * (budget_paused, role_streak_paused, land_failed, restart_blocked — the states where the
    * fleet or one of its changes is stopped and only a human can act; src/events/notify.ts owns the
@@ -326,6 +333,7 @@ export const TOP_LEVEL_KEYS = [
   "quietHours",
   "quietHoursPerRole",
   "diskHoldGB",
+  "diskReclaimGB",
   "notify",
   "fallback",
   "fallbackModel",

@@ -28,6 +28,7 @@ import {
   type DiskGateState,
 } from "./disk-gate.js";
 import { pollErrorStorm, pollFailureSpread, pollFleetHold, type HoldInputs } from "../fleet/fleet-polls.js";
+import type { ReclaimController } from "../fleet/reclaim.js";
 import type { FleetHold } from "../fleet/fleet-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../failure/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../failure/failure-spread.js";
@@ -144,6 +145,9 @@ interface FleetGatePollCtx {
   /** The free-bytes sampler for the disk floor: production reads statfs through
    * sampleFreeBytes; tests inject a fixed sample. */
   sampleFree?: (root: string) => number | null;
+  /** Pressure reclaim (plans/disk-floor.md, part 2/4). Optional so the gate's unit tests can
+   * poll a disk hold without a reclaim pass; the orchestrator supplies the controller. */
+  reclaim?: ReclaimController;
 }
 
 /** Poll every fleet-wide gate and alarm, advancing `states` in place. */
@@ -300,7 +304,19 @@ export function pollFleetGates(
   );
 
   const freeBytes = (ctx.sampleFree ?? sampleFreeBytes)(root);
-  const diskHeld = pollDiskGate(root, freeBytes, liveConfig.diskHoldGB, states.disk);
+  // Pressure reclaim (plans/disk-floor.md, part 2/4): below diskReclaimGB, start one background
+  // pass; the hold below defers entry while it runs, so build outputs are deleted before new
+  // work is held. Never awaited — a clean that deletes 100k files can take a minute. The
+  // controller starts one pass per drop, so a settled pass lets the hold engage rather than
+  // starting another pass forever.
+  const waitForReclaim = ctx.reclaim?.poll(freeBytes, liveConfig.diskReclaimGB) ?? false;
+  const diskHeld = pollDiskGate(
+    root,
+    freeBytes,
+    liveConfig.diskHoldGB,
+    states.disk,
+    waitForReclaim,
+  );
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier

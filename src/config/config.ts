@@ -87,6 +87,10 @@ export function defaultConfig(): ResolvedModelConfig {
     // below this many GB free, the fleet holds new work until it climbs 5 GB back above it.
     // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.
     diskHoldGB: 10,
+    // Pressure reclaim (plans/disk-floor.md, part 2/4): below this many GB free, a background
+    // pass deletes gitignored build outputs from idle worktrees before the 10 GB hold engages.
+    // 40 GB leaves room for a build-heavy fleet to keep working; 0 disables reclaim.
+    diskReclaimGB: 40,
     // Friction is flagged only when a changed tick burns BOTH thresholds (src/loop/loop.ts): the
     // absolute turn count alone measures model speed, so a fast model's ordinary 40+ turn /
     // few-minute tick stays unflagged, while a genuinely hard tick that burned 40+ turns over

@@ -1,6 +1,7 @@
 import { deleteRef, headOf, removeLandWorktree, setRef } from "../git/git.js";
 import { landWorktreePath, landingRefName, rejectedRefName } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
+import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
@@ -340,6 +341,12 @@ async function recordRejectedChange(
  * propagate like any other failure. */
 export async function landApprovedChange(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
   if (ctx.signal().aborted) return "aborted";
+  // Hold the lander worktree from before ensureDetachedWorktree (its reset is part of the
+  // use) through the merge (plans/disk-floor.md, part 2/4).
+  return useWorktree(ctx.root, landWorktreePath(ctx.root, req.role), () => landApprovedChangeIn(ctx, req));
+}
+
+async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promise<TickResult> {
   const wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);
   let red: { check: BuildCheck; outcome: BuildCheckOutcome } | undefined;
   let blocked: string | undefined;

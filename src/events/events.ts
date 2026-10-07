@@ -71,6 +71,7 @@ export interface HarnessEvent {
     | "quiet_hours_ended" // the configured quietHours window ended; role loops tick again (carries window)
     | "disk_low" // free space on the worktrees volume dropped below diskHoldGB; no new work starts — role ticks, the director, vets and merges — until it climbs DISK_HOLD_HYSTERESIS_GB above (carries freeGB, holdGB)
     | "disk_ok" // the disk hold lifted: free space climbed back above diskHoldGB + the hysteresis band, or diskHoldGB was edited to 0; new work starts again (carries freeGB)
+    | "disk_reclaim" // a reclaim pass deleted gitignored files from idle worktrees (plans/disk-floor.md, part 2/4); carries mode (pressure|idle|manual), the cleaned worktrees' basenames, the statfs delta freedGB, freeGB after the pass, and durationMs
     | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/fleet/fleet-hold.ts); role loops on that provider — every role when the reviewer's is hit — start nothing new until it re-opens; carries kind, roles, holdMs, escalation, and provider when one is configured
     | "rate_limit_resumed" // one provider's hold (429 or backend-failure kind) reached its deadline; roles on that provider tick again; carries the ended hold's kind, and provider when one is configured
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)

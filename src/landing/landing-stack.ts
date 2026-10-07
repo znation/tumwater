@@ -10,6 +10,7 @@ import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
 import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
 import { landingRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
+import { useWorktree } from "../git/worktree-use.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
@@ -139,6 +140,12 @@ export type StackOutcome =
  * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyLanding's
  * exempt arm. The check's events log under the first entry's role. */
 export async function landStack(ctx: StackContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
+  // Hold the lander worktree from before assembleStack (its reset is part of the use) through
+  // the ff (plans/disk-floor.md, part 2/4).
+  return useWorktree(ctx.root, wtPath, () => landStackIn(ctx, wtPath, entries));
+}
+
+async function landStackIn(ctx: StackContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
   // The last stacked tip a build check actually ran on: a re-stack whose tree differs from it
   // only in doc-only paths lands on that run's verdict instead of paying another.
   let checkedTip: string | null = null;

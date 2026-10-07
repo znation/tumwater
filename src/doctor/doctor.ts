@@ -65,7 +65,7 @@ export async function runDoctor(
     { name: "merge lock", ...checkMergeLock(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
-    { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10) },
+    { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
     { name: "project check", ...checkBuildCheck(root, config) },
     { name: "fix claims", ...checkFixClaims(root) },
     { name: "stranded plans", ...checkStrandedPlans(root) },

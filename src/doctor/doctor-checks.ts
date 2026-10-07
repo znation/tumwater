@@ -234,16 +234,19 @@ export function checkStateDir(root: string): CheckOutcome {
   }
 }
 
-/** Disk floor (plans/disk-floor.md, part 1/4) — is there room on the volume the worktrees
- * live on? Fail below `diskHoldGB`, the same floor the running fleet holds new work at, so
- * doctor and the gate agree on when the disk is a problem; ok at or above it (part 2/4 adds
- * the warn band above a reclaim threshold). A statfs failure is a warning, not a failure: an
+/** Disk floor (plans/disk-floor.md, parts 1/4 and 2/4) — is there room on the volume the
+ * worktrees live on? Fail below `diskHoldGB`, the same floor the running fleet holds new work
+ * at, so doctor and the gate agree on when the disk is a problem. Warn in the band between
+ * `diskHoldGB` and `diskReclaimGB`: pressure reclaim will delete ignored build outputs from
+ * idle worktrees but the fleet still runs. Ok at or above `diskReclaimGB` (or when reclaim is
+ * disabled and free space is above the hold). A statfs failure is a warning, not a failure: an
  * unmeasurable volume never holds the fleet, so it must not fail a scripted pre-flight. The
  * detail names the measured path, the free GB to one decimal, and the floor. `holdGB` 0
- * disables the hold, so the check always passes. */
+ * disables the hold, so a free space above `reclaimGB`'s own band (or `reclaimGB` 0) passes. */
 export function checkDiskSpace(
   root: string,
   holdGB: number,
+  reclaimGB: number,
   sample: (root: string) => number | null = sampleFreeBytes,
 ): CheckOutcome {
   const where = diskVolumePath(root);
@@ -259,6 +262,11 @@ export function checkDiskSpace(
     return {
       level: "fail",
       detail: `${freeText} — below the ${holdGB} GB diskHoldGB floor; the fleet holds new work until space recovers`,
+    };
+  if (reclaimGB > 0 && freeGB < reclaimGB)
+    return {
+      level: "warn",
+      detail: `${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`,
     };
   const floor = holdGB > 0 ? `above the ${holdGB} GB floor` : "diskHoldGB is 0 (hold disabled)";
   return { level: "ok", detail: `${freeText}, ${floor}` };

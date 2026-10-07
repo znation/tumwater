@@ -147,6 +147,15 @@ discards a role's in-flight landing.
   hold), each crossing logs one `disk_low` / `disk_ok` event (and `disk_low` pages a configured
   `notify` command), and `tumwater doctor` fails below the floor, passes above it, and warns
   when the volume cannot be measured.
+- `diskReclaimGB` (default 40; 0 disables) is the pressure-reclaim threshold, in GB (10^9
+  bytes). Below it, one background pass deletes the files git ignores (`git clean -fdX`) in
+  idle harness worktrees, least recently used first, so build outputs of any ecosystem
+  (`target/`, `node_modules/`, `dist/`, `.venv/`) are freed before the hold engages; a
+  worktree in use is never cleaned, and one the registry has never seen counts as used at
+  first sight. A pass that cleaned anything logs one `disk_reclaim` event. The hold waits for
+  the pass to settle, and with `diskReclaimGB` 0 it engages immediately. It must be at least
+  `diskHoldGB` unless it is 0. `tumwater doctor` warns between the hold floor and this
+  threshold.
 - `tumwater pause` / `resume`, or the dashboard's Pause control (which also offers timed pauses), block new role ticks until lifted.
   Queued landings still drain. Both accept `--role <id>` to gate a single loop instead of the
   fleet: in-flight ticks finish, every other role keeps ticking, and the director is not

@@ -316,21 +316,25 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
   }
 });
 
-test("checkDiskSpace fails below the floor, passes above it, and warns when unmeasurable", () => {
-  // plans/disk-floor.md part 1/4: the check shares the gate's floor, so doctor and the
-  // running fleet agree on when the disk is a problem.
+test("checkDiskSpace fails below the floor, warns in the reclaim band, passes above it, and warns when unmeasurable", () => {
+  // plans/disk-floor.md parts 1/4 and 2/4: the check shares the gate's floor, so doctor and
+  // the running fleet agree on when the disk is a problem, and warns while pressure reclaim
+  // will run but new work still starts.
   const root = tmpdir("doctor-disk-");
-  const below = checkDiskSpace(root, 10, () => 9_000_000_000);
+  const below = checkDiskSpace(root, 10, 40, () => 9_000_000_000);
   assert.equal(below.level, "fail");
   assert.match(below.detail, /9\.0 GB free/);
   assert.match(below.detail, /10 GB diskHoldGB floor/);
-  assert.equal(checkDiskSpace(root, 10, () => 20_000_000_000).level, "ok");
+  const reclaiming = checkDiskSpace(root, 10, 40, () => 20_000_000_000);
+  assert.equal(reclaiming.level, "warn");
+  assert.match(reclaiming.detail, /40 GB diskReclaimGB threshold/);
+  assert.equal(checkDiskSpace(root, 10, 40, () => 50_000_000_000).level, "ok");
   assert.equal(
-    checkDiskSpace(root, 0, () => 1).level,
+    checkDiskSpace(root, 0, 0, () => 1).level,
     "ok",
-    "0 disables the hold, so the check always passes",
+    "0 disables the hold and reclaim, so the check always passes",
   );
-  const unmeasurable = checkDiskSpace(root, 10, () => null);
+  const unmeasurable = checkDiskSpace(root, 10, 40, () => null);
   assert.equal(unmeasurable.level, "warn");
   assert.match(unmeasurable.detail, /cannot measure free space/);
 });

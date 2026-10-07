@@ -7,6 +7,7 @@
  * one-change landing (landApprovedChange) live beside both in landing-core.ts. */
 
 import { ensureDetachedWorktree } from "../git/worktree.js";
+import { useWorktree } from "../git/worktree-use.js";
 import { removeLandWorktree } from "../git/git.js";
 import { landWorktreePath } from "../paths.js";
 import {
@@ -71,6 +72,12 @@ export type VetVerdict =
  * role's worktree and ref, onto main itself, so two vets rebasing at once — or one rebasing
  * while a merge moves main — cannot interfere. */
 export async function vetRequest(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {
+  // Hold the lander worktree from before ensureDetachedWorktree (its reset is part of the
+  // use) to the vet's end (plans/disk-floor.md, part 2/4).
+  return useWorktree(ctx.root, landWorktreePath(ctx.root, req.role), () => vetRequestIn(ctx, req, w));
+}
+
+async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWiring): Promise<VetVerdict> {
   let wt: string;
   try {
     wt = await ensureDetachedWorktree(ctx.root, landWorktreePath(ctx.root, req.role), req.sha);

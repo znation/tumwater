@@ -150,6 +150,8 @@ test("defaultConfig carries the disk floor and validation guards it", () => {
   // plans/disk-floor.md part 1/4: 10 GB by default, 0 disables the hold; a negative or
   // non-number is rejected with an actionable error like every other knob.
   assert.equal(defaultConfig().diskHoldGB, 10);
+  // Part 2/4: pressure reclaim defaults to 40 GB and must sit at or above the hold floor.
+  assert.equal(defaultConfig().diskReclaimGB, 40);
   assert.doesNotThrow(() => validateConfig({ diskHoldGB: 0 }));
   for (const bad of [-1, "10", null]) {
     assert.match(
@@ -165,6 +167,7 @@ test("defaultConfig carries the disk floor and validation guards it", () => {
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });
   assert.equal(loadConfig(dir).diskHoldGB, 10);
+  assert.equal(loadConfig(dir).diskReclaimGB, 40);
 });
 
 test("loadConfig without a file returns defaults", () => {

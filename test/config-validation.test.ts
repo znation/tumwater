@@ -638,6 +638,22 @@ test("diskHoldGB accepts 0 or a positive number and rejects a negative or non-nu
   );
 });
 
+test("diskReclaimGB accepts 0 or a number at least diskHoldGB and rejects a lower one", () => {
+  // plans/disk-floor.md part 2/4: 0 disables pressure reclaim; a nonzero threshold below the
+  // hold floor would trigger only after the hold already engaged.
+  assert.equal(validateConfig({ ...defaultConfig(), diskHoldGB: 10, diskReclaimGB: 0 }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig(), diskHoldGB: 10, diskReclaimGB: 10 }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig(), diskHoldGB: 10, diskReclaimGB: 40 }), undefined);
+  assert.match(
+    validationError({ ...defaultConfig(), diskHoldGB: 10, diskReclaimGB: 5 }),
+    /diskReclaimGB \(5\) must be at least diskHoldGB \(10\) unless it is 0/,
+  );
+  assert.match(
+    validationError({ ...defaultConfig(), diskReclaimGB: -1 }),
+    /diskReclaimGB must be a number of 0 or more \(got -1\)/,
+  );
+});
+
 test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INTEGER", () => {
   // BUGS.md 2026-10-02: 1e24 is finite, so the old NON_NEGATIVE_OR_DISABLED rule admitted
   // it, and `config set`/the GUI's /api/config-set wrote an effectively uncapped budget

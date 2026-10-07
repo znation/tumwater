@@ -69,12 +69,16 @@ export function newDiskGateState(): DiskGateState {
  * `disk_low` / `disk_ok` event per crossing. `holdGB` 0 disables the hold outright: a fleet
  * with the key set to 0 never holds, and a live edit to 0 lifts an active hold on the next
  * poll (with its one `disk_ok`). A null sample (statfs threw) logs one `warning` per process
- * and never holds. Returns whether the disk is holding new work right now. */
+ * and never holds. `waitForReclaim` defers ENTERING the hold while part 2/4's pressure reclaim
+ * is still running: the hold may engage only once a pass has settled. It never lifts an
+ * already-active hold (that is the hysteresis band's job). Returns whether the disk is holding
+ * new work right now. */
 export function pollDiskGate(
   root: string,
   freeBytes: number | null,
   holdGB: number,
   state: DiskGateState,
+  waitForReclaim = false,
 ): boolean {
   if (freeBytes === null) {
     if (!state.warnedUnmeasurable) {
@@ -96,7 +100,7 @@ export function pollDiskGate(
       ? false
       : state.prevHeld
         ? freeGB < holdGB + DISK_HOLD_HYSTERESIS_GB // in the hold: leave only clear of the band
-        : freeGB < holdGB; // out of it: enter as soon as free space drops below the floor
+        : freeGB < holdGB && !waitForReclaim; // out of it: enter below the floor, once reclaim settled
   if (held !== state.prevHeld) {
     state.prevHeld = held;
     logEvent(

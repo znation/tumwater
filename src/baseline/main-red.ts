@@ -12,6 +12,7 @@ import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../text/phrases.js";
 import { branchHead } from "../git/git.js";
 import { gateMainWorktreePath } from "../paths.js";
+import { useWorktree } from "../git/worktree-use.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 
 /** Red-main baseline gate for fresh authoring ticks (PLANS.md "Red-main baseline check"):
@@ -183,6 +184,20 @@ export function mainTipVerdict(
 }
 
 async function verdictAtMainTip(
+  root: string,
+  role: string,
+  mainBranch: string,
+  config: TumwaterConfig,
+  forceFresh: boolean,
+): Promise<MainTipVerdict> {
+  // Hold the `_gate-main` mirror from before ensureDetachedWorktree (its reset is part of the
+  // use) through the baseline check (plans/disk-floor.md, part 2/4).
+  return useWorktree(root, gateMainWorktreePath(root), () =>
+    verdictAtMainTipIn(root, role, mainBranch, config, forceFresh),
+  );
+}
+
+async function verdictAtMainTipIn(
   root: string,
   role: string,
   mainBranch: string,

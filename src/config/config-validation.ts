@@ -175,6 +175,21 @@ export function validateConfig(raw: unknown, label = "tumwater.json"): void {
   // Disk floor (plans/disk-floor.md, part 1/4): 0 disables the hold, so only a negative
   // value or a non-number is a problem.
   checkNumber(r, "", "diskHoldGB", NON_NEGATIVE);
+  // Pressure reclaim (plans/disk-floor.md, part 2/4): 0 disables it; a nonzero threshold must
+  // sit at or above the hold floor, or reclaim would trigger only after the hold already
+  // engaged. Both fields' own type checks report non-numbers above, so this rebukes only a
+  // valid number pair.
+  checkNumber(r, "", "diskReclaimGB", NON_NEGATIVE);
+  if (
+    typeof r.diskHoldGB === "number" &&
+    typeof r.diskReclaimGB === "number" &&
+    r.diskReclaimGB !== 0 &&
+    r.diskReclaimGB < r.diskHoldGB
+  ) {
+    problems.push(
+      `diskReclaimGB (${show(r.diskReclaimGB)}) must be at least diskHoldGB (${show(r.diskHoldGB)}) unless it is 0 (disabled)`,
+    );
+  }
   checkNumber(r, "", "thrashTurns", NON_NEGATIVE);
   checkNumber(r, "", "thrashMinutes", NON_NEGATIVE);
 

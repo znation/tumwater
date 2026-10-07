@@ -43,6 +43,7 @@ import {
   sleepInterruptible,
 } from "../tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
+import { ReclaimController } from "../fleet/reclaim.js";
 import { heldProviders } from "../fleet/fleet-hold.js";
 
 const POLL_MS = 2000;
@@ -146,6 +147,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // branches inert no matter what a caller passes.
   const redeploy = opts.once ? null : (opts.redeploy ?? null);
   const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
+  // Pressure reclaim (plans/disk-floor.md, part 2/4): one background pass at a time, driven by
+  // the disk gate's poll below. In-process state (the use registry) is enough, because this
+  // process is the one that runs ticks and landings.
+  const reclaim = new ReclaimController(root);
   let restart = false;
 
   const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
@@ -332,6 +337,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         now,
         info,
         infoFile,
+        reclaim,
       });
       // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
       // (plans/disk-floor.md, part 1/4).
