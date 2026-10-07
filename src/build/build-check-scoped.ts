@@ -33,7 +33,7 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * event → skip-warning sequence the review gate's pre-check (scope "gate"), the landing
  * path's in-lock re-check (scope "landing"), and the batch lander's one check over the whole
  * stacked tree (scope "batch") previously each ran inline, kept in one place so
- * the event's shape and the skip warning cannot drift between the two surfaces. Split out of
+ * the event's shape and the skip warning cannot drift between them. Split out of
  * build-check.ts — which keeps the check's execution and outcome classification
  * (runBuildCheck, BuildCheckOutcome) — because orchestration is its own concern: the permit,
  * the event emission, the verdict-less retry, the merge-scope unverified remapping, and the
