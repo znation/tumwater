@@ -228,8 +228,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the resolved branch. One warning per episode, re-armed when the checkout returns.
   let warnedBranchDivergence = false;
 
-  // Need-based deferral (PLANS.md "Prioritize loops by need"): whether qualifying work has
-  // landed since a role's last-seen main head, cached per head (see scheduling/work-landed-cache.ts).
+  // Need-based deferral (PLANS.md "Prioritize loops by need"): whether qualifying work has landed
+  // since a role's last-seen main head, cached per head (see scheduling/work-landed-cache.ts).
   const workLandedSince = new WorkLandedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
@@ -259,8 +259,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   try {
     while (!signal.aborted) {
-      // Live-reload tumwater.json — the single reload point shared by all loops (src/config/config-live.ts
-      // owns the last-known-good retention and the edge-triggered warnings/events around it).
+      // Live-reload tumwater.json — the single reload point shared by all loops.
+      // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
+      // warnings/events around it.
       const liveConfig = liveReload.poll();
       // The notify command rides the same last-known-good reload (src/events/notify.ts): a live
       // `config set notify` edit takes effect on the next poll, no restart.
@@ -272,9 +273,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // missing) drives the check, like the budget gate.
       retentionPruner.poll(root, liveConfig.sessionRetentionDays);
 
-      // launchservicesd's Mach-port budget (src/process/launch-services.ts owns it): a background sample
-      // at most every 15 minutes, and a warning days before the kernel kills the daemon and
-      // wedges the Mac's GUI session. Never awaited — a poll does not wait on `top`.
+      // launchservicesd's Mach-port budget (src/process/launch-services.ts owns it):
+      // a background sample at most every 15 minutes, and a warning days before the kernel
+      // kills the daemon and wedges the Mac's GUI session. Never awaited — a poll does not
+      // wait on `top`.
       void launchServicesWatch?.poll();
 
       // Consume CLI request markers: a reset-counters request, a wake request, a forced-restart
@@ -359,10 +361,11 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         liveConfig.review.enabled && fleetHeldProviders.has(reviewRunConfig(liveConfig).provider);
       const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
 
-      // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state machine observe it.
-      // `hold` starts no new ticks at all — director included; a restart lands within the drain's
-      // window plus a bounded landing hand-off, and its prompt waits in the inbox for the new
-      // build — while the green check/compile/drain run in the background. That covers ticks
+      // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
+      // machine observe it. `hold` starts no new ticks at all — director included; a restart
+      // lands within the drain's window plus a bounded landing hand-off, and its prompt waits
+      // in the inbox for the new build — while the green check/compile/drain run in the
+      // background. That covers ticks
       // reserved before the hold too: a waiter parked in the semaphore queue that is granted a
       // permit mid-drain meets the closed start gate (tickStartHeld), releases the permit, and
       // hands its reservation back so it re-schedules once the hold lifts or on the new build.
@@ -403,10 +406,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
 
       // Merge queue 3/5 — drain the durable land queue while neither a restart nor a failure
-      // hold is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the vetting stage, its
-      // merge slot, and the dedupe against main). A held poll starts no vet and no merge,
-      // exactly as it starts no tick; what is already in flight runs on, and a vet parked for
-      // its permit meets the same start gate as a parked tick when the permit comes.
+      // hold is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the vetting
+      // stage, its merge slot, and the dedupe against main). A held poll starts no vet and no
+      // merge, exactly as it starts no tick; what is already in flight runs on, and a vet
+      // parked for its permit meets the same start gate as a parked tick when the permit comes.
       if (!holdForRestart && !reviewHeld && !diskHeld) {
         await drainLandings(
           {
