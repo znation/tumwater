@@ -11,11 +11,19 @@ import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js
  * of the existing record, not a new one. The rows themselves are collected by history-data.ts
  * (beside src/report/report-data.ts and src/failure/failure-data.ts); this module renders them and drives the CLI. */
 
+/** The row's five unpadded cell strings — one shape shared by cellsOf and widthsOf, so a column
+ * added for the cells cannot be left off the widths. */
+type RowCells = { loop: string; tick: string; result: string; duration: string; usage: string };
+
+/** Each RowCells column's measured width in terminal display columns. A mapped type on purpose:
+ * adding a column to RowCells cannot leave it without a width. */
+type RowWidths = { [K in keyof RowCells]: number };
+
 /** The row's five padded columns as their unpadded strings — the one home for the cell values,
  * shared by the renderer (which pads), the width pass (which measures), and the grep haystack
  * (which needs the row as it renders when it is the widest row in each column). A tick with no
  * reported duration shows the em dash. */
-function cellsOf(row: TickRow): { loop: string; tick: string; result: string; duration: string; usage: string } {
+function cellsOf(row: TickRow): RowCells {
   return {
     loop: row.loop,
     tick: String(row.tick),
@@ -30,7 +38,7 @@ function cellsOf(row: TickRow): { loop: string; tick: string; result: string; du
  * per code point, and a code-unit padEnd lets that row's later columns drift right of its
  * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
  * outside the pad), and duration is ASCII, so both take plain length. */
-function widthsOf(cells: { loop: string; tick: string; result: string; duration: string; usage: string }): { loop: number; tick: number; result: number; duration: number; usage: number } {
+function widthsOf(cells: RowCells): RowWidths {
   return {
     loop: displayWidth(cells.loop),
     tick: cells.tick.length,
@@ -42,7 +50,7 @@ function widthsOf(cells: { loop: string; tick: string; result: string; duration:
 
 /** The per-column maxima over every row the table shows — the widths derive from the rows
  * actually shown, so a single-row table has no padding gap. */
-function widestWidths(rows: TickRow[]): { loop: number; tick: number; result: number; duration: number; usage: number } {
+function widestWidths(rows: TickRow[]): RowWidths {
   const widths = { loop: 0, tick: 0, result: 0, duration: 0, usage: 0 };
   for (const row of rows) {
     const w = widthsOf(cellsOf(row));
@@ -59,7 +67,7 @@ function widestWidths(rows: TickRow[]): { loop: number; tick: number; result: nu
  * Every cell is padded to its column's width even when empty — usage is the one cell that can
  * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
  * misaligning that row against its neighbors; trimEnd strips only the trailing pad. */
-function renderRow(row: TickRow, widths: { loop: number; tick: number; result: number; duration: number; usage: number }): string {
+function renderRow(row: TickRow, widths: RowWidths): string {
   const c = cellsOf(row);
   return [
     row.time,
