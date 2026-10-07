@@ -286,19 +286,20 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [
   { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
 ];
 
-/** Fail when any argument was not consumed by this command's known flags — a misspelled flag
- * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs
- * with default behavior, which is worse than an error: `reset-counters --rol x` zeroed every
- * loop instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim
- * one token; valued flags claim two — and a valued flag left without its value fails right
- * here, with the spec's missingValue wording: cli.ts runs this gate before the ready-repo gate
- * and the command bodies, so a missing value must be named before any environment check ("not
- * a git repository") can mask it from an operator typing `tumwater pause --role` outside an
- * initialized repo. A repeated flag fails: the parsers in cli/cli-args.ts read flags with indexOf, so a second occurrence used to be silently dropped and the
- * operator's later value (gui --port 8000 --port 9000, logs -n 5 -n 10) never took effect —
- * the same "may only be given once" rule parseInitArgs and parsePromptArgs apply to their
- * own flags. The check is keyed by spec, so alias spellings (-f and --follow) count as one
- * flag, while a flag-shaped VALUE claimed by an earlier flag is not a repeat. */
+/** Fail when any argument was not consumed by this command's known flags — a misspelled flag (e.g.
+ * `--rol` instead of `--role`) would otherwise be silently ignored and the command runs with
+ * default behavior, which is worse than an error: `reset-counters --rol x` zeroed every loop
+ * instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim one
+ * token; valued flags claim two — and a valued flag left without its value fails right here, with
+ * the spec's missingValue wording: cli.ts runs this gate before the ready-repo gate and the command
+ * bodies, so a missing value must be named before any environment check ("not a git repository")
+ * can mask it from an operator typing `tumwater pause --role` outside an initialized repo. A
+ * repeated flag fails: the parsers in cli/cli-args.ts read flags with indexOf, so a second
+ * occurrence used to be silently dropped and the operator's later value (gui --port 8000 --port
+ * 9000, logs -n 5 -n 10) never took effect — the same "may only be given once" rule parseInitArgs
+ * and parsePromptArgs apply to their own flags. The check is keyed by spec, so alias spellings (-f
+ * and --follow) count as one flag, while a flag-shaped VALUE claimed by an earlier flag is not a
+ * repeat. */
 export function rejectUnknownArgs(command: string, args: string[], specs: FlagSpec[]): void {
   if (args.length === 0) return;
   const claim = new Map<string, FlagSpec>();
