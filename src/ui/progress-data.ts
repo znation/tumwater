@@ -312,7 +312,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
     return;
   }
   if (event.type === "tumwater_run") {
-    const kind = event.kind === "gate" ? "gate" : event.kind === "author" ? "author" : undefined;
+    const kind = event.kind === "gate" || event.kind === "author" ? event.kind : undefined;
     if (kind) {
       // Every run writes this marker before pi spawns, and the landing cell reads the
       // accumulator as soon as the marker's stage says `reviewing` — a poll that can land
