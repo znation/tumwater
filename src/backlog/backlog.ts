@@ -25,20 +25,40 @@ export type { BacklogEntry } from "./backlog-md.js";
  * per file change subsumes both the titles-only and the full-entry reads. */
 const sectionCache = new Map<string, StatKeyedValue<BacklogEntry[]>>();
 
+/** One stat-cached read of a markdown file, or null when it is missing or unreadable — the
+ * shared load half behind both section readers below: readTextOrNull reads the file and a null
+ * (no data) propagates through cachedByStat, so a render path never throws on backlog state.
+ * `parse` runs only on a cache miss; `clone` hands each caller its own copy. */
+function cachedMarkdown<T>(
+  cache: Map<string, StatKeyedValue<T>>,
+  key: string,
+  file: string,
+  parse: (md: string) => T,
+  clone: (value: T) => T,
+): T | null {
+  return cachedByStat(
+    cache,
+    key,
+    file,
+    () => {
+      const md = readTextOrNull(file); // Missing or unreadable — no data.
+      return md === null ? null : parse(md);
+    },
+    clone,
+  );
+}
+
 /** The entries under `<root>/<fileName>`'s `## <sectionTitle>`: fresh when the file's identity
  * or mtime/size changed since the last read, cached otherwise (see module docs). A missing or
  * unreadable file yields [] — a render path must never throw on backlog state. */
 function sectionEntries(root: string, fileName: string, sectionTitle: string): BacklogEntry[] {
   const file = path.join(root, fileName);
   return (
-    cachedByStat(
+    cachedMarkdown(
       sectionCache,
       `${file}\u0000${sectionTitle}`,
       file,
-      () => {
-        const md = readTextOrNull(file); // Missing or unreadable — no data.
-        return md === null ? null : parseEntryDetails(md, sectionTitle);
-      },
+      (md) => parseEntryDetails(md, sectionTitle),
       (entries) => entries.map((e) => ({ ...e })), // A copy: callers may treat the result as their own.
     ) ?? []
   );
@@ -62,14 +82,11 @@ export function sectionCompletionDates(
 ): string[] {
   const file = path.join(root, fileName);
   return (
-    cachedByStat(
+    cachedMarkdown(
       dateCache,
       `${file}\u0000${sectionTitle}\u0000${dateRe.source}\u0000${dateRe.flags}`,
       file,
-      () => {
-        const md = readTextOrNull(file); // Missing or unreadable — no data.
-        return md === null ? null : entryDates(md, sectionTitle, dateRe);
-      },
+      (md) => entryDates(md, sectionTitle, dateRe),
       (dates) => dates.slice(), // A copy: callers may treat the result as their own.
     ) ?? []
   );
