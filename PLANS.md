@@ -6,6 +6,62 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### `tumwater run --gui`: boot the engine and the browser dashboard from one command (planned 2026-10-07 by operator)
+
+Context: `tumwater run` boots the fleet and streams events; the browser dashboard is a separate
+`tumwater gui` process the operator starts in another terminal. The request is one command for
+both. The dashboard already owns a standalone lifecycle — `cmdGui` (src/gui/gui-command.ts) parses
+`--port`/`--all-interfaces`/`--token`, calls `startGui` (src/gui/gui-server.ts), prints its banner,
+and self-reloads onto a newer build (startGui's reload watch, src/redeploy/self-reload.ts) — so the
+new mode reuses it rather than standing up a second server.
+
+**Approach.**
+1. **Flag.** Add `{ names: ["--gui"] }` to `RUN_FLAG_SPECS` (src/cli/cli-flag-specs.ts), noted as
+the one-command form of the dashboard: it uses the defaults (loopback, port 7180), and the
+dashboard's own flags stay on `tumwater gui`. The dispatcher's `rejectUnknownArgs("run", …)` gate
+already shares `RUN_FLAG_SPECS`, so no cli.ts change.
+2. **Rival shape.** In `cmdRun` (src/cli/cli-run.ts), beside the existing `--role`/`--once` check,
+fail `--gui` with `--once` through `failRivalShapes("--gui", "--once", "a one-round run cannot
+serve a dashboard it is about to kill")`. `--for` + `--gui` stays allowed: the dashboard serves
+for the window.
+3. **Spawn from the supervisor.** The dashboard must outlive the orchestrator generations (the
+supervised child exits RESTART_EXIT_CODE on each redeploy), so the supervisor half
+(`superviseRunCommand`) starts it, not the generation. Add `spawnGuiChild()` to
+src/process/supervisor.ts beside `spawnRunChild`: `spawn(process.execPath, [script, "gui"], {
+stdio: "inherit" })`, returning the child (null when there is no script path, matching
+`spawnRunChild`'s fail-fast) and deliberately NOT setting `SUPERVISED_ENV`. The child shares the
+terminal's foreground process group, so a terminal Ctrl+C reaches it exactly as it reaches the
+orchestrator child, while the supervisor's SIGTERM handler forwards SIGTERM to it.
+4. **Wiring and teardown.** In `superviseRunCommand`, compute the plan once with a new exported
+helper `guiChildPlan(runArgs)` returning `{ spawnGui: boolean; orchestratorArgs: string[] }`,
+where `orchestratorArgs` strips `--gui` so the supervised generation's `cmdRun` never sees it.
+When `spawnGui`, call `spawnGuiChild()` before `superviseRun` and pass `orchestratorArgs` (not
+`runArgs`) to `spawnRunChild` inside the `spawnChild` closure. Kill the dashboard
+(`guiChild?.kill("SIGTERM")`, guarded on it still having no `exitCode`) in the SIGTERM handler and
+again after `superviseRun` returns, before `process.exit(code)`. SIGINT needs no forwarding: the
+terminal already delivered it to the dashboard.
+5. **Help and README.** Update the `tumwater run` stanza in src/cli/help.ts to list `[--gui]` and
+name the dashboard and its default address, and update README's Usage block and its "Watch the
+fleet" row to show the one-command form.
+
+**Non-goals (settled).** Port/token selection stays on `tumwater gui`; `run --gui` always serves
+the default 7180 on loopback. A dashboard that cannot bind prints its own busy-port message and
+the engine keeps running — the supervisor does not block boot on dashboard readiness.
+
+**Files touched.** src/cli/cli-flag-specs.ts, src/cli/cli-run.ts, src/process/supervisor.ts,
+src/cli/help.ts, README.md. Tests: test/cli-run.test.ts (the `guiChildPlan` cases: `--gui` sets
+`spawnGui` and is stripped, absence leaves the args untouched), test/cli-run-live.test.ts (a live
+`run --gui` that sees both banners and, after SIGTERM, exits 0 with the dashboard port bindable
+again; skip when 7180 is already taken; plus the `--gui --once` rejection).
+
+**Acceptance criteria.**
+- `tumwater run --gui` prints both the run banner and `tumwater gui at http://127.0.0.1:7180`, and
+the dashboard answers `GET /` with the tumwater page while the fleet runs.
+- A SIGTERM to the `run --gui` supervisor exits 0, and the dashboard port is free again after it.
+- `tumwater run --gui --once` fails before boot with the rival-shapes message.
+- The `guiChildPlan` unit cases above hold, so removing the spawn wiring fails a test.
+- `npm run test` green.
+
 ### Robust conflict landing, part 2/2: a conflict the resolver cannot settle goes back to its author with the markers in place, instead of being discarded (planned 2026-10-07 by operator; requires part 1/2 landed)
 
 Context: today two paths throw an approved change away over a merge conflict:
