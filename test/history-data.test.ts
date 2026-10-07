@@ -82,6 +82,24 @@ test("a tick spanning the cutoff renders a dash: the ts filter removes its start
   assert.equal(rows[1]!.durationMs, null);
 });
 
+test("a tick_end with a corrupt ts renders the em dash time, never NaN", () => {
+  // The history table renders row.time unguarded; a corrupt ts reached it as
+  // `NaN-NaN-NaN NaN:NaN:NaN`. formatTimestamp now owns that guard, so the row time is safe
+  // for both a non-finite number and a non-numeric JSON field.
+  const rows = tickRows(
+    [endEvent({ ts: NaN, tick: 1 }), endEvent({ ts: "oops" as never, tick: 2 })],
+    10,
+    null,
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.tick, r.time]),
+    [
+      [2, "—"],
+      [1, "—"],
+    ],
+  );
+});
+
 test("--role narrows the window to one loop", () => {
   const root = tmpdir();
   // One clock read (see the span test above): the durationMs assertion at the bottom is

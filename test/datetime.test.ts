@@ -104,6 +104,15 @@ test("formatTimestamp renders date and clock from ONE Date, so its halves cannot
   }
 });
 
+test("formatTimestamp renders a non-finite instant as the em dash, never NaN", () => {
+  // A corrupt event `ts` reaches these surfaces through the real read paths, and new Date(NaN)
+  // would print "NaN-NaN-NaN NaN:NaN:NaN" from every one. The em dash is the project's "no
+  // value" marker (history's unpaired duration), so a stamp that cannot be known reads so.
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    assert.equal(formatTimestamp(bad), "—");
+  }
+});
+
 /** Local `YYYY-MM-DD` of a Date — test-local so the assertion is independent of datetime's
  * formatDate (which datetime.test.ts does not otherwise cover). */
 function formatDateOf(d: Date): string {

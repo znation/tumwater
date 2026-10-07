@@ -81,8 +81,13 @@ export function monthDay(dayKey: string): string {
 /** Epoch ms as a local `YYYY-MM-DD HH:MM:SS` stamp — date and wall-clock time in one string,
  * built from one Date so the two halves cannot disagree across a midnight crossing. Shared by
  * the transcript's run separators, the history table's time cell, and the review-gate prompt's
- * rejection context, so a timestamp reads identically at every surface. */
+ * rejection context, so a timestamp reads identically at every surface. A non-finite `ms` (a
+ * corrupt event `ts`, a Date.parse of a malformed ISO match) renders as the em dash — the same
+ * "no value" marker the history table uses for a tick with no reported duration, so a corrupt
+ * stamp reads as unknowable instead of printing `new Date(NaN)`'s `NaN-NaN-NaN NaN:NaN:NaN`
+ * through every surface that renders events or rows. */
 export function formatTimestamp(ms: number): string {
+  if (!Number.isFinite(ms)) return "—";
   const d = new Date(ms);
   return `${formatDate(d)} ${formatTime(d)}`;
 }

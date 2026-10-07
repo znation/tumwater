@@ -23,6 +23,17 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
 });
 
+test("formatEvent renders a corrupt event ts as the em dash, never NaN", () => {
+  // The event log is read without a ts filter (readEvents/scanEventTail push any parsed
+  // object), so a corrupt `ts` reaches this renderer through the real paths. new Date(NaN)
+  // as the leading column printed "NaN-NaN-NaN NaN:NaN:NaN" on every such line.
+  for (const ts of [NaN, Infinity, "oops"]) {
+    const line = formatEvent({ ts, loop: "clean", type: "wake", reason: "main moved" } as never);
+    assert.ok(!line.includes("NaN"), `corrupt ts must not print NaN: ${line}`);
+    assert.ok(line.startsWith("— "), `corrupt ts must render the time as the dash: ${line}`);
+  }
+});
+
 test("formatEvent keeps the loop column aligned when a loop name holds a wide character", () => {
   // The loop column is padded so every line's message starts at the same display column.
   // A custom loop name carrying a wide character (CJK, emoji) is one UTF-16 code unit but
