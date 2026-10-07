@@ -6,13 +6,6 @@ import { landingRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
 import type { LoopState } from "./loop-state.js";
 
-/** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery
- * discards the pin instead of re-queuing it (LoopState.mergeConflicts). Each attempt costs a
- * conflict-resolution run, and a role holding a pin never authors: without a cap an
- * unmergeable change would re-queue forever, burning one resolution run per drain. The same
- * three strikes as the review gate's REVIEW_FAILURE_LIMIT. */
-export const MERGE_CONFLICT_LIMIT = 3;
-
 /** Salvaging a commit a previous tick left unlanded (plans/merge-queue.md). Since merge queue
  * 2/5 the role's branch is reset to main the moment its commit is pinned, so the leftover
  * normally lives in `refs/tumwater/landing/<role>`: recovery puts that sha back on the durable
@@ -26,6 +19,13 @@ export const MERGE_CONFLICT_LIMIT = 3;
  * around it — because this is a self-contained concern with its own entry condition and git
  * surface; the only things it borrows from the loop are identity, the tick number, and the
  * worktree (for the no-pin fallback). */
+
+/** Consecutive landings of one pinned sha that may end `merge_conflict` before recovery
+ * discards the pin instead of re-queuing it (LoopState.mergeConflicts). Each attempt costs a
+ * conflict-resolution run, and a role holding a pin never authors: without a cap an
+ * unmergeable change would re-queue forever, burning one resolution run per drain. The same
+ * three strikes as the review gate's REVIEW_FAILURE_LIMIT. */
+export const MERGE_CONFLICT_LIMIT = 3;
 
 /** What recoverLeftover needs from its owning loop: identity, the current tick number, and the
  * role's worktree (needed only for the no-pin ahead-of-main fallback). */
