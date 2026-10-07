@@ -18,6 +18,7 @@ import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./fai
 import { clusterMessages, NO_ERROR_TEXT, truncateExample, type Cluster } from "./failure-cluster.js";
 import { rankByCount } from "./rank.js";
 import { addTo, getOrCreate } from "../collections.js";
+import { firstReason } from "../text/phrases.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
  * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
@@ -291,8 +292,7 @@ export function collectFailureReport(root: string, days: number): FailureReportD
         .filter((ev) => Array.isArray(ev.reasons))
         .map((ev) => {
           const reasons = ev.reasons as unknown[];
-          const first = typeof reasons[0] === "string" ? (reasons[0] as string) : "no reasons given";
-          return { message: first, role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
+          return { message: firstReason(reasons), role: eventRole(ev), ts: ev.ts, keyPrefix: `${eventRole(ev)}\u0000` };
         }),
       REJECTION_TOP,
     ),

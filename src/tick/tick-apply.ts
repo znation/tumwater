@@ -9,6 +9,7 @@ import {
   scheduleBackoff,
 } from "../scheduling/backoff.js";
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
+import { firstReason } from "../text/phrases.js";
 
 /** The state machine that applies a finished tick or landing to the loop's state: the
  * outcome application (applyTickOutcome — which outcomes count which streaks, when a
@@ -261,8 +262,8 @@ export function applyLandingOutcome(
     // already read. No new machinery, no new constants: the warn bar and the breaker bar are
     // ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
     s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
-    const reason = s.lastReview?.verdict === "reject" ? s.lastReview.reasons[0] : undefined;
-    s.lastError = `review rejected: ${(reason ?? "no reasons given").slice(0, 200)}`;
+    const lastReasons = s.lastReview?.verdict === "reject" ? s.lastReview.reasons : undefined;
+    s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
     // Past the warn bar the re-author backs off on the error ladder instead of the minimum
     // interval the queued tick scheduled: the fast first retries stay — the rejected branch's
     // design intent, letting the author address the recorded reasons at once — but a

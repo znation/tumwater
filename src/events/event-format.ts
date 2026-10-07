@@ -1,6 +1,6 @@
 import { eventUsage } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
-import { backendKindPhrase, budgetPhrase, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { backendKindPhrase, budgetPhrase, firstReason, holdPhrase, plural, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -156,7 +156,7 @@ export function eventMessage(e: HarnessEvent): string {
         reasons.length > 1
           ? ` (+${reasons.length - 1} more — the author's next tick carries every reason)`
           : "";
-      return `review rejected ${shortSha(e.head)} — ${reasons[0] ?? "no reasons given"}${more}${elapsed(e.durationMs)}`;
+      return `review rejected ${shortSha(e.head)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
     case "review_failed":
       return `review failed for ${shortSha(e.head)}: ${e.message} (commit kept for re-review)${elapsed(e.durationMs)}`;

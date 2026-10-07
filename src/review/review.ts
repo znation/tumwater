@@ -16,6 +16,7 @@ import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { shortSha } from "../text/format.js";
+import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../scheduling/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
@@ -177,7 +178,7 @@ export async function reviewAheadOfMain(
       reasons,
       ...(durationMs === undefined ? {} : { durationMs }),
     });
-    return { decision: "rejected", detail: reasons[0] ?? "no reasons given" };
+    return { decision: "rejected", detail: firstReason(reasons) };
   };
 
   // Already reviewed this exact HEAD (e.g. a merge_blocked retry): do not burn another run.

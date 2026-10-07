@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backendKindPhrase, budgetPhrase, describeToolCall } from "../src/text/phrases.js";
+import { backendKindPhrase, budgetPhrase, describeToolCall, firstReason } from "../src/text/phrases.js";
 
 // text/phrases.ts is the single home of the fleet's shared wording fragments (the tool-call label,
 // the backend-hold kind phrasing, and their siblings). These tests pin the documented contracts
@@ -51,6 +51,18 @@ test("describeToolCall falls back to the bare tool name for non-object or non-st
   assert.equal(describeToolCall("read", { path: 123 }), "read");
   assert.equal(describeToolCall("grep", { pattern: ["a"] }), "grep");
   assert.equal(describeToolCall("edit", { unrelated: "/a/b.ts" }), "edit");
+});
+
+// --- firstReason (the first rejection reason, or the shared fallback) ---
+
+test("firstReason returns the first string reason and falls back when there is none", () => {
+  assert.equal(firstReason(["the tree is unverified", "second"]), "the tree is unverified");
+  assert.equal(firstReason([]), "no reasons given");
+  assert.equal(firstReason(undefined), "no reasons given");
+  // A parsed event's reasons can be any JSON shape; a non-string first entry reads as absent.
+  assert.equal(firstReason([42, "second"]), "no reasons given");
+  // An empty reason *is* a string, so it survives rather than becoming the fallback.
+  assert.equal(firstReason([""]), "");
 });
 
 // backendKindPhrase is the one home of a backend hold's kind wording, shared by the event

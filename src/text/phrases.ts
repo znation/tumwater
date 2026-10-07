@@ -13,6 +13,20 @@ import { shortSha, usd } from "./format.js";
  * into words. Pure value formats — the token a number or hash renders as (compactTokens,
  * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
 
+const NO_REASONS_GIVEN = "no reasons given";
+
+/** The reason a review rejection leads with — its first listed reason, or `no reasons given`
+ * when the list is empty or its first entry is not a string. One home so the fallback cannot
+ * drift across the four surfaces that show just that first reason: the review gate's returned
+ * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
+ * rejection clusters (failure-data.ts), and the error a loop's next tick records (tick-apply.ts).
+ * Sites that render the whole reason list, or intentionally omit the fallback (time-spend.ts's
+ * first-reason example, review.ts's rejection event `reason`), keep their own handling. */
+export function firstReason(reasons: readonly unknown[] | undefined): string {
+  const first = reasons?.[0];
+  return typeof first === "string" ? first : NO_REASONS_GIVEN;
+}
+
 /** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
  * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the fleet
