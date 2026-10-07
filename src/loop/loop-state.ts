@@ -138,6 +138,13 @@ export interface LoopState {
    * primary model, so existing state files read unchanged. Persisted: an episode must survive
    * a restart like the schedule does. */
   modelFallback?: ModelFallbackState;
+  /** The pinned change a landing failed to review on a permanent provider configuration error
+   * (a 4xx other than 408/429): the request can never succeed until the model config changes,
+   * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md
+   * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the loop's
+   * current reviewer selector differs, the config has changed and recovery clears the hold and
+   * re-queues. Cleared when the pin lands or is rejected. */
+  landingReviewError?: { sha: string; selector?: string; message: string };
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At landing-check-failures.ts's LANDING_CHECK_FAILURE_LIMIT the
    * red is attributed through main's own verdict instead of re-queued as merge_blocked again. */

@@ -290,5 +290,7 @@ export function applyLandingOutcome(
   }
   // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
   if (result === "changed" || result === "rejected") s.landingCheckFailures = undefined;
+  // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
+  if (result === "changed" || result === "rejected") s.landingReviewError = undefined;
   if (result !== "aborted") s.phase = undefined;
 }

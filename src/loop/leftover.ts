@@ -42,6 +42,10 @@ export interface LeftoverContext {
   /** The role's conflict streak (LoopState.mergeConflicts): a pin at MERGE_CONFLICT_LIMIT is
    * discarded instead of re-queued. */
   mergeConflicts?: LoopState["mergeConflicts"];
+  /** The role's permanent-reviewer-config hold (LoopState.landingReviewError): while it names
+   * this pin's sha, recovery returns `held` instead of re-queueing, so a 4xx config error is
+   * not retried at suite speed (BUGS.md 2026-10-06). */
+  landingReviewError?: LoopState["landingReviewError"];
 }
 
 /** What recovery did with a leftover, for the tick to end on:
@@ -55,11 +59,15 @@ export interface LeftoverContext {
  *   commit stays on the branch for the next tick, like a fresh tick's failed pin;
  * - `discarded`: the pin's last MERGE_CONFLICT_LIMIT landings all ended in a conflict the
  *   resolver could not settle — the ref is deleted with a warning and nothing is queued, so the
- *   tick goes on to author on a fresh main and the prompt says what was dropped. */
+ *   tick goes on to author on a fresh main and the prompt says what was dropped;
+ * - `held`: a landing failed on a permanent reviewer configuration error and the model config
+ *   is unchanged — the pin stays, nothing is queued, and the tick ends on the error ladder
+ *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06). */
 export type LeftoverRecovery =
   | { kind: "enqueued"; entry: LandingEntry }
   | { kind: "already_queued"; entry: LandingEntry }
   | { kind: "unpinned"; sha: string }
+  | { kind: "held"; sha: string; message: string }
   | { kind: "discarded"; sha: string; summary: string; attempts: number };
 
 /** Queue a commit a previous tick left unlanded. Entry condition: the landing ref exists and
@@ -104,6 +112,12 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     }
   }
   const meta = await recoveredMetadata(ctx.root, sha);
+  // A permanent reviewer configuration error holds the pin: re-queuing it would pay another
+  // full gate check for a request that can never succeed until the model config changes. The
+  // caller clears the hold (and re-queues) once the resolved reviewer selector differs, so a
+  // fixed config recovers automatically (BUGS.md 2026-10-06).
+  const held = ctx.landingReviewError;
+  if (held && held.sha === sha) return { kind: "held", sha, message: held.message };
   const attempts = ctx.mergeConflicts?.sha === sha ? ctx.mergeConflicts.count : 0;
   if (attempts >= MERGE_CONFLICT_LIMIT) {
     // Main has moved too far under this change for the resolver to reconcile it, and every

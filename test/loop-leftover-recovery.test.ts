@@ -419,6 +419,53 @@ test("a persistent recovery review failure feeds the error streak and reads fail
   }
 });
 
+test("a permanent reviewer config error holds the pin instead of re-queuing it", async () => {
+  const repo = await initializedRepo();
+  const m1 = path.join(tmpdir(), "config-error-phase1");
+  // Phase 0 (a run whose prompt asks for a VERDICT — the review gate): the provider rejects
+  // the request with a permanent 4xx config error and pi exits nonzero. Every later authoring
+  // run idles. Phase 1 (tick 1): edit seed.txt and pin the commit when its review fails.
+  const restore = fakePi(
+    [
+      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `  printf '%s\\n' '400 the provider or policy you attempted to specify is not valid: model_not_supported' >&2`,
+      `  exit 1;; esac; done`,
+      ...firstRunThenIdle(m1, seedBranchEdit()),
+    ].join("\n"),
+  );
+  try {
+    const config = defaultConfig();
+    config.review.model = "bad/model";
+    const runner = makeLoopRunner(repo, "improve", config);
+    assert.equal((await runner.tick()).result, "queued");
+    assert.equal(await landHead(repo, runner, config, "improve"), "review_error");
+    assert.equal(runner.state.landingReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
+
+    // The next tick holds the pin: no re-queue and no second landing (which would pay another
+    // full gate check for a request that can never succeed), and an error outcome so the loop
+    // backs off on the error ladder instead of re-queuing at suite speed.
+    assert.equal((await runner.tick()).result, "error", "the held tick backs off instead of re-queuing");
+    assert.equal(queueDepth(repo), 0, "nothing was re-queued while the config stayed bad");
+    assert.equal(landingRefExists(repo, "improve"), true, "the pin survives the hold");
+    assert.equal(eventsOfType(repo, "review_failed").length, 1, "no second reviewer run while held");
+    assert.ok(
+      eventsOfType(repo, "warning").some(
+        (e) =>
+          /permanent provider configuration error/.test(String(e.message)) &&
+          /model_not_supported/.test(String(e.message)),
+      ),
+      "one warning names the permanent config error",
+    );
+
+    // A changed reviewer selector clears the hold and re-queues the pin.
+    runner.config.review.model = "good/model";
+    assert.equal((await runner.tick()).result, "queued", "a changed reviewer selector recovers the pin");
+    assert.equal(landingRefExists(repo, "improve"), true, "the recovered pin is still there");
+  } finally {
+    restore();
+  }
+});
+
 test("a shutdown mid-landing fails closed: the pinned commit survives for next-start recovery", async () => {
   const repo = await initializedRepo();
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains

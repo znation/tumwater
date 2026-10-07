@@ -92,6 +92,23 @@ const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
  * "retry after 30s"). Module-private: only PiStreamParser.feedLine matches it. */
 const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
 
+/** The provider rejecting the request with a permanent 4xx client error — a bad model id,
+ * credential, or request shape (the observed `400 … model_not_supported` on a mistyped
+ * provider suffix, BUGS.md 2026-10-06). Unlike a 429 or 408/5xx it can never succeed until the
+ * configuration changes, so retrying it at suite speed loops forever (a reviewer failure is
+ * strike-free by design). 408 (request timeout) and 429 are rate/timeouts, not config errors,
+ * and are matched by the transient patterns above; this pattern covers 400/401/403/404 and the
+ * provider's own permanent-error spellings. Exported so the landing path can hold a pin
+ * instead of re-queuing it. */
+const PERMANENT_CONFIG_ERROR = /\b(?:400|401|403|404)\b|model_not_supported|invalid_request_error/i;
+
+/** True when an error text names a permanent provider configuration error (see
+ * PERMANENT_CONFIG_ERROR). Pure, exported so the landing path and the stderr path classify
+ * with one rule. */
+export function isPermanentConfigError(text: string): boolean {
+  return PERMANENT_CONFIG_ERROR.test(text);
+}
+
 /** The kinds of provider-wide failure that are NOT rate limiting: the backend itself is down,
  * refusing connections, or cannot serve the model at all. The fleet-wide hold (src/
  * fleet/fleet-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
@@ -208,6 +225,12 @@ export class PiStreamParser {
   /** The Retry-After delay (seconds) from the rate-limit error text, when the provider sent
    * one. Undefined when the error carried no parseable hint. */
   retryAfterSeconds: number | undefined;
+  /** True when any error text names a permanent provider configuration error (a 4xx other
+   * than 408/429, or the provider's model_not_supported/invalid_request_error spelling): the
+   * request can never succeed until the config changes, so the landing path holds the pin
+   * rather than re-queuing it at suite speed (BUGS.md 2026-10-06). Matched only when the text
+   * did not match rate-limit or a transient backend pattern first. */
+  configError = false;
   /** True when the run's LAST assistant message carried no text and no tool call
    * (thinking-only or empty). A compliant finish always ends with a text block (the
    * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
@@ -298,6 +321,10 @@ export class PiStreamParser {
         // connection/5xx/model-load texts the hold groups by kind.
         this.transientBackend = true;
         this.backendFailureKind = backendKind(text);
+      } else if (isPermanentConfigError(text)) {
+        // A permanent 4xx config error: transient checks had their turn first, so 408/429
+        // never land here.
+        this.configError = true;
       }
     }
     // Every structured event (turn/tool/message boundaries, retries, session) is real

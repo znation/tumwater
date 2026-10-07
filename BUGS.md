@@ -5,39 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A reviewer failing on a permanent config error is retried in a tight loop, and every retry pays for a full gate check first: four suite runs in 2 min went to a `400 model_not_supported` that no retry could fix (found by human log analysis 2026-10-06)
-Symptom: with the fleet on the rejected model id above (03:35:50–03:38:44 PDT on 2026-10-06), bugfix's
-queued change went through the land queue four times. Each landing ran the full gate check first
-(passed in 54.3 s, 38.8 s, 33.5 s and 33.4 s), and then the reviewer failed in under a second on
-the same `400 … the provider or policy you attempted to specify 'DeepInfra' is not valid … model_not_supported`.
-After each failure, leftover recovery re-queued the pin within about 50 ms (ticks 915, 916 and
-917 each ended `queued` in 40–56 ms as "recovered leftover work from bugfix: …"). Only the
-operator's 03:38:44 stop, to fix the model id, ended the cycle. Nothing in the harness would
-have: a failed reviewer run is strike-free by design (src/review/review.ts, BUGS.md 2026-09-20),
-so `REVIEW_FAILURE_LIMIT` never trips, and no backoff applies between attempts. Feature's own
-authoring ticks on the same id (1174, 1175) failed with the same 400 and took the error ladder,
-so only the landing path loops.
-Reproduce: queue a change for landing with `model` (or the reviewer's tier) set to an id the
-provider rejects with a 4xx. Every landing attempt logs a passing `build_check` (scope gate),
-then a `review_failed` with the 400, then a `land_queued` from leftover recovery, and repeats
-about every 35–55 s for as long as the config stays wrong.
-Cause: two independent gaps compound. (1) The landing path does not tell a permanent failure
-from a transient one. A 400 `model_not_supported`/`invalid_request_error` (and likewise 401, 403
-or 404) means the request can never succeed until the config changes, yet it gets the same
-strike-free, immediately re-queued treatment as a connection blip. (2) The review pre-check runs
-the declared check before the reviewer run is ever attempted (src/review/review-precheck.ts), so
-each futile attempt costs a full suite run. On a busy host that slows every other loop's checks
-too, because they share `maxConcurrentChecks`.
-Suggested fix: classify provider 4xx config errors (other than 408/429) as a configuration
-failure. On one, keep the pin, stop re-queuing it, and hold that role's landings (or every role
-on the same model) until `config_changed` names a model key, logging one warning that names the
-bad id. Independently, back off leftover recovery's re-queue after consecutive `review_error`s
-on the same head, so any unforeseen permanent failure cannot loop at suite speed. Optionally,
-validate a changed `model`/tier selector with one cheap request when the config loads: the
-mistyped provider suffix passed validation, which today only rejects an empty provider or model
-half.
-
-
 ### The daily budget was wrong in both directions and nothing flagged it: a configured model id with no exact pi entry silently runs on the provider default's price and context window (Kimi-K2.6's, for huggingface), and a `cacheRead: 0` price reads as free, so the fleet hit its $20 cap at 05:04 on 2026-10-06 after about $6 of real spend (found by human log analysis 2026-10-06)
 Symptom: there were two pricing errors, in opposite directions.
 - **Overcount (DeepSeek).** tumwater.json's `model` is `deepseek-ai/DeepSeek-V4.1-Flash:deepinfra`,
@@ -117,6 +84,47 @@ Expected state: `tumwater doctor` flags the pre-fix config (`models.json.bak-pre
 on both counts and stays silent on the fixed one.
 
 ## Fixed
+
+### A reviewer failing on a permanent config error is retried in a tight loop, and every retry pays for a full gate check first: four suite runs in 2 min went to a `400 model_not_supported` that no retry could fix (found by human log analysis 2026-10-06; fixed 2026-10-06 by bugfix loop)
+Symptom: with the fleet on the rejected model id above (03:35:50–03:38:44 PDT on 2026-10-06), bugfix's
+queued change went through the land queue four times. Each landing ran the full gate check first
+(passed in 54.3 s, 38.8 s, 33.5 s and 33.4 s), and then the reviewer failed in under a second on
+the same `400 … the provider or policy you attempted to specify 'DeepInfra' is not valid … model_not_supported`.
+After each failure, leftover recovery re-queued the pin within about 50 ms (ticks 915, 916 and
+917 each ended `queued` in 40–56 ms as "recovered leftover work from bugfix: …"). Only the
+operator's 03:38:44 stop, to fix the model id, ended the cycle. Nothing in the harness would
+have: a failed reviewer run is strike-free by design (src/review/review.ts, BUGS.md 2026-09-20),
+so `REVIEW_FAILURE_LIMIT` never trips, and no backoff applies between attempts. Feature's own
+authoring ticks on the same id (1174, 1175) failed with the same 400 and took the error ladder,
+so only the landing path loops.
+Reproduce: queue a change for landing with `model` (or the reviewer's tier) set to an id the
+provider rejects with a 4xx. Every landing attempt logs a passing `build_check` (scope gate),
+then a `review_failed` with the 400, then a `land_queued` from leftover recovery, and repeats
+about every 35–55 s for as long as the config stays wrong.
+Cause: two independent gaps compound. (1) The landing path does not tell a permanent failure
+from a transient one. A 400 `model_not_supported`/`invalid_request_error` (and likewise 401, 403
+or 404) means the request can never succeed until the config changes, yet it gets the same
+strike-free, immediately re-queued treatment as a connection blip. (2) The review pre-check runs
+the declared check before the reviewer run is ever attempted (src/review/review-precheck.ts), so
+each futile attempt costs a full suite run. On a busy host that slows every other loop's checks
+too, because they share `maxConcurrentChecks`.
+Suggested fix: classify provider 4xx config errors (other than 408/429) as a configuration
+failure. On one, keep the pin, stop re-queuing it, and hold that role's landings (or every role
+on the same model) until `config_changed` names a model key, logging one warning that names the
+bad id. Independently, back off leftover recovery's re-queue after consecutive `review_error`s
+on the same head, so any unforeseen permanent failure cannot loop at suite speed. Optionally,
+validate a changed `model`/tier selector with one cheap request when the config loads: the
+mistyped provider suffix passed validation, which today only rejects an empty provider or model
+half.
+Fix: `PiRunResult.configError` (set by pi-stream.ts's `isPermanentConfigError` over the event
+error text and pi's stderr) now flags a 4xx other than 408/429. The review gate carries it as
+`GateResult.configError`; `reviewPinnedChange` keeps the pin, records `LoopState.landingReviewError`
+with the failing reviewer selector, and logs one warning naming the error. On the role's next
+tick `recoverLeftover` returns `held` instead of re-queueing while that selector stands, so the
+tick ends on the error ladder with no gate check paid; changing the resolved reviewer selector
+clears the hold and re-queues the pin. This is the suggested fix's backoff arm plus the hold,
+without the optional load-time probe.
+**Validation gap:** no-repro — the suite had no offline repro of the permanent-config hold (the fake pi never emitted a 4xx, and the tight loop was only ever observed in live logs), so confirming it required the new stderr-400 fake and the leftover-recovery test.
 
 ### A failed SUMMARY follow-up is reported as "gave none", so the operator never learns the follow-up run itself died: the warning chooses its wording by whether a SUMMARY was extracted, never by whether the run succeeded (found by telemetry loop 2026-10-06 from the 2026-10-06 digest's `reply had no SUMMARY line — follow-up gave none` warning cluster, correlated with c30e8853, which introduced the message, and 55ae1c71, which fixed the resume incident but left the message untouched; fixed 2026-10-06 by bugfix loop)
 Symptom: the 2026-10-06 digest lists, 1x, `reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update src/pi/command-shape.ts, src/pi/pi-watchdogs.ts, src/ui/progress-data.ts and 2 more"` (bugfix). The named cause is not what happened: the follow-up run failed on the same provider 400 the window's other clusters record, and the harness has the failure in hand — `requestSummary` returns the run even when it failed precisely so the caller can act on it (`src/loop/loop-pi.ts`: "The run is returned even when it failed so the caller can honor a shutdown abort"). The only place the follow-up is mentioned then reports it as having replied nothing.

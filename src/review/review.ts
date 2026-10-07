@@ -97,6 +97,11 @@ export interface GateResult {
   unverified?: boolean;
   /** Failure message ("failed") or first rejection reason ("rejected"), for lastSummary. */
   detail?: string;
+  /** The failure was a permanent provider configuration error (a 4xx other than 408/429, or
+   * the provider's model_not_supported/invalid_request_error spelling): the request can never
+   * succeed until the config changes. The landing path holds the pin instead of re-queuing it
+   * at suite speed (BUGS.md 2026-10-06). Absent on every other failure. */
+  configError?: boolean;
   /** The reviewer's pi run, for usage folding into the loop totals — absent when no review
    * ran (gate disabled, exempt diff, or an already-approved HEAD or patch). */
   run?: PiRunResult;
@@ -397,7 +402,13 @@ export async function reviewAheadOfMain(
     // evidence about the world, never about the diff.
     if (!pi.ok || (followUp && !followUp.ok) || (nudge && !nudge.ok)) {
       recordReview(state, "failed", [message], head);
-      return withRuns({ decision: "failed", detail: message }, pi, followUp, nudge);
+      const configError = pi.configError || Boolean(followUp?.configError) || Boolean(nudge?.configError);
+      return withRuns(
+        { decision: "failed", detail: message, ...(configError ? { configError: true } : {}) },
+        pi,
+        followUp,
+        nudge,
+      );
     }
     // Consecutive failures of THIS HEAD only: a new commit (new HEAD) starts fresh. Read
     // *before* overwriting lastReview with this failure.

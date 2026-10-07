@@ -5,6 +5,8 @@ import { mergeToMain } from "./landing-merge.js";
 import { rebaseOntoMain } from "./landing-git.js";
 import { landingCheckRed, landingBlocked } from "./landing-check-failures.js";
 import { reviewAheadOfMain, type GateResult } from "../review/review.js";
+import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
+import { warnEvent } from "../events/events.js";
 import type { GateRunsPi } from "../loop/loop-pi.js";
 import { saveLoopState } from "../loop/loop-state.js";
 import { setLandingStage } from "./landing-slot.js";
@@ -171,6 +173,7 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "rejected") {
     // The gate already reset this worktree to main; the verdict is final for this sha.
+    state.landingReviewError = undefined;
     await deleteRef(root, ref);
     await removeLandWorktree(root, wt);
     return { kind: "result", result: "rejected" };
@@ -185,11 +188,29 @@ export async function reviewPinnedChange(
 
   if (gate.decision === "failed") {
     state.lastError = `review failed: ${gate.detail}`;
+    // A permanent provider configuration error can never succeed until the config changes, so
+    // record the held pin with the reviewer selector that failed: leftover recovery refuses to
+    // re-queue while that selector stands and clears the hold once it changes (BUGS.md
+    // 2026-10-06). A discarded pin is gone, so no hold is recorded for it.
+    if (gate.configError && !gate.discarded) {
+      const selector = modelSelectorField(reviewRunConfig(config)).model;
+      state.landingReviewError = {
+        sha: req.sha,
+        ...(selector ? { selector } : {}),
+        message: state.lastError,
+      };
+      warnEvent(
+        root,
+        role,
+        `review blocked by a permanent provider configuration error${selector ? ` on ${selector}` : ""}: ${gate.detail} — the pinned change is held until the model config changes`,
+      );
+    }
     // Strike-cap discard: the gate says so directly (it reset the worktree off the pin) — the
     // commit is gone and the ref goes too. An under-cap failure — a dead reviewer — keeps the
     // pin as it is: the gate never commits, so the pin still names the tree the next re-land
     // reviews.
     if (gate.discarded) {
+      state.landingReviewError = undefined;
       await deleteRef(root, ref);
       await removeLandWorktree(root, wt);
       return { kind: "result", result: "review_error", discarded: true };
@@ -206,6 +227,8 @@ export async function reviewPinnedChange(
     await setRef(root, ref, sha);
     req = { ...req, sha };
   }
+  // The change may land: nothing is held against the previous reviewer selector any more.
+  state.landingReviewError = undefined;
   return { kind: "gate", gate, sha };
 }
 

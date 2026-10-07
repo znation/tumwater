@@ -11,7 +11,7 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { buildConflictDiscardNote } from "../gates/gate-prompts.js";
 import { LoopPi } from "./loop-pi.js";
 
-import { configForRole, fallbackRoleConfig, modelSelectorField, type ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, fallbackRoleConfig, modelSelectorField, reviewRunConfig, type ResolvedModelConfig } from "../config/config-views.js";
 import { planTickStart } from "../tick/tick-resume.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { stageTickLanding } from "../tick/tick-stage.js";
@@ -334,6 +334,14 @@ export class LoopRunner {
       this.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its landing ref; left for next-tick recovery`;
       return { result: "error", summary: this.state.lastError, recoveredLeftover: true };
     }
+    if (recovered.kind === "held") {
+      // A permanent reviewer configuration error holds the pin: do not re-queue (and pay
+      // another gate check) until the model config changes. Ending `error` schedules the error
+      // ladder, so the hold is re-checked at backoff pace rather than at suite speed
+      // (BUGS.md 2026-10-06).
+      this.state.lastError = recovered.message;
+      return { result: "error", summary: recovered.message, recoveredLeftover: true };
+    }
     const { entry } = recovered;
     if (recovered.kind === "enqueued") {
       this.recoveryFailure = priorLandingFailure;
@@ -592,11 +600,17 @@ export class LoopRunner {
       // tick: the role holds one landing ref, and the leftover owns it until its landing
       // resolves. With nothing to salvage the branch holds nothing either, so the reset below
       // leaves pristine main for the red-main gate.
+      // A permanent reviewer config error -- held from re-queueing -- clears once the resolved
+      // reviewer selector changes, so fixing the model config recovers the pin automatically
+      // (BUGS.md 2026-10-06).
+      const reviewSelector = modelSelectorField(reviewRunConfig(this.config)).model;
+      if (s.landingReviewError && s.landingReviewError.selector !== reviewSelector) s.landingReviewError = undefined;
       const recovered = await recoverLeftover({
         ...this.loopCtx,
         tick: s.ticks,
         wt,
         mergeConflicts: s.mergeConflicts,
+        landingReviewError: s.landingReviewError,
       });
       if (recovered?.kind === "discarded") {
         // The pin hit the conflict cap and is gone: nothing holds the role any more, so this

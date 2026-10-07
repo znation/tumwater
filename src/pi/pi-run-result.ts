@@ -84,6 +84,11 @@ export interface PiRunResult {
    * classification) — the fleet-wide hold groups its storms by kind. Undefined when
    * transientBackend is false. */
   backendKind?: BackendFailureKind;
+  /** True when the run ended on a permanent provider configuration error (a 4xx other than
+   * 408/429, or the provider's model_not_supported/invalid_request_error spelling): the
+   * request can never succeed until the config changes, so the landing path holds the pin
+   * instead of re-queuing it at suite speed (BUGS.md 2026-10-06). */
+  configError: boolean;
   /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
    * sent; undefined otherwise. Caps the loop's wait before the transient retry. */
   retryAfterSeconds?: number;

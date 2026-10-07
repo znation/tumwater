@@ -7,7 +7,7 @@ import { agentBinSourceLabel, resolveAgentBin, type ResolvedAgentBin } from "../
 import { terminateChild, withoutLaunchServicesCheckIn } from "../process/process.js";
 import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../process/run-marker.js";
 import { piArgs } from "./pi-args.js";
-import { PiStreamParser, STREAM_SEVERED } from "./pi-stream.js";
+import { PiStreamParser, STREAM_SEVERED, isPermanentConfigError } from "./pi-stream.js";
 import { startPiWatchdogs } from "./pi-watchdogs.js";
 import type { PiRunResult } from "./pi-run-result.js";
 
@@ -222,6 +222,7 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       transientRateLimit: parser.transientRateLimit,
       transientBackend: parser.transientBackend,
       backendKind: parser.backendFailureKind,
+      configError: parser.configError,
       retryAfterSeconds: parser.retryAfterSeconds,
       transientPiCrash: false,
       finalMessageContentless: parser.finalMessageContentless,
@@ -280,12 +281,19 @@ export function runPi(opts: PiRunOptions): Promise<PiRunResult> {
       // cause — one exit has one cause (BUGS.md 2026-09-30).
       const streamSevered =
         !aborted && !wd.timedOut && !wd.quietKilled && !crashed && STREAM_SEVERED.test(stderr.trim());
+      // A permanent 4xx config error pi printed on stderr (pi dying on the rejected request)
+      // classifies through the same one rule as an event errorMessage. Never on a run the
+      // harness itself killed, and never when another exit cause already claimed it.
+      const configError =
+        !aborted && !wd.timedOut && !wd.quietKilled && !crashed && !streamSevered &&
+        (parser.configError || isPermanentConfigError(stderr.trim()));
       finish(
         resultFromParser({
           ok: !failed,
           transientPiCrash: crashed,
           transientBackend: parser.transientBackend || streamSevered,
           backendKind: parser.backendFailureKind ?? (streamSevered ? "stream-severed" : undefined),
+          configError,
           errorMessage: aborted
             ? "aborted by harness shutdown"
             : wd.quietKilled
