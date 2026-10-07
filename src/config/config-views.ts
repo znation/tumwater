@@ -190,6 +190,18 @@ export function resolvedModelFields(
   return fields;
 }
 
+/** The resolved model fields of a pure `fallback` selector string: parsed as a pure selector
+ * (no legacy provider in scope), with the ambient top-level thinking when the selector
+ * carries none. fallbackPair's map and string branches and tierOwnFallback share this
+ * assembly, so all three read one rule for how a `fallback` selector resolves. */
+function fallbackSelectorFields(
+  selector: string,
+  config: TumwaterConfig,
+): Pick<FallbackModelConfig, "provider" | "model" | "thinking"> {
+  const parsed = parseModelSelector(selector);
+  return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
+}
+
 /** The `model` selector a run actually starts on, as an event/payload field: the resolved
  * provider/model/thinking triple formatted as one selector string, or an empty object when
  * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
@@ -240,11 +252,9 @@ export function fallbackPair(config: TumwaterConfig): FallbackModelConfig | null
       // model at all.
       const sel = fb.default;
       if (sel === undefined || sel === "pause") return null;
-      const parsed = parseModelSelector(sel);
-      return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
+      return fallbackSelectorFields(sel, config);
     }
-    const sel: ModelSelector = parseModelSelector(fb);
-    return resolvedModelFields(sel.provider, sel.model, sel.thinking ?? config.thinking);
+    return fallbackSelectorFields(fb, config);
   }
   const fbo = config.fallbackModel;
   if (!fbo) return null;
@@ -299,8 +309,7 @@ function tierOwnFallback(config: TumwaterConfig, tier: ModelTier): FallbackModel
     return fallbackPair(config) ?? undefined;
   }
   if (selector === undefined) return undefined;
-  const parsed = parseModelSelector(selector);
-  return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
+  return fallbackSelectorFields(selector, config);
 }
 
 /** Which free pair each tier runs on at the daily cap (plans/model-tiers.md "Budget fallback
