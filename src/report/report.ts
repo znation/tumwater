@@ -1,6 +1,6 @@
 /** The usage report's CLI command half (cmdReport): parse the flags, collect through
- * src/report/report-data.ts / src/failure/failure-data.ts, and print. The Markdown renderers live in the pure-render
- * modules they pair with: src/report/report-render.ts (beside src/failure/failure-render.ts) and
+ * src/report/report-data.ts / src/failure/failure-data.ts, and print. The Markdown renderers
+ * live in the pure-render modules they pair with: src/report/report-render.ts and
  * src/failure/failure-render.ts. */
 import { collectReport, collectReportSince } from "./report-data.js";
 import { collectFailureReport } from "../failure/failure-data.js";
