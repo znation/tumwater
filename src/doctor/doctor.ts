@@ -2,7 +2,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/fleet-state.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
-import { checkLaunchServicesPorts } from "../process/launch-services.js";
+import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import {

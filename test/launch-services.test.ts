@@ -2,7 +2,6 @@ import fs from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  checkLaunchServicesPorts,
   LAUNCH_SERVICES_REWARN_PORTS,
   LAUNCH_SERVICES_SAMPLE_MS,
   LAUNCH_SERVICES_WARN_PORTS,
@@ -10,14 +9,15 @@ import {
   launchServicesWarning,
   nextLaunchServicesWarning,
 } from "../src/process/launch-services.js";
+import { checkLaunchServicesPorts } from "../src/doctor/doctor-launch-services.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./repo-fixtures.js";
 import { harnessWarnings } from "./log-fixtures.js";
 
-// launchservicesd's Mach-port watch (src/process/launch-services.ts, BUGS.md 2026-09-28): doctor's line and
-// a running fleet's warning, both driven by a fake probe — no test reads the real Mac's daemon
-// (process.test.ts pins the real probe).
+// launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-fleet warning
+// (src/process/launch-services.ts, BUGS.md 2026-09-28): both driven by a fake probe — no test
+// reads the real Mac's daemon (process.test.ts pins the real probe).
 
 /** A probe answering only the port count, with the given counts in turn (the last repeats). */
 function portsProbe(...counts: Array<number | null>): ProcessProbe & { reads: number } {

@@ -40,7 +40,7 @@ import { briefFile } from "../brief.js";
 
 /** The doctor report contract and the environment/repo pre-flight checks, split out of
  * doctor.ts. The sibling check modules (doctor-orphans.ts, doctor-backlog.ts, and
- * process/launch-services.ts) depend on the shared CheckOutcome shape directly instead of type-importing
+ * doctor-launch-services.ts) depend on the shared CheckOutcome shape directly instead of type-importing
  * it from the aggregator that runs them, and the checks themselves live here so doctor.ts stays
  * the composition layer only: runDoctor calls each check in fixed order and folds the results
  * into a DoctorReport. The model-readiness checks (the cap fallback, the agent binary's
