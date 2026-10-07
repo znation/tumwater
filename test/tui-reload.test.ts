@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import { runTui, type TuiSeams, type TuiStdin, type TuiStdout } from "../src/ui/tui.js";
 import { readBuildInfo, type BuildInfo } from "../src/build/build-info.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
+import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { initProject } from "../src/init/init.js";
 
@@ -161,6 +162,50 @@ test("a reloaded TUI whose reload supervisor dies hands the terminal back and en
   } finally {
     term.keypress({ ctrl: true, name: "d" });
     await done;
+  }
+});
+
+test("a reload with no injected reexec seam falls back to reexecSelf", async () => {
+  // The reload glue's default re-exec: every test above injects `watch.reexec`, so
+  // `seams.watch?.reexec ?? reexecSelf` never takes its fallback, though a real `tumwater tui`
+  // omits the seam and runs exactly that. Run as a supervised child (the DASHBOARD_CHILD_ENV
+  // mark) so reexecSelf's no-nesting path exits RESTART_EXIT_CODE instead of spawning a real
+  // child; capture that exit so this test process survives to assert it.
+  const repo = makeRepo();
+  await initProject(repo, "tui default reexec fallback");
+
+  const startup = readBuildInfo();
+  assert.ok(startup, "the suite runs from a stamped dist");
+  let disk: BuildInfo | null = startup;
+  const term = new FakeTerminal();
+
+  class ExitError extends Error {}
+  const realExit = process.exit;
+  let exitCode: number | undefined;
+  process.exit = ((code?: number) => {
+    exitCode = code ?? 0;
+    throw new ExitError();
+  }) as typeof process.exit;
+  const priorMark = process.env[DASHBOARD_CHILD_ENV];
+  process.env[DASHBOARD_CHILD_ENV] = "1";
+  try {
+    const done = runTui(repo, {
+      ...term.asSeams,
+      // Watch seams with no reexec: the teardown must fall back to the real one.
+      watch: { isSelfHostedImpl: async () => true, readDisk: () => disk, intervalMs: 5 },
+      // A disabled orphan watch; the fallback reads the real process env, not this seam.
+      supervisor: { env: {} },
+    });
+    disk = { ...startup, sha: `${startup.sha}-newer` };
+    await assert.rejects(done, ExitError, "the fallback re-exec is reached and exits");
+    await new Promise((r) => setImmediate(r)); // ink's raw-mode teardown is a microtask at unmount
+    assert.equal(exitCode, RESTART_EXIT_CODE, "the fallback deferred to the supervisor instead of nesting");
+    assert.deepEqual(term.rawModes, [true, false], "the terminal was restored before the fallback ran");
+    assert.equal(term.writes.at(-1), "\n", "the teardown newline was written");
+  } finally {
+    process.exit = realExit;
+    if (priorMark === undefined) delete process.env[DASHBOARD_CHILD_ENV];
+    else process.env[DASHBOARD_CHILD_ENV] = priorMark;
   }
 });
 
